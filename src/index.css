@@ -2,95 +2,116 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+@import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+/* 
+Design System for Karel - Supervizní Mentor
+Theme: Calming, professional, warm - inspired by therapy spaces
 */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Warm, calming palette */
+    --background: 40 33% 98%;
+    --foreground: 30 10% 20%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 40 30% 97%;
+    --card-foreground: 30 10% 20%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 40 30% 97%;
+    --popover-foreground: 30 10% 20%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Sage green - primary, calming */
+    --primary: 150 25% 35%;
+    --primary-foreground: 40 33% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Warm beige - secondary */
+    --secondary: 35 30% 92%;
+    --secondary-foreground: 30 10% 25%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted warm tones */
+    --muted: 35 20% 94%;
+    --muted-foreground: 30 10% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Soft terracotta accent */
+    --accent: 18 45% 65%;
+    --accent-foreground: 40 33% 98%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Warm coral for attention */
+    --destructive: 12 70% 55%;
+    --destructive-foreground: 40 33% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 35 20% 88%;
+    --input: 35 20% 88%;
+    --ring: 150 25% 35%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Chat-specific colors */
+    --chat-user: 35 35% 93%;
+    --chat-assistant: 150 20% 94%;
+    --chat-border: 35 15% 85%;
+    
+    /* Mode button colors */
+    --mode-debrief: 150 30% 40%;
+    --mode-supervision: 200 35% 45%;
+    --mode-safety: 18 50% 55%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --sidebar-background: 40 30% 96%;
+    --sidebar-foreground: 30 10% 30%;
+    --sidebar-primary: 150 25% 35%;
+    --sidebar-primary-foreground: 40 33% 98%;
+    --sidebar-accent: 35 25% 90%;
+    --sidebar-accent-foreground: 30 10% 25%;
+    --sidebar-border: 35 20% 88%;
+    --sidebar-ring: 150 25% 35%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 30 15% 10%;
+    --foreground: 40 20% 92%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 30 15% 12%;
+    --card-foreground: 40 20% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 30 15% 12%;
+    --popover-foreground: 40 20% 92%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 150 30% 50%;
+    --primary-foreground: 30 15% 10%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 30 15% 18%;
+    --secondary-foreground: 40 20% 92%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 30 15% 18%;
+    --muted-foreground: 40 15% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 18 40% 50%;
+    --accent-foreground: 40 20% 92%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 12 60% 45%;
+    --destructive-foreground: 40 20% 92%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 30 15% 20%;
+    --input: 30 15% 20%;
+    --ring: 150 30% 50%;
+
+    --chat-user: 30 15% 18%;
+    --chat-assistant: 150 15% 16%;
+    --chat-border: 30 15% 25%;
+
+    --mode-debrief: 150 35% 45%;
+    --mode-supervision: 200 40% 50%;
+    --mode-safety: 18 55% 50%;
+
+    --sidebar-background: 30 15% 8%;
+    --sidebar-foreground: 40 15% 90%;
+    --sidebar-primary: 150 30% 50%;
+    --sidebar-primary-foreground: 30 15% 10%;
+    --sidebar-accent: 30 15% 15%;
+    --sidebar-accent-foreground: 40 15% 90%;
+    --sidebar-border: 30 15% 20%;
+    --sidebar-ring: 150 30% 50%;
   }
 }
 
@@ -100,6 +121,41 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Crimson Pro', Georgia, serif;
+  }
+}
+
+@layer components {
+  .chat-message-user {
+    @apply bg-[hsl(var(--chat-user))] rounded-2xl rounded-br-md px-4 py-3;
+  }
+
+  .chat-message-assistant {
+    @apply bg-[hsl(var(--chat-assistant))] rounded-2xl rounded-bl-md px-4 py-3;
+  }
+
+  .mode-button {
+    @apply px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 border-2;
+  }
+
+  .mode-button-debrief {
+    @apply bg-[hsl(var(--mode-debrief))] text-white border-[hsl(var(--mode-debrief))] hover:bg-[hsl(var(--mode-debrief)/0.9)];
+  }
+
+  .mode-button-supervision {
+    @apply bg-[hsl(var(--mode-supervision))] text-white border-[hsl(var(--mode-supervision))] hover:bg-[hsl(var(--mode-supervision)/0.9)];
+  }
+
+  .mode-button-safety {
+    @apply bg-[hsl(var(--mode-safety))] text-white border-[hsl(var(--mode-safety))] hover:bg-[hsl(var(--mode-safety)/0.9)];
+  }
+
+  .login-card {
+    @apply bg-card border border-border rounded-2xl shadow-lg p-8;
   }
 }

@@ -1,0 +1,4 @@
+project_id = "wpscavufytwucqemawwv"
+
+[functions.karel-chat]
+verify_jwt = false
