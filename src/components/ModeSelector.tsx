@@ -1,6 +1,6 @@
-import { Brain, Shield, Heart } from "lucide-react";
+import { Brain, Shield, Heart, Baby } from "lucide-react";
 
-type ConversationMode = "debrief" | "supervision" | "safety";
+type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 
 interface ModeSelectorProps {
   currentMode: ConversationMode;
@@ -29,6 +29,13 @@ const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
       sublabel: "rizika",
       icon: Shield,
       className: "mode-button-safety",
+    },
+    {
+      id: "childcare" as const,
+      label: "Péče o dítě",
+      sublabel: "DID",
+      icon: Baby,
+      className: "mode-button-childcare",
     },
   ];
 
