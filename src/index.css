@@ -1,4 +1,13 @@
 @tailwind base;
+
+/* Mode button childcare variant */
+.mode-button-childcare {
+  @apply bg-purple-100 text-purple-800 border-purple-300;
+}
+
+.dark .mode-button-childcare {
+  @apply bg-purple-900/30 text-purple-200 border-purple-700;
+}
 @tailwind components;
 @tailwind utilities;
 

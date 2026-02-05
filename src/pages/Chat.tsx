@@ -14,7 +14,7 @@ type Message = {
   content: string;
 };
 
-type ConversationMode = "debrief" | "supervision" | "safety";
+type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 
 const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -46,6 +46,7 @@ const Chat = () => {
       debrief: "Hani, jsem tady. Pojď, sedni si ke mně k ohni. Pracovní den končí a já ti držím prostor, abys mohla odložit vše, co v tobě zůstalo. Jak se právě teď cítíš?",
       supervision: "Haničko, jsem připraven s tebou pracovat. Která postava z tvé praxe tě teď zaměstnává? Můžeme reflektovat, trénovat, nebo ti nabídnu strukturovaný zápis - co potřebuješ?",
       safety: "Hani, pojďme společně a věcně projít to, co tě znepokojuje. Jsem tu jako tvůj partner - projdeme hranice, postup i dokumentaci. Na čem pracujeme?",
+      childcare: "Haničko, jsem tady s tebou. Vím, jak náročná je péče o tvé dítě s DID. Pojďme spolu projít, co se děje - ať už potřebuješ porozumět nějakému alteru, zpracovat náročnou situaci, nebo jen sdílet. Co teď nejvíc potřebuješ?",
     };
 
     setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
