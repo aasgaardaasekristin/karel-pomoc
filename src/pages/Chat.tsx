@@ -67,7 +67,7 @@ const Chat = () => {
   useEffect(() => {
     if (pendingHandoffToChat && mainMode === "chat") {
       const handoffMessage = lastReportText 
-        ? "Haničko, mám před sebou tvůj zápis. Co z toho v tobě nejvíc zůstalo? Kde to cítíš v těle?"
+        ? "Haničko… to, co jsi teď sepsala, je hodně náročné.\n\nNež půjdeme do detailů – co z toho zápisu v tobě teď nejvíc rezonuje?"
         : "Haničko, jsem připraven s tebou probrat, co tě zaměstnává. Co teď nejvíc potřebuješ?";
       
       setMessages(prev => [...prev, { role: "assistant", content: handoffMessage }]);
