@@ -440,20 +440,34 @@ const ReportForm = () => {
           />
           
           {/* Handoff to Chat CTA */}
-          <div className="flex justify-center py-4">
-            <Button 
-              variant="outline" 
-              size="lg"
-              onClick={() => {
-                setLastReportText(reportText);
-                setPendingHandoffToChat(true);
-                setMainMode("chat");
-              }}
-              className="gap-2"
-            >
-              <MessageSquare className="w-4 h-4" />
-              Chceš to probrat hlouběji v režimu A?
-            </Button>
+          <div className="bg-card rounded-xl border border-border p-6 space-y-4">
+            <p className="text-center text-foreground font-medium">
+              Chceš si tuto situaci ještě v klidu probrat s Karlem?
+            </p>
+            <div className="flex justify-center gap-4">
+              <Button 
+                variant="default" 
+                size="lg"
+                onClick={() => {
+                  setLastReportText(reportText);
+                  setPendingHandoffToChat(true);
+                  setMainMode("chat");
+                }}
+                className="gap-2"
+              >
+                <MessageSquare className="w-4 h-4" />
+                Ano, pojďme to probrat
+              </Button>
+              <Button 
+                variant="outline" 
+                size="lg"
+                onClick={() => {
+                  toast.info("Report zůstává k dispozici pro kopírování nebo stažení.");
+                }}
+              >
+                Teď ne
+              </Button>
+            </div>
           </div>
         </>
       )}
