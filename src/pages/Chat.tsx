@@ -5,22 +5,20 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, LogOut, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
 import ModeSelector from "@/components/ModeSelector";
+import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
-
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
+import ReportForm from "@/components/ReportForm";
+import { useChatContext } from "@/contexts/ChatContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
+type MainMode = "chat" | "report";
 
 const Chat = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, setMessages, mode, setMode } = useChatContext();
+  const [mainMode, setMainMode] = useState<MainMode>("chat");
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [mode, setMode] = useState<ConversationMode>("debrief");
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
@@ -50,7 +48,7 @@ const Chat = () => {
     };
 
     setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
-  }, [mode]);
+  }, [mode, setMessages]);
 
   const handleLogout = () => {
     sessionStorage.removeItem("authenticated");
@@ -179,61 +177,86 @@ const Chat = () => {
         </div>
       </header>
 
-      {/* Mode Selector */}
+      {/* Main Mode Toggle */}
       <div className="border-b border-border bg-card/30">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <ModeSelector currentMode={mode} onModeChange={setMode} />
+          <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
         </div>
       </div>
 
-      {/* Chat Messages */}
-      <ScrollArea className="flex-1 px-4" ref={scrollRef}>
-        <div className="max-w-4xl mx-auto py-6 space-y-4">
-          {messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
-          ))}
-          {isLoading && messages[messages.length - 1]?.role === "user" && (
-            <div className="flex justify-start">
-              <div className="chat-message-assistant flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                <span className="text-muted-foreground">Karel přemýšlí...</span>
-              </div>
+      {mainMode === "chat" ? (
+        <>
+          {/* Chat Mode Selector */}
+          <div className="border-b border-border bg-card/30">
+            <div className="max-w-4xl mx-auto px-4 py-3">
+              <ModeSelector currentMode={mode} onModeChange={setMode} />
             </div>
-          )}
-        </div>
-      </ScrollArea>
-
-      {/* Input Area */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex gap-3 items-end">
-            <Textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Napiš svou zprávu..."
-              className="min-h-[56px] max-h-[200px] resize-none"
-              disabled={isLoading}
-            />
-            <Button
-              onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
-              size="icon"
-              className="h-[56px] w-[56px] shrink-0"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Soukromé temenos. Žádná data se neukládají.
-          </p>
-        </div>
-      </div>
+
+          {/* Chat Messages */}
+          <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+            <div className="max-w-4xl mx-auto py-6 space-y-4">
+              {messages.map((message, index) => (
+                <ChatMessage key={index} message={message} />
+              ))}
+              {isLoading && messages[messages.length - 1]?.role === "user" && (
+                <div className="flex justify-start">
+                  <div className="chat-message-assistant flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    <span className="text-muted-foreground">Karel přemýšlí...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+
+          {/* Input Area */}
+          <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+            <div className="max-w-4xl mx-auto px-4 py-4">
+              <div className="flex gap-3 items-end">
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Napiš svou zprávu..."
+                  className="min-h-[56px] max-h-[200px] resize-none"
+                  disabled={isLoading}
+                />
+                <Button
+                  onClick={sendMessage}
+                  disabled={!input.trim() || isLoading}
+                  size="icon"
+                  className="h-[56px] w-[56px] shrink-0"
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Send className="w-5 h-5" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Soukromé temenos. Žádná data se neukládají.
+              </p>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Report Mode */}
+          <ScrollArea className="flex-1">
+            <ReportForm />
+          </ScrollArea>
+          
+          {/* Footer for Report Mode */}
+          <div className="border-t border-border bg-card/50 backdrop-blur-sm py-2">
+            <p className="text-xs text-muted-foreground text-center">
+              Soukromé temenos. Žádná data se neukládají.
+            </p>
+          </div>
+        </>
+      )}
     </div>
   );
 };

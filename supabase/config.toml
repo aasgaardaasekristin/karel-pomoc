@@ -2,3 +2,12 @@ project_id = "wpscavufytwucqemawwv"
 
 [functions.karel-chat]
 verify_jwt = false
+
+[functions.karel-prefill]
+verify_jwt = false
+
+[functions.karel-triage]
+verify_jwt = false
+
+[functions.karel-report]
+verify_jwt = false
