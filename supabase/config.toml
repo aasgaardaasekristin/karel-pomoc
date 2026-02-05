@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.karel-report]
 verify_jwt = false
+
+[functions.karel-soap]
+verify_jwt = false

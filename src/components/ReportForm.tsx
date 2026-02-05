@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Loader2, Sparkles, FileDown, Copy, RotateCcw, Lightbulb } from "lucide-react";
+import { Loader2, Sparkles, FileDown, Copy, RotateCcw, Lightbulb, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { useChatContext } from "@/contexts/ChatContext";
 import TriageOutput from "./TriageOutput";
@@ -59,7 +59,7 @@ const THEMES = [
 ];
 
 const ReportForm = () => {
-  const { messages } = useChatContext();
+  const { messages, reportDraft, setReportDraft, setMainMode, setPendingHandoffToChat, setLastReportText } = useChatContext();
   
   const [formData, setFormData] = useState<ReportFormData>({
     context: "",
@@ -81,6 +81,25 @@ const ReportForm = () => {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const hasMessages = messages.length > 1;
+
+  // Apply reportDraft when it changes (from SOAP handoff)
+  useEffect(() => {
+    if (reportDraft) {
+      setFormData(prev => ({
+        ...prev,
+        context: reportDraft.context || prev.context,
+        keyTheme: reportDraft.keyTheme || prev.keyTheme,
+        therapistEmotions: reportDraft.therapistEmotions || prev.therapistEmotions,
+        transference: reportDraft.transference || prev.transference,
+        risks: reportDraft.risks || prev.risks,
+        missingData: reportDraft.missingData || prev.missingData,
+        interventionsTried: reportDraft.interventionsTried || prev.interventionsTried,
+        nextSessionGoal: reportDraft.nextSessionGoal || prev.nextSessionGoal,
+      }));
+      // Clear the draft after applying
+      setReportDraft(null);
+    }
+  }, [reportDraft, setReportDraft]);
 
   const handleEmotionChange = (emotionId: string, checked: boolean) => {
     setFormData(prev => ({
@@ -413,11 +432,30 @@ const ReportForm = () => {
 
       {/* Report Output */}
       {reportText && (
-        <ReportOutput 
-          report={reportText} 
-          onCopy={handleCopyReport}
-          onDownload={handleDownload}
-        />
+        <>
+          <ReportOutput 
+            report={reportText} 
+            onCopy={handleCopyReport}
+            onDownload={handleDownload}
+          />
+          
+          {/* Handoff to Chat CTA */}
+          <div className="flex justify-center py-4">
+            <Button 
+              variant="outline" 
+              size="lg"
+              onClick={() => {
+                setLastReportText(reportText);
+                setPendingHandoffToChat(true);
+                setMainMode("chat");
+              }}
+              className="gap-2"
+            >
+              <MessageSquare className="w-4 h-4" />
+              Chceš to probrat hlouběji v režimu A?
+            </Button>
+          </div>
+        </>
       )}
     </div>
   );
