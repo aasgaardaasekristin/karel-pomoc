@@ -43,9 +43,9 @@ const Chat = () => {
   // Welcome message when mode changes
   useEffect(() => {
     const welcomeMessages: Record<ConversationMode, string> = {
-      debrief: "Haničko, jsem tady s tebou. Právě jsi ukončila sezení? Pojď, posaď se ke mně. Jsem tu, abych ti pomohl zpracovat, co v tobě sezení zanechalo. Jak se teď cítíš?",
-      supervision: "Haničko, jsem připraven s tebou reflektovat. Která postava z tvé praxe tě teď zaměstnává? Jaký příběh v tobě rezonuje a chce být vyslyšen?",
-      safety: "Haničko, vnímám, že něco tíží tvé srdce. Pojďme spolu prozkoumat, co tě znepokojuje ohledně bezpečnosti nebo hranic. Nejsi na to sama - jsem tu s tebou.",
+      debrief: "Hani, jsem tady. Pojď, sedni si ke mně k ohni. Pracovní den končí a já ti držím prostor, abys mohla odložit vše, co v tobě zůstalo. Jak se právě teď cítíš?",
+      supervision: "Haničko, jsem připraven s tebou pracovat. Která postava z tvé praxe tě teď zaměstnává? Můžeme reflektovat, trénovat, nebo ti nabídnu strukturovaný zápis - co potřebuješ?",
+      safety: "Hani, pojďme společně a věcně projít to, co tě znepokojuje. Jsem tu jako tvůj partner - projdeme hranice, postup i dokumentaci. Na čem pracujeme?",
     };
 
     setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
@@ -169,7 +169,7 @@ const Chat = () => {
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-serif font-semibold text-foreground">Carl Gustav Jung</h1>
-            <p className="text-sm text-muted-foreground">Tvůj partner a mentor</p>
+            <p className="text-sm text-muted-foreground">Tvůj partner a supervizní mentor</p>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="w-4 h-4 mr-2" />
@@ -229,7 +229,7 @@ const Chat = () => {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Tvé bezpečné temenos. Žádná data se neukládají.
+            Soukromé temenos. Žádná data se neukládají.
           </p>
         </div>
       </div>
