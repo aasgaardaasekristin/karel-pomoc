@@ -43,9 +43,9 @@ const Chat = () => {
   // Welcome message when mode changes
   useEffect(() => {
     const welcomeMessages: Record<ConversationMode, string> = {
-      debrief: "Ahoj, jsem Karel. Právě jsi ukončil/a sezení s klientem? Jsem tu, abych ti pomohl zpracovat, co ses v něm cítil/a. Jak se teď máš?",
-      supervision: "Ahoj, jsem Karel. Rád ti pomohu reflektovat konkrétní případ nebo situaci z tvé praxe. O čem bys chtěl/a přemýšlet?",
-      safety: "Ahoj, jsem Karel. Chci ti pomoct promyslet bezpečnostní aspekty tvé práce. Objevilo se něco, co tě znepokojuje ohledně hranic nebo bezpečnosti?",
+      debrief: "Haničko, jsem tady s tebou. Právě jsi ukončila sezení? Pojď, posaď se ke mně. Jsem tu, abych ti pomohl zpracovat, co v tobě sezení zanechalo. Jak se teď cítíš?",
+      supervision: "Haničko, jsem připraven s tebou reflektovat. Která postava z tvé praxe tě teď zaměstnává? Jaký příběh v tobě rezonuje a chce být vyslyšen?",
+      safety: "Haničko, vnímám, že něco tíží tvé srdce. Pojďme spolu prozkoumat, co tě znepokojuje ohledně bezpečnosti nebo hranic. Nejsi na to sama - jsem tu s tebou.",
     };
 
     setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
@@ -168,8 +168,8 @@ const Chat = () => {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-serif font-semibold text-foreground">Karel</h1>
-            <p className="text-sm text-muted-foreground">Supervizní mentor</p>
+            <h1 className="text-xl font-serif font-semibold text-foreground">Carl Gustav Jung</h1>
+            <p className="text-sm text-muted-foreground">Tvůj partner a mentor</p>
           </div>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             <LogOut className="w-4 h-4 mr-2" />
@@ -229,7 +229,7 @@ const Chat = () => {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Karel je supervizní mentor, nikoli terapeut. Žádná data se neukládají.
+            Tvé bezpečné temenos. Žádná data se neukládají.
           </p>
         </div>
       </div>
