@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2 } from "lucide-react";
+import { Send, LogOut, Loader2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
 import MainModeToggle from "@/components/MainModeToggle";
@@ -12,13 +12,23 @@ import ReportForm from "@/components/ReportForm";
 import { useChatContext } from "@/contexts/ChatContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
-type MainMode = "chat" | "report";
 
 const Chat = () => {
-  const { messages, setMessages, mode, setMode } = useChatContext();
-  const [mainMode, setMainMode] = useState<MainMode>("chat");
+  const { 
+    messages, 
+    setMessages, 
+    mode, 
+    setMode,
+    mainMode,
+    setMainMode,
+    setReportDraft,
+    pendingHandoffToChat,
+    setPendingHandoffToChat,
+    lastReportText,
+  } = useChatContext();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSoapLoading, setIsSoapLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
@@ -47,12 +57,75 @@ const Chat = () => {
       childcare: "Haničko, jsem tady s tebou. Vím, jak náročná je péče o tvé dítě s DID. Pojďme spolu projít, co se děje - ať už potřebuješ porozumět nějakému alteru, zpracovat náročnou situaci, nebo jen sdílet. Co teď nejvíc potřebuješ?",
     };
 
-    setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
-  }, [mode, setMessages]);
+    // Only reset messages if not coming from report handoff
+    if (!pendingHandoffToChat) {
+      setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
+    }
+  }, [mode, setMessages, pendingHandoffToChat]);
+
+  // Handle handoff from Report to Chat
+  useEffect(() => {
+    if (pendingHandoffToChat && mainMode === "chat") {
+      const handoffMessage = lastReportText 
+        ? "Haničko, mám před sebou tvůj zápis. Co z toho v tobě nejvíc zůstalo? Kde to cítíš v těle?"
+        : "Haničko, jsem připraven s tebou probrat, co tě zaměstnává. Co teď nejvíc potřebuješ?";
+      
+      setMessages(prev => [...prev, { role: "assistant", content: handoffMessage }]);
+      setPendingHandoffToChat(false);
+    }
+  }, [pendingHandoffToChat, mainMode, lastReportText, setMessages, setPendingHandoffToChat]);
 
   const handleLogout = () => {
     sessionStorage.removeItem("authenticated");
     navigate("/");
+  };
+
+  const handleSoapHandoff = async () => {
+    if (messages.length < 2 || isSoapLoading) return;
+    
+    setIsSoapLoading(true);
+    
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-soap`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            messages: messages.slice(-40),
+            mode,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("SOAP error");
+
+      const soapData = await response.json();
+      
+      // Store the SOAP draft
+      setReportDraft({
+        context: soapData.context || "",
+        keyTheme: soapData.keyTheme || "",
+        therapistEmotions: soapData.therapistEmotions || [],
+        transference: soapData.transference || "",
+        risks: soapData.risks || [],
+        missingData: soapData.missingData || "",
+        interventionsTried: soapData.interventionsTried || "",
+        nextSessionGoal: soapData.nextSessionGoal || "",
+      });
+      
+      // Switch to Report mode
+      setMainMode("report");
+      toast.success("Zápis připraven, formulář předvyplněn");
+    } catch (error) {
+      console.error("SOAP error:", error);
+      toast.error("Chyba při vytváření zápisu");
+    } finally {
+      setIsSoapLoading(false);
+    }
   };
 
   const sendMessage = async () => {
@@ -221,11 +294,11 @@ const Chat = () => {
                   onKeyDown={handleKeyDown}
                   placeholder="Napiš svou zprávu..."
                   className="min-h-[56px] max-h-[200px] resize-none"
-                  disabled={isLoading}
+                  disabled={isLoading || isSoapLoading}
                 />
                 <Button
                   onClick={sendMessage}
-                  disabled={!input.trim() || isLoading}
+                  disabled={!input.trim() || isLoading || isSoapLoading}
                   size="icon"
                   className="h-[56px] w-[56px] shrink-0"
                 >
@@ -235,6 +308,21 @@ const Chat = () => {
                     <Send className="w-5 h-5" />
                   )}
                 </Button>
+                {messages.length > 1 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleSoapHandoff}
+                    disabled={isLoading || isSoapLoading}
+                    className="h-[56px] shrink-0"
+                  >
+                    {isSoapLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileText className="w-4 h-4 mr-2" />
+                    )}
+                    Pořídit zápis
+                  </Button>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-2 text-center">
                 Soukromé temenos. Žádná data se neukládají.
