@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Lock, Heart } from "lucide-react";
+import { Lock, Heart, Leaf } from "lucide-react";
 
 const Login = () => {
   const [password, setPassword] = useState("");
@@ -76,6 +76,18 @@ const Login = () => {
           <p className="mt-8 text-xs text-muted-foreground">
             Soukromá aplikace pro profesionální supervizi
           </p>
+        </div>
+
+        {/* Calm Mode Entry - separate from login */}
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => navigate("/calm")}
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-border bg-card hover:bg-secondary/60 transition-all duration-200 text-sm text-foreground group"
+          >
+            <Leaf className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
+            <span>Potřebuju se teď zklidnit</span>
+          </button>
+          <p className="text-xs text-muted-foreground mt-2">Bez přihlášení · nic se neukládá</p>
         </div>
       </div>
     </div>
