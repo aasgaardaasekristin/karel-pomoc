@@ -158,8 +158,16 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] ${msg.role === "user" ? "chat-message-user" : "chat-message-assistant"}`}>
-                <div className="prose prose-sm max-w-none text-foreground">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <div className="prose prose-sm max-w-none text-foreground prose-a:text-primary prose-a:underline prose-a:font-medium">
+                  <ReactMarkdown
+                    components={{
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline font-medium hover:text-primary/80">
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >{msg.content}</ReactMarkdown>
                 </div>
               </div>
             </div>
