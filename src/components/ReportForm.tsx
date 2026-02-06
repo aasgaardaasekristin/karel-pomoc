@@ -240,13 +240,85 @@ const ReportForm = () => {
     toast.success("Report zkopírován do schránky");
   };
 
-  const handleDownload = (format: "txt" | "md") => {
+  const getTimestamp = () => {
+    const now = new Date();
+    const date = now.toISOString().slice(0, 10);
+    const time = now.toTimeString().slice(0, 5).replace(":", "");
+    return { date, time, formatted: `${now.toLocaleDateString("cs-CZ")} ${now.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}` };
+  };
+
+  const buildHeader = (formatted: string) =>
+    `════════════════════════════════════════\n  Report ze sezení\n  ${formatted}\n════════════════════════════════════════\n\n`;
+
+  const buildHtml = (reportMarkdown: string, formatted: string) => `<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report ze sezení – ${formatted}</title>
+<style>
+  body { font-family: Georgia, 'Times New Roman', serif; max-width: 700px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a1a; line-height: 1.6; }
+  h1 { font-size: 1.4rem; border-bottom: 2px solid #333; padding-bottom: .4rem; }
+  h2 { font-size: 1.1rem; margin-top: 1.5rem; color: #444; }
+  h3 { font-size: 1rem; color: #555; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .3rem 0; }
+  .meta { color: #888; font-size: .85rem; margin-bottom: 1.5rem; }
+  .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #ddd; font-size: .75rem; color: #aaa; text-align: center; }
+  @media print { body { margin: 0; } .footer { display: none; } }
+</style>
+</head>
+<body>
+<h1>Report ze sezení</h1>
+<p class="meta">${formatted}</p>
+${simpleMarkdownToHtml(reportMarkdown)}
+<div class="footer">Vygenerováno lokálně · žádná data nebyla odeslána</div>
+</body>
+</html>`;
+
+  const simpleMarkdownToHtml = (md: string): string => {
+    return md
+      .split("\n")
+      .map(line => {
+        if (line.startsWith("### ")) return `<h3>${line.slice(4)}</h3>`;
+        if (line.startsWith("## ")) return `<h2>${line.slice(3)}</h2>`;
+        if (line.startsWith("# ")) return `<h1>${line.slice(2)}</h1>`;
+        if (line.startsWith("- ")) return `<li>${line.slice(2)}</li>`;
+        if (line.startsWith("**") && line.endsWith("**")) return `<p><strong>${line.slice(2, -2)}</strong></p>`;
+        if (line.trim() === "") return "";
+        return `<p>${line}</p>`;
+      })
+      .join("\n")
+      .replace(/(<li>.*<\/li>\n?)+/g, match => `<ul>${match}</ul>`);
+  };
+
+  const handleDownload = (format: "txt" | "md" | "html") => {
     if (!reportText) return;
-    const blob = new Blob([reportText], { type: "text/plain" });
+    const { date, time, formatted } = getTimestamp();
+    const filename = `report_${date}_${time}`;
+
+    let content: string;
+    let mimeType: string;
+
+    switch (format) {
+      case "html":
+        content = buildHtml(reportText, formatted);
+        mimeType = "text/html";
+        break;
+      case "md":
+        content = `# Report ze sezení\n\n> ${formatted}\n\n---\n\n${reportText}`;
+        mimeType = "text/markdown";
+        break;
+      default:
+        content = `${buildHeader(formatted)}${reportText}`;
+        mimeType = "text/plain";
+    }
+
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `report-sezeni.${format}`;
+    a.download = `${filename}.${format}`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Staženo jako .${format}`);
