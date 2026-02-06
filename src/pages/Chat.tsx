@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText } from "lucide-react";
+import { Send, LogOut, Loader2, FileText, Leaf } from "lucide-react";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
 import MainModeToggle from "@/components/MainModeToggle";
@@ -243,10 +243,16 @@ const Chat = () => {
             <h1 className="text-xl font-serif font-semibold text-foreground">Carl Gustav Jung</h1>
             <p className="text-sm text-muted-foreground">Tvůj partner a supervizní mentor</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="w-4 h-4 mr-2" />
-            Odejít
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate("/calm")}>
+              <Leaf className="w-4 h-4 mr-2" />
+              Zklidnění
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="w-4 h-4 mr-2" />
+              Odejít
+            </Button>
+          </div>
         </div>
       </header>
 
