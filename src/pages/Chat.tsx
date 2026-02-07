@@ -9,6 +9,7 @@ import ModeSelector from "@/components/ModeSelector";
 import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
+import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import { useChatContext } from "@/contexts/ChatContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
@@ -265,6 +266,8 @@ const Chat = () => {
 
       {mainMode === "chat" ? (
         <>
+          {/* Crisis Brief Panel */}
+          <CrisisBriefPanel />
           {/* Chat Mode Selector */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">

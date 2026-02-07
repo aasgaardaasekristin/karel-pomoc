@@ -6,6 +6,8 @@ import { Send, Loader2, Phone, ShieldAlert, HeartHandshake } from "lucide-react"
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { CalmScenario } from "./ScenarioSelector";
+import { useCrisisSupervision } from "@/contexts/CrisisSupervisionContext";
+import type { CrisisImprint } from "@/types/crisisImprint";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -50,9 +52,14 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
   const [riskScore, setRiskScore] = useState(0);
   const [showTherapistBridge, setShowTherapistBridge] = useState(false);
   const [therapistBridgeAccepted, setTherapistBridgeAccepted] = useState(false);
+  const [therapistBridgeMethod, setTherapistBridgeMethod] = useState<"email" | "sms" | null>(null);
   const [messageCount, setMessageCount] = useState(0);
+  const [crisisImprintSent, setCrisisImprintSent] = useState(false);
+  const [riskHistory, setRiskHistory] = useState<number[]>([]);
+  const [sessionStart] = useState(Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { addImprint } = useCrisisSupervision();
 
   const riskLevel = riskScore >= 9 ? "high" : riskScore >= 5 ? "elevated" : "normal";
 
@@ -62,6 +69,49 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
       setShowTherapistBridge(true);
     }
   }, [riskScore, messageCount, therapistBridgeAccepted]);
+
+  // Create crisis imprint when conditions are met
+  useEffect(() => {
+    if (crisisImprintSent) return;
+    const shouldTrigger =
+      riskScore >= 10 ||
+      (therapistBridgeAccepted && therapistBridgeMethod !== null);
+
+    if (!shouldTrigger) return;
+
+    const escalationPattern = riskHistory.length >= 3
+      ? (riskHistory[riskHistory.length - 1] - riskHistory[0] > 4 ? "rapid" : "gradual")
+      : "stable";
+
+    const imprint: CrisisImprint = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      scenario,
+      riskScore,
+      signals: {
+        hopelessness: riskScore >= 7,
+        regulationFailure: messageCount >= 8 && riskScore >= 9,
+        helpRefusal: showTherapistBridge && !therapistBridgeAccepted,
+        selfHarm: riskScore >= 12,
+        domesticThreat: scenario === "threat",
+        narrowedFuture: riskScore >= 10,
+      },
+      regulationAttempts: Math.max(1, Math.floor(messageCount / 3)),
+      regulationSuccessful: riskScore < 5,
+      therapistBridgeTriggered: therapistBridgeAccepted,
+      therapistBridgeMethod,
+      timeDynamics: {
+        sessionDurationMs: Date.now() - sessionStart,
+        messageCount,
+        riskEscalationPattern: escalationPattern,
+      },
+      note: "Uživatel může terapeutku kontaktovat sám (kód 11)",
+    };
+
+    addImprint(imprint);
+    setCrisisImprintSent(true);
+    console.log("CRISIS_IMPRINT_GENERATED", { id: imprint.id, riskScore, scenario });
+  }, [riskScore, therapistBridgeAccepted, therapistBridgeMethod, crisisImprintSent, messageCount, scenario, riskHistory, showTherapistBridge, sessionStart, addImprint]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -133,6 +183,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
               const score = extractRiskScore(assistantContent);
               if (score !== null && score > riskScore) {
                 setRiskScore(score);
+                setRiskHistory(prev => [...prev, score]);
                 if (score >= 9) {
                   console.log("HIGH_RISK", { scenario, riskScore: score });
                 }
@@ -263,6 +314,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
                   className="w-full border-primary/30 text-primary hover:bg-primary/10"
                   onClick={() => {
                     setTherapistBridgeAccepted(true);
+                    setTherapistBridgeMethod("email");
                     console.log("THERAPIST_BRIDGE_ACCEPTED", { scenario, riskScore, method: "email" });
                   }}
                 >
@@ -277,6 +329,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
                   className="w-full border-primary/30 text-primary hover:bg-primary/10"
                   onClick={() => {
                     setTherapistBridgeAccepted(true);
+                    setTherapistBridgeMethod("sms");
                     console.log("THERAPIST_BRIDGE_ACCEPTED", { scenario, riskScore, method: "sms" });
                   }}
                 >
