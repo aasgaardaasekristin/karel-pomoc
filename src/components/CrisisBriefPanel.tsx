@@ -1,99 +1,67 @@
-import { useCrisisSupervision } from "@/contexts/CrisisSupervisionContext";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ShieldAlert, Phone, MessageSquare, AlertTriangle, ChevronRight, Loader2, X } from "lucide-react";
-import { toast } from "sonner";
+import { ShieldAlert, Phone, MessageSquare, AlertTriangle, ChevronRight, Loader2, X, Check } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
+interface DbCrisisBrief {
+  id: string;
+  created_at: string;
+  scenario: string;
+  risk_score: number;
+  risk_overview: string;
+  recommended_contact: string;
+  suggested_opening_lines: string[];
+  risk_formulations: string[];
+  next_steps: string[];
+  is_read: boolean;
+}
 
 const CrisisBriefPanel = () => {
-  const {
-    pendingImprints,
-    crisisBrief,
-    setCrisisBrief,
-    clearImprints,
-    isBriefLoading,
-    setIsBriefLoading,
-  } = useCrisisSupervision();
+  const [briefs, setBriefs] = useState<DbCrisisBrief[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const latestImprint = pendingImprints[pendingImprints.length - 1];
+  // Load unread briefs from DB on mount and poll every 30s
+  useEffect(() => {
+    const loadBriefs = async () => {
+      const { data, error } = await supabase
+        .from("crisis_briefs")
+        .select("id, created_at, scenario, risk_score, risk_overview, recommended_contact, suggested_opening_lines, risk_formulations, next_steps, is_read")
+        .eq("is_read", false)
+        .order("created_at", { ascending: false })
+        .limit(10);
 
-  const generateBrief = async () => {
-    if (!latestImprint) return;
-    setIsBriefLoading(true);
+      if (!error && data) {
+        setBriefs(data as unknown as DbCrisisBrief[]);
+      }
+      setLoading(false);
+    };
 
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-crisis-brief`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ imprint: latestImprint }),
-        }
-      );
+    loadBriefs();
+    const interval = setInterval(loadBriefs, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-      if (!response.ok) throw new Error("Brief generation failed");
-
-      const data = await response.json();
-      setCrisisBrief({
-        ...data,
-        imprint: latestImprint,
-      });
-    } catch (error) {
-      console.error("Crisis brief error:", error);
-      toast.error("Chyba při generování krizového briefu");
-    } finally {
-      setIsBriefLoading(false);
-    }
+  const markAsRead = async (id: string) => {
+    await supabase.from("crisis_briefs").update({ is_read: true }).eq("id", id);
+    setBriefs(prev => prev.filter(b => b.id !== id));
+    setExpandedId(null);
   };
 
-  if (pendingImprints.length === 0 && !crisisBrief) return null;
+  const dismissAll = async () => {
+    for (const b of briefs) {
+      await supabase.from("crisis_briefs").update({ is_read: true }).eq("id", b.id);
+    }
+    setBriefs([]);
+    setExpandedId(null);
+  };
 
-  // Notification banner (before brief is generated)
-  if (!crisisBrief && !isBriefLoading) {
-    return (
-      <div className="border-b border-destructive/30 bg-destructive/5 px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <ShieldAlert className="w-5 h-5 text-destructive shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                Krizový supervizní brief čeká na zpracování
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Anonymní otisk z Režimu C – {latestImprint?.scenario} (risk: {latestImprint?.riskScore})
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={clearImprints} className="text-xs">
-              <X className="w-3 h-3 mr-1" />
-              Zavřít
-            </Button>
-            <Button size="sm" onClick={generateBrief} className="text-xs">
-              <ChevronRight className="w-3 h-3 mr-1" />
-              Zobrazit brief
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (loading || briefs.length === 0) return null;
 
-  // Loading state
-  if (isBriefLoading) {
-    return (
-      <div className="border-b border-primary/30 bg-primary/5 px-4 py-4">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Loader2 className="w-5 h-5 text-primary animate-spin" />
-          <p className="text-sm text-foreground">Karel připravuje supervizní brief...</p>
-        </div>
-      </div>
-    );
-  }
+  const expanded = briefs.find(b => b.id === expandedId);
 
-  // Full brief view
-  if (crisisBrief) {
+  // Expanded view of a single brief
+  if (expanded) {
     return (
       <div className="border-b border-destructive/20 bg-card">
         <div className="max-w-4xl mx-auto px-4 py-5">
@@ -102,77 +70,81 @@ const CrisisBriefPanel = () => {
               <ShieldAlert className="w-5 h-5 text-destructive" />
               <h3 className="text-sm font-semibold text-foreground">Krizový supervizní brief</h3>
               <span className="text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded-full">
-                Risk {crisisBrief.imprint.riskScore}
+                Risk {expanded.risk_score}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(expanded.created_at).toLocaleString("cs-CZ")}
               </span>
             </div>
-            <Button variant="ghost" size="sm" onClick={clearImprints} className="text-xs text-muted-foreground">
-              <X className="w-3 h-3 mr-1" />
-              Zavřít
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => markAsRead(expanded.id)} className="text-xs">
+                <Check className="w-3 h-3 mr-1" />
+                Přečteno
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setExpandedId(null)} className="text-xs text-muted-foreground">
+                <X className="w-3 h-3 mr-1" />
+                Zavřít
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4 text-sm">
-            {/* Risk Overview */}
-            {crisisBrief.riskOverview && (
+            {expanded.risk_overview && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-destructive font-medium">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   Přehled rizik
                 </div>
-                <p className="text-foreground/90 pl-5">{crisisBrief.riskOverview}</p>
+                <p className="text-foreground/90 pl-5">{expanded.risk_overview}</p>
               </div>
             )}
 
-            {/* Recommended Contact */}
-            {crisisBrief.recommendedContact && (
+            {expanded.recommended_contact && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-primary font-medium">
                   <Phone className="w-3.5 h-3.5" />
                   Doporučený způsob kontaktu
                 </div>
-                <p className="text-foreground/90 pl-5">{crisisBrief.recommendedContact}</p>
+                <p className="text-foreground/90 pl-5">{expanded.recommended_contact}</p>
               </div>
             )}
 
-            {/* Suggested Opening Lines */}
-            {crisisBrief.suggestedOpeningLines.length > 0 && (
+            {expanded.suggested_opening_lines?.length > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-primary font-medium">
                   <MessageSquare className="w-3.5 h-3.5" />
                   Návrh prvních vět
                 </div>
                 <ul className="space-y-1 pl-5">
-                  {crisisBrief.suggestedOpeningLines.map((line, i) => (
+                  {expanded.suggested_opening_lines.map((line, i) => (
                     <li key={i} className="text-foreground/90 italic">„{line}"</li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Risk Formulations */}
-            {crisisBrief.riskFormulations.length > 0 && (
+            {expanded.risk_formulations?.length > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-amber-600 font-medium">
                   <AlertTriangle className="w-3.5 h-3.5" />
                   Rizikové formulace
                 </div>
                 <ul className="space-y-1 pl-5">
-                  {crisisBrief.riskFormulations.map((f, i) => (
+                  {expanded.risk_formulations.map((f, i) => (
                     <li key={i} className="text-foreground/90">{f}</li>
                   ))}
                 </ul>
               </div>
             )}
 
-            {/* Next Steps */}
-            {crisisBrief.nextSteps.length > 0 && (
+            {expanded.next_steps?.length > 0 && (
               <div className="space-y-1">
                 <div className="flex items-center gap-1.5 text-primary font-medium">
                   <ChevronRight className="w-3.5 h-3.5" />
                   Další doporučené kroky
                 </div>
                 <ul className="space-y-1 pl-5">
-                  {crisisBrief.nextSteps.map((s, i) => (
+                  {expanded.next_steps.map((s, i) => (
                     <li key={i} className="text-foreground/90">{s}</li>
                   ))}
                 </ul>
@@ -188,7 +160,38 @@ const CrisisBriefPanel = () => {
     );
   }
 
-  return null;
+  // Notification banner(s)
+  return (
+    <div className="border-b border-destructive/30 bg-destructive/5 px-4 py-3">
+      <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <ShieldAlert className="w-5 h-5 text-destructive shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              {briefs.length === 1
+                ? "Krizový supervizní brief čeká na přečtení"
+                : `${briefs.length} krizové briefy čekají na přečtení`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Nejnovější: {briefs[0].scenario} (risk: {briefs[0].risk_score}) – {new Date(briefs[0].created_at).toLocaleString("cs-CZ")}
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          {briefs.length > 1 && (
+            <Button variant="outline" size="sm" onClick={dismissAll} className="text-xs">
+              <Check className="w-3 h-3 mr-1" />
+              Vše přečteno
+            </Button>
+          )}
+          <Button size="sm" onClick={() => setExpandedId(briefs[0].id)} className="text-xs">
+            <ChevronRight className="w-3 h-3 mr-1" />
+            Zobrazit brief
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default CrisisBriefPanel;
