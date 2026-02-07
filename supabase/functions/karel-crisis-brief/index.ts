@@ -126,7 +126,7 @@ Připrav supervizní brief pro terapeutku.`;
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Karel <onboarding@resend.dev>",
+            from: "Karel <karel@hana-chlebcova.cz>",
             to: ["mujosobniasistentnamiru@gmail.com"],
             subject: "⚠️ Krizový supervizní brief čeká v Karlovi",
             html: `<h2>Krizový supervizní brief</h2>
