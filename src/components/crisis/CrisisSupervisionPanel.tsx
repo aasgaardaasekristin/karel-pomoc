@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ShieldAlert, X, ChevronDown, ChevronUp } from "lucide-react";
 import type { DbCrisisBrief } from "./types";
 import CrisisIntroSection from "./CrisisIntroSection";
@@ -37,9 +36,9 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
   ];
 
   return (
-    <div className="border-b-2 border-destructive/30 bg-card">
+    <div className="border-b-2 border-destructive/30 bg-card flex flex-col" style={{ maxHeight: 'calc(100vh - 140px)' }}>
       {/* Header */}
-      <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-4">
+      <div className="border-b border-destructive/20 bg-destructive/5 px-4 py-4 shrink-0">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ShieldAlert className="w-6 h-6 text-destructive" />
@@ -62,7 +61,7 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
       </div>
 
       {/* Scrollable content */}
-      <ScrollArea className="max-h-[70vh]">
+      <div className="flex-1 overflow-y-auto min-h-0">
         <div className="max-w-4xl mx-auto px-4 py-4 space-y-1">
           {sections.map(({ key, label, component }, idx) => {
             const isCollapsed = collapsedSections[key];
@@ -93,7 +92,7 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
             Karel nepracuje s klientem. Karel připravuje terapeutku. Žádná identita nebyla předána. Žádné chat logy z Režimu C nebyly přeneseny.
           </p>
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 };

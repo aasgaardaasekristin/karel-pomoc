@@ -1,4 +1,5 @@
 import { AlertTriangle, TrendingUp, StickyNote } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import type { DbCrisisBrief } from "./types";
 
 const signalLabels: Record<string, string> = {
@@ -47,8 +48,8 @@ const CrisisImprintSection = ({ brief }: { brief: DbCrisisBrief }) => {
 
       {/* Risk overview from AI */}
       {brief.risk_overview && (
-        <div className="p-3 rounded-lg bg-muted/50 border border-border">
-          <p className="text-sm leading-relaxed">{brief.risk_overview}</p>
+        <div className="p-3 rounded-lg bg-muted/50 border border-border prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown>{brief.risk_overview}</ReactMarkdown>
         </div>
       )}
 
