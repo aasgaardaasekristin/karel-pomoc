@@ -255,18 +255,36 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
                 <p className="text-muted-foreground">Ten kód neznamená diagnózu. Znamená: <em>„Bylo mi hodně těžko a krátká pomoc nestačila."</em></p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full border-primary/30 text-primary hover:bg-primary/10"
-              onClick={() => {
-                setTherapistBridgeAccepted(true);
-                console.log("THERAPIST_BRIDGE_ACCEPTED", { scenario, riskScore });
-              }}
-            >
-              <HeartHandshake className="w-4 h-4 mr-2" />
-              Chci se spojit s terapeutkou (kód 11)
-            </Button>
+            <div className="flex flex-col gap-2">
+              <a href="mailto:mujosobniasistentnamiru@gmail.com?subject=K%C3%B3d%2011%20%E2%80%93%20pros%C3%ADm%20o%20kontakt" className="inline-flex w-full">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={() => {
+                    setTherapistBridgeAccepted(true);
+                    console.log("THERAPIST_BRIDGE_ACCEPTED", { scenario, riskScore, method: "email" });
+                  }}
+                >
+                  <HeartHandshake className="w-4 h-4 mr-2" />
+                  Napsat e-mail terapeutce (kód 11)
+                </Button>
+              </a>
+              <a href="sms:+420773641106?body=K%C3%B3d%2011%20%E2%80%93%20pros%C3%ADm%20o%20kontakt" className="inline-flex w-full">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={() => {
+                    setTherapistBridgeAccepted(true);
+                    console.log("THERAPIST_BRIDGE_ACCEPTED", { scenario, riskScore, method: "sms" });
+                  }}
+                >
+                  <Phone className="w-4 h-4 mr-2" />
+                  Poslat SMS terapeutce (kód 11)
+                </Button>
+              </a>
+            </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
               Kontakt je dobrovolný. Terapeutka nemůže garantovat okamžitou odpověď, ale kód 11 znamená, že se na zprávu podívá co nejdříve.
             </p>
