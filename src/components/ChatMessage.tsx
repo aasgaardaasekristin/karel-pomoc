@@ -23,7 +23,15 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
           <p className="text-foreground whitespace-pre-wrap">{message.content}</p>
         ) : (
           <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5">
-            <ReactMarkdown>{message.content}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                a: ({ href, children }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer">
+                    {children}
+                  </a>
+                ),
+              }}
+            >{message.content}</ReactMarkdown>
           </div>
         )}
       </div>
