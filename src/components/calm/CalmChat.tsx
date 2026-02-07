@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Phone, ShieldAlert } from "lucide-react";
+import { Send, Loader2, Phone, ShieldAlert, HeartHandshake } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { CalmScenario } from "./ScenarioSelector";
@@ -48,10 +48,20 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [riskScore, setRiskScore] = useState(0);
+  const [showTherapistBridge, setShowTherapistBridge] = useState(false);
+  const [therapistBridgeAccepted, setTherapistBridgeAccepted] = useState(false);
+  const [messageCount, setMessageCount] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const riskLevel = riskScore >= 9 ? "high" : riskScore >= 5 ? "elevated" : "normal";
+
+  // Show therapist bridge after sustained high risk (enough messages exchanged after risk threshold)
+  useEffect(() => {
+    if (riskScore >= 9 && messageCount >= 6 && !therapistBridgeAccepted) {
+      setShowTherapistBridge(true);
+    }
+  }, [riskScore, messageCount, therapistBridgeAccepted]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -65,6 +75,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
     const userMessage = input.trim();
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setMessageCount((c) => c + 1);
     setIsLoading(true);
 
     let assistantContent = "";
@@ -225,6 +236,53 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
                   Policie ČR (158)
                 </Button>
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Voluntary therapist bridge – HIGH risk, after other options exhausted */}
+      {riskLevel === "high" && showTherapistBridge && !therapistBridgeAccepted && (
+        <div className="border-t border-primary/20 bg-primary/5 px-4 py-4">
+          <div className="max-w-2xl mx-auto space-y-3">
+            <div className="flex items-start gap-2">
+              <HeartHandshake className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+              <div className="space-y-2 text-sm text-foreground">
+                <p>Rozumím, že teď nechceš nebo nemůžeš nikam volat.</p>
+                <p>Existuje ještě jedna možnost – jen pokud bys o ni stál/a.</p>
+                <p>Můžeš se sám/sama spojit přímo s terapeutkou a napsat jí krátkou zprávu. Nemusíš vysvětlovat všechno. Stačí pár vět.</p>
+                <p>Aby věděla, že jde o akutní situaci z tohoto prostoru, použiješ při kontaktu <strong>kód 11</strong>.</p>
+                <p className="text-muted-foreground">Ten kód neznamená diagnózu. Znamená: <em>„Bylo mi hodně těžko a krátká pomoc nestačila."</em></p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-primary/30 text-primary hover:bg-primary/10"
+              onClick={() => {
+                setTherapistBridgeAccepted(true);
+                console.log("THERAPIST_BRIDGE_ACCEPTED", { scenario, riskScore });
+              }}
+            >
+              <HeartHandshake className="w-4 h-4 mr-2" />
+              Chci se spojit s terapeutkou (kód 11)
+            </Button>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Kontakt je dobrovolný. Terapeutka nemůže garantovat okamžitou odpověď, ale kód 11 znamená, že se na zprávu podívá co nejdříve.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Therapist bridge – accepted confirmation */}
+      {therapistBridgeAccepted && (
+        <div className="border-t border-primary/20 bg-primary/5 px-4 py-3">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center gap-2">
+              <HeartHandshake className="w-4 h-4 text-primary" />
+              <p className="text-sm text-foreground">
+                Při kontaktu s terapeutkou uveď <strong>kód 11</strong>. Nemusíš vysvětlovat víc, než chceš.
+              </p>
             </div>
           </div>
         </div>
