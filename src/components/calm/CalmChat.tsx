@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Phone } from "lucide-react";
+import { Send, Loader2, Phone, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { CalmScenario } from "./ScenarioSelector";
@@ -23,8 +23,18 @@ const scenarioFirstMessages: Record<CalmScenario, string> = {
   other: "Jsem tady, ať je to cokoliv.\n\nPověz mi jednou větou, co se teď děje.",
 };
 
-// Webhook placeholder
-const WEBHOOK_URL = null;
+const RISK_SCORE_REGEX = /\[RISK_SCORE:(\d+)\]/g;
+
+function stripRiskMarkers(text: string): string {
+  return text.replace(RISK_SCORE_REGEX, "").replace(/\[RISK:HIGH\]/g, "").trim();
+}
+
+function extractRiskScore(text: string): number | null {
+  const matches = [...text.matchAll(RISK_SCORE_REGEX)];
+  if (matches.length === 0) return null;
+  // Take the last (most recent) score
+  return parseInt(matches[matches.length - 1][1], 10);
+}
 
 interface CalmChatProps {
   scenario: CalmScenario;
@@ -37,9 +47,11 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [showRiskHelp, setShowRiskHelp] = useState(false);
+  const [riskScore, setRiskScore] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const riskLevel = riskScore >= 9 ? "high" : riskScore >= 5 ? "elevated" : "normal";
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -105,16 +117,17 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantContent += content;
-              const displayContent = assistantContent.replace(/\[RISK:HIGH\]/g, "").trim();
 
-              // Detect risk
-              if (assistantContent.includes("[RISK:HIGH]")) {
-                setShowRiskHelp(true);
-                console.log("HIGH_RISK_DETECTED");
-                if (WEBHOOK_URL) {
-                  // Future webhook call
+              // Extract risk score from the raw content
+              const score = extractRiskScore(assistantContent);
+              if (score !== null && score > riskScore) {
+                setRiskScore(score);
+                if (score >= 9) {
+                  console.log("HIGH_RISK", { scenario, riskScore: score });
                 }
               }
+
+              const displayContent = stripRiskMarkers(assistantContent);
 
               setMessages((prev) => {
                 const updated = [...prev];
@@ -183,38 +196,49 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
         </div>
       </ScrollArea>
 
-      {/* Risk help banner */}
-      {showRiskHelp && (
+      {/* Risk help banner – HIGH risk */}
+      {riskLevel === "high" && (
         <div className="border-t border-destructive/30 bg-destructive/5 px-4 py-3">
           <div className="max-w-2xl mx-auto">
-            <p className="text-sm text-foreground mb-2 font-medium">
-              Pokud potřebuješ okamžitou pomoc:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs border-destructive/30"
-                onClick={() => {
-                  // Placeholder - no actual action yet
-                  toast.info("Tato funkce bude brzy dostupná.");
-                }}
-              >
-                <Phone className="w-3 h-3 mr-1" />
-                Linka bezpečí (116 111) – děti
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs border-destructive/30"
-                onClick={() => {
-                  toast.info("Tato funkce bude brzy dostupná.");
-                }}
-              >
-                <Phone className="w-3 h-3 mr-1" />
-                Krizová linka (116 123) – dospělí
-              </Button>
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldAlert className="w-4 h-4 text-destructive" />
+              <p className="text-sm text-foreground font-medium">
+                Pokud potřebuješ okamžitou pomoc:
+              </p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <a href="tel:116123" className="inline-flex">
+                <Button variant="outline" size="sm" className="text-xs border-destructive/30">
+                  <Phone className="w-3 h-3 mr-1" />
+                  Krizová linka (116 123) – dospělí
+                </Button>
+              </a>
+              <a href="tel:116111" className="inline-flex">
+                <Button variant="outline" size="sm" className="text-xs border-destructive/30">
+                  <Phone className="w-3 h-3 mr-1" />
+                  Linka bezpečí (116 111) – děti
+                </Button>
+              </a>
+              <a href="tel:158" className="inline-flex">
+                <Button variant="outline" size="sm" className="text-xs border-destructive/30">
+                  <Phone className="w-3 h-3 mr-1" />
+                  Policie ČR (158)
+                </Button>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Risk help banner – ELEVATED risk */}
+      {riskLevel === "elevated" && (
+        <div className="border-t border-amber-500/30 bg-amber-500/5 px-4 py-3">
+          <div className="max-w-2xl mx-auto">
+            <p className="text-sm text-foreground">
+              Kdyby ses potřeboval/a s někým promluvit:{" "}
+              <a href="tel:116123" className="text-primary underline font-medium">Krizová linka 116 123</a>
+              {" "}(non-stop, zdarma)
+            </p>
           </div>
         </div>
       )}

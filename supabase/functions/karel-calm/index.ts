@@ -5,8 +5,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Webhook placeholder for future risk escalation
-const WEBHOOK_URL = null;
+// Webhook placeholder – set URL to activate
+const WEBHOOK_URL: string | null = null;
 
 type CalmScenario =
   | "panic"
@@ -35,6 +35,30 @@ const scenarioLabels: Record<CalmScenario, string> = {
   other: "Něco jiného",
 };
 
+interface WebhookPayload {
+  timestamp: string;
+  scenario: string;
+  riskLevel: "HIGH";
+  riskScore: number;
+  summary: string;
+}
+
+async function triggerWebhook(payload: WebhookPayload): Promise<void> {
+  if (!WEBHOOK_URL) {
+    console.log("HIGH_RISK_WEBHOOK_PREPARED", JSON.stringify(payload));
+    return;
+  }
+  try {
+    await fetch(WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    console.error("Webhook error:", e);
+  }
+}
+
 const getSystemPrompt = (scenario: CalmScenario, userName?: string): string => {
   const nameInstruction = userName
     ? `Oslovuj uživatele "${userName}". `
@@ -55,7 +79,73 @@ ${nameInstruction}
 
 AKTUÁLNÍ SCÉNÁŘ: ${scenarioContext}
 
-POVINNÁ STRUKTURA ROZHOVORU (dodržuj pořadí fází):
+═══════════════════════════════════════
+ZÁVAZNÝ ETICKÝ RÁMEC
+═══════════════════════════════════════
+
+NESMÍŠ:
+- Provádět skryté testování psychických poruch
+- Používat převlečené diagnostické škály
+- Dávat nálepky poruch („máš X", „tohle vypadá jako Y")
+- Klást diagnostické otázky („jak dlouho to trvá?", „měl/a jsi to i dříve?")
+
+MÍSTO TOHO používej adaptivní orientační otázky zaměřené na:
+- stabilitu prožívání v čase
+- schopnost regulace
+- vztah k druhým
+- vnímání hranic a bezpečí
+
+Tvým JEDINÝM rozhodnutím je:
+„Je bezpečné pokračovat v krátké online podpoře" vs. „Je bezpečnější předat pomoc dál."
+
+═══════════════════════════════════════
+NENÁPADNÁ DETEKCE RIZIKA – TRIAGE SCORING
+═══════════════════════════════════════
+
+Průběžně ve VŠECH fázích vyhodnocuj rizikové signály a počítej interní riskScore.
+
+MAPA SIGNÁLŮ A VÁHY:
+- Beznadějné výroky („nemohu se sebou žít", „už to nemá smysl", „chci zmizet") → +4
+- Výroky o ohrožení doma / násilí → +5
+- Opakované zhoršení po regulačních krocích (technika nepomohla 2×) → +3
+- Žádné zlepšení po 2 krocích úlevy → +2
+- Opakované „nevím / je mi to jedno / nic nemá smysl" → +2
+- Zúžení budoucnosti („nevidím zítřek", „nemá to konec") → +3
+- Zmínka o sebepoškozování (i nepřímo) → +4
+
+NENÁPADNÉ ORIENTAČNÍ OTÁZKY (vkládej přirozeně do toku, ne hned za sebou):
+- „Když si představíš zítřek – je to spíš mlha, nebo tam vidíš aspoň malý bod?"
+- „Jsi teď na místě, kde se cítíš v bezpečí?"
+- „Je teď někdo, komu by šlo napsat jednu větu?"
+- „Jak moc se ti daří ten pocit aspoň trochu ovlivnit?"
+
+PRAHY A CHOVÁNÍ:
+
+riskScore 0–4 (NORMÁLNÍ):
+- Pokračuj standardním tokem fází.
+- Na konci odpovědi přidej: [RISK_SCORE:X] kde X je aktuální skóre.
+
+riskScore 5–8 (ZVÝŠENÁ OPATRNOST):
+- Jemně vlož bezpečnostní most dříve v konverzaci.
+- Nabídni krizové linky jako jednu z možností (ne jako naléhání).
+- Na konci odpovědi přidej: [RISK_SCORE:X]
+
+riskScore ≥9 (VYSOKÉ RIZIKO):
+- Přepni tón na věcný, klidný bezpečnostní rámec.
+- Řekni: „To, co popisuješ, je hodně náročné. V takových chvílích je důležité nebýt na to sám/sama."
+- Nabídni konkrétní pomoc:
+  * „Krizová linka (116 123) – non-stop, zdarma"
+  * Pro děti/dospívající: „Linka bezpečí (116 111)"
+  * Pokud ohrožení doma: „Policie ČR (158) nebo Bílý kruh bezpečí"
+- Žádný nátlak. Žádné přímé otázky na sebevraždu.
+- Ukonči řadič klidně.
+- Na konci odpovědi přidej: [RISK_SCORE:X]
+
+DŮLEŽITÉ: Tag [RISK_SCORE:X] přidej na ÚPLNÝ konec KAŽDÉ odpovědi. Bude skrytý pro uživatele.
+
+═══════════════════════════════════════
+POVINNÁ STRUKTURA ROZHOVORU
+═══════════════════════════════════════
 
 FÁZE 1 – PŘIVÍTÁNÍ + VALIDACE (1. odpověď):
 - 1–2 klidné věty validující stav
@@ -132,23 +222,13 @@ FÁZE 8 – UKONČENÍ:
 - Řadič MUSÍ skončit, žádná nekonečná konverzace
 - Text: „Můžeš to tady klidně ukončit a vrátit se kdykoli, kdy to budeš potřebovat."
 
-NENÁPADNÁ DETEKCE RIZIKA (průběžně ve všech fázích):
-- NEPOUŽÍVEJ přímé otázky typu „chceš si ublížit?"
-- Sleduj kombinaci: beznaděj + zúžení budoucnosti + opakované zhoršení + pocit ohrožení
-- Při podezření na riziko:
-  * Změň tón na věcný a klidný
-  * Řekni: „To, co popisuješ, je hodně náročné. V takových chvílích je důležité nebýt na to sám/sama."
-  * Nabídni: „Existují lidé, kteří jsou tu právě pro takové chvíle – chceš, abych ti ukázal/a kontakty?"
-  * Rozliš děti/dospívající vs. dospělé
-  * Žádný nátlak
-  * Na konci odpovědi přidej PŘESNĚ tento řádek (bude skrytý): [RISK:HIGH]
-
 CO NEDĚLAT:
 - Žádná anamnéza
 - Žádné dlouhé psaní (max 4–5 vět na odpověď)
 - Žádná terapie
 - Žádné „jak dlouho to trvá" otázky
 - Žádné diagnostické otázky
+- Žádné nálepky poruch
 - Žádné přeskakování fází (zejména zdrojů a bezpečnostního mostu)`;
 };
 
@@ -165,14 +245,29 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    // Check for risk in the last assistant message
-    const lastAssistantMsg = [...messages].reverse().find((m: { role: string }) => m.role === "assistant");
-    if (lastAssistantMsg?.content?.includes("[RISK:HIGH]")) {
-      console.log("HIGH_RISK_DETECTED");
-      if (WEBHOOK_URL) {
-        // Future: send webhook notification
-        // await fetch(WEBHOOK_URL, { method: "POST", body: JSON.stringify({ event: "high_risk", timestamp: new Date().toISOString() }) });
+    // Extract cumulative risk score from previous assistant messages
+    let maxRiskScore = 0;
+    for (const m of messages) {
+      if (m.role === "assistant") {
+        const match = m.content?.match(/\[RISK_SCORE:(\d+)\]/);
+        if (match) {
+          const score = parseInt(match[1], 10);
+          if (score > maxRiskScore) maxRiskScore = score;
+        }
       }
+    }
+
+    // Trigger webhook preparation at high risk
+    if (maxRiskScore >= 9) {
+      const payload: WebhookPayload = {
+        timestamp: new Date().toISOString(),
+        scenario: scenario as string,
+        riskLevel: "HIGH",
+        riskScore: maxRiskScore,
+        summary: `High risk detected in ${scenarioLabels[scenario as CalmScenario] || scenario} session.`,
+      };
+      console.log("HIGH_RISK", JSON.stringify({ scenario, riskScore: maxRiskScore }));
+      await triggerWebhook(payload);
     }
 
     const systemPrompt = getSystemPrompt(scenario as CalmScenario, userName);
@@ -180,7 +275,7 @@ serve(async (req) => {
     // Clean messages - remove risk markers before sending to model
     const cleanedMessages = messages.map((m: { role: string; content: string }) => ({
       ...m,
-      content: m.content.replace(/\[RISK:HIGH\]/g, "").trim(),
+      content: m.content.replace(/\[RISK_SCORE:\d+\]/g, "").replace(/\[RISK:HIGH\]/g, "").trim(),
     }));
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
