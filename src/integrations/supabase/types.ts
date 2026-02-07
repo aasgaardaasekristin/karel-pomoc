@@ -14,7 +14,72 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      crisis_briefs: {
+        Row: {
+          created_at: string
+          id: string
+          is_read: boolean
+          next_steps: string[]
+          note: string
+          notification_sent: boolean
+          raw_brief: string
+          recommended_contact: string
+          regulation_attempts: number
+          regulation_successful: boolean
+          risk_formulations: string[]
+          risk_overview: string
+          risk_score: number
+          scenario: string
+          signals: Json
+          suggested_opening_lines: string[]
+          therapist_bridge_method: string | null
+          therapist_bridge_triggered: boolean
+          time_dynamics: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          next_steps?: string[]
+          note?: string
+          notification_sent?: boolean
+          raw_brief?: string
+          recommended_contact?: string
+          regulation_attempts?: number
+          regulation_successful?: boolean
+          risk_formulations?: string[]
+          risk_overview?: string
+          risk_score: number
+          scenario: string
+          signals?: Json
+          suggested_opening_lines?: string[]
+          therapist_bridge_method?: string | null
+          therapist_bridge_triggered?: boolean
+          time_dynamics?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          next_steps?: string[]
+          note?: string
+          notification_sent?: boolean
+          raw_brief?: string
+          recommended_contact?: string
+          regulation_attempts?: number
+          regulation_successful?: boolean
+          risk_formulations?: string[]
+          risk_overview?: string
+          risk_score?: number
+          scenario?: string
+          signals?: Json
+          suggested_opening_lines?: string[]
+          therapist_bridge_method?: string | null
+          therapist_bridge_triggered?: boolean
+          time_dynamics?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

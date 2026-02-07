@@ -113,6 +113,22 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
     addImprint(imprint);
     setCrisisImprintSent(true);
     console.log("CRISIS_IMPRINT_GENERATED", { id: imprint.id, riskScore, scenario });
+
+    // Fire-and-forget: call edge function to generate brief, store in DB, and notify therapist
+    fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-crisis-brief`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ imprint }),
+      }
+    ).then(res => {
+      if (res.ok) console.log("CRISIS_BRIEF_GENERATED_AND_STORED");
+      else console.error("CRISIS_BRIEF_GENERATION_FAILED", res.status);
+    }).catch(err => console.error("CRISIS_BRIEF_ERROR", err));
   }, [riskScore, therapistBridgeAccepted, therapistBridgeMethod, crisisImprintSent, messageCount, scenario, riskHistory, showTherapistBridge, sessionStart, addImprint]);
 
   useEffect(() => {
