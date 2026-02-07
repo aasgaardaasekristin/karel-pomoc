@@ -21,7 +21,9 @@ const scenarioFirstMessages: Record<CalmScenario, string> = {
   child_anxiety: "Vím, jak moc to bolí, když vidíš, že tvé dítě trpí.\n\nCo se teď děje?",
   work_stress: "Pracovní tlak umí drtit.\n\nCo teď nejvíc potřebuješ – zklidnit se, nebo si ulevit?",
   somatic: "Tělesné příznaky úzkosti jsou děsivé, ale dají se zklidnit.\n\nCo teď cítíš – bušení srdce, závratě, nebo něco jiného?",
-  shame: "Stud je jeden z nejtěžších pocitů. A je v pořádku, že to cítíš.\n\nChceš mi říct, co to vyvolalo?",
+  shame: "Těžké pocity jako stud nebo vina umí hodně drtit. Jsem tady.\n\nChceš mi říct, co to vyvolalo?",
+  rumination: "Myšlenky, co se točí dokola, jsou vyčerpávající.\n\nZkus mi jednou větou říct, co se v tobě teď opakuje.",
+  dissociation: "Rozumím. Pocit, že jsi mimo sebe, může být děsivý.\n\nCo teď vidíš kolem sebe? Zkus popsat jednu věc.",
   other: "Jsem tady, ať je to cokoliv.\n\nPověz mi jednou větou, co se teď děje.",
 };
 
