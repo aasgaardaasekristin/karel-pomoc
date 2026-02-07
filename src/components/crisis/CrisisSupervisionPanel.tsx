@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ShieldAlert, X, ChevronDown, ChevronUp } from "lucide-react";
+import { ShieldAlert, X, ChevronDown, ChevronUp, Mail } from "lucide-react";
 import type { DbCrisisBrief } from "./types";
 import CrisisIntroSection from "./CrisisIntroSection";
 import CrisisImprintSection from "./CrisisImprintSection";
@@ -22,6 +22,45 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
 
   const toggleSection = (key: string) => {
     setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const exportBriefToEmail = () => {
+    const signals = brief.signals as Record<string, boolean>;
+    const activeSignals = Object.entries(signals)
+      .filter(([, v]) => v)
+      .map(([k]) => k)
+      .join(", ");
+
+    const body = [
+      `KRIZOVÝ SUPERVIZNÍ BRIEF`,
+      `Datum: ${new Date(brief.created_at).toLocaleString("cs-CZ")}`,
+      `Scénář: ${brief.scenario}`,
+      `Risk score: ${brief.risk_score}`,
+      ``,
+      `--- Přehled rizika ---`,
+      brief.risk_overview,
+      ``,
+      `--- Aktivní signály ---`,
+      activeSignals || "žádné",
+      ``,
+      `--- Doporučený kontakt ---`,
+      brief.recommended_contact,
+      ``,
+      `--- Formulace rizika ---`,
+      ...(brief.risk_formulations || []).map((r, i) => `${i + 1}. ${r}`),
+      ``,
+      `--- Další kroky ---`,
+      ...(brief.next_steps || []).map((s, i) => `${i + 1}. ${s}`),
+      ``,
+      `--- Navržená úvodní slova ---`,
+      ...(brief.suggested_opening_lines || []).map((l, i) => `${i + 1}. ${l}`),
+      ``,
+      `Poznámka: ${brief.note || "—"}`,
+    ].join("\n");
+
+    const subject = `Krizový brief – ${brief.scenario} (risk ${brief.risk_score}) – ${new Date(brief.created_at).toLocaleDateString("cs-CZ")}`;
+    const mailto = `mailto:psychoterapie@hana-chlebcova.cz?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto, "_blank");
   };
 
   const sections = [
@@ -50,6 +89,10 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
             </div>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={exportBriefToEmail} className="text-xs">
+              <Mail className="w-3 h-3 mr-1" />
+              Exportovat brief
+            </Button>
             <Button variant="outline" size="sm" onClick={() => onMarkRead(brief.id)} className="text-xs">
               Označit jako přečtené
             </Button>
