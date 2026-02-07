@@ -91,7 +91,8 @@ const CrisisTemplates = () => {
   };
 
   const handleEmail = (template: Template) => {
-    const mailto = `mailto:?subject=${encodeURIComponent(template.subject)}&body=${encodeURIComponent(template.body)}`;
+    const recipient = "mujosobniasistentnamiru@gmail.com";
+    const mailto = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(template.subject)}&body=${encodeURIComponent(template.body)}`;
     window.open(mailto, "_blank");
   };
 
