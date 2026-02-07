@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
+import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import CalmMode from "./pages/CalmMode";
@@ -14,6 +15,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <CrisisSupervisionProvider>
       <ChatProvider>
         <Toaster />
         <Sonner />
@@ -27,6 +29,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </ChatProvider>
+      </CrisisSupervisionProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

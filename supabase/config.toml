@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.karel-soap]
 verify_jwt = false
+
+[functions.karel-crisis-brief]
+verify_jwt = false
