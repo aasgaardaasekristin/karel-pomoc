@@ -4,59 +4,100 @@ import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, HeartHandshake, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import type { DbCrisisBrief } from "./types";
 
 type Message = { role: "user" | "assistant"; content: string };
 
-const SUPERVISION_SYSTEM = `Jsi Karel – supervizní mentor terapeutky Hany. Právě si přečetla krizový supervizní brief o anonymní situaci s vysokým rizikem. Máš k dispozici DIAGNOSTICKÝ PROFIL z tiché analýzy provedené během interaktivní činnosti s osobou v Režimu C.
+interface Props {
+  brief: DbCrisisBrief;
+}
 
-Tvůj úkol je TROJÍ:
-1. EMOČNÍ PODPORA – pomoz terapeutce zpracovat vlastní prožívání situace.
-2. ODBORNÉ PORADENSTVÍ – nabídni konkrétní erudované postupy a doporučení.
-3. DIAGNOSTICKÁ ANALÝZA – rozbor kognitivního a emočního profilu osoby na základě dat z tiché diagnostiky.
+const buildSupervisionSystem = (brief: DbCrisisBrief): string => {
+  const signals = brief.signals as Record<string, boolean>;
+  const activeSignals = Object.entries(signals)
+    .filter(([, v]) => v)
+    .map(([k]) => k)
+    .join(", ");
 
-Oblasti, ve kterých aktivně radíš (pokud je to relevantní):
-- DIAGNOSTICKÝ ROZBOR: interpretace kognitivního profilu (koncentrace, flexibilita, styl myšlení), emočních signálů (agresivní impulzy, reakce na frustraci, změna stavu), projekčních obsahů z asociací a příběhů
-- Jak diagnostický profil ovlivňuje volbu přístupu ke klientovi
-- Jak bezpečně navázat první kontakt – přizpůsobený diagnostickému profilu
-- Jak rozpoznat, zda je situace opravdu vážná vs. manipulativní jednání (sekundární zisk, testování hranic, splitting)
-- Rozlišení suicidálního chování od parasuicidálního / volání o pomoc – s oporou o diagnostická data
-- Konkrétní komunikační techniky: aktivní naslouchání, validace bez posilování, de-eskalace – přizpůsobené profilu
-- Jak formulovat hranice a zároveň zachovat terapeutický vztah
-- Kdy a jak eskalovat na krizové služby / IZS
-- Jak poznat červené vlajky (red flags): náhlý klid po krizi, rozdávání věcí, rozloučení, konkrétní plán
-- Jak se chránit před sekundární traumatizací a vicarious trauma
-- Právní rámec ČR: oznamovací povinnost, povinnost mlčenlivosti, odpovědnost terapeuta
+  const lines = [
+    "Jsi Karel – supervizní mentor terapeutky Hany. TOTO JE KRIZOVÝ SUPERVIZNÍ PANEL.",
+    "",
+    "=== KONTEXT – O CO JDE ===",
+    "Terapeutka právě otevřela KRIZOVÝ SUPERVIZNÍ BRIEF vygenerovaný z Režimu C (anonymní zklidňovací prostor).",
+    "Někdo (anonymní osoba) prošel Režimem C a systém vyhodnotil VYSOKÉ RIZIKO.",
+    "Terapeutka nyní potřebuje tvou pomoc zpracovat TUTO KONKRÉTNÍ krizovou situaci.",
+    "",
+    "TOTO NENÍ:",
+    "- Běžná supervize ze sezení (to je Režim A – tam Karel pomáhá po terapeutickém sezení)",
+    "- Diskuse o DID nebo Tomovi (to je jiný kontext v Režimu A)",
+    "- Prostor pro osobní uvolnění terapeutky (to je jiná funkce Režimu A)",
+    "- Report nebo klinická dokumentace (to je Režim B)",
+    "",
+    `TOTO JE: Krizová supervize nad anonymním případem z Režimu C s risk skóre ${brief.risk_score}.`,
+    "",
+    "=== KONKRÉTNÍ DATA Z BRIEFU ===",
+    `Scénář: ${brief.scenario}`,
+    `Risk score: ${brief.risk_score}/10`,
+    `Přehled rizika: ${brief.risk_overview}`,
+    `Doporučený kontakt: ${brief.recommended_contact}`,
+    `Aktivní signály: ${activeSignals || "žádné"}`,
+    `Formulace rizika: ${(brief.risk_formulations || []).join("; ")}`,
+    `Další kroky: ${(brief.next_steps || []).join("; ")}`,
+    `Navržená úvodní slova: ${(brief.suggested_opening_lines || []).join("; ")}`,
+    `Poznámka: ${brief.note || "—"}`,
+    `Regulační pokusy: ${brief.regulation_attempts}, úspěšné: ${brief.regulation_successful ? "ano" : "ne"}`,
+    `Terapeutický most: ${brief.therapist_bridge_triggered ? "ano (" + brief.therapist_bridge_method + ")" : "ne"}`,
+    "",
+    "=== TVŮ ÚKOL ===",
+    "1. EMOČNÍ PODPORA – pomoz terapeutce zpracovat vlastní prožívání TÉTO KONKRÉTNÍ krizové situace.",
+    "2. ODBORNÉ PORADENSTVÍ – nabídni konkrétní postupy pro TENTO případ na základě dat výše.",
+    "3. DIAGNOSTICKÁ ANALÝZA – rozbor kognitivního a emočního profilu osoby na základě dat z tiché diagnostiky v Režimu C.",
+    "",
+    "Oblasti, ve kterých aktivně radíš:",
+    "- DIAGNOSTICKÝ ROZBOR: interpretace kognitivního profilu, emočních signálů, projekčních obsahů",
+    "- Jak diagnostický profil ovlivňuje volbu přístupu ke klientovi",
+    "- Jak bezpečně navázat první kontakt přizpůsobený profilu",
+    "- Rozlišení suicidálního chování od parasuicidálního",
+    "- Konkrétní komunikační techniky přizpůsobené profilu",
+    "- Kdy a jak eskalovat na krizové služby / IZS",
+    "- Červené vlajky: náhlý klid po krizi, rozdávání věcí, rozloučení, konkrétní plán",
+    "- Ochrana před sekundární traumatizací",
+    "- Právní rámec ČR: oznamovací povinnost, povinnost mlčenlivosti",
+    "",
+    "Průběh rozhovoru:",
+    '- Začni emočně: „Co v tobě tato situace vyvolává?" (odkazuj na KONKRÉTNÍ data z briefu)',
+    "- Pak nabídni diagnostický rozbor na základě dat",
+    "- Reaguj erudovaně s odkazy na osvědčené postupy",
+    "",
+    "Styl: klidný, nehodnotící, empatický, odborně přesný. Max 6 vět. Tykáš. Česky.",
+    "Nepřebíráš odpovědnost. Pomáháš terapeutce najít její vlastní postup.",
+    "VŽDY se drž kontextu TOHOTO krizového briefu. Pokud terapeutka odbočí, jemně ji vrať zpět.",
+  ];
+  return lines.join("\n");
+};
 
-Průběh rozhovoru:
-- Začni emočně: „Co v tobě tato situace vyvolává?"
-- Pak přejdi k diagnostice: „Chceš, abych ti rozebral diagnostický profil z tiché analýzy?"
-- Nabídni diferenciální pohled na základě dat (co znamená nízká koncentrace + vysoké agresivní impulzy, co odhalují projekce, atd.)
-- Reaguj na otázky terapeutky erudovaně, konkrétně a s odkazy na osvědčené postupy.
+const SUMMARY_SYSTEM = [
+  "Jsi Karel – supervizní mentor. Na základě proběhlého supervizního rozhovoru O KRIZOVÉM BRIEFU Z REŽIMU C vytvoř STRUČNÉ SHRNUTÍ v češtině.",
+  "",
+  "Formát:",
+  "## Shrnutí supervize",
+  "",
+  "**Klíčové body:**",
+  "- (3-5 hlavních bodů z rozhovoru)",
+  "",
+  "**Doporučený postup:**",
+  "- (2-3 konkrétní kroky)",
+  "",
+  "**Na co si dát pozor:**",
+  "- (1-2 upozornění)",
+  "",
+  "**Emoční stav terapeutky:**",
+  "- (1 věta)",
+  "",
+  "Buď stručný, konkrétní a praktický. Max 200 slov.",
+].join("\n");
 
-Styl: klidný, nehodnotící, empatický, ale zároveň odborně přesný. Max 6 vět na odpověď. Tykáš. Mluvíš česky.
-Nepřebíráš odpovědnost. Pomáháš terapeutce najít její vlastní bezpečný a odborně podložený postup.
-`;
-
-const SUMMARY_SYSTEM = `Jsi Karel – supervizní mentor. Na základě proběhlého supervizního rozhovoru vytvoř STRUČNÉ SHRNUTÍ v češtině.
-
-Formát:
-## Shrnutí supervize
-
-**Klíčové body:**
-- (3-5 hlavních bodů z rozhovoru)
-
-**Doporučený postup:**
-- (2-3 konkrétní kroky)
-
-**Na co si dát pozor:**
-- (1-2 upozornění)
-
-**Emoční stav terapeutky:**
-- (1 věta)
-
-Buď stručný, konkrétní a praktický. Max 200 slov.`;
-
-const CrisisSupervisionChat = () => {
+const CrisisSupervisionChat = ({ brief }: Props) => {
   const [started, setStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -64,6 +105,8 @@ const CrisisSupervisionChat = () => {
   const [summary, setSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const supervisionSystem = buildSupervisionSystem(brief);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -76,7 +119,7 @@ const CrisisSupervisionChat = () => {
     setSummary(null);
     setMessages([{
       role: "assistant",
-      content: "Hani, přečetla sis brief. Než cokoli uděláš – co v tobě tato situace vyvolává? Dej si chvíli.",
+      content: `Hani, přečetla sis brief – scénář „${brief.scenario}", risk skóre ${brief.risk_score}. Než cokoli uděláš – co v tobě tato situace vyvolává? Dej si chvíli.`,
     }]);
   };
 
@@ -150,7 +193,7 @@ const CrisisSupervisionChat = () => {
     setMessages(prev => [...prev, { role: "assistant", content: "" }]);
 
     try {
-      await streamFromKarel(SUPERVISION_SYSTEM, updatedMessages, (chunk) => {
+      await streamFromKarel(supervisionSystem, updatedMessages, (chunk) => {
         assistantContent += chunk;
         setMessages(prev => {
           const updated = [...prev];
@@ -197,7 +240,7 @@ const CrisisSupervisionChat = () => {
     return (
       <div className="text-center space-y-3">
         <p className="text-sm text-muted-foreground">
-          Karel ti může pomoct zpracovat situaci v supervizním rozhovoru – emoční podpora i odborné poradenství.
+          Karel ti může pomoct zpracovat situaci v supervizním rozhovoru – emoční podpora i odborné poradenství k briefu „{brief.scenario}" (risk {brief.risk_score}).
         </p>
         <Button onClick={startChat} variant="outline" className="border-primary/30 text-primary">
           <HeartHandshake className="w-4 h-4 mr-2" />
@@ -209,7 +252,6 @@ const CrisisSupervisionChat = () => {
 
   return (
     <div className="space-y-3">
-      {/* Messages */}
       <div ref={scrollRef} className="max-h-60 overflow-y-auto space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -234,7 +276,6 @@ const CrisisSupervisionChat = () => {
         )}
       </div>
 
-      {/* Summary */}
       {summary !== null && (
         <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
           <div className="prose prose-sm max-w-none text-foreground">
@@ -243,7 +284,6 @@ const CrisisSupervisionChat = () => {
         </div>
       )}
 
-      {/* Input */}
       <div className="flex gap-2 items-end">
         <Textarea
           value={input}
@@ -258,7 +298,6 @@ const CrisisSupervisionChat = () => {
         </Button>
       </div>
 
-      {/* Summary button */}
       {messages.length >= 3 && summary === null && (
         <div className="flex justify-center">
           <Button

@@ -71,7 +71,7 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
     { key: "phone", label: "Pravidla pro telefonní číslo", component: <CrisisPhoneRules brief={brief} /> },
     { key: "safety", label: "Na co si dát pozor", component: <CrisisSafetyChecklist /> },
     { key: "rights", label: "Práva a povinnosti terapeutky", component: <CrisisRightsBlock /> },
-    { key: "supervision", label: "Supervizní rozhovor s Karlem", component: <CrisisSupervisionChat /> },
+    { key: "supervision", label: "Supervizní rozhovor s Karlem", component: <CrisisSupervisionChat brief={brief} /> },
   ];
 
   return (
