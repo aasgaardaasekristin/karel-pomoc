@@ -34,21 +34,59 @@ serve(async (req) => {
     if (imprint.signals.domesticThreat) signalList.push("ohrožení v domácnosti");
     if (imprint.signals.narrowedFuture) signalList.push("zúžení budoucnosti");
 
-    const systemPrompt = `Jsi supervizní asistent Karla – mentora terapeutky. Tvým úkolem je připravit stručný KRIZOVÝ SUPERVIZNÍ BRIEF.
+    // Build diagnostic profile section
+    const diag = imprint.diagnosticProfile;
+    const excerpts = imprint.conversationExcerpts || [];
+    
+    let diagnosticSection = "";
+    if (diag) {
+      diagnosticSection = `
+- KOGNITIVNÍ PROFIL (tichá analýza):
+  * Koncentrace: ${diag.cognitiveProfile.concentration}
+  * Flexibilita: ${diag.cognitiveProfile.flexibility}
+  * Styl myšlení: ${diag.cognitiveProfile.thinkingStyle}
+  * Délka odpovědí: ${diag.cognitiveProfile.responseLength}
+  * Rychlost odpovědí: ${diag.cognitiveProfile.responseSpeed}
+
+- EMOČNÍ SIGNÁLY (tichá analýza):
+  * Reakce na frustraci: ${diag.emotionalSignals.frustrationReaction}
+  * Úroveň spolupráce: ${diag.emotionalSignals.cooperationLevel}
+  * Změna stavu v čase: ${diag.emotionalSignals.stateChange}
+  * Agresivní impulzy: ${diag.emotionalSignals.aggressiveImpulses}
+
+- PROJEKČNÍ OBSAHY: ${diag.projectionContent.length > 0 ? diag.projectionContent.join("; ") : "nezachyceny"}
+
+- ČINNOSTI:
+  * Nabídnuté: ${diag.activityEngagement.activitiesOffered.join(", ") || "nespecifikováno"}
+  * Přijaté: ${diag.activityEngagement.activitiesAccepted.join(", ") || "nespecifikováno"}
+  * Odmítnuté: ${diag.activityEngagement.activitiesRejected.join(", ") || "žádné"}`;
+    }
+
+    let excerptsSection = "";
+    if (excerpts.length > 0) {
+      excerptsSection = `
+- KLÍČOVÉ VÝROKY UŽIVATELE (anonymní, bez identity):
+${excerpts.map((e, i) => `  ${i + 1}. "${e}"`).join("\n")}`;
+    }
+
+    const systemPrompt = `Jsi supervizní asistent Karla – mentora terapeutky. Tvým úkolem je připravit KRIZOVÝ SUPERVIZNÍ BRIEF s diagnostickou analýzou.
 
 DŮLEŽITÉ ETICKÉ ZÁSADY:
 - NEZNÁŠ identitu klienta. Nemáš žádná osobní data.
 - NEřešíš klienta. Připravuješ TERAPEUTKU na možný kontakt.
-- Neprovádíš diagnózu. Shrnuješ signály a doporučuješ přípravu.
+- Diagnostika je ORIENTAČNÍ a vychází z tiché analýzy během interaktivní činnosti.
 
 FORMÁT BRIEFU:
 1. PŘEHLED RIZIK – stručné shrnutí situace a detekovaných signálů
-2. DOPORUČENÝ ZPŮSOB KONTAKTU – telefon/SMS/email s důvody
-3. NÁVRH PRVNÍCH VĚT – 3 konkrétní věty, kterými může terapeutka zahájit kontakt
-4. RIZIKOVÉ FORMULACE – na co si dát pozor, jaké výroky mohou zaznít
-5. DALŠÍ DOPORUČENÉ KROKY – co připravit, na co myslet
+2. DIAGNOSTICKÝ PROFIL – analýza kognitivních a emočních signálů z tiché diagnostiky (koncentrace, flexibilita, spolupráce, agresivní impulzy, reakce na frustraci, změna stavu)
+3. PROJEKCE A KLÍČOVÉ OBSAHY – co odhalily asociace, příběhy, volby; klíčové výroky
+4. DOPORUČENÝ ZPŮSOB KONTAKTU – telefon/SMS/email s důvody, přizpůsobený diagnostickému profilu
+5. NÁVRH PRVNÍCH VĚT – 3 konkrétní věty, přizpůsobené diagnostickému profilu osoby
+6. RIZIKOVÉ FORMULACE – na co si dát pozor, jaké výroky mohou zaznít
+7. DIAGNOSTICKÁ HYPOTÉZA – orientační odhad stavu (nikdy nesdělovat klientovi)
+8. DOPORUČENÝ POSTUP – konkrétní kroky, jak pracovat s touto osobou na základě profilu
 
-Piš česky, stručně, věcně. Max 300 slov celkem.`;
+Piš česky, stručně, věcně. Max 500 slov celkem.`;
 
     const userContent = `KRIZOVÝ OTISK (anonymní, bez identity):
 - Scénář: ${imprint.scenario}
@@ -57,9 +95,11 @@ Piš česky, stručně, věcně. Max 300 slov celkem.`;
 - Regulační pokusy: ${imprint.regulationAttempts} (úspěšné: ${imprint.regulationSuccessful ? "ano" : "ne"})
 - Časová dynamika: ${imprint.timeDynamics.messageCount} zpráv, vzorec eskalace: ${imprint.timeDynamics.riskEscalationPattern}
 - Most k terapeutce: ${imprint.therapistBridgeTriggered ? `aktivován (metoda: ${imprint.therapistBridgeMethod})` : "neaktivován"}
+${diagnosticSection}
+${excerptsSection}
 - Poznámka: ${imprint.note}
 
-Připrav supervizní brief pro terapeutku.`;
+Připrav supervizní brief s diagnostickou analýzou pro terapeutku.`;
 
     // Generate brief via AI
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -250,15 +290,21 @@ function parseBrief(text: string) {
 
   for (const line of lines) {
     const lower = line.toLowerCase();
-    if (lower.includes("přehled rizik") || lower.includes("1.")) {
+    if (lower.includes("přehled rizik") || (lower.includes("1.") && !currentSection)) {
       currentSection = "risk"; continue;
-    } else if (lower.includes("způsob kontaktu") || lower.includes("2.")) {
+    } else if (lower.includes("diagnostický profil") || lower.includes("2.")) {
+      currentSection = "risk"; continue; // merge diagnostic profile into risk overview
+    } else if (lower.includes("projekce") || lower.includes("klíčové obsahy") || lower.includes("3.")) {
+      currentSection = "risk"; continue; // merge projections into risk overview
+    } else if (lower.includes("způsob kontaktu") || lower.includes("4.")) {
       currentSection = "contact"; continue;
-    } else if (lower.includes("prvních vět") || lower.includes("3.")) {
+    } else if (lower.includes("prvních vět") || lower.includes("5.")) {
       currentSection = "lines"; continue;
-    } else if (lower.includes("rizikové formulace") || lower.includes("4.")) {
+    } else if (lower.includes("rizikové formulace") || lower.includes("6.")) {
       currentSection = "formulations"; continue;
-    } else if (lower.includes("další") || lower.includes("kroky") || lower.includes("5.")) {
+    } else if (lower.includes("diagnostická hypotéza") || lower.includes("7.")) {
+      currentSection = "risk"; continue; // merge hypothesis into overview
+    } else if (lower.includes("doporučený postup") || lower.includes("další") || lower.includes("8.")) {
       currentSection = "steps"; continue;
     }
 
@@ -267,7 +313,7 @@ function parseBrief(text: string) {
 
     switch (currentSection) {
       case "risk":
-        result.riskOverview += (result.riskOverview ? " " : "") + trimmed; break;
+        result.riskOverview += (result.riskOverview ? "\n" : "") + trimmed; break;
       case "contact":
         result.recommendedContact += (result.recommendedContact ? " " : "") + trimmed; break;
       case "lines":

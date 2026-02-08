@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { CalmScenario } from "./ScenarioSelector";
 import { useCrisisSupervision } from "@/contexts/CrisisSupervisionContext";
-import type { CrisisImprint } from "@/types/crisisImprint";
+import type { CrisisImprint, DiagnosticProfile } from "@/types/crisisImprint";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -73,6 +73,81 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
   }, [riskScore, messageCount, therapistBridgeAccepted]);
 
   // Create crisis imprint when conditions are met
+  // Build diagnostic profile from conversation analysis
+  const buildDiagnosticProfile = (): DiagnosticProfile => {
+    const userMessages = messages.filter(m => m.role === "user").map(m => m.content);
+    const avgLength = userMessages.length > 0 
+      ? userMessages.reduce((sum, m) => sum + m.length, 0) / userMessages.length 
+      : 0;
+
+    // Analyze response length
+    const responseLength: DiagnosticProfile["cognitiveProfile"]["responseLength"] = 
+      avgLength < 20 ? "short" : avgLength > 100 ? "long" : "normal";
+
+    // Analyze concentration (do responses stay on topic or drift?)
+    const hasRepetition = userMessages.some((m, i) => 
+      i > 0 && userMessages[i - 1].toLowerCase().includes(m.toLowerCase().slice(0, 10))
+    );
+    const concentration: DiagnosticProfile["cognitiveProfile"]["concentration"] = 
+      userMessages.length < 3 ? "unknown" : hasRepetition ? "low" : "medium";
+
+    // Analyze cooperation
+    const refusals = userMessages.filter(m => 
+      /ne(chci|mám|budu)|nech\s*m[eě]|nemůžu|nic|jedno/i.test(m)
+    ).length;
+    const cooperationLevel: DiagnosticProfile["emotionalSignals"]["cooperationLevel"] = 
+      refusals > userMessages.length / 2 ? "resistant" : 
+      refusals > 0 ? "passive" : "active";
+
+    // Analyze state change
+    const stateChange: DiagnosticProfile["emotionalSignals"]["stateChange"] = 
+      riskHistory.length < 2 ? "unknown" :
+      riskHistory[riskHistory.length - 1] < riskHistory[0] ? "improving" :
+      riskHistory[riskHistory.length - 1] > riskHistory[0] ? "worsening" : "stable";
+
+    // Detect aggressive impulses in text
+    const aggressiveKeywords = /zab[ií]|nená|vztekl|agres|ublíž|rozbí|zniči|nenávi/i;
+    const aggressiveCount = userMessages.filter(m => aggressiveKeywords.test(m)).length;
+    const aggressiveImpulses: DiagnosticProfile["emotionalSignals"]["aggressiveImpulses"] = 
+      aggressiveCount === 0 ? "none" : 
+      aggressiveCount === 1 ? "mild" : 
+      aggressiveCount <= 3 ? "moderate" : "severe";
+
+    return {
+      cognitiveProfile: {
+        concentration,
+        flexibility: userMessages.length < 3 ? "unknown" : "medium",
+        thinkingStyle: "unknown",
+        responseSpeed: "unknown",
+        responseLength,
+      },
+      emotionalSignals: {
+        frustrationReaction: refusals > 2 ? "escalating" : refusals > 0 ? "avoidant" : "adaptive",
+        cooperationLevel,
+        stateChange,
+        aggressiveImpulses,
+      },
+      projectionContent: [],
+      activityEngagement: {
+        activitiesOffered: [],
+        activitiesAccepted: [],
+        activitiesRejected: [],
+      },
+      diagnosticHypothesis: "",
+    };
+  };
+
+  // Extract key conversation excerpts for the brief
+  const getConversationExcerpts = (): string[] => {
+    const userMessages = messages.filter(m => m.role === "user");
+    const significantPatterns = /smrt|konec|zmiz|nemá.*smysl|nechci.*žít|ublíž|strach|ohrož|nás|bil|doma|nebezpeč|krev|bolest|sám|sama|opuštěn/i;
+    return userMessages
+      .filter(m => significantPatterns.test(m.content))
+      .map(m => m.content.slice(0, 200))
+      .slice(0, 5);
+  };
+
+  // Create crisis imprint when conditions are met
   useEffect(() => {
     if (crisisImprintSent) return;
     const shouldTrigger =
@@ -86,6 +161,9 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
     const escalationPattern = riskHistory.length >= 3
       ? (riskHistory[riskHistory.length - 1] - riskHistory[0] > 4 ? "rapid" : "gradual")
       : "stable";
+
+    const diagnosticProfile = buildDiagnosticProfile();
+    const conversationExcerpts = getConversationExcerpts();
 
     const imprint: CrisisImprint = {
       id: crypto.randomUUID(),
@@ -109,12 +187,14 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
         messageCount,
         riskEscalationPattern: escalationPattern,
       },
+      diagnosticProfile,
+      conversationExcerpts,
       note: "Uživatel může terapeutku kontaktovat sám (kód 11)",
     };
 
     addImprint(imprint);
     setCrisisImprintSent(true);
-    console.log("CRISIS_IMPRINT_GENERATED", { id: imprint.id, riskScore, scenario });
+    console.log("CRISIS_IMPRINT_GENERATED", { id: imprint.id, riskScore, scenario, diagnosticProfile });
 
     // Fire-and-forget: call edge function to generate brief, store in DB, and notify therapist
     fetch(
@@ -131,7 +211,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
       if (res.ok) console.log("CRISIS_BRIEF_GENERATED_AND_STORED");
       else console.error("CRISIS_BRIEF_GENERATION_FAILED", res.status);
     }).catch(err => console.error("CRISIS_BRIEF_ERROR", err));
-  }, [riskScore, therapistBridgeAccepted, therapistBridgeMethod, crisisImprintSent, messageCount, scenario, riskHistory, showTherapistBridge, sessionStart, addImprint]);
+  }, [riskScore, therapistBridgeAccepted, therapistBridgeMethod, crisisImprintSent, messageCount, scenario, riskHistory, showTherapistBridge, sessionStart, addImprint, messages]);
 
   useEffect(() => {
     if (scrollRef.current) {
