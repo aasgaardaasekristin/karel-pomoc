@@ -1,3 +1,26 @@
+export interface DiagnosticProfile {
+  cognitiveProfile: {
+    concentration: "high" | "medium" | "low" | "unknown";
+    flexibility: "high" | "medium" | "low" | "unknown";
+    thinkingStyle: "symbolic" | "concrete" | "mixed" | "unknown";
+    responseSpeed: "fast" | "normal" | "slow" | "unknown";
+    responseLength: "short" | "normal" | "long" | "unknown";
+  };
+  emotionalSignals: {
+    frustrationReaction: "adaptive" | "avoidant" | "escalating" | "unknown";
+    cooperationLevel: "active" | "passive" | "resistant" | "unknown";
+    stateChange: "improving" | "stable" | "worsening" | "unknown";
+    aggressiveImpulses: "none" | "mild" | "moderate" | "severe" | "unknown";
+  };
+  projectionContent: string[];
+  activityEngagement: {
+    activitiesOffered: string[];
+    activitiesAccepted: string[];
+    activitiesRejected: string[];
+  };
+  diagnosticHypothesis: string;
+}
+
 export interface CrisisImprint {
   id: string;
   timestamp: string;
@@ -18,8 +41,10 @@ export interface CrisisImprint {
   timeDynamics: {
     sessionDurationMs: number;
     messageCount: number;
-    riskEscalationPattern: string; // e.g. "rapid" | "gradual" | "stable"
+    riskEscalationPattern: string;
   };
+  diagnosticProfile?: DiagnosticProfile;
+  conversationExcerpts?: string[];
   note: string;
 }
 
