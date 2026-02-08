@@ -116,8 +116,33 @@ Připrav supervizní brief pro terapeutku.`;
     // Send email notification if RESEND_API_KEY is configured
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     let notificationSent = false;
+    const riskScore = imprint.riskScore as number;
+    const isUrgent = riskScore >= 9;
+    const isInfo = riskScore >= 7 && riskScore <= 8;
 
-    if (RESEND_API_KEY) {
+    if (RESEND_API_KEY && (isUrgent || isInfo)) {
+      const emailSubject = isUrgent
+        ? "⚠️ Krizový supervizní brief čeká v Karlovi"
+        : "ℹ️ Supervizní upozornění (zvýšené riziko)";
+
+      const emailHtml = isUrgent
+        ? `<h2>⚠️ Krizový supervizní brief</h2>
+<p><strong>Scénář:</strong> ${imprint.scenario}<br>
+<strong>Risk score:</strong> ${riskScore}<br>
+<strong>Čas:</strong> ${new Date().toLocaleString("cs-CZ")}</p>
+<p>${sections.riskOverview ? sections.riskOverview.slice(0, 200) : "Byla detekována kritická úroveň rizika."}</p>
+<p><strong>Otevři Karla a přečti doporučení.</strong></p>
+<hr>
+<p style="color:#666;font-size:12px;">Toto je supervizní upozornění systému, nikoli identita klienta. Žádná osobní data nebyla předána.</p>`
+        : `<h2>ℹ️ Supervizní upozornění</h2>
+<p><strong>Scénář:</strong> ${imprint.scenario}<br>
+<strong>Risk score:</strong> ${riskScore}<br>
+<strong>Čas:</strong> ${new Date().toLocaleString("cs-CZ")}</p>
+<p>Bylo zaznamenáno zvýšené riziko v anonymní relaci. Situace je monitorována.</p>
+<p>Otevři Karla a přečti doporučení.</p>
+<hr>
+<p style="color:#666;font-size:12px;">Toto je supervizní upozornění systému, nikoli identita klienta. Žádná osobní data nebyla předána.</p>`;
+
       try {
         const emailRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -128,26 +153,20 @@ Připrav supervizní brief pro terapeutku.`;
           body: JSON.stringify({
             from: "Karel <karel@hana-chlebcova.cz>",
             to: ["mujosobniasistentnamiru@gmail.com"],
-            subject: "⚠️ Krizový supervizní brief čeká v Karlovi",
-            html: `<h2>Krizový supervizní brief</h2>
-<p><strong>Scénář:</strong> ${imprint.scenario}<br>
-<strong>Risk score:</strong> ${imprint.riskScore}<br>
-<strong>Čas:</strong> ${new Date().toLocaleString("cs-CZ")}</p>
-<p>Otevři Karla a přečti si kompletní brief s doporučeními.</p>
-<hr>
-<p style="color:#666;font-size:12px;">Karel nepracuje s klientem. Karel připravuje terapeutku. Žádná identita nebyla předána.</p>`,
+            subject: emailSubject,
+            html: emailHtml,
           }),
         });
         if (emailRes.ok) {
           notificationSent = true;
-          console.log("Email notification sent");
+          console.log(`Email notification sent (${isUrgent ? "URGENT" : "INFO"})`);
         } else {
           console.error("Email error:", await emailRes.text());
         }
       } catch (e) {
         console.error("Email send failed:", e);
       }
-    } else {
+    } else if (!RESEND_API_KEY) {
       console.log("RESEND_API_KEY not configured, skipping email notification");
     }
 
