@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import Login from "./pages/Login";
@@ -13,6 +13,9 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+// Detect if running on pomoc.* subdomain
+const isPomocSubdomain = window.location.hostname.startsWith("pomoc.");
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -22,12 +25,21 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Login />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/calm" element={<CalmMode />} />
-            <Route path="/pomoc" element={<Pomoc />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
+            {isPomocSubdomain ? (
+              <>
+                <Route path="/" element={<Pomoc />} />
+                <Route path="/pomoc" element={<Pomoc />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </>
+            ) : (
+              <>
+                <Route path="/" element={<Login />} />
+                <Route path="/chat" element={<Chat />} />
+                <Route path="/calm" element={<CalmMode />} />
+                <Route path="/pomoc" element={<Pomoc />} />
+                <Route path="*" element={<NotFound />} />
+              </>
+            )}
           </Routes>
         </BrowserRouter>
       </ChatProvider>
