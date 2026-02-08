@@ -76,7 +76,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
   useEffect(() => {
     if (crisisImprintSent) return;
     const shouldTrigger =
-      riskScore >= 9 ||
+      riskScore >= 7 ||
       (therapistBridgeAccepted && therapistBridgeMethod !== null);
     
     console.log("CRISIS_IMPRINT_CHECK", { riskScore, shouldTrigger, therapistBridgeAccepted });

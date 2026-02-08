@@ -8,6 +8,7 @@ import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import CalmMode from "./pages/CalmMode";
+import Pomoc from "./pages/Pomoc";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/" element={<Login />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/calm" element={<CalmMode />} />
+            <Route path="/pomoc" element={<Pomoc />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
