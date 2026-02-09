@@ -388,10 +388,18 @@ const Chat = () => {
         <>
           {/* Crisis Brief Panel */}
           <CrisisBriefPanel />
-          {/* Chat Mode Selector */}
+      {/* Chat Mode Selector */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">
-              <ModeSelector currentMode={mode} onModeChange={setMode} />
+              <ModeSelector currentMode={mode} onModeChange={(newMode) => {
+                if (newMode === "childcare") {
+                  // Always reset DID sub-mode when clicking childcare (even if already active)
+                  setDidSubMode(null);
+                  setDidInitialContext("");
+                  setMessages([]);
+                }
+                setMode(newMode);
+              }} />
             </div>
           </div>
 
