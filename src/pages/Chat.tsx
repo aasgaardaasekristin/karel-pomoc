@@ -10,6 +10,9 @@ import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
+import DidSubModeSelector, { type DidSubMode } from "@/components/did/DidSubModeSelector";
+import DidOrientationForm from "@/components/did/DidOrientationForm";
+import DidFreeTextEntry from "@/components/did/DidFreeTextEntry";
 import { useChatContext } from "@/contexts/ChatContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
@@ -26,6 +29,10 @@ const Chat = () => {
     pendingHandoffToChat,
     setPendingHandoffToChat,
     lastReportText,
+    didSubMode,
+    setDidSubMode,
+    didInitialContext,
+    setDidInitialContext,
   } = useChatContext();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -58,11 +65,22 @@ const Chat = () => {
       childcare: "Haničko, jsem tady s tebou. Vím, jak náročná je péče o tvé dítě s DID. Pojďme spolu projít, co se děje - ať už potřebuješ porozumět nějakému alteru, zpracovat náročnou situaci, nebo jen sdílet. Co teď nejvíc potřebuješ?",
     };
 
+    // Reset DID sub-mode when switching away from childcare
+    if (mode !== "childcare") {
+      setDidSubMode(null);
+      setDidInitialContext("");
+    }
+
+    // For childcare mode, don't set welcome message until sub-mode is selected
+    if (mode === "childcare") {
+      return;
+    }
+
     // Only reset messages if not coming from report handoff
     if (!pendingHandoffToChat) {
       setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
     }
-  }, [mode, setMessages, pendingHandoffToChat]);
+  }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext]);
 
   // Handle handoff from Report to Chat
   useEffect(() => {
@@ -129,6 +147,107 @@ const Chat = () => {
     }
   };
 
+  // DID sub-mode handlers
+  const handleDidSubModeSelect = (subMode: DidSubMode) => {
+    setDidSubMode(subMode);
+    if (subMode === "general") {
+      // Start chat directly with DID welcome
+      setDidInitialContext("");
+      setMessages([{ role: "assistant", content: "Haničko, jsem tady s tebou. Pojďme si promluvit o DID – ať už tě zajímají metody, výzkum, nebo chceš ujasnit nějaké odborné téma. Na co se chceš zeptat?" }]);
+    }
+  };
+
+  const handleDidFormSubmit = (context: string) => {
+    setDidInitialContext(context);
+    setDidSubMode("form");
+    // Inject context as a hidden system-level user message and start chat
+    setMessages([
+      { role: "user", content: context },
+    ]);
+    // Trigger first AI response
+    triggerDidFirstResponse(context);
+  };
+
+  const handleDidFreeTextSubmit = (context: string) => {
+    setDidInitialContext(context);
+    setDidSubMode("freetext");
+    setMessages([
+      { role: "user", content: context },
+    ]);
+    triggerDidFirstResponse(context);
+  };
+
+  const triggerDidFirstResponse = async (context: string) => {
+    setIsLoading(true);
+    let assistantContent = "";
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: context }],
+            mode,
+            didInitialContext: context,
+          }),
+        }
+      );
+      if (!response.ok) throw new Error("Chyba");
+      if (!response.body) throw new Error("Žádná odpověď");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              assistantContent += content;
+              setMessages((prev) => {
+                const newMessages = [...prev];
+                const lastIndex = newMessages.length - 1;
+                if (newMessages[lastIndex]?.role === "assistant") {
+                  newMessages[lastIndex] = { ...newMessages[lastIndex], content: assistantContent };
+                }
+                return newMessages;
+              });
+            }
+          } catch {
+            buffer = line + "\n" + buffer;
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("DID first response error:", error);
+      toast.error("Chyba při komunikaci s Karlem");
+      if (!assistantContent) {
+        setMessages((prev) => prev.slice(0, -1));
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -151,6 +270,7 @@ const Chat = () => {
           body: JSON.stringify({
             messages: [...messages, { role: "user", content: userMessage }],
             mode,
+            ...(mode === "childcare" && didInitialContext ? { didInitialContext } : {}),
           }),
         }
       );
@@ -275,69 +395,86 @@ const Chat = () => {
             </div>
           </div>
 
-          {/* Chat Messages */}
-          <ScrollArea className="flex-1 px-4" ref={scrollRef}>
-            <div className="max-w-4xl mx-auto py-6 space-y-4">
-              {messages.map((message, index) => (
-                <ChatMessage key={index} message={message} />
-              ))}
-              {isLoading && messages[messages.length - 1]?.role === "user" && (
-                <div className="flex justify-start">
-                  <div className="chat-message-assistant flex items-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                    <span className="text-muted-foreground">Karel přemýšlí...</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-
-          {/* Input Area */}
-          <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-            <div className="max-w-4xl mx-auto px-4 py-4">
-              <div className="flex gap-3 items-end">
-                <Textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Napiš svou zprávu..."
-                  className="min-h-[56px] max-h-[200px] resize-none"
-                  disabled={isLoading || isSoapLoading}
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={!input.trim() || isLoading || isSoapLoading}
-                  size="icon"
-                  className="h-[56px] w-[56px] shrink-0"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Send className="w-5 h-5" />
+          {/* DID Sub-mode flow when childcare is active */}
+          {mode === "childcare" && !didSubMode ? (
+            <ScrollArea className="flex-1">
+              <DidSubModeSelector onSelect={handleDidSubModeSelect} />
+            </ScrollArea>
+          ) : mode === "childcare" && didSubMode === "form" && messages.length === 0 ? (
+            <ScrollArea className="flex-1">
+              <DidOrientationForm onSubmit={handleDidFormSubmit} />
+            </ScrollArea>
+          ) : mode === "childcare" && didSubMode === "freetext" && messages.length === 0 ? (
+            <ScrollArea className="flex-1">
+              <DidFreeTextEntry onSubmit={handleDidFreeTextSubmit} />
+            </ScrollArea>
+          ) : (
+            <>
+              {/* Chat Messages */}
+              <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+                <div className="max-w-4xl mx-auto py-6 space-y-4">
+                  {messages.map((message, index) => (
+                    <ChatMessage key={index} message={message} />
+                  ))}
+                  {isLoading && messages[messages.length - 1]?.role === "user" && (
+                    <div className="flex justify-start">
+                      <div className="chat-message-assistant flex items-center gap-2">
+                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                        <span className="text-muted-foreground">Karel přemýšlí...</span>
+                      </div>
+                    </div>
                   )}
-                </Button>
-                {messages.length > 1 && (
-                  <Button
-                    variant="outline"
-                    onClick={handleSoapHandoff}
-                    disabled={isLoading || isSoapLoading}
-                    className="h-[56px] shrink-0"
-                  >
-                    {isSoapLoading ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <FileText className="w-4 h-4 mr-2" />
+                </div>
+              </ScrollArea>
+
+              {/* Input Area */}
+              <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+                <div className="max-w-4xl mx-auto px-4 py-4">
+                  <div className="flex gap-3 items-end">
+                    <Textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Napiš svou zprávu..."
+                      className="min-h-[56px] max-h-[200px] resize-none"
+                      disabled={isLoading || isSoapLoading}
+                    />
+                    <Button
+                      onClick={sendMessage}
+                      disabled={!input.trim() || isLoading || isSoapLoading}
+                      size="icon"
+                      className="h-[56px] w-[56px] shrink-0"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <Send className="w-5 h-5" />
+                      )}
+                    </Button>
+                    {messages.length > 1 && (
+                      <Button
+                        variant="outline"
+                        onClick={handleSoapHandoff}
+                        disabled={isLoading || isSoapLoading}
+                        className="h-[56px] shrink-0"
+                      >
+                        {isSoapLoading ? (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4 mr-2" />
+                        )}
+                        Pořídit zápis
+                      </Button>
                     )}
-                    Pořídit zápis
-                  </Button>
-                )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    Soukromé temenos. Žádná data se neukládají.
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-2 text-center">
-                Soukromé temenos. Žádná data se neukládají.
-              </p>
-            </div>
-          </div>
+            </>
+          )}
         </>
       ) : (
         <>

@@ -183,14 +183,19 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, mode = "debrief" } = await req.json();
+    const { messages, mode = "debrief", didInitialContext } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const systemPrompt = getSystemPrompt(mode as ConversationMode);
+    let systemPrompt = getSystemPrompt(mode as ConversationMode);
+    
+    // Append DID initial context if provided (from form or free text entry)
+    if (mode === "childcare" && didInitialContext) {
+      systemPrompt += `\n\n═══ KONTEXT OD MAMKY (předáno před zahájením rozhovoru) ═══\n\n${didInitialContext}`;
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

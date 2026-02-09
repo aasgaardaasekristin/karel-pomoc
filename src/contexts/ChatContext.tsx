@@ -7,6 +7,7 @@ type Message = {
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 type MainMode = "chat" | "report";
+type DidSubMode = "form" | "freetext" | "general" | null;
 
 export interface ReportDraft {
   context: string;
@@ -32,6 +33,10 @@ interface ChatContextType {
   setLastReportText: React.Dispatch<React.SetStateAction<string>>;
   pendingHandoffToChat: boolean;
   setPendingHandoffToChat: React.Dispatch<React.SetStateAction<boolean>>;
+  didSubMode: DidSubMode;
+  setDidSubMode: React.Dispatch<React.SetStateAction<DidSubMode>>;
+  didInitialContext: string;
+  setDidInitialContext: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -43,6 +48,8 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const [reportDraft, setReportDraft] = useState<ReportDraft | null>(null);
   const [lastReportText, setLastReportText] = useState<string>("");
   const [pendingHandoffToChat, setPendingHandoffToChat] = useState<boolean>(false);
+  const [didSubMode, setDidSubMode] = useState<DidSubMode>(null);
+  const [didInitialContext, setDidInitialContext] = useState<string>("");
 
   return (
     <ChatContext.Provider value={{ 
@@ -58,6 +65,10 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
       setLastReportText,
       pendingHandoffToChat,
       setPendingHandoffToChat,
+      didSubMode,
+      setDidSubMode,
+      didInitialContext,
+      setDidInitialContext,
     }}>
       {children}
     </ChatContext.Provider>
