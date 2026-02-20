@@ -51,7 +51,7 @@ const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex flex-wrap gap-2 justify-center">
+      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 justify-center">
         {modes.map((modeItem) => {
           const Icon = modeItem.icon;
           const isActive = currentMode === modeItem.id;
@@ -61,19 +61,19 @@ const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => onModeChange(modeItem.id)}
-                  className={`mode-button flex items-center gap-2 ${
+                  className={`mode-button flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm ${
                     isActive
                       ? modeItem.className
                       : "bg-secondary text-secondary-foreground border-border hover:bg-secondary/80"
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                   <span className="hidden sm:inline">
                     {modeItem.label}
                     <span className="text-xs opacity-80 ml-1">({modeItem.sublabel})</span>
                   </span>
-                  <span className="sm:hidden text-xs leading-tight text-center">
-                    {modeItem.label}
+                  <span className="sm:hidden leading-tight">
+                    {modeItem.sublabel}
                   </span>
                 </button>
               </TooltipTrigger>

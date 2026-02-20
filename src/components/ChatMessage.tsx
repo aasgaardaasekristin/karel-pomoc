@@ -15,7 +15,7 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] md:max-w-[75%] ${
+        className={`max-w-[92%] sm:max-w-[85%] md:max-w-[75%] ${
           isUser ? "chat-message-user" : "chat-message-assistant"
         }`}
       >
