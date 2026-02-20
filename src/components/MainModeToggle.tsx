@@ -13,25 +13,27 @@ const MainModeToggle = ({ currentMode, onModeChange }: MainModeToggleProps) => {
       <div className="inline-flex bg-secondary rounded-xl p-1 gap-1">
         <button
           onClick={() => onModeChange("chat")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
             currentMode === "chat"
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          <span>Režim A – Chat</span>
+          <span className="hidden sm:inline">Režim A – Chat</span>
+          <span className="sm:hidden">Chat</span>
         </button>
         <button
           onClick={() => onModeChange("report")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
             currentMode === "report"
               ? "bg-primary text-primary-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground hover:bg-secondary/80"
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Režim B – Report</span>
+          <span className="hidden sm:inline">Režim B – Report</span>
+          <span className="sm:hidden">Report</span>
         </button>
       </div>
     </div>

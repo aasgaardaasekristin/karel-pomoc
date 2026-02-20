@@ -411,19 +411,19 @@ const Chat = () => {
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-serif font-semibold text-foreground">Carl Gustav Jung</h1>
-            <p className="text-sm text-muted-foreground">Tvůj partner a supervizní mentor</p>
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">Carl Gustav Jung</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Tvůj partner a supervizní mentor</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate("/calm")}>
-              <Leaf className="w-4 h-4 mr-2" />
-              Zklidnění
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => navigate("/calm")} className="h-8 px-2 sm:px-3">
+              <Leaf className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Zklidnění</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Odejít
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
+              <LogOut className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Odejít</span>
             </Button>
           </div>
         </div>
@@ -470,8 +470,8 @@ const Chat = () => {
           ) : (
             <>
               {/* Chat Messages */}
-              <ScrollArea className="flex-1 px-4" ref={scrollRef}>
-                <div className="max-w-4xl mx-auto py-6 space-y-4">
+              <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+                <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
                   {messages.map((message, index) => (
                     <ChatMessage key={index} message={message} />
                   ))}
@@ -483,27 +483,27 @@ const Chat = () => {
 
               {/* Input Area */}
               <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-                <div className="max-w-4xl mx-auto px-4 py-4">
-                  <div className="flex gap-3 items-end">
+                <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
+                  <div className="flex gap-2 sm:gap-3 items-end">
                     <Textarea
                       ref={textareaRef}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Napiš svou zprávu..."
-                      className="min-h-[56px] max-h-[200px] resize-none"
+                      className="min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
                       disabled={isLoading || isSoapLoading}
                     />
                     <Button
                       onClick={sendMessage}
                       disabled={!input.trim() || isLoading || isSoapLoading}
                       size="icon"
-                      className="h-[56px] w-[56px] shrink-0"
+                      className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
                     >
                       {isLoading ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                       ) : (
-                        <Send className="w-5 h-5" />
+                        <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                       )}
                     </Button>
                     {messages.length > 1 && (
@@ -511,18 +511,18 @@ const Chat = () => {
                         variant="outline"
                         onClick={handleSoapHandoff}
                         disabled={isLoading || isSoapLoading}
-                        className="h-[56px] shrink-0"
+                        className="h-[44px] sm:h-[56px] shrink-0 px-2 sm:px-4"
                       >
                         {isSoapLoading ? (
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
                         ) : (
-                          <FileText className="w-4 h-4 mr-2" />
+                          <FileText className="w-4 h-4 sm:mr-2" />
                         )}
-                        Pořídit zápis
+                        <span className="hidden sm:inline">Pořídit zápis</span>
                       </Button>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                  <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
                     Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
                   </p>
                 </div>
