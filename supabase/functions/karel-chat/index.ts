@@ -1,9 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// corsHeaders imported from _shared/auth.ts
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 
@@ -204,9 +202,11 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+  // Auth check
+  const authResult = await requireAuth(req);
+  if (authResult instanceof Response) return authResult;
 
   try {
-    const { messages, mode = "debrief", didInitialContext } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {

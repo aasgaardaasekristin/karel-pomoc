@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, LogOut, Loader2, FileText, Leaf } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ModeSelector from "@/components/ModeSelector";
 import MainModeToggle from "@/components/MainModeToggle";
@@ -78,10 +80,16 @@ const Chat = () => {
 
   // Check authentication
   useEffect(() => {
-    const isAuthenticated = sessionStorage.getItem("authenticated");
-    if (!isAuthenticated) {
-      navigate("/");
-    }
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) navigate("/");
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) navigate("/");
+    });
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   // Auto-scroll to bottom
@@ -142,8 +150,8 @@ const Chat = () => {
     }
   }, [pendingHandoffToChat, mainMode, lastReportText, setMessages, setPendingHandoffToChat]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem("authenticated");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     navigate("/");
   };
 
@@ -166,14 +174,12 @@ const Chat = () => {
     setIsSoapLoading(true);
     
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-soap`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers,
           body: JSON.stringify({
             messages: messages.slice(-40),
             mode,
@@ -235,14 +241,12 @@ const Chat = () => {
     setIsLoading(true);
     let assistantContent = "";
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers,
           body: JSON.stringify({
             messages: [{ role: "user", content: context }],
             mode,
@@ -313,14 +317,12 @@ const Chat = () => {
     let assistantContent = "";
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers,
           body: JSON.stringify({
             messages: [...messages, { role: "user", content: userMessage }],
             mode,

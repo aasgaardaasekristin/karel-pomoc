@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, HeartHandshake, ListChecks } from "lucide-react";
@@ -141,14 +142,12 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
     onDelta: (chunk: string) => void
   ): Promise<string> => {
     let fullContent = "";
+    const headers = await getAuthHeaders();
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
+        headers,
         body: JSON.stringify({
           messages: [
             { role: "system", content: systemPrompt },

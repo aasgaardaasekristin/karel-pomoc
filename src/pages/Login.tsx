@@ -1,29 +1,55 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Lock, Heart, Leaf } from "lucide-react";
+import { Lock, Heart, Leaf, Mail } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Login = () => {
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) navigate("/chat");
+    };
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) navigate("/chat");
+    });
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError("");
 
-    // Simple password check - in production, this should be more secure
-    // The password is "karel2024" - can be changed
-    if (password === "karel2024") {
-      sessionStorage.setItem("authenticated", "true");
-      navigate("/chat");
-    } else {
-      setError("Nesprávné heslo. Zkus to znovu.");
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: window.location.origin },
+        });
+        if (error) throw error;
+        toast.success("Ověřovací e-mail odeslán. Zkontroluj svou schránku.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Neznámá chyba";
+      toast.error(msg === "Invalid login credentials" ? "Nesprávný e-mail nebo heslo." : msg);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
@@ -48,32 +74,50 @@ const Login = () => {
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <Input
-                type="password"
-                placeholder="Zadej heslo"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                type="email"
+                placeholder="E-mail"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="pl-10 h-12 text-base"
                 autoFocus
+                required
               />
             </div>
 
-            {error && (
-              <p className="text-destructive text-sm">{error}</p>
-            )}
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Input
+                type="password"
+                placeholder="Heslo"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pl-10 h-12 text-base"
+                required
+                minLength={6}
+              />
+            </div>
 
             <Button
               type="submit"
               className="w-full h-12 text-base font-medium"
-              disabled={isLoading || !password}
+              disabled={isLoading || !email || !password}
             >
-              {isLoading ? "Ověřuji..." : "Vstoupit"}
+              {isLoading ? "Ověřuji..." : isSignUp ? "Zaregistrovat se" : "Vstoupit"}
             </Button>
           </form>
 
+          <button
+            type="button"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            {isSignUp ? "Už mám účet → přihlásit se" : "Nemám účet → registrace"}
+          </button>
+
           {/* Footer note */}
-          <p className="mt-8 text-xs text-muted-foreground">
+          <p className="mt-6 text-xs text-muted-foreground">
             Soukromá aplikace pro profesionální supervizi
           </p>
         </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -124,14 +125,12 @@ const ReportForm = () => {
     setIsPrefilling(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-prefill`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers,
           body: JSON.stringify({
             messages: messages.slice(-60),
             hint: "Fill fields A–H. No names/identifiers.",
@@ -173,14 +172,12 @@ const ReportForm = () => {
         ? messages.slice(-30).map(m => `${m.role}: ${m.content}`).join("\n")
         : undefined;
 
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-triage`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers,
           body: JSON.stringify({
             form: formData,
             contextFromChat,
@@ -206,14 +203,12 @@ const ReportForm = () => {
     setReportText("");
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-report`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
+          headers,
           body: JSON.stringify({
             form: formData,
             triage: triageData,
