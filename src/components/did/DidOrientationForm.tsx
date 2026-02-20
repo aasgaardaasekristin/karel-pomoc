@@ -64,9 +64,14 @@ const DidOrientationForm = ({ onSubmit, onBack }: DidOrientationFormProps) => {
       <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-2">
         Rychlá orientace
       </h2>
-      <p className="text-sm text-muted-foreground text-center mb-6">
+      <p className="text-sm text-muted-foreground text-center mb-4">
         Zaškrtni, co teď řešíš – Karel se podle toho zorientuje.
       </p>
+
+      {/* NotebookLM info block */}
+      <div className="rounded-lg border border-border bg-muted/50 p-3 mb-6 text-sm text-muted-foreground">
+        <strong className="text-foreground">📓 NotebookLM</strong> je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek z NotebookLM (max 10 řádků). Ty rozhoduješ, co se předá.
+      </div>
 
       <div className="space-y-3 mb-6">
         {checkboxOptions.map((opt) => (
