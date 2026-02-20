@@ -1,12 +1,14 @@
-import { ClipboardList, PenLine, MessageCircle } from "lucide-react";
+import { ClipboardList, PenLine, MessageCircle, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export type DidSubMode = "form" | "freetext" | "general";
 
 interface DidSubModeSelectorProps {
   onSelect: (subMode: DidSubMode) => void;
+  onBack?: () => void;
 }
 
-const DidSubModeSelector = ({ onSelect }: DidSubModeSelectorProps) => {
+const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
   const options = [
     {
       id: "form" as const,
@@ -30,6 +32,14 @@ const DidSubModeSelector = ({ onSelect }: DidSubModeSelectorProps) => {
 
   return (
     <div className="max-w-2xl mx-auto py-12 px-4">
+      {onBack && (
+        <div className="flex justify-center mb-4">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Zpět na výběr režimu
+          </Button>
+        </div>
+      )}
       <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-8">
         Jak s tím chceš teď pracovat?
       </h2>

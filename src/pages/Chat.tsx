@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,6 +16,33 @@ import DidFreeTextEntry from "@/components/did/DidFreeTextEntry";
 import { useChatContext } from "@/contexts/ChatContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
+
+// localStorage helpers
+const STORAGE_KEY_PREFIX = "karel_chat_";
+const saveMessages = (mode: string, messages: { role: string; content: string }[]) => {
+  try {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify(messages));
+  } catch { /* quota exceeded – silently ignore */ }
+};
+const loadMessages = (mode: string) => {
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${mode}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+};
+const clearMessages = (mode: string) => {
+  localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
+};
+
+const handleApiError = (response: Response) => {
+  if (response.status === 429) {
+    throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
+  }
+  if (response.status === 402) {
+    throw new Error("Karel je momentálně nedostupný – pravděpodobně došly AI kredity. Zkontroluj Cloud & AI balance v nastavení.");
+  }
+  throw new Error("Něco se pokazilo. Zkus to znovu.");
+};
 
 const Chat = () => {
   const { 
@@ -56,6 +83,13 @@ const Chat = () => {
     }
   }, [messages]);
 
+  // Persist messages to localStorage on change
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveMessages(mode, messages);
+    }
+  }, [messages, mode]);
+
   // Welcome message when mode changes
   useEffect(() => {
     const welcomeMessages: Record<ConversationMode, string> = {
@@ -78,7 +112,13 @@ const Chat = () => {
 
     // Only reset messages if not coming from report handoff
     if (!pendingHandoffToChat) {
-      setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
+      // Try to restore from localStorage first
+      const saved = loadMessages(mode);
+      if (saved && saved.length > 0) {
+        setMessages(saved);
+      } else {
+        setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
+      }
     }
   }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext]);
 
@@ -98,6 +138,19 @@ const Chat = () => {
     sessionStorage.removeItem("authenticated");
     navigate("/");
   };
+
+  const handleNewConversation = useCallback(() => {
+    clearMessages(mode);
+    setDidSubMode(null);
+    setDidInitialContext("");
+    setMessages([]);
+  }, [mode, setMessages, setDidSubMode, setDidInitialContext]);
+
+  const handleDidBack = useCallback(() => {
+    setDidSubMode(null);
+    setDidInitialContext("");
+    setMessages([]);
+  }, [setDidSubMode, setDidInitialContext, setMessages]);
 
   const handleSoapHandoff = async () => {
     if (messages.length < 2 || isSoapLoading) return;
@@ -120,11 +173,12 @@ const Chat = () => {
         }
       );
 
-      if (!response.ok) throw new Error("SOAP error");
+      if (!response.ok) {
+        handleApiError(response);
+      }
 
       const soapData = await response.json();
       
-      // Store the SOAP draft
       setReportDraft({
         context: soapData.context || "",
         keyTheme: soapData.keyTheme || "",
@@ -136,12 +190,11 @@ const Chat = () => {
         nextSessionGoal: soapData.nextSessionGoal || "",
       });
       
-      // Switch to Report mode
       setMainMode("report");
       toast.success("Zápis připraven, formulář předvyplněn");
     } catch (error) {
       console.error("SOAP error:", error);
-      toast.error("Chyba při vytváření zápisu");
+      toast.error(error instanceof Error ? error.message : "Chyba při vytváření zápisu");
     } finally {
       setIsSoapLoading(false);
     }
@@ -151,7 +204,6 @@ const Chat = () => {
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
     if (subMode === "general") {
-      // Start chat directly with DID welcome
       setDidInitialContext("");
       setMessages([{ role: "assistant", content: "Haničko, jsem tady s tebou. Pojďme si promluvit o DID – ať už tě zajímají metody, výzkum, nebo chceš ujasnit nějaké odborné téma. Na co se chceš zeptat?" }]);
     }
@@ -160,20 +212,14 @@ const Chat = () => {
   const handleDidFormSubmit = (context: string) => {
     setDidInitialContext(context);
     setDidSubMode("form");
-    // Inject context as a hidden system-level user message and start chat
-    setMessages([
-      { role: "user", content: context },
-    ]);
-    // Trigger first AI response
+    setMessages([{ role: "user", content: context }]);
     triggerDidFirstResponse(context);
   };
 
   const handleDidFreeTextSubmit = (context: string) => {
     setDidInitialContext(context);
     setDidSubMode("freetext");
-    setMessages([
-      { role: "user", content: context },
-    ]);
+    setMessages([{ role: "user", content: context }]);
     triggerDidFirstResponse(context);
   };
 
@@ -196,7 +242,7 @@ const Chat = () => {
           }),
         }
       );
-      if (!response.ok) throw new Error("Chyba");
+      if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
 
       const reader = response.body.getReader();
@@ -239,7 +285,7 @@ const Chat = () => {
       }
     } catch (error) {
       console.error("DID first response error:", error);
-      toast.error("Chyba při komunikaci s Karlem");
+      toast.error(error instanceof Error ? error.message : "Chyba při komunikaci s Karlem");
       if (!assistantContent) {
         setMessages((prev) => prev.slice(0, -1));
       }
@@ -275,23 +321,13 @@ const Chat = () => {
         }
       );
 
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error("Příliš mnoho požadavků. Počkej chvíli a zkus to znovu.");
-        }
-        if (response.status === 402) {
-          throw new Error("Vyčerpány kredity. Kontaktuj správce.");
-        }
-        throw new Error("Něco se pokazilo. Zkus to znovu.");
-      }
-
+      if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
-      // Add empty assistant message to start streaming into
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
       while (true) {
@@ -338,7 +374,6 @@ const Chat = () => {
     } catch (error) {
       console.error("Chat error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při komunikaci");
-      // Remove the empty assistant message if error occurred
       if (!assistantContent) {
         setMessages((prev) => prev.slice(0, -1));
       }
@@ -354,6 +389,23 @@ const Chat = () => {
       sendMessage();
     }
   };
+
+  // Loading skeleton component
+  const LoadingSkeleton = () => (
+    <div className="flex justify-start">
+      <div className="chat-message-assistant">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          </div>
+          <div className="space-y-2 flex-1">
+            <div className="h-3 bg-muted rounded animate-pulse w-48" />
+            <div className="h-3 bg-muted rounded animate-pulse w-32" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -388,12 +440,11 @@ const Chat = () => {
         <>
           {/* Crisis Brief Panel */}
           <CrisisBriefPanel />
-      {/* Chat Mode Selector */}
+          {/* Chat Mode Selector */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">
               <ModeSelector currentMode={mode} onModeChange={(newMode) => {
                 if (newMode === "childcare") {
-                  // Always reset DID sub-mode when clicking childcare (even if already active)
                   setDidSubMode(null);
                   setDidInitialContext("");
                   setMessages([]);
@@ -406,15 +457,15 @@ const Chat = () => {
           {/* DID Sub-mode flow when childcare is active */}
           {mode === "childcare" && !didSubMode ? (
             <ScrollArea className="flex-1">
-              <DidSubModeSelector onSelect={handleDidSubModeSelect} />
+              <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
             </ScrollArea>
           ) : mode === "childcare" && didSubMode === "form" && messages.length === 0 ? (
             <ScrollArea className="flex-1">
-              <DidOrientationForm onSubmit={handleDidFormSubmit} />
+              <DidOrientationForm onSubmit={handleDidFormSubmit} onBack={handleDidBack} />
             </ScrollArea>
           ) : mode === "childcare" && didSubMode === "freetext" && messages.length === 0 ? (
             <ScrollArea className="flex-1">
-              <DidFreeTextEntry onSubmit={handleDidFreeTextSubmit} />
+              <DidFreeTextEntry onSubmit={handleDidFreeTextSubmit} onBack={handleDidBack} />
             </ScrollArea>
           ) : (
             <>
@@ -425,12 +476,7 @@ const Chat = () => {
                     <ChatMessage key={index} message={message} />
                   ))}
                   {isLoading && messages[messages.length - 1]?.role === "user" && (
-                    <div className="flex justify-start">
-                      <div className="chat-message-assistant flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                        <span className="text-muted-foreground">Karel přemýšlí...</span>
-                      </div>
-                    </div>
+                    <LoadingSkeleton />
                   )}
                 </div>
               </ScrollArea>
@@ -477,7 +523,7 @@ const Chat = () => {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-2 text-center">
-                    Soukromé temenos. Žádná data se neukládají.
+                    Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
                   </p>
                 </div>
               </div>

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send } from "lucide-react";
+import { Send, ArrowLeft } from "lucide-react";
 
 interface DidFreeTextEntryProps {
   onSubmit: (context: string) => void;
+  onBack?: () => void;
 }
 
-const DidFreeTextEntry = ({ onSubmit }: DidFreeTextEntryProps) => {
+const DidFreeTextEntry = ({ onSubmit, onBack }: DidFreeTextEntryProps) => {
   const [text, setText] = useState("");
 
   const handleSubmit = () => {
@@ -20,6 +21,14 @@ const DidFreeTextEntry = ({ onSubmit }: DidFreeTextEntryProps) => {
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
+      {onBack && (
+        <div className="flex justify-start mb-4">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Zpět na výběr
+          </Button>
+        </div>
+      )}
       <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-2">
         Zapsat situaci nebo osobnost
       </h2>

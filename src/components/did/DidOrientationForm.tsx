@@ -2,13 +2,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Send } from "lucide-react";
+import { Send, ArrowLeft } from "lucide-react";
 
 interface DidOrientationFormProps {
   onSubmit: (context: string) => void;
+  onBack?: () => void;
 }
 
-const DidOrientationForm = ({ onSubmit }: DidOrientationFormProps) => {
+const DidOrientationForm = ({ onSubmit, onBack }: DidOrientationFormProps) => {
   const [selected, setSelected] = useState<string[]>([]);
   const [note, setNote] = useState("");
 
@@ -52,6 +53,14 @@ const DidOrientationForm = ({ onSubmit }: DidOrientationFormProps) => {
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
+      {onBack && (
+        <div className="flex justify-start mb-4">
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-1" />
+            Zpět na výběr
+          </Button>
+        </div>
+      )}
       <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-2">
         Rychlá orientace
       </h2>
