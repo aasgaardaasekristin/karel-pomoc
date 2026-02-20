@@ -205,7 +205,7 @@ const Chat = () => {
     setDidSubMode(subMode);
     if (subMode === "general") {
       setDidInitialContext("");
-      setMessages([{ role: "assistant", content: "Haničko, jsem tady s tebou. Pojďme si promluvit o DID – ať už tě zajímají metody, výzkum, nebo chceš ujasnit nějaké odborné téma. Na co se chceš zeptat?" }]);
+      setMessages([{ role: "assistant", content: "Haničko, jsem tady s tebou. Můžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož výňatek z NotebookLM. Já ti nabídnu 2–3 varianty postupu, věty které říct, a návrh co uložit do NotebookLM.\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek z NotebookLM (max 10 řádků). Ty rozhoduješ, co se předá." }]);
     }
   };
 

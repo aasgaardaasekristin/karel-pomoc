@@ -9,12 +9,23 @@ interface DidFreeTextEntryProps {
 }
 
 const DidFreeTextEntry = ({ onSubmit, onBack }: DidFreeTextEntryProps) => {
+  const [whatNow, setWhatNow] = useState("");
+  const [whoActive, setWhoActive] = useState("");
+  const [goalNow, setGoalNow] = useState("");
   const [text, setText] = useState("");
 
-  const handleSubmit = () => {
-    if (!text.trim()) return;
+  const isValid = whatNow.trim() || whoActive.trim() || goalNow || text.trim();
 
-    const context = `ZÁZNAM OD MAMKY (volný text vložený před zahájením rozhovoru):\n\n${text.trim()}\n\nPOKYN: Přečti si tento text. Pomoz ho strukturovat, proveď supervizní rozhovor a navrhni další postup nebo řešení. Na konci konverzace nabídni: "Chceš z toho udělat krátký zápis?" Pokud mamka souhlasí, vytvoř strukturovaný textový zápis (shrnutí, doporučení, další kroky) a nabídni export.`;
+  const handleSubmit = () => {
+    if (!isValid) return;
+
+    let context = "ZÁZNAM OD MAMKY (strukturovaný vstup před zahájením rozhovoru):\n\n";
+    if (whatNow.trim()) context += `Co se děje teď: ${whatNow.trim()}\n`;
+    if (whoActive.trim()) context += `Kdo je aktivní: ${whoActive.trim()}\n`;
+    if (goalNow) context += `Cíl teď: ${goalNow}\n`;
+    if (text.trim()) context += `\nDoplňující kontext / výňatek z NotebookLM:\n${text.trim()}\n`;
+
+    context += "\n\nPOKYN: Přečti si tento text. Pomoz ho strukturovat, proveď supervizní rozhovor a navrhni další postup nebo řešení. Na konci konverzace nabídni: \"Chceš z toho udělat krátký zápis?\" Pokud mamka souhlasí, vytvoř strukturovaný textový zápis (shrnutí, doporučení, další kroky) a nabídni export.";
 
     onSubmit(context);
   };
@@ -37,16 +48,73 @@ const DidFreeTextEntry = ({ onSubmit, onBack }: DidFreeTextEntryProps) => {
         Karel ti pomůže text strukturovat a navrhne další postup.
       </p>
 
-      <Textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Napiš sem, co tě zaměstnává – o které části / situaci chceš mluvit..."
-        className="min-h-[180px] resize-none mb-6"
-      />
+      {/* NotebookLM info block */}
+      <div className="rounded-lg border border-border bg-muted/50 p-3 mb-6 text-sm text-muted-foreground">
+        <strong className="text-foreground">📓 NotebookLM</strong> je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek z NotebookLM (max 10 řádků). Ty rozhoduješ, co se předá.
+      </div>
+
+      {/* Structured prompts */}
+      <div className="space-y-4 mb-6">
+        <div>
+          <label className="text-sm font-medium text-foreground mb-1.5 block">
+            🔹 Co se děje teď (1–2 věty)
+          </label>
+          <Textarea
+            value={whatNow}
+            onChange={(e) => setWhatNow(e.target.value)}
+            placeholder="Popiš aktuální situaci…"
+            className="min-h-[60px] resize-none"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-foreground mb-1.5 block">
+            🔹 Kdo je aktivní (max 2 části + věk/role)
+          </label>
+          <Textarea
+            value={whoActive}
+            onChange={(e) => setWhoActive(e.target.value)}
+            placeholder="Např. Maruška (5, strach), Vojta (ochránce)…"
+            className="min-h-[60px] resize-none"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-foreground mb-1.5 block">
+            🔹 Cíl teď
+          </label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {["zklidnit", "hranice", "přechod", "konflikt", "mini-terapie", "plán dne"].map((goal) => (
+              <button
+                key={goal}
+                type="button"
+                onClick={() => setGoalNow(goalNow === goal ? "" : goal)}
+                className={`px-3 py-1 rounded-full text-xs border transition-colors ${
+                  goalNow === goal
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border text-foreground hover:border-primary/50"
+                }`}
+              >
+                {goal}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="text-sm font-medium text-foreground mb-1.5 block">
+          Doplňující kontext / výňatek z NotebookLM (nepovinné)
+        </label>
+        <Textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Cokoliv dalšího, výňatek z deníku, mapy systému…"
+          className="min-h-[100px] resize-none"
+        />
+      </div>
 
       <Button
         onClick={handleSubmit}
-        disabled={!text.trim()}
+        disabled={!isValid}
         className="w-full"
         size="lg"
       >

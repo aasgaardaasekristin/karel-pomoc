@@ -26,7 +26,7 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
       id: "general" as const,
       icon: MessageCircle,
       label: "Obecný rozhovor o DID",
-      description: "Otázky, metody, výzkum – bez řešení konkrétní situace",
+      description: "Můžeš se ptát na metody, popsat situaci, nebo vložit výňatek z NotebookLM. Karel nabídne varianty postupu.",
     },
   ];
 
