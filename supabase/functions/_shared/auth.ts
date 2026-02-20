@@ -7,7 +7,7 @@ const corsHeaders = {
 
 /**
  * Validates the Authorization header and returns the authenticated user.
- * Returns null + Response if auth fails.
+ * Returns a Response if auth fails.
  */
 export async function requireAuth(req: Request): Promise<{ user: any } | Response> {
   const authHeader = req.headers.get("Authorization");
@@ -24,16 +24,15 @@ export async function requireAuth(req: Request): Promise<{ user: any } | Respons
     { global: { headers: { Authorization: authHeader } } }
   );
 
-  const token = authHeader.replace("Bearer ", "");
-  const { data, error } = await supabaseClient.auth.getClaims(token);
-  if (error || !data?.claims) {
+  const { data: { user }, error } = await supabaseClient.auth.getUser();
+  if (error || !user) {
     return new Response(
       JSON.stringify({ error: "Unauthorized" }),
       { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 
-  return { user: { id: data.claims.sub, email: data.claims.email } };
+  return { user };
 }
 
 export { corsHeaders };

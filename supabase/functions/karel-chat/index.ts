@@ -204,7 +204,12 @@ Každá tvá odpověď v DID režimu MUSÍ mít přesně tuto strukturu (sekce A
 - Malý, bezpečný krok.
 - Nikdy neotevírej trauma v krizi.
 
-**F) 📌 Co aktualizovat v NotebookLM (copy-paste)**
+**F) ⚠️ Bezpečnostní signály k monitorování**
+- Uveď 2–4 konkrétní signály, které by měla mamka sledovat v následujících hodinách/dnech.
+- Rozděl na: „červené" (okamžitě reagovat) a „žluté" (zvýšená pozornost).
+- Pokud v sekci A nebyl detekován žádný risk, napiš: „Aktuálně bez bezpečnostních signálů."
+
+**G) 📌 Co aktualizovat v NotebookLM (copy-paste)**
 - **NotebookLM projekt:** (název projektu – např. DID – vnitřní mapa systému (pracovní))
 - **Název dokumentu:** (kam přesně uložit – např. 03_Plán_dne, 02_Vztahy, Zápis_terapie_2025-02-20)
 - **Text k vložení:** (konkrétní text připravený ke zkopírování – aktualizace k částem, spouštěče, co pomohlo/zhoršilo, plán, otevřené otázky)
