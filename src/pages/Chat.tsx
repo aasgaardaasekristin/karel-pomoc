@@ -64,6 +64,14 @@ const Chat = () => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
+  const [notebookProject, setNotebookProject] = useState(() => {
+    try { return localStorage.getItem("karel_notebook_project") || "DID_DOMA"; } catch { return "DID_DOMA"; }
+  });
+
+  // Persist notebook project name
+  useEffect(() => {
+    try { localStorage.setItem("karel_notebook_project", notebookProject); } catch {}
+  }, [notebookProject]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
@@ -204,8 +212,8 @@ const Chat = () => {
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
     if (subMode === "general") {
-      setDidInitialContext("");
-      setMessages([{ role: "assistant", content: "Haničko, jsem tady s tebou. Můžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož výňatek z NotebookLM. Já ti nabídnu 2–3 varianty postupu, věty které říct, a návrh co uložit do NotebookLM.\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek z NotebookLM (max 10 řádků). Ty rozhoduješ, co se předá." }]);
+      setDidInitialContext(`NotebookLM projekt: ${notebookProject}`);
+      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Můžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\nJá ti nabídnu 2–3 varianty postupu, věty které říct, a návrh co uložit do NotebookLM.\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek (max 10 řádků). Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
     }
   };
 
@@ -461,11 +469,11 @@ const Chat = () => {
             </ScrollArea>
           ) : mode === "childcare" && didSubMode === "form" && messages.length === 0 ? (
             <ScrollArea className="flex-1">
-              <DidOrientationForm onSubmit={handleDidFormSubmit} onBack={handleDidBack} />
+              <DidOrientationForm onSubmit={handleDidFormSubmit} onBack={handleDidBack} notebookProject={notebookProject} onNotebookProjectChange={setNotebookProject} />
             </ScrollArea>
           ) : mode === "childcare" && didSubMode === "freetext" && messages.length === 0 ? (
             <ScrollArea className="flex-1">
-              <DidFreeTextEntry onSubmit={handleDidFreeTextSubmit} onBack={handleDidBack} />
+              <DidFreeTextEntry onSubmit={handleDidFreeTextSubmit} onBack={handleDidBack} notebookProject={notebookProject} onNotebookProjectChange={setNotebookProject} />
             </ScrollArea>
           ) : (
             <>
