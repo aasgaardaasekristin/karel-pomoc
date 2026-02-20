@@ -65,7 +65,7 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
-    try { return localStorage.getItem("karel_notebook_project") || "DID_DOMA"; } catch { return "DID_DOMA"; }
+    try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
 
   // Persist notebook project name

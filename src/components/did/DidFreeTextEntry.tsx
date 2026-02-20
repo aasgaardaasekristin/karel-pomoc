@@ -10,7 +10,7 @@ interface DidFreeTextEntryProps {
   onNotebookProjectChange?: (val: string) => void;
 }
 
-const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID_DOMA", onNotebookProjectChange }: DidFreeTextEntryProps) => {
+const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID – vnitřní mapa systému (pracovní)", onNotebookProjectChange }: DidFreeTextEntryProps) => {
   const [whatNow, setWhatNow] = useState("");
   const [whoActive, setWhoActive] = useState("");
   const [goalNow, setGoalNow] = useState("");

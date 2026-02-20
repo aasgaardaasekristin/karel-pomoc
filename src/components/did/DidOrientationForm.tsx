@@ -11,7 +11,7 @@ interface DidOrientationFormProps {
   onNotebookProjectChange?: (val: string) => void;
 }
 
-const DidOrientationForm = ({ onSubmit, onBack, notebookProject = "DID_DOMA", onNotebookProjectChange }: DidOrientationFormProps) => {
+const DidOrientationForm = ({ onSubmit, onBack, notebookProject = "DID – vnitřní mapa systému (pracovní)", onNotebookProjectChange }: DidOrientationFormProps) => {
   const [selected, setSelected] = useState<string[]>([]);
   const [note, setNote] = useState("");
 
