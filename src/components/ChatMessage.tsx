@@ -1,4 +1,6 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import { Copy, Check } from "lucide-react";
 
 interface Message {
   role: "user" | "assistant";
@@ -9,8 +11,57 @@ interface ChatMessageProps {
   message: Message;
 }
 
+const extractNotebookLMSection = (content: string): string | null => {
+  // Match from 📌 heading to end of message (or next major heading)
+  const match = content.match(/📌\s*\*?\*?Co (?:uložit|aktualizovat) (?:do|v) NotebookLM.*$/s);
+  return match ? match[0].trim() : null;
+};
+
+const CopyNotebookButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border bg-muted/50 hover:bg-muted transition-colors text-foreground"
+      title="Zkopírovat sekci pro NotebookLM"
+    >
+      {copied ? (
+        <>
+          <Check className="w-3.5 h-3.5 text-green-500" />
+          Zkopírováno!
+        </>
+      ) : (
+        <>
+          <Copy className="w-3.5 h-3.5" />
+          📋 Kopírovat pro NotebookLM
+        </>
+      )}
+    </button>
+  );
+};
+
 const ChatMessage = ({ message }: ChatMessageProps) => {
   const isUser = message.role === "user";
+  const notebookSection = !isUser ? extractNotebookLMSection(message.content) : null;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -32,6 +83,7 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
                 ),
               }}
             >{message.content}</ReactMarkdown>
+            {notebookSection && <CopyNotebookButton text={notebookSection} />}
           </div>
         )}
       </div>

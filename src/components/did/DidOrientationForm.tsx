@@ -7,9 +7,11 @@ import { Send, ArrowLeft } from "lucide-react";
 interface DidOrientationFormProps {
   onSubmit: (context: string) => void;
   onBack?: () => void;
+  notebookProject?: string;
+  onNotebookProjectChange?: (val: string) => void;
 }
 
-const DidOrientationForm = ({ onSubmit, onBack }: DidOrientationFormProps) => {
+const DidOrientationForm = ({ onSubmit, onBack, notebookProject = "DID_DOMA", onNotebookProjectChange }: DidOrientationFormProps) => {
   const [selected, setSelected] = useState<string[]>([]);
   const [note, setNote] = useState("");
 
@@ -39,6 +41,7 @@ const DidOrientationForm = ({ onSubmit, onBack }: DidOrientationFormProps) => {
     );
 
     let context = "ORIENTAČNÍ FORMULÁŘ (mamka vyplnila před zahájením rozhovoru):\n\n";
+    context += `NotebookLM projekt: ${notebookProject}\n\n`;
     if (selectedLabels.length > 0) {
       context += "Aktuální situace:\n" + selectedLabels.map((l) => `- ${l}`).join("\n");
     }
@@ -71,6 +74,21 @@ const DidOrientationForm = ({ onSubmit, onBack }: DidOrientationFormProps) => {
       {/* NotebookLM info block */}
       <div className="rounded-lg border border-border bg-muted/50 p-3 mb-6 text-sm text-muted-foreground">
         <strong className="text-foreground">📓 NotebookLM</strong> je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek z NotebookLM (max 10 řádků). Ty rozhoduješ, co se předá.
+      </div>
+
+      {/* NotebookLM project field */}
+      <div className="mb-6">
+        <label className="text-sm font-medium text-foreground mb-1.5 block">
+          📓 NotebookLM projekt
+        </label>
+        <input
+          type="text"
+          value={notebookProject}
+          onChange={(e) => onNotebookProjectChange?.(e.target.value)}
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          placeholder="DID_DOMA"
+        />
+        <p className="text-xs text-muted-foreground mt-1">Název projektu v NotebookLM, kam Karel bude směřovat doporučení k uložení.</p>
       </div>
 
       <div className="space-y-3 mb-6">
