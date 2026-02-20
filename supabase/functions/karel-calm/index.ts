@@ -7,6 +7,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Simple in-memory rate limiter for public endpoint
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+function checkRateLimit(id: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const rec = rateLimitMap.get(id);
+  if (!rec || now > rec.resetTime) { rateLimitMap.set(id, { count: 1, resetTime: now + windowMs }); return true; }
+  if (rec.count >= max) return false;
+  rec.count++;
+  return true;
+}
+
 // Webhook placeholder – set URL to activate
 const WEBHOOK_URL: string | null = null;
 
@@ -37,6 +48,14 @@ async function triggerWebhook(payload: WebhookPayload): Promise<void> {
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Rate limiting: max 30 messages per hour per IP
+  const clientIP = req.headers.get("x-forwarded-for") || "unknown";
+  if (!checkRateLimit(clientIP, 30, 3600000)) {
+    return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+      status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
