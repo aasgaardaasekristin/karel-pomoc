@@ -10,7 +10,7 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+  // Registration disabled — private app for therapist only
   const navigate = useNavigate();
 
   // Redirect if already authenticated
@@ -32,18 +32,8 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: window.location.origin },
-        });
-        if (error) throw error;
-        toast.success("Ověřovací e-mail odeslán. Zkontroluj svou schránku.");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Neznámá chyba";
       toast.error(msg === "Invalid login credentials" ? "Nesprávný e-mail nebo heslo." : msg);
@@ -104,17 +94,11 @@ const Login = () => {
               className="w-full h-12 text-base font-medium"
               disabled={isLoading || !email || !password}
             >
-              {isLoading ? "Ověřuji..." : isSignUp ? "Zaregistrovat se" : "Vstoupit"}
+              {isLoading ? "Ověřuji..." : "Vstoupit"}
             </Button>
           </form>
 
-          <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            {isSignUp ? "Už mám účet → přihlásit se" : "Nemám účet → registrace"}
-          </button>
+          {/* Registration removed — private app */}
 
           {/* Footer note */}
           <p className="mt-6 text-xs text-muted-foreground">
