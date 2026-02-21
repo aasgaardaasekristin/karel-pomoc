@@ -78,19 +78,26 @@ const Chat = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
 
-  // Check authentication
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Check authentication — block render until verified
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) navigate("/");
+      if (!session) {
+        navigate("/", { replace: true });
+      } else {
+        setAuthChecked(true);
+      }
     };
     checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) navigate("/");
+      if (!session) navigate("/", { replace: true });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
+
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -167,6 +174,15 @@ const Chat = () => {
     setDidInitialContext("");
     setMessages([]);
   }, [setDidSubMode, setDidInitialContext, setMessages]);
+
+  // Don't render anything until auth is confirmed
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   const handleSoapHandoff = async () => {
     if (messages.length < 2 || isSoapLoading) return;
