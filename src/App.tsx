@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import CalmMode from "./pages/CalmMode";
@@ -35,8 +36,8 @@ const App = () => (
             ) : (
               <>
                 <Route path="/" element={<Login />} />
-                <Route path="/chat" element={<Chat />} />
-                <Route path="/calm" element={<CalmMode />} />
+                <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+                <Route path="/calm" element={<ProtectedRoute><CalmMode /></ProtectedRoute>} />
                 <Route path="/zklidneni" element={<Zklidneni />} />
                 <Route path="/pomoc" element={<Pomoc />} />
                 <Route path="*" element={<NotFound />} />
