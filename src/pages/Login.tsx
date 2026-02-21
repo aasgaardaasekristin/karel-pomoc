@@ -125,9 +125,7 @@ const Login = () => {
         {/* Calm Mode Entry - separate from login */}
         <div className="mt-6 text-center">
           <a
-            href="https://pomoc.hana-chlebcova.cz"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/zklidneni"
             className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-border bg-card hover:bg-secondary/60 transition-all duration-200 text-sm text-foreground group"
           >
             <Leaf className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
