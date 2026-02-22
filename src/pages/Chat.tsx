@@ -235,7 +235,7 @@ const Chat = () => {
     if (subMode === "mamka") {
       setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Pověz mi, co se děje.\n\nPokud chceš, vlož výňatek z NotebookLM (5–15 řádků) s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
     } else if (subMode === "cast") {
-      setMessages([{ role: "assistant", content: `Jsem Karel. Pomáhám mamce a tobě, aby bylo víc bezpečno.\n\nJeště než začneme – potřebuju se tě na něco zeptat:\n\n**Jsi teď v nebezpečí nebo si chceš ublížit? (Ano/Ne)**` }]);
+      setMessages([{ role: "assistant", content: `Hejj! 😊 Já jsem Karel. Rád si povídám a hraju si. A ty? Jak se dneska máš?` }]);
     } else if (subMode === "general") {
       setDidInitialContext(`NotebookLM projekt: ${notebookProject}`);
       setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Můžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\nJá ti nabídnu 2–3 varianty postupu, věty které říct, a návrh co uložit do NotebookLM.\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek (max 10 řádků). Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
