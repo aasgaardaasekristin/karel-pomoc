@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, Leaf } from "lucide-react";
+import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -411,8 +411,12 @@ const Chat = () => {
               {/* Chat Messages */}
               <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
                 <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
-                  {messages.map((message, index) => (
-                    <ChatMessage key={index} message={message} />
+              {messages.map((message, index) => (
+                    <ChatMessage 
+                      key={index} 
+                      message={message} 
+                      onNotebookCopied={mode === "childcare" && didSubMode === "cast" ? handleNewConversation : undefined}
+                    />
                   ))}
                   {isLoading && messages[messages.length - 1]?.role === "user" && (
                     <LoadingSkeleton />
@@ -461,6 +465,19 @@ const Chat = () => {
                       </Button>
                     )}
                   </div>
+                  {mode === "childcare" && didSubMode === "cast" && messages.length > 1 && (
+                    <div className="flex justify-center mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleNewConversation}
+                        className="text-xs gap-1.5"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Nový hovor s jinou částí
+                      </Button>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
                     Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
                   </p>
