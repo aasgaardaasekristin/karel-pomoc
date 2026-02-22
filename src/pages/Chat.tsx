@@ -415,7 +415,6 @@ const Chat = () => {
                     <ChatMessage 
                       key={index} 
                       message={message} 
-                      onNotebookCopied={mode === "childcare" && didSubMode === "cast" ? handleNewConversation : undefined}
                     />
                   ))}
                   {isLoading && messages[messages.length - 1]?.role === "user" && (
@@ -468,13 +467,13 @@ const Chat = () => {
                   {mode === "childcare" && didSubMode === "cast" && messages.length > 1 && (
                     <div className="flex justify-center mt-2">
                       <Button
-                        variant="outline"
+                        variant="destructive"
                         size="sm"
                         onClick={handleNewConversation}
                         className="text-xs gap-1.5"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
-                        Nový hovor s jinou částí
+                        Ukončit tento rozhovor
                       </Button>
                     </div>
                   )}

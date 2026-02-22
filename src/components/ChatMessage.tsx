@@ -191,7 +191,7 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
                 ),
               }}
             >{message.content}</ReactMarkdown>
-            {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" onCopied={onNotebookCopied} />}
+            {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" />}
           </div>
         </div>
       </div>
@@ -236,7 +236,6 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
                   <CopyButton
                     text={section.content}
                     label={`Kopírovat → ${config.target}`}
-                    onCopied={section.key === "REPORT" ? onNotebookCopied : undefined}
                   />
                   {section.key === "REPORT" && (
                     <EmailReportButton content={section.content} partName={partName} />
