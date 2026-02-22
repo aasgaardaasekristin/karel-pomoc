@@ -112,6 +112,40 @@ const Chat = () => {
     }
   }, [messages, mode]);
 
+  // Periodically re-save messages to prevent loss on tab switches
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const interval = setInterval(() => {
+      saveMessages(mode, messages);
+    }, 5000); // re-save every 5 seconds
+    return () => clearInterval(interval);
+  }, [messages, mode]);
+
+  // Restore messages when page regains visibility (tab switch back)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible" && messages.length === 0) {
+        const saved = loadMessages(mode);
+        if (saved && saved.length > 0) {
+          setMessages(saved);
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [mode, messages.length, setMessages]);
+
+  // Save before page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (messages.length > 0) {
+        saveMessages(mode, messages);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [messages, mode]);
+
   // Welcome message when mode changes
   useEffect(() => {
     const welcomeMessages: Record<ConversationMode, string> = {
