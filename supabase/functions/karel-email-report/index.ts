@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
 serve(async (req) => {
@@ -22,58 +23,67 @@ serve(async (req) => {
     const targetEmail = "mujosobniasistentnamiru@gmail.com";
     const subject = `Zápis z rozhovoru s částí: ${partName || "neznámá"}, dne: ${date || new Date().toLocaleDateString("cs-CZ")}`;
 
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+    if (!RESEND_API_KEY) {
+      throw new Error("RESEND_API_KEY is not configured");
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
-    // Use AI to format the report nicely for email
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          {
-            role: "system",
-            content: "Přeformátuj následující zápis do čistého HTML emailu. Zachovej obsah beze změny, pouze přidej základní HTML formátování (h2, p, ul, li, strong). Vrať POUZE HTML kód bez vysvětlení.",
-          },
-          { role: "user", content: reportContent },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      console.error("AI formatting error:", response.status);
-      // Fallback: use plain text
-    }
-
+    // Format HTML content
     let htmlContent = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${reportContent}</pre>`;
-    
-    if (response.ok) {
-      const data = await response.json();
-      const formatted = data.choices?.[0]?.message?.content;
-      if (formatted) {
-        // Strip markdown code fences if present
-        htmlContent = formatted.replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+
+    if (LOVABLE_API_KEY) {
+      try {
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+              {
+                role: "system",
+                content: "Přeformátuj následující zápis do čistého HTML emailu. Zachovej obsah beze změny, pouze přidej základní HTML formátování (h2, p, ul, li, strong). Vrať POUZE HTML kód bez vysvětlení.",
+              },
+              { role: "user", content: reportContent },
+            ],
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const formatted = data.choices?.[0]?.message?.content;
+          if (formatted) {
+            htmlContent = formatted.replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+          }
+        }
+      } catch (e) {
+        console.error("AI formatting failed, using plain text:", e);
       }
     }
 
-    // Send email via Supabase's built-in SMTP (using edge function's service role)
-    // Since we don't have a direct email service, we'll store the report for manual retrieval
-    // and use the Lovable gateway to attempt delivery
-    
-    // For now, store in a simple way - the report is available in chat and can be copied
-    console.log(`Report prepared for: ${targetEmail}`);
-    console.log(`Subject: ${subject}`);
-    console.log(`Content length: ${reportContent.length}`);
+    // Send email via Resend
+    const resend = new Resend(RESEND_API_KEY);
+    const { error: sendError } = await resend.emails.send({
+      from: "Karel <karel@hana-chlebcova.cz>",
+      to: [targetEmail],
+      subject,
+      html: htmlContent,
+    });
+
+    if (sendError) {
+      console.error("Resend error:", sendError);
+      throw new Error(`Email sending failed: ${sendError.message}`);
+    }
+
+    console.log(`Report sent to: ${targetEmail}, subject: ${subject}`);
 
     return new Response(JSON.stringify({ 
       success: true, 
-      message: "Report připraven",
+      message: "Report odeslán",
       subject,
       to: targetEmail,
     }), {
