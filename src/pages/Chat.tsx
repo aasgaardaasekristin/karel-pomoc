@@ -141,9 +141,13 @@ const Chat = () => {
     if (messages.length === 0) return;
     const interval = setInterval(() => {
       saveMessages(mode, messages);
-    }, 5000); // re-save every 5 seconds
+      // Auto-save DID conversation to history so it's never lost
+      if (mode === "childcare" && didSubMode && messages.length >= 2) {
+        saveConversation(didSubMode, messages, didInitialContext);
+      }
+    }, 5000);
     return () => clearInterval(interval);
-  }, [messages, mode]);
+  }, [messages, mode, didSubMode, didInitialContext, saveConversation]);
 
   // Restore messages when page regains visibility (tab switch back)
   useEffect(() => {
@@ -165,10 +169,14 @@ const Chat = () => {
       if (messages.length > 0) {
         saveMessages(mode, messages);
       }
+      // Also save DID conversation to history on unload
+      if (mode === "childcare" && didSubMode && messages.length >= 2) {
+        saveConversation(didSubMode, messages, didInitialContext);
+      }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [messages, mode]);
+  }, [messages, mode, didSubMode, didInitialContext, saveConversation]);
 
   // Welcome message when mode changes
   useEffect(() => {
@@ -544,7 +552,7 @@ const Chat = () => {
                       </Button>
                     )}
                   </div>
-                  {mode === "childcare" && didSubMode === "cast" && messages.length > 1 && (
+                  {mode === "childcare" && didSubMode && messages.length > 1 && (
                     <div className="flex justify-center mt-2">
                       <Button
                         variant="destructive"
