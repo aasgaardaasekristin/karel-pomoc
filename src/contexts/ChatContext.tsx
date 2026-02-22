@@ -7,7 +7,7 @@ type Message = {
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 type MainMode = "chat" | "report";
-type DidSubMode = "form" | "freetext" | "general" | null;
+type DidSubMode = "mamka" | "cast" | "form" | "freetext" | "general" | null;
 
 export interface ReportDraft {
   context: string;
