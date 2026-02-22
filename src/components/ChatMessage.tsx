@@ -9,24 +9,29 @@ interface Message {
 
 interface ChatMessageProps {
   message: Message;
+  onNotebookCopied?: () => void;
 }
 
 const extractNotebookLMSection = (content: string): string | null => {
-  // Match from 📌 heading to end of message (or next major heading)
   const match = content.match(/📌\s*\*?\*?Co (?:uložit|aktualizovat) (?:do|v) NotebookLM.*$/s);
-  return match ? match[0].trim() : null;
+  if (match) return match[0].trim();
+  // Also match handover blocks for "cast" mode
+  const handoverMatch = content.match(/🔽\s*\*?\*?Tohle je pro mamku.*$/s);
+  return handoverMatch ? handoverMatch[0].trim() : null;
 };
 
-const CopyNotebookButton = ({ text }: { text: string }) => {
+const CopyNotebookButton = ({ text, onCopied }: { text: string; onCopied?: () => void }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => {
+        setCopied(false);
+        onCopied?.();
+      }, 1500);
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -34,7 +39,10 @@ const CopyNotebookButton = ({ text }: { text: string }) => {
       document.execCommand("copy");
       document.body.removeChild(ta);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => {
+        setCopied(false);
+        onCopied?.();
+      }, 1500);
     }
   };
 
@@ -59,7 +67,7 @@ const CopyNotebookButton = ({ text }: { text: string }) => {
   );
 };
 
-const ChatMessage = ({ message }: ChatMessageProps) => {
+const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
   const isUser = message.role === "user";
   const notebookSection = !isUser ? extractNotebookLMSection(message.content) : null;
 
@@ -83,7 +91,7 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
                 ),
               }}
             >{message.content}</ReactMarkdown>
-            {notebookSection && <CopyNotebookButton text={notebookSection} />}
+            {notebookSection && <CopyNotebookButton text={notebookSection} onCopied={onNotebookCopied} />}
           </div>
         )}
       </div>
