@@ -13,8 +13,10 @@ import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
+import DidConversationHistory from "@/components/did/DidConversationHistory";
 import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
+import { useConversationHistory } from "@/hooks/useConversationHistory";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 
@@ -68,6 +70,28 @@ const Chat = () => {
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
+  const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
+
+  // Persist didSubMode & didInitialContext to localStorage
+  useEffect(() => {
+    try {
+      if (didSubMode) {
+        localStorage.setItem("karel_did_submode", didSubMode);
+      } else {
+        localStorage.removeItem("karel_did_submode");
+      }
+    } catch {}
+  }, [didSubMode]);
+
+  useEffect(() => {
+    try {
+      if (didInitialContext) {
+        localStorage.setItem("karel_did_context", didInitialContext);
+      } else {
+        localStorage.removeItem("karel_did_context");
+      }
+    } catch {}
+  }, [didInitialContext]);
 
   // Persist notebook project name
   useEffect(() => {
@@ -196,17 +220,34 @@ const Chat = () => {
   };
 
   const handleNewConversation = useCallback(() => {
+    // Save current conversation to history before clearing
+    if (didSubMode && messages.length >= 2) {
+      saveConversation(didSubMode, messages, didInitialContext);
+    }
     clearMessages(mode);
     setDidSubMode(null);
     setDidInitialContext("");
     setMessages([]);
-  }, [mode, setMessages, setDidSubMode, setDidInitialContext]);
+  }, [mode, messages, didSubMode, didInitialContext, setMessages, setDidSubMode, setDidInitialContext, saveConversation]);
 
   const handleDidBack = useCallback(() => {
+    // Save current conversation to history before going back
+    if (didSubMode && messages.length >= 2) {
+      saveConversation(didSubMode, messages, didInitialContext);
+    }
     setDidSubMode(null);
     setDidInitialContext("");
     setMessages([]);
-  }, [setDidSubMode, setDidInitialContext, setMessages]);
+  }, [didSubMode, messages, didInitialContext, setDidSubMode, setDidInitialContext, setMessages, saveConversation]);
+
+  const handleRestoreConversation = useCallback((id: string) => {
+    const conv = loadConversation(id);
+    if (!conv) return;
+    setDidSubMode(conv.subMode as DidSubMode);
+    setDidInitialContext(conv.didInitialContext);
+    setMessages(conv.messages as any);
+    saveMessages(mode, conv.messages);
+  }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
 
   // Don't render anything until auth is confirmed
   if (!authChecked) {
@@ -439,6 +480,11 @@ const Chat = () => {
           {mode === "childcare" && !didSubMode ? (
             <ScrollArea className="flex-1">
               <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
+              <DidConversationHistory
+                conversations={history}
+                onLoad={handleRestoreConversation}
+                onDelete={deleteConversation}
+              />
             </ScrollArea>
           ) : (
             <>
