@@ -255,13 +255,11 @@ serve(async (req) => {
 
   try {
 
-    const { messages, mode, didInitialContext, notebookProject } = await req.json();
+    const { messages, mode, didInitialContext, didSubMode, notebookProject } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
-
-    const { messages, mode, didInitialContext, didSubMode } = await req.json();
 
     let systemPrompt = getSystemPrompt(mode as ConversationMode);
     
