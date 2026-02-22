@@ -12,9 +12,8 @@ import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
-import DidSubModeSelector, { type DidSubMode } from "@/components/did/DidSubModeSelector";
-import DidOrientationForm from "@/components/did/DidOrientationForm";
-import DidFreeTextEntry from "@/components/did/DidFreeTextEntry";
+import DidSubModeSelector from "@/components/did/DidSubModeSelector";
+import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
@@ -233,92 +232,13 @@ const Chat = () => {
   // DID sub-mode handlers
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
-    if (subMode === "general") {
+    if (subMode === "mamka") {
+      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Pověz mi, co se děje.\n\nPokud chceš, vlož výňatek z NotebookLM (5–15 řádků) s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
+    } else if (subMode === "cast") {
+      setMessages([{ role: "assistant", content: `Jsem Karel. Pomáhám mamce a tobě, aby bylo víc bezpečno.\n\nJeště než začneme – potřebuju se tě na něco zeptat:\n\n**Jsi teď v nebezpečí nebo si chceš ublížit? (Ano/Ne)**` }]);
+    } else if (subMode === "general") {
       setDidInitialContext(`NotebookLM projekt: ${notebookProject}`);
       setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Můžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\nJá ti nabídnu 2–3 varianty postupu, věty které říct, a návrh co uložit do NotebookLM.\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek (max 10 řádků). Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
-    }
-  };
-
-  const handleDidFormSubmit = (context: string) => {
-    setDidInitialContext(context);
-    setDidSubMode("form");
-    setMessages([{ role: "user", content: context }]);
-    triggerDidFirstResponse(context);
-  };
-
-  const handleDidFreeTextSubmit = (context: string) => {
-    setDidInitialContext(context);
-    setDidSubMode("freetext");
-    setMessages([{ role: "user", content: context }]);
-    triggerDidFirstResponse(context);
-  };
-
-  const triggerDidFirstResponse = async (context: string) => {
-    setIsLoading(true);
-    let assistantContent = "";
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            messages: [{ role: "user", content: context }],
-            mode,
-            didInitialContext: context,
-          }),
-        }
-      );
-      if (!response.ok) handleApiError(response);
-      if (!response.body) throw new Error("Žádná odpověď");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIndex);
-          buffer = buffer.slice(newlineIndex + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantContent += content;
-              setMessages((prev) => {
-                const newMessages = [...prev];
-                const lastIndex = newMessages.length - 1;
-                if (newMessages[lastIndex]?.role === "assistant") {
-                  newMessages[lastIndex] = { ...newMessages[lastIndex], content: assistantContent };
-                }
-                return newMessages;
-              });
-            }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
-        }
-      }
-    } catch (error) {
-      console.error("DID first response error:", error);
-      toast.error(error instanceof Error ? error.message : "Chyba při komunikaci s Karlem");
-      if (!assistantContent) {
-        setMessages((prev) => prev.slice(0, -1));
-      }
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -343,6 +263,7 @@ const Chat = () => {
             messages: [...messages, { role: "user", content: userMessage }],
             mode,
             ...(mode === "childcare" && didInitialContext ? { didInitialContext } : {}),
+            ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
           }),
         }
       );
@@ -484,14 +405,6 @@ const Chat = () => {
           {mode === "childcare" && !didSubMode ? (
             <ScrollArea className="flex-1">
               <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
-            </ScrollArea>
-          ) : mode === "childcare" && didSubMode === "form" && messages.length === 0 ? (
-            <ScrollArea className="flex-1">
-              <DidOrientationForm onSubmit={handleDidFormSubmit} onBack={handleDidBack} notebookProject={notebookProject} onNotebookProjectChange={setNotebookProject} />
-            </ScrollArea>
-          ) : mode === "childcare" && didSubMode === "freetext" && messages.length === 0 ? (
-            <ScrollArea className="flex-1">
-              <DidFreeTextEntry onSubmit={handleDidFreeTextSubmit} onBack={handleDidBack} notebookProject={notebookProject} onNotebookProjectChange={setNotebookProject} />
             </ScrollArea>
           ) : (
             <>

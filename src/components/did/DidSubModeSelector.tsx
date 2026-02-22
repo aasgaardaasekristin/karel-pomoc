@@ -1,7 +1,7 @@
-import { ClipboardList, PenLine, MessageCircle, ArrowLeft } from "lucide-react";
+import { Heart, MessageCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type DidSubMode = "form" | "freetext" | "general";
+export type DidSubMode = "mamka" | "cast" | "form" | "freetext" | "general";
 
 interface DidSubModeSelectorProps {
   onSelect: (subMode: DidSubMode) => void;
@@ -11,22 +11,16 @@ interface DidSubModeSelectorProps {
 const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
   const options = [
     {
-      id: "form" as const,
-      icon: ClipboardList,
-      label: "Rychlá orientace (formulář)",
-      description: "Karel se rychle zorientuje díky krátkému dotazníku",
+      id: "mamka" as const,
+      icon: Heart,
+      label: "Mamka (terapeut)",
+      description: "Mluví mamka – Karel se zeptá na situaci, požádá o výňatek z NotebookLM a strukturovaně odpoví.",
     },
     {
-      id: "freetext" as const,
-      icon: PenLine,
-      label: "Zapsat konkrétní situaci / osobnost",
-      description: "Zaznamenej poznatek, situaci nebo obavu a Karel ti pomůže",
-    },
-    {
-      id: "general" as const,
+      id: "cast" as const,
       icon: MessageCircle,
-      label: "Obecný rozhovor o DID",
-      description: "Můžeš se ptát na metody, popsat situaci, nebo vložit výňatek z NotebookLM. Karel nabídne varianty postupu.",
+      label: "Část mluví s Karlem",
+      description: "Mluví dítě / část – Karel přizpůsobí jazyk věku, udrží bezpečný tón a vygeneruje handover pro mamku.",
     },
   ];
 
@@ -41,7 +35,7 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
         </div>
       )}
       <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-8">
-        Jak s tím chceš teď pracovat?
+        Kdo teď mluví?
       </h2>
       <div className="space-y-3">
         {options.map((opt) => {
