@@ -1,4 +1,4 @@
-import { Heart, MessageCircle, ArrowLeft } from "lucide-react";
+import { Heart, MessageCircle, ArrowLeft, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export type DidSubMode = "mamka" | "cast" | "form" | "freetext" | "general";
@@ -21,6 +21,12 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
       icon: MessageCircle,
       label: "Část mluví s Karlem",
       description: "Mluví dítě / část – Karel přizpůsobí jazyk věku, udrží bezpečný tón a vygeneruje handover pro mamku.",
+    },
+    {
+      id: "general" as const,
+      icon: BookOpen,
+      label: "Obecná porada o DID",
+      description: "Konzultace o metodách, strategiích a přístupech k práci s DID systémem.",
     },
   ];
 
