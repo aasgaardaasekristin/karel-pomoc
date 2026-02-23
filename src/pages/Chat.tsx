@@ -616,16 +616,14 @@ const Chat = () => {
           {mode === "childcare" && !didSubMode ? (
             <ScrollArea className="flex-1">
               <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
-              {history.length > 0 && (
-                <DidConversationHistory
-                  conversations={history}
-                  onLoad={handleRestoreConversation}
-                  onDelete={(id) => {
-                    deleteConversation(id);
-                    refreshHistory();
-                  }}
-                />
-              )}
+              <DidConversationHistory
+                conversations={history}
+                onLoad={handleRestoreConversation}
+                onDelete={(id) => {
+                  deleteConversation(id);
+                  refreshHistory();
+                }}
+              />
             </ScrollArea>
           ) : mode === "childcare" && didSubMode && !didDocsLoaded && messages.length === 0 ? (
             <ScrollArea className="flex-1">

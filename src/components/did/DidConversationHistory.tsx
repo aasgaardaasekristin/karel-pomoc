@@ -9,7 +9,6 @@ interface Props {
 }
 
 const DidConversationHistory = ({ conversations, onLoad, onDelete }: Props) => {
-  if (conversations.length === 0) return null;
 
   const iconMap: Record<string, typeof Heart> = {
     mamka: Heart,
@@ -46,36 +45,42 @@ const DidConversationHistory = ({ conversations, onLoad, onDelete }: Props) => {
         </div>
       </div>
       <div className="space-y-1.5 sm:space-y-2">
-        {conversations.map((conv) => {
-          const Icon = iconMap[conv.subMode] || MessageCircle;
-          const timeStr = formatTimeAgo(conv.savedAt);
-          return (
-            <div
-              key={conv.id}
-              className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border border-border bg-card/50 hover:bg-card active:bg-card transition-colors cursor-pointer group"
-              onClick={() => onLoad(conv.id)}
-            >
-              <Icon className="w-4 h-4 text-primary shrink-0" />
-              <div className="min-w-0 flex-1">
-                <div className="text-xs sm:text-sm font-medium text-foreground truncate">
-                  {conv.label}: {conv.preview}…
-                </div>
-                <div className="text-[10px] sm:text-xs text-muted-foreground">{timeStr}</div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(conv.id);
-                }}
+        {conversations.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-card/30 px-3 py-3 text-[11px] sm:text-xs text-muted-foreground">
+            Zatím tu není žádný uložený rozhovor.
+          </div>
+        ) : (
+          conversations.map((conv) => {
+            const Icon = iconMap[conv.subMode] || MessageCircle;
+            const timeStr = formatTimeAgo(conv.savedAt);
+            return (
+              <div
+                key={conv.id}
+                className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg border border-border bg-card/50 hover:bg-card active:bg-card transition-colors cursor-pointer group"
+                onClick={() => onLoad(conv.id)}
               >
-                <Trash2 className="w-3.5 h-3.5 text-destructive" />
-              </Button>
-            </div>
-          );
-        })}
+                <Icon className="w-4 h-4 text-primary shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs sm:text-sm font-medium text-foreground truncate">
+                    {conv.label}: {conv.preview}…
+                  </div>
+                  <div className="text-[10px] sm:text-xs text-muted-foreground">{timeStr}</div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(conv.id);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                </Button>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
