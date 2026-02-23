@@ -359,12 +359,12 @@ const Chat = () => {
     refreshHistory();
   }, [didSubMode, messages, didInitialContext, didSessionId, setDidSubMode, setDidInitialContext, setMessages, saveConversation, refreshHistory]);
 
-  const handleRestoreConversation = useCallback((id: string) => {
-    const conv = loadConversation(id);
+  const handleRestoreConversation = useCallback(async (id: string) => {
+    const conv = await loadConversation(id);
     if (!conv) return;
     setDidSubMode(conv.subMode as DidSubMode);
     setDidInitialContext(conv.didInitialContext);
-    setDidDocsLoaded(true); // Skip document gate for restored conversations
+    setDidDocsLoaded(true);
     setDidSessionId(conv.id);
     setMessages(conv.messages as any);
     saveMessages(mode, conv.messages);
