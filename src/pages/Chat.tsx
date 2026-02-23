@@ -292,6 +292,7 @@ const Chat = () => {
 
     // For childcare mode, don't set welcome message until sub-mode is selected
     if (mode === "childcare") {
+      refreshHistory();
       return;
     }
 
