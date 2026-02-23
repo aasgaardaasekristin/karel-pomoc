@@ -48,15 +48,9 @@ export const ChatProvider = ({ children }: { children: ReactNode }) => {
   const [reportDraft, setReportDraft] = useState<ReportDraft | null>(null);
   const [lastReportText, setLastReportText] = useState<string>("");
   const [pendingHandoffToChat, setPendingHandoffToChat] = useState<boolean>(false);
-  const [didSubMode, setDidSubMode] = useState<DidSubMode>(() => {
-    try {
-      const saved = localStorage.getItem("karel_did_submode");
-      return saved ? (saved as DidSubMode) : null;
-    } catch { return null; }
-  });
-  const [didInitialContext, setDidInitialContext] = useState<string>(() => {
-    try { return localStorage.getItem("karel_did_context") || ""; } catch { return ""; }
-  });
+  // Never auto-restore didSubMode — always show the selector/history first
+  const [didSubMode, setDidSubMode] = useState<DidSubMode>(null);
+  const [didInitialContext, setDidInitialContext] = useState<string>("");
 
   return (
     <ChatContext.Provider value={{ 

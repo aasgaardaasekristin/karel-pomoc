@@ -503,11 +503,13 @@ const Chat = () => {
           {mode === "childcare" && !didSubMode ? (
             <ScrollArea className="flex-1">
               <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
-              <DidConversationHistory
-                conversations={history}
-                onLoad={handleRestoreConversation}
-                onDelete={deleteConversation}
-              />
+              {history.length > 0 && (
+                <DidConversationHistory
+                  conversations={history}
+                  onLoad={handleRestoreConversation}
+                  onDelete={deleteConversation}
+                />
+              )}
             </ScrollArea>
           ) : mode === "childcare" && didSubMode && !didDocsLoaded && messages.length === 0 ? (
             <ScrollArea className="flex-1">
