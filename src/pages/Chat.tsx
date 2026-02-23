@@ -23,6 +23,40 @@ type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
 
 // localStorage helpers
 const STORAGE_KEY_PREFIX = "karel_chat_";
+const ACTIVE_MODE_KEY = "karel_active_mode";
+const DID_DOCS_LOADED_KEY = "karel_did_docs_loaded";
+const DID_SESSION_ID_KEY = "karel_did_session_id";
+const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
+
+const CAST_GREETINGS = [
+  "Hejky! 😊 Já jsem Karel. Co dneska podnikáš?",
+  "Ahoj ahoj! Já jsem Karel. Jakou náladu máš právě teď?",
+  "Čau! Karel tady. Co se ti dneska honí hlavou?",
+  "Nazdar! 😄 Já jsem Karel. Co hezkého nebo těžkého dneska přišlo?",
+  "Jé, ahoj! Já jsem Karel. Chceš mi říct, jak se teď máš?",
+  "Ahoj! 🌟 Karel tady. Co bys dneska potřeboval/a, aby bylo líp?",
+  "Hezky tě vítám, já jsem Karel. Na co máš teď chuť si povídat?",
+];
+
+const getRandomCastGreeting = () => {
+  if (CAST_GREETINGS.length === 1) return CAST_GREETINGS[0];
+
+  try {
+    const lastIndexRaw = localStorage.getItem(LAST_CAST_GREETING_INDEX_KEY);
+    const lastIndex = lastIndexRaw ? Number(lastIndexRaw) : -1;
+    let nextIndex = Math.floor(Math.random() * CAST_GREETINGS.length);
+
+    if (nextIndex === lastIndex) {
+      nextIndex = (nextIndex + 1) % CAST_GREETINGS.length;
+    }
+
+    localStorage.setItem(LAST_CAST_GREETING_INDEX_KEY, String(nextIndex));
+    return CAST_GREETINGS[nextIndex];
+  } catch {
+    return CAST_GREETINGS[Math.floor(Math.random() * CAST_GREETINGS.length)];
+  }
+};
+
 const saveMessages = (mode: string, messages: { role: string; content: string }[]) => {
   try {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify(messages));
@@ -72,7 +106,14 @@ const Chat = () => {
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
+  const [didSessionId, setDidSessionId] = useState<string | null>(() => {
+    try { return localStorage.getItem(DID_SESSION_ID_KEY); } catch { return null; }
+  });
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
+
+  useEffect(() => {
+    try { localStorage.setItem(ACTIVE_MODE_KEY, mode); } catch {}
+  }, [mode]);
 
   // Persist didSubMode & didInitialContext to localStorage
   useEffect(() => {
@@ -95,10 +136,49 @@ const Chat = () => {
     } catch {}
   }, [didInitialContext]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(DID_DOCS_LOADED_KEY, didDocsLoaded ? "1" : "0");
+    } catch {}
+  }, [didDocsLoaded]);
+
+  useEffect(() => {
+    try {
+      if (didSessionId) {
+        localStorage.setItem(DID_SESSION_ID_KEY, didSessionId);
+      } else {
+        localStorage.removeItem(DID_SESSION_ID_KEY);
+      }
+    } catch {}
+  }, [didSessionId]);
+
   // Persist notebook project name
   useEffect(() => {
     try { localStorage.setItem("karel_notebook_project", notebookProject); } catch {}
   }, [notebookProject]);
+
+  // Restore interrupted DID flow after tab/page return
+  useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem(ACTIVE_MODE_KEY) as ConversationMode | null;
+      if (savedMode !== "childcare") return;
+
+      const savedMessages = loadMessages("childcare");
+      const savedSubMode = localStorage.getItem("karel_did_submode") as DidSubMode | null;
+      const savedContext = localStorage.getItem("karel_did_context") || "";
+      const savedDidDocsLoaded = localStorage.getItem(DID_DOCS_LOADED_KEY) === "1";
+      const savedSessionId = localStorage.getItem(DID_SESSION_ID_KEY);
+
+      setMode("childcare");
+      if (savedSubMode) setDidSubMode(savedSubMode);
+      setDidInitialContext(savedContext);
+      setDidDocsLoaded(savedDidDocsLoaded || !!(savedMessages && savedMessages.length > 0));
+      if (savedSessionId) setDidSessionId(savedSessionId);
+      if (savedMessages && savedMessages.length > 0) {
+        setMessages(savedMessages);
+      }
+    } catch {}
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
@@ -145,15 +225,25 @@ const Chat = () => {
       saveMessages(mode, messages);
       // Auto-save DID conversation to history so it's never lost
       if (mode === "childcare" && didSubMode && messages.length >= 2) {
-        saveConversation(didSubMode, messages, didInitialContext);
+        saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [messages, mode, didSubMode, didInitialContext, saveConversation]);
+  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation]);
 
-  // Restore messages when page regains visibility (tab switch back)
+  // Save/restore when tab visibility changes
   useEffect(() => {
     const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (messages.length > 0) {
+          saveMessages(mode, messages);
+        }
+        if (mode === "childcare" && didSubMode && messages.length >= 2) {
+          saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
+        }
+        return;
+      }
+
       if (document.visibilityState === "visible" && messages.length === 0) {
         const saved = loadMessages(mode);
         if (saved && saved.length > 0) {
@@ -161,24 +251,29 @@ const Chat = () => {
         }
       }
     };
+
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [mode, messages.length, setMessages]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, setMessages]);
 
-  // Save before page unload
+  // Save when page is being frozen/unloaded
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const persistNow = () => {
       if (messages.length > 0) {
         saveMessages(mode, messages);
       }
-      // Also save DID conversation to history on unload
       if (mode === "childcare" && didSubMode && messages.length >= 2) {
-        saveConversation(didSubMode, messages, didInitialContext);
+        saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
       }
     };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [messages, mode, didSubMode, didInitialContext, saveConversation]);
+
+    window.addEventListener("beforeunload", persistNow);
+    window.addEventListener("pagehide", persistNow);
+    return () => {
+      window.removeEventListener("beforeunload", persistNow);
+      window.removeEventListener("pagehide", persistNow);
+    };
+  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation]);
 
   // Welcome message when mode changes
   useEffect(() => {
@@ -232,25 +327,27 @@ const Chat = () => {
   const handleNewConversation = useCallback(() => {
     // Save current conversation to history before clearing
     if (didSubMode && messages.length >= 2) {
-      saveConversation(didSubMode, messages, didInitialContext);
+      saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
     clearMessages(mode);
     setDidSubMode(null);
     setDidInitialContext("");
     setDidDocsLoaded(false);
+    setDidSessionId(null);
     setMessages([]);
-  }, [mode, messages, didSubMode, didInitialContext, setMessages, setDidSubMode, setDidInitialContext, saveConversation]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, setMessages, setDidSubMode, setDidInitialContext, saveConversation]);
 
   const handleDidBack = useCallback(() => {
     // Save current conversation to history before going back
     if (didSubMode && messages.length >= 2) {
-      saveConversation(didSubMode, messages, didInitialContext);
+      saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
     setDidSubMode(null);
     setDidInitialContext("");
     setDidDocsLoaded(false);
+    setDidSessionId(null);
     setMessages([]);
-  }, [didSubMode, messages, didInitialContext, setDidSubMode, setDidInitialContext, setMessages, saveConversation]);
+  }, [didSubMode, messages, didInitialContext, didSessionId, setDidSubMode, setDidInitialContext, setMessages, saveConversation]);
 
   const handleRestoreConversation = useCallback((id: string) => {
     const conv = loadConversation(id);
@@ -258,6 +355,7 @@ const Chat = () => {
     setDidSubMode(conv.subMode as DidSubMode);
     setDidInitialContext(conv.didInitialContext);
     setDidDocsLoaded(true); // Skip document gate for restored conversations
+    setDidSessionId(conv.id);
     setMessages(conv.messages as any);
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
@@ -320,12 +418,15 @@ const Chat = () => {
   // DID sub-mode handlers
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
+    setDidSessionId(null);
     setDidDocsLoaded(false);
     // Don't start chat yet — DidDocumentGate will appear first
   };
 
   const handleDidDocsSubmit = (docs: { seznam: string; mapa: string }) => {
     setDidDocsLoaded(true);
+    const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setDidSessionId(newSessionId);
     const docsContext = `[NotebookLM: ${notebookProject} | Dokument: 00_Seznam_částí]\n${docs.seznam}\n\n[NotebookLM: ${notebookProject} | Dokument: 01_Hlavní_mapa_systému]\n${docs.mapa}`;
 
     if (didSubMode === "mamka") {
@@ -333,7 +434,7 @@ const Chat = () => {
       setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Díky za dokumenty – mám přehled o systému.\n\nPověz mi, co se děje.\n\nPokud chceš, vlož další výňatek z NotebookLM (5–15 řádků) s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
     } else if (didSubMode === "cast") {
       setDidInitialContext(docsContext);
-      setMessages([{ role: "assistant", content: `Hejj! 😊 Já jsem Karel. Rád si povídám a hraju si. A ty? Jak se dneska máš?` }]);
+      setMessages([{ role: "assistant", content: getRandomCastGreeting() }]);
     } else if (didSubMode === "general") {
       setDidInitialContext(docsContext);
       setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Díky za dokumenty – mám přehled o systému.\n\nMůžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož další výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
@@ -492,6 +593,8 @@ const Chat = () => {
                 if (newMode === "childcare") {
                   setDidSubMode(null);
                   setDidInitialContext("");
+                  setDidDocsLoaded(false);
+                  setDidSessionId(null);
                   setMessages([]);
                 }
                 setMode(newMode);
@@ -516,7 +619,7 @@ const Chat = () => {
               <DidDocumentGate
                 subMode={didSubMode}
                 onSubmit={handleDidDocsSubmit}
-                onBack={() => { setDidSubMode(null); setDidDocsLoaded(false); }}
+                onBack={() => { setDidSubMode(null); setDidDocsLoaded(false); setDidSessionId(null); }}
               />
             </ScrollArea>
           ) : (

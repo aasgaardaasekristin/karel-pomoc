@@ -32,7 +32,12 @@ export const useConversationHistory = () => {
   const [history, setHistory] = useState<SavedConversation[]>(loadHistory);
 
   const saveConversation = useCallback(
-    (subMode: string, messages: { role: string; content: string }[], didInitialContext: string) => {
+    (
+      subMode: string,
+      messages: { role: string; content: string }[],
+      didInitialContext: string,
+      conversationId?: string
+    ) => {
       if (messages.length < 2) return;
       const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
       const preview = lastUserMsg?.content.slice(0, 80) || "Rozhovor";
@@ -45,16 +50,31 @@ export const useConversationHistory = () => {
       };
 
       setHistory((prev) => {
-        // Check if there's already a saved conversation with the same first message
-        // to avoid duplicates from auto-save
         const firstUserMsg = messages.find((m) => m.role === "user")?.content;
-        const existingIdx = prev.findIndex((c) => {
-          const cFirst = c.messages.find((m) => m.role === "user")?.content;
-          return c.subMode === subMode && cFirst === firstUserMsg;
-        });
+
+        const byIdIdx = conversationId
+          ? prev.findIndex((c) => c.id === conversationId)
+          : -1;
+
+        // Backward compatible fallback for older saved conversations without explicit session id.
+        // Keep it conservative so independent chats don't overwrite each other.
+        const fallbackIdx =
+          byIdIdx >= 0
+            ? byIdIdx
+            : prev.findIndex((c) => {
+                const cFirst = c.messages.find((m) => m.role === "user")?.content;
+                const sameSeed = c.subMode === subMode && cFirst === firstUserMsg && c.didInitialContext === didInitialContext;
+                const recentEnough = Date.now() - c.savedAt < 20 * 60 * 1000;
+                return sameSeed && recentEnough;
+              });
+
+        const stableId =
+          fallbackIdx >= 0
+            ? prev[fallbackIdx].id
+            : conversationId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         const conv: SavedConversation = {
-          id: existingIdx >= 0 ? prev[existingIdx].id : Date.now().toString(),
+          id: stableId,
           subMode,
           label: labelMap[subMode] || subMode,
           preview,
@@ -63,16 +83,13 @@ export const useConversationHistory = () => {
           savedAt: Date.now(),
         };
 
-        let next: SavedConversation[];
-        if (existingIdx >= 0) {
-          // Update existing entry in place, then move to top
-          next = [conv, ...prev.filter((_, i) => i !== existingIdx)];
-        } else {
-          next = [conv, ...prev];
-        }
-        next = next.slice(0, MAX_CONVERSATIONS);
-        persistHistory(next);
-        return next;
+        const next = fallbackIdx >= 0
+          ? [conv, ...prev.filter((_, i) => i !== fallbackIdx)]
+          : [conv, ...prev];
+
+        const trimmed = next.slice(0, MAX_CONVERSATIONS);
+        persistHistory(trimmed);
+        return trimmed;
       });
     },
     []
