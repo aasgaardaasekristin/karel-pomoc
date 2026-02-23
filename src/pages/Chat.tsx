@@ -615,7 +615,6 @@ const Chat = () => {
           {/* DID Sub-mode flow when childcare is active */}
           {mode === "childcare" && !didSubMode ? (
             <ScrollArea className="flex-1">
-              <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
               <DidConversationHistory
                 conversations={history}
                 onLoad={handleRestoreConversation}
@@ -624,6 +623,7 @@ const Chat = () => {
                   refreshHistory();
                 }}
               />
+              <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
             </ScrollArea>
           ) : mode === "childcare" && didSubMode && !didDocsLoaded && messages.length === 0 ? (
             <ScrollArea className="flex-1">
