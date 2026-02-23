@@ -244,17 +244,24 @@ const Chat = () => {
         return;
       }
 
-      if (document.visibilityState === "visible" && messages.length === 0) {
-        const saved = loadMessages(mode);
-        if (saved && saved.length > 0) {
-          setMessages(saved);
+      if (document.visibilityState === "visible") {
+        if (mode === "childcare" && !didSubMode) {
+          refreshHistory();
+        }
+
+        const isInDidDocumentGate = mode === "childcare" && !!didSubMode && !didDocsLoaded;
+        if (!isInDidDocumentGate && messages.length === 0) {
+          const saved = loadMessages(mode);
+          if (saved && saved.length > 0) {
+            setMessages(saved);
+          }
         }
       }
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, setMessages]);
+  }, [mode, messages, didSubMode, didDocsLoaded, didInitialContext, didSessionId, saveConversation, refreshHistory, setMessages]);
 
   // Save when page is being frozen/unloaded
   useEffect(() => {
@@ -336,7 +343,8 @@ const Chat = () => {
     setDidDocsLoaded(false);
     setDidSessionId(null);
     setMessages([]);
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, setMessages, setDidSubMode, setDidInitialContext, saveConversation]);
+    refreshHistory();
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, setMessages, setDidSubMode, setDidInitialContext, saveConversation, refreshHistory]);
 
   const handleDidBack = useCallback(() => {
     // Save current conversation to history before going back
@@ -348,7 +356,8 @@ const Chat = () => {
     setDidDocsLoaded(false);
     setDidSessionId(null);
     setMessages([]);
-  }, [didSubMode, messages, didInitialContext, didSessionId, setDidSubMode, setDidInitialContext, setMessages, saveConversation]);
+    refreshHistory();
+  }, [didSubMode, messages, didInitialContext, didSessionId, setDidSubMode, setDidInitialContext, setMessages, saveConversation, refreshHistory]);
 
   const handleRestoreConversation = useCallback((id: string) => {
     const conv = loadConversation(id);
@@ -611,7 +620,10 @@ const Chat = () => {
                 <DidConversationHistory
                   conversations={history}
                   onLoad={handleRestoreConversation}
-                  onDelete={deleteConversation}
+                  onDelete={(id) => {
+                    deleteConversation(id);
+                    refreshHistory();
+                  }}
                 />
               )}
             </ScrollArea>
