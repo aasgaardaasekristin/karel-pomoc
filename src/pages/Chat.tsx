@@ -14,6 +14,7 @@ import ReportForm from "@/components/ReportForm";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
+import DidDocumentGate from "@/components/did/DidDocumentGate";
 import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
@@ -66,6 +67,7 @@ const Chat = () => {
   } = useChatContext();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [didDocsLoaded, setDidDocsLoaded] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
@@ -235,6 +237,7 @@ const Chat = () => {
     clearMessages(mode);
     setDidSubMode(null);
     setDidInitialContext("");
+    setDidDocsLoaded(false);
     setMessages([]);
   }, [mode, messages, didSubMode, didInitialContext, setMessages, setDidSubMode, setDidInitialContext, saveConversation]);
 
@@ -245,6 +248,7 @@ const Chat = () => {
     }
     setDidSubMode(null);
     setDidInitialContext("");
+    setDidDocsLoaded(false);
     setMessages([]);
   }, [didSubMode, messages, didInitialContext, setDidSubMode, setDidInitialContext, setMessages, saveConversation]);
 
@@ -253,6 +257,7 @@ const Chat = () => {
     if (!conv) return;
     setDidSubMode(conv.subMode as DidSubMode);
     setDidInitialContext(conv.didInitialContext);
+    setDidDocsLoaded(true); // Skip document gate for restored conversations
     setMessages(conv.messages as any);
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
@@ -315,13 +320,23 @@ const Chat = () => {
   // DID sub-mode handlers
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
-    if (subMode === "mamka") {
-      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Pověz mi, co se děje.\n\nPokud chceš, vlož výňatek z NotebookLM (5–15 řádků) s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
-    } else if (subMode === "cast") {
+    setDidDocsLoaded(false);
+    // Don't start chat yet — DidDocumentGate will appear first
+  };
+
+  const handleDidDocsSubmit = (docs: { seznam: string; mapa: string }) => {
+    setDidDocsLoaded(true);
+    const docsContext = `[NotebookLM: ${notebookProject} | Dokument: 00_Seznam_částí]\n${docs.seznam}\n\n[NotebookLM: ${notebookProject} | Dokument: 01_Hlavní_mapa_systému]\n${docs.mapa}`;
+
+    if (didSubMode === "mamka") {
+      setDidInitialContext(docsContext);
+      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Díky za dokumenty – mám přehled o systému.\n\nPověz mi, co se děje.\n\nPokud chceš, vlož další výňatek z NotebookLM (5–15 řádků) s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
+    } else if (didSubMode === "cast") {
+      setDidInitialContext(docsContext);
       setMessages([{ role: "assistant", content: `Hejj! 😊 Já jsem Karel. Rád si povídám a hraju si. A ty? Jak se dneska máš?` }]);
-    } else if (subMode === "general") {
-      setDidInitialContext(`NotebookLM projekt: ${notebookProject}`);
-      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Můžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\nJá ti nabídnu 2–3 varianty postupu, věty které říct, a návrh co uložit do NotebookLM.\n\n📓 **NotebookLM** je paměť a databáze. Karel nemá automatický přístup. Pokud chceš, vlož sem výňatek (max 10 řádků). Ty rozhoduješ, co se předá.\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
+    } else if (didSubMode === "general") {
+      setDidInitialContext(docsContext);
+      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Díky za dokumenty – mám přehled o systému.\n\nMůžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož další výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
     }
   };
 
@@ -492,6 +507,14 @@ const Chat = () => {
                 conversations={history}
                 onLoad={handleRestoreConversation}
                 onDelete={deleteConversation}
+              />
+            </ScrollArea>
+          ) : mode === "childcare" && didSubMode && !didDocsLoaded && messages.length === 0 ? (
+            <ScrollArea className="flex-1">
+              <DidDocumentGate
+                subMode={didSubMode}
+                onSubmit={handleDidDocsSubmit}
+                onBack={() => { setDidSubMode(null); setDidDocsLoaded(false); }}
               />
             </ScrollArea>
           ) : (
