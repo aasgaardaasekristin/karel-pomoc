@@ -57,7 +57,7 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
   let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json();
@@ -67,7 +67,7 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
 async function findFile(token: string, name: string, parentId: string): Promise<string | null> {
   const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json();
@@ -89,8 +89,8 @@ async function uploadOrUpdate(token: string, fileName: string, content: string, 
     `--${boundary}--`;
 
   const url = existingId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
-    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart&supportsAllDrives=true`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`;
 
   const res = await fetch(url, {
     method: existingId ? "PATCH" : "POST",
