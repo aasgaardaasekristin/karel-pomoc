@@ -5,7 +5,7 @@ type Message = {
   content: string;
 };
 
-type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka";
+type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type MainMode = "chat" | "report";
 type DidSubMode = "mamka" | "cast" | "form" | "freetext" | "general" | null;
 
