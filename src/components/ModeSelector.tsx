@@ -1,4 +1,4 @@
-import { Brain, Shield, Heart, Baby, FolderOpen } from "lucide-react";
+import { Brain, Shield, Heart, Baby, Search } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -6,7 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka";
+type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 
 interface ModeSelectorProps {
   currentMode: ConversationMode;
@@ -48,11 +48,11 @@ const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
       className: "mode-button-childcare",
     },
     {
-      id: "kartoteka" as const,
-      label: "Kartotéka",
-      sublabel: "klienti",
-      tooltip: "Profesionální kartotéka klientů – karta, záznamy, plán",
-      icon: FolderOpen,
+      id: "research" as const,
+      label: "Profesní zdroje",
+      sublabel: "research",
+      tooltip: "Karel prohledá internet – odborné články, testy, metody, trendy v psychologii",
+      icon: Search,
       className: "mode-button-supervision",
     },
   ];

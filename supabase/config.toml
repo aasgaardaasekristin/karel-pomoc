@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.karel-crisis-brief]
 verify_jwt = false
+
+[functions.karel-research]
+verify_jwt = false
