@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Archive, CheckCircle, MessageSquareMore, FileText } from "lucide-react";
-import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import { Send, Loader2, MessageSquareMore, FileText } from "lucide-react";
+import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
+import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
+import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-import ImageUploadButton from "@/components/ImageUploadButton";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -89,7 +90,9 @@ const SupervisionChat = () => {
   } = useActiveSessions();
 
   const [input, setInput] = useState("");
-  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
+  const { attachments, fileInputRef, openFilePicker, handleFileChange, removeAttachment, clearAttachments, captureScreenshot, addAttachment, processFile } = useUniversalUpload();
+  const [driveOpen, setDriveOpen] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const audioRecorder = useAudioRecorder();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -249,14 +252,14 @@ const SupervisionChat = () => {
   // MANUAL SEND (chat input)
   // ──────────────────────────────────────────────
   const sendMessage = async () => {
-    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
+    if ((!input.trim() && attachments.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
-    const images = [...pendingImages];
+    const currentAttachments = [...attachments];
     setInput("");
-    clearImages();
+    clearAttachments();
 
-    const userContent = buildMultimodalContent(userMessage, images);
+    const userContent = buildAttachmentContent(userMessage, currentAttachments);
     const updatedMessages = [...messages, { role: "user" as const, content: userContent as any }];
     updateChatMessages(activeSessionId, updatedMessages);
     setIsLoading(true);
@@ -451,6 +454,58 @@ const SupervisionChat = () => {
     }
   };
 
+  const handleAutoAnalyze = async () => {
+    if (attachments.length === 0 || isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const fileDescriptions = attachments.map(a =>
+        `${a.name} (${a.type}, ${a.category})${a.storagePath ? ` [storage:${a.storagePath}]` : ""}${a.dataUrl ? " [inline]" : ""}`
+      ).join(", ");
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            attachments: attachments.map(a => ({
+              name: a.name,
+              type: a.type,
+              category: a.category,
+              size: a.size,
+              dataUrl: a.dataUrl,
+              storagePath: a.storagePath,
+              driveFileId: a.driveFileId,
+            })),
+            mode: "supervision",
+            chatContext: messages.slice(-6).map(m =>
+              `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
+            ).join("\n"),
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Chyba při analýze");
+      const { analysis } = await response.json();
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      const updatedMessages = [
+        ...messages,
+        { role: "user" as const, content: `📎 *[Auto-analýza: ${fileDescriptions}]*` },
+        { role: "assistant" as const, content: analysis },
+      ];
+      updateChatMessages(activeSessionId, updatedMessages);
+      clearAttachments();
+      toast.success("Analýza dokončena");
+    } catch (error) {
+      console.error("Auto-analyze error:", error);
+      toast.error("Chyba při automatické analýze");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const toggleDeepMode = () => {
     setDeepMode(prev => {
       const next = !prev;
@@ -531,14 +586,18 @@ const SupervisionChat = () => {
       {/* Input */}
       <div className="p-3 border-t border-border">
         {/* Row 1: Text input + send */}
-        <div className="flex gap-2 items-end">
-          <ImageUploadButton
-            onOpenPicker={openFilePicker}
-            pendingImages={pendingImages}
-            onRemoveImage={removeImage}
+        <div className="flex gap-2 items-end relative">
+          <UniversalAttachmentBar
+            attachments={attachments}
+            onRemove={removeAttachment}
+            onOpenFilePicker={openFilePicker}
+            onCaptureScreenshot={captureScreenshot}
+            onOpenDrivePicker={() => setDriveOpen(true)}
+            onAutoAnalyze={handleAutoAnalyze}
             disabled={isLoading}
             fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
             onFileChange={handleFileChange}
+            isAnalyzing={isAnalyzing}
           />
           <Textarea
             ref={textareaRef}
@@ -557,7 +616,7 @@ const SupervisionChat = () => {
           <Button
             size="icon"
             onClick={sendMessage}
-            disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
+            disabled={(!input.trim() && attachments.length === 0) || isLoading}
             className="h-[40px] w-[40px] shrink-0"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -579,6 +638,14 @@ const SupervisionChat = () => {
           />
         </div>
       </div>
+      <GoogleDrivePickerDialog
+        open={driveOpen}
+        onClose={() => setDriveOpen(false)}
+        onFileSelected={(file) => {
+          addAttachment(file);
+          setDriveOpen(false);
+        }}
+      />
     </div>
   );
 };
