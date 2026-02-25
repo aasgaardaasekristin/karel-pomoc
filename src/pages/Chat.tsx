@@ -722,17 +722,20 @@ const Chat = () => {
         </>
       ) : (
         <>
-          {/* Report Mode — Split Layout */}
-          <div className="flex-1 flex min-h-0 overflow-hidden">
-            {/* Sidebar */}
+          {/* Report Mode — Responsive Split Layout */}
+          <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
+            {/* Sidebar - always visible */}
             <SessionSidebar />
-            {/* Form (left) */}
-            <div className="flex-1 min-w-0 border-r border-border">
-              <SessionReportForm />
-            </div>
-            {/* Supervision Chat (right) */}
-            <div className="flex-1 min-w-0 flex flex-col">
-              <SupervisionChat />
+            {/* Form + Chat: stack on mobile, side-by-side on desktop */}
+            <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
+              {/* Form */}
+              <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
+                <SessionReportForm />
+              </div>
+              {/* Supervision Chat */}
+              <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
+                <SupervisionChat />
+              </div>
             </div>
           </div>
         </>
