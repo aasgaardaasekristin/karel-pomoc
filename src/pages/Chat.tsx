@@ -5,7 +5,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen, GraduationCap } from "lucide-react";
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import ImageUploadButton from "@/components/ImageUploadButton";
+import AudioRecordButton from "@/components/AudioRecordButton";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -112,6 +114,8 @@ const Chat = () => {
   const [isSoapLoading, setIsSoapLoading] = useState(false);
   const [studyMaterial, setStudyMaterial] = useState<string | null>(null);
   const [isStudyLoading, setIsStudyLoading] = useState(false);
+  const audioRecorder = useAudioRecorder();
+  const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
@@ -460,6 +464,51 @@ const Chat = () => {
       setIsStudyLoading(false);
     }
   };
+
+  const handleAudioAnalysis = async () => {
+    if (isAudioAnalyzing) return;
+    setIsAudioAnalyzing(true);
+    try {
+      const base64 = await audioRecorder.getBase64();
+      if (!base64) throw new Error("Žádná nahrávka");
+
+      const chatContext = messages.slice(-10).map(m => 
+        `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
+      ).join("\n");
+
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-audio-analysis`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            audioBase64: base64,
+            mode,
+            chatContext: messages.length > 0 ? chatContext : undefined,
+          }),
+        }
+      );
+
+      if (!response.ok) handleApiError(response);
+      const { analysis } = await response.json();
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      setMessages(prev => [
+        ...prev,
+        { role: "user", content: "🎙️ *[Audio nahrávka odeslána k analýze]*" },
+        { role: "assistant", content: analysis },
+      ]);
+      audioRecorder.discardRecording();
+      toast.success("Audio analýza dokončena");
+    } catch (error) {
+      console.error("Audio analysis error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při analýze audia");
+    } finally {
+      setIsAudioAnalyzing(false);
+    }
+  };
+
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
     setDidSessionId(null);
@@ -754,6 +803,19 @@ const Chat = () => {
                         <span className="hidden sm:inline">Pořídit zápis</span>
                       </Button>
                     ) : null}
+                    {(mode === "debrief" || mode === "safety" || mode === "childcare") && (
+                      <AudioRecordButton
+                        state={audioRecorder.state}
+                        duration={audioRecorder.duration}
+                        audioUrl={audioRecorder.audioUrl}
+                        isAnalyzing={isAudioAnalyzing}
+                        onStart={audioRecorder.startRecording}
+                        onStop={audioRecorder.stopRecording}
+                        onDiscard={audioRecorder.discardRecording}
+                        onSend={handleAudioAnalysis}
+                        disabled={isLoading || isSoapLoading}
+                      />
+                    )}
                   </div>
                   {mode === "childcare" && didSubMode && messages.length > 1 && (
                     <div className="flex justify-center mt-2">

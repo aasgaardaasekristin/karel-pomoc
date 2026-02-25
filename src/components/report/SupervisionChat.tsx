@@ -4,7 +4,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2, Archive, CheckCircle, MessageSquareMore, FileText } from "lucide-react";
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import ImageUploadButton from "@/components/ImageUploadButton";
+import AudioRecordButton from "@/components/AudioRecordButton";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -88,6 +90,8 @@ const SupervisionChat = () => {
 
   const [input, setInput] = useState("");
   const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
+  const audioRecorder = useAudioRecorder();
+  const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -402,6 +406,51 @@ const SupervisionChat = () => {
     }
   };
 
+  const handleAudioAnalysis = async () => {
+    if (isAudioAnalyzing || !activeSessionId) return;
+    setIsAudioAnalyzing(true);
+    try {
+      const base64 = await audioRecorder.getBase64();
+      if (!base64) throw new Error("Žádná nahrávka");
+
+      const chatContext = messages.slice(-10).map(m =>
+        `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
+      ).join("\n");
+
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-audio-analysis`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            audioBase64: base64,
+            mode: "supervision",
+            chatContext: messages.length > 0 ? chatContext : undefined,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Chyba při analýze");
+      const { analysis } = await response.json();
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      const updatedMessages = [
+        ...messages,
+        { role: "user" as const, content: "🎙️ *[Audio nahrávka odeslána k analýze]*" },
+        { role: "assistant" as const, content: analysis },
+      ];
+      updateChatMessages(activeSessionId, updatedMessages);
+      audioRecorder.discardRecording();
+      toast.success("Audio analýza dokončena");
+    } catch (error) {
+      console.error("Audio analysis error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při analýze audia");
+    } finally {
+      setIsAudioAnalyzing(false);
+    }
+  };
+
   const toggleDeepMode = () => {
     setDeepMode(prev => {
       const next = !prev;
@@ -512,6 +561,17 @@ const SupervisionChat = () => {
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
+          <AudioRecordButton
+            state={audioRecorder.state}
+            duration={audioRecorder.duration}
+            audioUrl={audioRecorder.audioUrl}
+            isAnalyzing={isAudioAnalyzing}
+            onStart={audioRecorder.startRecording}
+            onStop={audioRecorder.stopRecording}
+            onDiscard={audioRecorder.discardRecording}
+            onSend={handleAudioAnalysis}
+            disabled={isLoading}
+          />
         </div>
       </div>
     </div>
