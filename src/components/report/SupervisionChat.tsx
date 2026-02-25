@@ -238,24 +238,26 @@ ZAKÁZÁNO v živém chatu (nechej do reportu):
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="p-3 border-b border-border bg-card/30">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Karel – živá supervize</h3>
-            <p className="text-xs text-muted-foreground">{activeSession.clientName}</p>
+      <div className="p-2 md:p-3 border-b border-border bg-card/30">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="text-xs md:text-sm font-semibold text-foreground truncate">Karel – supervize</h3>
+            <p className="text-[10px] md:text-xs text-muted-foreground truncate">{activeSession.clientName}</p>
           </div>
-          {activeSession.reportText && (
-            <Button
-              size="sm"
-              variant="default"
-              onClick={handleArchive}
-              disabled={isSaving}
-              className="gap-1.5 text-xs"
-            >
-              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
-              Odeslat do kartotéky
-            </Button>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {activeSession.reportText && (
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleArchive}
+                disabled={isSaving}
+                className="gap-1 text-[10px] md:text-xs h-7 md:h-8 px-2 md:px-3"
+              >
+                {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Archive className="w-3 h-3" />}
+                <span className="hidden sm:inline">Do kartotéky</span>
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
