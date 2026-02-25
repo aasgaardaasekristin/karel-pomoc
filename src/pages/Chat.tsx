@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen, GraduationCap } from "lucide-react";
-import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-import ImageUploadButton from "@/components/ImageUploadButton";
+import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
+import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
@@ -108,7 +109,7 @@ const Chat = () => {
     setDidInitialContext,
   } = useChatContext();
   const [input, setInput] = useState("");
-  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
+  const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
   const [isLoading, setIsLoading] = useState(false);
   const [didDocsLoaded, setDidDocsLoaded] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
@@ -116,6 +117,8 @@ const Chat = () => {
   const [isStudyLoading, setIsStudyLoading] = useState(false);
   const audioRecorder = useAudioRecorder();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
+  const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
+  const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
@@ -170,7 +173,6 @@ const Chat = () => {
     try { localStorage.setItem("karel_notebook_project", notebookProject); } catch {}
   }, [notebookProject]);
 
-  // Restore interrupted DID flow after tab/page return
   // One-time cleanup: clear cross-contaminated localStorage from previous bug
   useEffect(() => {
     try {
@@ -532,6 +534,54 @@ const Chat = () => {
     }
   };
 
+  // Auto-analyze attached files
+  const handleAutoAnalyze = async () => {
+    if (isFileAnalyzing || attachments.length === 0 || attachments.some(a => a.uploading)) return;
+    setIsFileAnalyzing(true);
+    try {
+      const chatContext = messages.slice(-10).map(m =>
+        `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
+      ).join("\n");
+
+      const attSummary = attachments.map(a => `📎 ${a.name}`).join(", ");
+      setMessages(prev => [...prev, { role: "user", content: `🔍 *[Analýza příloh: ${attSummary}]*` }]);
+
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+        {
+          method: "POST", headers,
+          body: JSON.stringify({
+            attachments: attachments.map(a => ({
+              name: a.name,
+              type: a.type,
+              size: a.size,
+              category: a.category,
+              dataUrl: a.dataUrl,
+              storagePath: a.storagePath,
+              driveFileId: a.driveFileId,
+            })),
+            mode,
+            chatContext: messages.length > 0 ? chatContext : undefined,
+          }),
+        }
+      );
+
+      if (!response.ok) handleApiError(response);
+      const { analysis } = await response.json();
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      setMessages(prev => [...prev, { role: "assistant", content: analysis }]);
+      clearAttachments();
+      toast.success("Analýza souborů dokončena");
+    } catch (error) {
+      console.error("File analysis error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při analýze souborů");
+    } finally {
+      setIsFileAnalyzing(false);
+    }
+  };
+
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
     setDidSessionId(null);
@@ -558,14 +608,14 @@ const Chat = () => {
   };
 
   const sendMessage = async () => {
-    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
+    if ((!input.trim() && attachments.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
-    const images = [...pendingImages];
+    const currentAttachments = [...attachments];
     setInput("");
-    clearImages();
+    clearAttachments();
 
-    const userContent = buildMultimodalContent(userMessage, images);
+    const userContent = buildAttachmentContent(userMessage, currentAttachments);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     setIsLoading(true);
 
@@ -776,15 +826,19 @@ const Chat = () => {
               {/* Input Area */}
               <div className="border-t border-border bg-card/50 backdrop-blur-sm">
                 <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  {/* Row 1: Text input + send */}
-                  <div className="flex gap-2 sm:gap-3 items-end">
-                    <ImageUploadButton
-                      onOpenPicker={openFilePicker}
-                      pendingImages={pendingImages}
-                      onRemoveImage={removeImage}
+                  {/* Row 1: Text input + attachment + send */}
+                  <div className="flex gap-2 sm:gap-3 items-end relative">
+                    <UniversalAttachmentBar
+                      attachments={attachments}
+                      onRemove={removeAttachment}
+                      onOpenFilePicker={openFilePicker}
+                      onCaptureScreenshot={captureScreenshot}
+                      onOpenDrivePicker={() => setDrivePickerOpen(true)}
+                      onAutoAnalyze={handleAutoAnalyze}
                       disabled={isLoading || isSoapLoading}
                       fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
                       onFileChange={handleFileChange}
+                      isAnalyzing={isFileAnalyzing}
                     />
                     <Textarea
                       ref={textareaRef}
@@ -797,7 +851,7 @@ const Chat = () => {
                     />
                     <Button
                       onClick={sendMessage}
-                      disabled={(!input.trim() && pendingImages.length === 0) || isLoading || isSoapLoading}
+                      disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
                       size="icon"
                       className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
                     >
@@ -902,6 +956,12 @@ const Chat = () => {
       {studyMaterial && (
         <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />
       )}
+      {/* Google Drive Picker Dialog */}
+      <GoogleDrivePickerDialog
+        open={drivePickerOpen}
+        onClose={() => setDrivePickerOpen(false)}
+        onFileSelected={addAttachment}
+      />
     </div>
   );
 };
