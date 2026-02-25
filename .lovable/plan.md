@@ -1,90 +1,41 @@
 
-Cíl:
-- Opravit 3 problémy v audio UX:
-  1) vysvětlit a přidat smysluplný progress bar nahrávání,
-  2) zpřístupnit/odblokovat tlačítko „Analyzovat“ (aby bylo vždy viditelné a klikatelné),
-  3) zabránit tomu, aby po spuštění nahrávání mizelo textové chatovací pole.
+# Oprava vizualni viditelnosti odkazu v rezimu Profesni zdroje
 
-Co je „progress bar nahrávání“ (srozumitelně):
-- Je to vizuální ukazatel, kolik z maximální délky nahrávky už je využito.
-- V tomto projektu je limit 5 minut (300 s), takže lišta ukáže průběh 0 → 100 %.
-- Prakticky: uživatel hned vidí, kolik času zbývá, a není překvapen automatickým zastavením.
+## Zjisteni z testovani
 
-Zjištěná příčina v aktuálním kódu:
-- Input oblast je v obou místech (`src/pages/Chat.tsx`, `src/components/report/SupervisionChat.tsx`) postavená jako jeden horizontální flex řádek s mnoha prvky.
-- `AudioRecordButton` při stavech `recording`/`recorded` výrazně změní šířku (čas + stop, pak audio přehrávač + zahodit + analyzovat), což při menším prostoru vytlačí `Textarea`.
-- Výsledek: pole pro psaní se „ztratí“ (reálně se zkolabuje/odteče), a tlačítko „Analyzovat“ se může ocitnout mimo viditelnou oblast nebo působit neaktivně.
+### Co funguje
+- Rezim "Profesni zdroje" se korektne aktivuje kliknutim na tlacitko
+- Edge funkce `karel-research` odpovida uspesne (200, ~24s)
+- Perplexity API vraci relevantni zdroje a citace
+- Gemini syntetizuje odpoved se spravnym Markdown formatem vcetne `[text](url)` odkazu
+- ReactMarkdown renderuje `a` tagy s `target="_blank"` spravne
+- Odkazy **jsou klikatelne** (potvrzeno observaci DOM), ale...
 
-Implementační postup:
+### Problem
+- Odkazy jsou **vizualne neviditelne** – nemaji jinou barvu ani podtrzeni, takze uzivateli splyvaji s beznym textem
+- Sekce "Dalsi zajimave odkazy" ve spodnim bloku ("Karlovy poznamky") zobrazuje nazvy bez URL – to zavisi na kvalite Gemini odpovedi, ale vizualni styl odkazu je hlavni problem
 
-1) Stabilizace layoutu vstupu (hlavní oprava mizícího chatovacího okna)
-- Soubor: `src/pages/Chat.tsx`
-- Soubor: `src/components/report/SupervisionChat.tsx`
-- Změna:
-  - Přestavět spodní input část na 2 řádky:
-    - Řádek A: obrázek + textové pole + odeslat.
-    - Řádek B: akční tlačítka (audio + studijní materiál / pořídit zápis).
-  - Přidat `min-w-0` + `flex-1` na kontejner textového pole, aby se nesložil při změně šířky ostatních prvků.
-  - Povolit zalomení (`flex-wrap`) u sekundárních akcí, aby nic neodjelo mimo viewport.
-- Očekávaný efekt:
-  - Textarea zůstane viditelná při všech audio stavech.
-  - „Analyzovat“ bude dostupné i na menších šířkách.
+## Reseni
 
-2) Úprava `AudioRecordButton` pro lepší dostupnost „Nahrát“ a „Analyzovat“
-- Soubor: `src/components/AudioRecordButton.tsx`
-- Změna:
-  - Zachovat konzistentní (predikovatelnější) šířku komponenty napříč stavy.
-  - V recorded stavu zmenšit horizontální náročnost (responsivní chování + wrap), aby tlačítko „Analyzovat“ nebylo schované.
-  - Přidat jasnější textové labely akcí (např. „Nahrát“, „Zastavit“, „Analyzovat“), nejen ikony.
-  - Ošetřit disabled stav konzistentně i pro relevantní akce.
-- Očekávaný efekt:
-  - Uživatel vždy jasně vidí, co je další krok.
-  - Nižší riziko, že tlačítko „Analyzovat“ bude mimo obraz.
+### 1. Pridani CSS stylu pro odkazy v prose kontejneru
+- **Soubor:** `src/index.css`
+- **Zmena:** Pridat styl pro `a` tagy uvnitr `.prose` tridy v assistant zpravach:
+  - Barva: zelena/primary (konzistentni s designem aplikace)
+  - Podtrzeni
+  - Hover efekt
+  - Indikace `target="_blank"` (volitelne mala ikona externiho odkazu)
 
-3) Progress bar + časový kontext nahrávání
-- Soubor: `src/components/AudioRecordButton.tsx`
-- Soubor: `src/hooks/useAudioRecorder.ts`
-- Změna:
-  - Využít existující `src/components/ui/progress.tsx`.
-  - Zobrazit v `recording` stavu:
-    - elapsed čas,
-    - progress bar (z 300 s),
-    - případně stručný text „zbývá X:YY“.
-  - V hooku explicitně exportovat/vracet max limit (300 s), aby UI nepoužívalo hardcoded duplicitu.
-- Očekávaný efekt:
-  - Uživatel ví, kolik času má.
-  - Přirozenější UX při automatickém stopu po 5 minutách.
+### 2. Uprava ChatMessage – explicitni styl odkazu
+- **Soubor:** `src/components/ChatMessage.tsx`
+- **Zmena:** Pridat tailwind tridy na `prose` kontejner:
+  - `prose-a:text-primary prose-a:underline prose-a:decoration-primary/50 prose-a:hover:decoration-primary`
+- Tim se zajisti, ze vsechny Markdown odkazy budou jednoznacne vizualne odlisene
 
-4) Zpřístupnění audio analýzy v praxi (interakční tok)
-- Soubor: `src/pages/Chat.tsx`
-- Soubor: `src/components/report/SupervisionChat.tsx`
-- Změna:
-  - Ujistit se, že přechod `recording -> recorded` je v UI jednoznačný a akce „Analyzovat“ je viditelná bez horizontálního scrollu.
-  - Po odeslání analýzy zachovat stávající kontextový behavior (mode + chat context), jen zlepšit ovladatelnost.
-- Očekávaný efekt:
-  - Funkční tok: Nahrát -> Zastavit -> Analyzovat -> výsledek v chatu.
+## Ocekavany vysledek
+- Vsechny vygenerovane odkazy v odpovedi Karla budou modre/zelene a podtrzene
+- Uzivatel na prvni pohled pozna, co je klikatelny odkaz
+- Zadne zmeny v backendu ani edge funkcich
 
-Testovací scénáře (end-to-end):
-1. `/chat` v režimech: Supervizní reflexe, Bezpečnost a hranice, Péče o dítě, Debrief:
-   - Spustit nahrávání, během nahrávání zkontrolovat, že textarea nezmizí.
-   - Zastavit, ověřit viditelné a klikatelné „Analyzovat“.
-2. Report split-view (`mainMode = report`, komponenta `SupervisionChat`):
-   - Totéž na užším viewportu (mobil/tablet/desktop).
-3. Limit 5 minut:
-   - Ověřit progress bar a auto-stop + toast.
-4. Chybové stavy:
-   - Zakázaný mikrofon -> toast chyba, UI se nerozbije.
-5. Síť:
-   - Po kliknutí „Analyzovat“ ověřit request na `karel-audio-analysis` a vrácení odpovědi do chatu.
-
-Poznámka k backendu:
-- Není potřeba měnit databázi ani přístupová pravidla.
-- Funkce `karel-audio-analysis` už obsahuje kontextové větvení podle režimu; zde jde hlavně o UI/UX zpřístupnění akce.
-
-Rizika a mitigace:
-- Riziko: příliš mnoho tlačítek v jednom řádku na malých displejích.
-  - Mitigace: dvouřádkový layout + wrap + `min-w-0`.
-- Riziko: nejednotné chování mezi `/chat` a report split-view.
-  - Mitigace: aplikovat stejný layout pattern v obou souborech a otestovat oba flow.
-
-Po schválení provedu přesně tyto úpravy v uvedených souborech.
+## Rozsah
+- 1 soubor: `src/components/ChatMessage.tsx` (pridani tailwind trid)
+- Pripadne: `src/index.css` (pokud tailwind prose tridy nestaci)
