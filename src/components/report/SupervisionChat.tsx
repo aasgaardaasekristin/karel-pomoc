@@ -68,50 +68,61 @@ const SupervisionChat = () => {
     try {
       const headers = await getAuthHeaders();
 
-      // Build context from form data
-      const formContext = activeSession.formData;
+      // Build COMPLETE context from form data - Karel sees everything
+      const fd = activeSession.formData;
       const formSummary = [
-        formContext.context && `Kontext: ${formContext.context}`,
-        formContext.keyTheme && `Téma: ${formContext.keyTheme}`,
-        formContext.therapistEmotions.length > 0 && `Emoce: ${formContext.therapistEmotions.join(", ")}`,
-        formContext.transference && `Přenos: ${formContext.transference}`,
-        formContext.risks.length > 0 && `Rizika: ${formContext.risks.join(", ")}`,
-        formContext.interventionsTried && `Intervence: ${formContext.interventionsTried}`,
+        `Jméno klienta/kontaktu: ${fd.contactFullName || activeSession.clientName}`,
+        fd.contactEmail && `Email: ${fd.contactEmail}`,
+        fd.contactPhone && `Telefon: ${fd.contactPhone}`,
+        fd.clientAge && `Věk: ${fd.clientAge}`,
+        fd.isMinor && `⚠️ NEZLETILÝ KLIENT`,
+        fd.isMinor && fd.childFullName && `Dítě: ${fd.childFullName}`,
+        fd.isMinor && fd.guardianFullName && `Zákonný zástupce: ${fd.guardianFullName}`,
+        fd.context && `Kontext sezení: ${fd.context}`,
+        fd.keyTheme && `Klíčové téma: ${fd.keyTheme}`,
+        fd.therapistEmotions.length > 0 && `Emoce terapeuta: ${fd.therapistEmotions.join(", ")}${fd.therapistEmotionsOther ? `, ${fd.therapistEmotionsOther}` : ""}`,
+        fd.transference && `Přenos/protipřenos: ${fd.transference}`,
+        fd.risks.length > 0 && `Rizika: ${fd.risks.join(", ")}${fd.risksOther ? `, ${fd.risksOther}` : ""}`,
+        fd.missingData && `Co potřebuji ověřit: ${fd.missingData}`,
+        fd.interventionsTried && `Dosavadní intervence: ${fd.interventionsTried}`,
+        fd.nextSessionGoal && `Cíl dalšího sezení: ${fd.nextSessionGoal}`,
       ].filter(Boolean).join("\n");
 
       const liveSupervisionContext = `═══ ŽIVÁ SUPERVIZE BĚHEM SEZENÍ ═══
-Klient: ${activeSession.clientName}
 
-Aktuální formulář:
-${formSummary}
+📋 AKTUÁLNÍ STAV FORMULÁŘE (Karel to vidí v reálném čase):
+${formSummary || "(formulář je zatím prázdný)"}
 
-${activeSession.reportText ? `Vygenerovaný report:\n${activeSession.reportText}` : ""}
+${activeSession.reportText ? `📄 Vygenerovaný report:\n${activeSession.reportText}` : ""}
 
 ═══ PRAVIDLA PRO ŽIVOU SUPERVIZI (PŘÍSNĚ DODRŽUJ!) ═══
 
-Karel je PRAKTICKÝ SUPERVIZOR ZA PLENTOU. Mamka sedí přímo s klientem.
+Karel je PRAKTICKÝ SUPERVIZOR ZA PLENTOU. Mamka sedí PŘÍMO s klientem PRÁVĚ TEĎ.
+
+KLÍČOVÉ: Karel VIDÍ formulář. Reaguje na to, co tam mamka vyplnila.
+- Pokud vidí kontext/téma → okamžitě navrhne první otázku nebo aktivitu
+- Pokud vidí rizika → upozorní na bezpečnost, co sledovat
+- Pokud vidí "nezletilý" → přizpůsobí jazyk, navrhne hry přiměřené věku
+- Pokud vidí emoce terapeuta → stručně podpoří a přesměruje na klienta
+- Karel je vždy PŮL KROKU NAPŘED – sám navrhuje, co dělat dál
 
 STYL ODPOVĚDÍ:
-- MAX 3–5 vět na odpověď. Stručně, jasně, akčně.
-- ŽÁDNÉ filosofování, ŽÁDNÉ rozbory, ŽÁDNÉ analýzy – to si Karel nechá do reportu.
-- Karel radí JAK SE PTÁT, JAK SE TVÁŘIT, CO ŘÍCT, CO NEŘÍKAT.
-- Navrhuje konkrétní hry, testy, aktivity (s přesným zněním instrukce pro klienta).
-- Říká přesné znění otázek – mamka si je může zkopírovat a říct nahlas.
-- Upozorní na výraz tváře: "Teď se neusmívej, drž neutrální výraz."
-- Upozorní na co reagovat: "Všimla sis, že řekl X? Zeptej se na to."
+- MAX 3–5 vět. Žádné úvody, žádné "pojďme se podívat".
+- Rovnou akci: co říct, jak se zeptat, jakou hru zadat.
+- Přesné znění otázek – mamka si zkopíruje a řekne nahlas.
+- Upozornění na výraz: "Drž neutrální výraz." / "Teď se usmívej."
+- Upozornění na reakci: "Řekl X – zeptej se proč."
 
 FORMÁT:
-- 🎯 Otázka/instrukce: přesné znění co má říct
-- 🎮 Hra/test: název + jak uvést klientovi (přesná slova)
-- ⚠️ Pozor: na co si dát pozor (1 věta)
-- 👀 Sleduj: co pozorovat u klienta
+🎯 Řekni: "přesné znění otázky pro klienta"
+🎮 Aktivita: název + přesná instrukce co říct klientovi
+⚠️ Pozor: jednověté upozornění
+👀 Sleduj: co pozorovat
 
-NIKDY v živém chatu:
-- Nepiš diagnostické hypotézy
-- Nepiš hodnocení terapeuta
-- Nepiš dlouhé rozbory
-- Nepiš "co by řekl Jung" ani odborné úvahy
-- Vše výše si Karel NECHÁ DO REPORTU`;
+ZAKÁZÁNO v živém chatu (nechej do reportu):
+- Diagnostické hypotézy, odborné analýzy, hodnocení terapeuta
+- Filosofické úvahy, citace, dlouhé rozbory
+- "Co by řekl Jung" – vše výše patří DO REPORTU, ne sem`;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
