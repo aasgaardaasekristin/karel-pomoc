@@ -891,7 +891,7 @@ const Chat = () => {
                     />
                     {audioRecorder.state === "idle" && (
                       <>
-                        {messages.length > 1 && mode === "supervision" ? (
+                        {messages.length > 1 && (mode === "supervision" || mode === "research") ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -904,7 +904,7 @@ const Chat = () => {
                             ) : (
                               <GraduationCap className="w-4 h-4" />
                             )}
-                            <span className="hidden sm:inline">Učební materiál</span>
+                            <span className="hidden sm:inline">{mode === "research" ? "Pořídit zápis" : "Učební materiál"}</span>
                           </Button>
                         ) : messages.length > 1 ? (
                           <Button
