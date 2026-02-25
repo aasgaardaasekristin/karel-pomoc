@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
+import { ActiveSessionsProvider } from "@/contexts/ActiveSessionsContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
 import Chat from "./pages/Chat";
@@ -23,6 +24,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <CrisisSupervisionProvider>
+      <ActiveSessionsProvider>
       <ChatProvider>
         <Toaster />
         <Sonner />
@@ -48,6 +50,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </ChatProvider>
+      </ActiveSessionsProvider>
       </CrisisSupervisionProvider>
     </TooltipProvider>
   </QueryClientProvider>
