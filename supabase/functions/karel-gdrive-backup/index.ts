@@ -156,18 +156,94 @@ serve(async (req) => {
       kartotekaId = await createFolder(token, "KARTOTEKA");
     }
 
+    // ── Format helpers ──
+    const fmtDate = (d: string | null) => {
+      if (!d) return null;
+      try {
+        const dt = new Date(d);
+        return dt.toLocaleDateString("cs-CZ", { day: "2-digit", month: "2-digit", year: "numeric" });
+      } catch { return d; }
+    };
+    const fmtDateTime = (d: string | null) => {
+      if (!d) return null;
+      try {
+        const dt = new Date(d);
+        return `${dt.toLocaleDateString("cs-CZ")} ${dt.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}`;
+      } catch { return d; }
+    };
+    const clean = (v: any) => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0) ? undefined : v;
+
+    const EMOTION_MAP: Record<string, string> = {
+      calm: "Klid", sadness: "Smutek", helplessness: "Bezmoc",
+      anger: "Vztek", fear: "Strach", uncertainty: "Nejistota",
+    };
+    const RISK_MAP: Record<string, string> = {
+      selfharm: "Sebepoškozování", violence: "Násilí", threats: "Hrozby",
+      abuse: "Zneužívání", boundaries: "Hranice", none: "Žádné",
+    };
+    const THEME_MAP: Record<string, string> = {
+      trauma: "Trauma", relationships: "Vztahy", anxiety: "Úzkost",
+      depression: "Deprese", "child-family": "Dítě & rodina", addiction: "Závislosti", other: "Jiné",
+    };
+
     // Upload one JSON file per client
     let uploaded = 0;
     for (const client of clients) {
       const clientSessions = allSessions.filter((s: any) => s.client_id === client.id);
       const clientTasks = allTasks.filter((t: any) => t.client_id === client.id);
 
-      const payload = {
-        _backup_date: new Date().toISOString(),
-        client,
-        sessions: clientSessions,
-        tasks: clientTasks,
+      const formatSession = (s: any) => {
+        const result: any = {
+          cislo_sezeni: s.session_number,
+          datum: fmtDate(s.session_date),
+        };
+        if (clean(s.report_context)) result.kontext = s.report_context;
+        if (clean(s.report_key_theme)) result.klicove_tema = THEME_MAP[s.report_key_theme] || s.report_key_theme;
+        if (clean(s.report_therapist_emotions)) result.emoce_terapeuta = s.report_therapist_emotions.map((e: string) => EMOTION_MAP[e] || e);
+        if (clean(s.report_transference)) result.prenos_protiprenos = s.report_transference;
+        if (clean(s.report_risks)) result.rizika = s.report_risks.map((r: string) => RISK_MAP[r] || r);
+        if (clean(s.report_missing_data)) result.co_overit = s.report_missing_data;
+        if (clean(s.report_interventions_tried)) result.intervence = s.report_interventions_tried;
+        if (clean(s.report_next_session_goal)) result.cil_dalsiho_sezeni = s.report_next_session_goal;
+        if (clean(s.ai_analysis)) result.ai_analyza = s.ai_analysis;
+        if (clean(s.ai_hypotheses)) result.supervize_chat = s.ai_hypotheses;
+        if (clean(s.notes)) result.poznamky = s.notes;
+        return result;
       };
+
+      const formatTask = (t: any) => {
+        const result: any = {
+          ukol: t.task,
+          stav: t.status === "planned" ? "Plánováno" : t.status === "done" ? "Hotovo" : t.status,
+        };
+        if (clean(t.method)) result.metoda = t.method;
+        if (clean(t.due_date)) result.termin = fmtDate(t.due_date);
+        if (clean(t.notes)) result.poznamky = t.notes;
+        if (clean(t.result)) result.vysledek = t.result;
+        return result;
+      };
+
+      const payload: any = {
+        zaloha_datum: fmtDateTime(new Date().toISOString()),
+        klient: {
+          jmeno: client.name,
+          ...(clean(client.age) && { vek: client.age }),
+          ...(clean(client.gender) && { pohlavi: client.gender }),
+          ...(clean(client.diagnosis) && { diagnoza: client.diagnosis }),
+          ...(clean(client.therapy_type) && { typ_terapie: client.therapy_type }),
+          ...(clean(client.referral_source) && { zdroj_doporuceni: client.referral_source }),
+          ...(clean(client.key_history) && { klicova_anamneza: client.key_history }),
+          ...(clean(client.family_context) && { rodinny_kontext: client.family_context }),
+          ...(clean(client.notes) && { poznamky: client.notes }),
+        },
+      };
+
+      if (clientSessions.length > 0) {
+        payload.sezeni = clientSessions.map(formatSession);
+      }
+      if (clientTasks.length > 0) {
+        payload.ukoly = clientTasks.map(formatTask);
+      }
 
       const safeName = client.name.replace(/[^a-zA-Z0-9áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ _-]/g, "_");
       const fileName = `${safeName}.json`;
