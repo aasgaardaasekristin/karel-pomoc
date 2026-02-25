@@ -68,13 +68,26 @@ const getRandomCastGreeting = () => {
 
 const saveMessages = (mode: string, messages: { role: string; content: string }[]) => {
   try {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify(messages));
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify({ _mode: mode, messages }));
   } catch { /* quota exceeded – silently ignore */ }
 };
 const loadMessages = (mode: string) => {
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${mode}`);
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // New format: { _mode, messages }
+    if (parsed && typeof parsed === "object" && "_mode" in parsed) {
+      if (parsed._mode !== mode) {
+        // Contaminated data – wrong mode stored under this key
+        localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
+        return null;
+      }
+      return parsed.messages;
+    }
+    // Old format (plain array) – treat as potentially contaminated, discard
+    localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
+    return null;
   } catch { return null; }
 };
 const clearMessages = (mode: string) => {
