@@ -11,6 +11,9 @@ import ModeSelector from "@/components/ModeSelector";
 import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
+import SessionSidebar from "@/components/report/SessionSidebar";
+import SessionReportForm from "@/components/report/SessionReportForm";
+import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
@@ -719,16 +722,18 @@ const Chat = () => {
         </>
       ) : (
         <>
-          {/* Report Mode */}
-          <ScrollArea className="flex-1">
-            <ReportForm />
-          </ScrollArea>
-          
-          {/* Footer for Report Mode */}
-          <div className="border-t border-border bg-card/50 backdrop-blur-sm py-2">
-            <p className="text-xs text-muted-foreground text-center">
-              Soukromé temenos. Žádná data se neukládají.
-            </p>
+          {/* Report Mode — Split Layout */}
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Sidebar */}
+            <SessionSidebar />
+            {/* Form (left) */}
+            <div className="flex-1 min-w-0 border-r border-border">
+              <SessionReportForm />
+            </div>
+            {/* Supervision Chat (right) */}
+            <div className="flex-1 min-w-0 flex flex-col">
+              <SupervisionChat />
+            </div>
           </div>
         </>
       )}

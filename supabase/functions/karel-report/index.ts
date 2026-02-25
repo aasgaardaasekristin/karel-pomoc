@@ -10,7 +10,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { form, triage } = await req.json();
+    const { form, triage, supervisionChat } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
@@ -31,6 +31,7 @@ RIZIKA: ${form.risks?.join(", ") || "žádná"}${form.risksOther ? `, ${form.ris
 CHYBĚJÍCÍ DATA: ${form.missingData || "neuvedeno"}
 VYZKOUŠENÉ INTERVENCE: ${form.interventionsTried || "neuvedeno"}
 CÍL DALŠÍHO SEZENÍ: ${form.nextSessionGoal || "neuvedeno"}
+KONTAKT: ${form.contactFullName || "neuvedeno"}, věk: ${form.clientAge || "neuvedeno"}${form.isMinor ? `, NEZLETILÝ, dítě: ${form.childFullName || "?"}, zástupce: ${form.guardianFullName || "?"}` : ""}
 `;
 
     const triageSummary = triage ? `
@@ -41,7 +42,14 @@ TRIAGE ANALÝZA:
 - Doporučené kroky: ${triage.recommendedNextSteps?.join("; ") || "neuvedeno"}
 ` : "";
 
-    const systemPrompt = `Jsi expertní klinický supervizor. Generuješ strukturovaný report ze sezení.
+    const supervisionSummary = supervisionChat ? `
+PRŮBĚH ŽIVÉ SUPERVIZE BĚHEM SEZENÍ:
+${supervisionChat}
+` : "";
+
+    const systemPrompt = `Jsi Karel – expertní klinický supervizor a Carl Gustav Jung v moderním nastavení. Generuješ komplexní supervizní report ze sezení.
+
+DŮLEŽITÉ: Toto NENÍ jen shrnutí formuláře. Karel PŘIDÁVÁ vlastní profesionální analýzu:
 
 FORMÁT REPORTU (vždy dodržuj tuto strukturu):
 
@@ -50,38 +58,61 @@ FORMÁT REPORTU (vždy dodržuj tuto strukturu):
 ## 1. Rychlé shrnutí
 (2-5 vět shrnujících podstatu případu)
 
-## 2. Hypotézy
-(Minimálně 3 různé perspektivy/rámce - vyber relevantní z: trauma-informed, CBT/schema, vývojový, vztahový, systemický, psychodynamický)
+## 2. Karlova profesionální analýza
+(Vlastní AI analýza – Karel vyhodnotí situaci jako zkušený supervizor. Zahrne:)
+- **Hodnocení průběhu sezení**: Kde byly projevy terapeuta silné, kde slabé
+- **Co udělat příště lépe**: Konkrétní doporučení pro terapeutku
+- **Čemu se vyhnout**: Potenciální chyby a slepé uličky
+- **Osobnost klienta**: Odhad typu osobnosti, klíčové vzorce
+- **Stav a problém**: Diagnostický pohled, možná rizika, potenciální eskalace
 
-## 3. Otázky pro další sezení
-(8-12 konkrétních otázek pro klienta${triage ? " - preferuj ty z triage analýzy" : ""})
+## 3. Diagnostické hypotézy
+(Minimálně 3 různé perspektivy: trauma-informed, CBT/schema, vývojový, vztahový, systemický, psychodynamický)
 
-## 4. Mikro-intervence
-(5-8 konkrétních technik/intervencí k vyzkoušení)
+## 4. Doporučené metody a techniky
+(Pro každou hypotézu navrhni 3+ KONKRÉTNÍCH technik s příklady:)
+- **Behaviorální techniky**: (min. 3 konkrétní příklady s popisem jak provést)
+- **Projektivní metody**: kresby, asociační experimenty, card sort
+- **Herní techniky**: (pokud relevantní – konkrétní hry s instrukcemi)
+- **Relaxační techniky**: konkrétní postup krok za krokem
+- **Narativní/expresivní**: písemné úkoly, deník, koláže
 
-## 5. Checklist rizik
+## 5. Otázky pro další sezení
+(8-12 konkrétních otázek – Karel navrhne PŘESNÉ znění${triage ? " – preferuj ty z triage" : ""})
+
+## 6. Mikro-intervence
+(5-8 konkrétních technik k vyzkoušení přímo na sezení)
+
+## 7. Checklist rizik
 (Co hlídat, kdy eskalovat, bezpečnostní signály)
 
-${hasSeriousRisks ? `## 6. Bezpečnostní rámec
-(Stručný postup: co udělat, koho kontaktovat, doporučení supervize - bez dramatizace, věcně)
+${hasSeriousRisks ? `## 8. Bezpečnostní rámec
+(Postup: co udělat, koho kontaktovat, doporučení supervize)
 
-## 7. Doporučený další krok
+## 9. Hodnocení terapeuta
+` : `## 8. Hodnocení terapeuta
+`}(Karel jemně ale přesně zhodnotí práci terapeutky:)
+- **Silné stránky v tomto sezení**: co se povedlo
+- **Oblasti k rozvoji**: kde je prostor pro růst
+- **Supervizní doporučení**: na co se zaměřit ve vlastním profesním vývoji
+- **Prevence vyhoření**: Karel posoudí míru zátěže a navrhne sebepeči
+
+${hasSeriousRisks ? "## 10" : "## 9"}. Doporučený další krok
 (1-3 konkrétní akce)
 
-## 8. Text ke zkopírování do karty klienta
-` : `## 6. Doporučený další krok
-(1-3 konkrétní akce)
-
-## 7. Text ke zkopírování do karty klienta
-`}(Kompaktní profesionální zápis bez jmen, vhodný do dokumentace)
+${hasSeriousRisks ? "## 11" : "## 10"}. Text ke zkopírování do karty klienta
+(Kompaktní profesionální zápis bez jmen, vhodný do dokumentace)
 
 ---
 
 DŮLEŽITÉ:
-- NIKDY nepoužívej jména ani identifikátory
+- NIKDY nepoužívej jména ani identifikátory v klinickém textu
 - Piš česky, profesionálně ale srozumitelně
-- Buď konkrétní, ne obecný
-- Report má být prakticky použitelný`;
+- Buď KONKRÉTNÍ, ne obecný – uveď vždy příklady
+- Report má být prakticky použitelný
+- Karel přidává SVŮJ odborný náhled navíc k datům z formuláře
+- Karel je jemný ale přímý – chce z terapeutky udělat profesionálního génia
+- Motivuj, podporuj, ale buď přesný v oblastech ke zlepšení`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -93,7 +124,7 @@ DŮLEŽITÉ:
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `VSTUPNÍ DATA:\n${formSummary}\n${triageSummary}\n\nVygeneruj kompletní supervizní report.` },
+          { role: "user", content: `VSTUPNÍ DATA:\n${formSummary}\n${triageSummary}\n${supervisionSummary}\nVygeneruj kompletní supervizní report s Karlovou profesionální analýzou.` },
         ],
       }),
     });
