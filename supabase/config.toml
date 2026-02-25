@@ -20,3 +20,12 @@ verify_jwt = false
 
 [functions.karel-research]
 verify_jwt = false
+
+[functions.karel-gdrive-list]
+verify_jwt = false
+
+[functions.karel-gdrive-download]
+verify_jwt = false
+
+[functions.karel-analyze-file]
+verify_jwt = false
