@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2, Phone, ShieldAlert, HeartHandshake } from "lucide-react";
+import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import ImageUploadButton from "@/components/ImageUploadButton";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { CalmScenario } from "./ScenarioSelector";
@@ -50,6 +52,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
     { role: "assistant", content: scenarioFirstMessages[scenario] },
   ]);
   const [input, setInput] = useState("");
+  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
   const [isLoading, setIsLoading] = useState(false);
   const [riskScore, setRiskScore] = useState(0);
   const [showTherapistBridge, setShowTherapistBridge] = useState(false);
@@ -220,11 +223,15 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
+    const images = [...pendingImages];
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    clearImages();
+
+    const userContent = buildMultimodalContent(userMessage, images);
+    setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     setMessageCount((c) => c + 1);
     setIsLoading(true);
 
@@ -240,7 +247,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
           },
           body: JSON.stringify({
-            messages: [...messages, { role: "user", content: userMessage }],
+            messages: [...messages, { role: "user", content: userContent }],
             scenario,
           }),
         }
@@ -475,7 +482,15 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
       {/* Input */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
         <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="flex gap-3 items-end">
+          <div className="flex gap-3 items-end relative">
+            <ImageUploadButton
+              onOpenPicker={openFilePicker}
+              pendingImages={pendingImages}
+              onRemoveImage={removeImage}
+              disabled={isLoading}
+              fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+              onFileChange={handleFileChange}
+            />
             <Textarea
               ref={textareaRef}
               value={input}
@@ -487,7 +502,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
             />
             <Button
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
+              disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
               size="icon"
               className="h-[48px] w-[48px] shrink-0"
             >

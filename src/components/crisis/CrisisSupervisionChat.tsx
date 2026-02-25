@@ -3,6 +3,8 @@ import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, Loader2, HeartHandshake, ListChecks } from "lucide-react";
+import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import ImageUploadButton from "@/components/ImageUploadButton";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { DbCrisisBrief } from "./types";
@@ -114,6 +116,7 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
   const [started, setStarted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
+  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
   const [isLoading, setIsLoading] = useState(false);
   const [summary, setSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -193,10 +196,13 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
     const userMessage = input.trim();
+    const images = [...pendingImages];
     setInput("");
-    const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
+    clearImages();
+    const userContent = buildMultimodalContent(userMessage, images);
+    const updatedMessages = [...messages, { role: "user" as const, content: userContent as any }];
     setMessages(updatedMessages);
     setIsLoading(true);
 
@@ -295,7 +301,15 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
         </div>
       )}
 
-      <div className="flex gap-2 items-end">
+      <div className="flex gap-2 items-end relative">
+        <ImageUploadButton
+          onOpenPicker={openFilePicker}
+          pendingImages={pendingImages}
+          onRemoveImage={removeImage}
+          disabled={isLoading || isSummarizing}
+          fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+          onFileChange={handleFileChange}
+        />
         <Textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -304,7 +318,7 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
           className="min-h-[40px] max-h-[80px] resize-none text-sm"
           disabled={isLoading || isSummarizing}
         />
-        <Button onClick={sendMessage} disabled={!input.trim() || isLoading || isSummarizing} size="icon" className="h-[40px] w-[40px] shrink-0">
+        <Button onClick={sendMessage} disabled={(!input.trim() && pendingImages.length === 0) || isLoading || isSummarizing} size="icon" className="h-[40px] w-[40px] shrink-0">
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </div>

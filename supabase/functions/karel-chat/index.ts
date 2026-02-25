@@ -39,7 +39,13 @@ serve(async (req) => {
         model: "google/gemini-3-flash-preview",
         messages: [
           { role: "system", content: systemPrompt },
-          ...messages,
+          ...messages.map((m: any) => {
+            // Pass through multimodal content arrays as-is (OpenAI vision format)
+            if (Array.isArray(m.content)) {
+              return { role: m.role, content: m.content };
+            }
+            return m;
+          }),
         ],
         stream: true,
       }),

@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen } from "lucide-react";
+import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import ImageUploadButton from "@/components/ImageUploadButton";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -103,6 +105,7 @@ const Chat = () => {
     setDidInitialContext,
   } = useChatContext();
   const [input, setInput] = useState("");
+  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
   const [isLoading, setIsLoading] = useState(false);
   const [didDocsLoaded, setDidDocsLoaded] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
@@ -456,11 +459,15 @@ const Chat = () => {
   };
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
+    const images = [...pendingImages];
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    clearImages();
+
+    const userContent = buildMultimodalContent(userMessage, images);
+    setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     setIsLoading(true);
 
     let assistantContent = "";
@@ -473,7 +480,7 @@ const Chat = () => {
           method: "POST",
           headers,
           body: JSON.stringify({
-            messages: [...messages, { role: "user", content: userMessage }],
+            messages: [...messages, { role: "user", content: userContent }],
             mode,
             ...(mode === "childcare" && didInitialContext ? { didInitialContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
@@ -661,7 +668,15 @@ const Chat = () => {
               {/* Input Area */}
               <div className="border-t border-border bg-card/50 backdrop-blur-sm">
                 <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  <div className="flex gap-2 sm:gap-3 items-end">
+                  <div className="flex gap-2 sm:gap-3 items-end relative">
+                    <ImageUploadButton
+                      onOpenPicker={openFilePicker}
+                      pendingImages={pendingImages}
+                      onRemoveImage={removeImage}
+                      disabled={isLoading || isSoapLoading}
+                      fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                      onFileChange={handleFileChange}
+                    />
                     <Textarea
                       ref={textareaRef}
                       value={input}
@@ -673,7 +688,7 @@ const Chat = () => {
                     />
                     <Button
                       onClick={sendMessage}
-                      disabled={!input.trim() || isLoading || isSoapLoading}
+                      disabled={(!input.trim() && pendingImages.length === 0) || isLoading || isSoapLoading}
                       size="icon"
                       className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
                     >
