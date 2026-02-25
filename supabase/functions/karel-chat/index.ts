@@ -18,15 +18,15 @@ serve(async (req) => {
     }
 
     let systemPrompt = getSystemPrompt(mode as ConversationMode);
-    
-    // Append DID sub-mode and initial context
-    if (mode === "childcare") {
-      if (didSubMode) {
-        systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
-      }
-      if (didInitialContext) {
-        systemPrompt += `\n\n═══ KONTEXT OD MAMKY (předáno před zahájením rozhovoru) ═══\n\n${didInitialContext}`;
-      }
+
+    // Runtime context from UI (form snapshot, live supervision instructions, etc.)
+    if (typeof didInitialContext === "string" && didInitialContext.trim().length > 0) {
+      systemPrompt += `\n\n═══ RUNTIME KONTEXT Z APLIKACE (ZDROJ PRAVDY) ═══\n\n${didInitialContext}`;
+    }
+
+    // DID-specific metadata
+    if (mode === "childcare" && didSubMode) {
+      systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

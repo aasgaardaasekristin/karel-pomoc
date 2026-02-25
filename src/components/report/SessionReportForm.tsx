@@ -61,19 +61,24 @@ const SessionReportForm = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll form down as chat progresses
+  // Auto-scroll form with live chat stream and keep active field visible
   const chatMessageCount = activeSession?.chatMessages?.length ?? 0;
+  const liveLastMessageLength = activeSession?.chatMessages?.[chatMessageCount - 1]?.content.length ?? 0;
+
   useEffect(() => {
-    if (scrollRef.current && chatMessageCount > 0) {
-      const el = scrollRef.current;
-      // Scroll proportionally — keep form flowing with chat
-      const scrollTarget = Math.min(
-        el.scrollHeight - el.clientHeight,
-        el.scrollTop + 120
-      );
-      el.scrollTo({ top: scrollTarget, behavior: "smooth" });
+    const viewport = scrollRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null;
+    if (!viewport || chatMessageCount === 0) return;
+
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused && viewport.contains(focused)) {
+      focused.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
     }
-  }, [chatMessageCount]);
+
+    const maxScroll = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+    const scrollTarget = Math.min(maxScroll, viewport.scrollTop + 96);
+    viewport.scrollTo({ top: scrollTarget, behavior: "smooth" });
+  }, [chatMessageCount, liveLastMessageLength]);
 
   if (!activeSession || !activeSessionId) {
     return (
