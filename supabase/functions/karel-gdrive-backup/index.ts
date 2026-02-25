@@ -76,7 +76,7 @@ async function findFile(token: string, name: string, parentId: string): Promise<
   return data.files?.[0]?.id || null;
 }
 
-async function uploadOrUpdate(token: string, fileName: string, content: string, folderId: string) {
+async function uploadOrUpdate(token: string, fileName: string, content: string, folderId: string, mimeType = "text/plain") {
   const existingId = await findFile(token, fileName, folderId);
   const boundary = "----BackupBoundary";
   const metadata = JSON.stringify(
@@ -87,7 +87,7 @@ async function uploadOrUpdate(token: string, fileName: string, content: string, 
 
   const body =
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
-    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${content}\r\n` +
+    `--${boundary}\r\nContent-Type: ${mimeType}; charset=UTF-8\r\n\r\n${content}\r\n` +
     `--${boundary}--`;
 
   const url = existingId
@@ -158,20 +158,23 @@ serve(async (req) => {
 
     // ── Format helpers ──
     const fmtDate = (d: string | null) => {
-      if (!d) return null;
+      if (!d) return "";
       try {
         const dt = new Date(d);
         return dt.toLocaleDateString("cs-CZ", { day: "2-digit", month: "2-digit", year: "numeric" });
       } catch { return d; }
     };
     const fmtDateTime = (d: string | null) => {
-      if (!d) return null;
+      if (!d) return "";
       try {
         const dt = new Date(d);
         return `${dt.toLocaleDateString("cs-CZ")} ${dt.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}`;
       } catch { return d; }
     };
-    const clean = (v: any) => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0) ? undefined : v;
+    const has = (v: any) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0);
+    const line = (label: string, value: any) => has(value) ? `${label}: ${value}\n` : "";
+    const divider = "═".repeat(60);
+    const thinDivider = "─".repeat(60);
 
     const EMOTION_MAP: Record<string, string> = {
       calm: "Klid", sadness: "Smutek", helplessness: "Bezmoc",
@@ -186,68 +189,125 @@ serve(async (req) => {
       depression: "Deprese", "child-family": "Dítě & rodina", addiction: "Závislosti", other: "Jiné",
     };
 
-    // Upload one JSON file per client
+    // Strip markdown comment markers <!-- ... -->
+    const stripComments = (text: string) => text.replace(/<!--[^>]*-->/g, "").trim();
+
+    // Build one text document per client
     let uploaded = 0;
     for (const client of clients) {
-      const clientSessions = allSessions.filter((s: any) => s.client_id === client.id);
+      const clientSessions = allSessions
+        .filter((s: any) => s.client_id === client.id)
+        .sort((a: any, b: any) => (a.session_number || 0) - (b.session_number || 0));
       const clientTasks = allTasks.filter((t: any) => t.client_id === client.id);
 
-      const formatSession = (s: any) => {
-        const result: any = {
-          cislo_sezeni: s.session_number,
-          datum: fmtDate(s.session_date),
-        };
-        if (clean(s.report_context)) result.kontext = s.report_context;
-        if (clean(s.report_key_theme)) result.klicove_tema = THEME_MAP[s.report_key_theme] || s.report_key_theme;
-        if (clean(s.report_therapist_emotions)) result.emoce_terapeuta = s.report_therapist_emotions.map((e: string) => EMOTION_MAP[e] || e);
-        if (clean(s.report_transference)) result.prenos_protiprenos = s.report_transference;
-        if (clean(s.report_risks)) result.rizika = s.report_risks.map((r: string) => RISK_MAP[r] || r);
-        if (clean(s.report_missing_data)) result.co_overit = s.report_missing_data;
-        if (clean(s.report_interventions_tried)) result.intervence = s.report_interventions_tried;
-        if (clean(s.report_next_session_goal)) result.cil_dalsiho_sezeni = s.report_next_session_goal;
-        if (clean(s.ai_analysis)) result.ai_analyza = s.ai_analysis;
-        if (clean(s.ai_hypotheses)) result.supervize_chat = s.ai_hypotheses;
-        if (clean(s.notes)) result.poznamky = s.notes;
-        return result;
-      };
+      let doc = "";
 
-      const formatTask = (t: any) => {
-        const result: any = {
-          ukol: t.task,
-          stav: t.status === "planned" ? "Plánováno" : t.status === "done" ? "Hotovo" : t.status,
-        };
-        if (clean(t.method)) result.metoda = t.method;
-        if (clean(t.due_date)) result.termin = fmtDate(t.due_date);
-        if (clean(t.notes)) result.poznamky = t.notes;
-        if (clean(t.result)) result.vysledek = t.result;
-        return result;
-      };
+      // ═══ HEADER 1: KARTA KLIENTA ═══
+      doc += `${divider}\n`;
+      doc += `  KARTA KLIENTA: ${client.name}\n`;
+      doc += `${divider}\n\n`;
+      doc += line("Jméno", client.name);
+      doc += line("Věk", client.age);
+      doc += line("Pohlaví", client.gender);
+      doc += line("Diagnóza", client.diagnosis);
+      doc += line("Typ terapie", client.therapy_type);
+      doc += line("Zdroj doporučení", client.referral_source);
+      doc += line("Klíčová anamnéza", client.key_history);
+      doc += line("Rodinný kontext", client.family_context);
+      doc += line("Poznámky", client.notes);
+      doc += `\nZáloha vytvořena: ${fmtDateTime(new Date().toISOString())}\n`;
 
-      const payload: any = {
-        zaloha_datum: fmtDateTime(new Date().toISOString()),
-        klient: {
-          jmeno: client.name,
-          ...(clean(client.age) && { vek: client.age }),
-          ...(clean(client.gender) && { pohlavi: client.gender }),
-          ...(clean(client.diagnosis) && { diagnoza: client.diagnosis }),
-          ...(clean(client.therapy_type) && { typ_terapie: client.therapy_type }),
-          ...(clean(client.referral_source) && { zdroj_doporuceni: client.referral_source }),
-          ...(clean(client.key_history) && { klicova_anamneza: client.key_history }),
-          ...(clean(client.family_context) && { rodinny_kontext: client.family_context }),
-          ...(clean(client.notes) && { poznamky: client.notes }),
-        },
-      };
+      // ═══ HEADER 2+: SEZENÍ ═══
+      for (const s of clientSessions) {
+        doc += `\n\n${divider}\n`;
+        doc += `  SEZENÍ č. ${s.session_number || "?"}\n`;
+        doc += `  Datum: ${fmtDate(s.session_date)}\n`;
+        doc += `${divider}\n\n`;
 
-      if (clientSessions.length > 0) {
-        payload.sezeni = clientSessions.map(formatSession);
+        // Report fields
+        if (has(s.report_context)) {
+          doc += `KONTEXT:\n${s.report_context}\n\n`;
+        }
+        if (has(s.report_key_theme)) {
+          doc += `KLÍČOVÉ TÉMA: ${THEME_MAP[s.report_key_theme] || s.report_key_theme}\n\n`;
+        }
+        if (has(s.report_therapist_emotions)) {
+          const emotions = s.report_therapist_emotions.map((e: string) => EMOTION_MAP[e] || e).join(", ");
+          doc += `EMOCE TERAPEUTA: ${emotions}\n\n`;
+        }
+        if (has(s.report_transference)) {
+          doc += `PŘENOS / PROTIPŘENOS:\n${s.report_transference}\n\n`;
+        }
+        if (has(s.report_risks)) {
+          const risks = s.report_risks.map((r: string) => RISK_MAP[r] || r).join(", ");
+          doc += `RIZIKA: ${risks}\n\n`;
+        }
+        if (has(s.report_missing_data)) {
+          doc += `CO OVĚŘIT:\n${s.report_missing_data}\n\n`;
+        }
+        if (has(s.report_interventions_tried)) {
+          doc += `POUŽITÉ INTERVENCE:\n${s.report_interventions_tried}\n\n`;
+        }
+        if (has(s.report_next_session_goal)) {
+          doc += `CÍL DALŠÍHO SEZENÍ:\n${s.report_next_session_goal}\n\n`;
+        }
+
+        // AI content
+        if (has(s.ai_analysis)) {
+          doc += `${thinDivider}\n`;
+          doc += `KOMPLEXNÍ ANALÝZA (Karel AI)\n`;
+          doc += `${thinDivider}\n\n`;
+          doc += `${stripComments(s.ai_analysis)}\n\n`;
+        }
+
+        if (has(s.ai_hypotheses)) {
+          doc += `${thinDivider}\n`;
+          doc += `PRŮBĚH SUPERVIZE (Chat)\n`;
+          doc += `${thinDivider}\n\n`;
+          doc += `${stripComments(s.ai_hypotheses)}\n\n`;
+        }
+
+        if (has(s.ai_recommended_methods)) {
+          doc += `DOPORUČENÉ METODY:\n${s.ai_recommended_methods}\n\n`;
+        }
+        if (has(s.ai_risk_assessment)) {
+          doc += `HODNOCENÍ RIZIK:\n${s.ai_risk_assessment}\n\n`;
+        }
+        if (has(s.voice_analysis)) {
+          doc += `HLASOVÁ ANALÝZA:\n${s.voice_analysis}\n\n`;
+        }
+        if (has(s.notes)) {
+          doc += `POZNÁMKY:\n${s.notes}\n\n`;
+        }
+
+        // Tasks for this session (filtered by creation around session date)
+        const sessionTasks = clientTasks.filter((t: any) => {
+          // Show all tasks – they'll appear at end of last session
+          return true;
+        });
+
+        // We'll add tasks after all sessions instead
       }
+
+      // ═══ ÚKOLY ═══
       if (clientTasks.length > 0) {
-        payload.ukoly = clientTasks.map(formatTask);
+        doc += `\n\n${divider}\n`;
+        doc += `  *** ÚKOLY ***\n`;
+        doc += `${divider}\n\n`;
+        for (const t of clientTasks) {
+          const status = t.status === "planned" ? "⬜ Plánováno" : t.status === "done" ? "✅ Hotovo" : t.status;
+          doc += `► ${t.task}  [${status}]\n`;
+          if (has(t.method)) doc += `  Metoda: ${t.method}\n`;
+          if (has(t.due_date)) doc += `  Termín: ${fmtDate(t.due_date)}\n`;
+          if (has(t.notes)) doc += `  Poznámky: ${t.notes}\n`;
+          if (has(t.result)) doc += `  Výsledek: ${t.result}\n`;
+          doc += `\n`;
+        }
       }
 
       const safeName = client.name.replace(/[^a-zA-Z0-9áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ _-]/g, "_");
-      const fileName = `${safeName}.json`;
-      await uploadOrUpdate(token, fileName, JSON.stringify(payload, null, 2), kartotekaId);
+      const fileName = `${safeName}.txt`;
+      await uploadOrUpdate(token, fileName, doc, kartotekaId, "text/plain");
       uploaded++;
     }
 
