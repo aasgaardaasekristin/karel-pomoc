@@ -40,10 +40,14 @@ serve(async (req) => {
 
     // Get file metadata
     const metaResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size`,
+      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size&supportsAllDrives=true`,
       { headers: { Authorization: `Bearer ${access_token}` } }
     );
-    if (!metaResp.ok) throw new Error("Failed to get file metadata");
+    if (!metaResp.ok) {
+      const metaErr = await metaResp.text();
+      console.error("Metadata error:", metaResp.status, metaErr);
+      throw new Error(`Failed to get file metadata: ${metaResp.status} ${metaErr}`);
+    }
     const meta = await metaResp.json();
 
     // Determine if it's a Google Docs type that needs export
