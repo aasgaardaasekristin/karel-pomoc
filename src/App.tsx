@@ -9,6 +9,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
 import Chat from "./pages/Chat";
 import CalmMode from "./pages/CalmMode";
+import Kartoteka from "./pages/Kartoteka";
 import Zklidneni from "./pages/Zklidneni";
 import Pomoc from "./pages/Pomoc";
 import NotFound from "./pages/NotFound";
@@ -37,6 +38,7 @@ const App = () => (
               <>
                 <Route path="/" element={<Login />} />
                 <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+                <Route path="/kartoteka" element={<ProtectedRoute><Kartoteka /></ProtectedRoute>} />
                 <Route path="/calm" element={<ProtectedRoute><CalmMode /></ProtectedRoute>} />
                 <Route path="/zklidneni" element={<Zklidneni />} />
                 <Route path="/pomoc" element={<Pomoc />} />
