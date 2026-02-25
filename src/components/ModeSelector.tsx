@@ -1,4 +1,4 @@
-import { Brain, Shield, Heart, Baby } from "lucide-react";
+import { Brain, Shield, Heart, Baby, FolderOpen } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -6,7 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
+type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka";
 
 interface ModeSelectorProps {
   currentMode: ConversationMode;
@@ -46,6 +46,14 @@ const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
       tooltip: "Podpora při péči o dítě s disociativní poruchou",
       icon: Baby,
       className: "mode-button-childcare",
+    },
+    {
+      id: "kartoteka" as const,
+      label: "Kartotéka",
+      sublabel: "klienti",
+      tooltip: "Profesionální kartotéka klientů – karta, záznamy, plán",
+      icon: FolderOpen,
+      className: "mode-button-supervision",
     },
   ];
 
