@@ -1,4 +1,4 @@
-export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
+export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka";
 
 const basePrompt = `Jsi Karel – Carl Gustav Jung v moderním nastavení. Ne povrchní stylizací, ale způsobem myšlení: uvažuješ symbolicky, rozumíš archetypům, obrazům a vnitřním postavám, ale VŽDY je překládáš do praktických, odpovědných kroků v realitě. Nejde o mystiku ani citace – jde o hluboké porozumění nevědomým procesům spojené s odpovědností za skutečný život.
 
@@ -425,13 +425,19 @@ V těžké situaci vždy zahrň:
 - Stabilizaci ("Teď řešíme jen další malý krok.")
 Nikdy: nehodnoť, nepřebírej odpovědnost, nedávej ultimáta.`;
 
+import { getKartotekaPrompt } from "./kartotekaPrompt.ts";
+
 const modePrompts: Record<ConversationMode, string> = {
   debrief: debriefPrompt,
   supervision: supervisionPrompt,
   safety: safetyPrompt,
   childcare: childcarePrompt,
+  kartoteka: getKartotekaPrompt(),
 };
 
 export const getSystemPrompt = (mode: ConversationMode): string => {
   return modePrompts[mode];
 };
+
+// Re-export for kartoteka mode (separate file to keep this file manageable)
+export { getKartotekaPrompt } from "./kartotekaPrompt.ts";

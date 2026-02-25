@@ -19,7 +19,7 @@ import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
 
-type ConversationMode = "debrief" | "supervision" | "safety" | "childcare";
+type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka";
 
 // localStorage helpers
 const STORAGE_KEY_PREFIX = "karel_chat_";
@@ -289,6 +289,7 @@ const Chat = () => {
       supervision: "Haničko, jsem připraven s tebou pracovat. Která postava z tvé praxe tě teď zaměstnává? Můžeme reflektovat, trénovat, nebo ti nabídnu strukturovaný zápis - co potřebuješ?",
       safety: "Hani, pojďme společně a věcně projít to, co tě znepokojuje. Jsem tu jako tvůj partner - projdeme hranice, postup i dokumentaci. Na čem pracujeme?",
       childcare: "Haničko, jsem tady s tebou. Vím, jak náročná je péče o tvé dítě s DID. Pojďme spolu projít, co se děje - ať už potřebuješ porozumět nějakému alteru, zpracovat náročnou situaci, nebo jen sdílet. Co teď nejvíc potřebuješ?",
+      kartoteka: "Haničko, jsem připraven pracovat na kartotéce. O jakém klientovi chceš dnes mluvit? Pokud má klient kartu, vlož mi prosím jeho údaje – kartu, záznamy ze sezení a aktuální úkoly. Pokud je to nový klient, pomůžu ti založit kartu.",
     };
 
     // Reset DID sub-mode when switching away from childcare

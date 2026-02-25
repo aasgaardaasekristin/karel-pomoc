@@ -41,6 +41,184 @@ export type Database = {
         }
         Relationships: []
       }
+      client_sessions: {
+        Row: {
+          ai_analysis: string | null
+          ai_hypotheses: string | null
+          ai_recommended_methods: string | null
+          ai_risk_assessment: string | null
+          client_id: string
+          created_at: string
+          id: string
+          notes: string | null
+          report_context: string | null
+          report_interventions_tried: string | null
+          report_key_theme: string | null
+          report_missing_data: string | null
+          report_next_session_goal: string | null
+          report_risks: string[] | null
+          report_therapist_emotions: string[] | null
+          report_transference: string | null
+          session_date: string
+          session_number: number | null
+          updated_at: string
+          user_id: string
+          voice_analysis: string | null
+        }
+        Insert: {
+          ai_analysis?: string | null
+          ai_hypotheses?: string | null
+          ai_recommended_methods?: string | null
+          ai_risk_assessment?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          report_context?: string | null
+          report_interventions_tried?: string | null
+          report_key_theme?: string | null
+          report_missing_data?: string | null
+          report_next_session_goal?: string | null
+          report_risks?: string[] | null
+          report_therapist_emotions?: string[] | null
+          report_transference?: string | null
+          session_date?: string
+          session_number?: number | null
+          updated_at?: string
+          user_id?: string
+          voice_analysis?: string | null
+        }
+        Update: {
+          ai_analysis?: string | null
+          ai_hypotheses?: string | null
+          ai_recommended_methods?: string | null
+          ai_risk_assessment?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          report_context?: string | null
+          report_interventions_tried?: string | null
+          report_key_theme?: string | null
+          report_missing_data?: string | null
+          report_next_session_goal?: string | null
+          report_risks?: string[] | null
+          report_therapist_emotions?: string[] | null
+          report_transference?: string | null
+          session_date?: string
+          session_number?: number | null
+          updated_at?: string
+          user_id?: string
+          voice_analysis?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_sessions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_tasks: {
+        Row: {
+          client_id: string
+          created_at: string
+          due_date: string | null
+          id: string
+          method: string | null
+          notes: string | null
+          result: string | null
+          status: string
+          task: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          method?: string | null
+          notes?: string | null
+          result?: string | null
+          status?: string
+          task: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          method?: string | null
+          notes?: string | null
+          result?: string | null
+          status?: string
+          task?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_tasks_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clients: {
+        Row: {
+          age: number | null
+          created_at: string
+          diagnosis: string | null
+          family_context: string | null
+          gender: string | null
+          id: string
+          key_history: string | null
+          name: string
+          notes: string | null
+          referral_source: string | null
+          therapy_type: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age?: number | null
+          created_at?: string
+          diagnosis?: string | null
+          family_context?: string | null
+          gender?: string | null
+          id?: string
+          key_history?: string | null
+          name: string
+          notes?: string | null
+          referral_source?: string | null
+          therapy_type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          age?: number | null
+          created_at?: string
+          diagnosis?: string | null
+          family_context?: string | null
+          gender?: string | null
+          id?: string
+          key_history?: string | null
+          name?: string
+          notes?: string | null
+          referral_source?: string | null
+          therapy_type?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       crisis_briefs: {
         Row: {
           created_at: string
