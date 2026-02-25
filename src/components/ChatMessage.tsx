@@ -211,7 +211,7 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
     return (
       <div className="flex justify-start">
         <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
-          <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5">
+          <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-a:text-primary prose-a:underline prose-a:decoration-primary/50 hover:prose-a:decoration-primary">
             <ReactMarkdown
               components={{
                 a: ({ href, children }) => (
@@ -234,7 +234,7 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
   return (
     <div className="flex justify-start">
       <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
-        <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5">
+        <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-a:text-primary prose-a:underline prose-a:decoration-primary/50 hover:prose-a:decoration-primary">
           {/* Render text before sections (farewell etc.) */}
           {beforeSections && (
             <ReactMarkdown
