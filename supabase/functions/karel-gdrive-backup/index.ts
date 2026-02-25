@@ -6,44 +6,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ── Google auth helpers ──
+// ── OAuth2 token helper (uses Refresh Token) ──
 
-async function getAccessToken(key: any): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const claim = btoa(JSON.stringify({
-    iss: key.client_email,
-    scope: "https://www.googleapis.com/auth/drive",
-    aud: "https://oauth2.googleapis.com/token",
-    exp: now + 3600,
-    iat: now,
-  }));
+async function getAccessToken(): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
 
-  const encoder = new TextEncoder();
-  const signInput = encoder.encode(`${header}.${claim}`);
-
-  const pemContent = key.private_key
-    .replace(/-----BEGIN PRIVATE KEY-----/, "")
-    .replace(/-----END PRIVATE KEY-----/, "")
-    .replace(/\n/g, "");
-  const binaryKey = Uint8Array.from(atob(pemContent), (c) => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    "pkcs8", binaryKey,
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false, ["sign"]
-  );
-
-  const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", cryptoKey, signInput);
-  const sig = btoa(String.fromCharCode(...new Uint8Array(signature)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-  const jwt = `${header}.${claim}.${sig}`;
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Missing GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, or GOOGLE_REFRESH_TOKEN");
+  }
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
   });
 
   const data = await res.json();
@@ -57,17 +39,37 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
   let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
 
+async function createFolder(token: string, name: string, parentId?: string): Promise<string> {
+  const metadata: any = {
+    name,
+    mimeType: "application/vnd.google-apps.folder",
+  };
+  if (parentId) metadata.parents = [parentId];
+
+  const res = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(metadata),
+  });
+  const data = await res.json();
+  if (!data.id) throw new Error(`Failed to create folder ${name}: ${JSON.stringify(data)}`);
+  return data.id;
+}
+
 async function findFile(token: string, name: string, parentId: string): Promise<string | null> {
   const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json();
@@ -89,8 +91,8 @@ async function uploadOrUpdate(token: string, fileName: string, content: string, 
     `--${boundary}--`;
 
   const url = existingId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart&supportsAllDrives=true`
-    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`;
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
 
   const res = await fetch(url, {
     method: existingId ? "PATCH" : "POST",
@@ -119,13 +121,11 @@ serve(async (req) => {
     // Auth: support both user token (manual) and service role (cron)
     const authHeader = req.headers.get("Authorization");
     
-    // Use service role for cron or when called without user auth
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // If user token provided, verify it; for cron we skip this
     if (authHeader && !authHeader.includes(Deno.env.get("SUPABASE_ANON_KEY")!)) {
       const userClient = createClient(
         Deno.env.get("SUPABASE_URL")!,
@@ -147,15 +147,14 @@ serve(async (req) => {
     const allSessions = sessionsRes.data || [];
     const allTasks = tasksRes.data || [];
 
-    // Google auth
-    const keyStr = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY");
-    if (!keyStr) throw new Error("GOOGLE_SERVICE_ACCOUNT_KEY not set");
-    const serviceKey = JSON.parse(keyStr);
-    const token = await getAccessToken(serviceKey);
+    // Google OAuth2 auth
+    const token = await getAccessToken();
 
-    // Find KARTOTEKA folder
-    const kartotekaId = await findFolder(token, "KARTOTEKA");
-    if (!kartotekaId) throw new Error("Složka KARTOTEKA nebyla nalezena na Drive. Zkontroluj sdílení.");
+    // Find or create KARTOTEKA folder
+    let kartotekaId = await findFolder(token, "KARTOTEKA");
+    if (!kartotekaId) {
+      kartotekaId = await createFolder(token, "KARTOTEKA");
+    }
 
     // Upload one JSON file per client
     let uploaded = 0;
