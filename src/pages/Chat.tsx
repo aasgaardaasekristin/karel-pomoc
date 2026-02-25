@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen } from "lucide-react";
+import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen, GraduationCap } from "lucide-react";
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
 import ImageUploadButton from "@/components/ImageUploadButton";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +23,7 @@ import DidDocumentGate from "@/components/did/DidDocumentGate";
 import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
+import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka";
 
@@ -109,6 +110,8 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [didDocsLoaded, setDidDocsLoaded] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
+  const [studyMaterial, setStudyMaterial] = useState<string | null>(null);
+  const [isStudyLoading, setIsStudyLoading] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
@@ -432,7 +435,31 @@ const Chat = () => {
     }
   };
 
-  // DID sub-mode handlers
+  const handleStudyMaterial = async () => {
+    if (messages.length < 2 || isStudyLoading) return;
+    setIsStudyLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-study-material`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ messages: messages.slice(-60) }),
+        }
+      );
+      if (!response.ok) handleApiError(response);
+      const { material } = await response.json();
+      if (!material) throw new Error("Prázdná odpověď");
+      setStudyMaterial(material);
+      toast.success("Učební materiál vygenerován");
+    } catch (error) {
+      console.error("Study material error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při generování materiálu");
+    } finally {
+      setIsStudyLoading(false);
+    }
+  };
   const handleDidSubModeSelect = (subMode: DidSubMode) => {
     setDidSubMode(subMode);
     setDidSessionId(null);
@@ -698,7 +725,21 @@ const Chat = () => {
                         <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                       )}
                     </Button>
-                    {messages.length > 1 && (
+                    {messages.length > 1 && mode === "supervision" ? (
+                      <Button
+                        variant="outline"
+                        onClick={handleStudyMaterial}
+                        disabled={isLoading || isStudyLoading}
+                        className="h-[44px] sm:h-[56px] shrink-0 px-2 sm:px-4"
+                      >
+                        {isStudyLoading ? (
+                          <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
+                        ) : (
+                          <GraduationCap className="w-4 h-4 sm:mr-2" />
+                        )}
+                        <span className="hidden sm:inline">Učební materiál</span>
+                      </Button>
+                    ) : messages.length > 1 ? (
                       <Button
                         variant="outline"
                         onClick={handleSoapHandoff}
@@ -712,7 +753,7 @@ const Chat = () => {
                         )}
                         <span className="hidden sm:inline">Pořídit zápis</span>
                       </Button>
-                    )}
+                    ) : null}
                   </div>
                   {mode === "childcare" && didSubMode && messages.length > 1 && (
                     <div className="flex justify-center mt-2">
@@ -754,6 +795,9 @@ const Chat = () => {
             </div>
           </div>
         </>
+      )}
+      {studyMaterial && (
+        <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />
       )}
     </div>
   );
