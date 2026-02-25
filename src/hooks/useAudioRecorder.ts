@@ -3,6 +3,8 @@ import { toast } from "sonner";
 
 export type RecordingState = "idle" | "recording" | "recorded";
 
+export const MAX_RECORDING_DURATION = 300; // 5 minut
+
 export const useAudioRecorder = () => {
   const [state, setState] = useState<RecordingState>("idle");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -39,15 +41,13 @@ export const useAudioRecorder = () => {
         if (timerRef.current) clearInterval(timerRef.current);
       };
 
-      const MAX_DURATION = 300; // 5 minut max
-
       mediaRecorder.start(250);
       setState("recording");
 
       timerRef.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setDuration(elapsed);
-        if (elapsed >= MAX_DURATION) {
+        if (elapsed >= MAX_RECORDING_DURATION) {
           toast.info("Dosažen maximální limit 5 minut – nahrávání zastaveno.");
           mediaRecorder.stop();
           clearInterval(timerRef.current!);
@@ -84,7 +84,6 @@ export const useAudioRecorder = () => {
       const reader = new FileReader();
       reader.onload = () => {
         const result = reader.result as string;
-        // Strip data:audio/webm;base64, prefix
         const base64 = result.split(",")[1];
         resolve(base64);
       };
@@ -100,5 +99,6 @@ export const useAudioRecorder = () => {
     stopRecording,
     discardRecording,
     getBase64,
+    maxDuration: MAX_RECORDING_DURATION,
   };
 };
