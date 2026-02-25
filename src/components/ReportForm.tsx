@@ -3,10 +3,12 @@ import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Loader2, Sparkles, FileDown, Copy, RotateCcw, Lightbulb, MessageSquare } from "lucide-react";
+import { Loader2, Sparkles, FileDown, Copy, RotateCcw, Lightbulb, MessageSquare, UserPlus, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { useChatContext } from "@/contexts/ChatContext";
 import TriageOutput from "./TriageOutput";
 import ReportOutput from "./ReportOutput";
@@ -59,9 +61,18 @@ const THEMES = [
   { value: "other", label: "Jiné" },
 ];
 
+type ClientOption = { id: string; name: string };
+
 const ReportForm = () => {
   const { messages, reportDraft, setReportDraft, setMainMode, setPendingHandoffToChat, setLastReportText } = useChatContext();
   
+  // Client selector state
+  const [clients, setClients] = useState<ClientOption[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<string>("");
+  const [isCreatingClient, setIsCreatingClient] = useState(false);
+  const [newClientName, setNewClientName] = useState("");
+  const [isSavingSession, setIsSavingSession] = useState(false);
+
   const [formData, setFormData] = useState<ReportFormData>({
     context: "",
     keyTheme: "",
@@ -82,6 +93,84 @@ const ReportForm = () => {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const hasMessages = messages.length > 1;
+
+  // Fetch clients from DB
+  useEffect(() => {
+    const fetchClients = async () => {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, name")
+        .order("name");
+      if (!error && data) {
+        setClients(data);
+      }
+    };
+    fetchClients();
+  }, []);
+
+  // Create new client
+  const handleCreateClient = async () => {
+    if (!newClientName.trim()) return;
+    setIsCreatingClient(true);
+    try {
+      const { data, error } = await supabase
+        .from("clients")
+        .insert({ name: newClientName.trim() })
+        .select("id, name")
+        .single();
+      if (error) throw error;
+      if (data) {
+        setClients(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+        setSelectedClientId(data.id);
+        setNewClientName("");
+        toast.success(`Klient „${data.name}" vytvořen`);
+      }
+    } catch (error) {
+      console.error("Create client error:", error);
+      toast.error("Nepodařilo se vytvořit klienta");
+    } finally {
+      setIsCreatingClient(false);
+    }
+  };
+
+  // Save session to client_sessions
+  const saveSessionToClient = async (clientId: string, report: string) => {
+    if (!clientId) return;
+    setIsSavingSession(true);
+    try {
+      // Count existing sessions for session_number
+      const { count } = await supabase
+        .from("client_sessions")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", clientId);
+
+      const { error } = await supabase
+        .from("client_sessions")
+        .insert({
+          client_id: clientId,
+          session_number: (count ?? 0) + 1,
+          report_context: formData.context,
+          report_key_theme: formData.keyTheme,
+          report_therapist_emotions: formData.therapistEmotions,
+          report_transference: formData.transference,
+          report_risks: formData.risks,
+          report_missing_data: formData.missingData,
+          report_interventions_tried: formData.interventionsTried,
+          report_next_session_goal: formData.nextSessionGoal,
+          ai_analysis: report,
+          notes: formData.therapistEmotionsOther 
+            ? `Další emoce: ${formData.therapistEmotionsOther}` 
+            : "",
+        });
+      if (error) throw error;
+      toast.success("Záznam ze sezení uložen ke klientovi");
+    } catch (error) {
+      console.error("Save session error:", error);
+      toast.error("Nepodařilo se uložit záznam ke klientovi");
+    } finally {
+      setIsSavingSession(false);
+    }
+  };
 
   // Apply reportDraft when it changes (from SOAP handoff)
   useEffect(() => {
@@ -221,6 +310,11 @@ const ReportForm = () => {
       const data = await response.json();
       setReportText(data.report);
       toast.success("Report vygenerován");
+
+      // Auto-save to client if selected
+      if (selectedClientId && selectedClientId !== "none") {
+        await saveSessionToClient(selectedClientId, data.report);
+      }
     } catch (error) {
       console.error("Report error:", error);
       toast.error("Chyba při generování reportu");
@@ -334,6 +428,8 @@ ${simpleMarkdownToHtml(reportMarkdown)}
     });
     setTriageData(null);
     setReportText("");
+    setSelectedClientId("");
+    setNewClientName("");
     toast.info("Formulář resetován");
   };
 
@@ -341,7 +437,52 @@ ${simpleMarkdownToHtml(reportMarkdown)}
     <div className="max-w-4xl mx-auto py-6 px-4 space-y-6">
       {/* Header note */}
       <div className="text-center text-sm text-muted-foreground bg-secondary/50 rounded-lg py-2 px-4">
-        Bez jmen a identifikátorů.
+        Bez jmen a identifikátorů v textu. Klienta vyber z kartotéky níže.
+      </div>
+
+      {/* Client Selector */}
+      <div className="bg-card rounded-xl border border-border p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <FolderOpen className="w-4 h-4" />
+          Přiřadit ke klientovi (volitelné)
+        </div>
+        <div className="flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[200px]">
+            <Select value={selectedClientId} onValueChange={setSelectedClientId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Vybrat klienta..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">— Bez klienta —</SelectItem>
+                {clients.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2 items-end">
+            <Input
+              placeholder="Nový klient..."
+              value={newClientName}
+              onChange={(e) => setNewClientName(e.target.value)}
+              className="w-40"
+              onKeyDown={(e) => { if (e.key === "Enter") handleCreateClient(); }}
+            />
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleCreateClient}
+              disabled={!newClientName.trim() || isCreatingClient}
+            >
+              {isCreatingClient ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+            </Button>
+          </div>
+        </div>
+        {selectedClientId && selectedClientId !== "none" && (
+          <p className="text-xs text-muted-foreground">
+            ✓ Report bude automaticky uložen jako záznam ze sezení tohoto klienta.
+          </p>
+        )}
       </div>
 
       {/* Form */}
