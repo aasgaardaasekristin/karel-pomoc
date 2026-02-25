@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw } from "lucide-react";
+import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -574,6 +574,10 @@ const Chat = () => {
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Tvůj partner a supervizní mentor</p>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => navigate("/kartoteka")} className="h-8 px-2 sm:px-3">
+              <FolderOpen className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Kartotéka</span>
+            </Button>
             <Button variant="outline" size="sm" onClick={() => navigate("/calm")} className="h-8 px-2 sm:px-3">
               <Leaf className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Zklidnění</span>
