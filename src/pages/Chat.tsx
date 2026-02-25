@@ -744,7 +744,8 @@ const Chat = () => {
               {/* Input Area */}
               <div className="border-t border-border bg-card/50 backdrop-blur-sm">
                 <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  <div className="flex gap-2 sm:gap-3 items-end relative">
+                  {/* Row 1: Text input + send */}
+                  <div className="flex gap-2 sm:gap-3 items-end">
                     <ImageUploadButton
                       onOpenPicker={openFilePicker}
                       pendingImages={pendingImages}
@@ -759,7 +760,7 @@ const Chat = () => {
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
                       placeholder="Napiš svou zprávu..."
-                      className="min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+                      className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
                       disabled={isLoading || isSoapLoading}
                     />
                     <Button
@@ -774,38 +775,13 @@ const Chat = () => {
                         <Send className="w-4 h-4 sm:w-5 sm:h-5" />
                       )}
                     </Button>
-                    {messages.length > 1 && mode === "supervision" ? (
-                      <Button
-                        variant="outline"
-                        onClick={handleStudyMaterial}
-                        disabled={isLoading || isStudyLoading}
-                        className="h-[44px] sm:h-[56px] shrink-0 px-2 sm:px-4"
-                      >
-                        {isStudyLoading ? (
-                          <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
-                        ) : (
-                          <GraduationCap className="w-4 h-4 sm:mr-2" />
-                        )}
-                        <span className="hidden sm:inline">Učební materiál</span>
-                      </Button>
-                    ) : messages.length > 1 ? (
-                      <Button
-                        variant="outline"
-                        onClick={handleSoapHandoff}
-                        disabled={isLoading || isSoapLoading}
-                        className="h-[44px] sm:h-[56px] shrink-0 px-2 sm:px-4"
-                      >
-                        {isSoapLoading ? (
-                          <Loader2 className="w-4 h-4 sm:mr-2 animate-spin" />
-                        ) : (
-                          <FileText className="w-4 h-4 sm:mr-2" />
-                        )}
-                        <span className="hidden sm:inline">Pořídit zápis</span>
-                      </Button>
-                    ) : null}
+                  </div>
+                  {/* Row 2: Action buttons (audio, study material, etc.) */}
+                  <div className="flex items-center gap-2 flex-wrap mt-2">
                     <AudioRecordButton
                       state={audioRecorder.state}
                       duration={audioRecorder.duration}
+                      maxDuration={audioRecorder.maxDuration}
                       audioUrl={audioRecorder.audioUrl}
                       isAnalyzing={isAudioAnalyzing}
                       onStart={audioRecorder.startRecording}
@@ -814,6 +790,41 @@ const Chat = () => {
                       onSend={handleAudioAnalysis}
                       disabled={isLoading || isSoapLoading}
                     />
+                    {audioRecorder.state === "idle" && (
+                      <>
+                        {messages.length > 1 && mode === "supervision" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleStudyMaterial}
+                            disabled={isLoading || isStudyLoading}
+                            className="h-9 px-3 gap-1.5"
+                          >
+                            {isStudyLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <GraduationCap className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">Učební materiál</span>
+                          </Button>
+                        ) : messages.length > 1 ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSoapHandoff}
+                            disabled={isLoading || isSoapLoading}
+                            className="h-9 px-3 gap-1.5"
+                          >
+                            {isSoapLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <FileText className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">Pořídit zápis</span>
+                          </Button>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                   {mode === "childcare" && didSubMode && messages.length > 1 && (
                     <div className="flex justify-center mt-2">

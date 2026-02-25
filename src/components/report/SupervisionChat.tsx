@@ -530,7 +530,8 @@ const SupervisionChat = () => {
 
       {/* Input */}
       <div className="p-3 border-t border-border">
-        <div className="flex gap-2 items-end relative">
+        {/* Row 1: Text input + send */}
+        <div className="flex gap-2 items-end">
           <ImageUploadButton
             onOpenPicker={openFilePicker}
             pendingImages={pendingImages}
@@ -550,7 +551,7 @@ const SupervisionChat = () => {
               }
             }}
             placeholder={deepMode ? "Zeptej se Karla na diagnózu, metody, reflexi..." : "Napiš co klient říká / dělá..."}
-            className="min-h-[40px] max-h-[100px] resize-none text-sm"
+            className="flex-1 min-w-0 min-h-[40px] max-h-[100px] resize-none text-sm"
             disabled={isLoading}
           />
           <Button
@@ -561,9 +562,13 @@ const SupervisionChat = () => {
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
+        </div>
+        {/* Row 2: Audio */}
+        <div className="flex items-center gap-2 flex-wrap mt-2">
           <AudioRecordButton
             state={audioRecorder.state}
             duration={audioRecorder.duration}
+            maxDuration={audioRecorder.maxDuration}
             audioUrl={audioRecorder.audioUrl}
             isAnalyzing={isAudioAnalyzing}
             onStart={audioRecorder.startRecording}
