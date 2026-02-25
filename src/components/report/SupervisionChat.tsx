@@ -36,7 +36,7 @@ const SupervisionChat = () => {
   // Auto-greet when session starts with no messages
   useEffect(() => {
     if (activeSession && messages.length === 0) {
-      const greeting = `Hani, jsem připravený. Pracujeme na sezení s klientem **${activeSession.clientName}**.\n\nMůžeš začít vyplňovat formulář vlevo – já tě budu průběžně vést. Napiš mi cokoliv, co tě napadne, a já navrhnu otázky, techniky nebo hry pro sezení. 🎯`;
+      const greeting = `Hani, jsem připravený. Klient: **${activeSession.clientName}**.\n\nVyplňuj formulář – já ti průběžně radím. Napiš cokoliv z průběhu sezení a dám ti konkrétní otázku, hru nebo techniku. 🎯`;
       updateChatMessages(activeSession.id, [{ role: "assistant", content: greeting }]);
     }
   }, [activeSession?.id]);
@@ -79,6 +79,40 @@ const SupervisionChat = () => {
         formContext.interventionsTried && `Intervence: ${formContext.interventionsTried}`,
       ].filter(Boolean).join("\n");
 
+      const liveSupervisionContext = `═══ ŽIVÁ SUPERVIZE BĚHEM SEZENÍ ═══
+Klient: ${activeSession.clientName}
+
+Aktuální formulář:
+${formSummary}
+
+${activeSession.reportText ? `Vygenerovaný report:\n${activeSession.reportText}` : ""}
+
+═══ PRAVIDLA PRO ŽIVOU SUPERVIZI (PŘÍSNĚ DODRŽUJ!) ═══
+
+Karel je PRAKTICKÝ SUPERVIZOR ZA PLENTOU. Mamka sedí přímo s klientem.
+
+STYL ODPOVĚDÍ:
+- MAX 3–5 vět na odpověď. Stručně, jasně, akčně.
+- ŽÁDNÉ filosofování, ŽÁDNÉ rozbory, ŽÁDNÉ analýzy – to si Karel nechá do reportu.
+- Karel radí JAK SE PTÁT, JAK SE TVÁŘIT, CO ŘÍCT, CO NEŘÍKAT.
+- Navrhuje konkrétní hry, testy, aktivity (s přesným zněním instrukce pro klienta).
+- Říká přesné znění otázek – mamka si je může zkopírovat a říct nahlas.
+- Upozorní na výraz tváře: "Teď se neusmívej, drž neutrální výraz."
+- Upozorní na co reagovat: "Všimla sis, že řekl X? Zeptej se na to."
+
+FORMÁT:
+- 🎯 Otázka/instrukce: přesné znění co má říct
+- 🎮 Hra/test: název + jak uvést klientovi (přesná slova)
+- ⚠️ Pozor: na co si dát pozor (1 věta)
+- 👀 Sleduj: co pozorovat u klienta
+
+NIKDY v živém chatu:
+- Nepiš diagnostické hypotézy
+- Nepiš hodnocení terapeuta
+- Nepiš dlouhé rozbory
+- Nepiš "co by řekl Jung" ani odborné úvahy
+- Vše výše si Karel NECHÁ DO REPORTU`;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
         {
@@ -87,7 +121,7 @@ const SupervisionChat = () => {
           body: JSON.stringify({
             messages: updatedMessages,
             mode: "kartoteka",
-            didInitialContext: `═══ ŽIVÁ SUPERVIZE BĚHEM SEZENÍ ═══\nKlient: ${activeSession.clientName}\n\nAktuální formulář:\n${formSummary}\n\n${activeSession.reportText ? `Vygenerovaný report:\n${activeSession.reportText}` : ""}\n\nKarel je v režimu živé supervize – navrhuje otázky, hry, techniky, diagnostické metody. Je kreativní, neotřelý, vždy půl kroku napřed.`,
+            didInitialContext: liveSupervisionContext,
           }),
         }
       );

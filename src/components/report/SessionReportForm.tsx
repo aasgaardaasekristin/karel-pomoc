@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,6 +59,21 @@ const SessionReportForm = () => {
   const [isPrefilling, setIsPrefilling] = useState(false);
   const [isTriaging, setIsTriaging] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll form down as chat progresses
+  const chatMessageCount = activeSession?.chatMessages?.length ?? 0;
+  useEffect(() => {
+    if (scrollRef.current && chatMessageCount > 0) {
+      const el = scrollRef.current;
+      // Scroll proportionally — keep form flowing with chat
+      const scrollTarget = Math.min(
+        el.scrollHeight - el.clientHeight,
+        el.scrollTop + 120
+      );
+      el.scrollTo({ top: scrollTarget, behavior: "smooth" });
+    }
+  }, [chatMessageCount]);
 
   if (!activeSession || !activeSessionId) {
     return (
@@ -203,7 +218,7 @@ const SessionReportForm = () => {
   };
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="flex-1" ref={scrollRef}>
       <div className="p-4 space-y-5 max-w-2xl">
         <div className="text-center text-xs text-muted-foreground bg-secondary/50 rounded-lg py-2 px-3">
           Sezení: <strong>{activeSession.clientName}</strong> — Karel je připraven v chatu vpravo
