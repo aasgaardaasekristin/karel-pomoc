@@ -8,14 +8,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import ChatMessage from "@/components/ChatMessage";
-import ReactMarkdown from "react-markdown";
 
 const SupervisionChat = () => {
   const {
     activeSession,
     activeSessionId,
     updateChatMessages,
-    updateStatus,
     removeSession,
   } = useActiveSessions();
 
@@ -28,15 +26,16 @@ const SupervisionChat = () => {
   const messages = activeSession?.chatMessages ?? [];
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const viewport = scrollRef.current?.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null;
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
     }
   }, [messages]);
 
   // Auto-greet when session starts with no messages
   useEffect(() => {
     if (activeSession && messages.length === 0) {
-      const greeting = `Hani, jsem připravený. Klient: **${activeSession.clientName}**.\n\nVyplňuj formulář – já ti průběžně radím. Napiš cokoliv z průběhu sezení a dám ti konkrétní otázku, hru nebo techniku. 🎯`;
+      const greeting = `Hani, jedeme živou supervizi pro **${activeSession.clientName}**.\n\nVyplňuj formulář uprostřed – hned dávám konkrétní větu, mimiku a další krok.`;
       updateChatMessages(activeSession.id, [{ role: "assistant", content: greeting }]);
     }
   }, [activeSession?.id]);
@@ -68,61 +67,47 @@ const SupervisionChat = () => {
     try {
       const headers = await getAuthHeaders();
 
-      // Build COMPLETE context from form data - Karel sees everything
       const fd = activeSession.formData;
+      const clientNameFromForm = fd.isMinor
+        ? (fd.childFullName || fd.contactFullName || activeSession.clientName)
+        : (fd.contactFullName || activeSession.clientName);
+      const ageFromForm = fd.clientAge || "neuvedeno";
+
       const formSummary = [
-        `Jméno klienta/kontaktu: ${fd.contactFullName || activeSession.clientName}`,
+        `Jméno klienta (zdroj pravdy): ${clientNameFromForm}`,
+        `Věk klienta (zdroj pravdy): ${ageFromForm}`,
+        `Nezletilý: ${fd.isMinor ? "ano" : "ne"}`,
+        fd.contactFullName && `Kontakt: ${fd.contactFullName}`,
         fd.contactEmail && `Email: ${fd.contactEmail}`,
         fd.contactPhone && `Telefon: ${fd.contactPhone}`,
-        fd.clientAge && `Věk: ${fd.clientAge}`,
-        fd.isMinor && `⚠️ NEZLETILÝ KLIENT`,
-        fd.isMinor && fd.childFullName && `Dítě: ${fd.childFullName}`,
         fd.isMinor && fd.guardianFullName && `Zákonný zástupce: ${fd.guardianFullName}`,
         fd.context && `Kontext sezení: ${fd.context}`,
         fd.keyTheme && `Klíčové téma: ${fd.keyTheme}`,
+        fd.risks.length > 0 && `Rizika: ${fd.risks.join(", ")}${fd.risksOther ? `, ${fd.risksOther}` : ""}`,
         fd.therapistEmotions.length > 0 && `Emoce terapeuta: ${fd.therapistEmotions.join(", ")}${fd.therapistEmotionsOther ? `, ${fd.therapistEmotionsOther}` : ""}`,
         fd.transference && `Přenos/protipřenos: ${fd.transference}`,
-        fd.risks.length > 0 && `Rizika: ${fd.risks.join(", ")}${fd.risksOther ? `, ${fd.risksOther}` : ""}`,
         fd.missingData && `Co potřebuji ověřit: ${fd.missingData}`,
         fd.interventionsTried && `Dosavadní intervence: ${fd.interventionsTried}`,
         fd.nextSessionGoal && `Cíl dalšího sezení: ${fd.nextSessionGoal}`,
       ].filter(Boolean).join("\n");
 
-      const liveSupervisionContext = `═══ ŽIVÁ SUPERVIZE BĚHEM SEZENÍ ═══
+      const liveSupervisionContext = `═══ LIVE SUPERVIZE – RUNTIME KONTEXT ═══
 
-📋 AKTUÁLNÍ STAV FORMULÁŘE (Karel to vidí v reálném čase):
+Čas kontextu: ${new Date().toISOString()}
+
+🔒 ZDROJ PRAVDY = FORMULÁŘ. Pokud je jakýkoli starší text v konfliktu s formulářem, ignoruj starší text a použij formulář.
+🔒 NIKDY nevymýšlej jiné jméno ani věk. Když údaj chybí, napiš doslova: "není ve formuláři".
+
+📋 FORM SNAPSHOT:
 ${formSummary || "(formulář je zatím prázdný)"}
 
-${activeSession.reportText ? `📄 Vygenerovaný report:\n${activeSession.reportText}` : ""}
-
-═══ PRAVIDLA PRO ŽIVOU SUPERVIZI (PŘÍSNĚ DODRŽUJ!) ═══
-
-Karel je PRAKTICKÝ SUPERVIZOR ZA PLENTOU. Mamka sedí PŘÍMO s klientem PRÁVĚ TEĎ.
-
-KLÍČOVÉ: Karel VIDÍ formulář. Reaguje na to, co tam mamka vyplnila.
-- Pokud vidí kontext/téma → okamžitě navrhne první otázku nebo aktivitu
-- Pokud vidí rizika → upozorní na bezpečnost, co sledovat
-- Pokud vidí "nezletilý" → přizpůsobí jazyk, navrhne hry přiměřené věku
-- Pokud vidí emoce terapeuta → stručně podpoří a přesměruje na klienta
-- Karel je vždy PŮL KROKU NAPŘED – sám navrhuje, co dělat dál
-
-STYL ODPOVĚDÍ:
-- MAX 3–5 vět. Žádné úvody, žádné "pojďme se podívat".
-- Rovnou akci: co říct, jak se zeptat, jakou hru zadat.
-- Přesné znění otázek – mamka si zkopíruje a řekne nahlas.
-- Upozornění na výraz: "Drž neutrální výraz." / "Teď se usmívej."
-- Upozornění na reakci: "Řekl X – zeptej se proč."
-
-FORMÁT:
-🎯 Řekni: "přesné znění otázky pro klienta"
-🎮 Aktivita: název + přesná instrukce co říct klientovi
-⚠️ Pozor: jednověté upozornění
-👀 Sleduj: co pozorovat
-
-ZAKÁZÁNO v živém chatu (nechej do reportu):
-- Diagnostické hypotézy, odborné analýzy, hodnocení terapeuta
-- Filosofické úvahy, citace, dlouhé rozbory
-- "Co by řekl Jung" – vše výše patří DO REPORTU, ne sem`;
+═══ INSTRUKCE PRO ODPOVĚĎ (PŘÍSNÉ) ═══
+- Jsi klinický supervizor během probíhajícího sezení, mluv stručně a akčně.
+- Odpověz VŽDY 3–4 krátkými řádky, každý řádek musí začínat jedním z emoji: 🎯 🎮 ⚠️ 👀
+- Každý řádek max 14 slov; bez odstavců, bez číslování, bez závěrečných otázek.
+- Nežádej údaje, které už jsou ve formuláři.
+- Dávej přesnou větu k přímému použití + konkrétní mikroaktivitu + pokyn k neverbálu.
+- Žádné analýzy, žádné filozofické úvahy, žádné reportové sekce.`;
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
@@ -131,7 +116,7 @@ ZAKÁZÁNO v živém chatu (nechej do reportu):
           headers,
           body: JSON.stringify({
             messages: updatedMessages,
-            mode: "kartoteka",
+            mode: "supervision",
             didInitialContext: liveSupervisionContext,
           }),
         }
