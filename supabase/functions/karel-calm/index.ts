@@ -94,10 +94,16 @@ serve(async (req) => {
     const systemPrompt = getSystemPrompt(scenario as CalmScenario, userName);
 
     // Clean messages - remove risk markers before sending to model
-    const cleanedMessages = messages.map((m: { role: string; content: string }) => ({
-      ...m,
-      content: m.content.replace(/\[RISK_SCORE:\d+\]/g, "").replace(/\[RISK:HIGH\]/g, "").trim(),
-    }));
+    const cleanedMessages = messages.map((m: { role: string; content: any }) => {
+      // Pass through multimodal content arrays as-is
+      if (Array.isArray(m.content)) {
+        return { role: m.role, content: m.content };
+      }
+      return {
+        ...m,
+        content: m.content.replace(/\[RISK_SCORE:\d+\]/g, "").replace(/\[RISK:HIGH\]/g, "").trim(),
+      };
+    });
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

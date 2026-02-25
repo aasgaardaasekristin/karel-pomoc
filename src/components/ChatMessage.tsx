@@ -166,10 +166,38 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
   const isUser = message.role === "user";
 
   if (isUser) {
+    // Extract images from multimodal content
+    const images: string[] = [];
+    let textContent = "";
+
+    if (Array.isArray(message.content)) {
+      (message.content as any[]).forEach((part: any) => {
+        if (part.type === "image_url" && part.image_url?.url) {
+          images.push(part.image_url.url);
+        } else if (part.type === "text") {
+          textContent = part.text || "";
+        }
+      });
+    } else {
+      textContent = message.content as string;
+    }
+
     return (
       <div className="flex justify-end">
         <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-user">
-          <p className="text-foreground whitespace-pre-wrap">{message.content}</p>
+          {images.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {images.map((src, i) => (
+                <img
+                  key={i}
+                  src={src}
+                  alt={`Příloha ${i + 1}`}
+                  className="max-w-[200px] max-h-[200px] rounded-md object-cover border border-border/50"
+                />
+              ))}
+            </div>
+          )}
+          {textContent && <p className="text-foreground whitespace-pre-wrap">{textContent}</p>}
         </div>
       </div>
     );

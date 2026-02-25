@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2, Archive, CheckCircle, MessageSquareMore, FileText } from "lucide-react";
+import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
+import ImageUploadButton from "@/components/ImageUploadButton";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -85,6 +87,7 @@ const SupervisionChat = () => {
   } = useActiveSessions();
 
   const [input, setInput] = useState("");
+  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, removeImage, clearImages } = useImageUpload();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
@@ -242,12 +245,15 @@ const SupervisionChat = () => {
   // MANUAL SEND (chat input)
   // ──────────────────────────────────────────────
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
+    const images = [...pendingImages];
     setInput("");
+    clearImages();
 
-    const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
+    const userContent = buildMultimodalContent(userMessage, images);
+    const updatedMessages = [...messages, { role: "user" as const, content: userContent as any }];
     updateChatMessages(activeSessionId, updatedMessages);
     setIsLoading(true);
 
@@ -475,7 +481,15 @@ const SupervisionChat = () => {
 
       {/* Input */}
       <div className="p-3 border-t border-border">
-        <div className="flex gap-2 items-end">
+        <div className="flex gap-2 items-end relative">
+          <ImageUploadButton
+            onOpenPicker={openFilePicker}
+            pendingImages={pendingImages}
+            onRemoveImage={removeImage}
+            disabled={isLoading}
+            fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+            onFileChange={handleFileChange}
+          />
           <Textarea
             ref={textareaRef}
             value={input}
@@ -493,7 +507,7 @@ const SupervisionChat = () => {
           <Button
             size="icon"
             onClick={sendMessage}
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
             className="h-[40px] w-[40px] shrink-0"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
