@@ -116,24 +116,31 @@ serve(async (req) => {
   }
 
   try {
-    // Auth check
+    // Auth: support both user token (manual) and service role (cron)
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing auth");
-
+    
+    // Use service role for cron or when called without user auth
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) throw new Error("Unauthorized");
+    // If user token provided, verify it; for cron we skip this
+    if (authHeader && !authHeader.includes(Deno.env.get("SUPABASE_ANON_KEY")!)) {
+      const userClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: { user }, error: authErr } = await userClient.auth.getUser();
+      if (authErr || !user) throw new Error("Unauthorized");
+    }
 
-    // Load all data
+    // Load ALL clients data (service role bypasses RLS)
     const [clientsRes, sessionsRes, tasksRes] = await Promise.all([
-      supabase.from("clients").select("*").eq("user_id", user.id).order("name"),
-      supabase.from("client_sessions").select("*").eq("user_id", user.id).order("session_date", { ascending: false }),
-      supabase.from("client_tasks").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+      supabase.from("clients").select("*").order("name"),
+      supabase.from("client_sessions").select("*").order("session_date", { ascending: false }),
+      supabase.from("client_tasks").select("*").order("created_at", { ascending: false }),
     ]);
 
     const clients = clientsRes.data || [];
