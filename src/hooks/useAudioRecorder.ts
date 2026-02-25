@@ -39,11 +39,20 @@ export const useAudioRecorder = () => {
         if (timerRef.current) clearInterval(timerRef.current);
       };
 
+      const MAX_DURATION = 300; // 5 minut max
+
       mediaRecorder.start(250);
       setState("recording");
 
       timerRef.current = setInterval(() => {
-        setDuration(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setDuration(elapsed);
+        if (elapsed >= MAX_DURATION) {
+          toast.info("Dosažen maximální limit 5 minut – nahrávání zastaveno.");
+          mediaRecorder.stop();
+          clearInterval(timerRef.current!);
+          timerRef.current = null;
+        }
       }, 500);
     } catch (err) {
       console.error("Microphone error:", err);

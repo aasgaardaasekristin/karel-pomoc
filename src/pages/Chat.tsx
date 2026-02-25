@@ -803,19 +803,17 @@ const Chat = () => {
                         <span className="hidden sm:inline">Pořídit zápis</span>
                       </Button>
                     ) : null}
-                    {(mode === "debrief" || mode === "safety" || mode === "childcare") && (
-                      <AudioRecordButton
-                        state={audioRecorder.state}
-                        duration={audioRecorder.duration}
-                        audioUrl={audioRecorder.audioUrl}
-                        isAnalyzing={isAudioAnalyzing}
-                        onStart={audioRecorder.startRecording}
-                        onStop={audioRecorder.stopRecording}
-                        onDiscard={audioRecorder.discardRecording}
-                        onSend={handleAudioAnalysis}
-                        disabled={isLoading || isSoapLoading}
-                      />
-                    )}
+                    <AudioRecordButton
+                      state={audioRecorder.state}
+                      duration={audioRecorder.duration}
+                      audioUrl={audioRecorder.audioUrl}
+                      isAnalyzing={isAudioAnalyzing}
+                      onStart={audioRecorder.startRecording}
+                      onStop={audioRecorder.stopRecording}
+                      onDiscard={audioRecorder.discardRecording}
+                      onSend={handleAudioAnalysis}
+                      disabled={isLoading || isSoapLoading}
+                    />
                   </div>
                   {mode === "childcare" && didSubMode && messages.length > 1 && (
                     <div className="flex justify-center mt-2">
