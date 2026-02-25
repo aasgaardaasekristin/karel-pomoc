@@ -171,6 +171,19 @@ const Chat = () => {
   }, [notebookProject]);
 
   // Restore interrupted DID flow after tab/page return
+  // One-time cleanup: clear cross-contaminated localStorage from previous bug
+  useEffect(() => {
+    try {
+      const modes: ConversationMode[] = ["debrief", "supervision", "safety", "research"];
+      const contents = modes.map(m => localStorage.getItem(`${STORAGE_KEY_PREFIX}${m}`));
+      const nonNull = contents.filter(Boolean);
+      if (nonNull.length >= 2 && new Set(nonNull).size === 1) {
+        modes.forEach(m => localStorage.removeItem(`${STORAGE_KEY_PREFIX}${m}`));
+      }
+    } catch {}
+  }, []);
+
+  // Restore interrupted DID flow after tab/page return
   useEffect(() => {
     try {
       const savedMode = localStorage.getItem(ACTIVE_MODE_KEY) as ConversationMode | null;
@@ -224,9 +237,12 @@ const Chat = () => {
     }
   }, [messages]);
 
-  // Persist messages to localStorage on change
+  // Track mode to avoid saving stale messages under a new mode key
+  const prevModeRef = useRef(mode);
+
+  // Persist messages to localStorage on change – but only if mode hasn't just changed
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && prevModeRef.current === mode) {
       saveMessages(mode, messages);
     }
   }, [messages, mode]);
@@ -313,13 +329,18 @@ const Chat = () => {
 
     // For childcare mode, don't set welcome message until sub-mode is selected
     if (mode === "childcare") {
+      // Clear messages immediately when entering childcare (sub-mode selector will handle it)
+      if (prevModeRef.current !== mode) {
+        setMessages([]);
+      }
+      prevModeRef.current = mode;
       refreshHistory();
       return;
     }
 
     // Only reset messages if not coming from report handoff
     if (!pendingHandoffToChat) {
-      // Try to restore from localStorage first
+      // Try to restore from localStorage first — but only genuine saved conversations for THIS mode
       const saved = loadMessages(mode);
       if (saved && saved.length > 0) {
         setMessages(saved);
@@ -327,6 +348,8 @@ const Chat = () => {
         setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
       }
     }
+
+    prevModeRef.current = mode;
   }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext]);
 
   // Handle handoff from Report to Chat
