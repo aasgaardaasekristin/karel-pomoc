@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Loader2, Sparkles, FileDown, Copy, RotateCcw, Lightbulb, MessageSquare, UserPlus, FolderOpen } from "lucide-react";
@@ -14,6 +15,15 @@ import TriageOutput from "./TriageOutput";
 import ReportOutput from "./ReportOutput";
 
 export interface ReportFormData {
+  contactFullName: string;
+  contactEmail: string;
+  contactPhone: string;
+  isMinor: boolean;
+  clientAge: string;
+  childFullName: string;
+  childEmail: string;
+  childPhone: string;
+  guardianFullName: string;
   context: string;
   keyTheme: string;
   therapistEmotions: string[];
@@ -74,6 +84,15 @@ const ReportForm = () => {
   const [isSavingSession, setIsSavingSession] = useState(false);
 
   const [formData, setFormData] = useState<ReportFormData>({
+    contactFullName: "",
+    contactEmail: "",
+    contactPhone: "",
+    isMinor: false,
+    clientAge: "",
+    childFullName: "",
+    childEmail: "",
+    childPhone: "",
+    guardianFullName: "",
     context: "",
     keyTheme: "",
     therapistEmotions: [],
@@ -415,6 +434,15 @@ ${simpleMarkdownToHtml(reportMarkdown)}
 
   const handleReset = () => {
     setFormData({
+      contactFullName: "",
+      contactEmail: "",
+      contactPhone: "",
+      isMinor: false,
+      clientAge: "",
+      childFullName: "",
+      childEmail: "",
+      childPhone: "",
+      guardianFullName: "",
       context: "",
       keyTheme: "",
       therapistEmotions: [],
@@ -482,6 +510,122 @@ ${simpleMarkdownToHtml(reportMarkdown)}
           <p className="text-xs text-muted-foreground">
             ✓ Report bude automaticky uložen jako záznam ze sezení tohoto klienta.
           </p>
+        )}
+      </div>
+
+      {/* Contact Info */}
+      <div className="bg-card rounded-xl border border-border p-6 space-y-4">
+        <Label className="text-base font-semibold">Kontaktní údaje klienta</Label>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="contactFullName">Celé jméno a příjmení</Label>
+            <Input
+              id="contactFullName"
+              placeholder="Jan Novák"
+              value={formData.contactFullName}
+              onChange={(e) => setFormData(prev => ({ ...prev, contactFullName: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="contactEmail">E-mail</Label>
+            <Input
+              id="contactEmail"
+              type="email"
+              placeholder="jan@email.cz"
+              value={formData.contactEmail}
+              onChange={(e) => setFormData(prev => ({ ...prev, contactEmail: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="contactPhone">Telefon</Label>
+            <Input
+              id="contactPhone"
+              type="tel"
+              placeholder="+420 ..."
+              value={formData.contactPhone}
+              onChange={(e) => setFormData(prev => ({ ...prev, contactPhone: e.target.value }))}
+            />
+          </div>
+        </div>
+
+        {/* Adult / Minor toggle */}
+        <div className="flex items-center gap-3 pt-2">
+          <Switch
+            id="isMinor"
+            checked={formData.isMinor}
+            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, isMinor: checked }))}
+          />
+          <Label htmlFor="isMinor" className="font-normal cursor-pointer">Nezletilý klient</Label>
+        </div>
+
+        {!formData.isMinor ? (
+          <div className="space-y-2">
+            <Label htmlFor="clientAge">Věk</Label>
+            <Input
+              id="clientAge"
+              type="number"
+              placeholder="Věk klienta"
+              value={formData.clientAge}
+              onChange={(e) => setFormData(prev => ({ ...prev, clientAge: e.target.value }))}
+              className="w-32"
+            />
+          </div>
+        ) : (
+          <div className="space-y-4 rounded-lg border border-border p-4 bg-secondary/30">
+            <Label className="text-sm font-semibold text-muted-foreground">Údaje o dítěti</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="childFullName">Jméno a příjmení dítěte</Label>
+                <Input
+                  id="childFullName"
+                  placeholder="Jana Nováková"
+                  value={formData.childFullName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, childFullName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="clientAge">Věk dítěte</Label>
+                <Input
+                  id="clientAge"
+                  type="number"
+                  placeholder="Věk"
+                  value={formData.clientAge}
+                  onChange={(e) => setFormData(prev => ({ ...prev, clientAge: e.target.value }))}
+                  className="w-32"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="childEmail">E-mail dítěte (pokud má)</Label>
+                <Input
+                  id="childEmail"
+                  type="email"
+                  placeholder="volitelné"
+                  value={formData.childEmail}
+                  onChange={(e) => setFormData(prev => ({ ...prev, childEmail: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="childPhone">Telefon dítěte (pokud má)</Label>
+                <Input
+                  id="childPhone"
+                  type="tel"
+                  placeholder="volitelné"
+                  value={formData.childPhone}
+                  onChange={(e) => setFormData(prev => ({ ...prev, childPhone: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="guardianFullName">Zákonný zástupce / opatrující osoba</Label>
+              <Input
+                id="guardianFullName"
+                placeholder="Jméno a příjmení zástupce"
+                value={formData.guardianFullName}
+                onChange={(e) => setFormData(prev => ({ ...prev, guardianFullName: e.target.value }))}
+              />
+            </div>
+          </div>
         )}
       </div>
 
