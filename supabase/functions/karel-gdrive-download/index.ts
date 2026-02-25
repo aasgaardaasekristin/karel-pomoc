@@ -77,8 +77,18 @@ serve(async (req) => {
     const fileBytes = new Uint8Array(fileBuffer);
 
     // Upload to Supabase Storage
-    const ext = (fileName || meta.name || "file").split(".").pop() || "bin";
-    const storagePath = `${user.id}/drive-${fileId}-${Date.now()}.${ext}`;
+    // Determine extension based on mime type for Google Docs exports, or from filename
+    const mimeToExt: Record<string, string> = {
+      "application/pdf": "pdf",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "text/plain": "txt",
+    };
+    const nameForExt = fileName || meta.name || "file";
+    const dotParts = nameForExt.split(".");
+    const ext = dotParts.length > 1 ? dotParts.pop()!.replace(/[^a-zA-Z0-9]/g, "") : (mimeToExt[finalMimeType] || "bin");
+    const storagePath = `${user.id}/drive-${fileId}-${Date.now()}.${ext || "bin"}`;
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
