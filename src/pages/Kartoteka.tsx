@@ -22,6 +22,7 @@ import {
   ChevronRight,
   MessageSquare,
   LogOut,
+  HardDriveDownload,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -85,6 +86,29 @@ const Kartoteka = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [newTaskText, setNewTaskText] = useState("");
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+
+  const handleBackup = async () => {
+    setIsBackingUp(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Nejsi přihlášen/a"); return; }
+
+      const res = await supabase.functions.invoke("karel-gdrive-backup", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (res.error || !res.data?.success) {
+        toast.error(res.data?.error || "Záloha selhala");
+      } else {
+        toast.success(res.data.message);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Chyba při zálohování");
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
 
   // Auth check
   useEffect(() => {
@@ -224,6 +248,10 @@ const Kartoteka = () => {
               <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Přehled všech klientů a jejich dokumentace</p>
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
+              <Button variant="outline" size="sm" onClick={handleBackup} disabled={isBackingUp} className="h-8 px-2 sm:px-3">
+                {isBackingUp ? <Loader2 className="w-4 h-4 animate-spin sm:mr-2" /> : <HardDriveDownload className="w-4 h-4 sm:mr-2" />}
+                <span className="hidden sm:inline">{isBackingUp ? "Zálohuji..." : "Záloha"}</span>
+              </Button>
               <Button variant="outline" size="sm" onClick={() => navigate("/chat")} className="h-8 px-2 sm:px-3">
                 <MessageSquare className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">Chat</span>
