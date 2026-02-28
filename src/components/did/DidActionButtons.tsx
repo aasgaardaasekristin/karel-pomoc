@@ -1,4 +1,4 @@
-import { BookOpen, Mail, Save, Loader2, PhoneOff } from "lucide-react";
+import { BookOpen, Mail, Save, Loader2, PhoneOff, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DidActionButtonsProps {
@@ -8,7 +8,9 @@ interface DidActionButtonsProps {
   onMessageKata?: () => void;
   onBackup?: () => void;
   onEndCall?: () => void;
+  onResearch?: () => void;
   isBackupLoading?: boolean;
+  isResearchLoading?: boolean;
   disabled?: boolean;
 }
 
@@ -19,7 +21,9 @@ const DidActionButtons = ({
   onMessageKata,
   onBackup,
   onEndCall,
+  onResearch,
   isBackupLoading,
+  isResearchLoading,
   disabled,
 }: DidActionButtonsProps) => {
   return (
@@ -49,6 +53,15 @@ const DidActionButtons = ({
             </Button>
           )}
         </>
+      )}
+
+      {/* Research button for mamka/kata/general modes */}
+      {onResearch && subMode !== "cast" && (
+        <Button variant="outline" size="sm" onClick={onResearch} disabled={disabled || isResearchLoading} className="h-8 px-2.5 gap-1.5 text-xs">
+          {isResearchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline">Hledat metody</span>
+          <span className="sm:hidden">Hledat</span>
+        </Button>
       )}
 
       {/* Backup button for all DID sub-modes */}

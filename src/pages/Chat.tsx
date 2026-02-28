@@ -133,6 +133,7 @@ const Chat = () => {
   const audioRecorder = useAudioRecorder();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
+  const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
@@ -803,6 +804,91 @@ const Chat = () => {
     ]);
   };
 
+  const handleDidResearch = async () => {
+    if (isDidResearchLoading) return;
+    
+    // Prompt user for search query
+    const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+    const searchContext = messages.slice(-10).map(m => 
+      `${m.role === "user" ? "UŽIVATEL" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
+    ).join("\n");
+
+    setMessages(prev => [...prev,
+      { role: "user", content: "🔬 Hledej terapeutické metody a výzkumy relevantní pro naši situaci" },
+    ]);
+    setIsDidResearchLoading(true);
+
+    let assistantContent = "";
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-research`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            query: lastUserMsg ? (typeof lastUserMsg.content === "string" ? lastUserMsg.content : "DID terapeutické metody pro dětské části") : "DID terapeutické metody pro dětské části",
+            conversationContext: searchContext,
+          }),
+        }
+      );
+
+      if (!response.ok) handleApiError(response);
+      if (!response.body) throw new Error("Žádná odpověď");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              assistantContent += content;
+              setMessages(prev => {
+                const newMessages = [...prev];
+                const lastIndex = newMessages.length - 1;
+                if (newMessages[lastIndex]?.role === "assistant") {
+                  newMessages[lastIndex] = { ...newMessages[lastIndex], content: assistantContent };
+                }
+                return newMessages;
+              });
+            }
+          } catch {
+            buffer = line + "\n" + buffer;
+            break;
+          }
+        }
+      }
+      toast.success("Výzkum dokončen");
+    } catch (error) {
+      console.error("DID Research error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při vyhledávání");
+      if (!assistantContent) {
+        setMessages(prev => prev.slice(0, -1));
+      }
+    } finally {
+      setIsDidResearchLoading(false);
+    }
+  };
+
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
 
@@ -1115,7 +1201,9 @@ const Chat = () => {
                       onMessageKata={didSubMode === "cast" ? handleDidMessageKata : undefined}
                       onBackup={handleDidBackup}
                       onEndCall={handleDidEndCall}
+                      onResearch={handleDidResearch}
                       isBackupLoading={isBackupLoading}
+                      isResearchLoading={isDidResearchLoading}
                       disabled={isLoading}
                     />
                   )}
