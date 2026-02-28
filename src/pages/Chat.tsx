@@ -22,7 +22,7 @@ import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
-import DidDocumentGate from "@/components/did/DidDocumentGate";
+import DidActionButtons from "@/components/did/DidActionButtons";
 import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
@@ -125,6 +125,8 @@ const Chat = () => {
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
   const [isLoading, setIsLoading] = useState(false);
   const [didDocsLoaded, setDidDocsLoaded] = useState(false);
+  const [isDriveLoading, setIsDriveLoading] = useState(false);
+  const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
   const [studyMaterial, setStudyMaterial] = useState<string | null>(null);
   const [isStudyLoading, setIsStudyLoading] = useState(false);
@@ -595,29 +597,210 @@ const Chat = () => {
     }
   };
 
-  const handleDidSubModeSelect = (subMode: DidSubMode) => {
+  const handleDidSubModeSelect = async (subMode: DidSubMode) => {
     setDidSubMode(subMode);
     setDidSessionId(null);
     setDidDocsLoaded(false);
-    // Don't start chat yet — DidDocumentGate will appear first
+    setIsDriveLoading(true);
+
+    // Auto-load documents from Drive
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ documents: ["00_Seznam_casti", "01_Hlavni_mapa_systemu"] }),
+        }
+      );
+
+      let docsContext = "";
+      if (response.ok) {
+        const data = await response.json();
+        const docs = data.documents || {};
+        docsContext = Object.entries(docs)
+          .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
+          .join("\n\n");
+      } else {
+        console.warn("Failed to load DID docs from Drive, continuing without context");
+      }
+
+      const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setDidSessionId(newSessionId);
+      setDidInitialContext(docsContext);
+      setDidDocsLoaded(true);
+
+      if (subMode === "mamka") {
+        setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Načetl jsem dokumenty z Kartotéky DID – mám přehled o systému.\n\nPověz mi, co se děje. Co teď nejvíc potřebuješ probrat?` }]);
+      } else if (subMode === "cast") {
+        setMessages([{ role: "assistant", content: getRandomCastGreeting() }]);
+      } else if (subMode === "kata") {
+        setMessages([{ role: "assistant", content: `Ahoj Káťo! 😊 Jsem Karel. Načetl jsem si aktuální stav systému z kartotéky.\n\nJak ti můžu pomoct? Chceš se poradit, jak reagovat na nějakou část, nebo potřebuješ probrat situaci?` }]);
+      } else if (subMode === "general") {
+        setMessages([{ role: "assistant", content: `Haničko, jsem připraven na obecnou poradu o DID. Načetl jsem dokumenty z kartotéky.\n\nMůžeš se ptát na metody, strategie, nebo mi popsat konkrétní situaci.` }]);
+      }
+    } catch (error) {
+      console.error("Error loading DID docs:", error);
+      toast.error("Nepodařilo se načíst dokumenty z Drive, pokračuji bez kontextu");
+      
+      const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setDidSessionId(newSessionId);
+      setDidDocsLoaded(true);
+      
+      if (subMode === "cast") {
+        setMessages([{ role: "assistant", content: getRandomCastGreeting() }]);
+      } else {
+        setMessages([{ role: "assistant", content: `Haničko, jsem tady. Nepodařilo se mi načíst kartotéku z Drive, ale můžeme pracovat s tím, co mi řekneš.` }]);
+      }
+    } finally {
+      setIsDriveLoading(false);
+    }
   };
 
-  const handleDidDocsSubmit = (docs: { seznam: string; mapa: string }) => {
-    setDidDocsLoaded(true);
-    const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setDidSessionId(newSessionId);
-    const docsContext = `[NotebookLM: ${notebookProject} | Dokument: 00_Seznam_částí]\n${docs.seznam}\n\n[NotebookLM: ${notebookProject} | Dokument: 01_Hlavní_mapa_systému]\n${docs.mapa}`;
+  const handleDidBackup = async () => {
+    if (isBackupLoading || messages.length < 2) return;
+    setIsBackupLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      
+      // Use AI to generate structured updates from the conversation
+      const aiHeaders = await getAuthHeaders();
+      const aiResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
+        {
+          method: "POST",
+          headers: aiHeaders,
+          body: JSON.stringify({
+            messages: [
+              ...messages.slice(-40),
+              { role: "user", content: "Prosím, vytvoř strukturovanou zálohu tohoto rozhovoru pro uložení do Kartotéky DID. Zahrň: shrnutí rozhovoru, aktualizace karet částí (pokud relevantní), handover zápis, a supervizní poznámky. Formátuj jako čistý text vhodný pro uložení do .txt souboru." }
+            ],
+            mode: "childcare",
+            didSubMode,
+            didInitialContext,
+          }),
+        }
+      );
 
-    if (didSubMode === "mamka") {
-      setDidInitialContext(docsContext);
-      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Díky za dokumenty – mám přehled o systému.\n\nPověz mi, co se děje.\n\nPokud chceš, vlož další výňatek z NotebookLM (5–15 řádků) s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
-    } else if (didSubMode === "cast") {
-      setDidInitialContext(docsContext);
-      setMessages([{ role: "assistant", content: getRandomCastGreeting() }]);
-    } else if (didSubMode === "general") {
-      setDidInitialContext(docsContext);
-      setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Díky za dokumenty – mám přehled o systému.\n\nMůžeš se ptát na metody, ale také mi popsat konkrétní situaci. Pokud chceš, vlož další výňatek z NotebookLM s hlavičkou:\n\n\`[NotebookLM: ${notebookProject} | Dokument: název_dokumentu]\`\n\n📓 **Aktuální projekt:** ${notebookProject}` }]);
+      let backupContent = `=== ZÁLOHA ROZHOVORU ===\nDatum: ${new Date().toLocaleString("cs-CZ")}\nPodrežim: ${didSubMode}\n\n`;
+      
+      if (aiResponse.ok && aiResponse.body) {
+        const reader = aiResponse.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          
+          let newlineIndex: number;
+          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+            let line = buffer.slice(0, newlineIndex);
+            buffer = buffer.slice(newlineIndex + 1);
+            if (line.endsWith("\r")) line = line.slice(0, -1);
+            if (!line.startsWith("data: ")) continue;
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === "[DONE]") break;
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) backupContent += content;
+            } catch {}
+          }
+        }
+      } else {
+        // Fallback: save raw messages
+        backupContent += messages.map(m => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n\n");
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const fileName = `DID_Záloha_${didSubMode}_${dateStr}.txt`;
+
+      await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-write`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            updates: [{ fileName, content: backupContent, mode: "replace" }],
+          }),
+        }
+      );
+
+      toast.success("Záloha uložena na Drive");
+    } catch (error) {
+      console.error("Backup error:", error);
+      toast.error("Chyba při zálohování na Drive");
+    } finally {
+      setIsBackupLoading(false);
     }
+  };
+
+  const handleDidEndCall = async () => {
+    // Save conversation to history
+    if (didSubMode && messages.length >= 2) {
+      saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
+    }
+
+    // Auto-backup to Drive
+    handleDidBackup();
+
+    // Send email report if cast mode
+    if (didSubMode === "cast") {
+      try {
+        const headers = await getAuthHeaders();
+        // Generate handover report via AI
+        const chatSummary = messages.slice(-30).map(m => 
+          `${m.role === "user" ? "ČÁST" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
+        ).join("\n");
+
+        await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-email-report`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              reportContent: chatSummary,
+              partName: "DID rozhovor",
+              date: new Date().toLocaleDateString("cs-CZ"),
+              type: "did_handover",
+            }),
+          }
+        );
+        toast.success("Email s handoverem odeslán mamce");
+      } catch (e) {
+        console.error("Email send error:", e);
+      }
+    }
+
+    // Switch to mamka mode
+    clearMessages(mode);
+    setDidSubMode("mamka");
+    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor s částí. Připravil jsem zálohu a odeslal email.\n\nMám přehled o tom, co se dělo. Chceš probrat, co jsem zjistil?` }]);
+  };
+
+  const handleDidDiary = () => {
+    const diaryPrompt = "Pojďme společně zapsat něco do tvého deníku. Co bys tam chtěl/a mít? Můžeme to napsat spolu.";
+    setMessages(prev => [...prev, 
+      { role: "user", content: "📗 Chci zapsat do deníku" },
+      { role: "assistant", content: diaryPrompt }
+    ]);
+  };
+
+  const handleDidMessageMom = () => {
+    setMessages(prev => [...prev,
+      { role: "user", content: "💌 Chci nechat vzkaz mamce" },
+      { role: "assistant", content: "Jasně! Mohli bychom mamince tady nechat vzkaz. Co bys jí chtěl/a říct? Můžeme to napsat společně, a pak to mamka dostane mailem. 😊" }
+    ]);
+  };
+
+  const handleDidMessageKata = () => {
+    setMessages(prev => [...prev,
+      { role: "user", content: "💌 Chci nechat vzkaz Káti" },
+      { role: "assistant", content: "Super! Mohli bychom Káti nechat vzkaz. Co bys jí chtěl/a říct? Napíšeme to spolu a Káťa to dostane. 😊" }
+    ]);
   };
 
   const sendMessage = async () => {
@@ -811,14 +994,13 @@ const Chat = () => {
               />
               <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
             </ScrollArea>
-          ) : mode === "childcare" && didSubMode && !didDocsLoaded && messages.length === 0 ? (
-            <ScrollArea className="flex-1">
-              <DidDocumentGate
-                subMode={didSubMode}
-                onSubmit={handleDidDocsSubmit}
-                onBack={() => { setDidSubMode(null); setDidDocsLoaded(false); setDidSessionId(null); }}
-              />
-            </ScrollArea>
+          ) : mode === "childcare" && didSubMode && (!didDocsLoaded || isDriveLoading) && messages.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+                <p className="text-sm text-muted-foreground">Načítám dokumenty z Kartotéky DID...</p>
+              </div>
+            </div>
           ) : (
             <>
               {/* Chat Messages */}
@@ -926,17 +1108,16 @@ const Chat = () => {
                     )}
                   </div>
                   {mode === "childcare" && didSubMode && messages.length > 1 && (
-                    <div className="flex justify-center mt-2">
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={handleNewConversation}
-                        className="text-xs gap-1.5"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                        Ukončit tento rozhovor
-                      </Button>
-                    </div>
+                    <DidActionButtons
+                      subMode={didSubMode}
+                      onDiary={didSubMode === "cast" ? handleDidDiary : undefined}
+                      onMessageMom={didSubMode === "cast" ? handleDidMessageMom : undefined}
+                      onMessageKata={didSubMode === "cast" ? handleDidMessageKata : undefined}
+                      onBackup={handleDidBackup}
+                      onEndCall={handleDidEndCall}
+                      isBackupLoading={isBackupLoading}
+                      disabled={isLoading}
+                    />
                   )}
                   <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
                     Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.

@@ -11,7 +11,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { reportContent, partName, date } = await req.json();
+    const { reportContent, partName, date, type, recipientEmail } = await req.json();
 
     if (!reportContent) {
       return new Response(JSON.stringify({ error: "Missing report content" }), {
@@ -20,8 +20,18 @@ serve(async (req) => {
       });
     }
 
-    const targetEmail = "mujosobniasistentnamiru@gmail.com";
-    const subject = `Zápis z rozhovoru s částí: ${partName || "neznámá"}, dne: ${date || new Date().toLocaleDateString("cs-CZ")}`;
+    const targetEmail = recipientEmail || "mujosobniasistentnamiru@gmail.com";
+    
+    let subject: string;
+    if (type === "did_handover") {
+      subject = `DID Handover: ${partName || "rozhovor"}, dne: ${date || new Date().toLocaleDateString("cs-CZ")}`;
+    } else if (type === "did_message_mom") {
+      subject = `Vzkaz od části: ${partName || "neznámá"}, dne: ${date || new Date().toLocaleDateString("cs-CZ")}`;
+    } else if (type === "did_message_kata") {
+      subject = `Vzkaz pro Káťu od části: ${partName || "neznámá"}, dne: ${date || new Date().toLocaleDateString("cs-CZ")}`;
+    } else {
+      subject = `Zápis z rozhovoru s částí: ${partName || "neznámá"}, dne: ${date || new Date().toLocaleDateString("cs-CZ")}`;
+    }
 
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     if (!RESEND_API_KEY) {
