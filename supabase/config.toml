@@ -29,3 +29,9 @@ verify_jwt = false
 
 [functions.karel-analyze-file]
 verify_jwt = false
+
+[functions.karel-did-drive-read]
+verify_jwt = false
+
+[functions.karel-did-drive-write]
+verify_jwt = false

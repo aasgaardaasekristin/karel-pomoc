@@ -17,15 +17,17 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    let systemPrompt = getSystemPrompt(mode as ConversationMode);
+    // For kata submode, use dedicated kata prompt
+    const effectiveMode = (mode === "childcare" && didSubMode === "kata") ? "kata" : mode;
+    let systemPrompt = getSystemPrompt(effectiveMode as ConversationMode);
 
     // Runtime context from UI (form snapshot, live supervision instructions, etc.)
     if (typeof didInitialContext === "string" && didInitialContext.trim().length > 0) {
-      systemPrompt += `\n\n═══ RUNTIME KONTEXT Z APLIKACE (ZDROJ PRAVDY) ═══\n\n${didInitialContext}`;
+      systemPrompt += `\n\n═══ RUNTIME KONTEXT Z APLIKACE (DOKUMENTY Z KARTOTÉKY DID) ═══\n\n${didInitialContext}`;
     }
 
     // DID-specific metadata
-    if (mode === "childcare" && didSubMode) {
+    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode) {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 

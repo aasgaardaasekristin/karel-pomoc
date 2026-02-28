@@ -1,7 +1,7 @@
-import { Heart, MessageCircle, ArrowLeft, BookOpen } from "lucide-react";
+import { Heart, MessageCircle, ArrowLeft, BookOpen, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type DidSubMode = "mamka" | "cast" | "form" | "freetext" | "general";
+export type DidSubMode = "mamka" | "cast" | "kata" | "form" | "freetext" | "general";
 
 interface DidSubModeSelectorProps {
   onSelect: (subMode: DidSubMode) => void;
@@ -11,16 +11,22 @@ interface DidSubModeSelectorProps {
 const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
   const options = [
     {
-      id: "mamka" as const,
-      icon: Heart,
-      label: "Mamka (terapeut)",
-      description: "Mluví mamka – Karel se zeptá na situaci, požádá o výňatek z NotebookLM a strukturovaně odpoví.",
-    },
-    {
       id: "cast" as const,
       icon: MessageCircle,
       label: "Část mluví s Karlem",
-      description: "Mluví dítě / část – Karel přizpůsobí jazyk věku, udrží bezpečný tón a vygeneruje handover pro mamku.",
+      description: "Mluví dítě / část – Karel přizpůsobí jazyk věku, udrží bezpečný tón a vygeneruje handover.",
+    },
+    {
+      id: "mamka" as const,
+      icon: Heart,
+      label: "Mamka mluví s Karlem",
+      description: "Supervize, analýza, plánování – Karel načte dokumenty z Kartotéky DID a pracuje jako tandem-terapeut.",
+    },
+    {
+      id: "kata" as const,
+      icon: User,
+      label: "Káťa mluví s Karlem",
+      description: "Konzultace pro Káťu – jak reagovat, jak oslovit části, jak podporovat systém.",
     },
     {
       id: "general" as const,
