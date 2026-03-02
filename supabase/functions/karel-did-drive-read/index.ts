@@ -160,15 +160,15 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { documents, listAll } = await req.json();
+    const { documents, listAll, subFolder } = await req.json();
     const token = await getAccessToken();
 
     // Find Kartotéka_DID folder
-    const folderId = await findFolder(token, "Kartoteka_DID") 
+    const rootFolderId = await findFolder(token, "Kartoteka_DID") 
       || await findFolder(token, "Kartotéka_DID")
       || await findFolder(token, "KARTOTEKA_DID");
 
-    if (!folderId) {
+    if (!rootFolderId) {
       return new Response(JSON.stringify({ 
         error: "Složka Kartoteka_DID nebyla nalezena na Google Drive",
         documents: {} 
@@ -178,22 +178,34 @@ serve(async (req) => {
       });
     }
 
-    // If listAll is true, return list of all files in the folder
+    // Resolve target folder (root or subfolder)
+    let targetFolderId = rootFolderId;
+    if (subFolder) {
+      const subFolderId = await findFolder(token, subFolder, rootFolderId);
+      if (subFolderId) {
+        targetFolderId = subFolderId;
+      } else {
+        console.warn(`Subfolder "${subFolder}" not found in Kartoteka_DID, using root`);
+      }
+    }
+
+    // If listAll is true, return list of all files in the target folder
     if (listAll) {
-      const files = await listFilesInFolder(token, folderId);
-      return new Response(JSON.stringify({ files, folderId }), {
+      const files = await listFilesInFolder(token, targetFolderId);
+      return new Response(JSON.stringify({ files, folderId: targetFolderId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Read requested documents
-    const files = await listFilesInFolder(token, folderId);
+    // Read requested documents — search recursively through all subfolders
     const result: Record<string, string> = {};
-    const requestedDocs: string[] = documents || ["00_Seznam_casti", "01_Hlavni_mapa_systemu"];
+    const requestedDocs: string[] = documents || [];
 
     for (const docName of requestedDocs) {
-      let match = await findDocumentRecursive(token, folderId, docName);
+      // Search recursively from the target folder
+      let match = await findDocumentRecursive(token, targetFolderId, docName);
       if (!match) {
+        // Fall back to global search
         match = await findDocumentGlobal(token, docName);
       }
 
@@ -209,7 +221,7 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ documents: result, folderId }), {
+    return new Response(JSON.stringify({ documents: result, folderId: targetFolderId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
