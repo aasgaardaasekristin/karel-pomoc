@@ -290,9 +290,11 @@ export type Database = {
           created_at: string
           did_initial_context: string
           id: string
+          is_processed: boolean
           label: string
           messages: Json
           preview: string
+          processed_at: string | null
           saved_at: string
           session_id: string
           sub_mode: string
@@ -303,9 +305,11 @@ export type Database = {
           created_at?: string
           did_initial_context?: string
           id?: string
+          is_processed?: boolean
           label: string
           messages?: Json
           preview?: string
+          processed_at?: string | null
           saved_at?: string
           session_id: string
           sub_mode: string
@@ -316,9 +320,11 @@ export type Database = {
           created_at?: string
           did_initial_context?: string
           id?: string
+          is_processed?: boolean
           label?: string
           messages?: Json
           preview?: string
+          processed_at?: string | null
           saved_at?: string
           session_id?: string
           sub_mode?: string

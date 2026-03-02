@@ -306,7 +306,7 @@ function extractField(content: string, fieldName: string): string {
   return m ? m[1].trim() : "";
 }
 
-export async function generateKataHandbook(): Promise<void> {
+export async function generateKataHandbook(currentMessages?: { role: string; content: string }[]): Promise<void> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
@@ -454,7 +454,36 @@ export async function generateKataHandbook(): Promise<void> {
   }
   y += 5;
 
-  // ── Per-card sections ──
+  // ── Current session notes from kata conversation ──
+  if (currentMessages && currentMessages.length >= 2) {
+    if (y > 230) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(50, 80, 140);
+    doc.text("Záznamy z aktuálního sezení", margin, y);
+    y += 7;
+    doc.setFontSize(9);
+    doc.setTextColor(60, 60, 60);
+
+    for (const msg of currentMessages) {
+      if (y > 265) { doc.addPage(); y = 20; }
+      const prefix = msg.role === "user" ? "Káťa:" : "Karel:";
+      const content = typeof msg.content === "string" ? msg.content : "(multimodální obsah)";
+      // Truncate very long messages
+      const truncated = content.length > 800 ? content.slice(0, 800) + "..." : content;
+      
+      doc.setFontSize(9);
+      doc.setTextColor(msg.role === "user" ? 80 : 40, msg.role === "user" ? 80 : 60, msg.role === "user" ? 120 : 80);
+      const lines = doc.splitTextToSize(`${prefix} ${truncated}`, contentWidth);
+      for (const line of lines) {
+        if (y > 275) { doc.addPage(); y = 20; }
+        doc.text(line, margin, y);
+        y += 4.5;
+      }
+      y += 2;
+    }
+    y += 5;
+  }
+
   for (const card of cards) {
     doc.addPage();
     y = 20;

@@ -336,10 +336,14 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // 1. SBĚR DAT
+    // 1. SBĚR DAT – threads (cast mode) + conversations (kata/mamka/general)
     const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
     const { data: threadRows } = await sb.from("did_threads").select("*").eq("is_processed", false).gte("started_at", cutoff);
     const threads = threadRows ?? [];
+
+    // Also fetch unprocessed conversations from kata/mamka/general submodes
+    const { data: convRows } = await sb.from("did_conversations").select("*").eq("is_processed", false).gte("saved_at", cutoff);
+    const conversations = convRows ?? [];
 
     const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
 
@@ -349,7 +353,7 @@ serve(async (req) => {
     const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
 
-    if (threads.length === 0) {
+    if (threads.length === 0 && conversations.length === 0) {
       if (cycle) {
         await sb.from("did_update_cycles").update({
           status: "completed",
@@ -367,6 +371,7 @@ serve(async (req) => {
           ? "No threads to process; card structure normalized"
           : "No threads to process",
         threadsProcessed: 0,
+        conversationsProcessed: 0,
         cardsUpdated,
         normalizedCards: normalizedCardFiles.length,
         reportSent: false,
@@ -375,11 +380,19 @@ serve(async (req) => {
       });
     }
 
-    // 3. COMPILE THREAD DATA
+    // 3. COMPILE THREAD + CONVERSATION DATA
     const threadSummaries = threads.map(t => {
       const msgs = (t.messages as any[]) || [];
       return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content.slice(0, 500) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
+
+    // Add conversation data from kata/mamka/general submodes
+    const convSummaries = conversations.map(c => {
+      const msgs = (c.messages as any[]) || [];
+      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content.slice(0, 500) : "(multimodal)"}`).join("\n")}`;
+    }).join("\n\n---\n\n");
+
+    const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
 
     // Get Drive context + existing cards
     let driveContext = "";
@@ -450,7 +463,7 @@ PRAVIDLA:
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`,
           },
-          { role: "user", content: threadSummaries },
+          { role: "user", content: allSummaries },
         ],
       }),
     });
@@ -532,9 +545,15 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       }
     }
 
-    // 6. Mark threads as processed
+    // 6. Mark threads AND conversations as processed
     const threadIds = threads.map(t => t.id);
-    await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
+    if (threadIds.length > 0) {
+      await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
+    }
+    const convIds = conversations.map(c => c.id);
+    if (convIds.length > 0) {
+      await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
+    }
 
     if (cycle) {
       await sb.from("did_update_cycles").update({
@@ -543,7 +562,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       }).eq("id", cycle.id);
     }
 
-    return new Response(JSON.stringify({ success: true, threadsProcessed: threads.length, cardsUpdated, reportSent: !!RESEND_API_KEY }), {
+    return new Response(JSON.stringify({ success: true, threadsProcessed: threads.length, conversationsProcessed: conversations.length, cardsUpdated, reportSent: !!RESEND_API_KEY }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
