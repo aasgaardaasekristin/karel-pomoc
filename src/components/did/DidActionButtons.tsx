@@ -70,8 +70,8 @@ const DidActionButtons = ({
         </>
       )}
 
-      {/* Research button for mamka/kata/general modes */}
-      {onResearch && subMode !== "cast" && (
+      {/* Research button for all DID modes */}
+      {onResearch && (
         <Button variant="outline" size="sm" onClick={onResearch} disabled={disabled || isResearchLoading} className="h-8 px-2.5 gap-1.5 text-xs">
           {isResearchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
           <span className="hidden sm:inline">Hledat metody</span>

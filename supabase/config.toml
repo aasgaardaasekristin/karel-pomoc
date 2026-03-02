@@ -35,3 +35,36 @@ verify_jwt = false
 
 [functions.karel-did-drive-write]
 verify_jwt = false
+
+[functions.karel-did-daily-cycle]
+verify_jwt = false
+
+[functions.karel-did-weekly-cycle]
+verify_jwt = false
+
+[functions.karel-did-research]
+verify_jwt = false
+
+[functions.karel-audio-analysis]
+verify_jwt = false
+
+[functions.karel-email-report]
+verify_jwt = false
+
+[functions.karel-study-material]
+verify_jwt = false
+
+[functions.karel-session-report]
+verify_jwt = false
+
+[functions.karel-calm]
+verify_jwt = false
+
+[functions.karel-calm-magic-link]
+verify_jwt = false
+
+[functions.karel-calm-verify]
+verify_jwt = false
+
+[functions.karel-gdrive-backup]
+verify_jwt = false

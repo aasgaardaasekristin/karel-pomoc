@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
+import { toast } from "sonner";
 
 interface PartActivity {
   name: string;
@@ -19,7 +21,9 @@ interface Props {
 const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpdating }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
+  const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -68,6 +72,42 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
 
       if (cycles && cycles.length > 0) {
         setLastCycleTime(cycles[0].completed_at);
+      }
+
+      // Check last daily cycle for auto-backup
+      const { data: dailyCycles } = await supabase
+        .from("did_update_cycles")
+        .select("completed_at")
+        .eq("status", "completed")
+        .eq("cycle_type", "daily")
+        .order("completed_at", { ascending: false })
+        .limit(1);
+
+      const lastDaily = dailyCycles?.[0]?.completed_at || null;
+      setLastBackupTime(lastDaily);
+
+      // Auto-backup if last daily cycle was more than 24h ago
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      const needsBackup = !lastDaily || (Date.now() - new Date(lastDaily).getTime() > twentyFourHours);
+      
+      if (needsBackup) {
+        setIsAutoBackupRunning(true);
+        toast.info("Automatická záloha kartotéky se spouští...");
+        try {
+          const headers = await getAuthHeaders();
+          const backupResponse = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`,
+            { method: "POST", headers, body: JSON.stringify({}) }
+          );
+          if (backupResponse.ok) {
+            toast.success("Automatická záloha kartotéky dokončena");
+            setLastBackupTime(new Date().toISOString());
+          }
+        } catch (e) {
+          console.warn("Auto-backup failed:", e);
+        } finally {
+          setIsAutoBackupRunning(false);
+        }
       }
     } finally {
       setLoading(false);
@@ -120,6 +160,12 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
             <Clock className="w-3 h-3" />
             Poslední aktualizace kartotéky: {formatTimeAgo(lastCycleTime)}
           </p>
+          {isAutoBackupRunning && (
+            <p className="text-[10px] sm:text-xs text-primary flex items-center gap-1 mt-0.5">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Probíhá automatická záloha...
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {onWeeklyUpdate && (

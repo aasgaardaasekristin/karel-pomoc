@@ -614,15 +614,28 @@ const Chat = () => {
         `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
       ).join("\n");
       const headers = await getAuthHeaders();
+      
+      // Build DID-specific context for audio analysis
+      const didContext = mode === "childcare" ? {
+        didMode: true,
+        partName: activeThread?.partName || undefined,
+        didSubMode,
+        systemContext: didInitialContext ? didInitialContext.slice(0, 2000) : undefined,
+      } : undefined;
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-audio-analysis`, {
         method: "POST", headers,
-        body: JSON.stringify({ audioBase64: base64, mode, chatContext: messages.length > 0 ? chatContext : undefined }),
+        body: JSON.stringify({ 
+          audioBase64: base64, mode, 
+          chatContext: messages.length > 0 ? chatContext : undefined,
+          ...didContext,
+        }),
       });
       if (!response.ok) handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev,
-        { role: "user", content: "🎙️ *[Audio nahrávka odeslána k analýze]*" },
+        { role: "user", content: `🎙️ *[Audio nahrávka${activeThread ? ` – tandem s ${activeThread.partName}` : ""} odeslána k analýze]*` },
         { role: "assistant", content: analysis },
       ]);
       audioRecorder.discardRecording();
@@ -798,6 +811,7 @@ const Chat = () => {
         method: "POST", headers,
         body: JSON.stringify({
           query: lastUserMsg ? (typeof lastUserMsg.content === "string" ? lastUserMsg.content : "DID terapeutické metody") : "DID terapeutické metody",
+          partName: activeThread?.partName || undefined,
           conversationContext: searchContext,
         }),
       });
