@@ -50,6 +50,25 @@ export async function generateDidReport(): Promise<void> {
   const margin = 15;
   let y = 20;
 
+  // ── Load custom font with Czech diacritics support ──
+  try {
+    const fontResponse = await fetch("/fonts/Roboto-Regular.ttf");
+    if (fontResponse.ok) {
+      const fontBuffer = await fontResponse.arrayBuffer();
+      const fontBytes = new Uint8Array(fontBuffer);
+      let binary = "";
+      for (let i = 0; i < fontBytes.length; i++) {
+        binary += String.fromCharCode(fontBytes[i]);
+      }
+      const base64Font = btoa(binary);
+      doc.addFileToVFS("Roboto-Regular.ttf", base64Font);
+      doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+      doc.setFont("Roboto");
+    }
+  } catch (e) {
+    console.warn("Failed to load custom font:", e);
+  }
+
   doc.setFontSize(20);
   doc.setTextColor(60, 80, 60);
   doc.text("DID Systém – Report", pageWidth / 2, y, { align: "center" });
@@ -294,6 +313,25 @@ export async function generateKataHandbook(): Promise<void> {
   const contentWidth = pageWidth - 2 * margin;
   let y = 20;
 
+  // ── Load custom font with Czech diacritics support ──
+  try {
+    const fontResponse = await fetch("/fonts/Roboto-Regular.ttf");
+    if (fontResponse.ok) {
+      const fontBuffer = await fontResponse.arrayBuffer();
+      const fontBytes = new Uint8Array(fontBuffer);
+      let binary = "";
+      for (let i = 0; i < fontBytes.length; i++) {
+        binary += String.fromCharCode(fontBytes[i]);
+      }
+      const base64Font = btoa(binary);
+      doc.addFileToVFS("Roboto-Regular.ttf", base64Font);
+      doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+      doc.setFont("Roboto");
+    }
+  } catch (e) {
+    console.warn("Failed to load custom font, falling back to default:", e);
+  }
+
   // ── Title page ──
   doc.setFontSize(22);
   doc.setTextColor(50, 80, 140);
@@ -307,35 +345,30 @@ export async function generateKataHandbook(): Promise<void> {
   doc.text(`Vygenerováno: ${formatDate(new Date().toISOString())}`, pageWidth / 2, y, { align: "center" });
   y += 12;
 
-  // ── Load all cards from Drive ──
-  doc.setFontSize(10);
-  doc.setTextColor(80, 80, 80);
-  doc.text("Načítám data z kartotéky...", margin, y);
-
+  // ── Load all cards from Drive (from 01_AKTIVNI_FRAGMENTY subfolder) ──
   let cards: CardData[] = [];
   try {
     const headers = await getAuthHeaders();
-    // First get file list
+    // List files in the active fragments subfolder
     const listRes = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-      { method: "POST", headers, body: JSON.stringify({ listAll: true }) }
+      { method: "POST", headers, body: JSON.stringify({ listAll: true, subFolder: "01_AKTIVNI_FRAGMENTY" }) }
     );
     if (!listRes.ok) throw new Error("Nelze načíst seznam souborů");
     const listData = await listRes.json();
     const files: Array<{ id: string; name: string; mimeType?: string }> = listData.files || [];
 
-    // Filter card files
+    // All files in this folder are card files (e.g. 003_Tundrupek.txt, 004_Arthur.txt)
     const cardFiles = files.filter(f =>
-      f.mimeType !== "application/vnd.google-apps.folder" &&
-      (f.name.toLowerCase().startsWith("karta") || f.name.match(/^\d+_karta/i))
+      f.mimeType !== "application/vnd.google-apps.folder"
     );
 
-    // Read card contents in batches
+    // Read card contents
     if (cardFiles.length > 0) {
       const docNames = cardFiles.map(f => f.name.replace(/\.(txt|md|doc|docx)$/i, ""));
       const readRes = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: docNames }) }
+        { method: "POST", headers, body: JSON.stringify({ documents: docNames, subFolder: "01_AKTIVNI_FRAGMENTY" }) }
       );
       if (readRes.ok) {
         const readData = await readRes.json();
@@ -347,11 +380,43 @@ export async function generateKataHandbook(): Promise<void> {
         }
       }
     }
+
+    // Also try loading from root and other subfolders if no cards found
+    if (cards.length === 0) {
+      const rootListRes = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ listAll: true }) }
+      );
+      if (rootListRes.ok) {
+        const rootData = await rootListRes.json();
+        const allFiles: Array<{ id: string; name: string; mimeType?: string }> = rootData.files || [];
+        const rootCards = allFiles.filter(f =>
+          f.mimeType !== "application/vnd.google-apps.folder" &&
+          (f.name.match(/^\d{3}_/) || f.name.toLowerCase().includes("karta"))
+        );
+        if (rootCards.length > 0) {
+          const names = rootCards.map(f => f.name.replace(/\.(txt|md|doc|docx)$/i, ""));
+          const readRes2 = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+            { method: "POST", headers, body: JSON.stringify({ documents: names }) }
+          );
+          if (readRes2.ok) {
+            const readData2 = await readRes2.json();
+            const docs2 = readData2.documents || {};
+            for (const [name, content] of Object.entries(docs2)) {
+              if (typeof content === "string" && !content.startsWith("[Dokument") && content.length > 50) {
+                cards.push({ name, content });
+              }
+            }
+          }
+        }
+      }
+    }
   } catch (e) {
     console.error("Failed to load cards for handbook:", e);
   }
 
-  // Clear loading text
+  // Position after title
   y = 48;
 
   if (cards.length === 0) {
