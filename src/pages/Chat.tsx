@@ -1017,6 +1017,59 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           } catch { buffer = line + "\n" + buffer; break; }
         }
       }
+
+      // Detect and process [ODESLAT_VZKAZ:mamka/kata] markers for immediate email sending
+      if (mode === "childcare" && assistantContent) {
+        const vzkazRegex = /\[ODESLAT_VZKAZ:(mamka|kata)\]([\s\S]*?)\[\/ODESLAT_VZKAZ\]/g;
+        let match;
+        while ((match = vzkazRegex.exec(assistantContent)) !== null) {
+          const recipient = match[1]; // "mamka" or "kata"
+          const messageText = match[2].trim();
+          if (messageText) {
+            const recipientEmail = recipient === "kata" ? "K.CC@seznam.cz" : "mujosobniasistentnamiru@gmail.com";
+            const recipientName = recipient === "kata" ? "Káťa" : "Mamka";
+            // Fire-and-forget email send
+            (async () => {
+              try {
+                const emailHeaders = await getAuthHeaders();
+                const emailRes = await fetch(
+                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-email-report`,
+                  {
+                    method: "POST",
+                    headers: emailHeaders,
+                    body: JSON.stringify({
+                      reportContent: messageText,
+                      partName: activeThread?.partName || "část",
+                      date: new Date().toLocaleDateString("cs-CZ"),
+                      type: recipient === "kata" ? "did_message_kata" : "did_message_mom",
+                      recipientEmail,
+                    }),
+                  }
+                );
+                if (emailRes.ok) {
+                  toast.success(`✉️ Vzkaz odeslán pro ${recipientName}`);
+                } else {
+                  toast.error(`Nepodařilo se odeslat vzkaz pro ${recipientName}`);
+                }
+              } catch (e) {
+                console.error("Email send error:", e);
+                toast.error(`Chyba při odesílání vzkazu pro ${recipientName}`);
+              }
+            })();
+          }
+        }
+
+        // Clean the markers from displayed message
+        const cleanedContent = assistantContent.replace(/\[ODESLAT_VZKAZ:(mamka|kata)\]([\s\S]*?)\[\/ODESLAT_VZKAZ\]/g, "").trim();
+        if (cleanedContent !== assistantContent) {
+          assistantContent = cleanedContent;
+          setMessages((prev) => {
+            const n = [...prev];
+            if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: cleanedContent };
+            return n;
+          });
+        }
+      }
     } catch (error) {
       console.error("Chat error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při komunikaci");
