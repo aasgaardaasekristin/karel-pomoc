@@ -327,6 +327,84 @@ export type Database = {
         }
         Relationships: []
       }
+      did_threads: {
+        Row: {
+          created_at: string
+          id: string
+          is_processed: boolean
+          last_activity_at: string
+          messages: Json
+          part_language: string | null
+          part_name: string
+          processed_at: string | null
+          started_at: string
+          sub_mode: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_processed?: boolean
+          last_activity_at?: string
+          messages?: Json
+          part_language?: string | null
+          part_name: string
+          processed_at?: string | null
+          started_at?: string
+          sub_mode?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_processed?: boolean
+          last_activity_at?: string
+          messages?: Json
+          part_language?: string | null
+          part_name?: string
+          processed_at?: string | null
+          started_at?: string
+          sub_mode?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      did_update_cycles: {
+        Row: {
+          cards_updated: Json | null
+          completed_at: string | null
+          created_at: string
+          cycle_type: string
+          id: string
+          report_summary: string | null
+          started_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          cards_updated?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          cycle_type?: string
+          id?: string
+          report_summary?: string | null
+          started_at?: string
+          status?: string
+          user_id?: string
+        }
+        Update: {
+          cards_updated?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          cycle_type?: string
+          id?: string
+          report_summary?: string | null
+          started_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
