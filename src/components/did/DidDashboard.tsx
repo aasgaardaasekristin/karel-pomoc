@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, FileDown, MessageCircle, Heart, User, BookOpen, Search, Zap } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, FileDown, MessageCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
-import DidPatternPanel from "./DidPatternPanel";
+
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { generateDidReport } from "@/lib/didPdfExport";
@@ -292,35 +292,8 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
         </div>
       )}
 
-      {/* Quick SubMode Entry */}
-      {onQuickSubMode && (
-        <div className="mb-4">
-          <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5" />
-            Rychlý vstup
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("cast")} className="h-9 text-xs gap-1.5">
-              <MessageCircle className="w-3.5 h-3.5" /> Část mluví
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("mamka")} className="h-9 text-xs gap-1.5">
-              <Heart className="w-3.5 h-3.5" /> Mamka
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("kata")} className="h-9 text-xs gap-1.5">
-              <User className="w-3.5 h-3.5" /> Káťa
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("general")} className="h-9 text-xs gap-1.5">
-              <BookOpen className="w-3.5 h-3.5" /> Obecná porada
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("research")} className="h-9 text-xs gap-1.5">
-              <Search className="w-3.5 h-3.5" /> Odborné zdroje
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Interactive System Map */}
-      <DidSystemMap parts={parts} />
+      <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
 
       {parts.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -364,8 +337,7 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
         </div>
       )}
 
-      {/* Pattern Detection */}
-      <DidPatternPanel />
+      {/* Pattern detection is now automated in daily/weekly cycles */}
     </div>
   );
 };
