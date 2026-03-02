@@ -28,18 +28,9 @@ async function findFolder(token: string, name: string): Promise<string | null> {
   return data.files?.[0]?.id || null;
 }
 
-async function findFile(token: string, name: string, parentId: string): Promise<string | null> {
-  const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = await res.json();
-  return data.files?.[0]?.id || null;
-}
-
-async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string }>> {
+async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
   const q = `'${folderId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=200`, {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=200`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();
@@ -60,25 +51,34 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
-async function uploadOrUpdate(token: string, fileName: string, content: string, folderId: string) {
-  const existingId = await findFile(token, fileName, folderId);
+// Update file by ID directly (PATCH existing) or create new in folder
+async function updateFileById(token: string, fileId: string, content: string): Promise<any> {
   const boundary = "----DIDWriteBoundary";
-  const metadata = JSON.stringify(existingId ? { name: fileName } : { name: fileName, parents: [folderId] });
+  const metadata = JSON.stringify({ /* keep existing name */ });
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
-  const url = existingId
-    ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
-    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-  const res = await fetch(url, {
-    method: existingId ? "PATCH" : "POST",
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
+    method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
     body,
   });
-  if (!res.ok) throw new Error(`Drive upload failed for ${fileName}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`Drive PATCH failed for ${fileId}: ${await res.text()}`);
+  return await res.json();
+}
+
+async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
+  const boundary = "----DIDWriteBoundary";
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if (!res.ok) throw new Error(`Drive create failed for ${fileName}: ${await res.text()}`);
   return await res.json();
 }
 
 // ═══ SECTION MANAGEMENT ═══
-// Mandatory card structure A-M
 const SECTION_DEFINITIONS: Record<string, string> = {
   A: "Kdo jsem",
   B: "Charakter a psychologický profil",
@@ -101,41 +101,43 @@ function sectionHeader(letter: string): string {
   return `═══ SEKCE ${letter} – ${SECTION_DEFINITIONS[letter]} ═══`;
 }
 
-// Parse existing card content into sections
 function parseCardSections(content: string): Record<string, string> {
   const sections: Record<string, string> = {};
-  // Match section headers like "═══ SEKCE X –" or "SEKCE X:" or "## SEKCE X" etc.
-  const sectionRegex = /(?:═+\s*)?SEKCE\s+([A-M])\s*[–\-:]/gi;
-  const matches = [...content.matchAll(sectionRegex)];
+  // Match section headers: "═══ SEKCE X –", "SEKCE X:", "## SEKCE X", "## X –", "A:", "A)" etc.
+  const sectionRegex = /(?:═+\s*)?(?:SEKCE\s+)?([A-M])\s*[–\-:)]\s*/gi;
+  
+  // First try strict format with SEKCE keyword
+  const strictRegex = /(?:═+\s*)?SEKCE\s+([A-M])\s*[–\-:]/gi;
+  let matches = [...content.matchAll(strictRegex)];
+  
+  // If no strict matches, try looser format (lines starting with single letter)
+  if (matches.length === 0) {
+    const looseRegex = /^##?\s*([A-M])\s*[–\-:)]\s*/gmi;
+    matches = [...content.matchAll(looseRegex)];
+  }
 
   if (matches.length === 0) {
-    // No structured sections found – put everything under a preamble
     sections["_preamble"] = content.trim();
     return sections;
   }
 
-  // Content before first section
   const beforeFirst = content.slice(0, matches[0].index).trim();
   if (beforeFirst) sections["_preamble"] = beforeFirst;
 
   for (let i = 0; i < matches.length; i++) {
     const letter = matches[i][1].toUpperCase();
-    const start = matches[i].index! + matches[i][0].length;
-    const end = i + 1 < matches.length ? matches[i + 1].index! : content.length;
-    // Find end of the header line
     const headerLineEnd = content.indexOf("\n", matches[i].index!);
-    const sectionContent = content.slice(headerLineEnd > -1 ? headerLineEnd + 1 : start, end).trim();
+    const end = i + 1 < matches.length ? matches[i + 1].index! : content.length;
+    const sectionContent = content.slice(headerLineEnd > -1 ? headerLineEnd + 1 : matches[i].index! + matches[i][0].length, end).trim();
     sections[letter] = sectionContent;
   }
 
   return sections;
 }
 
-// Rebuild card from sections
 function buildCard(partName: string, sections: Record<string, string>): string {
   const lines: string[] = [];
 
-  // Preamble (title etc.)
   if (sections["_preamble"]) {
     lines.push(sections["_preamble"]);
   } else {
@@ -152,40 +154,51 @@ function buildCard(partName: string, sections: Record<string, string>): string {
   return lines.join("\n");
 }
 
-// Find the card file for a part name (searches Kartoteka_DID root + subfolders)
-async function findCardFile(token: string, partName: string, folderId: string): Promise<{ fileId: string; fileName: string; content: string } | null> {
-  const normalizedPart = partName.toLowerCase().replace(/\s+/g, "_");
-  const files = await listFilesInFolder(token, folderId);
+interface CardFileResult {
+  fileId: string;
+  fileName: string;
+  content: string;
+  parentFolderId: string; // the folder where the card lives
+}
 
-  // Direct match: Karta_Arthur.txt, 004_Arthur.txt, etc.
-  const cardFile = files.find(f => {
-    const normalized = f.name.toLowerCase().replace(/\.(txt|md|doc|docx)$/i, "").replace(/[_\s-]/g, "");
-    return normalized.includes(normalizedPart) && (normalized.includes("karta") || /^\d+/.test(f.name));
-  });
-
-  if (cardFile) {
-    const content = await readFileContent(token, cardFile.id);
-    return { fileId: cardFile.id, fileName: cardFile.name, content };
-  }
-
-  // Search in subfolders (01_AKTIVNI_FRAGMENTY, 02_KLASTRY_A_RODOKMENY)
-  const subfolders = files.filter(f => !f.name.includes("."));
-  for (const sf of subfolders) {
-    // Check if it's a folder by trying to list contents
-    try {
-      const subFiles = await listFilesInFolder(token, sf.id);
-      const subCard = subFiles.find(f => {
-        const normalized = f.name.toLowerCase().replace(/\.(txt|md|doc|docx)$/i, "").replace(/[_\s-]/g, "");
-        return normalized.includes(normalizedPart);
-      });
-      if (subCard) {
-        const content = await readFileContent(token, subCard.id);
-        return { fileId: subCard.id, fileName: subCard.name, content };
+// Find the card file for a part name – searches root + all subfolders recursively
+async function findCardFile(token: string, partName: string, rootFolderId: string): Promise<CardFileResult | null> {
+  const normalizedPart = partName.toLowerCase().replace(/\s+/g, "").replace(/[_-]/g, "");
+  
+  async function searchFolder(folderId: string): Promise<CardFileResult | null> {
+    const files = await listFilesInFolder(token, folderId);
+    
+    // Search files in this folder – match "Karta_Arthur", "004_Arthur", "Arthur" etc.
+    for (const f of files) {
+      const isFolder = f.mimeType === "application/vnd.google-apps.folder";
+      if (isFolder) continue;
+      
+      const baseName = f.name.replace(/\.(txt|md|doc|docx)$/i, "");
+      const normalizedFileName = baseName.toLowerCase().replace(/[_\s-]/g, "");
+      
+      // Match if file name contains the part name
+      if (normalizedFileName.includes(normalizedPart)) {
+        try {
+          const content = await readFileContent(token, f.id);
+          console.log(`[findCardFile] Found card for "${partName}": ${f.name} (id: ${f.id}) in folder ${folderId}`);
+          return { fileId: f.id, fileName: f.name, content, parentFolderId: folderId };
+        } catch (e) {
+          console.error(`[findCardFile] Could not read ${f.name}:`, e);
+        }
       }
-    } catch { /* not a folder or inaccessible */ }
+    }
+    
+    // Search subfolders
+    const subfolders = files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
+    for (const sf of subfolders) {
+      const result = await searchFolder(sf.id);
+      if (result) return result;
+    }
+    
+    return null;
   }
-
-  return null;
+  
+  return searchFolder(rootFolderId);
 }
 
 serve(async (req) => {
@@ -210,9 +223,8 @@ serve(async (req) => {
     }
 
     // ═══ MODE: "update-card-sections" ═══
-    // Updates specific sections of a part's card directly
+    // Updates specific sections of a part's card directly IN PLACE
     // Input: { mode: "update-card-sections", partName: string, sections: Record<string, string> }
-    //   sections keys are A-M, values are new content to APPEND (not replace) to that section
     if (body.mode === "update-card-sections") {
       const { partName, sections: newSections } = body;
       if (!partName || !newSections) {
@@ -221,90 +233,70 @@ serve(async (req) => {
         });
       }
 
-      // Find existing card
       const card = await findCardFile(token, partName, folderId);
       const dateStr = new Date().toISOString().slice(0, 10);
 
       let existingSections: Record<string, string>;
-      let cardFileName: string;
+      let isNew = false;
 
       if (card) {
         existingSections = parseCardSections(card.content);
-        cardFileName = card.fileName;
-        console.log(`Found card: ${cardFileName}, existing sections: ${Object.keys(existingSections).join(", ")}`);
+        console.log(`[update-card-sections] Found card: ${card.fileName} (${card.fileId}), sections: ${Object.keys(existingSections).filter(k => k !== "_preamble").join(", ")}`);
       } else {
-        // Create new card
         existingSections = {};
-        cardFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
-        console.log(`Creating new card: ${cardFileName}`);
+        isNew = true;
+        console.log(`[update-card-sections] No card found for "${partName}", creating new`);
       }
 
-      // Merge: append new content to existing sections (never overwrite)
+      // Merge: append new content to existing sections with timestamp (NEVER overwrite)
+      const updatedKeys: string[] = [];
       for (const [letter, newContent] of Object.entries(newSections)) {
         const upperLetter = letter.toUpperCase();
         if (!SECTION_ORDER.includes(upperLetter)) continue;
 
         const existing = existingSections[upperLetter] || "";
-        const timestampedContent = `\n[${dateStr}] ${newContent}`;
+        const timestampedContent = `[${dateStr}] ${newContent}`;
 
         if (existing && existing !== "(zatím prázdné)") {
-          existingSections[upperLetter] = existing + "\n" + timestampedContent;
+          existingSections[upperLetter] = existing + "\n\n" + timestampedContent;
         } else {
-          existingSections[upperLetter] = timestampedContent.trim();
+          existingSections[upperLetter] = timestampedContent;
         }
+        updatedKeys.push(upperLetter);
       }
 
-      // Rebuild full card
+      // Rebuild full card with ALL sections A-M
       const fullCard = buildCard(partName, existingSections);
-      await uploadOrUpdate(token, cardFileName, fullCard, folderId);
+
+      let resultFileName: string;
+      if (card) {
+        // UPDATE IN PLACE by file ID – same file, same folder
+        await updateFileById(token, card.fileId, fullCard);
+        resultFileName = card.fileName;
+        console.log(`[update-card-sections] Updated ${card.fileName} in-place (${card.fileId}), sections: ${updatedKeys.join(",")}`);
+      } else {
+        // Create new card in root of Kartoteka_DID
+        const newFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
+        await createFileInFolder(token, newFileName, fullCard, folderId);
+        resultFileName = newFileName;
+        console.log(`[update-card-sections] Created new card: ${newFileName}`);
+      }
 
       return new Response(JSON.stringify({
         success: true,
-        cardFileName,
-        sectionsUpdated: Object.keys(newSections),
-        isNewCard: !card,
+        cardFileName: resultFileName,
+        sectionsUpdated: updatedKeys,
+        isNewCard: isNew,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ═══ MODE: legacy "updates" array (append/replace) ═══
-    // Kept for backward compatibility but should not create separate backup files
-    const { updates } = body;
-    if (!updates || !Array.isArray(updates) || updates.length === 0) {
-      return new Response(JSON.stringify({ error: "No updates provided. Use mode: 'update-card-sections' for section-based writes." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const results: Array<{ fileName: string; status: string }> = [];
-
-    for (const update of updates) {
-      const { fileName, content, mode: writeMode } = update;
-      if (!fileName || !content) {
-        results.push({ fileName: fileName || "unknown", status: "skipped - missing data" });
-        continue;
-      }
-
-      try {
-        if (writeMode === "append") {
-          const existingId = await findFile(token, fileName, folderId);
-          let existingContent = "";
-          if (existingId) existingContent = await readFileContent(token, existingId);
-          const newContent = existingContent ? `${existingContent}\n\n${content}` : content;
-          await uploadOrUpdate(token, fileName, newContent, folderId);
-        } else {
-          await uploadOrUpdate(token, fileName, content, folderId);
-        }
-        results.push({ fileName, status: "ok" });
-      } catch (e) {
-        console.error(`Failed to write ${fileName}:`, e);
-        results.push({ fileName, status: `error: ${e.message}` });
-      }
-    }
-
-    return new Response(JSON.stringify({ success: true, results }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    // ═══ Fallback: legacy mode (should NOT be used for DID cards) ═══
+    return new Response(JSON.stringify({ 
+      error: "Use mode: 'update-card-sections' for DID card updates. Legacy 'updates' array mode is disabled." 
+    }), {
+      status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("DID Drive write error:", error);
