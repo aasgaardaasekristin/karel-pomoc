@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, FileDown, MessageCircle, Zap } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, MessageCircle, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
 
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import { generateDidReport } from "@/lib/didPdfExport";
 import type { DidSubMode } from "./DidSubModeSelector";
 
 interface PartActivity {
@@ -24,35 +23,18 @@ interface ActiveThreadSummary {
 
 interface Props {
   onManualUpdate: () => void;
-  onWeeklyUpdate?: () => void;
   isUpdating: boolean;
-  isWeeklyUpdating?: boolean;
   onQuickSubMode?: (subMode: DidSubMode) => void;
   onQuickThread?: (threadId: string, partName: string) => void;
 }
 
-const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpdating, onQuickSubMode, onQuickThread }: Props) => {
+const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThread }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
-  const [isPdfExporting, setIsPdfExporting] = useState(false);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
-
-  const handlePdfExport = async () => {
-    setIsPdfExporting(true);
-    toast.info("Generuji PDF report...");
-    try {
-      await generateDidReport();
-      toast.success("PDF report stažen");
-    } catch (e) {
-      toast.error("Nepodařilo se vygenerovat PDF");
-      console.error("PDF export error:", e);
-    } finally {
-      setIsPdfExporting(false);
-    }
-  };
 
   useEffect(() => {
     loadDashboardData();
@@ -215,55 +197,21 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handlePdfExport}
-            disabled={isPdfExporting}
-            className="h-8 text-xs gap-1.5"
-          >
-            {isPdfExporting ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <FileDown className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">PDF Report</span>
-            <span className="sm:hidden">PDF</span>
-          </Button>
-          {onWeeklyUpdate && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onWeeklyUpdate}
-              disabled={isWeeklyUpdating}
-              className="h-8 text-xs gap-1.5"
-            >
-              {isWeeklyUpdating ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Calendar className="w-3.5 h-3.5" />
-              )}
-              <span className="hidden sm:inline">Týdenní analýza</span>
-              <span className="sm:hidden">Týden</span>
-            </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onManualUpdate}
+          disabled={isUpdating}
+          className="h-8 text-xs gap-1.5"
+        >
+          {isUpdating ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3.5 h-3.5" />
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onManualUpdate}
-            disabled={isUpdating}
-            className="h-8 text-xs gap-1.5"
-          >
-            {isUpdating ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden sm:inline">Aktualizovat nyní</span>
-            <span className="sm:hidden">Aktual.</span>
-          </Button>
-        </div>
+          <span className="hidden sm:inline">Aktualizovat kartoteka_DID ihned</span>
+          <span className="sm:hidden">Aktual. kartotéku</span>
+        </Button>
       </div>
 
       {/* Parts overview */}
