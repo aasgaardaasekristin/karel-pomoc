@@ -88,51 +88,27 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
-async function updateGoogleDocById(token: string, fileId: string, content: string): Promise<any> {
-  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+async function deleteFileById(token: string, fileId: string): Promise<void> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
+    method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!docRes.ok) throw new Error(`Google Docs read failed: ${await docRes.text()}`);
-
-  const doc = await docRes.json();
-  const bodyContent = Array.isArray(doc.body?.content) ? doc.body.content : [];
-  const endIndex = bodyContent.length > 0
-    ? (bodyContent[bodyContent.length - 1]?.endIndex ?? 1)
-    : 1;
-
-  const requests: any[] = [];
-  if (endIndex > 1) {
-    requests.push({
-      deleteContentRange: {
-        range: { startIndex: 1, endIndex: endIndex - 1 },
-      },
-    });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Drive DELETE failed for ${fileId}: ${await res.text()}`);
   }
-  requests.push({
-    insertText: {
-      location: { index: 1 },
-      text: content,
-    },
-  });
-
-  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ requests }),
-  });
-
-  if (!updateRes.ok) throw new Error(`Google Docs batchUpdate failed: ${await updateRes.text()}`);
-  return await updateRes.json();
 }
 
-async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
+async function updateFileById(token: string, fileId: string, content: string, mimeType?: string, parentFolderId?: string, fileName?: string): Promise<any> {
   const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
 
   if (isGoogleDoc) {
-    return await updateGoogleDocById(token, fileId, content);
+    // Google Docs API is not enabled → delete old Doc + create new one with same name in same folder
+    if (!parentFolderId || !fileName) {
+      throw new Error("parentFolderId and fileName required for Google Doc replacement");
+    }
+    console.log(`[updateFileById] Replacing Google Doc "${fileName}" (${fileId}) in folder ${parentFolderId}`);
+    await deleteFileById(token, fileId);
+    return await createFileInFolder(token, fileName, content, parentFolderId);
   }
 
   // For plain text files: multipart upload
@@ -293,7 +269,7 @@ async function updateCardSections(token: string, partName: string, newSections: 
   const fullCard = buildCard(partName, existingSections);
 
   if (card) {
-    await updateFileById(token, card.fileId, fullCard, card.mimeType);
+    await updateFileById(token, card.fileId, fullCard, card.mimeType, card.parentFolderId, card.fileName);
     return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
   } else {
     const newFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
