@@ -336,13 +336,11 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // 1. SBĚR DAT – threads (cast mode) + conversations (kata/mamka/general)
-    const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-    const { data: threadRows } = await sb.from("did_threads").select("*").eq("is_processed", false).gte("started_at", cutoff);
+    // 1. SBĚR DAT – ALL unprocessed threads + conversations (no time cutoff!)
+    const { data: threadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
     const threads = threadRows ?? [];
 
-    // Also fetch unprocessed conversations from kata/mamka/general submodes
-    const { data: convRows } = await sb.from("did_conversations").select("*").eq("is_processed", false).gte("saved_at", cutoff);
+    const { data: convRows } = await sb.from("did_conversations").select("*").eq("is_processed", false);
     const conversations = convRows ?? [];
 
     const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
@@ -383,18 +381,16 @@ serve(async (req) => {
     // 3. COMPILE THREAD + CONVERSATION DATA
     const threadSummaries = threads.map(t => {
       const msgs = (t.messages as any[]) || [];
-      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content.slice(0, 500) : "(multimodal)"}`).join("\n")}`;
+      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
-    // Add conversation data from kata/mamka/general submodes
     const convSummaries = conversations.map(c => {
       const msgs = (c.messages as any[]) || [];
-      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content.slice(0, 500) : "(multimodal)"}`).join("\n")}`;
+      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
 
-    // Get Drive context + existing cards
     let driveContext = "";
     let existingCards: Record<string, string> = {};
 
@@ -404,16 +400,34 @@ serve(async (req) => {
         if (partsFileId) driveContext = await readFileContent(token, partsFileId);
       } catch (e) { console.error("Drive read error:", e); }
 
-      const activeParts = [...new Set(threads.map(t => t.part_name))];
+      // Collect ALL unique part names from threads AND conversations
+      const threadParts = threads.map(t => t.part_name);
+      const convParts: string[] = [];
+      for (const c of conversations) {
+        const msgs = (c.messages as any[]) || [];
+        // Extract part names mentioned in conversation context
+        for (const m of msgs) {
+          if (typeof m.content === "string") {
+            // Check for part names in known parts context
+            const content = m.content;
+            if (content.length > 10) {
+              // The AI will identify parts from the conversation content
+              break;
+            }
+          }
+        }
+      }
+
+      const activeParts = [...new Set([...threadParts, ...convParts])];
       for (const partName of activeParts) {
         try {
           const card = await findCardFile(token, partName, folderId);
-          if (card) existingCards[partName] = card.content.slice(0, 3000);
+          if (card) existingCards[partName] = card.content;
         } catch {}
       }
     }
 
-    // 3. AI ANALÝZA
+    // 3. AI ANALÝZA – full A-M decomposition
     const existingCardsContext = Object.entries(existingCards).map(([name, content]) =>
       `=== EXISTUJÍCÍ KARTA: ${name} ===\n${content}`
     ).join("\n\n");
@@ -426,39 +440,103 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `Jsi Karel – analytik DID systému. Zpracuj data z dnešních rozhovorů.
+            content: `Jsi Karel – analytik DID systému. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
 
-TVÝM ÚKOLEM JE:
-1. Pro KAŽDOU aktivní část vytvořit aktualizace sekcí karty (A-M).
-2. Vytvořit report pro email.
+═══ ZÁKLADNÍ PRAVIDLO ═══
+Jeden dokument/konverzace = mnoho informací = každá informace má svou sekci.
+NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obsah – pouze doplňuješ nebo upřesňuješ.
 
-VÝSTUPNÍ FORMÁT – STRIKTNĚ DODRŽUJ:
+═══ POSTUP ═══
+1. Identifikuj o které části každá konverzace pojednává
+2. Projdi konverzaci odstavec po odstavci
+3. Pro každou informaci urči kam patří podle mapy níže
+4. Pokud karta části neexistuje → vytvoř novou se VŠEMI sekcemi A–M
 
-Pro každou část vypiš aktualizace sekcí takto:
+═══ MAPA ROZHODOVÁNÍ: CO KAM PATŘÍ ═══
+
+SEKCE A – Kdo jsem:
+- Základní identita, věk, role, typ části
+- Co část uklidňuje, co jí dává pocit bezpečí
+- Senzorické kotvy (vůně, zvuky, materiály)
+- Vztahy k jiným částem (spojenci, prostředníci)
+- Triggery
+
+SEKCE B – Charakter a psychologický profil:
+- Psychologické charakteristiky, obranné mechanismy
+- Jak část reaguje na kontakt, stres, probuzení
+- Pozorování při pokusech o kontakt
+
+SEKCE C – Potřeby, strachy, konflikty:
+- Rizika probuzení nebo aktivace
+- Vnitřní konflikty s jinými částmi
+- Nenaplněné potřeby a hluboké strachy
+
+SEKCE D – Terapeutická doporučení:
+- Pevná pravidla a kontraindikace (co se NESMÍ dělat)
+- Podmínky pro intervence
+- Terapeutické principy (ISSTD, IFS, spolupráce vs. integrace)
+
+SEKCE E – Chronologický log / Handover:
+- Časová osa událostí s datumem
+- Datum vzniku dokumentu, datum kontaktu
+
+SEKCE F – Poznámky pro Karla:
+- Situační karta ("Jsi v roce 2026, jsi v bezpečí...")
+- Bezpečnostní pokyny pro Karla
+- Co Karel musí vědět před příštím kontaktem
+
+SEKCE G – Deník sezení:
+- Záznamy: | Datum | Co se dělo | Stabilizace | Další krok |
+
+SEKCE H – Dlouhodobé cíle:
+- Směr vývoje části (integrace, stabilizace, budování důvěry)
+- Karlovy hypotézy o budoucím směru
+
+SEKCE I – Terapeutické metody a přístupy:
+- VŠECHNY konkrétní techniky a metody CELÉ (ne zkrácené!)
+- Název metody, postup krok za krokem, proč to funguje
+- Zdroj/odkaz, obtížnost
+
+SEKCE J – Krátkodobé cíle a aktuální intervence:
+- Akční plán (číslované kroky)
+- Co připravit před příštím setkáním
+
+SEKCE K – Výstupy ze sezení a zpětná vazba:
+- Co se osvědčilo/neosvědčilo: | Datum | Co bylo navrženo | Výsledek | Hodnocení |
+
+SEKCE L – Aktivita a přítomnost části:
+- | Období | Aktivita | Poznámka |
+
+SEKCE M – Karlova analytická poznámka:
+- Karlova syntéza a dedukce z konverzace
+- Spojitosti s jinými částmi/klastry
+- Hypotézy a doporučený směr
+
+═══ VÝSTUPNÍ FORMÁT – STRIKTNĚ DODRŽUJ ═══
+
+Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nové informace:
+
 [KARTA:jméno_části]
-[SEKCE:G] deník sezení – datum, co se dělo, stabilizační opatření, další krok (formát: | Datum | Co se dělo | Stabilizace | Další krok |)
-[SEKCE:J] krátkodobé cíle a aktuální intervence
-[SEKCE:L] aktivita a přítomnost (formát: | Období | Aktivita | Poznámka |)
-[SEKCE:E] chronologický log s datem
-[SEKCE:K] výstupy ze sezení a zpětná vazba (formát: | Datum | Co bylo navrženo | Výsledek | Hodnocení |)
+[SEKCE:A] obsah pro sekci A
+[SEKCE:B] obsah pro sekci B
+... (vypiš VŠECHNY sekce které mají nový obsah)
+[SEKCE:M] Karlova analytická poznámka
 [/KARTA]
 
-Po všech kartách přidej:
+Po všech kartách:
 [REPORT]
-Report pro email – MUSÍ obsahovat:
 - Co bylo změněno (karta + sekce) a proč
 - Shrnutí: kdo dnes mluvil a jaké části byly aktivní
-- Co z toho plyne pro dnešní večerní sezení doma
-- Konkrétní doporučení pro mamku (co dělat + proč)
-- Konkrétní doporučení pro Káťu (jak psát/reagovat + proč)
-- Krátké upozornění, že se obě mohou obrátit na Karla v aplikaci (mamka v podrežimu „mamka“, Káťa v podrežimu „kata")
+- Doporučení pro mamku (co dělat večer + proč)
+- Doporučení pro Káťu (jak reagovat + proč)
 [/REPORT]
 
-PRAVIDLA:
-- NIKDY nesmaž původní data – pouze doplňuj s datem
-- Zaznamenej zdroj každé změny
-- Přizpůsob jazyk části (norsky pro norské části, česky pro ostatní)
-- Pokud detekuješ novou část, navrhni obsah pro sekce A, B, C, D, F
+═══ PRAVIDLA ═══
+- NIKDY nesmaž původní data – pouze doplňuj s datem [YYYY-MM-DD]
+- Metody v sekci I piš CELÉ (postup, proč funguje, zdroj)
+- Přizpůsob jazyk části (norsky pro norské, česky pro ostatní)
+- Pokud detekuješ novou část bez karty, navrhni obsah pro VŠECHNY sekce A–M
+- Každá sekce musí obsahovat POUZE informace relevantní pro danou sekci
 
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`,
@@ -474,11 +552,9 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       analysisText = data.choices?.[0]?.message?.content || "";
     }
 
-    // 4. PARSE AND UPDATE CARDS IN-PLACE (navazuje na předchozí normalizaci A-M)
+    // 4. PARSE AND UPDATE CARDS IN-PLACE
 
     if (folderId && analysisText) {
-      const dateStr = new Date().toISOString().slice(0, 10);
-
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of analysisText.matchAll(cardBlockRegex)) {
         const partName = match[1].trim();
