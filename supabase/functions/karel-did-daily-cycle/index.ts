@@ -88,7 +88,18 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
-async function updateFileById(token: string, fileId: string, content: string): Promise<any> {
+async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
+  const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
+
+  if (isGoogleDoc) {
+    // Google Docs cannot be updated via Drive upload API.
+    // Strategy: delete old Google Doc and create a new plain text file in same folder.
+    // This is a one-time migration per card.
+    console.log(`[updateFileById] Google Doc detected (${fileId}), will create .txt replacement`);
+    throw new Error("GOOGLE_DOC_CANNOT_UPDATE");
+  }
+
+  // For plain text files: multipart upload
   const boundary = "----DIDCycleBoundary";
   const metadata = JSON.stringify({});
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
@@ -169,7 +180,7 @@ function buildCard(partName: string, sections: Record<string, string>): string {
   return lines.join("\n");
 }
 
-interface CardFileResult { fileId: string; fileName: string; content: string; parentFolderId: string; }
+interface CardFileResult { fileId: string; fileName: string; content: string; parentFolderId: string; mimeType?: string; }
 
 type DriveFile = { id: string; name: string; mimeType?: string };
 
@@ -178,17 +189,29 @@ async function findCardFile(token: string, partName: string, rootFolderId: strin
 
   async function searchFolder(folderId: string): Promise<CardFileResult | null> {
     const files = await listFilesInFolder(token, folderId);
+    
+    // Collect all matching files, prefer .txt over Google Docs
+    const matches: Array<{ file: typeof files[0]; priority: number }> = [];
     for (const f of files) {
       if (f.mimeType === "application/vnd.google-apps.folder") continue;
       const baseName = f.name.replace(/\.(txt|md|doc|docx)$/i, "");
       const normalizedFileName = baseName.toLowerCase().replace(/[_\s-]/g, "");
       if (normalizedFileName.includes(normalizedPart)) {
-        try {
-          const content = await readFileContent(token, f.id);
-          console.log(`[findCardFile] Found "${partName}": ${f.name} (${f.id}) in folder ${folderId}`);
-          return { fileId: f.id, fileName: f.name, content, parentFolderId: folderId };
-        } catch (e) { console.error(`[findCardFile] Cannot read ${f.name}:`, e); }
+        // .txt files get priority 0 (best), Google Docs get priority 2 (fallback)
+        const priority = /\.txt$/i.test(f.name) ? 0 : f.mimeType === "application/vnd.google-apps.document" ? 2 : 1;
+        matches.push({ file: f, priority });
       }
+    }
+    
+    // Sort by priority (prefer .txt)
+    matches.sort((a, b) => a.priority - b.priority);
+    
+    for (const { file: f } of matches) {
+      try {
+        const content = await readFileContent(token, f.id);
+        console.log(`[findCardFile] Found "${partName}": ${f.name} (${f.id}) mimeType=${f.mimeType} in folder ${folderId}`);
+        return { fileId: f.id, fileName: f.name, content, parentFolderId: folderId, mimeType: f.mimeType };
+      } catch (e) { console.error(`[findCardFile] Cannot read ${f.name}:`, e); }
     }
     const subfolders = files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
     for (const sf of subfolders) {
@@ -233,9 +256,19 @@ async function updateCardSections(token: string, partName: string, newSections: 
   const fullCard = buildCard(partName, existingSections);
 
   if (card) {
-    // UPDATE IN-PLACE by file ID
-    await updateFileById(token, card.fileId, fullCard);
-    return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
+    try {
+      await updateFileById(token, card.fileId, fullCard, card.mimeType);
+      return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
+    } catch (e) {
+      if (e instanceof Error && e.message === "GOOGLE_DOC_CANNOT_UPDATE") {
+        // Google Doc → create a .txt companion in the same folder
+        const txtName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
+        console.log(`[updateCardSections] Google Doc "${card.fileName}" cannot be updated via API. Creating .txt companion: ${txtName}`);
+        await createFileInFolder(token, txtName, fullCard, card.parentFolderId);
+        return { fileName: txtName, sectionsUpdated: updatedKeys, isNew: true };
+      }
+      throw e;
+    }
   } else {
     const newFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
     await createFileInFolder(token, newFileName, fullCard, folderId);
@@ -303,7 +336,7 @@ async function normalizeCardStructures(token: string, rootFolderId: string): Pro
 
       const rebuilt = buildCard(partNameFromFileName(file.name), parseCardSections(original));
       if (rebuilt.trim() !== original.trim()) {
-        await updateFileById(token, file.id, rebuilt);
+        await updateFileById(token, file.id, rebuilt, file.mimeType);
         normalized.push(file.name);
       }
     } catch (e) {
@@ -584,6 +617,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       // Daily report (separate file – this IS correct as a standalone report)
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
       const reportText = reportMatch?.[1]?.trim() || analysisText;
+      const dateStr = new Date().toISOString().slice(0, 10);
       await uploadOrUpdate(token, `DID_Denni_Report_${dateStr}.txt`, reportText, folderId);
 
       // 5. EMAIL
