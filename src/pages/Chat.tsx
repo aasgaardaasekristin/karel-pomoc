@@ -1085,16 +1085,16 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           });
         }
       }
-    } catch (error) {
-      console.error("Chat error:", error);
-      toast.error(error instanceof Error ? error.message : "Chyba při komunikaci");
-      if (!assistantContent) setMessages((prev) => prev.slice(0, -1));
       // Trigger background enrichment for mamka/kata/general on first substantive message
       if (mode === "childcare" && !didDocsLoaded && !activeThread &&
           (didSubMode === "mamka" || didSubMode === "kata" || didSubMode === "general") &&
           messages.length <= 2 && userMessage.length > 5) {
         enrichContextForSubMode(userMessage);
       }
+    } catch (error) {
+      console.error("Chat error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při komunikaci");
+      if (!assistantContent) setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
