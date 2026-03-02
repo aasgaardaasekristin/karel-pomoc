@@ -226,20 +226,21 @@ async function findCardFile(token: string, partName: string, rootFolderId: strin
   async function searchFolder(folderId: string): Promise<CardFileResult | null> {
     const files = await listFilesInFolder(token, folderId);
     
-    // Collect all matching files, prefer .txt over Google Docs
+    // Collect all matching files, prefer ORIGINAL Google Docs over companion .txt
     const matches: Array<{ file: typeof files[0]; priority: number }> = [];
     for (const f of files) {
       if (f.mimeType === "application/vnd.google-apps.folder") continue;
       const baseName = f.name.replace(/\.(txt|md|doc|docx)$/i, "");
       const normalizedFileName = baseName.toLowerCase().replace(/[_\s-]/g, "");
       if (normalizedFileName.includes(normalizedPart)) {
-        // .txt files get priority 0 (best), Google Docs get priority 2 (fallback)
-        const priority = /\.txt$/i.test(f.name) ? 0 : f.mimeType === "application/vnd.google-apps.document" ? 2 : 1;
+        // Google Docs (originals) get priority 0 (best), .txt companions created by migration get priority 2
+        const isKartaTxt = /^karta_/i.test(f.name) && /\.txt$/i.test(f.name);
+        const priority = f.mimeType === "application/vnd.google-apps.document" ? 0 : isKartaTxt ? 2 : 1;
         matches.push({ file: f, priority });
       }
     }
     
-    // Sort by priority (prefer .txt)
+    // Sort by priority (prefer original Google Docs)
     matches.sort((a, b) => a.priority - b.priority);
     
     for (const { file: f } of matches) {
