@@ -23,9 +23,13 @@ import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
 import DidActionButtons from "@/components/did/DidActionButtons";
+import DidDashboard from "@/components/did/DidDashboard";
+import DidThreadList from "@/components/did/DidThreadList";
+import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
+import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
@@ -49,16 +53,11 @@ const CAST_GREETINGS = [
 
 const getRandomCastGreeting = () => {
   if (CAST_GREETINGS.length === 1) return CAST_GREETINGS[0];
-
   try {
     const lastIndexRaw = localStorage.getItem(LAST_CAST_GREETING_INDEX_KEY);
     const lastIndex = lastIndexRaw ? Number(lastIndexRaw) : -1;
     let nextIndex = Math.floor(Math.random() * CAST_GREETINGS.length);
-
-    if (nextIndex === lastIndex) {
-      nextIndex = (nextIndex + 1) % CAST_GREETINGS.length;
-    }
-
+    if (nextIndex === lastIndex) nextIndex = (nextIndex + 1) % CAST_GREETINGS.length;
     localStorage.setItem(LAST_CAST_GREETING_INDEX_KEY, String(nextIndex));
     return CAST_GREETINGS[nextIndex];
   } catch {
@@ -69,23 +68,20 @@ const getRandomCastGreeting = () => {
 const saveMessages = (mode: string, messages: { role: string; content: string }[]) => {
   try {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify({ _mode: mode, messages }));
-  } catch { /* quota exceeded – silently ignore */ }
+  } catch {}
 };
 const loadMessages = (mode: string) => {
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${mode}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    // New format: { _mode, messages }
     if (parsed && typeof parsed === "object" && "_mode" in parsed) {
       if (parsed._mode !== mode) {
-        // Contaminated data – wrong mode stored under this key
         localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
         return null;
       }
       return parsed.messages;
     }
-    // Old format (plain array) – treat as potentially contaminated, discard
     localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
     return null;
   } catch { return null; }
@@ -95,32 +91,21 @@ const clearMessages = (mode: string) => {
 };
 
 const handleApiError = (response: Response) => {
-  if (response.status === 429) {
-    throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
-  }
-  if (response.status === 402) {
-    throw new Error("Karel je momentálně nedostupný – pravděpodobně došly AI kredity. Zkontroluj Cloud & AI balance v nastavení.");
-  }
+  if (response.status === 429) throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
+  if (response.status === 402) throw new Error("Karel je momentálně nedostupný – pravděpodobně došly AI kredity.");
   throw new Error("Něco se pokazilo. Zkus to znovu.");
 };
 
+// DID flow states
+type DidFlowState = "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
+
 const Chat = () => {
-  const { 
-    messages, 
-    setMessages, 
-    mode, 
-    setMode,
-    mainMode,
-    setMainMode,
-    setReportDraft,
-    pendingHandoffToChat,
-    setPendingHandoffToChat,
-    lastReportText,
-    didSubMode,
-    setDidSubMode,
-    didInitialContext,
-    setDidInitialContext,
+  const {
+    messages, setMessages, mode, setMode, mainMode, setMainMode,
+    setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
+    didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
+
   const [input, setInput] = useState("");
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
   const [isLoading, setIsLoading] = useState(false);
@@ -134,6 +119,7 @@ const Chat = () => {
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
+  const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
@@ -141,55 +127,49 @@ const Chat = () => {
   const [didSessionId, setDidSessionId] = useState<string | null>(() => {
     try { return localStorage.getItem(DID_SESSION_ID_KEY); } catch { return null; }
   });
+
+  // DID thread architecture
+  const [didFlowState, setDidFlowState] = useState<DidFlowState>("dashboard");
+  const [activeThread, setActiveThread] = useState<DidThread | null>(null);
+  const [knownParts, setKnownParts] = useState<string[]>([]);
+  const didThreads = useDidThreads();
+
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
 
   useEffect(() => {
     try { localStorage.setItem(ACTIVE_MODE_KEY, mode); } catch {}
   }, [mode]);
 
-  // Persist didSubMode & didInitialContext to localStorage
   useEffect(() => {
     try {
-      if (didSubMode) {
-        localStorage.setItem("karel_did_submode", didSubMode);
-      } else {
-        localStorage.removeItem("karel_did_submode");
-      }
+      if (didSubMode) localStorage.setItem("karel_did_submode", didSubMode);
+      else localStorage.removeItem("karel_did_submode");
     } catch {}
   }, [didSubMode]);
 
   useEffect(() => {
     try {
-      if (didInitialContext) {
-        localStorage.setItem("karel_did_context", didInitialContext);
-      } else {
-        localStorage.removeItem("karel_did_context");
-      }
+      if (didInitialContext) localStorage.setItem("karel_did_context", didInitialContext);
+      else localStorage.removeItem("karel_did_context");
     } catch {}
   }, [didInitialContext]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(DID_DOCS_LOADED_KEY, didDocsLoaded ? "1" : "0");
-    } catch {}
+    try { localStorage.setItem(DID_DOCS_LOADED_KEY, didDocsLoaded ? "1" : "0"); } catch {}
   }, [didDocsLoaded]);
 
   useEffect(() => {
     try {
-      if (didSessionId) {
-        localStorage.setItem(DID_SESSION_ID_KEY, didSessionId);
-      } else {
-        localStorage.removeItem(DID_SESSION_ID_KEY);
-      }
+      if (didSessionId) localStorage.setItem(DID_SESSION_ID_KEY, didSessionId);
+      else localStorage.removeItem(DID_SESSION_ID_KEY);
     } catch {}
   }, [didSessionId]);
 
-  // Persist notebook project name
   useEffect(() => {
     try { localStorage.setItem("karel_notebook_project", notebookProject); } catch {}
   }, [notebookProject]);
 
-  // One-time cleanup: clear cross-contaminated localStorage from previous bug
+  // One-time cleanup
   useEffect(() => {
     try {
       const modes: ConversationMode[] = ["debrief", "supervision", "safety", "research"];
@@ -201,12 +181,11 @@ const Chat = () => {
     } catch {}
   }, []);
 
-  // Restore interrupted DID flow after tab/page return
+  // Restore interrupted DID flow
   useEffect(() => {
     try {
       const savedMode = localStorage.getItem(ACTIVE_MODE_KEY) as ConversationMode | null;
       if (savedMode !== "childcare") return;
-
       const savedMessages = loadMessages("childcare");
       const savedSubMode = localStorage.getItem("karel_did_submode") as DidSubMode | null;
       const savedContext = localStorage.getItem("karel_did_context") || "";
@@ -214,120 +193,103 @@ const Chat = () => {
       const savedSessionId = localStorage.getItem(DID_SESSION_ID_KEY);
 
       setMode("childcare");
-      if (savedSubMode) setDidSubMode(savedSubMode);
+      if (savedSubMode) {
+        setDidSubMode(savedSubMode);
+        if (savedMessages && savedMessages.length > 0) {
+          setDidFlowState("chat");
+        } else {
+          setDidFlowState("dashboard");
+        }
+      }
       setDidInitialContext(savedContext);
       setDidDocsLoaded(savedDidDocsLoaded || !!(savedMessages && savedMessages.length > 0));
       if (savedSessionId) setDidSessionId(savedSessionId);
-      if (savedMessages && savedMessages.length > 0) {
-        setMessages(savedMessages);
-      }
+      if (savedMessages && savedMessages.length > 0) setMessages(savedMessages);
     } catch {}
   }, []);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
-
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Check authentication — block render until verified
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/", { replace: true });
-      } else {
-        setAuthChecked(true);
-      }
+      if (!session) navigate("/", { replace: true });
+      else setAuthChecked(true);
     };
     checkAuth();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) navigate("/", { replace: true });
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-
-  // Auto-scroll to bottom
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // Track mode to avoid saving stale messages under a new mode key
   const prevModeRef = useRef(mode);
 
-  // Persist messages to localStorage on change – but only if mode hasn't just changed
   useEffect(() => {
-    if (messages.length > 0 && prevModeRef.current === mode) {
-      saveMessages(mode, messages);
-    }
+    if (messages.length > 0 && prevModeRef.current === mode) saveMessages(mode, messages);
   }, [messages, mode]);
 
-  // Periodically re-save messages to prevent loss on tab switches
+  // Auto-save threads to DB
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (messages.length === 0 || !activeThread) return;
+    const interval = setInterval(() => {
+      didThreads.updateThreadMessages(activeThread.id, messages);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [messages, activeThread]);
+
+  // Periodical save for non-thread modes
+  useEffect(() => {
+    if (messages.length === 0 || activeThread) return;
     const interval = setInterval(() => {
       saveMessages(mode, messages);
-      // Auto-save DID conversation to history so it's never lost
-      if (mode === "childcare" && didSubMode && messages.length >= 2) {
+      if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
         saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation]);
+  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation, activeThread]);
 
-  // Save/restore when tab visibility changes
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === "hidden") {
         if (messages.length > 0) {
           saveMessages(mode, messages);
+          if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
         }
-        if (mode === "childcare" && didSubMode && messages.length >= 2) {
+        if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
           saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
         }
-        return;
       }
-
-      if (document.visibilityState === "visible") {
-        if (mode === "childcare" && !didSubMode) {
-          refreshHistory();
-        }
-
-        const isInDidDocumentGate = mode === "childcare" && !!didSubMode && !didDocsLoaded;
-        if (!isInDidDocumentGate && messages.length === 0) {
-          const saved = loadMessages(mode);
-          if (saved && saved.length > 0) {
-            setMessages(saved);
-          }
-        }
+      if (document.visibilityState === "visible" && mode === "childcare" && !didSubMode) {
+        refreshHistory();
       }
     };
-
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [mode, messages, didSubMode, didDocsLoaded, didInitialContext, didSessionId, saveConversation, refreshHistory, setMessages]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, refreshHistory, activeThread]);
 
-  // Save when page is being frozen/unloaded
   useEffect(() => {
     const persistNow = () => {
       if (messages.length > 0) {
         saveMessages(mode, messages);
-      }
-      if (mode === "childcare" && didSubMode && messages.length >= 2) {
-        saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
+        if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
       }
     };
-
     window.addEventListener("beforeunload", persistNow);
     window.addEventListener("pagehide", persistNow);
     return () => {
       window.removeEventListener("beforeunload", persistNow);
       window.removeEventListener("pagehide", persistNow);
     };
-  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation]);
+  }, [messages, mode, activeThread]);
 
   // Welcome message when mode changes
   useEffect(() => {
@@ -335,48 +297,41 @@ const Chat = () => {
       debrief: "Hani, jsem tady. Pojď, sedni si ke mně k ohni. Pracovní den končí a já ti držím prostor, abys mohla odložit vše, co v tobě zůstalo. Jak se právě teď cítíš?",
       supervision: "Haničko, jsem připraven s tebou pracovat. Která postava z tvé praxe tě teď zaměstnává? Můžeme reflektovat, trénovat, nebo ti nabídnu strukturovaný zápis - co potřebuješ?",
       safety: "Hani, pojďme společně a věcně projít to, co tě znepokojuje. Jsem tu jako tvůj partner - projdeme hranice, postup i dokumentaci. Na čem pracujeme?",
-      childcare: "Haničko, jsem tady s tebou. Vím, jak náročná je péče o tvé dítě s DID. Pojďme spolu projít, co se děje - ať už potřebuješ porozumět nějakému alteru, zpracovat náročnou situaci, nebo jen sdílet. Co teď nejvíc potřebuješ?",
+      childcare: "",
       research: "🔬 Haničko, jsem připraven prohledat internet pro tebe. Řekni mi, co tě zajímá – nové metody, testy, odborné články, trendy v psychoterapii, techniky pro práci s dětmi... Stačí popsat téma nebo situaci a já najdu relevantní zdroje.",
     };
 
-    // Reset DID sub-mode when switching away from childcare
     if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
+      setDidFlowState("dashboard");
+      setActiveThread(null);
     }
 
-    // For childcare mode, don't set welcome message until sub-mode is selected
     if (mode === "childcare") {
-      // Clear messages immediately when entering childcare (sub-mode selector will handle it)
       if (prevModeRef.current !== mode) {
         setMessages([]);
+        setDidFlowState("dashboard");
+        setActiveThread(null);
       }
       prevModeRef.current = mode;
       refreshHistory();
       return;
     }
 
-    // Only reset messages if not coming from report handoff
     if (!pendingHandoffToChat) {
-      // Try to restore from localStorage first — but only genuine saved conversations for THIS mode
       const saved = loadMessages(mode);
-      if (saved && saved.length > 0) {
-        setMessages(saved);
-      } else {
-        setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
-      }
+      if (saved && saved.length > 0) setMessages(saved);
+      else setMessages([{ role: "assistant", content: welcomeMessages[mode] }]);
     }
-
     prevModeRef.current = mode;
   }, [mode, setMessages, pendingHandoffToChat, setDidSubMode, setDidInitialContext]);
 
-  // Handle handoff from Report to Chat
   useEffect(() => {
     if (pendingHandoffToChat && mainMode === "chat") {
-      const handoffMessage = lastReportText 
+      const handoffMessage = lastReportText
         ? "Haničko… to, co jsi teď sepsala, je hodně náročné.\n\nNež půjdeme do detailů – co z toho zápisu v tobě teď nejvíc rezonuje?"
         : "Haničko, jsem připraven s tebou probrat, co tě zaměstnává. Co teď nejvíc potřebuješ?";
-      
       setMessages(prev => [...prev, { role: "assistant", content: handoffMessage }]);
       setPendingHandoffToChat(false);
     }
@@ -388,8 +343,9 @@ const Chat = () => {
   };
 
   const handleNewConversation = useCallback(() => {
-    // Save current conversation to history before clearing
-    if (didSubMode && messages.length >= 2) {
+    if (activeThread && messages.length >= 2) {
+      didThreads.updateThreadMessages(activeThread.id, messages);
+    } else if (didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
     clearMessages(mode);
@@ -397,22 +353,27 @@ const Chat = () => {
     setDidInitialContext("");
     setDidDocsLoaded(false);
     setDidSessionId(null);
+    setActiveThread(null);
     setMessages([]);
+    setDidFlowState("dashboard");
     refreshHistory();
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, setMessages, setDidSubMode, setDidInitialContext, saveConversation, refreshHistory]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
 
   const handleDidBack = useCallback(() => {
-    // Save current conversation to history before going back
-    if (didSubMode && messages.length >= 2) {
+    if (activeThread && messages.length >= 2) {
+      didThreads.updateThreadMessages(activeThread.id, messages);
+    } else if (didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
     setDidSubMode(null);
     setDidInitialContext("");
     setDidDocsLoaded(false);
     setDidSessionId(null);
+    setActiveThread(null);
     setMessages([]);
+    setDidFlowState("dashboard");
     refreshHistory();
-  }, [didSubMode, messages, didInitialContext, didSessionId, setDidSubMode, setDidInitialContext, setMessages, saveConversation, refreshHistory]);
+  }, [didSubMode, messages, didInitialContext, didSessionId, activeThread]);
 
   const handleRestoreConversation = useCallback(async (id: string) => {
     const conv = await loadConversation(id);
@@ -422,10 +383,10 @@ const Chat = () => {
     setDidDocsLoaded(true);
     setDidSessionId(conv.id);
     setMessages(conv.messages as any);
+    setDidFlowState("chat");
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
 
-  // Don't render anything until auth is confirmed
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -434,50 +395,201 @@ const Chat = () => {
     );
   }
 
-  const handleSoapHandoff = async () => {
-    if (messages.length < 2 || isSoapLoading) return;
-    
-    setIsSoapLoading(true);
-    
+  // ── DID-specific handlers ──
+
+  const loadDriveContext = async (): Promise<string> => {
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-soap`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            messages: messages.slice(-40),
-            mode,
-          }),
-        }
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ documents: ["00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
       );
-
-      if (!response.ok) {
-        handleApiError(response);
+      if (response.ok) {
+        const data = await response.json();
+        const docs = data.documents || {};
+        return Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
       }
+    } catch (e) {
+      console.warn("Failed to load DID docs from Drive:", e);
+    }
+    return "";
+  };
 
-      const soapData = await response.json();
-      
-      setReportDraft({
-        context: soapData.context || "",
-        keyTheme: soapData.keyTheme || "",
-        therapistEmotions: soapData.therapistEmotions || [],
-        transference: soapData.transference || "",
-        risks: soapData.risks || [],
-        missingData: soapData.missingData || "",
-        interventionsTried: soapData.interventionsTried || "",
-        nextSessionGoal: soapData.nextSessionGoal || "",
+  const loadKnownParts = async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ documents: ["00_Seznam_casti"] }) }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const listDoc = data.documents?.["00_Seznam_casti"] || "";
+        // Parse part names from the list
+        const names = listDoc.split("\n")
+          .map((l: string) => l.replace(/^[-*•]\s*/, "").trim())
+          .filter((l: string) => l.length > 0 && l.length < 30 && !l.startsWith("["));
+        setKnownParts(names.slice(0, 20));
+      }
+    } catch {}
+  };
+
+  const handleDidSubModeSelect = async (subMode: DidSubMode) => {
+    setDidSubMode(subMode);
+    setDidSessionId(null);
+    setDidDocsLoaded(false);
+    setActiveThread(null);
+
+    if (subMode === "cast") {
+      // Show thread list for "cast" mode
+      setDidFlowState("loading");
+      await Promise.all([
+        didThreads.fetchActiveThreads("cast"),
+        loadKnownParts(),
+      ]);
+      const docsCtx = await loadDriveContext();
+      setDidInitialContext(docsCtx);
+      setDidDocsLoaded(true);
+      setDidFlowState("thread-list");
+      return;
+    }
+
+    if (subMode === "research") {
+      // Odborné zdroje mode - direct to chat
+      setDidFlowState("loading");
+      const docsCtx = await loadDriveContext();
+      setDidInitialContext(docsCtx);
+      setDidDocsLoaded(true);
+      setDidFlowState("chat");
+      setMessages([{ role: "assistant", content: "🔬 Jsem připraven prohledat odborné zdroje pro DID systém. Řekni mi téma, metodu nebo situaci – a já najdu relevantní výzkumy a terapeutické přístupy." }]);
+      return;
+    }
+
+    // mamka / kata / general - load docs and start chat
+    setDidFlowState("loading");
+    const docsCtx = await loadDriveContext();
+    const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    setDidSessionId(newSessionId);
+    setDidInitialContext(docsCtx);
+    setDidDocsLoaded(true);
+    setDidFlowState("chat");
+
+    const greetings: Record<string, string> = {
+      mamka: `Haničko, jsem tady s tebou. Načetl jsem dokumenty z Kartotéky DID – mám přehled o systému.\n\nPověz mi, co se děje. Co teď nejvíc potřebuješ probrat?`,
+      kata: `Ahoj Káťo! 😊 Jsem Karel. Načetl jsem si aktuální stav systému z kartotéky.\n\nJak ti můžu pomoct? Chceš se poradit, jak reagovat na nějakou část, nebo potřebuješ probrat situaci?`,
+      general: `Haničko, jsem připraven na obecnou poradu o DID. Načetl jsem dokumenty z kartotéky.\n\nMůžeš se ptát na metody, strategie, nebo mi popsat konkrétní situaci.`,
+    };
+    setMessages([{ role: "assistant", content: greetings[subMode] || greetings.general }]);
+  };
+
+  // Thread management for "cast" mode
+  const handleSelectThread = useCallback(async (thread: DidThread) => {
+    setActiveThread(thread);
+    setMessages(thread.messages);
+    setDidFlowState("chat");
+    // Load part-specific card from drive
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const docs = data.documents || {};
+        const ctx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+        setDidInitialContext(ctx);
+      }
+    } catch {}
+  }, [setMessages, setDidInitialContext]);
+
+  const handleNewCastThread = useCallback(() => {
+    setDidFlowState("part-identify");
+  }, []);
+
+  const handlePartSelected = useCallback(async (partName: string) => {
+    setDidFlowState("loading");
+    
+    // Check if thread already exists for this part
+    const existing = await didThreads.getThreadByPart(partName, "cast");
+    if (existing) {
+      setActiveThread(existing);
+      setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
+      setDidFlowState("chat");
+      toast.info(`Pokračuješ ve vláknu s ${partName}`);
+      return;
+    }
+
+    // Load part card from drive
+    let docsCtx = didInitialContext;
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const docs = data.documents || {};
+        docsCtx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+        setDidInitialContext(docsCtx);
+      }
+    } catch {}
+
+    const greeting = getRandomCastGreeting();
+    const initialMessages = [{ role: "assistant" as const, content: greeting }];
+    
+    // Detect language from part card
+    let partLanguage = "cs";
+    if (docsCtx.toLowerCase().includes("norsky") || docsCtx.toLowerCase().includes("norština")) partLanguage = "no";
+    if (docsCtx.toLowerCase().includes("anglicky") || docsCtx.toLowerCase().includes("english")) partLanguage = "en";
+
+    const thread = await didThreads.createThread(partName, "cast", partLanguage, initialMessages as any);
+    if (thread) {
+      setActiveThread(thread);
+      setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
+      setDidFlowState("chat");
+    } else {
+      toast.error("Nepodařilo se vytvořit vlákno");
+      setDidFlowState("thread-list");
+    }
+  }, [didInitialContext, setDidInitialContext, setMessages]);
+
+  const handleLeaveThread = useCallback(() => {
+    if (activeThread && messages.length >= 2) {
+      didThreads.updateThreadMessages(activeThread.id, messages);
+    }
+    setActiveThread(null);
+    setMessages([]);
+    setDidFlowState("thread-list");
+    didThreads.fetchActiveThreads("cast");
+  }, [activeThread, messages, setMessages]);
+
+  // ── Common handlers (unchanged logic, cleaned up) ──
+
+  const handleSoapHandoff = async () => {
+    if (messages.length < 2 || isSoapLoading) return;
+    setIsSoapLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-soap`, {
+        method: "POST", headers,
+        body: JSON.stringify({ messages: messages.slice(-40), mode }),
       });
-      
+      if (!response.ok) handleApiError(response);
+      const soapData = await response.json();
+      setReportDraft({
+        context: soapData.context || "", keyTheme: soapData.keyTheme || "",
+        therapistEmotions: soapData.therapistEmotions || [], transference: soapData.transference || "",
+        risks: soapData.risks || [], missingData: soapData.missingData || "",
+        interventionsTried: soapData.interventionsTried || "", nextSessionGoal: soapData.nextSessionGoal || "",
+      });
       setMainMode("report");
       toast.success("Zápis připraven, formulář předvyplněn");
     } catch (error) {
       console.error("SOAP error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při vytváření zápisu");
-    } finally {
-      setIsSoapLoading(false);
-    }
+    } finally { setIsSoapLoading(false); }
   };
 
   const handleStudyMaterial = async () => {
@@ -485,14 +597,9 @@ const Chat = () => {
     setIsStudyLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-study-material`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ messages: messages.slice(-60) }),
-        }
-      );
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-study-material`, {
+        method: "POST", headers, body: JSON.stringify({ messages: messages.slice(-60) }),
+      });
       if (!response.ok) handleApiError(response);
       const { material } = await response.json();
       if (!material) throw new Error("Prázdná odpověď");
@@ -501,9 +608,7 @@ const Chat = () => {
     } catch (error) {
       console.error("Study material error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při generování materiálu");
-    } finally {
-      setIsStudyLoading(false);
-    }
+    } finally { setIsStudyLoading(false); }
   };
 
   const handleAudioAnalysis = async () => {
@@ -512,31 +617,18 @@ const Chat = () => {
     try {
       const base64 = await audioRecorder.getBase64();
       if (!base64) throw new Error("Žádná nahrávka");
-
-      const chatContext = messages.slice(-10).map(m => 
+      const chatContext = messages.slice(-10).map(m =>
         `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
       ).join("\n");
-
       const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-audio-analysis`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            audioBase64: base64,
-            mode,
-            chatContext: messages.length > 0 ? chatContext : undefined,
-          }),
-        }
-      );
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-audio-analysis`, {
+        method: "POST", headers,
+        body: JSON.stringify({ audioBase64: base64, mode, chatContext: messages.length > 0 ? chatContext : undefined }),
+      });
       if (!response.ok) handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
-
-      setMessages(prev => [
-        ...prev,
+      setMessages(prev => [...prev,
         { role: "user", content: "🎙️ *[Audio nahrávka odeslána k analýze]*" },
         { role: "assistant", content: analysis },
       ]);
@@ -545,12 +637,9 @@ const Chat = () => {
     } catch (error) {
       console.error("Audio analysis error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při analýze audia");
-    } finally {
-      setIsAudioAnalyzing(false);
-    }
+    } finally { setIsAudioAnalyzing(false); }
   };
 
-  // Auto-analyze attached files
   const handleAutoAnalyze = async () => {
     if (isFileAnalyzing || attachments.length === 0 || attachments.some(a => a.uploading)) return;
     setIsFileAnalyzing(true);
@@ -558,105 +647,29 @@ const Chat = () => {
       const chatContext = messages.slice(-10).map(m =>
         `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
       ).join("\n");
-
       const attSummary = attachments.map(a => `📎 ${a.name}`).join(", ");
       setMessages(prev => [...prev, { role: "user", content: `🔍 *[Analýza příloh: ${attSummary}]*` }]);
-
       const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
-        {
-          method: "POST", headers,
-          body: JSON.stringify({
-            attachments: attachments.map(a => ({
-              name: a.name,
-              type: a.type,
-              size: a.size,
-              category: a.category,
-              dataUrl: a.dataUrl,
-              storagePath: a.storagePath,
-              driveFileId: a.driveFileId,
-            })),
-            mode,
-            chatContext: messages.length > 0 ? chatContext : undefined,
-          }),
-        }
-      );
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          attachments: attachments.map(a => ({
+            name: a.name, type: a.type, size: a.size, category: a.category,
+            dataUrl: a.dataUrl, storagePath: a.storagePath, driveFileId: a.driveFileId,
+          })),
+          mode, chatContext: messages.length > 0 ? chatContext : undefined,
+        }),
+      });
       if (!response.ok) handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
-
       setMessages(prev => [...prev, { role: "assistant", content: analysis }]);
       clearAttachments();
       toast.success("Analýza souborů dokončena");
     } catch (error) {
       console.error("File analysis error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při analýze souborů");
-    } finally {
-      setIsFileAnalyzing(false);
-    }
-  };
-
-  const handleDidSubModeSelect = async (subMode: DidSubMode) => {
-    setDidSubMode(subMode);
-    setDidSessionId(null);
-    setDidDocsLoaded(false);
-    setIsDriveLoading(true);
-
-    // Auto-load documents from Drive
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ documents: ["00_Seznam_casti", "01_Hlavni_mapa_systemu"] }),
-        }
-      );
-
-      let docsContext = "";
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        docsContext = Object.entries(docs)
-          .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
-          .join("\n\n");
-      } else {
-        console.warn("Failed to load DID docs from Drive, continuing without context");
-      }
-
-      const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setDidSessionId(newSessionId);
-      setDidInitialContext(docsContext);
-      setDidDocsLoaded(true);
-
-      if (subMode === "mamka") {
-        setMessages([{ role: "assistant", content: `Haničko, jsem tady s tebou. Načetl jsem dokumenty z Kartotéky DID – mám přehled o systému.\n\nPověz mi, co se děje. Co teď nejvíc potřebuješ probrat?` }]);
-      } else if (subMode === "cast") {
-        setMessages([{ role: "assistant", content: getRandomCastGreeting() }]);
-      } else if (subMode === "kata") {
-        setMessages([{ role: "assistant", content: `Ahoj Káťo! 😊 Jsem Karel. Načetl jsem si aktuální stav systému z kartotéky.\n\nJak ti můžu pomoct? Chceš se poradit, jak reagovat na nějakou část, nebo potřebuješ probrat situaci?` }]);
-      } else if (subMode === "general") {
-        setMessages([{ role: "assistant", content: `Haničko, jsem připraven na obecnou poradu o DID. Načetl jsem dokumenty z kartotéky.\n\nMůžeš se ptát na metody, strategie, nebo mi popsat konkrétní situaci.` }]);
-      }
-    } catch (error) {
-      console.error("Error loading DID docs:", error);
-      toast.error("Nepodařilo se načíst dokumenty z Drive, pokračuji bez kontextu");
-      
-      const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setDidSessionId(newSessionId);
-      setDidDocsLoaded(true);
-      
-      if (subMode === "cast") {
-        setMessages([{ role: "assistant", content: getRandomCastGreeting() }]);
-      } else {
-        setMessages([{ role: "assistant", content: `Haničko, jsem tady. Nepodařilo se mi načíst kartotéku z Drive, ale můžeme pracovat s tím, co mi řekneš.` }]);
-      }
-    } finally {
-      setIsDriveLoading(false);
-    }
+    } finally { setIsFileAnalyzing(false); }
   };
 
   const handleDidBackup = async () => {
@@ -664,42 +677,28 @@ const Chat = () => {
     setIsBackupLoading(true);
     try {
       const headers = await getAuthHeaders();
-      
-      // Use AI to generate structured updates from the conversation
-      const aiHeaders = await getAuthHeaders();
-      const aiResponse = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
-        {
-          method: "POST",
-          headers: aiHeaders,
-          body: JSON.stringify({
-            messages: [
-              ...messages.slice(-40),
-              { role: "user", content: "Prosím, vytvoř strukturovanou zálohu tohoto rozhovoru pro uložení do Kartotéky DID. Zahrň: shrnutí rozhovoru, aktualizace karet částí (pokud relevantní), handover zápis, a supervizní poznámky. Formátuj jako čistý text vhodný pro uložení do .txt souboru." }
-            ],
-            mode: "childcare",
-            didSubMode,
-            didInitialContext,
-          }),
-        }
-      );
+      const aiResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, {
+        method: "POST", headers: await getAuthHeaders(),
+        body: JSON.stringify({
+          messages: [...messages.slice(-40), { role: "user", content: "Vytvoř strukturovanou zálohu tohoto rozhovoru pro Kartotéku DID. Zahrň shrnutí, aktualizace karet, handover, supervizní poznámky. Formátuj jako čistý text." }],
+          mode: "childcare", didSubMode, didInitialContext,
+        }),
+      });
 
-      let backupContent = `=== ZÁLOHA ROZHOVORU ===\nDatum: ${new Date().toLocaleString("cs-CZ")}\nPodrežim: ${didSubMode}\n\n`;
-      
+      let backupContent = `=== ZÁLOHA ROZHOVORU ===\nDatum: ${new Date().toLocaleString("cs-CZ")}\nPodrežim: ${didSubMode}\n${activeThread ? `Část: ${activeThread.partName}\n` : ""}\n`;
+
       if (aiResponse.ok && aiResponse.body) {
         const reader = aiResponse.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
-          
-          let newlineIndex: number;
-          while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-            let line = buffer.slice(0, newlineIndex);
-            buffer = buffer.slice(newlineIndex + 1);
+          let idx: number;
+          while ((idx = buffer.indexOf("\n")) !== -1) {
+            let line = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 1);
             if (line.endsWith("\r")) line = line.slice(0, -1);
             if (!line.startsWith("data: ")) continue;
             const jsonStr = line.slice(6).trim();
@@ -712,81 +711,68 @@ const Chat = () => {
           }
         }
       } else {
-        // Fallback: save raw messages
         backupContent += messages.map(m => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n\n");
       }
 
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const fileName = `DID_Záloha_${didSubMode}_${dateStr}.txt`;
+      const partSuffix = activeThread ? `_${activeThread.partName.replace(/\s+/g, "_")}` : "";
+      const fileName = `DID_Záloha_${didSubMode}${partSuffix}_${dateStr}.txt`;
 
-      await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-write`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            updates: [{ fileName, content: backupContent, mode: "replace" }],
-          }),
-        }
-      );
-
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-write`, {
+        method: "POST", headers,
+        body: JSON.stringify({ updates: [{ fileName, content: backupContent, mode: "replace" }] }),
+      });
       toast.success("Záloha uložena na Drive");
     } catch (error) {
       console.error("Backup error:", error);
       toast.error("Chyba při zálohování na Drive");
-    } finally {
-      setIsBackupLoading(false);
-    }
+    } finally { setIsBackupLoading(false); }
   };
 
   const handleDidEndCall = async () => {
-    // Save conversation to history
-    if (didSubMode && messages.length >= 2) {
+    // Save thread
+    if (activeThread && messages.length >= 2) {
+      didThreads.updateThreadMessages(activeThread.id, messages);
+    } else if (didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
-    // Auto-backup to Drive
     handleDidBackup();
 
-    // Send email report if cast mode
     if (didSubMode === "cast") {
       try {
         const headers = await getAuthHeaders();
-        // Generate handover report via AI
-        const chatSummary = messages.slice(-30).map(m => 
+        const chatSummary = messages.slice(-30).map(m =>
           `${m.role === "user" ? "ČÁST" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
         ).join("\n");
+        const partInfo = activeThread ? `\nČást: ${activeThread.partName}\nJazyk: ${activeThread.partLanguage}` : "";
 
-        await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-email-report`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              reportContent: chatSummary,
-              partName: "DID rozhovor",
-              date: new Date().toLocaleDateString("cs-CZ"),
-              type: "did_handover",
-            }),
-          }
-        );
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-email-report`, {
+          method: "POST", headers,
+          body: JSON.stringify({
+            reportContent: partInfo + "\n\n" + chatSummary,
+            partName: activeThread?.partName || "DID rozhovor",
+            date: new Date().toLocaleDateString("cs-CZ"),
+            type: "did_handover",
+          }),
+        });
         toast.success("Email s handoverem odeslán mamce");
       } catch (e) {
         console.error("Email send error:", e);
       }
     }
 
-    // Switch to mamka mode
     clearMessages(mode);
+    setActiveThread(null);
     setDidSubMode("mamka");
-    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor s částí. Připravil jsem zálohu a odeslal email.\n\nMám přehled o tom, co se dělo. Chceš probrat, co jsem zjistil?` }]);
+    setDidFlowState("chat");
+    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}. Připravil jsem zálohu a odeslal email.\n\nMám přehled o tom, co se dělo. Chceš probrat, co jsem zjistil?` }]);
   };
 
   const handleDidDiary = () => {
-    const diaryPrompt = "Pojďme společně zapsat něco do tvého deníku. Co bys tam chtěl/a mít? Můžeme to napsat spolu.";
-    setMessages(prev => [...prev, 
+    setMessages(prev => [...prev,
       { role: "user", content: "📗 Chci zapsat do deníku" },
-      { role: "assistant", content: diaryPrompt }
+      { role: "assistant", content: "Pojďme společně zapsat něco do tvého deníku. Co bys tam chtěl/a mít? Můžeme to napsat spolu." }
     ]);
   };
 
@@ -806,52 +792,36 @@ const Chat = () => {
 
   const handleDidResearch = async () => {
     if (isDidResearchLoading) return;
-    
-    // Prompt user for search query
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
-    const searchContext = messages.slice(-10).map(m => 
+    const searchContext = messages.slice(-10).map(m =>
       `${m.role === "user" ? "UŽIVATEL" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
     ).join("\n");
-
-    setMessages(prev => [...prev,
-      { role: "user", content: "🔬 Hledej terapeutické metody a výzkumy relevantní pro naši situaci" },
-    ]);
+    setMessages(prev => [...prev, { role: "user", content: "🔬 Hledej terapeutické metody a výzkumy relevantní pro naši situaci" }]);
     setIsDidResearchLoading(true);
-
     let assistantContent = "";
-
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-research`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            query: lastUserMsg ? (typeof lastUserMsg.content === "string" ? lastUserMsg.content : "DID terapeutické metody pro dětské části") : "DID terapeutické metody pro dětské části",
-            conversationContext: searchContext,
-          }),
-        }
-      );
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-research`, {
+        method: "POST", headers,
+        body: JSON.stringify({
+          query: lastUserMsg ? (typeof lastUserMsg.content === "string" ? lastUserMsg.content : "DID terapeutické metody") : "DID terapeutické metody",
+          conversationContext: searchContext,
+        }),
+      });
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
-
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-
       setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIndex);
-          buffer = buffer.slice(newlineIndex + 1);
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
           if (line.endsWith("\r")) line = line.slice(0, -1);
           if (line.startsWith(":") || line.trim() === "") continue;
           if (!line.startsWith("data: ")) continue;
@@ -863,127 +833,101 @@ const Chat = () => {
             if (content) {
               assistantContent += content;
               setMessages(prev => {
-                const newMessages = [...prev];
-                const lastIndex = newMessages.length - 1;
-                if (newMessages[lastIndex]?.role === "assistant") {
-                  newMessages[lastIndex] = { ...newMessages[lastIndex], content: assistantContent };
-                }
-                return newMessages;
+                const n = [...prev];
+                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+                return n;
               });
             }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
+          } catch { buffer = line + "\n" + buffer; break; }
         }
       }
       toast.success("Výzkum dokončen");
     } catch (error) {
       console.error("DID Research error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při vyhledávání");
-      if (!assistantContent) {
-        setMessages(prev => prev.slice(0, -1));
-      }
-    } finally {
-      setIsDidResearchLoading(false);
-    }
+      if (!assistantContent) setMessages(prev => prev.slice(0, -1));
+    } finally { setIsDidResearchLoading(false); }
+  };
+
+  const handleManualUpdate = async () => {
+    if (isManualUpdateLoading) return;
+    setIsManualUpdateLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
+        method: "POST", headers, body: JSON.stringify({}),
+      });
+      if (!response.ok) handleApiError(response);
+      const result = await response.json();
+      toast.success(`Aktualizace kartotéky dokončena – zpracováno ${result.threadsProcessed || 0} vláken`);
+    } catch (error) {
+      console.error("Manual update error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při aktualizaci kartotéky");
+    } finally { setIsManualUpdateLoading(false); }
   };
 
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
-
     const userMessage = input.trim();
     const currentAttachments = [...attachments];
     setInput("");
     clearAttachments();
-
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
     setIsLoading(true);
-
     let assistantContent = "";
-
     try {
       const headers = await getAuthHeaders();
-      const isResearch = mode === "research";
+      const isResearch = mode === "research" || (mode === "childcare" && didSubMode === "research");
       const endpoint = isResearch ? "karel-research" : "karel-chat";
       const body = isResearch
-        ? {
-            query: userMessage,
-            conversationHistory: messages.slice(-20),
-          }
+        ? { query: userMessage, conversationHistory: messages.slice(-20) }
         : {
             messages: [...messages, { role: "user", content: userContent }],
             mode,
             ...(mode === "childcare" && didInitialContext ? { didInitialContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
           };
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-        }
-      );
-
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`, {
+        method: "POST", headers, body: JSON.stringify(body),
+      });
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
-
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         buffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIndex);
-          buffer = buffer.slice(newlineIndex + 1);
-
+        let idx: number;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
           if (line.endsWith("\r")) line = line.slice(0, -1);
           if (line.startsWith(":") || line.trim() === "") continue;
           if (!line.startsWith("data: ")) continue;
-
           const jsonStr = line.slice(6).trim();
           if (jsonStr === "[DONE]") break;
-
           try {
             const parsed = JSON.parse(jsonStr);
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantContent += content;
               setMessages((prev) => {
-                const newMessages = [...prev];
-                const lastIndex = newMessages.length - 1;
-                if (newMessages[lastIndex]?.role === "assistant") {
-                  newMessages[lastIndex] = {
-                    ...newMessages[lastIndex],
-                    content: assistantContent,
-                  };
-                }
-                return newMessages;
+                const n = [...prev];
+                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+                return n;
               });
             }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
+          } catch { buffer = line + "\n" + buffer; break; }
         }
       }
     } catch (error) {
       console.error("Chat error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při komunikaci");
-      if (!assistantContent) {
-        setMessages((prev) => prev.slice(0, -1));
-      }
+      if (!assistantContent) setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
@@ -991,20 +935,14 @@ const Chat = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   };
 
-  // Loading skeleton component
   const LoadingSkeleton = () => (
     <div className="flex justify-start">
       <div className="chat-message-assistant">
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          </div>
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
           <div className="space-y-2 flex-1">
             <div className="h-3 bg-muted rounded animate-pulse w-48" />
             <div className="h-3 bg-muted rounded animate-pulse w-32" />
@@ -1013,6 +951,145 @@ const Chat = () => {
       </div>
     </div>
   );
+
+  // ── Render ──
+
+  const renderDidContent = () => {
+    if (!didSubMode) {
+      // Dashboard + submode selector
+      return (
+        <ScrollArea className="flex-1">
+          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} />
+          <DidConversationHistory
+            conversations={history}
+            onLoad={handleRestoreConversation}
+            onDelete={(id) => { deleteConversation(id); refreshHistory(); }}
+          />
+          <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
+        </ScrollArea>
+      );
+    }
+
+    if (didFlowState === "loading") {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+            <p className="text-sm text-muted-foreground">Načítám dokumenty z Kartotéky DID...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (didFlowState === "thread-list" && didSubMode === "cast") {
+      return (
+        <ScrollArea className="flex-1">
+          <DidThreadList
+            threads={didThreads.threads}
+            onSelectThread={handleSelectThread}
+            onDeleteThread={(id) => didThreads.deleteThread(id)}
+            onNewThread={handleNewCastThread}
+          />
+          <div className="flex justify-center pb-4">
+            <Button variant="ghost" size="sm" onClick={handleDidBack}>
+              ← Zpět na výběr podrežimu
+            </Button>
+          </div>
+        </ScrollArea>
+      );
+    }
+
+    if (didFlowState === "part-identify") {
+      return (
+        <DidPartIdentifier
+          knownParts={knownParts}
+          onSelectPart={handlePartSelected}
+          onBack={() => setDidFlowState("thread-list")}
+        />
+      );
+    }
+
+    // Chat view (all DID submodes)
+    return (
+      <>
+        {/* Chat Messages */}
+        <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+          <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+            {/* Thread indicator for cast mode */}
+            {activeThread && (
+              <div className="text-center text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
+                Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+              </div>
+            )}
+            {messages.map((message, index) => (
+              <ChatMessage key={index} message={message} />
+            ))}
+            {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+          </div>
+        </ScrollArea>
+
+        {/* Input Area */}
+        <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+          <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
+            <div className="flex gap-2 sm:gap-3 items-end relative">
+              <UniversalAttachmentBar
+                attachments={attachments} onRemove={removeAttachment}
+                onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
+                onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
+                disabled={isLoading || isSoapLoading}
+                fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
+              />
+              <Textarea
+                ref={textareaRef} value={input}
+                onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                placeholder="Napiš svou zprávu..."
+                className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+                disabled={isLoading || isSoapLoading}
+              />
+              <Button
+                onClick={sendMessage}
+                disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
+                size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+              >
+                {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
+              </Button>
+            </div>
+            {/* Action buttons row */}
+            <div className="flex items-center gap-2 flex-wrap mt-2">
+              <AudioRecordButton
+                state={audioRecorder.state} duration={audioRecorder.duration}
+                maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
+                isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
+                onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
+                onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
+              />
+            </div>
+            {messages.length > 1 && (
+              <DidActionButtons
+                subMode={didSubMode}
+                onDiary={didSubMode === "cast" ? handleDidDiary : undefined}
+                onMessageMom={didSubMode === "cast" ? handleDidMessageMom : undefined}
+                onMessageKata={didSubMode === "cast" ? handleDidMessageKata : undefined}
+                onBackup={handleDidBackup}
+                onEndCall={handleDidEndCall}
+                onResearch={handleDidResearch}
+                onManualUpdate={handleManualUpdate}
+                onLeaveThread={didSubMode === "cast" && activeThread ? handleLeaveThread : undefined}
+                isBackupLoading={isBackupLoading}
+                isResearchLoading={isDidResearchLoading}
+                isUpdateLoading={isManualUpdateLoading}
+                disabled={isLoading}
+              />
+            )}
+            <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
+              Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -1049,9 +1126,7 @@ const Chat = () => {
 
       {mainMode === "chat" ? (
         <>
-          {/* Crisis Brief Panel */}
           <CrisisBriefPanel />
-          {/* Chat Mode Selector */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">
               <ModeSelector currentMode={mode} onModeChange={(newMode) => {
@@ -1060,6 +1135,8 @@ const Chat = () => {
                   setDidInitialContext("");
                   setDidDocsLoaded(false);
                   setDidSessionId(null);
+                  setActiveThread(null);
+                  setDidFlowState("dashboard");
                   setMessages([]);
                 }
                 setMode(newMode);
@@ -1067,65 +1144,32 @@ const Chat = () => {
             </div>
           </div>
 
-          {/* DID Sub-mode flow when childcare is active */}
-          {mode === "childcare" && !didSubMode ? (
-            <ScrollArea className="flex-1">
-              <DidConversationHistory
-                conversations={history}
-                onLoad={handleRestoreConversation}
-                onDelete={(id) => {
-                  deleteConversation(id);
-                  refreshHistory();
-                }}
-              />
-              <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
-            </ScrollArea>
-          ) : mode === "childcare" && didSubMode && (!didDocsLoaded || isDriveLoading) && messages.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center">
-              <div className="text-center space-y-3">
-                <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-                <p className="text-sm text-muted-foreground">Načítám dokumenty z Kartotéky DID...</p>
-              </div>
-            </div>
-          ) : (
+          {mode === "childcare" ? renderDidContent() : (
             <>
-              {/* Chat Messages */}
+              {/* Non-DID Chat */}
               <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
                 <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
-              {messages.map((message, index) => (
-                    <ChatMessage 
-                      key={index} 
-                      message={message} 
-                    />
+                  {messages.map((message, index) => (
+                    <ChatMessage key={index} message={message} />
                   ))}
-                  {isLoading && messages[messages.length - 1]?.role === "user" && (
-                    <LoadingSkeleton />
-                  )}
+                  {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
                 </div>
               </ScrollArea>
 
-              {/* Input Area */}
               <div className="border-t border-border bg-card/50 backdrop-blur-sm">
                 <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  {/* Row 1: Text input + attachment + send */}
                   <div className="flex gap-2 sm:gap-3 items-end relative">
                     <UniversalAttachmentBar
-                      attachments={attachments}
-                      onRemove={removeAttachment}
-                      onOpenFilePicker={openFilePicker}
-                      onCaptureScreenshot={captureScreenshot}
-                      onOpenDrivePicker={() => setDrivePickerOpen(true)}
-                      onAutoAnalyze={handleAutoAnalyze}
+                      attachments={attachments} onRemove={removeAttachment}
+                      onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
+                      onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
                       disabled={isLoading || isSoapLoading}
                       fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                      onFileChange={handleFileChange}
-                      isAnalyzing={isFileAnalyzing}
+                      onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
                     />
                     <Textarea
-                      ref={textareaRef}
-                      value={input}
-                      onChange={(e) => setInput(e.target.value)}
-                      onKeyDown={handleKeyDown}
+                      ref={textareaRef} value={input}
+                      onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
                       placeholder="Napiš svou zprávu..."
                       className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
                       disabled={isLoading || isSoapLoading}
@@ -1133,80 +1177,35 @@ const Chat = () => {
                     <Button
                       onClick={sendMessage}
                       disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                      size="icon"
-                      className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+                      size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
                     >
-                      {isLoading ? (
-                        <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4 sm:w-5 sm:h-5" />
-                      )}
+                      {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
                     </Button>
                   </div>
-                  {/* Row 2: Action buttons (audio, study material, etc.) */}
                   <div className="flex items-center gap-2 flex-wrap mt-2">
                     <AudioRecordButton
-                      state={audioRecorder.state}
-                      duration={audioRecorder.duration}
-                      maxDuration={audioRecorder.maxDuration}
-                      audioUrl={audioRecorder.audioUrl}
-                      isAnalyzing={isAudioAnalyzing}
-                      onStart={audioRecorder.startRecording}
-                      onStop={audioRecorder.stopRecording}
-                      onDiscard={audioRecorder.discardRecording}
-                      onSend={handleAudioAnalysis}
-                      disabled={isLoading || isSoapLoading}
+                      state={audioRecorder.state} duration={audioRecorder.duration}
+                      maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
+                      isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
+                      onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
+                      onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
                     />
                     {audioRecorder.state === "idle" && (
                       <>
                         {messages.length > 1 && (mode === "supervision" || mode === "research") ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleStudyMaterial}
-                            disabled={isLoading || isStudyLoading}
-                            className="h-9 px-3 gap-1.5"
-                          >
-                            {isStudyLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <GraduationCap className="w-4 h-4" />
-                            )}
+                          <Button variant="outline" size="sm" onClick={handleStudyMaterial} disabled={isLoading || isStudyLoading} className="h-9 px-3 gap-1.5">
+                            {isStudyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GraduationCap className="w-4 h-4" />}
                             <span className="hidden sm:inline">{mode === "research" ? "Pořídit zápis" : "Učební materiál"}</span>
                           </Button>
                         ) : messages.length > 1 ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleSoapHandoff}
-                            disabled={isLoading || isSoapLoading}
-                            className="h-9 px-3 gap-1.5"
-                          >
-                            {isSoapLoading ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <FileText className="w-4 h-4" />
-                            )}
+                          <Button variant="outline" size="sm" onClick={handleSoapHandoff} disabled={isLoading || isSoapLoading} className="h-9 px-3 gap-1.5">
+                            {isSoapLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                             <span className="hidden sm:inline">Pořídit zápis</span>
                           </Button>
                         ) : null}
                       </>
                     )}
                   </div>
-                  {mode === "childcare" && didSubMode && messages.length > 1 && (
-                    <DidActionButtons
-                      subMode={didSubMode}
-                      onDiary={didSubMode === "cast" ? handleDidDiary : undefined}
-                      onMessageMom={didSubMode === "cast" ? handleDidMessageMom : undefined}
-                      onMessageKata={didSubMode === "cast" ? handleDidMessageKata : undefined}
-                      onBackup={handleDidBackup}
-                      onEndCall={handleDidEndCall}
-                      onResearch={handleDidResearch}
-                      isBackupLoading={isBackupLoading}
-                      isResearchLoading={isDidResearchLoading}
-                      disabled={isLoading}
-                    />
-                  )}
                   <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
                     Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
                   </p>
@@ -1217,17 +1216,12 @@ const Chat = () => {
         </>
       ) : (
         <>
-          {/* Report Mode — Responsive Split Layout */}
           <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
-            {/* Sidebar - always visible */}
             <SessionSidebar />
-            {/* Form + Chat: stack on mobile, side-by-side on desktop */}
             <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
-              {/* Form */}
               <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
                 <SessionReportForm />
               </div>
-              {/* Supervision Chat */}
               <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
                 <SupervisionChat />
               </div>
@@ -1235,15 +1229,8 @@ const Chat = () => {
           </div>
         </>
       )}
-      {studyMaterial && (
-        <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />
-      )}
-      {/* Google Drive Picker Dialog */}
-      <GoogleDrivePickerDialog
-        open={drivePickerOpen}
-        onClose={() => setDrivePickerOpen(false)}
-        onFileSelected={addAttachment}
-      />
+      {studyMaterial && <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />}
+      <GoogleDrivePickerDialog open={drivePickerOpen} onClose={() => setDrivePickerOpen(false)} onFileSelected={addAttachment} />
     </div>
   );
 };

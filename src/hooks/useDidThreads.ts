@@ -1,0 +1,140 @@
+import { useState, useCallback, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+export interface DidThread {
+  id: string;
+  partName: string;
+  partLanguage: string;
+  subMode: string;
+  messages: { role: string; content: string }[];
+  startedAt: string;
+  lastActivityAt: string;
+  isProcessed: boolean;
+}
+
+const rowToThread = (row: any): DidThread => ({
+  id: row.id,
+  partName: row.part_name,
+  partLanguage: row.part_language || "cs",
+  subMode: row.sub_mode,
+  messages: (row.messages ?? []) as { role: string; content: string }[],
+  startedAt: row.started_at,
+  lastActivityAt: row.last_activity_at,
+  isProcessed: row.is_processed,
+});
+
+export const useDidThreads = () => {
+  const [threads, setThreads] = useState<DidThread[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchActiveThreads = useCallback(async (subMode?: string) => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from("did_threads")
+        .select("*")
+        .eq("is_processed", false)
+        .order("last_activity_at", { ascending: false });
+
+      if (subMode) {
+        query = query.eq("sub_mode", subMode);
+      }
+
+      const { data, error } = await query;
+      if (error) {
+        console.error("Fetch threads error:", error);
+        return;
+      }
+      setThreads((data || []).map(rowToThread));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const createThread = useCallback(async (
+    partName: string,
+    subMode: string,
+    partLanguage: string = "cs",
+    initialMessages: { role: string; content: string }[] = []
+  ): Promise<DidThread | null> => {
+    const { data, error } = await supabase
+      .from("did_threads")
+      .insert({
+        part_name: partName,
+        sub_mode: subMode,
+        part_language: partLanguage,
+        messages: initialMessages as any,
+        last_activity_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Create thread error:", error);
+      return null;
+    }
+    const thread = rowToThread(data);
+    setThreads(prev => [thread, ...prev]);
+    return thread;
+  }, []);
+
+  const updateThreadMessages = useCallback(async (
+    threadId: string,
+    messages: { role: string; content: string }[]
+  ) => {
+    const { error } = await supabase
+      .from("did_threads")
+      .update({
+        messages: messages as any,
+        last_activity_at: new Date().toISOString(),
+      })
+      .eq("id", threadId);
+
+    if (error) {
+      console.error("Update thread error:", error);
+    }
+
+    setThreads(prev => prev.map(t =>
+      t.id === threadId
+        ? { ...t, messages, lastActivityAt: new Date().toISOString() }
+        : t
+    ));
+  }, []);
+
+  const getThreadByPart = useCallback(async (
+    partName: string,
+    subMode: string
+  ): Promise<DidThread | null> => {
+    // Check 24h window
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
+    const { data, error } = await supabase
+      .from("did_threads")
+      .select("*")
+      .eq("part_name", partName)
+      .eq("sub_mode", subMode)
+      .eq("is_processed", false)
+      .gte("started_at", cutoff)
+      .order("last_activity_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return rowToThread(data);
+  }, []);
+
+  const deleteThread = useCallback(async (threadId: string) => {
+    await supabase.from("did_threads").delete().eq("id", threadId);
+    setThreads(prev => prev.filter(t => t.id !== threadId));
+  }, []);
+
+  return {
+    threads,
+    loading,
+    fetchActiveThreads,
+    createThread,
+    updateThreadMessages,
+    getThreadByPart,
+    deleteThread,
+  };
+};

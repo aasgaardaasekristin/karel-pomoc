@@ -1,7 +1,7 @@
-import { Heart, MessageCircle, ArrowLeft, BookOpen, User } from "lucide-react";
+import { Heart, MessageCircle, ArrowLeft, BookOpen, User, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type DidSubMode = "mamka" | "cast" | "kata" | "form" | "freetext" | "general";
+export type DidSubMode = "mamka" | "cast" | "kata" | "general" | "research";
 
 interface DidSubModeSelectorProps {
   onSelect: (subMode: DidSubMode) => void;
@@ -14,30 +14,41 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
       id: "cast" as const,
       icon: MessageCircle,
       label: "Část mluví s Karlem",
-      description: "Mluví dítě / část – Karel přizpůsobí jazyk věku, udrží bezpečný tón a vygeneruje handover.",
+      description: "Každá část má vlastní vlákno s 24h pamětí. Karel přizpůsobí jazyk a věk.",
+      accent: "border-l-4 border-l-primary",
     },
     {
       id: "mamka" as const,
       icon: Heart,
       label: "Mamka mluví s Karlem",
-      description: "Supervize, analýza, plánování – Karel načte dokumenty z Kartotéky DID a pracuje jako tandem-terapeut.",
+      description: "Supervize, analýza, plánování – Karel načte kartotéku a pracuje jako tandem-terapeut.",
+      accent: "border-l-4 border-l-pink-500",
     },
     {
       id: "kata" as const,
       icon: User,
       label: "Káťa mluví s Karlem",
       description: "Konzultace pro Káťu – jak reagovat, jak oslovit části, jak podporovat systém.",
+      accent: "border-l-4 border-l-blue-500",
     },
     {
       id: "general" as const,
       icon: BookOpen,
       label: "Obecná porada o DID",
       description: "Konzultace o metodách, strategiích a přístupech k práci s DID systémem.",
+      accent: "border-l-4 border-l-amber-500",
+    },
+    {
+      id: "research" as const,
+      icon: Search,
+      label: "Odborné zdroje",
+      description: "Karel prohledá Perplexity a najde aktuální terapeutické metody a výzkumy.",
+      accent: "border-l-4 border-l-emerald-500",
     },
   ];
 
   return (
-    <div className="max-w-2xl mx-auto py-12 px-4">
+    <div className="max-w-2xl mx-auto py-8 px-4">
       {onBack && (
         <div className="flex justify-center mb-4">
           <Button variant="ghost" size="sm" onClick={onBack}>
@@ -56,7 +67,7 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
             <button
               key={opt.id}
               onClick={() => onSelect(opt.id)}
-              className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left"
+              className={`w-full flex items-start gap-4 p-4 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left ${opt.accent}`}
             >
               <Icon className="w-5 h-5 mt-0.5 text-primary shrink-0" />
               <div>
