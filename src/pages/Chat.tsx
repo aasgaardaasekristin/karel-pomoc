@@ -111,7 +111,6 @@ const Chat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [didDocsLoaded, setDidDocsLoaded] = useState(false);
   const [isDriveLoading, setIsDriveLoading] = useState(false);
-  const [isBackupLoading, setIsBackupLoading] = useState(false);
   const [isSoapLoading, setIsSoapLoading] = useState(false);
   const [studyMaterial, setStudyMaterial] = useState<string | null>(null);
   const [isStudyLoading, setIsStudyLoading] = useState(false);
@@ -861,78 +860,6 @@ const Chat = () => {
     } finally { setIsFileAnalyzing(false); }
   };
 
-  const handleDidBackup = async () => {
-    if (isBackupLoading || messages.length < 2) return;
-    setIsBackupLoading(true);
-    try {
-      const headers = await getAuthHeaders();
-      const partName = activeThread?.partName || "unknown";
-      
-      // Ask AI to generate structured section updates for the card
-      const aiResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, {
-        method: "POST", headers,
-        body: JSON.stringify({
-          messages: [...messages.slice(-40), { role: "user", content: `Vytvoř aktualizace pro kartu části "${partName}" v Kartotéce DID. Výstup MUSÍ být v tomto formátu:\n[SEKCE:G] deník sezení - datum, co se dělo, stabilizace, další krok\n[SEKCE:E] chronologický log záznam\n[SEKCE:J] krátkodobé cíle a aktuální intervence\n[SEKCE:L] aktivita a přítomnost části\n[SEKCE:K] výstupy ze sezení (pokud relevantní)\nVrať POUZE sekce, nic jiného.` }],
-          mode: "childcare", didSubMode, didInitialContext,
-        }),
-      });
-
-      let sectionContent = "";
-      if (aiResponse.ok && aiResponse.body) {
-        const reader = aiResponse.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let idx: number;
-          while ((idx = buffer.indexOf("\n")) !== -1) {
-            let line = buffer.slice(0, idx);
-            buffer = buffer.slice(idx + 1);
-            if (line.endsWith("\r")) line = line.slice(0, -1);
-            if (!line.startsWith("data: ")) continue;
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === "[DONE]") break;
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) sectionContent += content;
-            } catch {}
-          }
-        }
-      }
-
-      // Parse section updates from AI output
-      const sections: Record<string, string> = {};
-      const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
-      for (const match of sectionContent.matchAll(sectionRegex)) {
-        const letter = match[1].toUpperCase();
-        const content = match[2].trim();
-        if (content) sections[letter] = content;
-      }
-
-      // Fallback: if AI didn't produce structured output, write raw summary to G and E
-      if (Object.keys(sections).length === 0) {
-        const rawSummary = messages.slice(-20).map(m =>
-          `${m.role === "user" ? "UŽIVATEL" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
-        ).join("\n");
-        sections["G"] = `Rozhovor (${didSubMode}): ${rawSummary.slice(0, 500)}`;
-        sections["E"] = `Rozhovor v podrežimu ${didSubMode}`;
-        sections["L"] = `Aktivní – rozhovor v podrežimu ${didSubMode}`;
-      }
-
-      // Write directly into card sections on Drive
-      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-write`, {
-        method: "POST", headers,
-        body: JSON.stringify({ mode: "update-card-sections", partName, sections }),
-      });
-      toast.success("Karta aktualizována na Drive");
-    } catch (error) {
-      console.error("Card update error:", error);
-      toast.error("Chyba při aktualizaci karty na Drive");
-    } finally { setIsBackupLoading(false); }
-  };
 
   const handleDidEndCall = async () => {
     if (activeThread && messages.length >= 2) {
@@ -941,37 +868,16 @@ const Chat = () => {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
-    // Update card sections on Drive (replaces old backup)
-    handleDidBackup();
-
-    if (didSubMode === "cast") {
-      try {
-        const headers = await getAuthHeaders();
-        const chatSummary = messages.slice(-30).map(m =>
-          `${m.role === "user" ? "ČÁST" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
-        ).join("\n");
-        const partInfo = activeThread ? `\nČást: ${activeThread.partName}\nJazyk: ${activeThread.partLanguage}` : "";
-
-        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-email-report`, {
-          method: "POST", headers,
-          body: JSON.stringify({
-            reportContent: partInfo + "\n\n" + chatSummary,
-            partName: activeThread?.partName || "DID rozhovor",
-            date: new Date().toLocaleDateString("cs-CZ"),
-            type: "did_handover",
-          }),
-        });
-        toast.success("Email s handoverem odeslán mamce");
-      } catch (e) {
-        console.error("Email send error:", e);
-      }
-    }
+    // Zápis do karet + email report běží dávkově v denním cyklu nebo po manuální aktualizaci
+    toast.info("Vlákno uloženo. Kartotéka i report se zpracují při denním cyklu nebo po kliknutí na Aktualizovat kartotéku.");
 
     clearMessages(mode);
     setActiveThread(null);
     setDidSubMode("mamka");
     setDidFlowState("chat");
-    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}. Aktualizoval jsem kartu na Drive a odeslal email.\n\nMám přehled o tom, co se dělo. Chceš probrat, co jsem zjistil?` }]);
+    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}.
+
+Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
   };
 
   const handleDidResearch = async () => {

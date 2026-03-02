@@ -30,10 +30,12 @@ export const useDidThreads = () => {
   const fetchActiveThreads = useCallback(async (subMode?: string) => {
     setLoading(true);
     try {
+      const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
       let query = supabase
         .from("did_threads")
         .select("*")
-        .eq("is_processed", false)
+        .gte("last_activity_at", cutoff24h)
         .order("last_activity_at", { ascending: false });
 
       if (subMode) {
@@ -105,16 +107,15 @@ export const useDidThreads = () => {
     partName: string,
     subMode: string
   ): Promise<DidThread | null> => {
-    // Check 24h window
+    // Check 24h window by last activity
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    
+
     const { data, error } = await supabase
       .from("did_threads")
       .select("*")
-      .eq("part_name", partName)
+      .ilike("part_name", partName)
       .eq("sub_mode", subMode)
-      .eq("is_processed", false)
-      .gte("started_at", cutoff)
+      .gte("last_activity_at", cutoff)
       .order("last_activity_at", { ascending: false })
       .limit(1)
       .maybeSingle();

@@ -176,8 +176,8 @@ Toto je terapeutický supervizní rozhovor s plným přístupem ke kartotéce.
 - Hledej vzory, dynamiky, rizika v celém systému
 - Navrhuj plán na večerní sezení a činnosti pro velké sezení (2x týdně)
 
-📤 PO ROZHOVORU – AUTOMATICKY GENERUJ:
-Strukturovaný handover (Karel ho automaticky uloží na Drive):
+📤 PO ROZHOVORU – INTERNĚ PŘIPRAV:
+Strukturované podklady pro denní souhrnný report (neposílej samostatný handover email po každém hovoru):
 1) Kdo byl přítomen + kde (tělo vs les/zahrady)
 2) Aktuální stav (emoce, tělo, energie, bezpečí)
 3) Téma / co se řešilo
@@ -283,9 +283,9 @@ Po každém sezení Karel zapíše do karty:
 
 ═══ UKONČENÍ ROZHOVORU ═══
 Po rozloučení dítěte Karel AUTOMATICKY:
-1. Aktualizuje kartu části na Drive (sekce G, E, J, L, K)
-2. Odešle email mamce (9bodová struktura)
-3. Odešle email Káti (upravená verze)
+1. Připraví podklady pro aktualizaci karty části na Drive (sekce G, E, J, L, K)
+2. Neposílá samostatný handover email po jednom hovoru
+3. Souhrnný report jde 1× denně ve 14:00 (nebo po manuálním spuštění aktualizace kartotéky)
 4. Přepne do režimu "mamka" a čeká s analýzou
 
 ═══════════════════════════════════════
