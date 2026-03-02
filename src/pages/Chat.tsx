@@ -42,13 +42,13 @@ const DID_SESSION_ID_KEY = "karel_did_session_id";
 const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
 
 const CAST_GREETINGS = [
-  "Hejky! 😊 Já jsem Karel. Co dneska podnikáš?",
-  "Ahoj ahoj! Já jsem Karel. Jakou náladu máš právě teď?",
-  "Čau! Karel tady. Co se ti dneska honí hlavou?",
-  "Nazdar! 😄 Já jsem Karel. Co hezkého nebo těžkého dneska přišlo?",
-  "Jé, ahoj! Já jsem Karel. Chceš mi říct, jak se teď máš?",
-  "Ahoj! 🌟 Karel tady. Co bys dneska potřeboval/a, aby bylo líp?",
-  "Hezky tě vítám, já jsem Karel. Na co máš teď chuť si povídat?",
+  "Hej! 😊 Jak se dneska máš? Co nového?",
+  "Čau! Co se ti dneska honí hlavou?",
+  "Ahoj! 🌟 Povídej, na co máš teď chuť?",
+  "Jé, ahoj! Jak se ti daří? Co bys dneska chtěl/a?",
+  "Hezky, že jsi tady! Jakou náladu máš právě teď?",
+  "Ahoj ahoj! Co hezkého nebo těžkého dneska přišlo?",
+  "Čau! Už jsem se těšil/a, až si zase popovídáme. Co je nového?",
 ];
 
 const getRandomCastGreeting = () => {
@@ -134,6 +134,8 @@ const Chat = () => {
   const [activeThread, setActiveThread] = useState<DidThread | null>(null);
   const [knownParts, setKnownParts] = useState<string[]>([]);
   const didThreads = useDidThreads();
+  const basicDocsRef = useRef<string>("");
+  const [isEnrichingContext, setIsEnrichingContext] = useState(false);
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
 
@@ -314,6 +316,28 @@ const Chat = () => {
         setMessages([]);
         setDidFlowState("dashboard");
         setActiveThread(null);
+        // Pre-load basic docs from 00_CENTRUM in background
+        (async () => {
+          try {
+            const headers = await getAuthHeaders();
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+              { method: "POST", headers, body: JSON.stringify({ documents: ["00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+            );
+            if (response.ok) {
+              const data = await response.json();
+              const docs = data.documents || {};
+              basicDocsRef.current = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+              setDidInitialContext(basicDocsRef.current);
+              // Also extract known parts
+              const listDoc = docs["00_Seznam_casti"] || "";
+              const names = listDoc.split("\n")
+                .map((l: string) => l.replace(/^[-*•]\s*/, "").trim())
+                .filter((l: string) => l.length > 0 && l.length < 30 && !l.startsWith("["));
+              setKnownParts(names.slice(0, 20));
+            }
+          } catch (e) { console.warn("Basic DID docs preload failed:", e); }
+        })();
       }
       prevModeRef.current = mode;
       refreshHistory();
@@ -392,19 +416,22 @@ const Chat = () => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        const ctx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-        setDidInitialContext(ctx);
-      }
-    } catch {}
+    // Load part-specific docs in BACKGROUND
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+          { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`] }) }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          const docs = data.documents || {};
+          const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+          setDidInitialContext(prev => prev + "\n\n" + partDocs);
+        }
+      } catch {}
+    })();
   }, [setMessages, setDidInitialContext]);
 
   const handleNewCastThread = useCallback(() => {
@@ -412,44 +439,64 @@ const Chat = () => {
   }, []);
 
   const handlePartSelected = useCallback(async (partName: string) => {
-    setDidFlowState("loading");
-    
+    // Check for existing thread first (quick DB query)
     const existing = await didThreads.getThreadByPart(partName, "cast");
     if (existing) {
       setActiveThread(existing);
       setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
       setDidFlowState("chat");
       toast.info(`Pokračuješ ve vláknu s ${partName}`);
+      // Load fresh part docs in background
+      (async () => {
+        try {
+          const headers = await getAuthHeaders();
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+            { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
+          );
+          if (response.ok) {
+            const data = await response.json();
+            const docs = data.documents || {};
+            const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+            setDidInitialContext(prev => prev + "\n\n" + partDocs);
+          }
+        } catch {}
+      })();
       return;
     }
 
-    let docsCtx = didInitialContext;
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        docsCtx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-        setDidInitialContext(docsCtx);
-      }
-    } catch {}
-
+    // Start chat IMMEDIATELY with familiar greeting — no waiting for docs
     const greeting = getRandomCastGreeting();
     const initialMessages = [{ role: "assistant" as const, content: greeting }];
     
     let partLanguage = "cs";
-    if (docsCtx.toLowerCase().includes("norsky") || docsCtx.toLowerCase().includes("norština")) partLanguage = "no";
-    if (docsCtx.toLowerCase().includes("anglicky") || docsCtx.toLowerCase().includes("english")) partLanguage = "en";
+    const basicCtx = basicDocsRef.current || didInitialContext;
+    if (basicCtx.toLowerCase().includes("norsky") || basicCtx.toLowerCase().includes("norština")) partLanguage = "no";
+    if (basicCtx.toLowerCase().includes("anglicky") || basicCtx.toLowerCase().includes("english")) partLanguage = "en";
 
     const thread = await didThreads.createThread(partName, "cast", partLanguage, initialMessages as any);
     if (thread) {
       setActiveThread(thread);
       setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
       setDidFlowState("chat");
+      
+      // Load part-specific docs in BACKGROUND — don't block conversation
+      (async () => {
+        try {
+          const headers = await getAuthHeaders();
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+            { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
+          );
+          if (response.ok) {
+            const data = await response.json();
+            const docs = data.documents || {};
+            const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+            setDidInitialContext(prev => prev + "\n\n" + partDocs);
+            setDidDocsLoaded(true);
+          }
+        } catch {}
+      })();
     } else {
       toast.error("Nepodařilo se vytvořit vlákno");
       setDidFlowState("thread-list");
@@ -519,43 +566,126 @@ const Chat = () => {
     setActiveThread(null);
 
     if (subMode === "cast") {
+      // Use pre-loaded basic docs, just fetch threads
       setDidFlowState("loading");
-      await Promise.all([
-        didThreads.fetchActiveThreads("cast"),
-        loadKnownParts(),
-      ]);
-      const docsCtx = await loadDriveContext();
-      setDidInitialContext(docsCtx);
-      setDidDocsLoaded(true);
+      await didThreads.fetchActiveThreads("cast");
+      // knownParts already loaded during dashboard pre-load
+      if (basicDocsRef.current) {
+        setDidInitialContext(basicDocsRef.current);
+      }
       setDidFlowState("thread-list");
       return;
     }
 
     if (subMode === "research") {
-      setDidFlowState("loading");
-      const docsCtx = await loadDriveContext();
-      setDidInitialContext(docsCtx);
+      // Use pre-loaded basic docs, go straight to chat
+      if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
       setDidDocsLoaded(true);
       setDidFlowState("chat");
       setMessages([{ role: "assistant", content: "🔬 Jsem připraven prohledat odborné zdroje pro DID systém. Řekni mi téma, metodu nebo situaci – a já najdu relevantní výzkumy a terapeutické přístupy." }]);
       return;
     }
 
-    // mamka / kata / general - load docs and start chat
-    setDidFlowState("loading");
-    const docsCtx = await loadDriveContext();
+    // mamka / kata / general — DON'T load full docs yet
+    // Just start conversation and ask what to discuss
     const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setDidSessionId(newSessionId);
-    setDidInitialContext(docsCtx);
-    setDidDocsLoaded(true);
+    if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
     setDidFlowState("chat");
 
     const greetings: Record<string, string> = {
-      mamka: `Haničko, jsem tady s tebou. Načetl jsem dokumenty z Kartotéky DID – mám přehled o systému.\n\nPověz mi, co se děje. Co teď nejvíc potřebuješ probrat?`,
-      kata: `Ahoj Káťo! 😊 Jsem Karel. Načetl jsem si aktuální stav systému z kartotéky.\n\nJak ti můžu pomoct? Chceš se poradit, jak reagovat na nějakou část, nebo potřebuješ probrat situaci?`,
-      general: `Haničko, jsem připraven na obecnou poradu o DID. Načetl jsem dokumenty z kartotéky.\n\nMůžeš se ptát na metody, strategie, nebo mi popsat konkrétní situaci.`,
+      mamka: `Haničko, jsem tady s tebou. Mám přehled o systému.\n\nCo teď potřebuješ? Můžeme řešit:\n- 🧩 **Konkrétní část** nebo klastr\n- 🔥 **Akutní situaci**, kterou potřebuješ probrat\n- 💡 **Obecnou radu** k přístupu nebo metodám\n\nPověz mi, co se děje.`,
+      kata: `Ahoj Káťo! 😊 Mám přehled o aktuálním stavu systému.\n\nCo potřebuješ?\n- 🧩 Poradit se ohledně **konkrétní části**?\n- 🔥 Probrat **situaci**, která nastala?\n- 💡 Obecnou **radu** jak reagovat?\n\nŘekni mi, co řešíš.`,
+      general: `Haničko, jsem připraven na poradu o DID.\n\nCo bys chtěla probrat?\n- 🧩 **Konkrétní část** nebo klastr\n- 📋 **Strategii** nebo metodu\n- 🔥 **Situaci**, co se stala\n\nPověz mi téma a já si k němu dostuduju potřebné materiály.`,
     };
     setMessages([{ role: "assistant", content: greetings[subMode] || greetings.general }]);
+  };
+
+  // Enrich context for mamka/kata/general after their first message
+  const enrichContextForSubMode = async (userMessage: string) => {
+    if (isEnrichingContext) return;
+    setIsEnrichingContext(true);
+    try {
+      // 1. Detect which parts/topics are mentioned — try to load their specific cards
+      const basicCtx = basicDocsRef.current || didInitialContext;
+      const mentionedParts = knownParts.filter(p => 
+        userMessage.toLowerCase().includes(p.toLowerCase())
+      );
+      
+      // 2. Load specific part cards from Drive
+      if (mentionedParts.length > 0) {
+        try {
+          const headers = await getAuthHeaders();
+          const docNames = mentionedParts.map(p => `Karta_${p.replace(/\s+/g, "_")}`);
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+            { method: "POST", headers, body: JSON.stringify({ documents: docNames }) }
+          );
+          if (response.ok) {
+            const data = await response.json();
+            const docs = data.documents || {};
+            const partDocs = Object.entries(docs)
+              .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+              .map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`)
+              .join("\n\n");
+            if (partDocs) {
+              setDidInitialContext(prev => prev + "\n\n" + partDocs);
+            }
+          }
+        } catch {}
+      }
+
+      // 3. Quick Perplexity pre-research on the topic (non-blocking)
+      try {
+        const headers = await getAuthHeaders();
+        const searchQuery = mentionedParts.length > 0
+          ? `DID terapeutické metody pro práci s částí "${mentionedParts[0]}" - ${userMessage.slice(0, 100)}`
+          : `DID terapeutické přístupy - ${userMessage.slice(0, 150)}`;
+        
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-research`, {
+          method: "POST", headers,
+          body: JSON.stringify({
+            query: searchQuery,
+            partName: mentionedParts[0] || undefined,
+            conversationContext: userMessage,
+          }),
+        });
+        
+        if (response.ok && response.body) {
+          // Read the streamed response to completion to extract research context
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let researchContent = "";
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            let idx: number;
+            while ((idx = buffer.indexOf("\n")) !== -1) {
+              let line = buffer.slice(0, idx);
+              buffer = buffer.slice(idx + 1);
+              if (line.endsWith("\r")) line = line.slice(0, -1);
+              if (!line.startsWith("data: ")) continue;
+              const jsonStr = line.slice(6).trim();
+              if (jsonStr === "[DONE]") break;
+              try {
+                const parsed = JSON.parse(jsonStr);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) researchContent += content;
+              } catch {}
+            }
+          }
+          if (researchContent) {
+            setDidInitialContext(prev => prev + "\n\n[Předběžný výzkum k tématu]\n" + researchContent.slice(0, 3000));
+          }
+        }
+      } catch (e) { console.warn("Pre-research failed:", e); }
+
+      setDidDocsLoaded(true);
+    } finally {
+      setIsEnrichingContext(false);
+    }
   };
 
   // ── Common handlers (unchanged logic, cleaned up) ──
@@ -952,6 +1082,12 @@ const Chat = () => {
       console.error("Chat error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při komunikaci");
       if (!assistantContent) setMessages((prev) => prev.slice(0, -1));
+      // Trigger background enrichment for mamka/kata/general on first substantive message
+      if (mode === "childcare" && !didDocsLoaded && !activeThread &&
+          (didSubMode === "mamka" || didSubMode === "kata" || didSubMode === "general") &&
+          messages.length <= 2 && userMessage.length > 5) {
+        enrichContextForSubMode(userMessage);
+      }
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
@@ -999,7 +1135,7 @@ const Chat = () => {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-            <p className="text-sm text-muted-foreground">Načítám dokumenty z Kartotéky DID...</p>
+            <p className="text-sm text-muted-foreground">Připravuji DID režim...</p>
           </div>
         </div>
       );
@@ -1049,6 +1185,11 @@ const Chat = () => {
               <ChatMessage key={index} message={message} />
             ))}
             {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+            {isEnrichingContext && (
+              <div className="text-center text-[10px] text-muted-foreground animate-pulse">
+                📚 Dostudovávám materiály k tématu...
+              </div>
+            )}
           </div>
         </ScrollArea>
 
