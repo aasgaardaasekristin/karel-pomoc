@@ -409,7 +409,7 @@ serve(async (req) => {
     const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
     const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
-
+    let hadCardUpdateErrors = false;
     if (threads.length === 0 && conversations.length === 0) {
       if (cycle) {
         await sb.from("did_update_cycles").update({
@@ -633,6 +633,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
             cardsUpdated.push(`${partName} (${result.sectionsUpdated.join(",")}${result.isNew ? " – NOVÁ" : ""})`);
             console.log(`Updated card: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}`);
           } catch (e) {
+            hadCardUpdateErrors = true;
             console.error(`Failed to update card for ${partName}:`, e);
           }
         }
@@ -681,24 +682,38 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       }
     }
 
-    // 6. Mark threads AND conversations as processed
-    const threadIds = threads.map(t => t.id);
-    if (threadIds.length > 0) {
-      await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
-    }
-    const convIds = conversations.map(c => c.id);
-    if (convIds.length > 0) {
-      await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
+    // 6. Mark threads AND conversations as processed only when card updates succeeded
+    if (!hadCardUpdateErrors) {
+      const threadIds = threads.map(t => t.id);
+      if (threadIds.length > 0) {
+        await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
+      }
+      const convIds = conversations.map(c => c.id);
+      if (convIds.length > 0) {
+        await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
+      }
     }
 
     if (cycle) {
       await sb.from("did_update_cycles").update({
-        status: "completed", completed_at: new Date().toISOString(),
-        report_summary: analysisText.slice(0, 2000), cards_updated: cardsUpdated,
+        status: hadCardUpdateErrors ? "failed" : "completed",
+        completed_at: new Date().toISOString(),
+        report_summary: analysisText.slice(0, 2000),
+        cards_updated: cardsUpdated,
       }).eq("id", cycle.id);
     }
 
-    return new Response(JSON.stringify({ success: true, threadsProcessed: threads.length, conversationsProcessed: conversations.length, cardsUpdated, reportSent: !!RESEND_API_KEY }), {
+    return new Response(JSON.stringify({
+      success: !hadCardUpdateErrors,
+      threadsProcessed: threads.length,
+      conversationsProcessed: conversations.length,
+      cardsUpdated,
+      reportSent: !!RESEND_API_KEY,
+      processingRetained: hadCardUpdateErrors,
+      message: hadCardUpdateErrors
+        ? "Aktualizace některých karet selhala – konverzace zůstaly neoznačené pro další pokus."
+        : undefined,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
