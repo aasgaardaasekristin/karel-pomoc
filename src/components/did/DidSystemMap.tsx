@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, ChevronDown, ChevronUp, Activity } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, ChevronDown, ChevronUp, Activity, MessageCircle } from "lucide-react";
 
 interface PartActivity {
   name: string;
@@ -7,8 +7,17 @@ interface PartActivity {
   status: "active" | "sleeping" | "warning";
 }
 
+interface ActiveThreadSummary {
+  id: string;
+  partName: string;
+  lastActivityAt: string;
+  messageCount: number;
+}
+
 interface Props {
   parts: PartActivity[];
+  activeThreads?: ActiveThreadSummary[];
+  onQuickThread?: (threadId: string, partName: string) => void;
 }
 
 const STATUS_CONFIG = {
@@ -62,7 +71,7 @@ const formatDate = (isoStr: string | null) => {
   return d.toLocaleDateString("cs-CZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 };
 
-const DidSystemMap = ({ parts }: Props) => {
+const DidSystemMap = ({ parts, activeThreads, onQuickThread }: Props) => {
   const [expanded, setExpanded] = useState(true);
 
   const sorted = useMemo(() => {
@@ -75,6 +84,20 @@ const DidSystemMap = ({ parts }: Props) => {
     sleeping: parts.filter(p => p.status === "sleeping").length,
     warning: parts.filter(p => p.status === "warning").length,
   }), [parts]);
+
+  // Map part names to their active threads for quick lookup
+  const threadByPart = useMemo(() => {
+    const map = new Map<string, ActiveThreadSummary>();
+    if (activeThreads) {
+      for (const t of activeThreads) {
+        // Use the first (most recent) thread for each part
+        if (!map.has(t.partName)) {
+          map.set(t.partName, t);
+        }
+      }
+    }
+    return map;
+  }, [activeThreads]);
 
   if (parts.length === 0) return null;
 
@@ -98,10 +121,24 @@ const DidSystemMap = ({ parts }: Props) => {
           <div className="flex flex-wrap gap-2 justify-center p-3 rounded-lg bg-card/50 border border-border">
             {sorted.map((part) => {
               const cfg = STATUS_CONFIG[part.status];
+              const thread = threadByPart.get(part.name);
+              const isClickable = !!thread && !!onQuickThread;
+
               return (
-                <div
+                <button
                   key={part.name}
-                  className={`relative group flex flex-col items-center gap-1 p-2 rounded-xl ${cfg.bg} ${cfg.border} border ring-1 ${cfg.ring} transition-all hover:scale-105 min-w-[80px] max-w-[110px]`}
+                  type="button"
+                  disabled={!isClickable}
+                  onClick={() => {
+                    if (thread && onQuickThread) {
+                      onQuickThread(thread.id, thread.partName);
+                    }
+                  }}
+                  className={`relative group flex flex-col items-center gap-1 p-2 rounded-xl ${cfg.bg} ${cfg.border} border ring-1 ${cfg.ring} transition-all min-w-[80px] max-w-[110px] ${
+                    isClickable
+                      ? "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-primary/40 hover:shadow-md"
+                      : "cursor-default hover:scale-105"
+                  }`}
                 >
                   {/* Status dot */}
                   <div className={`w-3 h-3 rounded-full ${cfg.dot} ${cfg.pulse}`} />
@@ -111,17 +148,18 @@ const DidSystemMap = ({ parts }: Props) => {
                     {part.name}
                   </span>
                   
-                  {/* Time */}
+                  {/* Time + thread indicator */}
                   <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                    {isClickable && <MessageCircle className="w-2.5 h-2.5 text-primary" />}
                     <Clock className="w-2.5 h-2.5" />
                     {formatTimeAgo(part.lastSeen)}
                   </span>
 
                   {/* Tooltip on hover */}
                   <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-md px-2 py-1 text-[10px] text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                    {cfg.label} • {formatDate(part.lastSeen)}
+                    {isClickable ? "Klikni pro navázání rozhovoru" : cfg.label} • {formatDate(part.lastSeen)}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
