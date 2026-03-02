@@ -1,4 +1,4 @@
-import { RefreshCw, Loader2, PhoneOff, ArrowLeft } from "lucide-react";
+import { RefreshCw, Loader2, PhoneOff, ArrowLeft, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DidActionButtonsProps {
@@ -6,7 +6,9 @@ interface DidActionButtonsProps {
   onEndCall?: () => void;
   onManualUpdate?: () => void;
   onLeaveThread?: () => void;
+  onGenerateHandbook?: () => void;
   isUpdateLoading?: boolean;
+  isHandbookLoading?: boolean;
   disabled?: boolean;
 }
 
@@ -15,7 +17,9 @@ const DidActionButtons = ({
   onEndCall,
   onManualUpdate,
   onLeaveThread,
+  onGenerateHandbook,
   isUpdateLoading,
+  isHandbookLoading,
   disabled,
 }: DidActionButtonsProps) => {
   return (
@@ -26,6 +30,15 @@ const DidActionButtons = ({
           <ArrowLeft className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Odejít z vlákna</span>
           <span className="sm:hidden">Zpět</span>
+        </Button>
+      )}
+
+      {/* Příručka pro Káťu — only in kata submode */}
+      {onGenerateHandbook && subMode === "kata" && (
+        <Button variant="outline" size="sm" onClick={onGenerateHandbook} disabled={disabled || isHandbookLoading} className="h-8 px-2.5 gap-1.5 text-xs border-blue-500/30 hover:border-blue-500">
+          {isHandbookLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline">Příručka pro Káťu (PDF)</span>
+          <span className="sm:hidden">Příručka</span>
         </Button>
       )}
 
