@@ -119,7 +119,7 @@ const Chat = () => {
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
-  
+  const [isHandbookLoading, setIsHandbookLoading] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
@@ -958,6 +958,20 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     } finally { setIsManualUpdateLoading(false); }
   };
 
+  const handleGenerateHandbook = async () => {
+    if (isHandbookLoading) return;
+    setIsHandbookLoading(true);
+    try {
+      const { generateKataHandbook } = await import("@/lib/didPdfExport");
+      await generateKataHandbook();
+      toast.success("Příručka pro Káťu vygenerována a stažena");
+    } catch (error) {
+      console.error("Handbook error:", error);
+      toast.error("Chyba při generování příručky");
+    } finally {
+      setIsHandbookLoading(false);
+    }
+  };
 
 
   const sendMessage = async () => {
@@ -1229,7 +1243,9 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 onEndCall={handleDidEndCall}
                 onManualUpdate={handleManualUpdate}
                 onLeaveThread={didSubMode === "cast" && activeThread ? handleLeaveThread : undefined}
+                onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
                 isUpdateLoading={isManualUpdateLoading}
+                isHandbookLoading={isHandbookLoading}
                 disabled={isLoading}
               />
             )}
