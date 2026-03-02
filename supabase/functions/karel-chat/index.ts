@@ -36,6 +36,109 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu části.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni části že se vzkaz posílá – systém ho odešle automaticky emailem.`;
     }
 
+    // ═══ AUTO-PERPLEXITY FOR KATA MODE ═══
+    // When Káťa asks about complex situations, automatically search for research
+    let perplexityContext = "";
+    if (effectiveMode === "kata" && messages.length >= 1) {
+      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+      const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+
+      if (lastUserText.length > 15) {
+        // Step 1: Quick complexity classification (non-streaming)
+        try {
+          const classifyResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                {
+                  role: "system",
+                  content: `Jsi klasifikátor složitosti dotazů v kontextu DID (disociativní porucha identity) terapie.
+Odpověz POUZE jedním slovem: "simple", "medium" nebo "complex".
+
+COMPLEX = nová/neznámá situace, selhání předchozích strategií, neobvyklé chování části, krizová situace, žádost o strategické sezení, specifická terapeutická technika, probouzení spící části, neznámý trigger.
+MEDIUM = konkrétní dotaz na práci s částí, plánování aktivity, žádost o postup.
+SIMPLE = obecný dotaz, pozdrav, potvrzení, krátká otázka.`,
+                },
+                { role: "user", content: lastUserText },
+              ],
+            }),
+          });
+
+          if (classifyResponse.ok) {
+            const classifyData = await classifyResponse.json();
+            const complexity = (classifyData.choices?.[0]?.message?.content || "").trim().toLowerCase();
+            console.log("Kata complexity classification:", complexity, "for:", lastUserText.slice(0, 80));
+
+            // Step 2: If complex or medium, call Perplexity
+            if (complexity.includes("complex") || complexity.includes("medium")) {
+              const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+              if (PERPLEXITY_API_KEY) {
+                try {
+                  // Extract part name from context or message
+                  const partNameMatch = lastUserText.match(/(?:s|o|pro|na)\s+(\w+(?:em|kem|ou|kou|ím|em)?)/i);
+                  const enrichedQuery = `DID terapie dětí: ${lastUserText.slice(0, 200)}. Terapeutické techniky, hry, strategie, desenzibilizace, grounding, attachment.`;
+
+                  const perplexityResponse = await fetch("https://api.perplexity.ai/chat/completions", {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      model: "sonar",
+                      messages: [
+                        {
+                          role: "system",
+                          content: `Vyhledej odborné zdroje o DID (disociativní porucha identity) u dětí relevantní k dotazu. Zaměř se na:
+- Konkrétní terapeutické techniky a metody (IFS, EMDR, sensomotorická terapie, hrová terapie)
+- Praktické aktivity a hry pro práci s částmi/altery
+- Stabilizační a grounding techniky přizpůsobené dětem
+- Attachment-based intervence
+Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
+                        },
+                        { role: "user", content: enrichedQuery },
+                      ],
+                      search_recency_filter: "year",
+                    }),
+                  });
+
+                  if (perplexityResponse.ok) {
+                    const perplexityData = await perplexityResponse.json();
+                    const searchResults = perplexityData.choices?.[0]?.message?.content || "";
+                    const citations = perplexityData.citations || [];
+                    if (searchResults) {
+                      perplexityContext = `\n\n═══ AUTOMATICKÁ REŠERŠE (Perplexity – relevantní výzkumy a metody) ═══\n${searchResults}`;
+                      if (citations.length > 0) {
+                        perplexityContext += `\n\nZdroje:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
+                      }
+                      perplexityContext += `\n\n═══ INSTRUKCE: Výše uvedené výsledky rešerše VČLEŇ do své odpovědi Káťě. Cituj pouze zdroje z rešerše. Navrhni konkrétní techniky/hry na základě nalezených metod. ═══`;
+                      console.log("Perplexity auto-research added for kata mode, length:", perplexityContext.length);
+                    }
+                  } else {
+                    console.warn("Perplexity call failed:", perplexityResponse.status);
+                  }
+                } catch (e) {
+                  console.warn("Perplexity auto-research error:", e);
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Complexity classification error:", e);
+        }
+      }
+    }
+
+    // Append Perplexity context to system prompt if available
+    if (perplexityContext) {
+      systemPrompt += perplexityContext;
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
