@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, HardDrive } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
 import DidPatternPanel from "./DidPatternPanel";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { generateDidReport } from "@/lib/didPdfExport";
 
 interface PartActivity {
   name: string;
@@ -26,6 +27,21 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
+
+  const handlePdfExport = async () => {
+    setIsPdfExporting(true);
+    toast.info("Generuji PDF report...");
+    try {
+      await generateDidReport();
+      toast.success("PDF report stažen");
+    } catch (e) {
+      toast.error("Nepodařilo se vygenerovat PDF");
+      console.error("PDF export error:", e);
+    } finally {
+      setIsPdfExporting(false);
+    }
+  };
 
   useEffect(() => {
     loadDashboardData();
@@ -169,7 +185,22 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handlePdfExport}
+            disabled={isPdfExporting}
+            className="h-8 text-xs gap-1.5"
+          >
+            {isPdfExporting ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <FileDown className="w-3.5 h-3.5" />
+            )}
+            <span className="hidden sm:inline">PDF Report</span>
+            <span className="sm:hidden">PDF</span>
+          </Button>
           {onWeeklyUpdate && (
             <Button
               variant="outline"
@@ -183,7 +214,8 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
               ) : (
                 <Calendar className="w-3.5 h-3.5" />
               )}
-              Týdenní analýza
+              <span className="hidden sm:inline">Týdenní analýza</span>
+              <span className="sm:hidden">Týden</span>
             </Button>
           )}
           <Button
@@ -198,7 +230,8 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
             ) : (
               <RefreshCw className="w-3.5 h-3.5" />
             )}
-            Aktualizovat nyní
+            <span className="hidden sm:inline">Aktualizovat nyní</span>
+            <span className="sm:hidden">Aktual.</span>
           </Button>
         </div>
       </div>

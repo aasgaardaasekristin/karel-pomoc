@@ -1,7 +1,7 @@
 
 # Vylepšení DID režimu – Komplexní plán
 
-## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-4)
+## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-6)
 
 ## Co bylo provedeno
 
@@ -80,6 +80,13 @@
 - Analýza zaměřená na: komunikaci s částí, validaci, přepínání, dysregulaci
 - Konkrétní rady pro mamku: co říct, co neříkat, stabilizační aktivity
 - Zpráva v chatu zobrazuje jméno části u audio analýzy
+
+### ✅ 16. PDF Export DID Reportu (Fáze 6)
+- `src/lib/didPdfExport.ts` – generování kompletního PDF reportu
+- Sekce: přehled částí, historie synchronizačních cyklů, AI analýza vzorců, nedávné rozhovory
+- Tabulky s autoTable plugin (jsPDF + jspdf-autotable)
+- Tlačítko "PDF Report" integrováno do DID Dashboardu
+- Automatické stránkování a záhlaví/zápatí
 
 ## Zbývá (budoucí iterace)
 
