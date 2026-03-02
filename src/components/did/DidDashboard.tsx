@@ -69,12 +69,12 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
         .eq("sub_mode", "cast")
         .order("last_activity_at", { ascending: false });
 
-      // Extract active threads (last 24h, unprocessed) for quick-entry
+      // Extract active threads (last 24h) for system map click-to-resume
+      // Include ALL recent threads regardless of is_processed status
       const { data: recentThreads } = await supabase
         .from("did_threads")
         .select("id, part_name, last_activity_at, messages")
         .eq("sub_mode", "cast")
-        .eq("is_processed", false)
         .gte("last_activity_at", cutoff24h)
         .order("last_activity_at", { ascending: false });
 
