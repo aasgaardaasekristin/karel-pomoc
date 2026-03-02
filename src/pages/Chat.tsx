@@ -956,6 +956,13 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
 
   const handleManualUpdate = async () => {
     if (isManualUpdateLoading) return;
+    // First save current conversation if any
+    if (activeThread && messages.length >= 2) {
+      await didThreads.updateThreadMessages(activeThread.id, messages);
+    } else if (didSubMode && messages.length >= 2) {
+      await saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
+    }
+
     setIsManualUpdateLoading(true);
     try {
       const headers = await getAuthHeaders();
@@ -965,7 +972,26 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       if (!response.ok) handleApiError(response);
       const result = await response.json();
       const updatedCardsCount = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.length : 0;
-      toast.success(`Aktualizace kartotéky dokončena – zpracováno ${result.threadsProcessed || 0} vláken, upraveno ${updatedCardsCount} karet`);
+      const totalProcessed = (result.threadsProcessed || 0) + (result.conversationsProcessed || 0);
+      toast.success(`Aktualizace kartotéky dokončena – zpracováno ${totalProcessed} vláken/konverzací, upraveno ${updatedCardsCount} karet`);
+
+      // Clear ALL local DID data after successful update
+      setActiveThread(null);
+      setMessages([]);
+      setDidSubMode(null);
+      setDidInitialContext("");
+      setDidDocsLoaded(false);
+      setDidSessionId(null);
+      setDidFlowState("dashboard");
+      clearMessages("childcare");
+      // Clear localStorage DID items
+      try {
+        localStorage.removeItem("karel_did_submode");
+        localStorage.removeItem("karel_did_context");
+        localStorage.removeItem(DID_DOCS_LOADED_KEY);
+        localStorage.removeItem(DID_SESSION_ID_KEY);
+      } catch {}
+      refreshHistory();
     } catch (error) {
       console.error("Manual update error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při aktualizaci kartotéky");
@@ -977,7 +1003,9 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     setIsHandbookLoading(true);
     try {
       const { generateKataHandbook } = await import("@/lib/didPdfExport");
-      await generateKataHandbook();
+      // Pass current kata conversation messages for inclusion in the handbook
+      const currentMessages = (didSubMode === "kata" && messages.length >= 2) ? messages : undefined;
+      await generateKataHandbook(currentMessages);
       toast.success("Příručka pro Káťu vygenerována a stažena");
     } catch (error) {
       console.error("Handbook error:", error);
