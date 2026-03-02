@@ -120,6 +120,7 @@ const Chat = () => {
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
+  const [isWeeklyUpdateLoading, setIsWeeklyUpdateLoading] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
@@ -858,6 +859,23 @@ const Chat = () => {
     } finally { setIsManualUpdateLoading(false); }
   };
 
+  const handleWeeklyUpdate = async () => {
+    if (isWeeklyUpdateLoading) return;
+    setIsWeeklyUpdateLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`, {
+        method: "POST", headers, body: JSON.stringify({}),
+      });
+      if (!response.ok) handleApiError(response);
+      const result = await response.json();
+      toast.success(`Týdenní analýza dokončena – aktualizováno ${result.cardsUpdated?.length || 0} karet`);
+    } catch (error) {
+      console.error("Weekly update error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při týdenní analýze");
+    } finally { setIsWeeklyUpdateLoading(false); }
+  };
+
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
     const userMessage = input.trim();
@@ -951,7 +969,7 @@ const Chat = () => {
       // Dashboard + submode selector
       return (
         <ScrollArea className="flex-1">
-          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} />
+          <DidDashboard onManualUpdate={handleManualUpdate} onWeeklyUpdate={handleWeeklyUpdate} isUpdating={isManualUpdateLoading} isWeeklyUpdating={isWeeklyUpdateLoading} />
           <DidConversationHistory
             conversations={history}
             onLoad={handleRestoreConversation}

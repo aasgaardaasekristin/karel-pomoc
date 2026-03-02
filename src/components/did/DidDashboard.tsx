@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2 } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -11,10 +11,12 @@ interface PartActivity {
 
 interface Props {
   onManualUpdate: () => void;
+  onWeeklyUpdate?: () => void;
   isUpdating: boolean;
+  isWeeklyUpdating?: boolean;
 }
 
-const DidDashboard = ({ onManualUpdate, isUpdating }: Props) => {
+const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpdating }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -119,20 +121,38 @@ const DidDashboard = ({ onManualUpdate, isUpdating }: Props) => {
             Poslední aktualizace kartotéky: {formatTimeAgo(lastCycleTime)}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onManualUpdate}
-          disabled={isUpdating}
-          className="h-8 text-xs gap-1.5"
-        >
-          {isUpdating ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-2">
+          {onWeeklyUpdate && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onWeeklyUpdate}
+              disabled={isWeeklyUpdating}
+              className="h-8 text-xs gap-1.5"
+            >
+              {isWeeklyUpdating ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Calendar className="w-3.5 h-3.5" />
+              )}
+              Týdenní analýza
+            </Button>
           )}
-          Aktualizovat nyní
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onManualUpdate}
+            disabled={isUpdating}
+            className="h-8 text-xs gap-1.5"
+          >
+            {isUpdating ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5" />
+            )}
+            Aktualizovat nyní
+          </Button>
+        </div>
       </div>
 
       {/* Parts overview */}
