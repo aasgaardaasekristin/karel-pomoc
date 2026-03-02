@@ -386,6 +386,84 @@ const Chat = () => {
     setDidFlowState("chat");
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
+  // Thread management for "cast" mode (hooks must be before early return)
+  const handleSelectThread = useCallback(async (thread: DidThread) => {
+    setActiveThread(thread);
+    setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
+    setDidFlowState("chat");
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const docs = data.documents || {};
+        const ctx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+        setDidInitialContext(ctx);
+      }
+    } catch {}
+  }, [setMessages, setDidInitialContext]);
+
+  const handleNewCastThread = useCallback(() => {
+    setDidFlowState("part-identify");
+  }, []);
+
+  const handlePartSelected = useCallback(async (partName: string) => {
+    setDidFlowState("loading");
+    
+    const existing = await didThreads.getThreadByPart(partName, "cast");
+    if (existing) {
+      setActiveThread(existing);
+      setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
+      setDidFlowState("chat");
+      toast.info(`Pokračuješ ve vláknu s ${partName}`);
+      return;
+    }
+
+    let docsCtx = didInitialContext;
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const docs = data.documents || {};
+        docsCtx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+        setDidInitialContext(docsCtx);
+      }
+    } catch {}
+
+    const greeting = getRandomCastGreeting();
+    const initialMessages = [{ role: "assistant" as const, content: greeting }];
+    
+    let partLanguage = "cs";
+    if (docsCtx.toLowerCase().includes("norsky") || docsCtx.toLowerCase().includes("norština")) partLanguage = "no";
+    if (docsCtx.toLowerCase().includes("anglicky") || docsCtx.toLowerCase().includes("english")) partLanguage = "en";
+
+    const thread = await didThreads.createThread(partName, "cast", partLanguage, initialMessages as any);
+    if (thread) {
+      setActiveThread(thread);
+      setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
+      setDidFlowState("chat");
+    } else {
+      toast.error("Nepodařilo se vytvořit vlákno");
+      setDidFlowState("thread-list");
+    }
+  }, [didInitialContext, setDidInitialContext, setMessages]);
+
+  const handleLeaveThread = useCallback(() => {
+    if (activeThread && messages.length >= 2) {
+      didThreads.updateThreadMessages(activeThread.id, messages);
+    }
+    setActiveThread(null);
+    setMessages([]);
+    setDidFlowState("thread-list");
+    didThreads.fetchActiveThreads("cast");
+  }, [activeThread, messages, setMessages]);
 
   if (!authChecked) {
     return (
@@ -425,7 +503,6 @@ const Chat = () => {
       if (response.ok) {
         const data = await response.json();
         const listDoc = data.documents?.["00_Seznam_casti"] || "";
-        // Parse part names from the list
         const names = listDoc.split("\n")
           .map((l: string) => l.replace(/^[-*•]\s*/, "").trim())
           .filter((l: string) => l.length > 0 && l.length < 30 && !l.startsWith("["));
@@ -441,7 +518,6 @@ const Chat = () => {
     setActiveThread(null);
 
     if (subMode === "cast") {
-      // Show thread list for "cast" mode
       setDidFlowState("loading");
       await Promise.all([
         didThreads.fetchActiveThreads("cast"),
@@ -455,7 +531,6 @@ const Chat = () => {
     }
 
     if (subMode === "research") {
-      // Odborné zdroje mode - direct to chat
       setDidFlowState("loading");
       const docsCtx = await loadDriveContext();
       setDidInitialContext(docsCtx);
@@ -481,89 +556,6 @@ const Chat = () => {
     };
     setMessages([{ role: "assistant", content: greetings[subMode] || greetings.general }]);
   };
-
-  // Thread management for "cast" mode
-  const handleSelectThread = useCallback(async (thread: DidThread) => {
-    setActiveThread(thread);
-    setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
-    setDidFlowState("chat");
-    // Load part-specific card from drive
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${thread.partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        const ctx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-        setDidInitialContext(ctx);
-      }
-    } catch {}
-  }, [setMessages, setDidInitialContext]);
-
-  const handleNewCastThread = useCallback(() => {
-    setDidFlowState("part-identify");
-  }, []);
-
-  const handlePartSelected = useCallback(async (partName: string) => {
-    setDidFlowState("loading");
-    
-    // Check if thread already exists for this part
-    const existing = await didThreads.getThreadByPart(partName, "cast");
-    if (existing) {
-      setActiveThread(existing);
-      setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
-      setDidFlowState("chat");
-      toast.info(`Pokračuješ ve vláknu s ${partName}`);
-      return;
-    }
-
-    // Load part card from drive
-    let docsCtx = didInitialContext;
-    try {
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`, "00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
-      );
-      if (response.ok) {
-        const data = await response.json();
-        const docs = data.documents || {};
-        docsCtx = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-        setDidInitialContext(docsCtx);
-      }
-    } catch {}
-
-    const greeting = getRandomCastGreeting();
-    const initialMessages = [{ role: "assistant" as const, content: greeting }];
-    
-    // Detect language from part card
-    let partLanguage = "cs";
-    if (docsCtx.toLowerCase().includes("norsky") || docsCtx.toLowerCase().includes("norština")) partLanguage = "no";
-    if (docsCtx.toLowerCase().includes("anglicky") || docsCtx.toLowerCase().includes("english")) partLanguage = "en";
-
-    const thread = await didThreads.createThread(partName, "cast", partLanguage, initialMessages as any);
-    if (thread) {
-      setActiveThread(thread);
-      setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
-      setDidFlowState("chat");
-    } else {
-      toast.error("Nepodařilo se vytvořit vlákno");
-      setDidFlowState("thread-list");
-    }
-  }, [didInitialContext, setDidInitialContext, setMessages]);
-
-  const handleLeaveThread = useCallback(() => {
-    if (activeThread && messages.length >= 2) {
-      didThreads.updateThreadMessages(activeThread.id, messages);
-    }
-    setActiveThread(null);
-    setMessages([]);
-    setDidFlowState("thread-list");
-    didThreads.fetchActiveThreads("cast");
-  }, [activeThread, messages, setMessages]);
 
   // ── Common handlers (unchanged logic, cleaned up) ──
 
