@@ -22,29 +22,66 @@ async function getAccessToken(): Promise<string> {
 // Drive helpers
 async function findFolder(token: string, name: string): Promise<string | null> {
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, { headers: { Authorization: `Bearer ${token}` } });
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id)",
+    pageSize: "50",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
 
 async function findFile(token: string, name: string, parentId: string): Promise<string | null> {
   const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, { headers: { Authorization: `Bearer ${token}` } });
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id)",
+    pageSize: "50",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
 
 async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
   const q = `'${folderId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=200`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files || [];
+  const allFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      q,
+      fields: "nextPageToken,files(id,name,mimeType)",
+      pageSize: "200",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    allFiles.push(...(data.files || []));
+    pageToken = data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return allFiles;
 }
 
 async function readFileContent(token: string, fileId: string): Promise<string> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
-    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } });
+    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
     if (!exportRes.ok) throw new Error(`Cannot read file ${fileId}: ${exportRes.status}`);
     return await exportRes.text();
   }
@@ -55,7 +92,7 @@ async function updateFileById(token: string, fileId: string, content: string): P
   const boundary = "----DIDCycleBoundary";
   const metadata = JSON.stringify({});
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
-  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&supportsAllDrives=true`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
     body,
@@ -68,7 +105,7 @@ async function createFileInFolder(token: string, fileName: string, content: stri
   const boundary = "----DIDCycleBoundary";
   const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
-  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`, {
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
     body,
@@ -133,6 +170,8 @@ function buildCard(partName: string, sections: Record<string, string>): string {
 }
 
 interface CardFileResult { fileId: string; fileName: string; content: string; parentFolderId: string; }
+
+type DriveFile = { id: string; name: string; mimeType?: string };
 
 async function findCardFile(token: string, partName: string, rootFolderId: string): Promise<CardFileResult | null> {
   const normalizedPart = partName.toLowerCase().replace(/\s+/g, "").replace(/[_-]/g, "");
@@ -204,6 +243,75 @@ async function updateCardSections(token: string, partName: string, newSections: 
   }
 }
 
+function isTextCandidateFile(file: DriveFile): boolean {
+  if (file.mimeType === "application/vnd.google-apps.folder") return false;
+
+  const lower = file.name.toLowerCase();
+  if (lower.startsWith("did_")) return false;
+  if (lower.startsWith("00_") || lower.startsWith("01_")) return false;
+  if (lower.includes("denni_report") || lower.includes("tydenni_report")) return false;
+
+  const isGoogleDoc = file.mimeType === "application/vnd.google-apps.document";
+  const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
+
+  return isGoogleDoc || isTextExtension;
+}
+
+function looksLikeDidCard(fileName: string, content: string): boolean {
+  if (fileName.toLowerCase().startsWith("karta_")) return true;
+  if (/^\d{3,}[_-]/i.test(fileName)) return true;
+  return /SEKCE\s+[A-M]\s*[–\-:]/i.test(content) || /KARTA\s+ČÁSTI/i.test(content);
+}
+
+function partNameFromFileName(fileName: string): string {
+  const base = fileName.replace(/\.(txt|md|doc|docx)$/i, "");
+  const withoutKarta = base.replace(/^karta_/i, "");
+  const withoutNumericPrefix = withoutKarta.replace(/^\d{3,}[_-]/, "");
+  return (withoutNumericPrefix || withoutKarta || base).replace(/_/g, " ").trim();
+}
+
+async function listFilesRecursive(token: string, rootFolderId: string): Promise<DriveFile[]> {
+  const collected: DriveFile[] = [];
+  const stack: string[] = [rootFolderId];
+
+  while (stack.length > 0) {
+    const currentFolder = stack.pop()!;
+    const files = await listFilesInFolder(token, currentFolder);
+    for (const file of files) {
+      if (file.mimeType === "application/vnd.google-apps.folder") {
+        stack.push(file.id);
+      } else {
+        collected.push(file);
+      }
+    }
+  }
+
+  return collected;
+}
+
+async function normalizeCardStructures(token: string, rootFolderId: string): Promise<string[]> {
+  const files = await listFilesRecursive(token, rootFolderId);
+  const candidateFiles = files.filter(isTextCandidateFile);
+  const normalized: string[] = [];
+
+  for (const file of candidateFiles) {
+    try {
+      const original = await readFileContent(token, file.id);
+      if (!looksLikeDidCard(file.name, original)) continue;
+
+      const rebuilt = buildCard(partNameFromFileName(file.name), parseCardSections(original));
+      if (rebuilt.trim() !== original.trim()) {
+        await updateFileById(token, file.id, rebuilt);
+        normalized.push(file.name);
+      }
+    } catch (e) {
+      console.error(`[normalizeCardStructures] Failed for ${file.name}:`, e);
+    }
+  }
+
+  return normalized;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -230,17 +338,44 @@ serve(async (req) => {
 
     // 1. SBĚR DAT
     const cutoff = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
-    const { data: threads } = await sb.from("did_threads").select("*").eq("is_processed", false).gte("started_at", cutoff);
+    const { data: threadRows } = await sb.from("did_threads").select("*").eq("is_processed", false).gte("started_at", cutoff);
+    const threads = threadRows ?? [];
 
-    if (!threads || threads.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: "No threads to process" }), {
+    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
+
+    // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
+    const token = await getAccessToken();
+    const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
+    const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
+
+    if (threads.length === 0) {
+      if (cycle) {
+        await sb.from("did_update_cycles").update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          report_summary: normalizedCardFiles.length > 0
+            ? `Normalizováno ${normalizedCardFiles.length} karet na strukturu A–M.`
+            : "No threads to process",
+          cards_updated: cardsUpdated,
+        }).eq("id", cycle.id);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: normalizedCardFiles.length > 0
+          ? "No threads to process; card structure normalized"
+          : "No threads to process",
+        threadsProcessed: 0,
+        cardsUpdated,
+        normalizedCards: normalizedCardFiles.length,
+        reportSent: false,
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
-
-    // 2. COMPILE THREAD DATA
+    // 3. COMPILE THREAD DATA
     const threadSummaries = threads.map(t => {
       const msgs = (t.messages as any[]) || [];
       return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content.slice(0, 500) : "(multimodal)"}`).join("\n")}`;
@@ -249,8 +384,6 @@ serve(async (req) => {
     // Get Drive context + existing cards
     let driveContext = "";
     let existingCards: Record<string, string> = {};
-    const token = await getAccessToken();
-    const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
 
     if (folderId) {
       try {
@@ -328,8 +461,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       analysisText = data.choices?.[0]?.message?.content || "";
     }
 
-    // 4. PARSE AND UPDATE CARDS IN-PLACE
-    const cardsUpdated: string[] = [];
+    // 4. PARSE AND UPDATE CARDS IN-PLACE (navazuje na předchozí normalizaci A-M)
 
     if (folderId && analysisText) {
       const dateStr = new Date().toISOString().slice(0, 10);

@@ -950,7 +950,8 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       });
       if (!response.ok) handleApiError(response);
       const result = await response.json();
-      toast.success(`Aktualizace kartotéky dokončena – zpracováno ${result.threadsProcessed || 0} vláken`);
+      const updatedCardsCount = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.length : 0;
+      toast.success(`Aktualizace kartotéky dokončena – zpracováno ${result.threadsProcessed || 0} vláken, upraveno ${updatedCardsCount} karet`);
     } catch (error) {
       console.error("Manual update error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při aktualizaci kartotéky");
