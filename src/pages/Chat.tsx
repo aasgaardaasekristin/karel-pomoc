@@ -319,21 +319,28 @@ const Chat = () => {
         (async () => {
           try {
             const headers = await getAuthHeaders();
+            // Load key documents from 00_CENTRUM subfolder
             const response = await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-              { method: "POST", headers, body: JSON.stringify({ documents: ["00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+              { method: "POST", headers, body: JSON.stringify({ 
+                documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb"],
+                subFolder: "00_CENTRUM"
+              }) }
             );
             if (response.ok) {
               const data = await response.json();
               const docs = data.documents || {};
-              basicDocsRef.current = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+              basicDocsRef.current = Object.entries(docs)
+                .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+                .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+                .join("\n\n");
               setDidInitialContext(basicDocsRef.current);
-              // Also extract known parts
-              const listDoc = docs["00_Seznam_casti"] || "";
-              const names = listDoc.split("\n")
-                .map((l: string) => l.replace(/^[-*•]\s*/, "").trim())
-                .filter((l: string) => l.length > 0 && l.length < 30 && !l.startsWith("["));
-              setKnownParts(names.slice(0, 20));
+              // Extract known parts from index
+              const indexDoc = docs["01_Index_Vsech_Casti"] || "";
+              const names = indexDoc.split("\n")
+                .map((l: string) => l.replace(/^[-*•\d_.]\s*/g, "").replace(/^\d+_?/, "").trim())
+                .filter((l: string) => l.length > 1 && l.length < 30 && !l.startsWith("["));
+              setKnownParts(names.slice(0, 30));
             }
           } catch (e) { console.warn("Basic DID docs preload failed:", e); }
         })();
@@ -580,12 +587,18 @@ const Chat = () => {
       const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: ["00_Seznam_casti", "01_Hlavni_mapa_systemu"] }) }
+        { method: "POST", headers, body: JSON.stringify({ 
+          documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb"],
+          subFolder: "00_CENTRUM"
+        }) }
       );
       if (response.ok) {
         const data = await response.json();
         const docs = data.documents || {};
-        return Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+        return Object.entries(docs)
+          .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
+          .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+          .join("\n\n");
       }
     } catch (e) {
       console.warn("Failed to load DID docs from Drive:", e);
@@ -596,17 +609,18 @@ const Chat = () => {
   const loadKnownParts = async () => {
     try {
       const headers = await getAuthHeaders();
+      // List all files in 01_AKTIVNI_FRAGMENTY to get part names
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: ["00_Seznam_casti"] }) }
+        { method: "POST", headers, body: JSON.stringify({ listAll: true, subFolder: "01_AKTIVNI_FRAGMENTY" }) }
       );
       if (response.ok) {
         const data = await response.json();
-        const listDoc = data.documents?.["00_Seznam_casti"] || "";
-        const names = listDoc.split("\n")
-          .map((l: string) => l.replace(/^[-*•]\s*/, "").trim())
-          .filter((l: string) => l.length > 0 && l.length < 30 && !l.startsWith("["));
-        setKnownParts(names.slice(0, 20));
+        const files = data.files || [];
+        const names = files
+          .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
+          .map((f: any) => f.name.replace(/^\d+_/, "").replace(/\.(txt|md|doc|docx)$/i, ""));
+        setKnownParts(names.slice(0, 30));
       }
     } catch {}
   };
