@@ -513,6 +513,59 @@ const Chat = () => {
     didThreads.fetchActiveThreads("cast");
   }, [activeThread, messages, setMessages]);
 
+  // Quick thread entry from dashboard — load thread directly by ID
+  const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
+    setDidSubMode("cast");
+    setDidFlowState("loading");
+    
+    // Fetch the thread from DB
+    const { data, error } = await supabase
+      .from("did_threads")
+      .select("*")
+      .eq("id", threadId)
+      .maybeSingle();
+    
+    if (error || !data) {
+      toast.error("Vlákno nenalezeno");
+      setDidFlowState("dashboard");
+      return;
+    }
+    
+    const thread = {
+      id: data.id,
+      partName: data.part_name,
+      partLanguage: data.part_language || "cs",
+      subMode: data.sub_mode,
+      messages: (data.messages ?? []) as { role: string; content: string }[],
+      startedAt: data.started_at,
+      lastActivityAt: data.last_activity_at,
+      isProcessed: data.is_processed,
+    };
+    
+    setActiveThread(thread);
+    setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
+    setDidFlowState("chat");
+    
+    // Load part docs in background
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const response = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+          { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
+        );
+        if (response.ok) {
+          const docData = await response.json();
+          const docs = docData.documents || {};
+          const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+          setDidInitialContext(prev => prev + "\n\n" + partDocs);
+        }
+      } catch {}
+    })();
+    
+    toast.info(`Navazuješ na rozhovor s ${partName}`);
+  }, [setDidSubMode, setMessages, setDidInitialContext]);
+
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -1119,7 +1172,7 @@ const Chat = () => {
       // Dashboard + submode selector
       return (
         <ScrollArea className="flex-1">
-          <DidDashboard onManualUpdate={handleManualUpdate} onWeeklyUpdate={handleWeeklyUpdate} isUpdating={isManualUpdateLoading} isWeeklyUpdating={isWeeklyUpdateLoading} />
+          <DidDashboard onManualUpdate={handleManualUpdate} onWeeklyUpdate={handleWeeklyUpdate} isUpdating={isManualUpdateLoading} isWeeklyUpdating={isWeeklyUpdateLoading} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} />
           <DidConversationHistory
             conversations={history}
             onLoad={handleRestoreConversation}
@@ -1233,16 +1286,9 @@ const Chat = () => {
             {messages.length > 1 && (
               <DidActionButtons
                 subMode={didSubMode}
-                onDiary={didSubMode === "cast" ? handleDidDiary : undefined}
-                onMessageMom={didSubMode === "cast" ? handleDidMessageMom : undefined}
-                onMessageKata={didSubMode === "cast" ? handleDidMessageKata : undefined}
-                onBackup={handleDidBackup}
                 onEndCall={handleDidEndCall}
-                onResearch={handleDidResearch}
                 onManualUpdate={handleManualUpdate}
                 onLeaveThread={didSubMode === "cast" && activeThread ? handleLeaveThread : undefined}
-                isBackupLoading={isBackupLoading}
-                isResearchLoading={isDidResearchLoading}
                 isUpdateLoading={isManualUpdateLoading}
                 disabled={isLoading}
               />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, FileDown } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, FileDown, MessageCircle, Heart, User, BookOpen, Search, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
@@ -7,6 +7,7 @@ import DidPatternPanel from "./DidPatternPanel";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { generateDidReport } from "@/lib/didPdfExport";
+import type { DidSubMode } from "./DidSubModeSelector";
 
 interface PartActivity {
   name: string;
@@ -14,20 +15,30 @@ interface PartActivity {
   status: "active" | "sleeping" | "warning";
 }
 
+interface ActiveThreadSummary {
+  id: string;
+  partName: string;
+  lastActivityAt: string;
+  messageCount: number;
+}
+
 interface Props {
   onManualUpdate: () => void;
   onWeeklyUpdate?: () => void;
   isUpdating: boolean;
   isWeeklyUpdating?: boolean;
+  onQuickSubMode?: (subMode: DidSubMode) => void;
+  onQuickThread?: (threadId: string, partName: string) => void;
 }
 
-const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpdating }: Props) => {
+const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpdating, onQuickSubMode, onQuickThread }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
   const [isPdfExporting, setIsPdfExporting] = useState(false);
+  const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
 
   const handlePdfExport = async () => {
     setIsPdfExporting(true);
@@ -51,11 +62,30 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
     setLoading(true);
     try {
       // Get all unique part names from threads
+      const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data: threads } = await supabase
         .from("did_threads")
-        .select("part_name, last_activity_at")
+        .select("id, part_name, last_activity_at, messages, sub_mode")
         .eq("sub_mode", "cast")
         .order("last_activity_at", { ascending: false });
+
+      // Extract active threads (last 24h, unprocessed) for quick-entry
+      const { data: recentThreads } = await supabase
+        .from("did_threads")
+        .select("id, part_name, last_activity_at, messages")
+        .eq("sub_mode", "cast")
+        .eq("is_processed", false)
+        .gte("last_activity_at", cutoff24h)
+        .order("last_activity_at", { ascending: false });
+
+      if (recentThreads) {
+        setActiveThreads(recentThreads.map(t => ({
+          id: t.id,
+          partName: t.part_name,
+          lastActivityAt: t.last_activity_at,
+          messageCount: Array.isArray(t.messages) ? t.messages.length : 0,
+        })));
+      }
 
       if (threads) {
         const partMap = new Map<string, string>();
@@ -237,6 +267,58 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
       </div>
 
       {/* Parts overview */}
+      {/* Quick Entry — active threads from last 24h */}
+      {activeThreads.length > 0 && onQuickThread && (
+        <div className="mb-4">
+          <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" />
+            Navázat na rozhovor
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            {activeThreads.map(t => (
+              <Button
+                key={t.id}
+                variant="outline"
+                size="sm"
+                onClick={() => onQuickThread(t.id, t.partName)}
+                className="h-9 text-xs gap-1.5 border-primary/30 hover:border-primary"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                {t.partName}
+                <span className="text-muted-foreground">({formatTimeAgo(t.lastActivityAt)})</span>
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick SubMode Entry */}
+      {onQuickSubMode && (
+        <div className="mb-4">
+          <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5" />
+            Rychlý vstup
+          </h4>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("cast")} className="h-9 text-xs gap-1.5">
+              <MessageCircle className="w-3.5 h-3.5" /> Část mluví
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("mamka")} className="h-9 text-xs gap-1.5">
+              <Heart className="w-3.5 h-3.5" /> Mamka
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("kata")} className="h-9 text-xs gap-1.5">
+              <User className="w-3.5 h-3.5" /> Káťa
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("general")} className="h-9 text-xs gap-1.5">
+              <BookOpen className="w-3.5 h-3.5" /> Obecná porada
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => onQuickSubMode("research")} className="h-9 text-xs gap-1.5">
+              <Search className="w-3.5 h-3.5" /> Odborné zdroje
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Interactive System Map */}
       <DidSystemMap parts={parts} />
 
