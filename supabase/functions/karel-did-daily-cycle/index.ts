@@ -88,15 +88,51 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+async function updateGoogleDocById(token: string, fileId: string, content: string): Promise<any> {
+  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!docRes.ok) throw new Error(`Google Docs read failed: ${await docRes.text()}`);
+
+  const doc = await docRes.json();
+  const bodyContent = Array.isArray(doc.body?.content) ? doc.body.content : [];
+  const endIndex = bodyContent.length > 0
+    ? (bodyContent[bodyContent.length - 1]?.endIndex ?? 1)
+    : 1;
+
+  const requests: any[] = [];
+  if (endIndex > 1) {
+    requests.push({
+      deleteContentRange: {
+        range: { startIndex: 1, endIndex: endIndex - 1 },
+      },
+    });
+  }
+  requests.push({
+    insertText: {
+      location: { index: 1 },
+      text: content,
+    },
+  });
+
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests }),
+  });
+
+  if (!updateRes.ok) throw new Error(`Google Docs batchUpdate failed: ${await updateRes.text()}`);
+  return await updateRes.json();
+}
+
 async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
   const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
 
   if (isGoogleDoc) {
-    // Google Docs cannot be updated via Drive upload API.
-    // Strategy: delete old Google Doc and create a new plain text file in same folder.
-    // This is a one-time migration per card.
-    console.log(`[updateFileById] Google Doc detected (${fileId}), will create .txt replacement`);
-    throw new Error("GOOGLE_DOC_CANNOT_UPDATE");
+    return await updateGoogleDocById(token, fileId, content);
   }
 
   // For plain text files: multipart upload
@@ -256,19 +292,8 @@ async function updateCardSections(token: string, partName: string, newSections: 
   const fullCard = buildCard(partName, existingSections);
 
   if (card) {
-    try {
-      await updateFileById(token, card.fileId, fullCard, card.mimeType);
-      return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
-    } catch (e) {
-      if (e instanceof Error && e.message === "GOOGLE_DOC_CANNOT_UPDATE") {
-        // Google Doc → create a .txt companion in the same folder
-        const txtName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
-        console.log(`[updateCardSections] Google Doc "${card.fileName}" cannot be updated via API. Creating .txt companion: ${txtName}`);
-        await createFileInFolder(token, txtName, fullCard, card.parentFolderId);
-        return { fileName: txtName, sectionsUpdated: updatedKeys, isNew: true };
-      }
-      throw e;
-    }
+    await updateFileById(token, card.fileId, fullCard, card.mimeType);
+    return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
   } else {
     const newFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
     await createFileInFolder(token, newFileName, fullCard, folderId);
@@ -278,8 +303,6 @@ async function updateCardSections(token: string, partName: string, newSections: 
 
 function isTextCandidateFile(file: DriveFile): boolean {
   if (file.mimeType === "application/vnd.google-apps.folder") return false;
-  // Google Docs cannot be updated via multipart upload API – skip them
-  if (file.mimeType === "application/vnd.google-apps.document") return false;
 
   const lower = file.name.toLowerCase();
   if (lower.startsWith("did_")) return false;
