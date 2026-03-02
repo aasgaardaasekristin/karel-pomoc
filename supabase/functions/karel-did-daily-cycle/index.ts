@@ -245,16 +245,18 @@ async function updateCardSections(token: string, partName: string, newSections: 
 
 function isTextCandidateFile(file: DriveFile): boolean {
   if (file.mimeType === "application/vnd.google-apps.folder") return false;
+  // Google Docs cannot be updated via multipart upload API – skip them
+  if (file.mimeType === "application/vnd.google-apps.document") return false;
 
   const lower = file.name.toLowerCase();
   if (lower.startsWith("did_")) return false;
-  if (lower.startsWith("00_") || lower.startsWith("01_")) return false;
+  if (lower.startsWith("00_") || lower.startsWith("01_") || lower.startsWith("02_")) return false;
   if (lower.includes("denni_report") || lower.includes("tydenni_report")) return false;
+  if (lower.includes("instrukce") || lower.includes("mapa_vztahu")) return false;
 
-  const isGoogleDoc = file.mimeType === "application/vnd.google-apps.document";
   const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
 
-  return isGoogleDoc || isTextExtension;
+  return isTextExtension;
 }
 
 function looksLikeDidCard(fileName: string, content: string): boolean {
