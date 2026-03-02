@@ -866,16 +866,18 @@ const Chat = () => {
     setIsBackupLoading(true);
     try {
       const headers = await getAuthHeaders();
+      const partName = activeThread?.partName || "unknown";
+      
+      // Ask AI to generate structured section updates for the card
       const aiResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`, {
-        method: "POST", headers: await getAuthHeaders(),
+        method: "POST", headers,
         body: JSON.stringify({
-          messages: [...messages.slice(-40), { role: "user", content: "Vytvoř strukturovanou zálohu tohoto rozhovoru pro Kartotéku DID. Zahrň shrnutí, aktualizace karet, handover, supervizní poznámky. Formátuj jako čistý text." }],
+          messages: [...messages.slice(-40), { role: "user", content: `Vytvoř aktualizace pro kartu části "${partName}" v Kartotéce DID. Výstup MUSÍ být v tomto formátu:\n[SEKCE:G] deník sezení - datum, co se dělo, stabilizace, další krok\n[SEKCE:E] chronologický log záznam\n[SEKCE:J] krátkodobé cíle a aktuální intervence\n[SEKCE:L] aktivita a přítomnost části\n[SEKCE:K] výstupy ze sezení (pokud relevantní)\nVrať POUZE sekce, nic jiného.` }],
           mode: "childcare", didSubMode, didInitialContext,
         }),
       });
 
-      let backupContent = `=== ZÁLOHA ROZHOVORU ===\nDatum: ${new Date().toLocaleString("cs-CZ")}\nPodrežim: ${didSubMode}\n${activeThread ? `Část: ${activeThread.partName}\n` : ""}\n`;
-
+      let sectionContent = "";
       if (aiResponse.ok && aiResponse.body) {
         const reader = aiResponse.body.getReader();
         const decoder = new TextDecoder();
@@ -895,37 +897,51 @@ const Chat = () => {
             try {
               const parsed = JSON.parse(jsonStr);
               const content = parsed.choices?.[0]?.delta?.content;
-              if (content) backupContent += content;
+              if (content) sectionContent += content;
             } catch {}
           }
         }
-      } else {
-        backupContent += messages.map(m => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n\n");
       }
 
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const partSuffix = activeThread ? `_${activeThread.partName.replace(/\s+/g, "_")}` : "";
-      const fileName = `DID_Záloha_${didSubMode}${partSuffix}_${dateStr}.txt`;
+      // Parse section updates from AI output
+      const sections: Record<string, string> = {};
+      const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
+      for (const match of sectionContent.matchAll(sectionRegex)) {
+        const letter = match[1].toUpperCase();
+        const content = match[2].trim();
+        if (content) sections[letter] = content;
+      }
 
+      // Fallback: if AI didn't produce structured output, write raw summary to G and E
+      if (Object.keys(sections).length === 0) {
+        const rawSummary = messages.slice(-20).map(m =>
+          `${m.role === "user" ? "UŽIVATEL" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
+        ).join("\n");
+        sections["G"] = `Rozhovor (${didSubMode}): ${rawSummary.slice(0, 500)}`;
+        sections["E"] = `Rozhovor v podrežimu ${didSubMode}`;
+        sections["L"] = `Aktivní – rozhovor v podrežimu ${didSubMode}`;
+      }
+
+      // Write directly into card sections on Drive
       await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-write`, {
         method: "POST", headers,
-        body: JSON.stringify({ updates: [{ fileName, content: backupContent, mode: "replace" }] }),
+        body: JSON.stringify({ mode: "update-card-sections", partName, sections }),
       });
-      toast.success("Záloha uložena na Drive");
+      toast.success("Karta aktualizována na Drive");
     } catch (error) {
-      console.error("Backup error:", error);
-      toast.error("Chyba při zálohování na Drive");
+      console.error("Card update error:", error);
+      toast.error("Chyba při aktualizaci karty na Drive");
     } finally { setIsBackupLoading(false); }
   };
 
   const handleDidEndCall = async () => {
-    // Save thread
     if (activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
     } else if (didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
+    // Update card sections on Drive (replaces old backup)
     handleDidBackup();
 
     if (didSubMode === "cast") {
@@ -955,28 +971,7 @@ const Chat = () => {
     setActiveThread(null);
     setDidSubMode("mamka");
     setDidFlowState("chat");
-    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}. Připravil jsem zálohu a odeslal email.\n\nMám přehled o tom, co se dělo. Chceš probrat, co jsem zjistil?` }]);
-  };
-
-  const handleDidDiary = () => {
-    setMessages(prev => [...prev,
-      { role: "user", content: "📗 Chci zapsat do deníku" },
-      { role: "assistant", content: "Pojďme společně zapsat něco do tvého deníku. Co bys tam chtěl/a mít? Můžeme to napsat spolu." }
-    ]);
-  };
-
-  const handleDidMessageMom = () => {
-    setMessages(prev => [...prev,
-      { role: "user", content: "💌 Chci nechat vzkaz mamce" },
-      { role: "assistant", content: "Jasně! Mohli bychom mamince tady nechat vzkaz. Co bys jí chtěl/a říct? Můžeme to napsat společně, a pak to mamka dostane mailem. 😊" }
-    ]);
-  };
-
-  const handleDidMessageKata = () => {
-    setMessages(prev => [...prev,
-      { role: "user", content: "💌 Chci nechat vzkaz Káti" },
-      { role: "assistant", content: "Super! Mohli bychom Káti nechat vzkaz. Co bys jí chtěl/a říct? Napíšeme to spolu a Káťa to dostane. 😊" }
-    ]);
+    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}. Aktualizoval jsem kartu na Drive a odeslal email.\n\nMám přehled o tom, co se dělo. Chceš probrat, co jsem zjistil?` }]);
   };
 
   const handleDidResearch = async () => {
