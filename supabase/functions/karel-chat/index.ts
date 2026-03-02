@@ -31,6 +31,11 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 
+    // Hard runtime truth-guard for DID mode
+    if (mode === "childcare") {
+      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- NIKDY netvrď, že jsi něco odeslal (SMS/email/telefon), pokud nemáš skutečné potvrzení o odeslání.\n- Pokud připravuješ vzkaz, jasně ho označ jako NÁVRH.\n- Slovo "odesláno" použij pouze při reálně dokončené akci.`;
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
