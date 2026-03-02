@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, Calendar, HardDrive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import DidSystemMap from "./DidSystemMap";
+import DidPatternPanel from "./DidPatternPanel";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 
@@ -202,6 +204,9 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
       </div>
 
       {/* Parts overview */}
+      {/* Interactive System Map */}
+      <DidSystemMap parts={parts} />
+
       {parts.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {parts.map((part) => (
@@ -243,6 +248,9 @@ const DidDashboard = ({ onManualUpdate, onWeeklyUpdate, isUpdating, isWeeklyUpda
           </p>
         </div>
       )}
+
+      {/* Pattern Detection */}
+      <DidPatternPanel />
     </div>
   );
 };
