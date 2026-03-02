@@ -485,7 +485,7 @@ const Chat = () => {
   // Thread management for "cast" mode
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
-    setMessages(thread.messages);
+    setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
     // Load part-specific card from drive
     try {
