@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, FileText, Download, Search, Link2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import type { PendingAttachment } from "@/hooks/useUniversalUpload";
@@ -23,6 +22,38 @@ interface Props {
   onFileSelected: (attachment: PendingAttachment) => void;
 }
 
+/** Extract a Google Drive file ID from various URL formats or raw ID */
+function extractFileId(input: string): string | null {
+  const trimmed = input.trim();
+
+  // Direct file ID (no slashes, 20+ chars of alphanumeric/dash/underscore)
+  if (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  // Standard: /d/<id> or /file/d/<id>
+  const dMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (dMatch) return dMatch[1];
+
+  // Spreadsheets: /spreadsheets/d/<id>
+  const ssMatch = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (ssMatch) return ssMatch[1];
+
+  // Presentation: /presentation/d/<id>
+  const prMatch = trimmed.match(/\/presentation\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (prMatch) return prMatch[1];
+
+  // Open by ID: ?id=<id>
+  const idParam = trimmed.match(/[?&]id=([a-zA-Z0-9_-]{20,})/);
+  if (idParam) return idParam[1];
+
+  // Fallback: try the longest alphanumeric segment
+  const segments = trimmed.split(/[/?&#=]/).filter(s => /^[a-zA-Z0-9_-]{20,}$/.test(s));
+  if (segments.length > 0) return segments[0];
+
+  return null;
+}
+
 const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
   const [tab, setTab] = useState<string>("browse");
   const [query, setQuery] = useState("");
@@ -34,6 +65,7 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
   const searchFiles = async () => {
     if (!query.trim()) return;
     setLoading(true);
+    setFiles([]);
     try {
       const headers = await getAuthHeaders();
       const resp = await fetch(
@@ -44,11 +76,19 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
           body: JSON.stringify({ query: query.trim() }),
         }
       );
-      if (!resp.ok) throw new Error("Chyba při hledání");
+      if (!resp.ok) {
+        const errBody = await resp.text();
+        console.error("Drive list error:", resp.status, errBody);
+        throw new Error(`Chyba ${resp.status}`);
+      }
       const data = await resp.json();
-      setFiles(data.files || []);
+      const found = data.files || [];
+      setFiles(found);
+      if (found.length === 0) {
+        toast.info("Žádné soubory nenalezeny pro tento dotaz");
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Drive search error:", err);
       toast.error("Nepodařilo se prohledat Google Drive");
     } finally {
       setLoading(false);
@@ -67,12 +107,16 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
           body: JSON.stringify({ fileId, fileName }),
         }
       );
-      if (!resp.ok) throw new Error("Chyba při stahování");
+      if (!resp.ok) {
+        const errBody = await resp.text();
+        console.error("Drive download error:", resp.status, errBody);
+        throw new Error(`Chyba ${resp.status}`);
+      }
       const data = await resp.json();
 
       const attachment: PendingAttachment = {
         id: `drive-${fileId}-${Date.now()}`,
-        name: fileName,
+        name: data.name || fileName,
         type: data.mimeType || "application/octet-stream",
         size: data.size || 0,
         category: data.mimeType?.startsWith("image/") ? "image"
@@ -84,11 +128,11 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
       };
 
       onFileSelected(attachment);
-      toast.success(`Soubor z Drive načten: ${fileName}`);
+      toast.success(`Soubor z Drive načten: ${data.name || fileName}`);
       onClose();
     } catch (err) {
-      console.error(err);
-      toast.error("Nepodařilo se stáhnout soubor z Drive");
+      console.error("Drive download error:", err);
+      toast.error("Nepodařilo se stáhnout soubor z Google Drive. Zkontroluj, zda je soubor sdílen s mujosobniasistentnamiru@gmail.com.");
     } finally {
       setDownloading(null);
     }
@@ -96,13 +140,11 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
 
   const handleUrlImport = async () => {
     if (!driveUrl.trim()) return;
-    // Extract file ID from Google Drive URL
-    const match = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (!match) {
-      toast.error("Neplatný Google Drive odkaz");
+    const fileId = extractFileId(driveUrl);
+    if (!fileId) {
+      toast.error("Nepodařilo se rozpoznat ID souboru. Vlož platný Google Drive odkaz nebo ID souboru.");
       return;
     }
-    const fileId = match[1];
     await downloadFile(fileId, `drive_file_${fileId.slice(0, 8)}`);
   };
 
@@ -133,7 +175,7 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
                 placeholder="Hledej soubory na Drive..."
                 onKeyDown={e => e.key === "Enter" && searchFiles()}
               />
-              <Button onClick={searchFiles} disabled={loading} size="sm">
+              <Button onClick={searchFiles} disabled={loading || !query.trim()} size="icon" className="shrink-0 h-10 w-10">
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
               </Button>
             </div>
@@ -141,8 +183,14 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
             <div className="max-h-60 overflow-y-auto space-y-1">
               {files.length === 0 && !loading && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Zadej hledaný výraz a stiskni Enter
+                  Zadej hledaný výraz a stiskni Enter nebo klikni na lupu
                 </p>
+              )}
+              {loading && (
+                <div className="flex items-center justify-center py-6 gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Hledám na Google Drive...
+                </div>
               )}
               {files.map(f => (
                 <div key={f.id} className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 group">
@@ -173,10 +221,14 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
             <Input
               value={driveUrl}
               onChange={e => setDriveUrl(e.target.value)}
-              placeholder="https://drive.google.com/file/d/..."
+              placeholder="https://drive.google.com/... nebo ID souboru"
+              onKeyDown={e => e.key === "Enter" && handleUrlImport()}
             />
-            <Button onClick={handleUrlImport} disabled={loading || !driveUrl.trim()} className="w-full">
-              {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
+            <p className="text-xs text-muted-foreground">
+              Vlož odkaz na soubor z Google Drive nebo přímo ID souboru. Soubor musí být sdílen s mujosobniasistentnamiru@gmail.com.
+            </p>
+            <Button onClick={handleUrlImport} disabled={loading || downloading !== null || !driveUrl.trim()} className="w-full">
+              {(loading || downloading !== null) ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
               Importovat z Drive
             </Button>
           </TabsContent>

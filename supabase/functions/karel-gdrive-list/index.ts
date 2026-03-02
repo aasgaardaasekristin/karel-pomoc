@@ -37,20 +37,44 @@ serve(async (req) => {
       }),
     });
 
-    if (!tokenResp.ok) throw new Error("Failed to refresh Google token");
+    if (!tokenResp.ok) {
+      const errText = await tokenResp.text();
+      console.error("Token refresh failed:", tokenResp.status, errText);
+      throw new Error("Failed to refresh Google token");
+    }
     const { access_token } = await tokenResp.json();
 
-    // Search files
-    const searchQuery = encodeURIComponent(`name contains '${query.replace(/'/g, "\\'")}'`);
+    // Build search query - escape single quotes and add trashed=false
+    const escapedQuery = query.replace(/'/g, "\\'");
+    const driveQuery = `name contains '${escapedQuery}' and trashed=false`;
+    
+    // Also encode orderBy properly
+    const params = new URLSearchParams({
+      q: driveQuery,
+      fields: "files(id,name,mimeType,size,modifiedTime)",
+      pageSize: "20",
+      orderBy: "modifiedTime desc",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+
+    console.log(`[gdrive-list] Searching: "${query}" → q=${driveQuery}`);
+
     const driveResp = await fetch(
-      `https://www.googleapis.com/drive/v3/files?q=${searchQuery}&fields=files(id,name,mimeType,size,modifiedTime)&pageSize=20&orderBy=modifiedTime desc`,
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
       {
         headers: { Authorization: `Bearer ${access_token}` },
       }
     );
 
-    if (!driveResp.ok) throw new Error("Failed to search Google Drive");
+    if (!driveResp.ok) {
+      const errText = await driveResp.text();
+      console.error("Drive API error:", driveResp.status, errText);
+      throw new Error(`Drive API error: ${driveResp.status}`);
+    }
     const driveData = await driveResp.json();
+
+    console.log(`[gdrive-list] Found ${(driveData.files || []).length} files for "${query}"`);
 
     return new Response(JSON.stringify({ files: driveData.files || [] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
