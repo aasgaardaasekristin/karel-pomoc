@@ -44,7 +44,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { audioBase64, mode, chatContext } = await req.json();
+    const { audioBase64, mode, chatContext, didMode, partName, didSubMode, systemContext } = await req.json();
 
     if (!audioBase64) {
       return new Response(JSON.stringify({ error: "Chybí audio data" }), {
@@ -56,7 +56,22 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = MODE_PROMPTS[mode] || MODE_PROMPTS.debrief;
+    let systemPrompt = MODE_PROMPTS[mode] || MODE_PROMPTS.debrief;
+    
+    // Enhance with DID-specific tandem context
+    if (didMode && partName) {
+      systemPrompt += `\n\n═══ TANDEM REŽIM: AUDIO ANALÝZA SEZENÍ S ČÁSTÍ ═══\nPrávě analyzuješ audio ze sezení mamky s částí "${partName}".
+Zaměř se na:
+- Jak část komunikuje (tón, tempo, slovní zásoba, přepínání)
+- Zda je mamka v kontaktu – validuje, netlačí, respektuje hranice
+- Známky dysregulace nebo přepnutí na jinou část
+- Konkrétní rady pro mamku: co říct, co NEŘÍKAT, jak pokračovat
+- Pokud je to relevantní, navrhni konkrétní aktivitu/hru pro stabilizaci`;
+    }
+    
+    if (systemContext) {
+      systemPrompt += `\n\n═══ KONTEXT Z KARTOTÉKY DID ═══\n${systemContext}`;
+    }
 
     const userContent: any[] = [
       {

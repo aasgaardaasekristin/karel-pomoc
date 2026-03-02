@@ -1,7 +1,7 @@
 
 # Vylepšení DID režimu – Komplexní plán
 
-## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-2)
+## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-4)
 
 ## Co bylo provedeno
 
@@ -61,16 +61,32 @@
 - Týdenní report na email (mamka + Káťa)
 - Manuální spuštění tlačítkem "Týdenní analýza"
 
+### ✅ 11. Automatická 24h záloha (Fáze 3)
+- Při vstupu do DID režimu Dashboard kontroluje poslední denní cyklus z DB
+- Pokud > 24h od posledního, automaticky spouští `karel-did-daily-cycle`
+- Toast notifikace o průběhu a dokončení
+- Indikátor `isAutoBackupRunning` v Dashboardu
+
+### ✅ 12. Perplexity integrace v DID režimu (Fáze 3)
+- Tlačítko "Hledat metody" dostupné ve VŠECH DID podrežimech (včetně cast)
+- `karel-did-research` přijímá `partName` pro kontextově specifické vyhledávání
+- Perplexity sonar-pro hledá DID terapeutické metody, techniky, výzkumy
+- Gemini syntetizuje výsledky do praktického formátu s funkčními odkazy
+- Přísný zákaz halucinování citací
+
+### ✅ 13. Audio tandem režim (Fáze 4)
+- `karel-audio-analysis` rozšířen o DID-specifický tandem kontext
+- Při nahrávání v DID režimu se automaticky přenáší: jméno části, podrežim, kontext z kartotéky
+- Analýza zaměřená na: komunikaci s částí, validaci, přepínání, dysregulaci
+- Konkrétní rady pro mamku: co říct, co neříkat, stabilizační aktivity
+- Zpráva v chatu zobrazuje jméno části u audio analýzy
+
 ## Zbývá (budoucí iterace)
 
-### 🔲 Perplexity integrace v DID režimu
-- Inline volání Perplexity z karel-chat pro DID kontext
-- Automatické vyhledávání metod/technik pro konkrétní části
+### 🔲 Vizualizace systému
+- Interaktivní mapa částí s barvami podle aktivity
+- Timeline zobrazení historie jednotlivých částí
 
-### 🔲 Automatická 24h záloha
-- Kontrola při vstupu do DID režimu, zda byla záloha provedena v posledních 24h
-- Pokud ne, automatická záloha
-
-### 🔲 Audio tandem tlačítko
-- Nahrávání audio ze sezení mamky s dítětem
-- Karel analyzuje a dává rady v reálném čase
+### 🔲 Automatické detekce vzorců
+- Karel automaticky upozorní na opakující se témata a vzorce
+- Predikce potenciálních krizí na základě historických dat
