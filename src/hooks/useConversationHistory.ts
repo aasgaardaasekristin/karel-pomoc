@@ -103,6 +103,8 @@ export const useConversationHistory = () => {
         messages: messages as any,
         did_initial_context: didInitialContext,
         saved_at: new Date().toISOString(),
+        is_processed: false,
+        processed_at: null,
       };
 
       // Upsert on (user_id, session_id) unique constraint

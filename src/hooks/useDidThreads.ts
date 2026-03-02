@@ -67,6 +67,8 @@ export const useDidThreads = () => {
         part_language: partLanguage,
         messages: initialMessages as any,
         last_activity_at: new Date().toISOString(),
+        is_processed: false,
+        processed_at: null,
       })
       .select()
       .single();
@@ -89,6 +91,8 @@ export const useDidThreads = () => {
       .update({
         messages: messages as any,
         last_activity_at: new Date().toISOString(),
+        is_processed: false,
+        processed_at: null,
       })
       .eq("id", threadId);
 
@@ -98,7 +102,7 @@ export const useDidThreads = () => {
 
     setThreads(prev => prev.map(t =>
       t.id === threadId
-        ? { ...t, messages, lastActivityAt: new Date().toISOString() }
+        ? { ...t, messages, lastActivityAt: new Date().toISOString(), isProcessed: false }
         : t
     ));
   }, []);
