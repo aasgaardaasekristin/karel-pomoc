@@ -299,7 +299,13 @@ Pro každou část vypiš aktualizace sekcí takto:
 
 Po všech kartách přidej:
 [REPORT]
-Report pro email – co bylo změněno, kde (karta + sekce), proč, co plyne pro zítřek, návrh aktivity.
+Report pro email – MUSÍ obsahovat:
+- Co bylo změněno (karta + sekce) a proč
+- Shrnutí: kdo dnes mluvil a jaké části byly aktivní
+- Co z toho plyne pro dnešní večerní sezení doma
+- Konkrétní doporučení pro mamku (co dělat + proč)
+- Konkrétní doporučení pro Káťu (jak psát/reagovat + proč)
+- Krátké upozornění, že se obě mohou obrátit na Karla v aplikaci (mamka v podrežimu „mamka“, Káťa v podrežimu „kata")
 [/REPORT]
 
 PRAVIDLA:
@@ -383,9 +389,13 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
             }
           } catch {}
 
-          await resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – Report aktualizace ${dateCz}`, html: htmlContent });
-          await resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Denní report DID ${dateCz}`, html: htmlContent });
-          console.log(`Reports sent to ${MAMKA_EMAIL} and ${KATA_EMAIL}`);
+          await resend.emails.send({
+            from: "Karel <karel@hana-chlebcova.cz>",
+            to: [MAMKA_EMAIL, KATA_EMAIL],
+            subject: `Karel – Denní report DID ${dateCz}`,
+            html: htmlContent,
+          });
+          console.log(`Daily report sent to ${MAMKA_EMAIL} and ${KATA_EMAIL} in one email`);
         } catch (e) { console.error("Email send error:", e); }
       }
     }

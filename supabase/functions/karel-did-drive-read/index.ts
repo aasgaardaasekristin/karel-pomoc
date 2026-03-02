@@ -39,14 +39,32 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
   return data.files?.[0]?.id || null;
 }
 
-async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string }>> {
+async function listFilesInFolder(
+  token: string,
+  folderId: string
+): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
   const q = `'${folderId}' in parents and trashed=false`;
-  const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=200`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  const data = await res.json();
-  return data.files || [];
+  const allFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      q,
+      fields: "nextPageToken,files(id,name,mimeType)",
+      pageSize: "200",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const data = await res.json();
+    allFiles.push(...(data.files || []));
+    pageToken = data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return allFiles;
 }
 
 async function readFileContent(token: string, fileId: string): Promise<string> {
@@ -65,6 +83,72 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
     return await exportRes.text();
   }
   return await res.text();
+}
+
+const stripDiacritics = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+const canonicalDocName = (value: string) => {
+  const normalized = stripDiacritics(value)
+    .toLowerCase()
+    .replace(/\.(txt|md|doc|docx)$/i, "")
+    .replace(/[\s_-]/g, "")
+    .replace(/^karta/, "")
+    .replace(/^\d+/, "");
+
+  return normalized;
+};
+
+const isDocumentMatch = (requested: string, fileName: string) => {
+  const requestedCanonical = canonicalDocName(requested);
+  const fileCanonical = canonicalDocName(fileName);
+
+  if (!requestedCanonical || !fileCanonical) return false;
+
+  return (
+    requestedCanonical === fileCanonical ||
+    requestedCanonical.includes(fileCanonical) ||
+    fileCanonical.includes(requestedCanonical)
+  );
+};
+
+async function findDocumentRecursive(
+  token: string,
+  folderId: string,
+  requestedDoc: string
+): Promise<{ id: string; name: string; mimeType?: string } | null> {
+  const files = await listFilesInFolder(token, folderId);
+
+  const directMatch = files.find(
+    (f) => f.mimeType !== "application/vnd.google-apps.folder" && isDocumentMatch(requestedDoc, f.name)
+  );
+  if (directMatch) return directMatch;
+
+  const subfolders = files.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+  for (const subfolder of subfolders) {
+    const nestedMatch = await findDocumentRecursive(token, subfolder.id, requestedDoc);
+    if (nestedMatch) return nestedMatch;
+  }
+
+  return null;
+}
+
+async function findDocumentGlobal(
+  token: string,
+  requestedDoc: string
+): Promise<{ id: string; name: string; mimeType?: string } | null> {
+  const canonical = canonicalDocName(requestedDoc);
+  const searchTerm = canonical.replace(/^\d+/, "").slice(0, 40) || requestedDoc;
+
+  const q = `trashed=false and mimeType!='application/vnd.google-apps.folder' and name contains '${searchTerm}'`;
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=100`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const data = await res.json();
+  const files = (data.files || []) as Array<{ id: string; name: string; mimeType?: string }>;
+
+  return files.find((f) => isDocumentMatch(requestedDoc, f.name)) || null;
 }
 
 serve(async (req) => {
@@ -108,12 +192,10 @@ serve(async (req) => {
     const requestedDocs: string[] = documents || ["00_Seznam_casti", "01_Hlavni_mapa_systemu"];
 
     for (const docName of requestedDocs) {
-      // Find file by partial name match (case-insensitive)
-      const normalizedDocName = docName.toLowerCase().replace(/[_\s-]/g, "");
-      const match = files.find(f => {
-        const normalizedFileName = f.name.toLowerCase().replace(/[_\s-]/g, "").replace(/\.(txt|md|doc|docx)$/i, "");
-        return normalizedFileName.includes(normalizedDocName) || normalizedDocName.includes(normalizedFileName);
-      });
+      let match = await findDocumentRecursive(token, folderId, docName);
+      if (!match) {
+        match = await findDocumentGlobal(token, docName);
+      }
 
       if (match) {
         try {
