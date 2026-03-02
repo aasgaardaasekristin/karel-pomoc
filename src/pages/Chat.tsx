@@ -956,12 +956,15 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
 
   const handleManualUpdate = async () => {
     if (isManualUpdateLoading) return;
-    // First save current conversation if any
+    // First save ALL current data to DB before triggering cycle
     if (activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2) {
+    }
+    if (didSubMode && messages.length >= 2) {
       await saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
+    // Small delay to ensure DB writes complete
+    await new Promise(r => setTimeout(r, 500));
 
     setIsManualUpdateLoading(true);
     try {
@@ -969,11 +972,16 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
         method: "POST", headers, body: JSON.stringify({}),
       });
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error("Manual update response:", response.status, errorBody);
+        throw new Error(`Chyba ${response.status}: ${errorBody.slice(0, 200)}`);
+      }
       const result = await response.json();
       const updatedCardsCount = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.length : 0;
       const totalProcessed = (result.threadsProcessed || 0) + (result.conversationsProcessed || 0);
-      toast.success(`Aktualizace kartotéky dokončena – zpracováno ${totalProcessed} vláken/konverzací, upraveno ${updatedCardsCount} karet`);
+      const cardNames = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.join(", ") : "";
+      toast.success(`Aktualizace dokončena – ${totalProcessed} vláken, ${updatedCardsCount} karet${cardNames ? `: ${cardNames}` : ""}`);
 
       // Clear ALL local DID data after successful update
       setActiveThread(null);
@@ -984,7 +992,6 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       setDidSessionId(null);
       setDidFlowState("dashboard");
       clearMessages("childcare");
-      // Clear localStorage DID items
       try {
         localStorage.removeItem("karel_did_submode");
         localStorage.removeItem("karel_did_context");
