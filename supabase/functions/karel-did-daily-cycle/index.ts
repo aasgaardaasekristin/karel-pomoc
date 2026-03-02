@@ -435,31 +435,15 @@ serve(async (req) => {
         if (partsFileId) driveContext = await readFileContent(token, partsFileId);
       } catch (e) { console.error("Drive read error:", e); }
 
-      // Collect ALL unique part names from threads AND conversations
-      const threadParts = threads.map(t => t.part_name);
-      const convParts: string[] = [];
-      for (const c of conversations) {
-        const msgs = (c.messages as any[]) || [];
-        // Extract part names mentioned in conversation context
-        for (const m of msgs) {
-          if (typeof m.content === "string") {
-            // Check for part names in known parts context
-            const content = m.content;
-            if (content.length > 10) {
-              // The AI will identify parts from the conversation content
-              break;
-            }
-          }
-        }
-      }
-
-      const activeParts = [...new Set([...threadParts, ...convParts])];
-      for (const partName of activeParts) {
+      // Load cards only for explicitly named thread parts (fast)
+      const threadParts = [...new Set(threads.map(t => t.part_name))];
+      for (const partName of threadParts) {
         try {
           const card = await findCardFile(token, partName, folderId);
           if (card) existingCards[partName] = card.content;
         } catch {}
       }
+      // Cards for parts mentioned in conversations will be found by AI + updateCardSections()
     }
 
     // 3. AI ANALÝZA – full A-M decomposition
