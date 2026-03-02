@@ -33,7 +33,7 @@ serve(async (req) => {
 
     // Hard runtime truth-guard for DID mode
     if (mode === "childcare") {
-      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- NIKDY netvrď, že jsi něco odeslal (SMS/email/telefon), pokud nemáš skutečné potvrzení o odeslání.\n- Pokud připravuješ vzkaz, jasně ho označ jako NÁVRH.\n- Slovo "odesláno" použij pouze při reálně dokončené akci.`;
+      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu části.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni části že se vzkaz posílá – systém ho odešle automaticky emailem.`;
     }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
