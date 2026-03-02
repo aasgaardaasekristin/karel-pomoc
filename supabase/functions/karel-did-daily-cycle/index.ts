@@ -73,8 +73,15 @@ async function uploadOrUpdate(token: string, fileName: string, content: string, 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const authResult = await requireAuth(req);
-  if (authResult instanceof Response) return authResult;
+  // Allow both user auth (manual trigger) and service role key (pg_cron)
+  const authHeader = req.headers.get("Authorization") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  const isCronCall = authHeader === `Bearer ${serviceRoleKey}`;
+
+  if (!isCronCall) {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+  }
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
