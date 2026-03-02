@@ -307,6 +307,10 @@ function extractField(content: string, fieldName: string): string {
 }
 
 export async function generateKataHandbook(currentMessages?: { role: string; content: string }[]): Promise<void> {
+  if (!currentMessages || currentMessages.length < 2) {
+    throw new Error("Žádné zprávy k zpracování – nejprve veď rozhovor s Karlem.");
+  }
+
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const margin = 15;
@@ -332,286 +336,62 @@ export async function generateKataHandbook(currentMessages?: { role: string; con
     console.warn("Failed to load custom font, falling back to default:", e);
   }
 
+  // ── Detect topic from first user message ──
+  const firstUserMsg = currentMessages.find(m => m.role === "user");
+  const topic = firstUserMsg
+    ? (typeof firstUserMsg.content === "string" ? firstUserMsg.content : "").slice(0, 120)
+    : "Záznam z konzultace";
+
   // ── Title page ──
-  doc.setFontSize(22);
+  doc.setFontSize(20);
   doc.setTextColor(50, 80, 140);
   doc.text("Příručka pro Káťu", pageWidth / 2, y, { align: "center" });
-  y += 10;
-  doc.setFontSize(12);
-  doc.setTextColor(100, 100, 100);
-  doc.text("Pravidla, triggery a doporučené věty pro každou část", pageWidth / 2, y, { align: "center" });
-  y += 6;
+  y += 9;
+  doc.setFontSize(11);
+  doc.setTextColor(80, 80, 80);
+  const topicLines = doc.splitTextToSize(`Téma: ${topic}`, contentWidth);
+  doc.text(topicLines, pageWidth / 2, y, { align: "center" });
+  y += topicLines.length * 5 + 4;
   doc.setFontSize(9);
+  doc.setTextColor(130, 130, 130);
   doc.text(`Vygenerováno: ${formatDate(new Date().toISOString())}`, pageWidth / 2, y, { align: "center" });
-  y += 12;
+  y += 10;
 
-  // ── Load all cards from Drive (from 01_AKTIVNI_FRAGMENTY subfolder) ──
-  let cards: CardData[] = [];
-  try {
-    const headers = await getAuthHeaders();
-    // List files in the active fragments subfolder
-    const listRes = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-      { method: "POST", headers, body: JSON.stringify({ listAll: true, subFolder: "01_AKTIVNI_FRAGMENTY" }) }
-    );
-    if (!listRes.ok) throw new Error("Nelze načíst seznam souborů");
-    const listData = await listRes.json();
-    const files: Array<{ id: string; name: string; mimeType?: string }> = listData.files || [];
+  // ── Separator ──
+  doc.setDrawColor(180, 200, 220);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
 
-    // All files in this folder are card files (e.g. 003_Tundrupek.txt, 004_Arthur.txt)
-    const cardFiles = files.filter(f =>
-      f.mimeType !== "application/vnd.google-apps.folder"
-    );
-
-    // Read card contents
-    if (cardFiles.length > 0) {
-      const docNames = cardFiles.map(f => f.name.replace(/\.(txt|md|doc|docx)$/i, ""));
-      const readRes = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ documents: docNames, subFolder: "01_AKTIVNI_FRAGMENTY" }) }
-      );
-      if (readRes.ok) {
-        const readData = await readRes.json();
-        const docs = readData.documents || {};
-        for (const [name, content] of Object.entries(docs)) {
-          if (typeof content === "string" && !content.startsWith("[Dokument") && content.length > 50) {
-            cards.push({ name, content });
-          }
-        }
-      }
-    }
-
-    // Also try loading from root and other subfolders if no cards found
-    if (cards.length === 0) {
-      const rootListRes = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ listAll: true }) }
-      );
-      if (rootListRes.ok) {
-        const rootData = await rootListRes.json();
-        const allFiles: Array<{ id: string; name: string; mimeType?: string }> = rootData.files || [];
-        const rootCards = allFiles.filter(f =>
-          f.mimeType !== "application/vnd.google-apps.folder" &&
-          (f.name.match(/^\d{3}_/) || f.name.toLowerCase().includes("karta"))
-        );
-        if (rootCards.length > 0) {
-          const names = rootCards.map(f => f.name.replace(/\.(txt|md|doc|docx)$/i, ""));
-          const readRes2 = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-            { method: "POST", headers, body: JSON.stringify({ documents: names }) }
-          );
-          if (readRes2.ok) {
-            const readData2 = await readRes2.json();
-            const docs2 = readData2.documents || {};
-            for (const [name, content] of Object.entries(docs2)) {
-              if (typeof content === "string" && !content.startsWith("[Dokument") && content.length > 50) {
-                cards.push({ name, content });
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Failed to load cards for handbook:", e);
-  }
-
-  // Position after title
-  y = 48;
-
-  if (cards.length === 0) {
-    doc.setFontSize(12);
-    doc.setTextColor(180, 80, 80);
-    doc.text("Nepodařilo se načíst žádné karty z kartotéky.", margin, y);
-    doc.save(`Prirucka_pro_Katu_${new Date().toISOString().slice(0, 10)}.pdf`);
-    return;
-  }
-
-  // ── General rules section ──
-  doc.setFontSize(14);
+  // ── Conversation content ──
+  doc.setFontSize(13);
   doc.setTextColor(50, 80, 140);
-  doc.text("Obecná pravidla pro Káťu", margin, y);
-  y += 7;
+  doc.text("Záznam konzultace", margin, y);
+  y += 8;
 
-  const generalRules = [
-    "Vždy mluv klidně a pomalu – nižší tón hlasu = menší hrozba.",
-    "Nikdy se neptej 'kdo jsi?' přímo – počkej, až se část představí sama.",
-    "Při přepnutí části NEREAGUJ překvapeně. Plynule přizpůsob komunikaci.",
-    "Pokud nevíš, kdo mluví – pokračuj neutrálně, ověř nepřímo.",
-    "Amálka a Tonička: zapojuj přirozeně (hry, kreslení), ne násilně.",
-    "Nikdy neslibuj něco, co nemůžeš splnit. Důvěra se buduje činy.",
-    "Při krizi: zpomali, sniž hlas, použij ukotvení (5-4-3-2-1).",
-    "Vždy informuj mamku o důležitých událostech.",
-  ];
+  for (const msg of currentMessages) {
+    if (y > 265) { doc.addPage(); y = 20; }
 
-  doc.setFontSize(9);
-  doc.setTextColor(60, 60, 60);
-  for (const rule of generalRules) {
-    if (y > 275) { doc.addPage(); y = 20; }
-    const lines = doc.splitTextToSize(`• ${rule}`, contentWidth);
-    doc.text(lines, margin, y);
-    y += lines.length * 4.5 + 2;
-  }
-  y += 5;
+    const isUser = msg.role === "user";
+    const prefix = isUser ? "Káťa:" : "Karel:";
+    const content = typeof msg.content === "string" ? msg.content : "(multimodální obsah)";
 
-  // ── Current session notes from kata conversation ──
-  if (currentMessages && currentMessages.length >= 2) {
-    if (y > 230) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(50, 80, 140);
-    doc.text("Záznamy z aktuálního sezení", margin, y);
-    y += 7;
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
-
-    for (const msg of currentMessages) {
-      if (y > 265) { doc.addPage(); y = 20; }
-      const prefix = msg.role === "user" ? "Káťa:" : "Karel:";
-      const content = typeof msg.content === "string" ? msg.content : "(multimodální obsah)";
-      // Truncate very long messages
-      const truncated = content.length > 800 ? content.slice(0, 800) + "..." : content;
-      
-      doc.setFontSize(9);
-      doc.setTextColor(msg.role === "user" ? 80 : 40, msg.role === "user" ? 80 : 60, msg.role === "user" ? 120 : 80);
-      const lines = doc.splitTextToSize(`${prefix} ${truncated}`, contentWidth);
-      for (const line of lines) {
-        if (y > 275) { doc.addPage(); y = 20; }
-        doc.text(line, margin, y);
-        y += 4.5;
-      }
-      y += 2;
-    }
+    // Role label
+    doc.setFontSize(10);
+    doc.setTextColor(isUser ? 80 : 40, isUser ? 80 : 60, isUser ? 130 : 90);
+    doc.text(prefix, margin, y);
     y += 5;
-  }
 
-  for (const card of cards) {
-    doc.addPage();
-    y = 20;
-
-    // Extract key info
-    const partName = extractField(card.content, "Jméno") || card.name.replace(/^(Karta_?|karta_?|\d+_)/i, "").replace(/_/g, " ");
-    const age = extractField(card.content, "Věk") || extractField(card.content, "Odhadovaný věk");
-    const lang = extractField(card.content, "Jazyk");
-    const type = extractField(card.content, "Typ");
-
-    // Section extractions
-    const identity = extractSection(card.content, "A");
-    const character = extractSection(card.content, "B");
-    const needs = extractSection(card.content, "C");
-    const therapy = extractSection(card.content, "D");
-    const goals = extractSection(card.content, "J");
-
-    // ── Card header ──
-    doc.setFontSize(16);
-    doc.setTextColor(50, 80, 140);
-    doc.text(partName, margin, y);
-    y += 7;
-
-    // Basic info line
-    const infoLine = [age && `Věk: ${age}`, lang && `Jazyk: ${lang}`, type && `Typ: ${type}`].filter(Boolean).join(" | ");
-    if (infoLine) {
-      doc.setFontSize(9);
-      doc.setTextColor(100, 100, 100);
-      doc.text(infoLine, margin, y);
-      y += 6;
-    }
-
-    // ── Triggery ──
-    doc.setFontSize(11);
-    doc.setTextColor(180, 50, 50);
-    doc.text("⚠️ TRIGGERY – CO NEDĚLAT", margin, y);
-    y += 6;
-
-    // Extract triggers from content
-    const triggerMatches = card.content.match(/(?:trigger|spouštěč|⚠️|NIKDY|NEDĚLAT|nezmiňovat)[^\n]*/gi) || [];
-    const noDoMatches = card.content.match(/(?:Co nedělat|NEOPAKOVAT|NEPOKOUŠET)[^\n]*/gi) || [];
-    const allTriggers = [...new Set([...triggerMatches, ...noDoMatches])];
-
+    // Message body – no truncation, full content
     doc.setFontSize(9);
-    doc.setTextColor(150, 50, 50);
-    if (allTriggers.length > 0) {
-      for (const t of allTriggers.slice(0, 10)) {
-        if (y > 275) { doc.addPage(); y = 20; }
-        const lines = doc.splitTextToSize(`🔴 ${t.replace(/^[-*•⚠️\s]+/, "").trim()}`, contentWidth);
-        doc.text(lines, margin, y);
-        y += lines.length * 4.5 + 2;
-      }
-    } else {
-      doc.text("Zatím nedokumentovány – postupuj opatrně.", margin, y);
-      y += 5;
-    }
-    y += 4;
-
-    // ── Co potřebuje / Co uklidňuje ──
-    if (needs) {
-      doc.setFontSize(11);
-      doc.setTextColor(50, 120, 80);
-      doc.text("💚 POTŘEBY A CO UKLIDŇUJE", margin, y);
-      y += 6;
-      doc.setFontSize(9);
-      doc.setTextColor(60, 60, 60);
-      y = addWrappedText(doc, needs.slice(0, 600), margin, y, contentWidth, 4.5);
-      y += 4;
-    }
-
-    // ── Doporučené věty ──
-    doc.setFontSize(11);
-    doc.setTextColor(50, 80, 140);
-    doc.text("💬 DOPORUČENÉ VĚTY PRO KÁŤU", margin, y);
-    y += 6;
-
-    // Generate recommended phrases based on age and character
-    const ageNum = parseInt(age) || 0;
-    const phrases: string[] = [];
-    if (ageNum > 0 && ageNum <= 5) {
-      phrases.push(`"Ahoj! Já jsem Káťa. Chceš si se mnou hrát?"`, `"To je v pohodě. Tady jsi v bezpečí."`, `"Podívej, co umí Amálka/Tonička – chceš to taky zkusit?"`);
-    } else if (ageNum > 5 && ageNum <= 10) {
-      phrases.push(`"Ahoj, já jsem Káťa. Jsem tu pro tebe, kdykoli budeš chtít."`, `"Chceš mi o tom povědět, nebo radši děláme něco jiného?"`, `"Amálka a Tonička by tě rády poznaly – ale jen když budeš chtít ty."`);
-    } else if (ageNum > 10) {
-      phrases.push(`"Ahoj, jsem Káťa. Nemusíš mi nic vysvětlovat, jsem tu prostě s tebou."`, `"Řekni mi, co potřebuješ – a já se pokusím to zařídit."`, `"Jsem součást rodiny. Můžeš se na mě spolehnout."`);
-    } else {
-      phrases.push(`"Ahoj, jsem Káťa. Jsem tu jako rodina – pro tebe i pro ostatní."`, `"Nemusíš se bát. Jsem tu a nikam neodcházím."`, `"Co bys teď potřeboval/a? Můžeme dělat cokoli – nebo nic."`);
-    }
-
-    // Add language-specific note
-    if (lang && !lang.toLowerCase().includes("česky") && !lang.toLowerCase().includes("cs")) {
-      phrases.push(`Pozn.: Tato část může komunikovat ${lang} – přizpůsob jazyk.`);
-    }
-
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
-    for (const phrase of phrases) {
+    doc.setTextColor(50, 50, 50);
+    const lines = doc.splitTextToSize(content, contentWidth);
+    for (const line of lines) {
       if (y > 275) { doc.addPage(); y = 20; }
-      const lines = doc.splitTextToSize(`→ ${phrase}`, contentWidth);
-      doc.text(lines, margin, y);
-      y += lines.length * 4.5 + 2;
+      doc.text(line, margin, y);
+      y += 4.5;
     }
     y += 4;
-
-    // ── Terapeutická doporučení ──
-    if (therapy) {
-      if (y > 240) { doc.addPage(); y = 20; }
-      doc.setFontSize(11);
-      doc.setTextColor(120, 80, 40);
-      doc.text("📋 TERAPEUTICKÁ DOPORUČENÍ", margin, y);
-      y += 6;
-      doc.setFontSize(9);
-      doc.setTextColor(60, 60, 60);
-      y = addWrappedText(doc, therapy.slice(0, 800), margin, y, contentWidth, 4.5);
-      y += 4;
-    }
-
-    // ── Aktuální cíle ──
-    if (goals) {
-      if (y > 240) { doc.addPage(); y = 20; }
-      doc.setFontSize(11);
-      doc.setTextColor(50, 80, 140);
-      doc.text("🎯 AKTUÁLNÍ CÍLE", margin, y);
-      y += 6;
-      doc.setFontSize(9);
-      doc.setTextColor(60, 60, 60);
-      y = addWrappedText(doc, goals.slice(0, 500), margin, y, contentWidth, 4.5);
-    }
   }
 
   // ── Footer on all pages ──
