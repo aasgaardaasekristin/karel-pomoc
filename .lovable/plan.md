@@ -83,10 +83,17 @@
 
 ## Zbývá (budoucí iterace)
 
-### 🔲 Vizualizace systému
-- Interaktivní mapa částí s barvami podle aktivity
-- Timeline zobrazení historie jednotlivých částí
+### ✅ 14. Vizualizace systému (Fáze 5)
+- `DidSystemMap.tsx` – interaktivní mapa částí s barvami podle aktivity
+- Barevné kódování: zelená (aktivní), šedá (spí), žlutá (varování 7+ dní)
+- Hover tooltip s detailním časem poslední aktivity
+- Chronologie aktivity seřazená podle posledního kontaktu
+- Collapsible panel integrovaný do Dashboardu
 
-### 🔲 Automatické detekce vzorců
-- Karel automaticky upozorní na opakující se témata a vzorce
-- Predikce potenciálních krizí na základě historických dat
+### ✅ 15. Automatická detekce vzorců (Fáze 5)
+- `karel-did-patterns` edge function – analyzuje 30 dní dat z vláken a cyklů
+- AI detekce opakujících se témat, emočních a behaviorálních vzorců
+- Systém upozornění s třemi úrovněmi (info/watch/concern)
+- Detekce pozitivních trendů
+- `DidPatternPanel.tsx` – UI pro zobrazení vzorců, alertů a trendů
+- On-demand spuštění tlačítkem z Dashboardu

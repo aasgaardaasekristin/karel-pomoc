@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.karel-gdrive-backup]
 verify_jwt = false
+
+[functions.karel-did-patterns]
+verify_jwt = false
