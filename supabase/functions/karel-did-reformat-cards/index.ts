@@ -355,7 +355,8 @@ serve(async (req) => {
 
   try {
     const user = await requireAuth(req);
-    const { mode, index, txtContentForPart } = await req.json().catch(() => ({ mode: "list", index: 0 }));
+    const body = await req.json().catch(() => ({ mode: "list", index: 0 }));
+    const { mode, index, txtContentForPart } = body;
     const token = await getAccessToken();
 
     // Find root
@@ -441,8 +442,13 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ═══ MODE: AUDIT ═══
+    // ═══ MODE: AUDIT (batch) ═══
+    // Accepts optional "start" and "count" params (default: start=0, count=5)
     if (mode === "audit") {
+      const start = typeof index === "number" ? index : 0;
+      const count = body.count || 5;
+      const end = Math.min(start + count, entries.length);
+
       const items: Array<{
         index: number;
         id: string;
@@ -456,58 +462,33 @@ serve(async (req) => {
         complete: boolean;
       }> = [];
 
-      let foundCount = 0;
-      let missingCount = 0;
-      let completeCount = 0;
-      let incompleteCount = 0;
-
-      for (let i = 0; i < entries.length; i++) {
+      for (let i = start; i < end; i++) {
         const entry = entries[i];
         const located = await findCardWithFallback(token, entry, activeFolderId, archiveFolderId);
 
         if (!located.card) {
-          missingCount++;
           items.push({
-            index: i,
-            id: entry.id,
-            name: entry.name,
-            expectedFolder: located.expectedLocation,
-            locatedIn: null,
-            fileName: null,
-            found: false,
-            sectionsFound: [],
-            sectionsMissing: [...REQUIRED_SECTIONS],
-            complete: false,
+            index: i, id: entry.id, name: entry.name,
+            expectedFolder: located.expectedLocation, locatedIn: null,
+            fileName: null, found: false, sectionsFound: [], sectionsMissing: [...REQUIRED_SECTIONS], complete: false,
           });
           continue;
         }
 
-        foundCount++;
         const sections = extractSections(located.card.content);
-        if (sections.complete) completeCount++;
-        else incompleteCount++;
-
         items.push({
-          index: i,
-          id: entry.id,
-          name: entry.name,
-          expectedFolder: located.expectedLocation,
-          locatedIn: located.locatedIn,
-          fileName: located.card.fileName,
-          found: true,
-          sectionsFound: sections.found,
-          sectionsMissing: sections.missing,
-          complete: sections.complete,
+          index: i, id: entry.id, name: entry.name,
+          expectedFolder: located.expectedLocation, locatedIn: located.locatedIn,
+          fileName: located.card.fileName, found: true,
+          sectionsFound: sections.found, sectionsMissing: sections.missing, complete: sections.complete,
         });
       }
 
       return new Response(JSON.stringify({
         mode: "audit",
         totalRegistry: entries.length,
-        found: foundCount,
-        missing: missingCount,
-        complete: completeCount,
-        incomplete: incompleteCount,
+        rangeStart: start,
+        rangeEnd: end,
         items,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
