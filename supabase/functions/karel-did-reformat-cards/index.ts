@@ -154,6 +154,38 @@ function isArchivedFromRegistry(entry: RegistryEntry): boolean {
   return false;
 }
 
+const REQUIRED_SECTIONS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
+type CardLocation = "active" | "archive";
+interface CardFileRef { fileId: string; fileName: string; content: string; mimeType?: string; }
+
+function extractSections(content: string) {
+  const found = REQUIRED_SECTIONS.filter((s) => new RegExp(`SEKCE\\s+${s}(?:\\b|\\s*[–-])`, "i").test(content));
+  const missing = REQUIRED_SECTIONS.filter((s) => !found.includes(s));
+  return { found, missing, complete: missing.length === 0 };
+}
+
+async function findCardWithFallback(
+  token: string,
+  entry: RegistryEntry,
+  activeFolderId: string | null,
+  archiveFolderId: string | null,
+): Promise<{ card: CardFileRef | null; expectedLocation: CardLocation; locatedIn: CardLocation | null }> {
+  const expectedLocation: CardLocation = isArchivedFromRegistry(entry) ? "archive" : "active";
+  const candidates: Array<{ location: CardLocation; folderId: string | null }> = expectedLocation === "active"
+    ? [{ location: "active", folderId: activeFolderId }, { location: "archive", folderId: archiveFolderId }]
+    : [{ location: "archive", folderId: archiveFolderId }, { location: "active", folderId: activeFolderId }];
+
+  for (const candidate of candidates) {
+    if (!candidate.folderId) continue;
+    const card = await findCardFile(token, entry.name, candidate.folderId, entry);
+    if (card) {
+      return { card, expectedLocation, locatedIn: candidate.location };
+    }
+  }
+
+  return { card: null, expectedLocation, locatedIn: null };
+}
+
 // ═══ Card finder — searches directly in state folder (flat structure) ═══
 async function findCardFile(token: string, partName: string, stateFolderId: string, entry: RegistryEntry): Promise<{ fileId: string; fileName: string; content: string; mimeType?: string } | null> {
   const normalizedPart = canonicalText(partName);
@@ -409,24 +441,92 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ═══ MODE: AUDIT ═══
+    if (mode === "audit") {
+      const items: Array<{
+        index: number;
+        id: string;
+        name: string;
+        expectedFolder: CardLocation;
+        locatedIn: CardLocation | null;
+        fileName: string | null;
+        found: boolean;
+        sectionsFound: string[];
+        sectionsMissing: string[];
+        complete: boolean;
+      }> = [];
+
+      let foundCount = 0;
+      let missingCount = 0;
+      let completeCount = 0;
+      let incompleteCount = 0;
+
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        const located = await findCardWithFallback(token, entry, activeFolderId, archiveFolderId);
+
+        if (!located.card) {
+          missingCount++;
+          items.push({
+            index: i,
+            id: entry.id,
+            name: entry.name,
+            expectedFolder: located.expectedLocation,
+            locatedIn: null,
+            fileName: null,
+            found: false,
+            sectionsFound: [],
+            sectionsMissing: [...REQUIRED_SECTIONS],
+            complete: false,
+          });
+          continue;
+        }
+
+        foundCount++;
+        const sections = extractSections(located.card.content);
+        if (sections.complete) completeCount++;
+        else incompleteCount++;
+
+        items.push({
+          index: i,
+          id: entry.id,
+          name: entry.name,
+          expectedFolder: located.expectedLocation,
+          locatedIn: located.locatedIn,
+          fileName: located.card.fileName,
+          found: true,
+          sectionsFound: sections.found,
+          sectionsMissing: sections.missing,
+          complete: sections.complete,
+        });
+      }
+
+      return new Response(JSON.stringify({
+        mode: "audit",
+        totalRegistry: entries.length,
+        found: foundCount,
+        missing: missingCount,
+        complete: completeCount,
+        incomplete: incompleteCount,
+        items,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // ═══ MODE: PROCESS_ONE ═══
     if (mode === "process_one") {
       const entry = entries[index];
       if (!entry) throw new Error(`Invalid index ${index}`);
 
-      const isArchived = isArchivedFromRegistry(entry);
-      const stateFolderId = isArchived ? archiveFolderId : activeFolderId;
-      if (!stateFolderId) throw new Error(`Folder ${isArchived ? "archive" : "active"} not found`);
-
-      // Find card directly in state folder
-      const card = await findCardFile(token, entry.name, stateFolderId, entry);
-      if (!card) {
+      const located = await findCardWithFallback(token, entry, activeFolderId, archiveFolderId);
+      if (!located.card) {
         return new Response(JSON.stringify({
           mode: "process_one", index, name: entry.name, result: "not_found",
-          detail: `Karta nenalezena v ${isArchived ? "03_ARCHIV" : "01_AKTIVNI"}`,
+          detail: "Karta nenalezena ani v 01_AKTIVNI ani v 03_ARCHIV",
+          expectedFolder: located.expectedLocation,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      const card = located.card;
       console.log(`[reformat] Processing ${entry.id} ${entry.name} (${card.fileName})`);
 
       // Perplexity research
@@ -441,6 +541,9 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           mode: "process_one", index, name: entry.name, result: "error",
           detail: "AI vrátilo příliš krátký výstup",
+          expectedFolder: located.expectedLocation,
+          locatedIn: located.locatedIn,
+          fileName: card.fileName,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
@@ -451,6 +554,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         mode: "process_one", index, name: entry.name, result: "reformatted",
         detail: `${card.fileName} přeformátováno (${reformattedContent.length} znaků)${txtExtra ? " + .txt data" : ""}`,
+        expectedFolder: located.expectedLocation,
+        locatedIn: located.locatedIn,
+        fileName: card.fileName,
         contentLength: reformattedContent.length,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -487,7 +593,7 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(JSON.stringify({ error: "Unknown mode. Use: list, process_one, cleanup_txt" }), {
+    return new Response(JSON.stringify({ error: "Unknown mode. Use: list, audit, process_one, cleanup_txt" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
