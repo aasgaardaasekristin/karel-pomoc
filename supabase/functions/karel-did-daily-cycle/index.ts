@@ -351,8 +351,18 @@ async function readRegistryRows(token: string, file: DriveFile): Promise<string[
 }
 
 function isArchivedFromRegistry(entry: RegistryEntry): boolean {
+  const statusCanonical = canonicalText(entry.status || "");
   const combined = canonicalText(`${entry.status} ${entry.cluster} ${entry.note}`);
-  const archivedHints = /(spic|spis|sleep|dormant|archiv|neaktiv|uspany|uspavana)/;
+
+  // Primárně respektuj explicitní stav ve sloupci "stav/status"
+  const archivedStatus = /^(spi|spic|spis|sleep|dormant|archiv|neaktiv|usp|hibern)/;
+  const activeStatus = /^(aktiv|active|probuzen|awake|online)/;
+
+  if (archivedStatus.test(statusCanonical)) return true;
+  if (activeStatus.test(statusCanonical)) return false;
+
+  // Fallback: pokud je stav nejednoznačný, použij i klastr/poznámku
+  const archivedHints = /(spic|spis|spi|sleep|dormant|archiv|neaktiv|uspany|uspavana)/;
   const activeHints = /(aktiv|active|probuzen|awake|online)/;
 
   if (archivedHints.test(combined)) return true;
@@ -457,11 +467,24 @@ async function resolveCardTarget(
 ): Promise<CardTargetResolution> {
   const entry = registryContext ? findBestRegistryEntry(partName, registryContext.entries) : null;
 
-  if (!entry || !registryContext) {
+  if (!registryContext) {
     return {
       searchRootId: rootFolderId,
       allowCreate: false,
       pathLabel: "fallback:root",
+      registryEntry: null,
+    };
+  }
+
+  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi (nikdy ne fallback po registru)
+  if (!entry) {
+    const newPartRoot = registryContext.activeFolderId || rootFolderId;
+    return {
+      searchRootId: newPartRoot,
+      allowCreate: true,
+      pathLabel: registryContext.activeFolderId
+        ? "01_AKTIVNI_FRAGMENTY/(nová část mimo registr)"
+        : "fallback:root/(nová část mimo registr)",
       registryEntry: null,
     };
   }
@@ -606,6 +629,70 @@ function partNameFromFileName(fileName: string): string {
   return (withoutNumericPrefix || withoutKarta || base).replace(/_/g, " ").trim();
 }
 
+function normalizePartHint(partHint: string): string {
+  return partNameFromFileName(partHint || "");
+}
+
+interface SuccessfulCardUpdate {
+  partName: string;
+  fileName: string;
+  sectionsUpdated: string[];
+  pathLabel: string;
+}
+
+interface BlockedCardUpdate {
+  partName: string;
+  registryId: string;
+  pathLabel: string;
+  status: string;
+  cluster: string;
+  pendingSections: string[];
+}
+
+function extractAiRecommendations(reportText: string): string {
+  if (!reportText) return "";
+  const recommendationStart = reportText.search(/\bDoporučen[ií]\b/i);
+  if (recommendationStart < 0) return "";
+  return reportText.slice(recommendationStart).trim();
+}
+
+function buildDeterministicDailyReport(params: {
+  successful: SuccessfulCardUpdate[];
+  blocked: BlockedCardUpdate[];
+  aiRecommendations: string;
+}): string {
+  const lines: string[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+
+  lines.push(`DID denní report (${today})`);
+  lines.push("");
+  lines.push("Co bylo SKUTEČNĚ zapsáno:");
+
+  if (params.successful.length === 0) {
+    lines.push("- Žádná karta nebyla dnes bezpečně aktualizována.");
+  } else {
+    for (const item of params.successful) {
+      lines.push(`- ${item.partName}: sekce ${item.sectionsUpdated.join(", ")} [${item.pathLabel}]`);
+    }
+  }
+
+  if (params.blocked.length > 0) {
+    lines.push("");
+    lines.push("Fail-safe blokace (bez zápisu):");
+    for (const b of params.blocked) {
+      lines.push(`- ${b.partName} (ID ${b.registryId}) nenalezena v ${b.pathLabel}; odloženo: ${b.pendingSections.join(", ")}; stav: ${b.status}; klastr: ${b.cluster}`);
+    }
+  }
+
+  if (params.aiRecommendations) {
+    lines.push("");
+    lines.push("Doporučení pro sezení (AI návrh, klinicky ověřit):");
+    lines.push(params.aiRecommendations);
+  }
+
+  return lines.join("\n").trim();
+}
+
 async function listFilesRecursive(token: string, rootFolderId: string): Promise<DriveFile[]> {
   const collected: DriveFile[] = [];
   const stack: string[] = [rootFolderId];
@@ -697,6 +784,8 @@ serve(async (req) => {
 
     const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
+    const successfulCardUpdates: SuccessfulCardUpdate[] = [];
+    const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
     if (threads.length === 0 && conversations.length === 0) {
       if (cycle) {
@@ -739,8 +828,11 @@ serve(async (req) => {
     }).join("\n\n---\n\n");
 
     const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
-
-    let driveContext = "";
+    const knownThreadParts = new Set(
+      threads
+        .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
+        .filter(Boolean)
+    );
     let existingCards: Record<string, string> = {};
 
     if (folderId) {
@@ -750,7 +842,7 @@ serve(async (req) => {
       } catch (e) { console.error("Drive read error:", e); }
 
       // Load cards only for explicitly named thread parts (fast)
-      const threadParts = [...new Set(threads.map(t => t.part_name))];
+      const threadParts = [...new Set(threads.map(t => normalizePartHint(t.part_name || "").trim()).filter(Boolean))];
       for (const partName of threadParts) {
         try {
           const target = await resolveCardTarget(token, folderId, partName, registryContext);
@@ -965,7 +1057,8 @@ ${perplexityContext}`,
     if (folderId && analysisText) {
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of analysisText.matchAll(cardBlockRegex)) {
-        const partName = match[1].trim();
+        const rawPartName = match[1].trim();
+        const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
 
         const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
@@ -978,16 +1071,31 @@ ${perplexityContext}`,
 
         if (Object.keys(newSections).length > 0) {
           try {
-            const target = await resolveCardTarget(token, folderId, partName, registryContext);
-            const resolvedPartName = target.registryEntry?.name || partName;
+            const target = await resolveCardTarget(token, folderId, normalizedPartName, registryContext);
+            const resolvedPartName = target.registryEntry?.name || normalizedPartName;
+            const resolvedCanonical = canonicalText(resolvedPartName);
+
+            // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
+            if (!target.registryEntry && !knownThreadParts.has(resolvedCanonical)) {
+              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName}`);
+              continue;
+            }
 
             // ═══ FAIL-SAFE: registry match but card not found → alert, NO fallback write ═══
-            const lookupName = target.registryEntry?.name || partName;
+            const lookupName = target.registryEntry?.name || resolvedPartName;
             const probeCard = await findCardFile(token, lookupName, target.searchRootId);
             if (!probeCard && target.registryEntry) {
               const alertMsg = `⚠️ FAIL-SAFE ALERT: Část "${resolvedPartName}" (ID: ${target.registryEntry.id}) existuje v registru, ale karta NEBYLA nalezena v ${target.pathLabel}. Zápis ZABLOKOVÁN – žádný fallback. Zkontroluj Drive ručně.`;
               console.error(alertMsg);
               hadCardUpdateErrors = true;
+              blockedCardUpdates.push({
+                partName: resolvedPartName,
+                registryId: target.registryEntry.id,
+                pathLabel: target.pathLabel,
+                status: target.registryEntry.status,
+                cluster: target.registryEntry.cluster,
+                pendingSections: Object.keys(newSections),
+              });
 
               // Send alert email
               if (RESEND_API_KEY) {
@@ -1029,27 +1137,38 @@ ${perplexityContext}`,
               }
             );
             cardsUpdated.push(`${resolvedPartName} (${result.sectionsUpdated.join(",")}${result.isNew ? " – NOVÁ" : ""}) [${target.pathLabel}]`);
+            successfulCardUpdates.push({
+              partName: resolvedPartName,
+              fileName: result.fileName,
+              sectionsUpdated: result.sectionsUpdated,
+              pathLabel: target.pathLabel,
+            });
             console.log(`Updated card: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
           } catch (e) {
             hadCardUpdateErrors = true;
-            console.error(`Failed to update card for ${partName}:`, e);
+            console.error(`Failed to update card for ${rawPartName}:`, e);
           }
         }
       }
 
-      // Daily report (separate file – this IS correct as a standalone report)
+      // Daily report (deterministický, pouze skutečně provedené změny)
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
-      const reportText = reportMatch?.[1]?.trim() || analysisText;
+      const aiReportText = reportMatch?.[1]?.trim() || "";
+      const finalReportText = buildDeterministicDailyReport({
+        successful: successfulCardUpdates,
+        blocked: blockedCardUpdates,
+        aiRecommendations: extractAiRecommendations(aiReportText),
+      });
       const dateStr = new Date().toISOString().slice(0, 10);
-      await uploadOrUpdate(token, `DID_Denni_Report_${dateStr}.txt`, reportText, folderId);
+      await uploadOrUpdate(token, `DID_Denni_Report_${dateStr}.txt`, finalReportText, folderId);
 
       // 5. EMAIL
-      if (RESEND_API_KEY && reportText) {
+      if (RESEND_API_KEY && finalReportText) {
         try {
           const resend = new Resend(RESEND_API_KEY);
           const dateCz = new Date().toLocaleDateString("cs-CZ");
 
-          let htmlContent = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${reportText}</pre>`;
+          let htmlContent = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalReportText}</pre>`;
           try {
             const fmtRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
@@ -1057,8 +1176,8 @@ ${perplexityContext}`,
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash-lite",
                 messages: [
-                  { role: "system", content: "Přeformátuj do čistého HTML emailu. Zachovej obsah, přidej h2, p, ul, li, strong. Přidej seznam aktualizovaných karet: " + cardsUpdated.join(", ") + ". Vrať POUZE HTML." },
-                  { role: "user", content: reportText },
+                  { role: "system", content: "Přeformátuj do čistého HTML emailu. Zachovej obsah, přidej h2, p, ul, li, strong. Vrať POUZE HTML." },
+                  { role: "user", content: finalReportText },
                 ],
               }),
             });
@@ -1082,7 +1201,7 @@ ${perplexityContext}`,
 
     // 6. Mark threads AND conversations as processed only when analysis produced card updates and updates succeeded
     const hasCardBlocks = /\[KARTA:/i.test(analysisText || "");
-    const shouldMarkProcessed = !hadCardUpdateErrors && hasCardBlocks && cardsUpdated.length > 0;
+    const shouldMarkProcessed = !hadCardUpdateErrors && hasCardBlocks && successfulCardUpdates.length > 0;
 
     if (shouldMarkProcessed) {
       const threadIds = threads.map(t => t.id);
