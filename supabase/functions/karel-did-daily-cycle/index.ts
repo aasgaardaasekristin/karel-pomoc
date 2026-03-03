@@ -571,6 +571,14 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
     if (analysisResponse.ok) {
       const data = await analysisResponse.json();
       analysisText = data.choices?.[0]?.message?.content || "";
+      console.log(`[AI analysis] Response length: ${analysisText.length} chars`);
+      // Log all [KARTA:...] blocks found
+      const kartaMatches = [...analysisText.matchAll(/\[KARTA:(.+?)\]/g)];
+      console.log(`[AI analysis] Card blocks found: ${kartaMatches.map(m => m[1]).join(", ") || "NONE"}`);
+      if (analysisText.length < 500) console.log(`[AI analysis] Full response: ${analysisText}`);
+    } else {
+      const errText = await analysisResponse.text();
+      console.error(`[AI analysis] API error ${analysisResponse.status}: ${errText.slice(0, 500)}`);
     }
 
     // 4. PARSE AND UPDATE CARDS IN-PLACE
