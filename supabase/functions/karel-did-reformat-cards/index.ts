@@ -71,18 +71,16 @@ function scoreNameMatch(left: string, right: string): number {
 }
 
 async function updateGoogleDocInPlace(token: string, fileId: string, content: string): Promise<void> {
-  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!docRes.ok) throw new Error(`Docs read failed (${docRes.status}): ${await docRes.text()}`);
-  const docData = await docRes.json();
-  const bodyContent = docData?.body?.content || [];
-  const lastEndIndex = bodyContent.length > 0 ? Number(bodyContent[bodyContent.length - 1]?.endIndex || 1) : 1;
-  const requests: any[] = [];
-  if (lastEndIndex > 1) { requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: lastEndIndex - 1 } } }); }
-  requests.push({ insertText: { location: { index: 1 }, text: content } });
-  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
-    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests }),
+  // Use Drive API multipart upload instead of Docs API (which may not be enabled)
+  const boundary = "----DIDDocUpdateBoundary";
+  const metadata = JSON.stringify({ mimeType: DRIVE_DOC_MIME });
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&supportsAllDrives=true`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
   });
-  if (!updateRes.ok) throw new Error(`Docs batchUpdate failed (${updateRes.status}): ${await updateRes.text()}`);
+  if (!res.ok) throw new Error(`Drive PATCH (doc) failed (${res.status}): ${await res.text()}`);
 }
 
 async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
