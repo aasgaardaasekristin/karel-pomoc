@@ -36,6 +36,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [isReformatting, setIsReformatting] = useState(false);
+  const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -218,24 +219,61 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
           size="sm"
           onClick={async () => {
             setIsReformatting(true);
-            toast.info("Přeformátování všech karet zahájeno... Trvá 2–5 minut.");
+            setReformatProgress(null);
+            toast.info("Načítám seznam karet...");
             try {
               const headers = await getAuthHeaders();
-              const res = await fetch(
+              // Step 1: Get list of entries + classify txt
+              const listRes = await fetch(
                 `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
-                { method: "POST", headers, body: JSON.stringify({ dryRun: false }) }
+                { method: "POST", headers, body: JSON.stringify({ mode: "list" }) }
               );
-              const data = await res.json();
-              if (res.ok && data.success) {
-                toast.success(`Přeformátováno ${data.reformatted}/${data.total} karet. Nenalezeno: ${data.notFound}, chyby: ${data.errors}`);
-              } else {
-                toast.error(`Chyba: ${data.error || "Neznámá chyba"}`);
+              const listData = await listRes.json();
+              if (!listRes.ok) throw new Error(listData.error);
+
+              const entries = listData.entries || [];
+              const txtContentByPart = listData.txtContentByPart || {};
+              const total = entries.length;
+              let reformatted = 0, notFound = 0, errors = 0;
+
+              toast.info(`Přeformátování ${total} karet zahájeno...`);
+
+              // Step 2: Process each card one by one
+              for (let i = 0; i < total; i++) {
+                const entry = entries[i];
+                setReformatProgress({ current: i + 1, total, currentName: entry.name });
+                try {
+                  const res = await fetch(
+                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+                    { method: "POST", headers, body: JSON.stringify({ mode: "process_one", index: i, txtContentForPart: txtContentByPart[entry.name] || "" }) }
+                  );
+                  const data = await res.json();
+                  if (data.result === "reformatted") reformatted++;
+                  else if (data.result === "not_found") notFound++;
+                  else errors++;
+                } catch (e) {
+                  console.error(`Card ${entry.name} failed:`, e);
+                  errors++;
+                }
               }
+
+              // Step 3: Cleanup txt files
+              if ((listData.txtFiles || []).length > 0) {
+                try {
+                  await fetch(
+                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+                    { method: "POST", headers, body: JSON.stringify({ mode: "cleanup_txt" }) }
+                  );
+                } catch {}
+              }
+
+              toast.success(`Hotovo! Přeformátováno: ${reformatted}/${total}, nenalezeno: ${notFound}, chyby: ${errors}`);
             } catch (e) {
               toast.error("Přeformátování selhalo");
               console.error(e);
             } finally {
               setIsReformatting(false);
+              setReformatProgress(null);
             }
           }}
           disabled={isReformatting}
@@ -246,8 +284,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
           ) : (
             <FileText className="w-3.5 h-3.5" />
           )}
-          <span className="hidden sm:inline">Přeformátovat karty A–M</span>
-          <span className="sm:hidden">Přeformátovat</span>
+          {reformatProgress ? (
+            <span>{reformatProgress.current}/{reformatProgress.total} {reformatProgress.currentName}</span>
+          ) : (
+            <>
+              <span className="hidden sm:inline">Přeformátovat karty A–M</span>
+              <span className="sm:hidden">Přeformátovat</span>
+            </>
+          )}
         </Button>
       </div>
 
