@@ -876,10 +876,18 @@ SEKCE I – Terapeutické metody a přístupy:
 - VŠECHNY konkrétní techniky a metody CELÉ (ne zkrácené!)
 - Název metody, postup krok za krokem, proč to funguje
 - Zdroj/odkaz, obtížnost
+- POVINNĚ navrh 3–5 konkrétních aktivit/her pro příští sezení:
+  • Skryté diagnostiky maskované jako hra (projektivní kreslení, narativní techniky, asociační hry)
+  • Psychoterapeutické metody prezentované dítěti jako "hra" (sandplay, figurky, dramatizace)
+  • Stabilizační a regulační techniky (grounding hry, senzorické aktivity, dechová cvičení formou hry)
+  • U každé aktivity uveď: NÁZEV | CÍL (co zjistíš/dosáhneš) | POSTUP (krok za krokem) | PRO KOHO (věk, typ části) | ZDROJ
+- Pokud máš k dispozici rešeršní kontext z Perplexity, čerpej z něj konkrétní evidence-based metody
 
 SEKCE J – Krátkodobé cíle a aktuální intervence:
 - Akční plán (číslované kroky)
 - Co připravit před příštím setkáním
+- Navrhni konkrétní činnosti pro mamku/Káťu (ne obecnosti)
+- U každého kroku uveď PROČ a CO SE TÍM ZJISTÍ/DOSÁHNE
 
 SEKCE K – Výstupy ze sezení a zpětná vazba:
 - Co se osvědčilo/neosvědčilo: | Datum | Co bylo navrženo | Výsledek | Hodnocení |
@@ -915,11 +923,19 @@ Po všech kartách:
 - Sekce A–L = věcná fakta z konverzací/karet/rešerše. Nepiš domněnky jako fakta.
 - Pokročilé dedukce, průřezové souvislosti a hypotézy piš do SEKCE M (a explicitně je označ „Hypotéza:“).
 - NIKDY nesmaž původní data – pouze doplňuj s datem [YYYY-MM-DD]
-- Metody v sekci I piš CELÉ (postup, proč funguje, zdroj)
+- Metody v sekci I piš CELÉ (postup, proč funguje, zdroj) + POVINNĚ navrhni 3-5 konkrétních her/aktivit/skrytých diagnostik
 - Pokud čerpáš z rešerše, uváděj konkrétní URL citací
 - Přizpůsob jazyk části (norsky pro norské, česky pro ostatní)
 - Pokud detekuješ novou část bez karty, vygeneruj návrh sekcí A–M, ale karta se vytváří jen pokud to explicitně povolí systém
 - Každá sekce musí obsahovat POUZE informace relevantní pro danou sekci
+
+═══ KONTROLA KVALITY ZÁPISU ═══
+- KAŽDÝ zápis MUSÍ obsahovat datum [YYYY-MM-DD] a zdroj (konverzace/rešerše/karta)
+- ŽÁDNÉ obecné fráze typu "komunikuje s jinými částmi" – piš KONKRÉTNĚ co, kdy, s kým
+- ŽÁDNÉ odvozování bez dat – pokud část řekla X, zapiš "Část uvedla: X" nikoliv "Část pravděpodobně Y"
+- V sekci A NIKDY nepiš role/identitu, kterou část sama explicitně neuvedla
+- Pokud informace není v konverzaci ani v kartě, NEZAPISUJ ji
+- Jeden záznam = jeden fakt. Nekombinouj nesouvisející fakta do jednoho odstavce
 
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
@@ -964,6 +980,43 @@ ${perplexityContext}`,
           try {
             const target = await resolveCardTarget(token, folderId, partName, registryContext);
             const resolvedPartName = target.registryEntry?.name || partName;
+
+            // ═══ FAIL-SAFE: registry match but card not found → alert, NO fallback write ═══
+            const lookupName = target.registryEntry?.name || partName;
+            const probeCard = await findCardFile(token, lookupName, target.searchRootId);
+            if (!probeCard && target.registryEntry) {
+              const alertMsg = `⚠️ FAIL-SAFE ALERT: Část "${resolvedPartName}" (ID: ${target.registryEntry.id}) existuje v registru, ale karta NEBYLA nalezena v ${target.pathLabel}. Zápis ZABLOKOVÁN – žádný fallback. Zkontroluj Drive ručně.`;
+              console.error(alertMsg);
+              hadCardUpdateErrors = true;
+
+              // Send alert email
+              if (RESEND_API_KEY) {
+                try {
+                  const resend = new Resend(RESEND_API_KEY);
+                  await resend.emails.send({
+                    from: "Karel <karel@hana-chlebcova.cz>",
+                    to: [MAMKA_EMAIL],
+                    subject: `⚠️ Karel ALERT: Karta "${resolvedPartName}" nenalezena`,
+                    html: `<div style="font-family:sans-serif;padding:20px;">
+                      <h2 style="color:#dc2626;">⚠️ Karta nenalezena</h2>
+                      <p><strong>Část:</strong> ${resolvedPartName}</p>
+                      <p><strong>ID z registru:</strong> ${target.registryEntry.id}</p>
+                      <p><strong>Hledáno v:</strong> ${target.pathLabel}</p>
+                      <p><strong>Stav v registru:</strong> ${target.registryEntry.status}</p>
+                      <p><strong>Klastr:</strong> ${target.registryEntry.cluster}</p>
+                      <hr/>
+                      <p>Karel zápis <strong>neprovedl</strong>, aby nevznikl duplicitní soubor. Zkontroluj prosím, zda karta existuje ve správné složce na Google Drive.</p>
+                      <p><strong>Sekce k zápisu (odložené):</strong> ${Object.keys(newSections).join(", ")}</p>
+                    </div>`,
+                  });
+                  console.log(`Alert email sent for missing card: ${resolvedPartName}`);
+                } catch (emailErr) {
+                  console.error(`Failed to send alert email for ${resolvedPartName}:`, emailErr);
+                }
+              }
+              continue; // Skip this card entirely
+            }
+
             const result = await updateCardSections(
               token,
               resolvedPartName,
