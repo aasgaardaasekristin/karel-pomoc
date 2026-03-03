@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, MessageCircle, Zap } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, MessageCircle, Zap, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
@@ -35,6 +35,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
+  const [isReformatting, setIsReformatting] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -211,6 +212,42 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
           )}
           <span className="hidden sm:inline">Aktualizovat kartoteka_DID ihned</span>
           <span className="sm:hidden">Aktual. kartotéku</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            setIsReformatting(true);
+            toast.info("Přeformátování všech karet zahájeno... Trvá 2–5 minut.");
+            try {
+              const headers = await getAuthHeaders();
+              const res = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+                { method: "POST", headers, body: JSON.stringify({ dryRun: false }) }
+              );
+              const data = await res.json();
+              if (res.ok && data.success) {
+                toast.success(`Přeformátováno ${data.reformatted}/${data.total} karet. Nenalezeno: ${data.notFound}, chyby: ${data.errors}`);
+              } else {
+                toast.error(`Chyba: ${data.error || "Neznámá chyba"}`);
+              }
+            } catch (e) {
+              toast.error("Přeformátování selhalo");
+              console.error(e);
+            } finally {
+              setIsReformatting(false);
+            }
+          }}
+          disabled={isReformatting}
+          className="h-8 text-xs gap-1.5"
+        >
+          {isReformatting ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <FileText className="w-3.5 h-3.5" />
+          )}
+          <span className="hidden sm:inline">Přeformátovat karty A–M</span>
+          <span className="sm:hidden">Přeformátovat</span>
         </Button>
       </div>
 
