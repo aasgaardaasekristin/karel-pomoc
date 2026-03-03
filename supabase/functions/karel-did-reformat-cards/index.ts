@@ -266,7 +266,7 @@ async function searchPerplexity(partName: string, cardContent: string): Promise<
 }
 
 // ═══ AI reformatter ═══
-async function reformatCardWithAI(partName: string, rawContent: string, perplexityResearch: string, entry: RegistryEntry): Promise<string> {
+async function reformatCardWithAI(partName: string, rawContent: string, perplexityResearch: string, entry: RegistryEntry, txtExtraContent: string = ""): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
 
@@ -325,6 +325,7 @@ SEKCE M – Karlova analytická poznámka
 7. Pokud je k dispozici výzkum z Perplexity, integruj relevantní metody do Sekce I a doporučení do D/M.
 8. NEKOPÍRUJ celé bloky textu doslovně – restrukturuj a roztřiď data.
 9. Hlavička karty: ═══ KARTA ČÁSTI: [JMÉNO] ═══
+10. Pokud jsou k dispozici data z .txt souborů, INTEGRUJ je do příslušných sekcí podle typu informace. Neukládej je do jedné sekce – roztřiď je logicky.
 
 ═══ METADATA Z REGISTRU ═══
 ID: ${entry.id}
@@ -333,12 +334,17 @@ Stav: ${entry.status}
 Klastr: ${entry.cluster}
 Poznámka: ${entry.note}`;
 
+  const txtBlock = txtExtraContent
+    ? `\n\n═══ DATA Z .TXT SOUBORŮ (roztřídit do příslušných sekcí) ═══\n${txtExtraContent.slice(0, 5000)}`
+    : "";
+
   const userPrompt = `Přeformátuj tuto kartu části "${partName}" do architektury A–M.
 
 ═══ AKTUÁLNÍ OBSAH KARTY ═══
 ${rawContent.slice(0, 12000)}
 
 ${perplexityResearch ? `═══ VÝZKUM Z ODBORNÝCH ZDROJŮ (Perplexity) ═══\n${perplexityResearch.slice(0, 4000)}` : ""}
+${txtBlock}
 
 Výstup: Kompletní karta se VŠEMI sekcemi A–M ve formátu:
 ═══ KARTA ČÁSTI: ${partName} ═══
@@ -372,6 +378,136 @@ Výstup: Kompletní karta se VŠEMI sekcemi A–M ve formátu:
   return data.choices?.[0]?.message?.content || "";
 }
 
+// ═══ Recursive .txt file collector ═══
+interface LooseTxtFile {
+  fileId: string;
+  fileName: string;
+  content: string;
+  parentFolderId: string;
+  path: string; // human-readable path for logging
+}
+
+async function collectTxtFilesRecursive(token: string, folderId: string, currentPath: string): Promise<LooseTxtFile[]> {
+  const files = await listFilesInFolder(token, folderId);
+  const txtFiles: LooseTxtFile[] = [];
+
+  for (const f of files) {
+    if (f.mimeType === DRIVE_FOLDER_MIME) {
+      // Recurse into subfolders
+      const subResults = await collectTxtFilesRecursive(token, f.id, `${currentPath}/${f.name}`);
+      txtFiles.push(...subResults);
+    } else if (/\.txt$/i.test(f.name) && f.mimeType !== DRIVE_DOC_MIME && f.mimeType !== DRIVE_SHEET_MIME) {
+      // It's a .txt file (not a Google Doc or Sheet)
+      try {
+        const content = await readFileContent(token, f.id);
+        if (content && content.trim().length > 10) {
+          txtFiles.push({ fileId: f.id, fileName: f.name, content, parentFolderId: folderId, path: `${currentPath}/${f.name}` });
+        }
+      } catch (e) {
+        console.warn(`[txt-collect] Cannot read ${f.name}:`, e);
+      }
+    }
+  }
+  return txtFiles;
+}
+
+async function deleteDriveFile(token: string, fileId: string): Promise<void> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 404) {
+    console.warn(`[txt-delete] Failed to delete ${fileId}: ${res.status}`);
+  }
+}
+
+// ═══ AI: classify .txt content into parts ═══
+interface TxtClassification {
+  partName: string;
+  relevantContent: string;
+}
+
+async function classifyTxtContents(token: string, txtFiles: LooseTxtFile[], registryEntries: RegistryEntry[]): Promise<Map<string, string>> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
+
+  // Aggregate all txt contents with file names
+  const txtSummary = txtFiles.map(f => `═══ SOUBOR: ${f.path} ═══\n${f.content.slice(0, 3000)}`).join("\n\n");
+  const partNames = registryEntries.map(e => `${e.id} ${e.name}`).join(", ");
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `Jsi třídič informací pro kartotéku DID systému. Dostaneš obsah .txt souborů a seznam částí (alter/fragmentů) z registru.
+
+Tvůj úkol:
+1. Analyzuj obsah každého .txt souboru
+2. Rozeběr informace na jednotlivé bloky podle toho, ke které ČÁSTI systému logicky patří
+3. Pokud informace patří k více částem, rozděl je a přiřaď ke každé zvlášť
+4. Pokud informace nepatří ke konkrétní části ale k systému obecně, přiřaď je k části "SYSTEM_GENERAL"
+
+VÝSTUP: Vrať JSON pole objektů:
+[
+  {"partName": "Jméno části přesně z registru", "relevantContent": "Extrahovaný text relevantní pro tuto část"},
+  ...
+]
+
+Důležité:
+- Jméno části MUSÍ odpovídat přesně jednomu z registru
+- Nezkracuj obsah – zachovej plné informace
+- Rozděl logicky – ne mechanicky po řádcích
+- Pokud .txt soubor obsahuje informace o terapeutických metodách, rozděl je k částem, pro které jsou relevantní`
+        },
+        {
+          role: "user",
+          content: `═══ REGISTRY ČÁSTÍ ═══\n${partNames}\n\n═══ OBSAH .TXT SOUBORŮ ═══\n${txtSummary.slice(0, 20000)}`
+        }
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    console.error(`[txt-classify] AI error ${res.status}`);
+    return new Map();
+  }
+
+  const data = await res.json();
+  const raw = data.choices?.[0]?.message?.content || "";
+
+  // Parse JSON from response (may be wrapped in markdown code block)
+  const jsonMatch = raw.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    console.warn("[txt-classify] No JSON array found in AI response");
+    return new Map();
+  }
+
+  try {
+    const classifications: TxtClassification[] = JSON.parse(jsonMatch[0]);
+    const partContentMap = new Map<string, string>();
+
+    for (const c of classifications) {
+      // Normalize part name to match registry
+      const matchedEntry = registryEntries.find(e =>
+        e.name === c.partName ||
+        canonicalText(e.name) === canonicalText(c.partName)
+      );
+      const key = matchedEntry?.name || c.partName;
+      const existing = partContentMap.get(key) || "";
+      partContentMap.set(key, existing + (existing ? "\n\n" : "") + c.relevantContent);
+    }
+
+    return partContentMap;
+  } catch (e) {
+    console.error("[txt-classify] JSON parse error:", e);
+    return new Map();
+  }
+}
+
 // ═══ MAIN ═══
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -384,6 +520,11 @@ serve(async (req) => {
     // Find Kartoteka_DID root
     const rootFolderId = await findFolder(token, "Kartoteka_DID");
     if (!rootFolderId) throw new Error("Kartoteka_DID folder not found on Drive");
+
+    // ═══ Phase 1: Collect loose .txt files ═══
+    console.log("[reformat] Phase 1: Collecting .txt files...");
+    const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "Kartoteka_DID");
+    console.log(`[reformat] Found ${txtFiles.length} .txt files`);
 
     // Load registry
     const rootChildren = await listFilesInFolder(token, rootFolderId);
@@ -418,8 +559,17 @@ serve(async (req) => {
 
     if (entries.length === 0) throw new Error("Registry is empty");
 
-    // Process each entry
+    // ═══ Phase 2: Classify .txt content into parts ═══
+    let txtContentByPart = new Map<string, string>();
+    if (txtFiles.length > 0 && !dryRun) {
+      console.log("[reformat] Phase 2: Classifying .txt content into parts...");
+      txtContentByPart = await classifyTxtContents(token, txtFiles, entries);
+      console.log(`[reformat] Classified content for ${txtContentByPart.size} parts`);
+    }
+
+    // ═══ Phase 3: Process each entry (reformat + merge .txt content) ═══
     const results: Array<{ name: string; id: string; status: string; result: "reformatted" | "not_found" | "error" | "dry_run"; detail: string }> = [];
+    const txtFilesProcessed: string[] = [];
 
     for (const entry of entries) {
       console.log(`[reformat] Processing: ${entry.id} ${entry.name} (${entry.status})`);
@@ -447,7 +597,8 @@ serve(async (req) => {
         console.log(`[reformat] Card found: ${card.fileName} (${card.fileId})`);
 
         if (dryRun) {
-          results.push({ name: entry.name, id: entry.id, status: entry.status, result: "dry_run", detail: `Nalezena: ${card.fileName}` });
+          const hasTxtData = txtContentByPart.has(entry.name);
+          results.push({ name: entry.name, id: entry.id, status: entry.status, result: "dry_run", detail: `Nalezena: ${card.fileName}${hasTxtData ? " + data z .txt souborů" : ""}` });
           continue;
         }
 
@@ -460,8 +611,14 @@ serve(async (req) => {
           console.warn(`[reformat] Perplexity failed for ${entry.name}:`, e);
         }
 
-        // AI reformat
-        const reformattedContent = await reformatCardWithAI(entry.name, card.content, perplexityContent, entry);
+        // Get any .txt content classified for this part
+        const txtExtraContent = txtContentByPart.get(entry.name) || "";
+        if (txtExtraContent) {
+          console.log(`[reformat] Adding ${txtExtraContent.length} chars from .txt files for ${entry.name}`);
+        }
+
+        // AI reformat — now includes .txt content
+        const reformattedContent = await reformatCardWithAI(entry.name, card.content, perplexityContent, entry, txtExtraContent);
 
         if (!reformattedContent || reformattedContent.length < 100) {
           results.push({ name: entry.name, id: entry.id, status: entry.status, result: "error", detail: "AI vrátilo příliš krátký výstup" });
@@ -470,7 +627,7 @@ serve(async (req) => {
 
         // Write back
         await updateFileById(token, card.fileId, reformattedContent, card.mimeType);
-        results.push({ name: entry.name, id: entry.id, status: entry.status, result: "reformatted", detail: `${card.fileName} přeformátováno (${reformattedContent.length} znaků)` });
+        results.push({ name: entry.name, id: entry.id, status: entry.status, result: "reformatted", detail: `${card.fileName} přeformátováno (${reformattedContent.length} znaků)${txtExtraContent ? " + .txt data" : ""}` });
         console.log(`[reformat] ✅ ${entry.name} done`);
 
         // Small delay to avoid rate limits
@@ -486,6 +643,20 @@ serve(async (req) => {
       }
     }
 
+    // ═══ Phase 4: Delete processed .txt files ═══
+    if (txtFiles.length > 0 && !dryRun) {
+      console.log(`[reformat] Phase 4: Deleting ${txtFiles.length} .txt files...`);
+      for (const txtFile of txtFiles) {
+        try {
+          await deleteDriveFile(token, txtFile.fileId);
+          txtFilesProcessed.push(txtFile.path);
+          console.log(`[reformat] 🗑️ Deleted: ${txtFile.path}`);
+        } catch (e) {
+          console.warn(`[reformat] Failed to delete ${txtFile.path}:`, e);
+        }
+      }
+    }
+
     // Summary
     const reformatted = results.filter((r) => r.result === "reformatted");
     const notFound = results.filter((r) => r.result === "not_found");
@@ -496,16 +667,22 @@ serve(async (req) => {
     const kataEmail = Deno.env.get("KATA_EMAIL");
     if (resendKey && kataEmail && !dryRun) {
       const resend = new Resend(resendKey);
+      const txtSection = txtFilesProcessed.length > 0
+        ? `<h3>🗑️ Zpracované a smazané .txt soubory (${txtFilesProcessed.length})</h3><ul>${txtFilesProcessed.map(p => `<li>${p}</li>`).join("")}</ul>`
+        : txtFiles.length > 0 ? `<p>📄 Nalezeno ${txtFiles.length} .txt souborů, obsah roztříděn do ${txtContentByPart.size} karet</p>` : "";
+
       const emailBody = `
 <h2>📋 Přeformátování kartotéky DID – Souhrn</h2>
 <p><strong>Celkem částí v registru:</strong> ${entries.length}</p>
 <p><strong>Přeformátováno:</strong> ${reformatted.length}</p>
 <p><strong>Nenalezeno:</strong> ${notFound.length}</p>
 <p><strong>Chyby:</strong> ${errors.length}</p>
+<p><strong>.txt souborů zpracováno:</strong> ${txtFilesProcessed.length}/${txtFiles.length}</p>
 
 <h3>✅ Přeformátováno</h3>
 <ul>${reformatted.map((r) => `<li>${r.id} ${r.name} – ${r.detail}</li>`).join("")}</ul>
 
+${txtSection}
 ${notFound.length > 0 ? `<h3>⚠️ Karty nenalezeny</h3><ul>${notFound.map((r) => `<li>${r.id} ${r.name} (${r.status}) – ${r.detail}</li>`).join("")}</ul>` : ""}
 ${errors.length > 0 ? `<h3>❌ Chyby</h3><ul>${errors.map((r) => `<li>${r.id} ${r.name} – ${r.detail}</li>`).join("")}</ul>` : ""}
 `;
@@ -513,7 +690,7 @@ ${errors.length > 0 ? `<h3>❌ Chyby</h3><ul>${errors.map((r) => `<li>${r.id} ${
         await resend.emails.send({
           from: "Karel <karel@lovable.app>",
           to: [kataEmail],
-          subject: `📋 Přeformátování kartotéky: ${reformatted.length}/${entries.length} karet`,
+          subject: `📋 Přeformátování kartotéky: ${reformatted.length}/${entries.length} karet | ${txtFilesProcessed.length} .txt zpracováno`,
           html: emailBody,
         });
       } catch (e) { console.warn("[reformat] Email failed:", e); }
@@ -526,6 +703,9 @@ ${errors.length > 0 ? `<h3>❌ Chyby</h3><ul>${errors.map((r) => `<li>${r.id} ${
       reformatted: reformatted.length,
       notFound: notFound.length,
       errors: errors.length,
+      txtFilesFound: txtFiles.length,
+      txtFilesDeleted: txtFilesProcessed.length,
+      txtDistributedToParts: Array.from(txtContentByPart.keys()),
       results,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
