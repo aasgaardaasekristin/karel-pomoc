@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
+import * as XLSX from "npm:xlsx@0.18.5";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
 // OAuth2 token helper
@@ -88,27 +89,80 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
-async function deleteFileById(token: string, fileId: string): Promise<void> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`, {
-    method: "DELETE",
+const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
+const DRIVE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+const XLS_MIME_TYPES = new Set([
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+]);
+
+const stripDiacritics = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+const canonicalText = (value: string) =>
+  stripDiacritics(value || "")
+    .toLowerCase()
+    .replace(/\.(txt|md|doc|docx|xls|xlsx)$/gi, "")
+    .replace(/[^a-z0-9]/g, "");
+
+function scoreNameMatch(left: string, right: string): number {
+  if (!left || !right) return 0;
+  if (left === right) return 10;
+  if (left.includes(right) || right.includes(left)) return 7;
+  if (left.slice(0, 6) === right.slice(0, 6)) return 3;
+  return 0;
+}
+
+async function updateGoogleDocInPlace(token: string, fileId: string, content: string): Promise<void> {
+  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok && res.status !== 404) {
-    throw new Error(`Drive DELETE failed for ${fileId}: ${await res.text()}`);
+
+  if (!docRes.ok) {
+    throw new Error(`Docs read failed (${docRes.status}): ${await docRes.text()}`);
+  }
+
+  const docData = await docRes.json();
+  const bodyContent = docData?.body?.content || [];
+  const lastEndIndex = bodyContent.length > 0
+    ? Number(bodyContent[bodyContent.length - 1]?.endIndex || 1)
+    : 1;
+
+  const requests: any[] = [];
+  if (lastEndIndex > 1) {
+    requests.push({
+      deleteContentRange: {
+        range: { startIndex: 1, endIndex: lastEndIndex - 1 },
+      },
+    });
+  }
+
+  requests.push({
+    insertText: {
+      location: { index: 1 },
+      text: content,
+    },
+  });
+
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests }),
+  });
+
+  if (!updateRes.ok) {
+    throw new Error(`Docs batchUpdate failed (${updateRes.status}): ${await updateRes.text()}`);
   }
 }
 
-async function updateFileById(token: string, fileId: string, content: string, mimeType?: string, parentFolderId?: string, fileName?: string): Promise<any> {
-  const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
-
-  if (isGoogleDoc) {
-    // Google Docs API is not enabled → delete old Doc + create new one with same name in same folder
-    if (!parentFolderId || !fileName) {
-      throw new Error("parentFolderId and fileName required for Google Doc replacement");
-    }
-    console.log(`[updateFileById] Replacing Google Doc "${fileName}" (${fileId}) in folder ${parentFolderId}`);
-    await deleteFileById(token, fileId);
-    return await createFileInFolder(token, fileName, content, parentFolderId);
+async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
+  if (mimeType === DRIVE_DOC_MIME) {
+    await updateGoogleDocInPlace(token, fileId, content);
+    return { id: fileId, updatedInPlace: true };
   }
 
   // For plain text files: multipart upload
@@ -196,29 +250,266 @@ interface CardFileResult { fileId: string; fileName: string; content: string; pa
 
 type DriveFile = { id: string; name: string; mimeType?: string };
 
+interface RegistryEntry {
+  id: string;
+  name: string;
+  status: string;
+  cluster: string;
+  note: string;
+  normalizedName: string;
+}
+
+interface RegistryContext {
+  entries: RegistryEntry[];
+  activeFolderId: string | null;
+  archiveFolderId: string | null;
+  sourceFileName: string | null;
+}
+
+interface CardTargetResolution {
+  searchRootId: string;
+  allowCreate: boolean;
+  pathLabel: string;
+  registryEntry: RegistryEntry | null;
+}
+
+function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
+  const nonEmptyRows = rows.filter((row) => row.some((cell) => `${cell ?? ""}`.trim().length > 0));
+  if (nonEmptyRows.length === 0) return [];
+
+  let headerRowIndex = nonEmptyRows.findIndex((row, idx) => {
+    if (idx > 10) return false;
+    const normalized = row.map((c) => canonicalText(String(c)));
+    return normalized.some((c) => ["id", "cislo", "number"].some((v) => c.includes(v)))
+      && normalized.some((c) => ["jmeno", "nazev", "cast", "part", "fragment"].some((v) => c.includes(v)));
+  });
+  if (headerRowIndex < 0) headerRowIndex = 0;
+
+  const header = nonEmptyRows[headerRowIndex].map((c) => canonicalText(String(c)));
+  const findCol = (hints: string[], fallback: number) => {
+    const idx = header.findIndex((h) => hints.some((hint) => h.includes(hint)));
+    return idx >= 0 ? idx : fallback;
+  };
+
+  const idCol = findCol(["id", "cislo", "number"], 0);
+  const nameCol = findCol(["jmeno", "nazev", "cast", "part", "fragment"], 1);
+  const statusCol = findCol(["stav", "status"], 2);
+  const clusterCol = findCol(["klastr", "cluster"], 3);
+  const noteCol = findCol(["poznam", "note", "komentar"], 4);
+
+  const entries: RegistryEntry[] = [];
+  for (const row of nonEmptyRows.slice(headerRowIndex + 1)) {
+    const rawName = String(row[nameCol] ?? "").trim();
+    if (!rawName) continue;
+
+    const rawId = String(row[idCol] ?? "").trim();
+    const idMatch = rawId.match(/\d{1,4}/);
+    const id = idMatch ? idMatch[0].padStart(3, "0") : "";
+
+    const normalizedName = canonicalText(rawName);
+    if (!normalizedName) continue;
+
+    entries.push({
+      id,
+      name: rawName,
+      status: String(row[statusCol] ?? "").trim(),
+      cluster: String(row[clusterCol] ?? "").trim(),
+      note: String(row[noteCol] ?? "").trim(),
+      normalizedName,
+    });
+  }
+
+  return entries;
+}
+
+async function readRegistryRows(token: string, file: DriveFile): Promise<string[][]> {
+  let workbook: XLSX.WorkBook;
+
+  if (file.mimeType === DRIVE_SHEET_MIME) {
+    const exportRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!exportRes.ok) throw new Error(`Registry export failed (${exportRes.status})`);
+    const csvText = await exportRes.text();
+    workbook = XLSX.read(csvText, { type: "string" });
+  } else {
+    const mediaRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!mediaRes.ok) throw new Error(`Registry download failed (${mediaRes.status})`);
+    const bytes = new Uint8Array(await mediaRes.arrayBuffer());
+    workbook = XLSX.read(bytes, { type: "array" });
+  }
+
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) return [];
+  const sheet = workbook.Sheets[firstSheetName];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][];
+  return rawRows.map((row) => row.map((cell) => `${cell ?? ""}`.trim()));
+}
+
+function isArchivedFromRegistry(entry: RegistryEntry): boolean {
+  const combined = canonicalText(`${entry.status} ${entry.cluster} ${entry.note}`);
+  const archivedHints = /(spic|spis|sleep|dormant|archiv|neaktiv|uspany|uspavana)/;
+  const activeHints = /(aktiv|active|probuzen|awake|online)/;
+
+  if (archivedHints.test(combined)) return true;
+  if (activeHints.test(combined)) return false;
+
+  return false;
+}
+
+function findBestRegistryEntry(partName: string, entries: RegistryEntry[]): RegistryEntry | null {
+  const canonicalPart = canonicalText(partName);
+  if (!canonicalPart) return null;
+
+  const scored = entries
+    .map((entry) => {
+      const score = scoreNameMatch(canonicalPart, entry.normalizedName);
+      return { entry, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.entry || null;
+}
+
+async function findBestPartFolder(token: string, stateFolderId: string, entry: RegistryEntry): Promise<DriveFile | null> {
+  const files = await listFilesInFolder(token, stateFolderId);
+  const folders = files.filter((f) => f.mimeType === DRIVE_FOLDER_MIME);
+
+  const idPrefixRegex = entry.id ? new RegExp(`^0*${Number(entry.id)}(?:[_\\s-]|$)`) : null;
+
+  const scored = folders
+    .map((folder) => {
+      const folderCanonical = canonicalText(folder.name);
+      let score = scoreNameMatch(entry.normalizedName, folderCanonical);
+      if (idPrefixRegex && idPrefixRegex.test(folder.name)) score += 8;
+      if (entry.id && folderCanonical.includes(entry.id)) score += 2;
+      return { folder, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.folder || null;
+}
+
+async function loadRegistryContext(token: string, rootFolderId: string): Promise<RegistryContext> {
+  const rootChildren = await listFilesInFolder(token, rootFolderId);
+  const rootFolders = rootChildren.filter((f) => f.mimeType === DRIVE_FOLDER_MIME);
+
+  const pickRootFolder = (predicate: (folderNameCanonical: string, rawName: string) => boolean): string | null => {
+    const match = rootFolders.find((f) => predicate(canonicalText(f.name), f.name));
+    return match?.id || null;
+  };
+
+  const centerFolderId = pickRootFolder((canonical, raw) => /^00/.test(raw.trim()) || canonical.includes("centrum"));
+  const activeFolderId = pickRootFolder((canonical, raw) => /^01/.test(raw.trim()) || canonical.includes("aktiv"));
+  const archiveFolderId = pickRootFolder((canonical, raw) => /^03/.test(raw.trim()) || (canonical.includes("archiv") && /spic|spis/.test(canonical)));
+
+  if (!centerFolderId) {
+    console.warn("[registry] 00_CENTRUM folder not found");
+    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null };
+  }
+
+  const centerFiles = await listFilesInFolder(token, centerFolderId);
+  const registryCandidates = centerFiles
+    .filter((f) => {
+      const lower = f.name.toLowerCase();
+      return f.mimeType === DRIVE_SHEET_MIME || XLS_MIME_TYPES.has(f.mimeType || "") || /\.xlsx?$/.test(lower);
+    })
+    .map((file) => {
+      const canonical = canonicalText(file.name);
+      let score = 0;
+      if (canonical.includes("01indexvsechcasti")) score += 10;
+      else if (canonical.includes("indexvsechcasti")) score += 7;
+      else if (canonical.includes("index") && canonical.includes("cast")) score += 4;
+      if (file.mimeType === DRIVE_SHEET_MIME) score += 1;
+      return { file, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const registryFile = registryCandidates[0]?.file;
+  if (!registryFile) {
+    console.warn("[registry] Registry spreadsheet not found in 00_CENTRUM");
+    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null };
+  }
+
+  const rows = await readRegistryRows(token, registryFile);
+  const entries = parseRegistryEntries(rows);
+  console.log(`[registry] Loaded ${entries.length} entries from ${registryFile.name}`);
+
+  return {
+    entries,
+    activeFolderId,
+    archiveFolderId,
+    sourceFileName: registryFile.name,
+  };
+}
+
+async function resolveCardTarget(
+  token: string,
+  rootFolderId: string,
+  partName: string,
+  registryContext: RegistryContext | null
+): Promise<CardTargetResolution> {
+  const entry = registryContext ? findBestRegistryEntry(partName, registryContext.entries) : null;
+
+  if (!entry || !registryContext) {
+    return {
+      searchRootId: rootFolderId,
+      allowCreate: false,
+      pathLabel: "fallback:root",
+      registryEntry: null,
+    };
+  }
+
+  const shouldUseArchive = isArchivedFromRegistry(entry);
+  const stateFolderId = shouldUseArchive ? registryContext.archiveFolderId : registryContext.activeFolderId;
+
+  if (!stateFolderId) {
+    throw new Error(`Registry matched "${entry.name}", but state folder is missing (${shouldUseArchive ? "archive" : "active"})`);
+  }
+
+  const partFolder = await findBestPartFolder(token, stateFolderId, entry);
+  const searchRootId = partFolder?.id || stateFolderId;
+  const pathLabel = shouldUseArchive
+    ? `03_ARCHIV_SPICICH/${partFolder?.name || "(bez podsložky)"}`
+    : `01_AKTIVNI_FRAGMENTY/${partFolder?.name || "(bez podsložky)"}`;
+
+  return {
+    searchRootId,
+    allowCreate: false,
+    pathLabel,
+    registryEntry: entry,
+  };
+}
+
 async function findCardFile(token: string, partName: string, rootFolderId: string): Promise<CardFileResult | null> {
-  const normalizedPart = partName.toLowerCase().replace(/\s+/g, "").replace(/[_-]/g, "");
+  const normalizedPart = canonicalText(partName);
 
   async function searchFolder(folderId: string): Promise<CardFileResult | null> {
     const files = await listFilesInFolder(token, folderId);
-    
+
     // Collect all matching files, prefer ORIGINAL Google Docs over companion .txt
     const matches: Array<{ file: typeof files[0]; priority: number }> = [];
     for (const f of files) {
-      if (f.mimeType === "application/vnd.google-apps.folder") continue;
+      if (f.mimeType === DRIVE_FOLDER_MIME) continue;
       const baseName = f.name.replace(/\.(txt|md|doc|docx)$/i, "");
-      const normalizedFileName = baseName.toLowerCase().replace(/[_\s-]/g, "");
-      if (normalizedFileName.includes(normalizedPart)) {
+      const normalizedFileName = canonicalText(baseName);
+      if (scoreNameMatch(normalizedPart, normalizedFileName) > 0) {
         // Google Docs (originals) get priority 0 (best), .txt companions created by migration get priority 2
         const isKartaTxt = /^karta_/i.test(f.name) && /\.txt$/i.test(f.name);
-        const priority = f.mimeType === "application/vnd.google-apps.document" ? 0 : isKartaTxt ? 2 : 1;
+        const priority = f.mimeType === DRIVE_DOC_MIME ? 0 : isKartaTxt ? 2 : 1;
         matches.push({ file: f, priority });
       }
     }
-    
+
     // Sort by priority (prefer original Google Docs)
     matches.sort((a, b) => a.priority - b.priority);
-    
+
     for (const { file: f } of matches) {
       try {
         const content = await readFileContent(token, f.id);
@@ -226,7 +517,7 @@ async function findCardFile(token: string, partName: string, rootFolderId: strin
         return { fileId: f.id, fileName: f.name, content, parentFolderId: folderId, mimeType: f.mimeType };
       } catch (e) { console.error(`[findCardFile] Cannot read ${f.name}:`, e); }
     }
-    const subfolders = files.filter(f => f.mimeType === "application/vnd.google-apps.folder");
+    const subfolders = files.filter(f => f.mimeType === DRIVE_FOLDER_MIME);
     for (const sf of subfolders) {
       const result = await searchFolder(sf.id);
       if (result) return result;
@@ -238,18 +529,28 @@ async function findCardFile(token: string, partName: string, rootFolderId: strin
 }
 
 // Update card sections in-place by file ID
-async function updateCardSections(token: string, partName: string, newSections: Record<string, string>, folderId: string): Promise<{ fileName: string; sectionsUpdated: string[]; isNew: boolean }> {
-  const card = await findCardFile(token, partName, folderId);
+async function updateCardSections(
+  token: string,
+  partName: string,
+  newSections: Record<string, string>,
+  folderId: string,
+  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string }
+): Promise<{ fileName: string; sectionsUpdated: string[]; isNew: boolean }> {
+  const allowCreate = options?.allowCreate ?? false;
+  const searchName = options?.searchName || partName;
+  const canonicalPartName = options?.canonicalPartName || partName;
+  const card = await findCardFile(token, searchName, folderId);
   const dateStr = new Date().toISOString().slice(0, 10);
   let existingSections: Record<string, string>;
-  let isNew = false;
 
   if (card) {
     existingSections = parseCardSections(card.content);
     console.log(`[updateCardSections] Card: ${card.fileName}, existing sections: ${Object.keys(existingSections).filter(k => k !== "_preamble").join(",")}`);
   } else {
+    if (!allowCreate) {
+      throw new Error(`Card for "${partName}" not found in resolved location; creation disabled to prevent duplicates.`);
+    }
     existingSections = {};
-    isNew = true;
   }
 
   const updatedKeys: string[] = [];
@@ -266,16 +567,16 @@ async function updateCardSections(token: string, partName: string, newSections: 
     updatedKeys.push(ul);
   }
 
-  const fullCard = buildCard(partName, existingSections);
+  const fullCard = buildCard(canonicalPartName, existingSections);
 
   if (card) {
-    await updateFileById(token, card.fileId, fullCard, card.mimeType, card.parentFolderId, card.fileName);
+    await updateFileById(token, card.fileId, fullCard, card.mimeType);
     return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
-  } else {
-    const newFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
-    await createFileInFolder(token, newFileName, fullCard, folderId);
-    return { fileName: newFileName, sectionsUpdated: updatedKeys, isNew: true };
   }
+
+  const newFileName = `Karta_${canonicalPartName.replace(/\s+/g, "_")}.txt`;
+  await createFileInFolder(token, newFileName, fullCard, folderId);
+  return { fileName: newFileName, sectionsUpdated: updatedKeys, isNew: true };
 }
 
 function isTextCandidateFile(file: DriveFile): boolean {
@@ -383,6 +684,17 @@ serve(async (req) => {
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
     const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+
+    let registryContext: RegistryContext | null = null;
+    if (folderId) {
+      try {
+        registryContext = await loadRegistryContext(token, folderId);
+        console.log(`[registry] activeFolder=${registryContext.activeFolderId || "N/A"}, archiveFolder=${registryContext.archiveFolderId || "N/A"}, entries=${registryContext.entries.length}`);
+      } catch (e) {
+        console.error("[registry] Failed to load registry context:", e);
+      }
+    }
+
     const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
     let hadCardUpdateErrors = false;
@@ -441,9 +753,13 @@ serve(async (req) => {
       const threadParts = [...new Set(threads.map(t => t.part_name))];
       for (const partName of threadParts) {
         try {
-          const card = await findCardFile(token, partName, folderId);
-          if (card) existingCards[partName] = card.content;
-        } catch {}
+          const target = await resolveCardTarget(token, folderId, partName, registryContext);
+          const lookupName = target.registryEntry?.name || partName;
+          const card = await findCardFile(token, lookupName, target.searchRootId);
+          if (card) existingCards[lookupName] = card.content;
+        } catch (e) {
+          console.error(`[prefetch] Failed to resolve card target for ${partName}:`, e);
+        }
       }
       // Cards for parts mentioned in conversations will be found by AI + updateCardSections()
     }
@@ -452,6 +768,49 @@ serve(async (req) => {
     const existingCardsContext = Object.entries(existingCards).map(([name, content]) =>
       `=== EXISTUJÍCÍ KARTA: ${name} ===\n${content.length > 3000 ? `${content.slice(0, 3000)}…` : content}`
     ).join("\n\n");
+
+    let perplexityContext = "";
+    const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+    if (PERPLEXITY_API_KEY && allSummaries.trim().length > 40) {
+      try {
+        const perplexityPrompt = allSummaries.length > 7000 ? `${allSummaries.slice(0, 7000)}…` : allSummaries;
+        const pRes = await fetch("https://api.perplexity.ai/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "sonar-pro",
+            messages: [
+              {
+                role: "system",
+                content: "Jsi klinický rešeršista pro DID. Vrať pouze stručné, praktické body: metody, kontraindikace, rizika a odkazy relevantní k dnešním konverzacím. Žádné domýšlení bez zdroje.",
+              },
+              { role: "user", content: perplexityPrompt },
+            ],
+            search_mode: "academic",
+            search_recency_filter: "year",
+          }),
+        });
+
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          const text = pData.choices?.[0]?.message?.content || "";
+          const citations: string[] = pData.citations || [];
+          if (text) {
+            perplexityContext = `\n\n═══ REŠERŠNÍ KONTEXT (Perplexity) ═══\n${text}`;
+            if (citations.length > 0) {
+              perplexityContext += `\n\nCitace:\n${citations.map((c, i) => `[${i + 1}] ${c}`).join("\n")}`;
+            }
+          }
+        } else {
+          console.warn(`[perplexity] API error ${pRes.status}: ${(await pRes.text()).slice(0, 400)}`);
+        }
+      } catch (e) {
+        console.warn("[perplexity] Rešerše selhala:", e);
+      }
+    }
 
     const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -471,7 +830,7 @@ NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obs
 1. Identifikuj o které části každá konverzace pojednává
 2. Projdi konverzaci odstavec po odstavci
 3. Pro každou informaci urči kam patří podle mapy níže
-4. Pokud karta části neexistuje → vytvoř novou se VŠEMI sekcemi A–M
+4. Pokud karta části neexistuje → vygeneruj návrh sekcí A–M (systém rozhodne o vytvoření karty)
 
 ═══ MAPA ROZHODOVÁNÍ: CO KAM PATŘÍ ═══
 
@@ -553,14 +912,18 @@ Po všech kartách:
 [/REPORT]
 
 ═══ PRAVIDLA ═══
+- Sekce A–L = věcná fakta z konverzací/karet/rešerše. Nepiš domněnky jako fakta.
+- Pokročilé dedukce, průřezové souvislosti a hypotézy piš do SEKCE M (a explicitně je označ „Hypotéza:“).
 - NIKDY nesmaž původní data – pouze doplňuj s datem [YYYY-MM-DD]
 - Metody v sekci I piš CELÉ (postup, proč funguje, zdroj)
+- Pokud čerpáš z rešerše, uváděj konkrétní URL citací
 - Přizpůsob jazyk části (norsky pro norské, česky pro ostatní)
-- Pokud detekuješ novou část bez karty, navrhni obsah pro VŠECHNY sekce A–M
+- Pokud detekuješ novou část bez karty, vygeneruj návrh sekcí A–M, ale karta se vytváří jen pokud to explicitně povolí systém
 - Každá sekce musí obsahovat POUZE informace relevantní pro danou sekci
 
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
-${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`,
+${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
+${perplexityContext}`,
           },
           { role: "user", content: allSummaries },
         ],
@@ -599,9 +962,21 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
 
         if (Object.keys(newSections).length > 0) {
           try {
-            const result = await updateCardSections(token, partName, newSections, folderId);
-            cardsUpdated.push(`${partName} (${result.sectionsUpdated.join(",")}${result.isNew ? " – NOVÁ" : ""})`);
-            console.log(`Updated card: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}`);
+            const target = await resolveCardTarget(token, folderId, partName, registryContext);
+            const resolvedPartName = target.registryEntry?.name || partName;
+            const result = await updateCardSections(
+              token,
+              resolvedPartName,
+              newSections,
+              target.searchRootId,
+              {
+                allowCreate: target.allowCreate,
+                searchName: resolvedPartName,
+                canonicalPartName: resolvedPartName,
+              }
+            );
+            cardsUpdated.push(`${resolvedPartName} (${result.sectionsUpdated.join(",")}${result.isNew ? " – NOVÁ" : ""}) [${target.pathLabel}]`);
+            console.log(`Updated card: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
           } catch (e) {
             hadCardUpdateErrors = true;
             console.error(`Failed to update card for ${partName}:`, e);
