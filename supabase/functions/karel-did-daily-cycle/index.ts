@@ -413,15 +413,17 @@ serve(async (req) => {
       });
     }
 
-    // 3. COMPILE THREAD + CONVERSATION DATA
+    // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
+    const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
+
     const threadSummaries = threads.map(t => {
-      const msgs = (t.messages as any[]) || [];
-      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n")}`;
+      const msgs = ((t.messages as any[]) || []).slice(-20);
+      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const convSummaries = conversations.map(c => {
-      const msgs = (c.messages as any[]) || [];
-      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? m.content : "(multimodal)"}`).join("\n")}`;
+      const msgs = ((c.messages as any[]) || []).slice(-20);
+      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
@@ -448,7 +450,7 @@ serve(async (req) => {
 
     // 3. AI ANALÝZA – full A-M decomposition
     const existingCardsContext = Object.entries(existingCards).map(([name, content]) =>
-      `=== EXISTUJÍCÍ KARTA: ${name} ===\n${content}`
+      `=== EXISTUJÍCÍ KARTA: ${name} ===\n${content.length > 3000 ? `${content.slice(0, 3000)}…` : content}`
     ).join("\n\n");
 
     const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -642,8 +644,11 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       }
     }
 
-    // 6. Mark threads AND conversations as processed only when card updates succeeded
-    if (!hadCardUpdateErrors) {
+    // 6. Mark threads AND conversations as processed only when analysis produced card updates and updates succeeded
+    const hasCardBlocks = /\[KARTA:/i.test(analysisText || "");
+    const shouldMarkProcessed = !hadCardUpdateErrors && hasCardBlocks && cardsUpdated.length > 0;
+
+    if (shouldMarkProcessed) {
       const threadIds = threads.map(t => t.id);
       if (threadIds.length > 0) {
         await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
@@ -652,6 +657,9 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}`
       if (convIds.length > 0) {
         await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
       }
+    } else {
+      hadCardUpdateErrors = true;
+      console.error("No card updates were produced by AI; keeping records unprocessed for retry.");
     }
 
     if (cycle) {
