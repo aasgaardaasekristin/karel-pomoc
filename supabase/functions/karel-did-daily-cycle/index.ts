@@ -833,6 +833,7 @@ serve(async (req) => {
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
         .filter(Boolean)
     );
+    let driveContext = "";
     let existingCards: Record<string, string> = {};
 
     if (folderId) {
