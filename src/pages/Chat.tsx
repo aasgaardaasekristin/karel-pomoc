@@ -875,6 +875,18 @@ const Chat = () => {
   };
 
 
+  // 📓 Zapsat do deníku — Karel připraví zápis, část ho odsouhlasí
+  const handleWriteDiary = useCallback(() => {
+    if (!activeThread || isLoading) return;
+    const diaryPrompt = `📓 Připrav zápis do deníku z našeho dnešního rozhovoru. Shrň co jsme probírali, jakou náladu jsem měl/a a co by stálo za zapamatování. Ukaž mi to – můžu to upravit než to uložíš.`;
+    setInput(diaryPrompt);
+    // Auto-send
+    setTimeout(() => {
+      const btn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
+      if (btn) btn.click();
+    }, 100);
+  }, [activeThread, isLoading]);
+
   const handleDidEndCall = async () => {
     if (activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
