@@ -125,8 +125,22 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
 // ── Update file by ID (Google Doc or plain text) ──
 async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
   if (mimeType === DRIVE_DOC_MIME) {
-    await updateGoogleDocInPlace(token, fileId, content);
-    return { id: fileId, updatedInPlace: true };
+    try {
+      await updateGoogleDocInPlace(token, fileId, content);
+      return { id: fileId, updatedInPlace: true };
+    } catch (e) {
+      console.warn(`[updateFileById] Docs API failed for ${fileId}, falling back to Drive PATCH: ${e}`);
+      const boundary = "----DIDWriteBoundary";
+      const metadata = JSON.stringify({ mimeType: DRIVE_DOC_MIME });
+      const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
+      const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&supportsAllDrives=true`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+        body,
+      });
+      if (!res.ok) throw new Error(`Drive PATCH (gdoc fallback) failed: ${await res.text()}`);
+      return await res.json();
+    }
   }
   const boundary = "----DIDWriteBoundary";
   const metadata = JSON.stringify({});
