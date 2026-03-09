@@ -1178,11 +1178,11 @@ ${perplexityContext}`,
           try {
             const hankaRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
-              headers: { Authorization: \`Bearer \${LOVABLE_API_KEY}\`, "Content-Type": "application/json" },
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash-lite",
                 messages: [
-                  { role: "system", content: \`Jsi Karel. Vygeneruj denní report pro Haničku (první terapeut, životní partnerka).
+                  { role: "system", content: `Jsi Karel. Vygeneruj denní report pro Haničku (první terapeut, životní partnerka).
 Formát HTML emailu. Struktura:
 
 <h2>Krásné odpoledne moje Haničko,</h2>
@@ -1200,28 +1200,28 @@ Seznam aktualizovaných dokumentů
 
 Podpis: "Jsem tady. Tvůj Karel"
 
-Tón: intimní, partnerský, podporující, hluboký.\` },
-                  { role: "user", content: \`Dnešní data:\\n\${finalReportText}\\n\\nAI doporučení:\\n\${aiReportText}\` },
+Tón: intimní, partnerský, podporující, hluboký.` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}` },
                 ],
               }),
             });
             if (hankaRes.ok) {
               const d = await hankaRes.json();
-              hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^\`\`\`html?\\n?/i, "").replace(/\\n?\`\`\`$/i, "");
+              hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
             }
           } catch {}
-          if (!hankaHtml) hankaHtml = \`<pre style="font-family: sans-serif; white-space: pre-wrap;">\${finalReportText}</pre>\`;
+          if (!hankaHtml) hankaHtml = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalReportText}</pre>`;
 
           // KÁŤA's report (professional, relevant to her role only)
           let kataHtml = "";
           try {
             const kataRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
-              headers: { Authorization: \`Bearer \${LOVABLE_API_KEY}\`, "Content-Type": "application/json" },
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash-lite",
                 messages: [
-                  { role: "system", content: \`Jsi Karel. Vygeneruj denní report pro Káťu (druhý terapeut, Hančina dcera). PROFESIONÁLNÍ tón, tyká jí.
+                  { role: "system", content: `Jsi Karel. Vygeneruj denní report pro Káťu (druhý terapeut, Hančina dcera). PROFESIONÁLNÍ tón, tyká jí.
 Formát HTML emailu. Struktura:
 
 <h2>Dobré odpoledne Káťo,</h2>
@@ -1236,34 +1236,34 @@ Pouze části relevantní pro Kátinu roli (socializace, komunikace s kluky, šk
 
 Podpis: "Karel"
 
-DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.\` },
-                  { role: "user", content: \`Dnešní data:\\n\${finalReportText}\\n\\nAI doporučení:\\n\${aiReportText}\` },
+DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}` },
                 ],
               }),
             });
             if (kataRes.ok) {
               const d = await kataRes.json();
-              kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^\`\`\`html?\\n?/i, "").replace(/\\n?\`\`\`$/i, "");
+              kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
             }
           } catch {}
-          if (!kataHtml) kataHtml = \`<pre style="font-family: sans-serif; white-space: pre-wrap;">\${finalReportText}</pre>\`;
+          if (!kataHtml) kataHtml = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalReportText}</pre>`;
 
           // Send separate emails
           await resend.emails.send({
             from: "Karel <karel@hana-chlebcova.cz>",
             to: [MAMKA_EMAIL],
-            subject: \`Karel – denní report \${dateStr}\`,
+            subject: `Karel – denní report ${dateStr}`,
             html: hankaHtml,
           });
-          console.log(\`Daily report sent to Hanka: \${MAMKA_EMAIL}\`);
+          console.log(`Daily report sent to Hanka: ${MAMKA_EMAIL}`);
 
           await resend.emails.send({
             from: "Karel <karel@hana-chlebcova.cz>",
             to: [KATA_EMAIL],
-            subject: \`Karel – report pro Káťu \${dateStr}\`,
+            subject: `Karel – report pro Káťu ${dateStr}`,
             html: kataHtml,
           });
-          console.log(\`Daily report sent to Káťa: \${KATA_EMAIL}\`);
+          console.log(`Daily report sent to Káťa: ${KATA_EMAIL}`);
         } catch (e) { console.error("Email send error:", e); }
       }
     }
