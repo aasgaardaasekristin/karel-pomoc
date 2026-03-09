@@ -1153,6 +1153,7 @@ ${perplexityContext}`,
       }
 
       // Daily report (deterministický, pouze skutečně provedené změny)
+      // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
       const aiReportText = reportMatch?.[1]?.trim() || "";
       const finalReportText = buildDeterministicDailyReport({
@@ -1161,7 +1162,6 @@ ${perplexityContext}`,
         aiRecommendations: extractAiRecommendations(aiReportText),
       });
       const dateStr = new Date().toISOString().slice(0, 10);
-      await uploadOrUpdate(token, `DID_Denni_Report_${dateStr}.txt`, finalReportText, folderId);
 
       // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA
       if (RESEND_API_KEY && finalReportText) {
