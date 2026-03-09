@@ -102,7 +102,7 @@ const Login = () => {
 
           {/* Footer note */}
           <p className="mt-6 text-xs text-muted-foreground">
-            Soukromá aplikace pro profesionální supervizi
+            Soukromá aplikace pro profesionální supervizi a péči
           </p>
         </div>
 
