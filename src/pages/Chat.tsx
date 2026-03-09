@@ -1158,75 +1158,8 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
         enrichContextForSubMode(userMessage);
       }
     } catch (error) {
-      console.error("Chat error:", error, "mode:", mode, "didSubMode:", didSubMode, "msgCount:", messages.length);
+      console.error("Chat error:", error, "mode:", mode, "didSubMode:", didSubMode);
       const errMsg = error instanceof Error ? error.message : "Chyba při komunikaci";
-      // Retry once on network error
-      if (errMsg === "Failed to fetch" && !assistantContent) {
-        console.log("Retrying after Failed to fetch...");
-        try {
-          const retryHeaders = await getAuthHeaders();
-          const retryIsResearch = mode === "research" || (mode === "childcare" && didSubMode === "research");
-          const retryEndpoint = retryIsResearch ? "karel-research" : "karel-chat";
-          const retryMessages = [...messages.slice(-20), { role: "user", content: userContent }];
-          const retryContext = didInitialContext && didInitialContext.length > 40000
-            ? didInitialContext.slice(0, 40000) + "\n[...zkráceno...]"
-            : didInitialContext;
-          const retryBody = retryIsResearch
-            ? { query: userMessage, conversationHistory: messages.slice(-10) }
-            : {
-                messages: retryMessages,
-                mode,
-                ...(mode === "childcare" && retryContext ? { didInitialContext: retryContext } : {}),
-                ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
-              };
-          const retryResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${retryEndpoint}`, {
-            method: "POST", headers: retryHeaders, body: JSON.stringify(retryBody),
-          });
-          if (retryResponse.ok && retryResponse.body) {
-            const reader = retryResponse.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = "";
-            setMessages((prev) => {
-              const n = [...prev];
-              if (n[n.length - 1]?.role === "assistant" && !n[n.length - 1].content) return n;
-              return [...n, { role: "assistant", content: "" }];
-            });
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              let idx: number;
-              while ((idx = buffer.indexOf("\n")) !== -1) {
-                let line = buffer.slice(0, idx);
-                buffer = buffer.slice(idx + 1);
-                if (line.endsWith("\r")) line = line.slice(0, -1);
-                if (line.startsWith(":") || line.trim() === "") continue;
-                if (!line.startsWith("data: ")) continue;
-                const jsonStr = line.slice(6).trim();
-                if (jsonStr === "[DONE]") break;
-                try {
-                  const parsed = JSON.parse(jsonStr);
-                  const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-                  if (content) {
-                    assistantContent += content;
-                    setMessages((prev) => {
-                      const n = [...prev];
-                      if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
-                      return n;
-                    });
-                  }
-                } catch { buffer = line + "\n" + buffer; break; }
-              }
-            }
-            // Retry succeeded
-            setIsLoading(false);
-            textareaRef.current?.focus();
-            return;
-          }
-        } catch (retryErr) {
-          console.error("Retry also failed:", retryErr);
-        }
-      }
       toast.error(errMsg === "Failed to fetch" ? "Spojení selhalo. Zkus to prosím znovu." : errMsg);
       if (!assistantContent) setMessages((prev) => prev.slice(0, -1));
     } finally {
