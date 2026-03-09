@@ -323,7 +323,7 @@ const Chat = () => {
             const response = await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
               { method: "POST", headers, body: JSON.stringify({ 
-                documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb"],
+                documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Terapeuticky_Plan_Aktualni"],
                 subFolder: "00_CENTRUM"
               }) }
             );
@@ -875,6 +875,18 @@ const Chat = () => {
   };
 
 
+  // 📓 Zapsat do deníku — Karel připraví zápis, část ho odsouhlasí
+  const handleWriteDiary = useCallback(() => {
+    if (!activeThread || isLoading) return;
+    const diaryPrompt = `📓 Připrav zápis do deníku z našeho dnešního rozhovoru. Shrň co jsme probírali, jakou náladu jsem měl/a a co by stálo za zapamatování. Ukaž mi to – můžu to upravit než to uložíš.`;
+    setInput(diaryPrompt);
+    // Auto-send
+    setTimeout(() => {
+      const btn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
+      if (btn) btn.click();
+    }, 100);
+  }, [activeThread, isLoading]);
+
   const handleDidEndCall = async () => {
     if (activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
@@ -1293,6 +1305,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 onManualUpdate={handleManualUpdate}
                 onLeaveThread={didSubMode === "cast" && activeThread ? handleLeaveThread : undefined}
                 onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
+                onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
                 isUpdateLoading={isManualUpdateLoading}
                 isHandbookLoading={isHandbookLoading}
                 disabled={isLoading}

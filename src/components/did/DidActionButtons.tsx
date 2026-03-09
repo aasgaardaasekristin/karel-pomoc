@@ -1,4 +1,4 @@
-import { RefreshCw, Loader2, PhoneOff, ArrowLeft, BookOpen } from "lucide-react";
+import { RefreshCw, Loader2, PhoneOff, ArrowLeft, BookOpen, NotebookPen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DidActionButtonsProps {
@@ -7,6 +7,7 @@ interface DidActionButtonsProps {
   onManualUpdate?: () => void;
   onLeaveThread?: () => void;
   onGenerateHandbook?: () => void;
+  onWriteDiary?: () => void;
   isUpdateLoading?: boolean;
   isHandbookLoading?: boolean;
   disabled?: boolean;
@@ -18,6 +19,7 @@ const DidActionButtons = ({
   onManualUpdate,
   onLeaveThread,
   onGenerateHandbook,
+  onWriteDiary,
   isUpdateLoading,
   isHandbookLoading,
   disabled,
@@ -30,6 +32,15 @@ const DidActionButtons = ({
           <ArrowLeft className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Odejít z vlákna</span>
           <span className="sm:hidden">Zpět</span>
+        </Button>
+      )}
+
+      {/* 📓 Zapsat do deníku — only in cast submode */}
+      {onWriteDiary && subMode === "cast" && (
+        <Button variant="outline" size="sm" onClick={onWriteDiary} disabled={disabled} className="h-8 px-2.5 gap-1.5 text-xs border-primary/30 hover:border-primary">
+          <NotebookPen className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">📓 Zapsat do deníku</span>
+          <span className="sm:hidden">📓 Deník</span>
         </Button>
       )}
 
@@ -51,12 +62,12 @@ const DidActionButtons = ({
         </Button>
       )}
 
-      {/* End call button */}
+      {/* 🚪 End call button — Karel NIKDY neukončuje hovor sám */}
       {onEndCall && (
         <Button variant="destructive" size="sm" onClick={onEndCall} disabled={disabled} className="h-8 px-2.5 gap-1.5 text-xs">
           <PhoneOff className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Ukončit rozhovor</span>
-          <span className="sm:hidden">Ukončit</span>
+          <span className="hidden sm:inline">🚪 Ukončit hovor</span>
+          <span className="sm:hidden">🚪 Ukončit</span>
         </Button>
       )}
     </div>
