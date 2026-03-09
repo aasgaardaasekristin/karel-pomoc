@@ -1049,12 +1049,17 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       const headers = await getAuthHeaders();
       const isResearch = mode === "research" || (mode === "childcare" && didSubMode === "research");
       const endpoint = isResearch ? "karel-research" : "karel-chat";
+      // Limit messages to last 30 and didInitialContext to 80k chars to avoid request size issues
+      const recentMessages = [...messages.slice(-30), { role: "user", content: userContent }];
+      const trimmedContext = didInitialContext && didInitialContext.length > 80000
+        ? didInitialContext.slice(0, 80000) + "\n[...kontext zkrácen...]"
+        : didInitialContext;
       const body = isResearch
         ? { query: userMessage, conversationHistory: messages.slice(-20) }
         : {
-            messages: [...messages, { role: "user", content: userContent }],
+            messages: recentMessages,
             mode,
-            ...(mode === "childcare" && didInitialContext ? { didInitialContext } : {}),
+            ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
           };
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`, {
