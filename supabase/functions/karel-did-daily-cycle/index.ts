@@ -161,8 +161,24 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
 
 async function updateFileById(token: string, fileId: string, content: string, mimeType?: string): Promise<any> {
   if (mimeType === DRIVE_DOC_MIME) {
-    await updateGoogleDocInPlace(token, fileId, content);
-    return { id: fileId, updatedInPlace: true };
+    // Try Docs API first, fallback to Drive multipart with MIME conversion
+    try {
+      await updateGoogleDocInPlace(token, fileId, content);
+      return { id: fileId, updatedInPlace: true };
+    } catch (e) {
+      console.warn(`[updateFileById] Docs API failed for ${fileId}, falling back to Drive PATCH: ${e}`);
+      // Fallback: use Drive API multipart upload to overwrite Google Doc content
+      const boundary = "----DIDCycleBoundary";
+      const metadata = JSON.stringify({ mimeType: DRIVE_DOC_MIME });
+      const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
+      const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&supportsAllDrives=true`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+        body,
+      });
+      if (!res.ok) throw new Error(`Drive PATCH (gdoc fallback) failed: ${await res.text()}`);
+      return await res.json();
+    }
   }
 
   // For plain text files: multipart upload
