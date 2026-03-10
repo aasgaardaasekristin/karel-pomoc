@@ -1006,6 +1006,32 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       const cardNames = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.join(", ") : "";
       toast.success(`Aktualizace dokončena – ${totalProcessed} vláken, ${updatedCardsCount} karet${cardNames ? `: ${cardNames}` : ""}`);
 
+      // Phase 2: Automatically sync registry (backfill missing columns C-F)
+      try {
+        toast.info("Synchronizuji registr – doplňuji chybějící sloupce...");
+        const syncHeaders = await getAuthHeaders();
+        const listRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
+          method: "POST", headers: syncHeaders,
+          body: JSON.stringify({ syncRegistry: true, syncMode: "list" }),
+        });
+        const listData = await listRes.json();
+        const entries = listData.entries || [];
+        let synced = 0, errors = 0;
+        for (const entry of entries) {
+          try {
+            const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
+              method: "POST", headers: syncHeaders,
+              body: JSON.stringify({ syncRegistry: true, syncMode: "process_one", fileId: entry.fileId, fileName: entry.fileName, folderLabel: entry.folderLabel }),
+            });
+            const data = await res.json();
+            if (data.result !== "skip") synced++;
+          } catch { errors++; }
+        }
+        if (synced > 0) toast.success(`Registr synchronizován – ${synced} karet aktualizováno`);
+      } catch (e) {
+        console.warn("Registry sync failed:", e);
+      }
+
       // Clear ALL local DID data after successful update
       setActiveThread(null);
       setMessages([]);
