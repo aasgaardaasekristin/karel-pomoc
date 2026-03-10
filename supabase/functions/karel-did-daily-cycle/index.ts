@@ -835,7 +835,29 @@ serve(async (req) => {
 
     const threadSummaries = threads.map(t => {
       const msgs = ((t.messages as any[]) || []).slice(-20);
-      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
+      
+      // ═══ SWITCH DETECTION: Detect if part changed mid-thread ═══
+      // Find last user message that looks like a self-identification
+      let detectedSwitch = "";
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m.role !== "user" || typeof m.content !== "string") continue;
+        const switchMatch = m.content.match(/(?:jsem|já jsem|tady|i am|i'm|my name is)\s+([A-ZÁ-Ž][a-zá-ž]{1,20})/i);
+        if (switchMatch) {
+          const detectedName = switchMatch[1].trim();
+          const originalName = (t.part_name || "").trim().toLowerCase();
+          if (detectedName.toLowerCase() !== originalName) {
+            detectedSwitch = detectedName;
+          }
+          break;
+        }
+      }
+      
+      const switchNote = detectedSwitch 
+        ? `\n⚠️ SWITCH DETEKOVÁN: Vlákno začalo jako "${t.part_name}" ale část se představila jako "${detectedSwitch}". Přiřaď konverzaci k POSLEDNÍ identifikované části (${detectedSwitch}), NE k původní (${t.part_name}).`
+        : "";
+      
+      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const convSummaries = conversations.map(c => {
