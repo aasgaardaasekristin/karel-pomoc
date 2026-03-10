@@ -1808,6 +1808,45 @@ SEKCE M – Karlova analytická poznámka:
 - Spojitosti s jinými částmi/klastry
 - Hypotézy a doporučený směr
 
+═══ FORMÁTOVÁNÍ OBSAHU SEKCÍ – STRIKTNĚ DODRŽUJ ═══
+
+Obsah každé sekce musí být PŘEHLEDNÝ a STRUKTUROVANÝ, ne surový výpis. Dodržuj tyto zásady:
+
+1. STRUKTUROVANÉ POLE: Základní údaje piš jako odrážky s tučným popiskem:
+   * ID: 005
+   * Jméno: Lincoln
+   * Typ: Ochranná část / Strážce
+   * Věk: ~14 let
+   * Status: ✅ Aktivní
+   Použij prefix "* " (hvězdička + mezera) před každým polem.
+
+2. PODSEKCE: Logické celky odděluj pojmenovanými podsekčními nadpisy (bez ══):
+   Historický kontext:
+   ...text...
+   
+   Co uklidňuje:
+   ...text...
+   
+   Senzorické kotvy:
+   ...odrážkový seznam...
+
+3. ODRÁŽKY: Pro seznamy použij "- " prefix:
+   - Lyžování, rychlost (letí jako pták)
+   - Vůně lesa po dešti
+   - Hudba (piano)
+
+4. TABULKY: Pro chronologické záznamy (sekce E, G, K, L) použij řádky oddělené tabulátorem:
+   2026-03-10\tProbuzení – komunikace s Karlem\tStabilní\tPokračovat
+
+5. ZÁKAZ:
+   - ŽÁDNÉ ══ nebo ── dekorativní čáry
+   - ŽÁDNÉ opakování stejné informace
+   - ŽÁDNÉ dlouhé odstavce bez struktury
+   - NEPIŠ "[2026-03-10] - text" jako surový log – místo toho integruj informaci do strukturovaných polí
+
+6. DATUM: Každý nový záznam začni datem [YYYY-MM-DD], ale formátuj ho čitelně:
+   [2026-03-10] Nový poznatek: část vyjádřila potřebu bezpečí. (Zdroj: Konverzace s Karlem)
+
 ═══ VÝSTUPNÍ FORMÁT – STRIKTNĚ DODRŽUJ ═══
 
 Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nové informace:
