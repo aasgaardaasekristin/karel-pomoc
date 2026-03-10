@@ -1278,8 +1278,8 @@ ${perplexityContext}`,
                 pendingSections: Object.keys(newSections),
               });
 
-              // Send alert email
-              if (RESEND_API_KEY) {
+              // Send alert email – only from cron
+              if (shouldSendEmails && RESEND_API_KEY) {
                 try {
                   const resend = new Resend(RESEND_API_KEY);
                   await resend.emails.send({
