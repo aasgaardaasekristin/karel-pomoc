@@ -1315,8 +1315,10 @@ serve(async (req) => {
       }
     }
 
+    // Only run full normalization on explicit reformat request, NOT during cron runs
+    // (Docs API formatting for all 25+ cards exceeds edge function memory limit)
     const forceReformat = !!requestBody?.reformat;
-    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId, forceReformat) : [];
+    const normalizedCardFiles = (forceReformat && folderId) ? await normalizeCardStructures(token, folderId, true) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
