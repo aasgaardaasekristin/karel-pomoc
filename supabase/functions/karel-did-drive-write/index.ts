@@ -762,7 +762,7 @@ serve(async (req) => {
         });
       }
 
-      const fileName = `${dateStr}_${topic.replace(/\s+/g, "_")}.txt`;
+      const fileName = `${dateStr}_${topic.replace(/\s+/g, "_")}`;
       await createFileInFolder(token, fileName, content, targetFolderId);
       console.log(`[create-agreement] Created: ${fileName}`);
 
