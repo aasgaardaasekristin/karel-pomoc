@@ -475,12 +475,30 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
   };
 }
 
+async function moveFileToFolder(token: string, fileId: string, newParentId: string, oldParentId: string): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${newParentId}&removeParents=${oldParentId}&supportsAllDrives=true`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) }
+  );
+  if (!res.ok) throw new Error(`Move file failed (${res.status}): ${await res.text()}`);
+}
+
+async function moveFolderToParent(token: string, folderId: string, newParentId: string, oldParentId: string): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${folderId}?addParents=${newParentId}&removeParents=${oldParentId}&supportsAllDrives=true`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) }
+  );
+  if (!res.ok) throw new Error(`Move folder failed (${res.status}): ${await res.text()}`);
+}
+
+type CardActionType = "aktualizace" | "nova_karta" | "probuzeni_z_archivu";
+
 async function resolveCardTarget(
   token: string,
   rootFolderId: string,
   partName: string,
   registryContext: RegistryContext | null
-): Promise<CardTargetResolution> {
+): Promise<CardTargetResolution & { actionType: CardActionType }> {
   const entry = registryContext ? findBestRegistryEntry(partName, registryContext.entries) : null;
 
   if (!registryContext) {
@@ -489,10 +507,11 @@ async function resolveCardTarget(
       allowCreate: false,
       pathLabel: "fallback:root",
       registryEntry: null,
+      actionType: "aktualizace",
     };
   }
 
-  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi (nikdy ne fallback po registru)
+  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi
   if (!entry) {
     const newPartRoot = registryContext.activeFolderId || rootFolderId;
     return {
@@ -502,10 +521,39 @@ async function resolveCardTarget(
         ? "01_AKTIVNI_FRAGMENTY/(nová část mimo registr)"
         : "fallback:root/(nová část mimo registr)",
       registryEntry: null,
+      actionType: "nova_karta",
     };
   }
 
   const shouldUseArchive = isArchivedFromRegistry(entry);
+  
+  // ═══ PROBUZENÍ Z ARCHIVU: Pokud je část archivovaná ale komunikuje, přesuň ji ═══
+  if (shouldUseArchive && registryContext.archiveFolderId && registryContext.activeFolderId) {
+    console.log(`[PROBUZENÍ] 🔄 Část "${entry.name}" je v archivu ale komunikuje – hledám kartu v archivu pro přesun...`);
+    const partFolder = await findBestPartFolder(token, registryContext.archiveFolderId, entry);
+    
+    if (partFolder) {
+      // Přesuň celou složku části z archivu do aktivních
+      try {
+        await moveFolderToParent(token, partFolder.id, registryContext.activeFolderId, registryContext.archiveFolderId);
+        console.log(`[PROBUZENÍ] ✅ Složka "${partFolder.name}" přesunuta z 03_ARCHIV do 01_AKTIVNI`);
+      } catch (e) {
+        console.error(`[PROBUZENÍ] ❌ Přesun složky selhal:`, e);
+      }
+      
+      return {
+        searchRootId: partFolder.id,
+        allowCreate: false,
+        pathLabel: `01_AKTIVNI_FRAGMENTY/${partFolder.name} (přesunuto z archivu)`,
+        registryEntry: entry,
+        actionType: "probuzeni_z_archivu",
+      };
+    }
+    
+    // Karta v archivu nenalezena – zkus aktivní složku
+    console.warn(`[PROBUZENÍ] Složka části "${entry.name}" nenalezena v archivu, zkouším aktivní...`);
+  }
+
   const stateFolderId = shouldUseArchive ? registryContext.archiveFolderId : registryContext.activeFolderId;
 
   if (!stateFolderId) {
@@ -523,6 +571,7 @@ async function resolveCardTarget(
     allowCreate: false,
     pathLabel,
     registryEntry: entry,
+    actionType: "aktualizace",
   };
 }
 
@@ -654,6 +703,7 @@ interface SuccessfulCardUpdate {
   fileName: string;
   sectionsUpdated: string[];
   pathLabel: string;
+  actionType: CardActionType;
 }
 
 interface BlockedCardUpdate {
@@ -685,10 +735,15 @@ function buildDeterministicDailyReport(params: {
   lines.push("Co bylo SKUTEČNĚ zapsáno:");
 
   if (params.successful.length === 0) {
-    lines.push("- Žádná karta nebyla dnes bezpečně aktualizována.");
+    lines.push("- Žádná karta nebyla dnes aktualizována.");
   } else {
     for (const item of params.successful) {
-      lines.push(`- ${item.partName}: sekce ${item.sectionsUpdated.join(", ")} [${item.pathLabel}]`);
+      const actionLabel = item.actionType === "nova_karta"
+        ? "📝 NOVÁ KARTA ZALOŽENA"
+        : item.actionType === "probuzeni_z_archivu"
+          ? "🔄 PROBUZENÍ – karta přesunuta z archivu do aktivních"
+          : "✏️ Zápis do existující karty";
+      lines.push(`- ${item.partName}: ${actionLabel}, sekce ${item.sectionsUpdated.join(", ")} [${item.pathLabel}]`);
     }
   }
 
@@ -762,6 +817,15 @@ serve(async (req) => {
   if (!isCronCall) {
     const authResult = await requireAuth(req);
     if (authResult instanceof Response) return authResult;
+  }
+
+  // ═══ EMAIL GUARD: Only send report emails from scheduled cron calls ═══
+  let requestBody: any = {};
+  try { requestBody = await req.clone().json(); } catch {}
+  const isCronSource = requestBody?.source === "cron";
+  const shouldSendEmails = isCronCall && isCronSource;
+  if (!shouldSendEmails) {
+    console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
   }
 
   try {
@@ -1090,6 +1154,11 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 
 Po všech kartách:
 [REPORT]
+- ⚠️ TERMINOLOGIE: Rozlišuj přesně:
+  • "Zápis do existující karty [jméno]" = karta JIŽ EXISTUJE, pouze jsi zapsal nový obsah
+  • "Založena NOVÁ karta [jméno]" = část NEMĚLA kartu, vytvořil jsi novou
+  • "Probuzení [jméno] z archivu" = karta existovala v 03_ARCHIV, přesunuta do 01_AKTIVNI
+  NIKDY neříkej "založil jsem kartu" pokud karta již existovala!
 - Co bylo změněno (karta + sekce) a proč
 - Shrnutí: kdo dnes mluvil a jaké části byly aktivní
 - Doporučení pro mamku (co dělat večer + proč)
@@ -1214,8 +1283,8 @@ ${perplexityContext}`,
                 pendingSections: Object.keys(newSections),
               });
 
-              // Send alert email
-              if (RESEND_API_KEY) {
+              // Send alert email – only from cron
+              if (shouldSendEmails && RESEND_API_KEY) {
                 try {
                   const resend = new Resend(RESEND_API_KEY);
                   await resend.emails.send({
@@ -1253,14 +1322,19 @@ ${perplexityContext}`,
                 canonicalPartName: resolvedPartName,
               }
             );
-            cardsUpdated.push(`${resolvedPartName} (${result.sectionsUpdated.join(",")}${result.isNew ? " – NOVÁ" : ""}) [${target.pathLabel}]`);
+            const effectiveAction: CardActionType = result.isNew ? "nova_karta" : target.actionType;
+            const actionLabel = effectiveAction === "nova_karta" ? "NOVÁ KARTA" 
+              : effectiveAction === "probuzeni_z_archivu" ? "PROBUZENÍ Z ARCHIVU" 
+              : "AKTUALIZACE";
+            cardsUpdated.push(`${resolvedPartName} (${actionLabel}: ${result.sectionsUpdated.join(",")}) [${target.pathLabel}]`);
             successfulCardUpdates.push({
               partName: resolvedPartName,
               fileName: result.fileName,
               sectionsUpdated: result.sectionsUpdated,
               pathLabel: target.pathLabel,
+              actionType: effectiveAction,
             });
-            console.log(`Updated card: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
+            console.log(`[card] ${actionLabel}: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
           } catch (e) {
             hadCardUpdateErrors = true;
             console.error(`Failed to update card for ${rawPartName}:`, e);
@@ -1279,8 +1353,8 @@ ${perplexityContext}`,
       });
       const dateStr = new Date().toISOString().slice(0, 10);
 
-      // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA
-      if (RESEND_API_KEY && finalReportText) {
+      // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA – ONLY from cron
+      if (shouldSendEmails && RESEND_API_KEY && finalReportText) {
         try {
           const resend = new Resend(RESEND_API_KEY);
           const dateCz = new Date().toLocaleDateString("cs-CZ");
