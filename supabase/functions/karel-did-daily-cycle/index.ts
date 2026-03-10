@@ -1504,7 +1504,7 @@ Formát HTML emailu:
 
     const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
     const knownThreadParts = new Set(
-      threads
+      reportThreads
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
         .filter(Boolean)
     );
