@@ -1046,14 +1046,16 @@ async function updateCardSections(
 
 function isTextCandidateFile(file: DriveFile): boolean {
   if (file.mimeType === "application/vnd.google-apps.folder") return false;
+  if (file.mimeType === DRIVE_SHEET_MIME) return false;
+  for (const mime of XLS_MIME_TYPES) { if (file.mimeType === mime) return false; }
 
   const lower = file.name.toLowerCase();
-  if (lower.startsWith("did_")) return false;
-  if (lower.startsWith("00_") || lower.startsWith("01_") || lower.startsWith("02_")) return false;
+  // Skip registry/index/instruction files but NOT DID_ card files
+  if (lower.startsWith("00_") || lower.startsWith("01_index") || lower.startsWith("02_instrukce") || lower.startsWith("02_klast")) return false;
   if (lower.includes("denni_report") || lower.includes("tydenni_report")) return false;
   if (lower.includes("instrukce") || lower.includes("mapa_vztahu")) return false;
 
-  // Accept Google Docs (no extension, MIME = application/vnd.google-apps.document)
+  // Accept Google Docs (DID cards stored as Google Docs)
   if (file.mimeType === DRIVE_DOC_MIME) return true;
 
   const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
