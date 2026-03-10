@@ -828,8 +828,53 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
   }
 }
 
+// ═══ AUTO-INCREMENT ID: Find next available ID from registry ═══
+function getNextRegistryId(entries: RegistryEntry[]): number {
+  let maxId = 0;
+  for (const e of entries) {
+    const num = parseInt(e.id, 10);
+    if (!isNaN(num) && num > maxId) maxId = num;
+  }
+  return maxId + 1;
+}
 
-// ═══ IMMEDIATE AWAKENING: Update card content + registry right after file move ═══
+// ═══ ADD NEW ROW TO REGISTRY SPREADSHEET ═══
+async function addRegistryRow(
+  token: string,
+  registryFileId: string,
+  sheetName: string,
+  id: string,
+  name: string,
+  status: string = "Aktivní"
+): Promise<boolean> {
+  try {
+    const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
+    const range = `${escapedSheet}!A:E`;
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${registryFileId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          values: [[id, name, status, "", ""]],
+        }),
+      }
+    );
+    if (res.ok) {
+      console.log(`[addRegistryRow] ✅ Added new row: ID=${id}, Name=${name}, Status=${status}`);
+      return true;
+    } else {
+      const errText = await res.text();
+      console.error(`[addRegistryRow] ❌ Sheets API error: ${errText}`);
+      return false;
+    }
+  } catch (e) {
+    console.error(`[addRegistryRow] Failed:`, e);
+    return false;
+  }
+}
+
+
 async function performImmediateAwakeningUpdates(
   token: string,
   fileId: string,
