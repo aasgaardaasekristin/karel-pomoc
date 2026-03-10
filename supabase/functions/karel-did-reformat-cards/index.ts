@@ -691,6 +691,60 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
+    // ═══ MODE: PROCESS_CUSTOM ═══
+    // For cards NOT in registry (e.g. "i am unhappy", "raketa", "Nikolas", "Lincoln")
+    if (mode === "process_custom") {
+      const { fileId, partName } = body;
+      if (!fileId || !partName) throw new Error("process_custom requires fileId and partName");
+      const skipResearch = body.skipResearch === true;
+
+      console.log(`[reformat-custom] Processing ${partName} (${fileId}) skipResearch=${skipResearch}`);
+
+      let rawContent: string;
+      try {
+        rawContent = await readFileContent(token, fileId);
+      } catch (e) {
+        throw new Error(`Cannot read file ${fileId}: ${e}`);
+      }
+
+      // Fake registry entry
+      const fakeEntry: RegistryEntry = {
+        id: "???",
+        name: partName,
+        status: "Aktivní",
+        cluster: "-",
+        note: "",
+        normalizedName: canonicalText(partName),
+      };
+
+      let perplexityContent = "";
+      if (!skipResearch) {
+        try { perplexityContent = await searchPerplexity(partName, rawContent); } catch {}
+      }
+
+      const reformattedContent = await reformatCardWithAI(partName, rawContent, perplexityContent, fakeEntry, "");
+
+      if (!reformattedContent || reformattedContent.length < 100) {
+        return new Response(JSON.stringify({
+          mode: "process_custom", name: partName, result: "error",
+          detail: "AI vrátilo příliš krátký výstup",
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const cleanedContent = reformattedContent.replace(/[═]+/g, "").replace(/[─]+/g, "");
+      await updateGoogleDocInPlace(token, fileId, cleanedContent);
+
+      try { await applyDocFormatting(token, fileId, cleanedContent); } catch {}
+
+      console.log(`[reformat-custom] ✅ ${partName} done (${cleanedContent.length} chars)`);
+
+      return new Response(JSON.stringify({
+        mode: "process_custom", name: partName, result: "reformatted",
+        detail: `${partName} přeformátováno (${cleanedContent.length} znaků)`,
+        contentLength: cleanedContent.length,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // ═══ MODE: CLEANUP_TXT ═══
     if (mode === "cleanup_txt") {
       const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "Kartoteka_DID");
