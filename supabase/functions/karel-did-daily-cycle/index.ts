@@ -1993,6 +1993,7 @@ ${perplexityContext}`,
                 allowCreate: target.allowCreate,
                 searchName: resolvedPartName,
                 canonicalPartName: resolvedPartName,
+                registryContext,
               }
             );
             const effectiveAction: CardActionType = result.isNew ? "nova_karta" : target.actionType;
