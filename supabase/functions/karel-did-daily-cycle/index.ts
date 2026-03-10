@@ -115,6 +115,8 @@ function scoreNameMatch(left: string, right: string): number {
 }
 
 async function updateGoogleDocInPlace(token: string, fileId: string, content: string): Promise<void> {
+  const normalizedContent = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -142,7 +144,7 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
   requests.push({
     insertText: {
       location: { index: 1 },
-      text: content,
+      text: normalizedContent,
     },
   });
 
@@ -159,16 +161,36 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
     throw new Error(`Docs batchUpdate failed (${updateRes.status}): ${await updateRes.text()}`);
   }
 
-  // Step 2: Apply formatting (headings) to section headers
+  // Step 2: Apply formatting (headings + bold labels)
   try {
-    const lines = content.split("\n");
+    // Read authoritative length after insert to avoid out-of-range formatting requests
+    let segmentEndIndex = normalizedContent.length + 1;
+    const refreshedDocRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (refreshedDocRes.ok) {
+      const refreshedDoc = await refreshedDocRes.json();
+      const refreshedBody = refreshedDoc?.body?.content || [];
+      segmentEndIndex = refreshedBody.length > 0
+        ? Number(refreshedBody[refreshedBody.length - 1]?.endIndex || segmentEndIndex)
+        : segmentEndIndex;
+    }
+
+    const clampRange = (startIndex: number, endIndex: number) => {
+      const safeStart = Math.max(1, Math.min(startIndex, segmentEndIndex - 1));
+      const safeEnd = Math.max(safeStart + 1, Math.min(endIndex, segmentEndIndex));
+      if (safeStart >= segmentEndIndex || safeEnd <= safeStart) return null;
+      return { startIndex: safeStart, endIndex: safeEnd };
+    };
+
+    const lines = normalizedContent.split("\n");
     const formatRequests: any[] = [];
     let charIndex = 1; // Docs API uses 1-based index
 
     // Labels that should be bold (the label part before the value)
     const BOLD_LABELS = [
       "ID:", "Jméno:", "Věk:", "Pohlaví:", "Jazyk:", "Typ:", "Klastr:",
-      "Status:", "Historický kontext", "Datum", "Událost",
+      "Status:", "Historický kontext", "Historický kontext:", "Datum", "Událost",
       "Co se dělo", "Stabilizační opatření", "Další krok",
       "Co bylo navrženo", "Výsledek", "Hodnocení",
       "Období", "Aktivita", "Poznámka",
@@ -183,59 +205,78 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
       if (lineLen > 0) {
         // Main card title (═══ KARTA ČÁSTI: ...)
         if (/^═+\s*KARTA\s+[ČC]ÁSTI/i.test(line)) {
-          formatRequests.push({
-            updateParagraphStyle: {
-              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
-              paragraphStyle: { namedStyleType: "HEADING_1" },
-              fields: "namedStyleType",
-            },
-          });
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({
+              updateParagraphStyle: {
+                range,
+                paragraphStyle: { namedStyleType: "HEADING_1" },
+                fields: "namedStyleType",
+              },
+            });
+          }
         }
         // Section headers (═══ SEKCE A – ...)
         else if (/^═*\s*SEKCE\s+[A-M]\s*[–\-:]/i.test(line)) {
-          formatRequests.push({
-            updateParagraphStyle: {
-              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
-              paragraphStyle: { namedStyleType: "HEADING_2" },
-              fields: "namedStyleType",
-            },
-          });
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({
+              updateParagraphStyle: {
+                range,
+                paragraphStyle: { namedStyleType: "HEADING_2" },
+                fields: "namedStyleType",
+              },
+            });
+          }
         }
         // Sub-headers
         else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav|Bezpečnostní pravidla|Situační karta|NAVAZUJÍCÍ DOKUMENTY)/i.test(line)) {
-          formatRequests.push({
-            updateParagraphStyle: {
-              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
-              paragraphStyle: { namedStyleType: "HEADING_3" },
-              fields: "namedStyleType",
-            },
-          });
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({
+              updateParagraphStyle: {
+                range,
+                paragraphStyle: { namedStyleType: "HEADING_3" },
+                fields: "namedStyleType",
+              },
+            });
+          }
         }
         // Thin dividers and analysis labels
         else if (/^(─+|KONTEXT:|KLÍČOVÉ TÉMA|EMOCE TERAPEUTA|PŘENOS|RIZIKA:|KOMPLEXNÍ ANALÝZA|PRŮBĚH SUPERVIZE|DOPORUČENÉ METODY|HODNOCENÍ RIZIK|HLASOVÁ ANALÝZA|POZNÁMKY:|UPOZORNĚNÍ KARLA)/i.test(line)) {
-          formatRequests.push({
-            updateParagraphStyle: {
-              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
-              paragraphStyle: { namedStyleType: "HEADING_3" },
-              fields: "namedStyleType",
-            },
-          });
-        }
-
-        // Bold labels: find label prefix and bold just that part
-        const trimmedLine = line.trimStart();
-        const leadingSpaces = line.length - trimmedLine.length;
-        for (const label of BOLD_LABELS) {
-          if (trimmedLine.startsWith(label)) {
-            const boldStart = charIndex + leadingSpaces;
-            const boldEnd = boldStart + label.length;
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
             formatRequests.push({
-              updateTextStyle: {
-                range: { startIndex: boldStart, endIndex: boldEnd },
-                textStyle: { bold: true },
-                fields: "bold",
+              updateParagraphStyle: {
+                range,
+                paragraphStyle: { namedStyleType: "HEADING_3" },
+                fields: "namedStyleType",
               },
             });
+          }
+        }
+
+        // Bold labels: support optional bullet prefix (* / • / -)
+        const trimmedLine = line.trimStart();
+        const leadingSpaces = line.length - trimmedLine.length;
+        const bulletPrefixMatch = trimmedLine.match(/^([*•\-]\s+)/);
+        const bulletPrefixLen = bulletPrefixMatch ? bulletPrefixMatch[1].length : 0;
+        const labelLine = bulletPrefixLen > 0 ? trimmedLine.slice(bulletPrefixLen) : trimmedLine;
+
+        for (const label of BOLD_LABELS) {
+          if (labelLine.startsWith(label)) {
+            const boldStart = charIndex + leadingSpaces + bulletPrefixLen;
+            const boldEnd = boldStart + label.length;
+            const range = clampRange(boldStart, boldEnd);
+            if (range) {
+              formatRequests.push({
+                updateTextStyle: {
+                  range,
+                  textStyle: { bold: true },
+                  fields: "bold",
+                },
+              });
+            }
             break;
           }
         }
@@ -245,13 +286,16 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
           const boldStart = charIndex + leadingSpaces;
           const colonIdx = trimmedLine.indexOf("[");
           const boldEnd = colonIdx > 0 ? boldStart + colonIdx : boldStart + Math.min(lineLen, 60);
-          formatRequests.push({
-            updateTextStyle: {
-              range: { startIndex: boldStart, endIndex: boldEnd },
-              textStyle: { bold: true },
-              fields: "bold",
-            },
-          });
+          const range = clampRange(boldStart, boldEnd);
+          if (range) {
+            formatRequests.push({
+              updateTextStyle: {
+                range,
+                textStyle: { bold: true },
+                fields: "bold",
+              },
+            });
+          }
         }
       }
       charIndex += lineLen + 1;
@@ -273,7 +317,7 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
         if (!fmtRes.ok) {
           console.warn(`[updateGoogleDocInPlace] Formatting chunk failed (non-fatal): ${await fmtRes.text()}`);
         } else {
-          console.log(`[updateGoogleDocInPlace] Applied ${chunk.length} format styles (chunk ${Math.floor(i/CHUNK)+1})`);
+          console.log(`[updateGoogleDocInPlace] Applied ${chunk.length} format styles (chunk ${Math.floor(i / CHUNK) + 1})`);
         }
       }
     }
