@@ -551,10 +551,11 @@ async function resolveCardTarget(
   // ═══ PROBUZENÍ Z ARCHIVU: Pokud je část archivovaná ale komunikuje, přesuň ji ═══
   if (shouldUseArchive && registryContext.archiveFolderId && registryContext.activeFolderId) {
     console.log(`[PROBUZENÍ] 🔄 Část "${entry.name}" je v archivu ale komunikuje – hledám kartu v archivu pro přesun...`);
+    
+    // 1) Zkus najít podsložku části v archivu
     const partFolder = await findBestPartFolder(token, registryContext.archiveFolderId, entry);
     
     if (partFolder) {
-      // Přesuň celou složku části z archivu do aktivních
       try {
         await moveFolderToParent(token, partFolder.id, registryContext.activeFolderId, registryContext.archiveFolderId);
         console.log(`[PROBUZENÍ] ✅ Složka "${partFolder.name}" přesunuta z 03_ARCHIV do 01_AKTIVNI`);
@@ -571,8 +572,29 @@ async function resolveCardTarget(
       };
     }
     
-    // Karta v archivu nenalezena – zkus aktivní složku
-    console.warn(`[PROBUZENÍ] Složka části "${entry.name}" nenalezena v archivu, zkouším aktivní...`);
+    // 2) Složka nenalezena – zkus najít soubor (kartu) přímo v archivu
+    const partFile = await findBestPartFile(token, registryContext.archiveFolderId, entry);
+    
+    if (partFile) {
+      console.log(`[PROBUZENÍ] 📄 Nalezen soubor "${partFile.name}" přímo v archivu – přesouvám do aktivních...`);
+      try {
+        await moveFileToFolder(token, partFile.id, registryContext.activeFolderId, registryContext.archiveFolderId);
+        console.log(`[PROBUZENÍ] ✅ Soubor "${partFile.name}" přesunut z 03_ARCHIV do 01_AKTIVNI`);
+      } catch (e) {
+        console.error(`[PROBUZENÍ] ❌ Přesun souboru selhal:`, e);
+      }
+      
+      return {
+        searchRootId: registryContext.activeFolderId,
+        allowCreate: false,
+        pathLabel: `01_AKTIVNI_FRAGMENTY/${partFile.name} (přesunuto z archivu)`,
+        registryEntry: entry,
+        actionType: "probuzeni_z_archivu",
+      };
+    }
+    
+    // 3) Nic nenalezeno v archivu – zkus aktivní složku
+    console.warn(`[PROBUZENÍ] Část "${entry.name}" nenalezena v archivu (ani složka, ani soubor), zkouším aktivní...`);
   }
 
   const stateFolderId = shouldUseArchive ? registryContext.archiveFolderId : registryContext.activeFolderId;
