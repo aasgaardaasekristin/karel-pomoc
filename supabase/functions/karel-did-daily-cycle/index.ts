@@ -165,6 +165,19 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
     const formatRequests: any[] = [];
     let charIndex = 1; // Docs API uses 1-based index
 
+    // Labels that should be bold (the label part before the value)
+    const BOLD_LABELS = [
+      "ID:", "Jméno:", "Věk:", "Pohlaví:", "Jazyk:", "Typ:", "Klastr:",
+      "Status:", "Historický kontext", "Datum", "Událost",
+      "Co se dělo", "Stabilizační opatření", "Další krok",
+      "Co bylo navrženo", "Výsledek", "Hodnocení",
+      "Období", "Aktivita", "Poznámka",
+      "Cíl:", "Vhodné nyní:", "Postup:", "Proč funguje:", "Zdroj:", "Obtížnost:",
+      "Metoda:", "Termín:", "Poznámky:", "Jádrové přesvědčení",
+      "Ochranný mechanismus:", "Vzorce chování:",
+      "Doporučený směr:", "Hypotéza:",
+    ];
+
     for (const line of lines) {
       const lineLen = line.length;
       if (lineLen > 0) {
@@ -188,8 +201,8 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
             },
           });
         }
-        // Sub-headers (lines starting with ⚠️ or specific labels like "Základní identita", etc.)
-        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav)/i.test(line)) {
+        // Sub-headers
+        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav|Bezpečnostní pravidla|Situační karta|NAVAZUJÍCÍ DOKUMENTY)/i.test(line)) {
           formatRequests.push({
             updateParagraphStyle: {
               range: { startIndex: charIndex, endIndex: charIndex + lineLen },
@@ -198,33 +211,70 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
             },
           });
         }
-        // Thin dividers and labels like "KONTEXT:", "KOMPLEXNÍ ANALÝZA" etc.
-        else if (/^(─+|KONTEXT:|KLÍČOVÉ TÉMA|EMOCE TERAPEUTA|PŘENOS|RIZIKA:|KOMPLEXNÍ ANALÝZA|PRŮBĚH SUPERVIZE|DOPORUČENÉ METODY|HODNOCENÍ RIZIK|HLASOVÁ ANALÝZA|POZNÁMKY:)/i.test(line)) {
+        // Thin dividers and analysis labels
+        else if (/^(─+|KONTEXT:|KLÍČOVÉ TÉMA|EMOCE TERAPEUTA|PŘENOS|RIZIKA:|KOMPLEXNÍ ANALÝZA|PRŮBĚH SUPERVIZE|DOPORUČENÉ METODY|HODNOCENÍ RIZIK|HLASOVÁ ANALÝZA|POZNÁMKY:|UPOZORNĚNÍ KARLA)/i.test(line)) {
           formatRequests.push({
             updateParagraphStyle: {
               range: { startIndex: charIndex, endIndex: charIndex + lineLen },
               paragraphStyle: { namedStyleType: "HEADING_3" },
               fields: "namedStyleType",
+            },
+          });
+        }
+
+        // Bold labels: find label prefix and bold just that part
+        const trimmedLine = line.trimStart();
+        const leadingSpaces = line.length - trimmedLine.length;
+        for (const label of BOLD_LABELS) {
+          if (trimmedLine.startsWith(label)) {
+            const boldStart = charIndex + leadingSpaces;
+            const boldEnd = boldStart + label.length;
+            formatRequests.push({
+              updateTextStyle: {
+                range: { startIndex: boldStart, endIndex: boldEnd },
+                textStyle: { bold: true },
+                fields: "bold",
+              },
+            });
+            break;
+          }
+        }
+
+        // Also bold lines starting with ► (task items)
+        if (trimmedLine.startsWith("►")) {
+          const boldStart = charIndex + leadingSpaces;
+          const colonIdx = trimmedLine.indexOf("[");
+          const boldEnd = colonIdx > 0 ? boldStart + colonIdx : boldStart + Math.min(lineLen, 60);
+          formatRequests.push({
+            updateTextStyle: {
+              range: { startIndex: boldStart, endIndex: boldEnd },
+              textStyle: { bold: true },
+              fields: "bold",
             },
           });
         }
       }
-      charIndex += lineLen + 1; // +1 for newline character
+      charIndex += lineLen + 1;
     }
 
     if (formatRequests.length > 0) {
-      const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ requests: formatRequests }),
-      });
-      if (!fmtRes.ok) {
-        console.warn(`[updateGoogleDocInPlace] Formatting failed (non-fatal): ${await fmtRes.text()}`);
-      } else {
-        console.log(`[updateGoogleDocInPlace] Applied ${formatRequests.length} heading styles`);
+      // Google Docs API has a limit; batch in chunks of 500
+      const CHUNK = 500;
+      for (let i = 0; i < formatRequests.length; i += CHUNK) {
+        const chunk = formatRequests.slice(i, i + CHUNK);
+        const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ requests: chunk }),
+        });
+        if (!fmtRes.ok) {
+          console.warn(`[updateGoogleDocInPlace] Formatting chunk failed (non-fatal): ${await fmtRes.text()}`);
+        } else {
+          console.log(`[updateGoogleDocInPlace] Applied ${chunk.length} format styles (chunk ${Math.floor(i/CHUNK)+1})`);
+        }
       }
     }
   } catch (fmtErr) {
