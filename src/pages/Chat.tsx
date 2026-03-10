@@ -498,7 +498,7 @@ const Chat = () => {
             const data = await response.json();
             const docs = data.documents || {};
             const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-            setDidInitialContext(prev => prev + "\n\n" + partDocs);
+             setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
             setDidDocsLoaded(true);
           }
         } catch {}
