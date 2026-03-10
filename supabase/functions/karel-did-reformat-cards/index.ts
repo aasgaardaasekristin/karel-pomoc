@@ -345,6 +345,111 @@ async function collectTxtFilesRecursive(token: string, folderId: string, current
   return txtFiles;
 }
 
+// ═══ DOCS API FORMATTING ═══
+// Applies Heading 1/2 and bold labels to a Google Doc after content is written
+async function applyDocFormatting(token: string, fileId: string, content: string): Promise<void> {
+  try {
+    const normalizedContent = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    // Read authoritative document length
+    const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!docRes.ok) return;
+    const docData = await docRes.json();
+    const bodyContent = docData?.body?.content || [];
+    const segmentEndIndex = bodyContent.length > 0
+      ? Number(bodyContent[bodyContent.length - 1]?.endIndex || normalizedContent.length + 1)
+      : normalizedContent.length + 1;
+
+    const clampRange = (startIndex: number, endIndex: number) => {
+      const safeStart = Math.max(1, Math.min(startIndex, segmentEndIndex - 1));
+      const safeEnd = Math.max(safeStart + 1, Math.min(endIndex, segmentEndIndex));
+      if (safeStart >= segmentEndIndex || safeEnd <= safeStart) return null;
+      return { startIndex: safeStart, endIndex: safeEnd };
+    };
+
+    const lines = normalizedContent.split("\n");
+    const formatRequests: any[] = [];
+    let charIndex = 1;
+
+    const BOLD_LABELS = [
+      "ID:", "Jméno:", "Věk:", "Pohlaví:", "Jazyk:", "Typ:", "Klastr:",
+      "Status:", "Historický kontext", "Senzorické kotvy", "Triggery",
+      "Co ho uklidňuje", "Vztahy", "Povědomí o systému",
+      "Datum", "Událost", "Co se dělo", "Stabilizační opatření", "Další krok",
+      "Co bylo navrženo", "Výsledek", "Hodnocení", "Období", "Aktivita", "Poznámka",
+      "Cíl:", "Vhodné nyní:", "Postup:", "Proč funguje:", "Zdroj:", "Obtížnost:",
+      "Metoda:", "Termín:", "Poznámky:", "Jádrové přesvědčení",
+      "Ochranný mechanismus:", "Vzorce chování:", "Doporučený směr:", "Hypotéza:",
+    ];
+
+    for (const line of lines) {
+      const lineLen = line.length;
+      if (lineLen > 0) {
+        // Card title → Heading 1
+        if (/^═*\s*KARTA\s+[ČC]ÁSTI/i.test(line) || /^KARTA\s+[ČC]ÁSTI/i.test(line)) {
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_1" }, fields: "namedStyleType" } });
+          }
+        }
+        // Section headers → Heading 2
+        else if (/^═*\s*SEKCE\s+[A-M]\s*[–\-:]/i.test(line) || /^SEKCE\s+[A-M]\s*[–\-:]/i.test(line)) {
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_2" }, fields: "namedStyleType" } });
+          }
+        }
+        // Sub-headers → Heading 3
+        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav|Bezpečnostní pravidla|Situační karta)/i.test(line)) {
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_3" }, fields: "namedStyleType" } });
+          }
+        }
+
+        // Bold labels
+        const trimmedLine = line.trimStart();
+        const leadingSpaces = line.length - trimmedLine.length;
+        const bulletPrefixMatch = trimmedLine.match(/^([*•\-]\s+)/);
+        const bulletPrefixLen = bulletPrefixMatch ? bulletPrefixMatch[1].length : 0;
+        const labelLine = bulletPrefixLen > 0 ? trimmedLine.slice(bulletPrefixLen) : trimmedLine;
+
+        for (const label of BOLD_LABELS) {
+          if (labelLine.startsWith(label)) {
+            const boldStart = charIndex + leadingSpaces + bulletPrefixLen;
+            const boldEnd = boldStart + label.length;
+            const range = clampRange(boldStart, boldEnd);
+            if (range) {
+              formatRequests.push({ updateTextStyle: { range, textStyle: { bold: true }, fields: "bold" } });
+            }
+            break;
+          }
+        }
+      }
+      charIndex += lineLen + 1;
+    }
+
+    if (formatRequests.length > 0) {
+      const CHUNK = 500;
+      for (let i = 0; i < formatRequests.length; i += CHUNK) {
+        const chunk = formatRequests.slice(i, i + CHUNK);
+        const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ requests: chunk }),
+        });
+        if (!fmtRes.ok) {
+          console.warn(`[applyDocFormatting] Chunk failed: ${await fmtRes.text()}`);
+        }
+      }
+    }
+  } catch (fmtErr) {
+    console.warn(`[applyDocFormatting] Non-fatal error: ${fmtErr}`);
+  }
+}
+
 // ═══ MODES ═══
 // mode=list → returns registry entries + txt files (no processing)
 // mode=process_one → processes a single card by index
@@ -574,7 +679,100 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(JSON.stringify({ error: "Unknown mode. Use: list, audit, process_one, cleanup_txt" }), {
+    // ═══ MODE: CONVERT_TO_DOC ═══
+    // Converts .txt card files to Google Docs AND strips ═══ lines from all cards
+    // Processes in batches (default 3 at a time) to avoid timeouts
+    if (mode === "convert_to_doc") {
+      const start = typeof index === "number" ? index : 0;
+      const count = body.count || 3;
+      const end = Math.min(start + count, entries.length);
+
+      const results: Array<{
+        index: number;
+        name: string;
+        action: "converted" | "cleaned" | "not_found" | "error";
+        oldFileName?: string;
+        newFileName?: string;
+        detail?: string;
+      }> = [];
+
+      for (let i = start; i < end; i++) {
+        const entry = entries[i];
+        const located = await findCardWithFallback(token, entry, activeFolderId, archiveFolderId);
+
+        if (!located.card) {
+          results.push({ index: i, name: entry.name, action: "not_found", detail: "Karta nenalezena" });
+          continue;
+        }
+
+        const card = located.card;
+        try {
+          // Clean content: strip ═══ characters from section headers and title
+          let cleanedContent = card.content;
+          // Clean section headers: ═══ SEKCE X – Name ═══ → SEKCE X – Name
+          cleanedContent = cleanedContent.replace(/═+\s*(SEKCE\s+[A-M]\s*[–\-:][^\n]*?)═*/g, "$1").replace(/\s+$/gm, "");
+          // Clean card title: ═══ KARTA ČÁSTI: NAME ═══ → KARTA ČÁSTI: NAME
+          cleanedContent = cleanedContent.replace(/═+\s*(KARTA\s+[ČC]ÁSTI:[^\n]*?)═*/gi, "$1").replace(/\s+$/gm, "");
+          // Remove remaining ═══ and ─── decorative lines (standalone lines of only these chars)
+          cleanedContent = cleanedContent.replace(/^[═─]{3,}\s*$/gm, "");
+          // Remove excessive blank lines (more than 2 consecutive)
+          cleanedContent = cleanedContent.replace(/\n{4,}/g, "\n\n\n");
+
+          const isTxtFile = card.mimeType !== DRIVE_DOC_MIME;
+
+          if (isTxtFile) {
+            // CREATE new Google Doc + delete old .txt
+            const newName = card.fileName.replace(/\.txt$/i, "");
+            const parentFolderId = located.locatedIn === "archive" ? archiveFolderId : activeFolderId;
+            if (!parentFolderId) throw new Error("Parent folder not found");
+
+            // Create Google Doc
+            const boundary = "----ConvertBoundary";
+            const metadata = JSON.stringify({ name: newName, parents: [parentFolderId], mimeType: DRIVE_DOC_MIME });
+            const uploadBody = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${cleanedContent}\r\n--${boundary}--`;
+            const createRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+              body: uploadBody,
+            });
+            if (!createRes.ok) throw new Error(`Create failed: ${await createRes.text()}`);
+            const newDoc = await createRes.json();
+
+            // Apply formatting via Docs API
+            await applyDocFormatting(token, newDoc.id, cleanedContent);
+
+            // Delete old .txt
+            await deleteDriveFile(token, card.fileId);
+
+            console.log(`[convert] ✅ ${entry.name}: ${card.fileName} (.txt) → ${newName} (Google Doc)`);
+            results.push({ index: i, name: entry.name, action: "converted", oldFileName: card.fileName, newFileName: newName });
+          } else {
+            // Already a Google Doc – just clean content and reformat
+            await updateGoogleDocInPlace(token, card.fileId, cleanedContent);
+            // Apply formatting
+            await applyDocFormatting(token, card.fileId, cleanedContent);
+
+            console.log(`[convert] ✅ ${entry.name}: ${card.fileName} cleaned (removed ═══)`);
+            results.push({ index: i, name: entry.name, action: "cleaned", oldFileName: card.fileName });
+          }
+        } catch (e) {
+          console.error(`[convert] ❌ ${entry.name}:`, e);
+          results.push({ index: i, name: entry.name, action: "error", detail: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      return new Response(JSON.stringify({
+        mode: "convert_to_doc",
+        totalRegistry: entries.length,
+        rangeStart: start,
+        rangeEnd: end,
+        hasMore: end < entries.length,
+        nextIndex: end < entries.length ? end : null,
+        results,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    return new Response(JSON.stringify({ error: "Unknown mode. Use: list, audit, process_one, cleanup_txt, convert_to_doc" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
