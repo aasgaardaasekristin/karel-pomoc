@@ -513,6 +513,7 @@ function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
     entries.push({
       id,
       name: rawName,
+      age: String(row[ageCol] ?? "").trim(),
       status: String(row[statusCol] ?? "").trim(),
       cluster: String(row[clusterCol] ?? "").trim(),
       note: String(row[noteCol] ?? "").trim(),
