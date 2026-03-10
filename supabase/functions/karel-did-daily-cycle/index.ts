@@ -851,12 +851,35 @@ serve(async (req) => {
     );
     let driveContext = "";
     let existingCards: Record<string, string> = {};
+    let instructionContext = "";
 
     if (folderId) {
       try {
         const partsFileId = await findFile(token, "00_Seznam_casti.txt", folderId);
         if (partsFileId) driveContext = await readFileContent(token, partsFileId);
       } catch (e) { console.error("Drive read error:", e); }
+
+      // Load 02_Instrukce from 00_CENTRUM for context about who is who
+      try {
+        const centerFolderId = registryContext?.activeFolderId
+          ? (await findFolder(token, "00_CENTRUM")) || null
+          : null;
+        // Try to find instruction document in center folder
+        const rootChildren = await listFilesInFolder(token, folderId);
+        const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
+        if (centerFolder) {
+          const centerFiles = await listFilesInFolder(token, centerFolder.id);
+          const instrFile = centerFiles.find(f => canonicalText(f.name).includes("instrukce"));
+          if (instrFile) {
+            try {
+              const instrContent = await readFileContent(token, instrFile.id);
+              // Take first 4000 chars to keep token budget manageable
+              instructionContext = instrContent.length > 4000 ? instrContent.slice(0, 4000) + "…" : instrContent;
+              console.log(`[daily-cycle] Loaded instruction doc: ${instrFile.name} (${instructionContext.length} chars)`);
+            } catch (e) { console.warn(`Failed to read instruction doc:`, e); }
+          }
+        }
+      } catch (e) { console.warn("Failed to load 02_Instrukce:", e); }
 
       // Load cards only for explicitly named thread parts (fast)
       const threadParts = [...new Set(threads.map(t => normalizePartHint(t.part_name || "").trim()).filter(Boolean))];
