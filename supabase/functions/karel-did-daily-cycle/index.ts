@@ -544,6 +544,18 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
   }
 
   try {
+    // Get actual sheet name via Sheets API (CSV export returns "Sheet1" which may be wrong)
+    const metaRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}?fields=sheets.properties.title`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    let actualSheetName = "Sheet1";
+    if (metaRes.ok) {
+      const metaData = await metaRes.json();
+      actualSheetName = metaData.sheets?.[0]?.properties?.title || "Sheet1";
+      console.log(`[updateRegistryStatus] Actual sheet name: "${actualSheetName}"`);
+    }
+
     // Read current spreadsheet to find the row
     const exportRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
@@ -587,7 +599,9 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
     // Use Google Sheets API to update the specific cell
     // Convert column index to letter (A, B, C, ...)
     const colLetter = String.fromCharCode(65 + statusColIdx);
-    const cellRange = `${sheetName}!${colLetter}${targetRowIdx + 1}`;
+    // Use actual sheet name from Sheets API, not from CSV parse
+    const escapedSheet = `'${actualSheetName.replace(/'/g, "''")}'`;
+    const cellRange = `${escapedSheet}!${colLetter}${targetRowIdx + 1}`;
 
     const updateRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}/values/${encodeURIComponent(cellRange)}?valueInputOption=USER_ENTERED`,
