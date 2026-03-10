@@ -204,7 +204,7 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
       const lineLen = line.length;
       if (lineLen > 0) {
         // Main card title (═══ KARTA ČÁSTI: ...)
-        if (/^═+\s*KARTA\s+[ČC]ÁSTI/i.test(line)) {
+        if (/^═*\s*KARTA\s+[ČC]ÁSTI/i.test(line)) {
           const range = clampRange(charIndex, charIndex + lineLen);
           if (range) {
             formatRequests.push({
