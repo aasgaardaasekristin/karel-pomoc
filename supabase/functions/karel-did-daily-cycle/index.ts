@@ -1343,24 +1343,23 @@ serve(async (req) => {
           completed_at: new Date().toISOString(),
           report_summary: normalizedCardFiles.length > 0
             ? `Normalizováno ${normalizedCardFiles.length} karet na strukturu A–M.`
-            : "No threads to process",
+            : "No new threads to process (already processed earlier)",
           cards_updated: cardsUpdated,
         }).eq("id", cycle.id);
       }
 
-      // Even with no threads, send daily "quiet day" report when triggered by cron
-      if (shouldSendEmails) {
+      // If there IS recent activity (already processed by manual trigger), generate a REAL report, not "quiet day"
+      if (shouldSendEmails && hasRecentActivity) {
+        console.log(`[report] No unprocessed data, but ${allRecentThreads.length} recent threads + ${allRecentConversations.length} recent convs found. Generating report from recent activity.`);
+        // Fall through to the main report generation below instead of returning early
+      } else if (shouldSendEmails && !hasRecentActivity) {
+        // Truly quiet day - no activity at all in 24h
         try {
-          const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-          const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
-          const KATA_EMAIL = Deno.env.get("KATA_EMAIL") || "K.CC@seznam.cz";
-          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
           const dateStr = new Date().toISOString().slice(0, 10);
 
           if (RESEND_API_KEY && LOVABLE_API_KEY) {
             const resend = new Resend(RESEND_API_KEY);
 
-            // Generate quiet-day report for Hanka
             let hankaHtml = "";
             try {
               const hankaRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -1375,7 +1374,7 @@ Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace
 - Řekni, že dnes byl klidný den, žádné části se neozvaly
 - Krátké povzbuzení
 - Podpis: Karel` },
-                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.${normalizedCardFiles.length > 0 ? `\nNormalizováno ${normalizedCardFiles.length} karet.` : ""}` },
+                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.` },
                   ],
                 }),
               });
@@ -1386,7 +1385,6 @@ Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace
             } catch {}
             if (!hankaHtml) hankaHtml = `<p>Dnes klidný den – žádné části se neozvaly. Karel</p>`;
 
-            // Generate quiet-day report for Káťa
             let kataHtml = "";
             try {
               const kataRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -1417,7 +1415,6 @@ Formát HTML emailu:
               subject: `Karel – denní report ${dateStr}`,
               html: hankaHtml,
             });
-            console.log(`Quiet-day report sent to Hanka: ${MAMKA_EMAIL}`);
 
             await resend.emails.send({
               from: "Karel <karel@hana-chlebcova.cz>",
@@ -1425,19 +1422,35 @@ Formát HTML emailu:
               subject: `Karel – report pro Káťu ${dateStr}`,
               html: kataHtml,
             });
-            console.log(`Quiet-day report sent to Káťa: ${KATA_EMAIL}`);
           }
         } catch (e) {
           console.error("Quiet-day email error:", e);
         }
-      }
 
-      return new Response(JSON.stringify({
-        success: true,
-        message: normalizedCardFiles.length > 0
-          ? "No threads to process; card structure normalized"
-          : "No threads to process",
-        threadsProcessed: 0,
+        return new Response(JSON.stringify({
+          success: true,
+          message: "No activity in last 24h, quiet-day report sent",
+          threadsProcessed: 0,
+          conversationsProcessed: 0,
+          cardsUpdated,
+          reportSent: shouldSendEmails,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } else {
+        // No emails needed and no data to process
+        return new Response(JSON.stringify({
+          success: true,
+          message: "No new threads to process",
+          threadsProcessed: 0,
+          conversationsProcessed: 0,
+          cardsUpdated,
+          reportSent: false,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
         conversationsProcessed: 0,
         cardsUpdated,
         normalizedCards: normalizedCardFiles.length,
