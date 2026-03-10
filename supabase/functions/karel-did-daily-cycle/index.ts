@@ -587,7 +587,9 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
     // Use Google Sheets API to update the specific cell
     // Convert column index to letter (A, B, C, ...)
     const colLetter = String.fromCharCode(65 + statusColIdx);
-    const cellRange = `${sheetName}!${colLetter}${targetRowIdx + 1}`;
+    // Wrap sheet name in single quotes to handle spaces/special chars
+    const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
+    const cellRange = `${escapedSheet}!${colLetter}${targetRowIdx + 1}`;
 
     const updateRes = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}/values/${encodeURIComponent(cellRange)}?valueInputOption=USER_ENTERED`,
