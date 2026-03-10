@@ -619,16 +619,6 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
   }
 }
 
-// ═══ FORCED AWAKENING SECTIONS: Programmatic fallback for E, G, K, L ═══
-function buildAwakeningForcedSections(partName: string): Record<string, string> {
-  const dateStr = new Date().toISOString().slice(0, 10);
-  return {
-    E: `Probuzení – část komunikovala s Karlem. Aktuální stav: Aktivní. Komunikuje s Karlem od ${dateStr}.`,
-    G: `| ${dateStr} | Probuzení – první kontakt po archivaci | Rozhovor s Karlem | Sledovat stabilitu, pokračovat v komunikaci |`,
-    K: `| ${dateStr} | První rozhovor po probuzení z archivu | Probíhá | Čekáme na další sezení |`,
-    L: `| ${dateStr} | Probuzení – komunikace s Karlem | Přesunuto z 03_ARCHIV do 01_AKTIVNI |`,
-  };
-}
 
 // ═══ IMMEDIATE AWAKENING: Update card content + registry right after file move ═══
 async function performImmediateAwakeningUpdates(
