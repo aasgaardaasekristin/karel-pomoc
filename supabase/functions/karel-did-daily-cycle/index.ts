@@ -1115,6 +1115,20 @@ async function findCardFile(token: string, partName: string, rootFolderId: strin
   return searchFolder(rootFolderId);
 }
 
+// Rename a Drive file
+async function renameDriveFile(token: string, fileId: string, newName: string): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`,
+    {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName }),
+    }
+  );
+  if (!res.ok) console.warn(`[renameDriveFile] Failed to rename ${fileId} to ${newName}: ${res.status}`);
+  else console.log(`[renameDriveFile] ✅ Renamed to: ${newName}`);
+}
+
 // Update card sections in-place by file ID
 async function updateCardSections(
   token: string,
@@ -1126,6 +1140,7 @@ async function updateCardSections(
   const allowCreate = options?.allowCreate ?? false;
   const searchName = options?.searchName || partName;
   const canonicalPartName = options?.canonicalPartName || partName;
+  const rc = options?.registryContext;
   const card = await findCardFile(token, searchName, folderId);
   const dateStr = new Date().toISOString().slice(0, 10);
   let existingSections: Record<string, string>;
@@ -1133,6 +1148,35 @@ async function updateCardSections(
   if (card) {
     existingSections = parseCardSections(card.content);
     console.log(`[updateCardSections] Card: ${card.fileName}, existing sections: ${Object.keys(existingSections).filter(k => k !== "_preamble").join(",")}`);
+
+    // ═══ ORPHAN CARD: exists on Drive but NOT in registry → add to registry + rename ═══
+    const registryEntry = rc ? findBestRegistryEntry(searchName, rc.entries) : null;
+    if (!registryEntry && rc?.registryFileId && rc?.registrySheetName) {
+      const nextId = getNextRegistryId(rc.entries);
+      const paddedId = String(nextId).padStart(3, "0");
+      const normalizedName = canonicalPartName.replace(/\s+/g, "_").toUpperCase();
+      const expectedFileName = `${paddedId}_${normalizedName}`;
+
+      // Add row to registry
+      const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+      if (added) {
+        console.log(`[updateCardSections] ✅ Orphan "${canonicalPartName}" added to registry as ID ${paddedId}`);
+        // Also add to in-memory entries so subsequent cards get correct next ID
+        rc.entries.push({
+          id: paddedId,
+          name: canonicalPartName,
+          status: "Aktivní",
+          cluster: "",
+          note: "",
+          normalizedName: canonicalText(canonicalPartName),
+        });
+      }
+
+      // Rename file on Drive to match convention
+      if (card.fileName !== expectedFileName) {
+        await renameDriveFile(token, card.fileId, expectedFileName);
+      }
+    }
   } else {
     if (!allowCreate) {
       throw new Error(`Card for "${partName}" not found in resolved location; creation disabled to prevent duplicates.`);
@@ -1162,14 +1206,25 @@ async function updateCardSections(
   }
 
   // Auto-increment ID from registry and create as Google Doc
-  const rc = options?.registryContext;
   const nextId = getNextRegistryId(rc?.entries || []);
   const paddedId = String(nextId).padStart(3, "0");
-  const newFileName = `DID_${paddedId}_${canonicalPartName.replace(/\s+/g, "_")}`;
+  const normalizedName = canonicalPartName.replace(/\s+/g, "_").toUpperCase();
+  const newFileName = `${paddedId}_${normalizedName}`;
   await createFileInFolder(token, newFileName, fullCard, folderId);
   // Add new entry to registry spreadsheet
   if (rc?.registryFileId && rc?.registrySheetName) {
-    await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+    const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+    if (added) {
+      // Update in-memory entries for correct next ID
+      rc.entries.push({
+        id: paddedId,
+        name: canonicalPartName,
+        status: "Aktivní",
+        cluster: "",
+        note: "",
+        normalizedName: canonicalText(canonicalPartName),
+      });
+    }
   }
   console.log(`[updateCardSections] ✅ Created new Google Doc: ${newFileName} (ID: ${paddedId})`);
   return { fileName: newFileName, sectionsUpdated: updatedKeys, isNew: true };
