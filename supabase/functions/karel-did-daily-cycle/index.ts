@@ -1253,15 +1253,17 @@ async function updateCardSections(
   await createFileInFolder(token, newFileName, fullCard, folderId);
   // Add new entry to registry spreadsheet
   if (rc?.registryFileId && rc?.registrySheetName) {
-    const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+    // Extract metadata from the card we just built
+    const meta = extractCardMetadata(fullCard);
+    const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName, "Aktivní", meta.age, meta.cluster, meta.role);
     if (added) {
-      // Update in-memory entries for correct next ID
       rc.entries.push({
         id: paddedId,
         name: canonicalPartName,
+        age: meta.age,
         status: "Aktivní",
-        cluster: "",
-        note: "",
+        cluster: meta.cluster,
+        note: meta.role,
         normalizedName: canonicalText(canonicalPartName),
       });
     }
