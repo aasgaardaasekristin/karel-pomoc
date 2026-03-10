@@ -1215,6 +1215,14 @@ Po všech kartách:
 - Doporučení pro Káťu (jak reagovat + proč)
 [/REPORT]
 
+═══ SPECIÁLNÍ PŘÍPAD: PROBUZENÍ ČÁSTI Z ARCHIVU ═══
+Pokud část byla dosud ve stavu "💤 Spí" nebo v archivu a nyní komunikuje s Karlem, POVINNĚ aktualizuj:
+1. SEKCE E: Změň "Aktuální stav" z "💤 Spí..." na "Aktivní. Komunikuje s Karlem od [datum]." + přidej chronologický řádek o probuzení
+2. SEKCE G: Přidej řádek do tabulky: | [datum] | Probuzení – první kontakt po archivaci | [co bylo použito] | [další krok] |
+3. SEKCE K: Přidej řádek: | [datum] | První rozhovor po probuzení | [výsledek] | [hodnocení] |
+4. SEKCE L: Přidej řádek: | [datum] | Probuzení – komunikace s Karlem | Přesunuto z archivu do aktivních |
+Tyto 4 sekce jsou POVINNÉ při probuzení. Nestačí pouze přesunout soubor – karta musí reflektovat změnu stavu!
+
 ═══ PRAVIDLA ═══
 - Sekce A–L = věcná fakta z konverzací/karet/rešerše. Nepiš domněnky jako fakta.
 - Pokročilé dedukce, průřezové souvislosti a hypotézy piš do SEKCE M (a explicitně je označ „Hypotéza:“).
