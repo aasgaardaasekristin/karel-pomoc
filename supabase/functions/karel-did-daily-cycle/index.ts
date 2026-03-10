@@ -1084,6 +1084,7 @@ Po všech kartách:
 - Pokud informace není v konverzaci ani v kartě, NEZAPISUJ ji
 - Jeden záznam = jeden fakt. Nekombinouj nesouvisející fakta do jednoho odstavce
 
+${instructionContext ? `\n═══ INSTRUKCE PRO KARLA (z 00_CENTRUM) ═══\n${instructionContext}` : ""}
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
 ${perplexityContext}`,
