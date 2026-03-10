@@ -156,7 +156,8 @@ async function updateFileById(token: string, fileId: string, content: string, mi
 
 async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
   const boundary = "----DIDWriteBoundary";
-  const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
+  // Create as Google Doc (not .txt) by specifying mimeType
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
   const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
     method: "POST",
