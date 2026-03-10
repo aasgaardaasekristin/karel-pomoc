@@ -1428,7 +1428,7 @@ Formát HTML emailu:
         conversationsProcessed: 0,
         cardsUpdated,
         normalizedCards: normalizedCardFiles.length,
-        reportSent: isCron,
+        reportSent: shouldSendEmails,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
