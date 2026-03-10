@@ -514,6 +514,122 @@ async function moveFolderToParent(token: string, folderId: string, newParentId: 
 
 type CardActionType = "aktualizace" | "nova_karta" | "probuzeni_z_archivu";
 
+// ═══ REGISTRY STATUS UPDATE: Change part status in the XLS/Google Sheet ═══
+async function updateRegistryStatus(token: string, registryContext: RegistryContext, entry: RegistryEntry, newStatus: string): Promise<boolean> {
+  if (!registryContext.sourceFileName) return false;
+
+  // Find the registry file in 00_CENTRUM
+  const rootFolderId = registryContext.activeFolderId; // We need root folder
+  // Re-find the registry file
+  const rootChildren = await listFilesInFolder(token, rootFolderId!).catch(() => []);
+  // We need to search from the KARTOTEKA_DID root, not from activeFolderId
+  // Let's find 00_CENTRUM and the registry file within it
+
+  // Actually, we already have registryContext which was loaded. We need the file ID.
+  // Let's search for the registry file by name across the root.
+  const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+  if (!kartotekaId) return false;
+
+  const allRootChildren = await listFilesInFolder(token, kartotekaId);
+  const centerFolder = allRootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
+  if (!centerFolder) return false;
+
+  const centerFiles = await listFilesInFolder(token, centerFolder.id);
+  const SHEET_MIME = "application/vnd.google-apps.spreadsheet";
+  const registryFile = centerFiles.find(f => f.mimeType === SHEET_MIME && canonicalText(f.name).includes("index"));
+
+  if (!registryFile) {
+    console.warn("[updateRegistryStatus] Registry spreadsheet not found");
+    return false;
+  }
+
+  try {
+    // Read current spreadsheet to find the row
+    const exportRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!exportRes.ok) return false;
+    const csvText = await exportRes.text();
+    const workbook = XLSX.read(csvText, { type: "string" });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) return false;
+
+    const sheet = workbook.Sheets[sheetName];
+    const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][];
+
+    // Find the header row and status column
+    const headerRowIndex = rawRows.findIndex((row, idx) => {
+      if (idx > 10) return false;
+      const normalized = row.map((c: any) => canonicalText(String(c)));
+      return normalized.some(c => ["id", "cislo", "number"].some(v => c.includes(v)))
+        && normalized.some(c => ["jmeno", "nazev", "cast", "part", "fragment"].some(v => c.includes(v)));
+    });
+    if (headerRowIndex < 0) return false;
+
+    const header = rawRows[headerRowIndex].map((c: any) => canonicalText(String(c)));
+    const statusColIdx = header.findIndex(h => ["stav", "status"].some(hint => h.includes(hint)));
+    if (statusColIdx < 0) return false;
+
+    // Find the row for this entry by name match
+    const entryCanonical = canonicalText(entry.name);
+    const nameColIdx = header.findIndex(h => ["jmeno", "nazev", "cast", "part", "fragment"].some(hint => h.includes(hint)));
+    let targetRowIdx = -1;
+    for (let i = headerRowIndex + 1; i < rawRows.length; i++) {
+      const rowName = canonicalText(String(rawRows[i][nameColIdx] ?? ""));
+      if (rowName === entryCanonical || scoreNameMatch(rowName, entryCanonical) >= 7) {
+        targetRowIdx = i;
+        break;
+      }
+    }
+    if (targetRowIdx < 0) return false;
+
+    // Use Google Sheets API to update the specific cell
+    // Convert column index to letter (A, B, C, ...)
+    const colLetter = String.fromCharCode(65 + statusColIdx);
+    const cellRange = `${sheetName}!${colLetter}${targetRowIdx + 1}`;
+
+    const updateRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}/values/${encodeURIComponent(cellRange)}?valueInputOption=USER_ENTERED`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          range: cellRange,
+          majorDimension: "ROWS",
+          values: [[newStatus]],
+        }),
+      }
+    );
+
+    if (updateRes.ok) {
+      console.log(`[updateRegistryStatus] ✅ Updated "${entry.name}" status to "${newStatus}" in cell ${cellRange}`);
+      return true;
+    } else {
+      const errText = await updateRes.text();
+      console.error(`[updateRegistryStatus] ❌ Sheets API error: ${errText}`);
+      return false;
+    }
+  } catch (e) {
+    console.error(`[updateRegistryStatus] Failed:`, e);
+    return false;
+  }
+}
+
+// ═══ FORCED AWAKENING SECTIONS: Programmatic fallback for E, G, K, L ═══
+function buildAwakeningForcedSections(partName: string): Record<string, string> {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  return {
+    E: `Probuzení – část komunikovala s Karlem. Aktuální stav: Aktivní. Komunikuje s Karlem od ${dateStr}.`,
+    G: `| ${dateStr} | Probuzení – první kontakt po archivaci | Rozhovor s Karlem | Sledovat stabilitu, pokračovat v komunikaci |`,
+    K: `| ${dateStr} | První rozhovor po probuzení z archivu | Probíhá | Čekáme na další sezení |`,
+    L: `| ${dateStr} | Probuzení – komunikace s Karlem | Přesunuto z 03_ARCHIV do 01_AKTIVNI |`,
+  };
+}
+
 async function resolveCardTarget(
   token: string,
   rootFolderId: string,
