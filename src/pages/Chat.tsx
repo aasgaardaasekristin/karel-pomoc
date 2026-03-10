@@ -444,7 +444,11 @@ const Chat = () => {
     setDidFlowState("part-identify");
   }, []);
 
+  const [isPartSelecting, setIsPartSelecting] = useState(false);
   const handlePartSelected = useCallback(async (partName: string) => {
+    if (isPartSelecting) return; // Prevent double-click race condition
+    setIsPartSelecting(true);
+    try {
     // Check for existing thread first (quick DB query)
     const existing = await didThreads.getThreadByPart(partName, "cast");
     if (existing) {
