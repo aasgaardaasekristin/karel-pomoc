@@ -293,44 +293,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
             </>
           )}
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            setIsSyncingRegistry(true);
-            toast.info("Synchronizace registru zahájena...");
-            try {
-              const headers = await getAuthHeaders();
-              const res = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`,
-                { method: "POST", headers, body: JSON.stringify({ syncRegistry: true }) }
-              );
-              const data = await res.json();
-              if (res.ok) {
-                toast.success(`Registr synchronizován: ${(data.results || []).length} karet`);
-                console.log("[syncRegistry] Results:", data.results);
-              } else {
-                toast.error("Synchronizace selhala");
-                console.error(data);
-              }
-            } catch (e) {
-              toast.error("Synchronizace registru selhala");
-              console.error(e);
-            } finally {
-              setIsSyncingRegistry(false);
-            }
-          }}
-          disabled={isSyncingRegistry}
-          className="h-8 text-xs gap-1.5"
-        >
-          {isSyncingRegistry ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Database className="w-3.5 h-3.5" />
-          )}
-          <span className="hidden sm:inline">Sync registr (vyplnit sloupce)</span>
-          <span className="sm:hidden">Sync registr</span>
-        </Button>
       </div>
 
       {/* Parts overview */}
