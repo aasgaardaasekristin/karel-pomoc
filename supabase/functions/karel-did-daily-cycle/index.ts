@@ -450,6 +450,7 @@ type DriveFile = { id: string; name: string; mimeType?: string };
 interface RegistryEntry {
   id: string;
   name: string;
+  age: string;
   status: string;
   cluster: string;
   note: string;
