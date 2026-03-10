@@ -1210,6 +1210,23 @@ serve(async (req) => {
   }
 
   try {
+    // ═══ FAST-PATH: reformat only (no DB, no AI, no email) ═══
+    if (requestBody?.reformat) {
+      const token = await getAccessToken();
+      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      
+      // If partName specified, only reformat that one card
+      const targetPart = requestBody?.partName as string | undefined;
+      const normalizedCardFiles = await normalizeCardStructures(token, folderId, true, targetPart);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Přeformátováno ${normalizedCardFiles.length} karet`,
+        reformattedCards: normalizedCardFiles,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
