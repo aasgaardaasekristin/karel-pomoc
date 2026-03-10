@@ -819,6 +819,15 @@ serve(async (req) => {
     if (authResult instanceof Response) return authResult;
   }
 
+  // ═══ EMAIL GUARD: Only send report emails from scheduled cron calls ═══
+  let requestBody: any = {};
+  try { requestBody = await req.clone().json(); } catch {}
+  const isCronSource = requestBody?.source === "cron";
+  const shouldSendEmails = isCronCall && isCronSource;
+  if (!shouldSendEmails) {
+    console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
+  }
+
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
