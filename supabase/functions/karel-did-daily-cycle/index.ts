@@ -846,6 +846,38 @@ function getNextRegistryId(entries: RegistryEntry[]): number {
   return maxId + 1;
 }
 
+// ═══ EXTRACT METADATA FROM CARD CONTENT (Section A) ═══
+function extractCardMetadata(cardContent: string): { age: string; cluster: string; role: string } {
+  const sections = parseCardSections(cardContent);
+  const sectionA = sections["A"] || "";
+  const sectionB = sections["B"] || "";
+  const allText = `${sectionA}\n${sectionB}`;
+
+  // Extract age: look for "Věk:" pattern
+  let age = "";
+  const ageMatch = allText.match(/V[ěe]k\s*:\s*([^\n,]+)/i);
+  if (ageMatch) age = ageMatch[1].trim();
+
+  // Extract cluster/group: look for "Klastr:", "Skupina:", "Typ:" pattern
+  let cluster = "";
+  const clusterMatch = allText.match(/(?:Klastr|Skupina|Typ)\s*:\s*([^\n,]+)/i);
+  if (clusterMatch) cluster = clusterMatch[1].trim();
+
+  // Extract role: look for role/function description in section A or B
+  let role = "";
+  const roleMatch = allText.match(/(?:Role|Funkce|Úloha)\s*:\s*([^\n]+)/i);
+  if (roleMatch) role = roleMatch[1].trim();
+  // Fallback: use first meaningful line from section A as short note
+  if (!role && sectionA) {
+    const lines = sectionA.split("\n").filter(l => l.trim() && !l.startsWith("[") && !/^(zatím|prázdné|\()/i.test(l.trim()));
+    if (lines.length > 0) {
+      role = lines[0].trim().slice(0, 80);
+    }
+  }
+
+  return { age, cluster, role };
+}
+
 // ═══ ADD NEW ROW TO REGISTRY SPREADSHEET ═══
 async function addRegistryRow(
   token: string,
@@ -853,23 +885,26 @@ async function addRegistryRow(
   sheetName: string,
   id: string,
   name: string,
-  status: string = "Aktivní"
+  status: string = "Aktivní",
+  age: string = "",
+  cluster: string = "",
+  note: string = ""
 ): Promise<boolean> {
   try {
     const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
-    const range = `${escapedSheet}!A:E`;
+    const range = `${escapedSheet}!A:F`;
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${registryFileId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          values: [[id, name, status, "", ""]],
+          values: [[id, name, age, status, cluster, note]],
         }),
       }
     );
     if (res.ok) {
-      console.log(`[addRegistryRow] ✅ Added new row: ID=${id}, Name=${name}, Status=${status}`);
+      console.log(`[addRegistryRow] ✅ Added row: ID=${id}, Name=${name}, Age=${age}, Status=${status}, Cluster=${cluster}, Note=${note}`);
       return true;
     } else {
       const errText = await res.text();
