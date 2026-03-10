@@ -1336,7 +1336,7 @@ serve(async (req) => {
       }
 
       // Even with no threads, send daily "quiet day" report when triggered by cron
-      if (isCron) {
+      if (shouldSendEmails) {
         try {
           const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
           const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
