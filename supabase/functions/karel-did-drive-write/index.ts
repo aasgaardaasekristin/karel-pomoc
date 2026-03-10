@@ -316,7 +316,7 @@ const SECTION_DEFINITIONS: Record<string, string> = {
 const SECTION_ORDER = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
 
 function sectionHeader(letter: string): string {
-  return `═══ SEKCE ${letter} – ${SECTION_DEFINITIONS[letter]} ═══`;
+  return `SEKCE ${letter} – ${SECTION_DEFINITIONS[letter]}`;
 }
 
 function parseCardSections(content: string): Record<string, string> {
