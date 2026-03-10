@@ -91,9 +91,14 @@ export const useConversationHistory = () => {
       conversationId?: string
     ) => {
       if (messages.length < 2) return;
+      // CRITICAL: Don't save without a stable session ID - prevents duplicate entries
+      if (!conversationId) {
+        console.warn("[saveConversation] Skipped save: no conversationId provided");
+        return;
+      }
       const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
       const preview = lastUserMsg?.content.slice(0, 80) || "Rozhovor";
-      const sessionId = conversationId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const sessionId = conversationId;
 
       const payload = {
         session_id: sessionId,

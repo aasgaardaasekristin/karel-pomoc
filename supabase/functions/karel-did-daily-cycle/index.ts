@@ -1293,12 +1293,21 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // 1. SBĚR DAT – ALL unprocessed threads + conversations (no time cutoff!)
-    const { data: threadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
-    const threads = threadRows ?? [];
+    // 1. SBĚR DAT
+    // For card updates: only unprocessed items
+    const { data: unprocessedThreadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
+    const threads = unprocessedThreadRows ?? [];
 
-    const { data: convRows } = await sb.from("did_conversations").select("*").eq("is_processed", false);
-    const conversations = convRows ?? [];
+    const { data: unprocessedConvRows } = await sb.from("did_conversations").select("*").eq("is_processed", false);
+    const conversations = unprocessedConvRows ?? [];
+
+    // For daily EMAIL REPORT: ALL threads/conversations from last 24h (including already-processed ones)
+    // This prevents "quiet day" false reports when manual updates already processed the data
+    const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: allRecentThreadRows } = await sb.from("did_threads").select("*").gte("last_activity_at", cutoff24h);
+    const allRecentThreads = allRecentThreadRows ?? [];
+    const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
+    const allRecentConversations = allRecentConvRows ?? [];
 
     const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
 
@@ -1324,6 +1333,9 @@ serve(async (req) => {
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
+    // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
+    const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0;
+
     if (threads.length === 0 && conversations.length === 0) {
       if (cycle) {
         await sb.from("did_update_cycles").update({
@@ -1331,24 +1343,23 @@ serve(async (req) => {
           completed_at: new Date().toISOString(),
           report_summary: normalizedCardFiles.length > 0
             ? `Normalizováno ${normalizedCardFiles.length} karet na strukturu A–M.`
-            : "No threads to process",
+            : "No new threads to process (already processed earlier)",
           cards_updated: cardsUpdated,
         }).eq("id", cycle.id);
       }
 
-      // Even with no threads, send daily "quiet day" report when triggered by cron
-      if (shouldSendEmails) {
+      // If there IS recent activity (already processed by manual trigger), generate a REAL report, not "quiet day"
+      if (shouldSendEmails && hasRecentActivity) {
+        console.log(`[report] No unprocessed data, but ${allRecentThreads.length} recent threads + ${allRecentConversations.length} recent convs found. Generating report from recent activity.`);
+        // Fall through to the main report generation below instead of returning early
+      } else if (shouldSendEmails && !hasRecentActivity) {
+        // Truly quiet day - no activity at all in 24h
         try {
-          const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-          const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
-          const KATA_EMAIL = Deno.env.get("KATA_EMAIL") || "K.CC@seznam.cz";
-          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
           const dateStr = new Date().toISOString().slice(0, 10);
 
           if (RESEND_API_KEY && LOVABLE_API_KEY) {
             const resend = new Resend(RESEND_API_KEY);
 
-            // Generate quiet-day report for Hanka
             let hankaHtml = "";
             try {
               const hankaRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -1363,7 +1374,7 @@ Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace
 - Řekni, že dnes byl klidný den, žádné části se neozvaly
 - Krátké povzbuzení
 - Podpis: Karel` },
-                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.${normalizedCardFiles.length > 0 ? `\nNormalizováno ${normalizedCardFiles.length} karet.` : ""}` },
+                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.` },
                   ],
                 }),
               });
@@ -1374,7 +1385,6 @@ Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace
             } catch {}
             if (!hankaHtml) hankaHtml = `<p>Dnes klidný den – žádné části se neozvaly. Karel</p>`;
 
-            // Generate quiet-day report for Káťa
             let kataHtml = "";
             try {
               const kataRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -1405,7 +1415,6 @@ Formát HTML emailu:
               subject: `Karel – denní report ${dateStr}`,
               html: hankaHtml,
             });
-            console.log(`Quiet-day report sent to Hanka: ${MAMKA_EMAIL}`);
 
             await resend.emails.send({
               from: "Karel <karel@hana-chlebcova.cz>",
@@ -1413,32 +1422,46 @@ Formát HTML emailu:
               subject: `Karel – report pro Káťu ${dateStr}`,
               html: kataHtml,
             });
-            console.log(`Quiet-day report sent to Káťa: ${KATA_EMAIL}`);
           }
         } catch (e) {
           console.error("Quiet-day email error:", e);
         }
-      }
 
-      return new Response(JSON.stringify({
-        success: true,
-        message: normalizedCardFiles.length > 0
-          ? "No threads to process; card structure normalized"
-          : "No threads to process",
-        threadsProcessed: 0,
-        conversationsProcessed: 0,
-        cardsUpdated,
-        normalizedCards: normalizedCardFiles.length,
-        reportSent: shouldSendEmails,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        return new Response(JSON.stringify({
+          success: true,
+          message: "No activity in last 24h, quiet-day report sent",
+          threadsProcessed: 0,
+          conversationsProcessed: 0,
+          cardsUpdated,
+          reportSent: shouldSendEmails,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } else {
+        // No emails needed and no data to process
+        return new Response(JSON.stringify({
+          success: true,
+          message: "No new threads to process",
+          threadsProcessed: 0,
+          conversationsProcessed: 0,
+          cardsUpdated,
+          reportSent: false,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
+
+    // When we reach here with no unprocessed data but hasRecentActivity=true,
+    // we need to use allRecentThreads/allRecentConversations for report generation
+    // Use allRecentThreads for summaries if threads is empty but recent activity exists
+    const reportThreads = threads.length > 0 ? threads : (shouldSendEmails && hasRecentActivity ? allRecentThreads : []);
+    const reportConversations = conversations.length > 0 ? conversations : (shouldSendEmails && hasRecentActivity ? allRecentConversations : []);
 
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
 
-    const threadSummaries = threads.map(t => {
+    const threadSummaries = reportThreads.map(t => {
       const msgs = ((t.messages as any[]) || []).slice(-20);
       
       // ═══ ROLE LABELING: Rozliš kdo mluví podle sub_mode ═══
@@ -1474,14 +1497,14 @@ Formát HTML emailu:
       return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${modeNote}${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? userLabel : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
-    const convSummaries = conversations.map(c => {
+    const convSummaries = reportConversations.map(c => {
       const msgs = ((c.messages as any[]) || []).slice(-20);
       return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
     const knownThreadParts = new Set(
-      threads
+      reportThreads
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
         .filter(Boolean)
     );
