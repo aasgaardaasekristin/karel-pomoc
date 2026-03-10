@@ -450,6 +450,7 @@ type DriveFile = { id: string; name: string; mimeType?: string };
 interface RegistryEntry {
   id: string;
   name: string;
+  age: string;
   status: string;
   cluster: string;
   note: string;
@@ -492,9 +493,10 @@ function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
 
   const idCol = findCol(["id", "cislo", "number"], 0);
   const nameCol = findCol(["jmeno", "nazev", "cast", "part", "fragment"], 1);
-  const statusCol = findCol(["stav", "status"], 2);
-  const clusterCol = findCol(["klastr", "cluster"], 3);
-  const noteCol = findCol(["poznam", "note", "komentar"], 4);
+  const ageCol = findCol(["vek", "age"], 2);
+  const statusCol = findCol(["stav", "status"], 3);
+  const clusterCol = findCol(["klastr", "cluster"], 4);
+  const noteCol = findCol(["poznam", "note", "komentar", "role"], 5);
 
   const entries: RegistryEntry[] = [];
   for (const row of nonEmptyRows.slice(headerRowIndex + 1)) {
@@ -511,6 +513,7 @@ function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
     entries.push({
       id,
       name: rawName,
+      age: String(row[ageCol] ?? "").trim(),
       status: String(row[statusCol] ?? "").trim(),
       cluster: String(row[clusterCol] ?? "").trim(),
       note: String(row[noteCol] ?? "").trim(),
@@ -843,6 +846,38 @@ function getNextRegistryId(entries: RegistryEntry[]): number {
   return maxId + 1;
 }
 
+// ═══ EXTRACT METADATA FROM CARD CONTENT (Section A) ═══
+function extractCardMetadata(cardContent: string): { age: string; cluster: string; role: string } {
+  const sections = parseCardSections(cardContent);
+  const sectionA = sections["A"] || "";
+  const sectionB = sections["B"] || "";
+  const allText = `${sectionA}\n${sectionB}`;
+
+  // Extract age: look for "Věk:" pattern
+  let age = "";
+  const ageMatch = allText.match(/V[ěe]k\s*:\s*([^\n,]+)/i);
+  if (ageMatch) age = ageMatch[1].trim();
+
+  // Extract cluster/group: look for "Klastr:", "Skupina:", "Typ:" pattern
+  let cluster = "";
+  const clusterMatch = allText.match(/(?:Klastr|Skupina|Typ)\s*:\s*([^\n,]+)/i);
+  if (clusterMatch) cluster = clusterMatch[1].trim();
+
+  // Extract role: look for role/function description in section A or B
+  let role = "";
+  const roleMatch = allText.match(/(?:Role|Funkce|Úloha)\s*:\s*([^\n]+)/i);
+  if (roleMatch) role = roleMatch[1].trim();
+  // Fallback: use first meaningful line from section A as short note
+  if (!role && sectionA) {
+    const lines = sectionA.split("\n").filter(l => l.trim() && !l.startsWith("[") && !/^(zatím|prázdné|\()/i.test(l.trim()));
+    if (lines.length > 0) {
+      role = lines[0].trim().slice(0, 80);
+    }
+  }
+
+  return { age, cluster, role };
+}
+
 // ═══ ADD NEW ROW TO REGISTRY SPREADSHEET ═══
 async function addRegistryRow(
   token: string,
@@ -850,23 +885,26 @@ async function addRegistryRow(
   sheetName: string,
   id: string,
   name: string,
-  status: string = "Aktivní"
+  status: string = "Aktivní",
+  age: string = "",
+  cluster: string = "",
+  note: string = ""
 ): Promise<boolean> {
   try {
     const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
-    const range = `${escapedSheet}!A:E`;
+    const range = `${escapedSheet}!A:F`;
     const res = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${registryFileId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          values: [[id, name, status, "", ""]],
+          values: [[id, name, age, status, cluster, note]],
         }),
       }
     );
     if (res.ok) {
-      console.log(`[addRegistryRow] ✅ Added new row: ID=${id}, Name=${name}, Status=${status}`);
+      console.log(`[addRegistryRow] ✅ Added row: ID=${id}, Name=${name}, Age=${age}, Status=${status}, Cluster=${cluster}, Note=${note}`);
       return true;
     } else {
       const errText = await res.text();
@@ -1157,17 +1195,19 @@ async function updateCardSections(
       const normalizedName = canonicalPartName.replace(/\s+/g, "_").toUpperCase();
       const expectedFileName = `${paddedId}_${normalizedName}`;
 
+      // Extract metadata from card content for registry
+      const meta = extractCardMetadata(card.content);
       // Add row to registry
-      const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+      const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName, "Aktivní", meta.age, meta.cluster, meta.role);
       if (added) {
         console.log(`[updateCardSections] ✅ Orphan "${canonicalPartName}" added to registry as ID ${paddedId}`);
-        // Also add to in-memory entries so subsequent cards get correct next ID
         rc.entries.push({
           id: paddedId,
           name: canonicalPartName,
+          age: meta.age,
           status: "Aktivní",
-          cluster: "",
-          note: "",
+          cluster: meta.cluster,
+          note: meta.role,
           normalizedName: canonicalText(canonicalPartName),
         });
       }
@@ -1213,15 +1253,17 @@ async function updateCardSections(
   await createFileInFolder(token, newFileName, fullCard, folderId);
   // Add new entry to registry spreadsheet
   if (rc?.registryFileId && rc?.registrySheetName) {
-    const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+    // Extract metadata from the card we just built
+    const meta = extractCardMetadata(fullCard);
+    const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName, "Aktivní", meta.age, meta.cluster, meta.role);
     if (added) {
-      // Update in-memory entries for correct next ID
       rc.entries.push({
         id: paddedId,
         name: canonicalPartName,
+        age: meta.age,
         status: "Aktivní",
-        cluster: "",
-        note: "",
+        cluster: meta.cluster,
+        note: meta.role,
         normalizedName: canonicalText(canonicalPartName),
       });
     }
@@ -1455,9 +1497,11 @@ serve(async (req) => {
           const expectedFileName = `${paddedId}_${normalizedName}`;
 
           if (rc.registryFileId && rc.registrySheetName) {
-            const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName);
+            // Extract metadata from card content for registry
+            const meta = extractCardMetadata(content);
+            const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName, "Aktivní", meta.age, meta.cluster, meta.role);
             if (added) {
-              rc.entries.push({ id: paddedId, name: partName, status: "Aktivní", cluster: "", note: "", normalizedName: canonicalText(partName) });
+              rc.entries.push({ id: paddedId, name: partName, age: meta.age, status: "Aktivní", cluster: meta.cluster, note: meta.role, normalizedName: canonicalText(partName) });
             }
           }
           await renameDriveFile(token, file.id, expectedFileName);
