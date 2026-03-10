@@ -37,6 +37,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [isReformatting, setIsReformatting] = useState(false);
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertProgress, setConvertProgress] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
