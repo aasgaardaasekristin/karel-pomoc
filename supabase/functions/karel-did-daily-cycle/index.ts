@@ -1116,7 +1116,7 @@ async function updateCardSections(
   partName: string,
   newSections: Record<string, string>,
   folderId: string,
-  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string }
+  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string; registryContext?: RegistryContext | null }
 ): Promise<{ fileName: string; sectionsUpdated: string[]; isNew: boolean }> {
   const allowCreate = options?.allowCreate ?? false;
   const searchName = options?.searchName || partName;
@@ -1156,8 +1156,17 @@ async function updateCardSections(
     return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
   }
 
-  const newFileName = `Karta_${canonicalPartName.replace(/\s+/g, "_")}.txt`;
+  // Auto-increment ID from registry and create as Google Doc
+  const rc = options?.registryContext;
+  const nextId = getNextRegistryId(rc?.entries || []);
+  const paddedId = String(nextId).padStart(3, "0");
+  const newFileName = `DID_${paddedId}_${canonicalPartName.replace(/\s+/g, "_")}`;
   await createFileInFolder(token, newFileName, fullCard, folderId);
+  // Add new entry to registry spreadsheet
+  if (rc?.registryFileId && rc?.registrySheetName) {
+    await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+  }
+  console.log(`[updateCardSections] ✅ Created new Google Doc: ${newFileName} (ID: ${paddedId})`);
   return { fileName: newFileName, sectionsUpdated: updatedKeys, isNew: true };
 }
 
