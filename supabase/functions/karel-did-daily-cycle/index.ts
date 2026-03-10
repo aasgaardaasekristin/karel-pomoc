@@ -129,6 +129,7 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
     ? Number(bodyContent[bodyContent.length - 1]?.endIndex || 1)
     : 1;
 
+  // Step 1: Delete existing content and insert new text
   const requests: any[] = [];
   if (lastEndIndex > 1) {
     requests.push({
@@ -156,6 +157,78 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
 
   if (!updateRes.ok) {
     throw new Error(`Docs batchUpdate failed (${updateRes.status}): ${await updateRes.text()}`);
+  }
+
+  // Step 2: Apply formatting (headings) to section headers
+  try {
+    const lines = content.split("\n");
+    const formatRequests: any[] = [];
+    let charIndex = 1; // Docs API uses 1-based index
+
+    for (const line of lines) {
+      const lineLen = line.length;
+      if (lineLen > 0) {
+        // Main card title (═══ KARTA ČÁSTI: ...)
+        if (/^═+\s*KARTA\s+[ČC]ÁSTI/i.test(line)) {
+          formatRequests.push({
+            updateParagraphStyle: {
+              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
+              paragraphStyle: { namedStyleType: "HEADING_1" },
+              fields: "namedStyleType",
+            },
+          });
+        }
+        // Section headers (═══ SEKCE A – ...)
+        else if (/^═*\s*SEKCE\s+[A-M]\s*[–\-:]/i.test(line)) {
+          formatRequests.push({
+            updateParagraphStyle: {
+              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
+              paragraphStyle: { namedStyleType: "HEADING_2" },
+              fields: "namedStyleType",
+            },
+          });
+        }
+        // Sub-headers (lines starting with ⚠️ or specific labels like "Základní identita", etc.)
+        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav)/i.test(line)) {
+          formatRequests.push({
+            updateParagraphStyle: {
+              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
+              paragraphStyle: { namedStyleType: "HEADING_3" },
+              fields: "namedStyleType",
+            },
+          });
+        }
+        // Thin dividers and labels like "KONTEXT:", "KOMPLEXNÍ ANALÝZA" etc.
+        else if (/^(─+|KONTEXT:|KLÍČOVÉ TÉMA|EMOCE TERAPEUTA|PŘENOS|RIZIKA:|KOMPLEXNÍ ANALÝZA|PRŮBĚH SUPERVIZE|DOPORUČENÉ METODY|HODNOCENÍ RIZIK|HLASOVÁ ANALÝZA|POZNÁMKY:)/i.test(line)) {
+          formatRequests.push({
+            updateParagraphStyle: {
+              range: { startIndex: charIndex, endIndex: charIndex + lineLen },
+              paragraphStyle: { namedStyleType: "HEADING_3" },
+              fields: "namedStyleType",
+            },
+          });
+        }
+      }
+      charIndex += lineLen + 1; // +1 for newline character
+    }
+
+    if (formatRequests.length > 0) {
+      const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requests: formatRequests }),
+      });
+      if (!fmtRes.ok) {
+        console.warn(`[updateGoogleDocInPlace] Formatting failed (non-fatal): ${await fmtRes.text()}`);
+      } else {
+        console.log(`[updateGoogleDocInPlace] Applied ${formatRequests.length} heading styles`);
+      }
+    }
+  } catch (fmtErr) {
+    console.warn(`[updateGoogleDocInPlace] Formatting error (non-fatal): ${fmtErr}`);
   }
 }
 
