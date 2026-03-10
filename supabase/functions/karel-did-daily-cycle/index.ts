@@ -1486,6 +1486,40 @@ serve(async (req) => {
             const expectedFileName = `${entry.id}_${normalizedName}`;
             await renameDriveFile(token, file.id, expectedFileName);
             results.push(`✏️ Přejmenováno: "${file.name}" → "${expectedFileName}" (${folderLabel})`);
+          }
+
+          // Update existing row with metadata from card content (age, status→D, cluster, note)
+          const meta = extractCardMetadata(content);
+          const isArchived = folderLabel === "03_ARCHIV";
+          const currentStatus = isArchived ? "Spí" : "Aktivní";
+          // Find the row number in the spreadsheet (entry.id is 1-based from registry)
+          const rowIndex = rc.entries.indexOf(entry);
+          if (rowIndex >= 0 && rc.registryFileId && rc.registrySheetName) {
+            // Registry has header row, so data starts at row 2; rowIndex is 0-based
+            const sheetRow = rowIndex + 2;
+            const escapedSheet = `'${rc.registrySheetName.replace(/'/g, "''")}'`;
+            const range = `${escapedSheet}!C${sheetRow}:F${sheetRow}`;
+            try {
+              const updateRes = await fetch(
+                `https://sheets.googleapis.com/v4/spreadsheets/${rc.registryFileId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+                {
+                  method: "PUT",
+                  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    values: [[meta.age, currentStatus, meta.cluster, meta.role]],
+                  }),
+                }
+              );
+              if (updateRes.ok) {
+                results.push(`📊 Aktualizován řádek ${sheetRow}: ${entry.name} (Věk=${meta.age || "?"}, Status=${currentStatus}, Klastr=${meta.cluster || "?"}, Role=${meta.role?.slice(0, 40) || "?"})`);
+              } else {
+                const errText = await updateRes.text();
+                console.warn(`[syncRegistry] Row update failed for ${entry.name}: ${errText}`);
+                results.push(`⚠️ Nepodařilo se aktualizovat řádek: ${entry.name}`);
+              }
+            } catch (e) {
+              console.warn(`[syncRegistry] Row update error for ${entry.name}:`, e);
+            }
           } else {
             results.push(`✅ OK: "${file.name}" (ID ${entry.id}, ${folderLabel})`);
           }
