@@ -493,9 +493,10 @@ function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
 
   const idCol = findCol(["id", "cislo", "number"], 0);
   const nameCol = findCol(["jmeno", "nazev", "cast", "part", "fragment"], 1);
-  const statusCol = findCol(["stav", "status"], 2);
-  const clusterCol = findCol(["klastr", "cluster"], 3);
-  const noteCol = findCol(["poznam", "note", "komentar"], 4);
+  const ageCol = findCol(["vek", "age"], 2);
+  const statusCol = findCol(["stav", "status"], 3);
+  const clusterCol = findCol(["klastr", "cluster"], 4);
+  const noteCol = findCol(["poznam", "note", "komentar", "role"], 5);
 
   const entries: RegistryEntry[] = [];
   for (const row of nonEmptyRows.slice(headerRowIndex + 1)) {
