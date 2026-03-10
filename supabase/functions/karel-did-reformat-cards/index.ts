@@ -634,6 +634,7 @@ serve(async (req) => {
     if (mode === "process_one") {
       const entry = entries[index];
       if (!entry) throw new Error(`Invalid index ${index}`);
+      const skipResearch = body.skipResearch === true;
 
       const located = await findCardWithFallback(token, entry, activeFolderId, archiveFolderId);
       if (!located.card) {
@@ -645,11 +646,13 @@ serve(async (req) => {
       }
 
       const card = located.card;
-      console.log(`[reformat] Processing ${entry.id} ${entry.name} (${card.fileName})`);
+      console.log(`[reformat] Processing ${entry.id} ${entry.name} (${card.fileName}) skipResearch=${skipResearch}`);
 
-      // Perplexity research
+      // Perplexity research (skip if requested for speed)
       let perplexityContent = "";
-      try { perplexityContent = await searchPerplexity(entry.name, card.content); } catch {}
+      if (!skipResearch) {
+        try { perplexityContent = await searchPerplexity(entry.name, card.content); } catch {}
+      }
 
       // AI reformat
       const txtExtra = txtContentForPart || "";
@@ -665,17 +668,26 @@ serve(async (req) => {
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      // Strip any ══ decorators from AI output
+      const cleanedContent = reformattedContent.replace(/[═]+/g, "").replace(/[─]+/g, "");
+
       // Write back
-      await updateFileById(token, card.fileId, reformattedContent, card.mimeType);
-      console.log(`[reformat] ✅ ${entry.name} done (${reformattedContent.length} chars)`);
+      await updateFileById(token, card.fileId, cleanedContent, card.mimeType);
+      
+      // Apply Google Docs formatting (headings, bold)
+      if (card.mimeType === DRIVE_DOC_MIME) {
+        try { await applyDocFormatting(token, card.fileId, cleanedContent); } catch {}
+      }
+      
+      console.log(`[reformat] ✅ ${entry.name} done (${cleanedContent.length} chars)`);
 
       return new Response(JSON.stringify({
         mode: "process_one", index, name: entry.name, result: "reformatted",
-        detail: `${card.fileName} přeformátováno (${reformattedContent.length} znaků)${txtExtra ? " + .txt data" : ""}`,
+        detail: `${card.fileName} přeformátováno (${cleanedContent.length} znaků)${txtExtra ? " + .txt data" : ""}`,
         expectedFolder: located.expectedLocation,
         locatedIn: located.locatedIn,
         fileName: card.fileName,
-        contentLength: reformattedContent.length,
+        contentLength: cleanedContent.length,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
