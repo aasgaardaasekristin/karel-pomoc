@@ -456,6 +456,8 @@ interface RegistryContext {
   activeFolderId: string | null;
   archiveFolderId: string | null;
   sourceFileName: string | null;
+  registryFileId: string | null;
+  registrySheetName: string | null;
 }
 
 interface CardTargetResolution {
