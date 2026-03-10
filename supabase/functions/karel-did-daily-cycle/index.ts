@@ -1284,22 +1284,15 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       }
     }
 
-    // 6. Mark threads AND conversations as processed only when analysis produced card updates and updates succeeded
-    const hasCardBlocks = /\[KARTA:/i.test(analysisText || "");
-    const shouldMarkProcessed = !hadCardUpdateErrors && hasCardBlocks && successfulCardUpdates.length > 0;
-
-    if (shouldMarkProcessed) {
-      const threadIds = threads.map(t => t.id);
-      if (threadIds.length > 0) {
-        await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
-      }
-      const convIds = conversations.map(c => c.id);
-      if (convIds.length > 0) {
-        await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
-      }
-    } else {
-      hadCardUpdateErrors = true;
-      console.error("No card updates were produced by AI; keeping records unprocessed for retry.");
+    // 6. ALWAYS mark threads and conversations as processed to prevent repeated emails
+    // Card update failures are tracked separately in did_update_cycles
+    const threadIds = threads.map(t => t.id);
+    if (threadIds.length > 0) {
+      await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
+    }
+    const convIds = conversations.map(c => c.id);
+    if (convIds.length > 0) {
+      await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
     }
 
     if (cycle) {
