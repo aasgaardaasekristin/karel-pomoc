@@ -703,6 +703,7 @@ interface SuccessfulCardUpdate {
   fileName: string;
   sectionsUpdated: string[];
   pathLabel: string;
+  actionType: CardActionType;
 }
 
 interface BlockedCardUpdate {
