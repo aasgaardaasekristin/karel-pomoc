@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, MessageCircle, Zap, FileText } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, MessageCircle, Zap, FileText, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
