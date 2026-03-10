@@ -1179,9 +1179,12 @@ SEKCE J – Krátkodobé cíle a aktuální intervence:
 
 SEKCE K – Výstupy ze sezení a zpětná vazba:
 - Co se osvědčilo/neosvědčilo: | Datum | Co bylo navrženo | Výsledek | Hodnocení |
+- ⚠️ Po KAŽDÉM rozhovoru přidej řádek – i pokud výsledek zatím nelze hodnotit (napiš "probíhá" nebo "čekáme")
 
 SEKCE L – Aktivita a přítomnost části:
 - | Období | Aktivita | Poznámka |
+- ⚠️ POVINNÉ: Přidej nový řádek s aktuálním datem a popisem aktivity
+- Při probuzení z archivu: "[datum] | Probuzení – komunikace s Karlem | Přesunuto z 03_ARCHIV do 01_AKTIVNI"
 
 SEKCE M – Karlova analytická poznámka:
 - Karlova syntéza a dedukce z konverzace
