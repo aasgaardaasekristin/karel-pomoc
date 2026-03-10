@@ -119,6 +119,7 @@ const Chat = () => {
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
