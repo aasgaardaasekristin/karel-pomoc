@@ -1239,7 +1239,8 @@ serve(async (req) => {
       }
     }
 
-    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
+    const forceReformat = !!requestBody?.reformat;
+    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId, forceReformat) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
