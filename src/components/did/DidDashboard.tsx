@@ -37,8 +37,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [isReformatting, setIsReformatting] = useState(false);
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
-  const [isConverting, setIsConverting] = useState(false);
-  const [convertProgress, setConvertProgress] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -292,61 +290,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThrea
             <>
               <span className="hidden sm:inline">Přeformátovat karty A–M</span>
               <span className="sm:hidden">Přeformátovat</span>
-            </>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            setIsConverting(true);
-            setConvertProgress("Spouštím konverzi...");
-            try {
-              const headers = await getAuthHeaders();
-              let startIdx = 0;
-              let totalConverted = 0;
-              let totalErrors = 0;
-              let hasMore = true;
-
-              while (hasMore) {
-                setConvertProgress(`Zpracovávám dávku od ${startIdx}...`);
-                const res = await fetch(
-                  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
-                  { method: "POST", headers, body: JSON.stringify({ mode: "convert_to_doc", index: startIdx, count: 5 }) }
-                );
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error);
-
-                for (const r of data.results || []) {
-                  if (r.action === "converted") totalConverted++;
-                  else if (r.action === "error") totalErrors++;
-                }
-
-                hasMore = data.hasMore;
-                startIdx = data.nextIndex ?? data.rangeEnd;
-              }
-
-              toast.success(`Konverze dokončena! Konvertováno: ${totalConverted}, chyby: ${totalErrors}`);
-            } catch (e) {
-              toast.error("Konverze selhala");
-              console.error(e);
-            } finally {
-              setIsConverting(false);
-              setConvertProgress(null);
-            }
-          }}
-          disabled={isConverting}
-          className="h-8 text-xs gap-1.5"
-        >
-          {isConverting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <FileText className="w-3.5 h-3.5" />
-          )}
-          {convertProgress || (
-            <>
-              <span className="hidden sm:inline">Konvertovat .txt → Doc</span>
-              <span className="sm:hidden">txt→Doc</span>
             </>
           )}
         </Button>
