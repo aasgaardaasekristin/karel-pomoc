@@ -179,6 +179,8 @@ interface RegistryContext {
   clusterFolderId: string | null;
   centerFolderId: string | null;
   agreementsFolderId: string | null;
+  registryFileId: string | null;
+  registrySheetName: string | null;
 }
 
 function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
