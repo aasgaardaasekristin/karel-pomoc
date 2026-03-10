@@ -1164,10 +1164,20 @@ async function listFilesRecursive(token: string, rootFolderId: string): Promise<
   return collected;
 }
 
-async function normalizeCardStructures(token: string, rootFolderId: string, forceReformat = false): Promise<string[]> {
+async function normalizeCardStructures(token: string, rootFolderId: string, forceReformat = false, targetPart?: string): Promise<string[]> {
   const files = await listFilesRecursive(token, rootFolderId);
-  const candidateFiles = files.filter(isTextCandidateFile);
+  let candidateFiles = files.filter(isTextCandidateFile);
   const normalized: string[] = [];
+
+  // If targetPart specified, filter to only matching files
+  if (targetPart) {
+    const targetCanonical = canonicalText(targetPart);
+    candidateFiles = candidateFiles.filter(f => {
+      const fileCanonical = canonicalText(f.name);
+      return scoreNameMatch(targetCanonical, fileCanonical) > 0 || fileCanonical.includes(targetCanonical);
+    });
+    console.log(`[normalizeCardStructures] Targeting "${targetPart}", found ${candidateFiles.length} matching files`);
+  }
 
   for (const file of candidateFiles) {
     try {
@@ -1178,6 +1188,7 @@ async function normalizeCardStructures(token: string, rootFolderId: string, forc
       if (forceReformat || rebuilt.trim() !== original.trim()) {
         await updateFileById(token, file.id, rebuilt, file.mimeType);
         normalized.push(file.name);
+        console.log(`[normalizeCardStructures] Reformatted: ${file.name} (mimeType: ${file.mimeType})`);
       }
     } catch (e) {
       console.error(`[normalizeCardStructures] Failed for ${file.name}:`, e);
