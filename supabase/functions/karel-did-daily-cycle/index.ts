@@ -1451,14 +1451,12 @@ Formát HTML emailu:
         });
       }
     }
-        conversationsProcessed: 0,
-        cardsUpdated,
-        normalizedCards: normalizedCardFiles.length,
-        reportSent: shouldSendEmails,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+
+    // When we reach here with no unprocessed data but hasRecentActivity=true,
+    // we need to use allRecentThreads/allRecentConversations for report generation
+    // Use allRecentThreads for summaries if threads is empty but recent activity exists
+    const reportThreads = threads.length > 0 ? threads : (shouldSendEmails && hasRecentActivity ? allRecentThreads : []);
+    const reportConversations = conversations.length > 0 ? conversations : (shouldSendEmails && hasRecentActivity ? allRecentConversations : []);
 
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
