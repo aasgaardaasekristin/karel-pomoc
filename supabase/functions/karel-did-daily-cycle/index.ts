@@ -1143,6 +1143,9 @@ SEKCE D – Terapeutická doporučení:
 SEKCE E – Chronologický log / Handover:
 - Časová osa událostí s datumem
 - Datum vzniku dokumentu, datum kontaktu
+- ⚠️ AKTUÁLNÍ STAV: Pokud část komunikuje, NESMÍ mít stav "💤 Spí" – aktualizuj na aktivní stav!
+- Při probuzení z archivu POVINNĚ přidej řádek: "[datum] Probuzení – část komunikovala s Karlem"
+- Aktuální stav přepiš z "💤 Spí..." na aktuální situaci (např. "Aktivní. Komunikuje s Karlem.")
 
 SEKCE F – Poznámky pro Karla:
 - Situační karta ("Jsi v roce 2026, jsi v bezpečí...")
@@ -1151,6 +1154,7 @@ SEKCE F – Poznámky pro Karla:
 
 SEKCE G – Deník sezení:
 - Záznamy: | Datum | Co se dělo | Stabilizace | Další krok |
+- ⚠️ POVINNÉ při KAŽDÉM rozhovoru: Přidej řádek do tabulky s datem, shrnutím co se dělo, jaká stabilizace byla použita, a co je další krok
 
 SEKCE H – Dlouhodobé cíle:
 - Směr vývoje části (integrace, stabilizace, budování důvěry)
