@@ -24,11 +24,12 @@ interface ActiveThreadSummary {
 interface Props {
   onManualUpdate: () => void;
   isUpdating: boolean;
+  syncProgress?: { current: number; total: number; currentName: string } | null;
   onQuickSubMode?: (subMode: DidSubMode) => void;
   onQuickThread?: (threadId: string, partName: string) => void;
 }
 
-const DidDashboard = ({ onManualUpdate, isUpdating, onQuickSubMode, onQuickThread }: Props) => {
+const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode, onQuickThread }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
