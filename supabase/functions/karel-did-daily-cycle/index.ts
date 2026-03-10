@@ -422,6 +422,27 @@ async function findBestPartFolder(token: string, stateFolderId: string, entry: R
   return scored[0]?.folder || null;
 }
 
+// Find a card FILE (not folder) directly in a parent folder – for archives where cards aren't in subfolders
+async function findBestPartFile(token: string, parentFolderId: string, entry: RegistryEntry): Promise<DriveFile | null> {
+  const files = await listFilesInFolder(token, parentFolderId);
+  const nonFolders = files.filter((f) => f.mimeType !== DRIVE_FOLDER_MIME);
+
+  const idPrefixRegex = entry.id ? new RegExp(`^0*${Number(entry.id)}(?:[_\\s-]|$)`) : null;
+
+  const scored = nonFolders
+    .map((file) => {
+      const fileCanonical = canonicalText(file.name);
+      let score = scoreNameMatch(entry.normalizedName, fileCanonical);
+      if (idPrefixRegex && idPrefixRegex.test(file.name)) score += 8;
+      if (entry.id && fileCanonical.includes(entry.id)) score += 2;
+      return { file, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.file || null;
+}
+
 async function loadRegistryContext(token: string, rootFolderId: string): Promise<RegistryContext> {
   const rootChildren = await listFilesInFolder(token, rootFolderId);
   const rootFolders = rootChildren.filter((f) => f.mimeType === DRIVE_FOLDER_MIME);
