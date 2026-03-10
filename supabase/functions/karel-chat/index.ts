@@ -33,26 +33,44 @@ serve(async (req) => {
 
     // ═══ LANGUAGE ADAPTATION for "cast" mode ═══
     // Detect language of last user message and enforce matching response language
+    let detectedLang = "";
     if (didSubMode === "cast" && messages.length >= 1) {
       const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
       const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
       if (lastUserText.length > 0) {
-        // Check if text contains non-Czech characters or patterns
         const hasCyrillic = /[\u0400-\u04FF]/.test(lastUserText);
         const hasNordic = /[æøåÆØÅ]/.test(lastUserText);
-        const looksEnglish = /\b(the|is|are|was|were|have|has|my|your|this|that|what|how|why|do|don't|I'm|I am|you|hello|hi|please|thank)\b/i.test(lastUserText);
-        const looksGerman = /\b(ich|bin|ist|das|die|der|und|nicht|ein|eine|haben|sein|mir|mich|wie|was|warum)\b/i.test(lastUserText);
-        const looksNorwegian = /\b(jeg|er|det|og|ikke|har|vil|kan|med|fra|hei|takk|hva|hvorfor|fordi)\b/i.test(lastUserText);
-        const looksCzech = /\b(jsem|jsi|je|jsou|mám|máš|co|jak|proč|kde|kdy|ale|a|že|to|ta|ten|se|si|na|do|od|za)\b/i.test(lastUserText);
+        const hasArabic = /[\u0600-\u06FF]/.test(lastUserText);
+        const hasChinese = /[\u4e00-\u9fff]/.test(lastUserText);
         
-        let detectedLang = "";
-        if (hasNordic || looksNorwegian) detectedLang = "norsky (Norwegian)";
-        else if (looksEnglish && !looksCzech) detectedLang = "anglicky (English)";
-        else if (looksGerman && !looksCzech) detectedLang = "německy (German)";
-        else if (hasCyrillic) detectedLang = "v jazyce zprávy (detected Cyrillic script)";
+        // More aggressive detection with more keywords
+        const looksEnglish = /\b(the|is|are|was|were|have|has|had|my|your|this|that|what|how|why|do|don't|doesn't|I'm|I am|you|hello|hi|please|thank|want|need|feel|think|know|like|can|will|would|should|could|come|go|see|look|tell|say|said|because|but|and|or|not|no|yes|okay|ok|hey|sorry|help|name|where|when|who)\b/i.test(lastUserText);
+        const looksGerman = /\b(ich|bin|ist|das|die|der|und|nicht|ein|eine|haben|sein|mir|mich|wie|was|warum|hallo|bitte|danke|gut|schlecht|ja|nein|kann|will|muss|soll|hier|dort|heute|morgen|gehen|kommen|sagen|machen)\b/i.test(lastUserText);
+        const looksNorwegian = /\b(jeg|er|det|og|ikke|har|vil|kan|med|fra|hei|takk|hva|hvorfor|fordi|meg|deg|han|hun|den|denne|skal|må|bli|være|gå|komme|si|gjøre|snakke|forstå)\b/i.test(lastUserText);
+        const looksSpanish = /\b(yo|es|el|la|los|las|un|una|que|por|para|con|hola|gracias|sí|no|tengo|quiero|puedo|estoy|como|donde|cuando|pero|también|muy|bien|mal)\b/i.test(lastUserText);
+        const looksFrench = /\b(je|suis|est|le|la|les|un|une|que|pour|avec|bonjour|merci|oui|non|ai|veux|peux|comme|où|quand|mais|aussi|très|bien|mal)\b/i.test(lastUserText);
+        const looksCzech = /\b(jsem|jsi|je|jsou|mám|máš|co|jak|proč|kde|kdy|ale|že|to|ta|ten|se|si|na|do|od|za|při|pro|bez|nad|pod|před|jen|mě|tě|mu|ho|ji|nám|vám|jim|být|mít|dělat|říct|vědět|chtít|moci|smět|muset)\b/i.test(lastUserText);
+        
+        if (hasNordic || looksNorwegian) detectedLang = "Norwegian";
+        else if (hasChinese) detectedLang = "Chinese";
+        else if (hasArabic) detectedLang = "Arabic";
+        else if (hasCyrillic) detectedLang = "Russian/Cyrillic";
+        else if (looksSpanish && !looksCzech) detectedLang = "Spanish";
+        else if (looksFrench && !looksCzech) detectedLang = "French";
+        else if (looksGerman && !looksCzech) detectedLang = "German";
+        else if (looksEnglish && !looksCzech) detectedLang = "English";
         
         if (detectedLang) {
-          systemPrompt += `\n\n═══ ⚠️ POVINNÁ JAZYKOVÁ INSTRUKCE ═══\nPoslední zpráva části je ${detectedLang}. MUSÍŠ odpovědět VE STEJNÉM JAZYCE jako část. Neodpovídej česky! Odpověz ${detectedLang}. Toto je ABSOLUTNÍ pravidlo bez výjimky pro tento rozhovor.`;
+          // Prepend the language instruction to the BEGINNING of system prompt for maximum impact
+          systemPrompt = `⚠️⚠️⚠️ MANDATORY LANGUAGE RULE ⚠️⚠️⚠️
+YOU MUST RESPOND IN ${detectedLang.toUpperCase()}. 
+The child/part is speaking ${detectedLang}. You MUST answer in ${detectedLang}. 
+DO NOT respond in Czech. DO NOT mix languages. 
+Every single word of your response must be in ${detectedLang}.
+This overrides ALL other language instructions.
+⚠️⚠️⚠️ END MANDATORY LANGUAGE RULE ⚠️⚠️⚠️
+
+` + systemPrompt;
         }
       }
     }

@@ -1110,12 +1110,37 @@ ${perplexityContext}`,
 
     // 4. PARSE AND UPDATE CARDS IN-PLACE
 
+    // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
+    const NON_DID_BLACKLIST = new Set([
+      "amalka", "tonička", "tonicka", "jiří", "jiri", "jirka",
+      "kata", "katka", "kája", "kaja", "káťa", "katya",
+      "hanka", "hana", "hanička", "hanicka", "mamka",
+      // Common variations without diacritics
+      "amalka", "tonicka", "jiri", "kata", "hana",
+    ].map(n => canonicalText(n)));
+
+    function isBlacklisted(name: string): boolean {
+      const canonical = canonicalText(name);
+      for (const blocked of NON_DID_BLACKLIST) {
+        if (canonical === blocked || canonical.includes(blocked) || blocked.includes(canonical)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     if (folderId && analysisText) {
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of analysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
+
+        // ═══ BLACKLIST CHECK: Skip biological persons and therapists ═══
+        if (isBlacklisted(normalizedPartName) || isBlacklisted(rawPartName)) {
+          console.warn(`[BLACKLIST] ⛔ Blocked card creation for non-DID person: "${rawPartName}" – this is a biological person or therapist, NOT a DID part.`);
+          continue;
+        }
 
         const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
         const newSections: Record<string, string> = {};
@@ -1130,6 +1155,12 @@ ${perplexityContext}`,
             const target = await resolveCardTarget(token, folderId, normalizedPartName, registryContext);
             const resolvedPartName = target.registryEntry?.name || normalizedPartName;
             const resolvedCanonical = canonicalText(resolvedPartName);
+
+            // Double-check blacklist with resolved name too
+            if (isBlacklisted(resolvedPartName)) {
+              console.warn(`[BLACKLIST] ⛔ Blocked card creation for resolved non-DID person: "${resolvedPartName}"`);
+              continue;
+            }
 
             // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
             if (!target.registryEntry && !knownThreadParts.has(resolvedCanonical)) {
