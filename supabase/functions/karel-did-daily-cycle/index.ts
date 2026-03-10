@@ -1408,6 +1408,70 @@ serve(async (req) => {
   }
 
   try {
+    // ═══ FAST-PATH: syncRegistry – scan Drive cards, register orphans, rename to ID_NAME ═══
+    if (requestBody?.syncRegistry) {
+      const token = await getAccessToken();
+      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      const rc = await loadRegistryContext(token, folderId);
+      if (!rc.activeFolderId) throw new Error("01_AKTIVNI_FRAGMENTY not found");
+
+      // Collect all card files from active + archive folders
+      const allCardFiles: Array<{ file: DriveFile; folderId: string; folderLabel: string }> = [];
+      for (const [fid, label] of [[rc.activeFolderId, "01_AKTIVNI"], [rc.archiveFolderId, "03_ARCHIV"]] as [string | null, string][]) {
+        if (!fid) continue;
+        const files = await listFilesRecursive(token, fid);
+        for (const f of files) {
+          if (isTextCandidateFile(f)) allCardFiles.push({ file: f, folderId: fid, folderLabel: label });
+        }
+      }
+
+      const results: string[] = [];
+      for (const { file, folderLabel } of allCardFiles) {
+        // Check if file looks like a DID card
+        let content: string;
+        try { content = await readFileContent(token, file.id); } catch { continue; }
+        if (!looksLikeDidCard(file.name, content)) continue;
+
+        const partName = partNameFromFileName(file.name);
+        const entry = findBestRegistryEntry(partName, rc.entries);
+
+        if (entry) {
+          // Already registered – check if filename matches convention
+          const expectedPrefix = `${entry.id}_`;
+          if (!file.name.startsWith(expectedPrefix)) {
+            const normalizedName = entry.name.replace(/\s+/g, "_").toUpperCase();
+            const expectedFileName = `${entry.id}_${normalizedName}`;
+            await renameDriveFile(token, file.id, expectedFileName);
+            results.push(`✏️ Přejmenováno: "${file.name}" → "${expectedFileName}" (${folderLabel})`);
+          } else {
+            results.push(`✅ OK: "${file.name}" (ID ${entry.id}, ${folderLabel})`);
+          }
+        } else {
+          // Orphan – register and rename
+          const nextId = getNextRegistryId(rc.entries);
+          const paddedId = String(nextId).padStart(3, "0");
+          const normalizedName = partName.replace(/\s+/g, "_").toUpperCase();
+          const expectedFileName = `${paddedId}_${normalizedName}`;
+
+          if (rc.registryFileId && rc.registrySheetName) {
+            const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName);
+            if (added) {
+              rc.entries.push({ id: paddedId, name: partName, status: "Aktivní", cluster: "", note: "", normalizedName: canonicalText(partName) });
+            }
+          }
+          await renameDriveFile(token, file.id, expectedFileName);
+          results.push(`📝 NOVÝ: "${file.name}" → "${expectedFileName}" (ID ${paddedId}, ${folderLabel})`);
+        }
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Synchronizace registru: ${results.length} karet zkontrolováno`,
+        results,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // ═══ FAST-PATH: reformat only (no DB, no AI, no email) ═══
     if (requestBody?.reformat) {
       const token = await getAccessToken();
@@ -2031,8 +2095,12 @@ ${perplexityContext}`,
             }
 
             // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
-            if (!target.registryEntry && !knownThreadParts.has(resolvedCanonical)) {
-              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName}`);
+            // Use fuzzy matching: check if resolved name is a substring of any thread part or vice versa
+            const isInThreads = [...knownThreadParts].some(tp => 
+              tp === resolvedCanonical || tp.includes(resolvedCanonical) || resolvedCanonical.includes(tp)
+            );
+            if (!target.registryEntry && !isInThreads) {
+              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName} (canonical: ${resolvedCanonical}, known: ${[...knownThreadParts].join(",")})`);
               continue;
             }
 
