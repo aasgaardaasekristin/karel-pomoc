@@ -761,6 +761,54 @@ serve(async (req) => {
         }
       }
 
+      // After processing registry entries, also convert orphan .txt files in active/archive folders
+      if (end >= entries.length) {
+        const orphanFolders: Array<{ folderId: string; label: string }> = [];
+        if (activeFolderId) orphanFolders.push({ folderId: activeFolderId, label: "active" });
+        if (archiveFolderId) orphanFolders.push({ folderId: archiveFolderId, label: "archive" });
+
+        for (const { folderId, label } of orphanFolders) {
+          const files = await listFilesInFolder(token, folderId);
+          const txtFiles = files.filter(f => 
+            f.mimeType !== DRIVE_DOC_MIME && 
+            f.mimeType !== DRIVE_FOLDER_MIME && 
+            f.mimeType !== DRIVE_SHEET_MIME &&
+            /\.txt$/i.test(f.name)
+          );
+
+          for (const f of txtFiles) {
+            try {
+              const content = await readFileContent(token, f.id);
+              // Clean content
+              let cleanedContent = content;
+              cleanedContent = cleanedContent.replace(/═+\s*(SEKCE\s+[A-M]\s*[–\-:][^\n]*?)═*/g, "$1").replace(/\s+$/gm, "");
+              cleanedContent = cleanedContent.replace(/═+\s*(KARTA\s+[ČC]ÁSTI:[^\n]*?)═*/gi, "$1").replace(/\s+$/gm, "");
+              cleanedContent = cleanedContent.replace(/^[═─]{3,}\s*$/gm, "");
+              cleanedContent = cleanedContent.replace(/\n{4,}/g, "\n\n\n");
+
+              const newName = f.name.replace(/\.txt$/i, "");
+              const boundary = "----OrphanConvertBoundary";
+              const metadata = JSON.stringify({ name: newName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
+              const uploadBody = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${cleanedContent}\r\n--${boundary}--`;
+              const createRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+                body: uploadBody,
+              });
+              if (!createRes.ok) throw new Error(`Create failed: ${await createRes.text()}`);
+              const newDoc = await createRes.json();
+              await applyDocFormatting(token, newDoc.id, cleanedContent);
+              await deleteDriveFile(token, f.id);
+              console.log(`[convert-orphan] ✅ ${f.name} → ${newName} (Google Doc) in ${label}`);
+              results.push({ index: -1, name: f.name, action: "converted", oldFileName: f.name, newFileName: newName });
+            } catch (e) {
+              console.error(`[convert-orphan] ❌ ${f.name}:`, e);
+              results.push({ index: -1, name: f.name, action: "error", detail: e instanceof Error ? e.message : String(e) });
+            }
+          }
+        }
+      }
+
       return new Response(JSON.stringify({
         mode: "convert_to_doc",
         totalRegistry: entries.length,
