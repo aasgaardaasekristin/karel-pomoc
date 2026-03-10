@@ -475,12 +475,30 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
   };
 }
 
+async function moveFileToFolder(token: string, fileId: string, newParentId: string, oldParentId: string): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${newParentId}&removeParents=${oldParentId}&supportsAllDrives=true`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) }
+  );
+  if (!res.ok) throw new Error(`Move file failed (${res.status}): ${await res.text()}`);
+}
+
+async function moveFolderToParent(token: string, folderId: string, newParentId: string, oldParentId: string): Promise<void> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${folderId}?addParents=${newParentId}&removeParents=${oldParentId}&supportsAllDrives=true`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) }
+  );
+  if (!res.ok) throw new Error(`Move folder failed (${res.status}): ${await res.text()}`);
+}
+
+type CardActionType = "aktualizace" | "nova_karta" | "probuzeni_z_archivu";
+
 async function resolveCardTarget(
   token: string,
   rootFolderId: string,
   partName: string,
   registryContext: RegistryContext | null
-): Promise<CardTargetResolution> {
+): Promise<CardTargetResolution & { actionType: CardActionType }> {
   const entry = registryContext ? findBestRegistryEntry(partName, registryContext.entries) : null;
 
   if (!registryContext) {
@@ -489,10 +507,11 @@ async function resolveCardTarget(
       allowCreate: false,
       pathLabel: "fallback:root",
       registryEntry: null,
+      actionType: "aktualizace",
     };
   }
 
-  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi (nikdy ne fallback po registru)
+  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi
   if (!entry) {
     const newPartRoot = registryContext.activeFolderId || rootFolderId;
     return {
@@ -502,10 +521,39 @@ async function resolveCardTarget(
         ? "01_AKTIVNI_FRAGMENTY/(nová část mimo registr)"
         : "fallback:root/(nová část mimo registr)",
       registryEntry: null,
+      actionType: "nova_karta",
     };
   }
 
   const shouldUseArchive = isArchivedFromRegistry(entry);
+  
+  // ═══ PROBUZENÍ Z ARCHIVU: Pokud je část archivovaná ale komunikuje, přesuň ji ═══
+  if (shouldUseArchive && registryContext.archiveFolderId && registryContext.activeFolderId) {
+    console.log(`[PROBUZENÍ] 🔄 Část "${entry.name}" je v archivu ale komunikuje – hledám kartu v archivu pro přesun...`);
+    const partFolder = await findBestPartFolder(token, registryContext.archiveFolderId, entry);
+    
+    if (partFolder) {
+      // Přesuň celou složku části z archivu do aktivních
+      try {
+        await moveFolderToParent(token, partFolder.id, registryContext.activeFolderId, registryContext.archiveFolderId);
+        console.log(`[PROBUZENÍ] ✅ Složka "${partFolder.name}" přesunuta z 03_ARCHIV do 01_AKTIVNI`);
+      } catch (e) {
+        console.error(`[PROBUZENÍ] ❌ Přesun složky selhal:`, e);
+      }
+      
+      return {
+        searchRootId: partFolder.id,
+        allowCreate: false,
+        pathLabel: `01_AKTIVNI_FRAGMENTY/${partFolder.name} (přesunuto z archivu)`,
+        registryEntry: entry,
+        actionType: "probuzeni_z_archivu",
+      };
+    }
+    
+    // Karta v archivu nenalezena – zkus aktivní složku
+    console.warn(`[PROBUZENÍ] Složka části "${entry.name}" nenalezena v archivu, zkouším aktivní...`);
+  }
+
   const stateFolderId = shouldUseArchive ? registryContext.archiveFolderId : registryContext.activeFolderId;
 
   if (!stateFolderId) {
@@ -523,6 +571,7 @@ async function resolveCardTarget(
     allowCreate: false,
     pathLabel,
     registryEntry: entry,
+    actionType: "aktualizace",
   };
 }
 
