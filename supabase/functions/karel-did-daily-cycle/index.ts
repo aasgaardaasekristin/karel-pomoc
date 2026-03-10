@@ -835,7 +835,29 @@ serve(async (req) => {
 
     const threadSummaries = threads.map(t => {
       const msgs = ((t.messages as any[]) || []).slice(-20);
-      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
+      
+      // ═══ SWITCH DETECTION: Detect if part changed mid-thread ═══
+      // Find last user message that looks like a self-identification
+      let detectedSwitch = "";
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m.role !== "user" || typeof m.content !== "string") continue;
+        const switchMatch = m.content.match(/(?:jsem|já jsem|tady|i am|i'm|my name is)\s+([A-ZÁ-Ž][a-zá-ž]{1,20})/i);
+        if (switchMatch) {
+          const detectedName = switchMatch[1].trim();
+          const originalName = (t.part_name || "").trim().toLowerCase();
+          if (detectedName.toLowerCase() !== originalName) {
+            detectedSwitch = detectedName;
+          }
+          break;
+        }
+      }
+      
+      const switchNote = detectedSwitch 
+        ? `\n⚠️ SWITCH DETEKOVÁN: Vlákno začalo jako "${t.part_name}" ale část se představila jako "${detectedSwitch}". Přiřaď konverzaci k POSLEDNÍ identifikované části (${detectedSwitch}), NE k původní (${t.part_name}).`
+        : "";
+      
+      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "ČÁST/UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const convSummaries = conversations.map(c => {
@@ -953,6 +975,12 @@ serve(async (req) => {
           {
             role: "system",
             content: `Jsi Karel – analytik DID systému. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
+
+═══ KRITICKÉ PRAVIDLO: DETEKCE SWITCHŮ VE VLÁKNECH ═══
+⚠️ Pokud je ve vlákně označen SWITCH (např. "vlákno začalo jako Lincoln ale část se představila jako Adam"):
+- NEPIŠ kartu pro původní část (Lincoln), ale pro SKUTEČNOU část (Adam)
+- Pokud se část pouze PŘEDSTAVILA na začátku a pak se přepnula, celý rozhovor patří NOVÉ části
+- V [REPORT] uveď: "Ve vlákně [part_name] došlo ke switchi na [nová_část]"
 
 ═══ ZÁKLADNÍ PRAVIDLO ═══
 Jeden dokument/konverzace = mnoho informací = každá informace má svou sekci.

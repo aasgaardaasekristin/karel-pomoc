@@ -897,11 +897,15 @@ const Chat = () => {
     // Zápis do karet + email report běží dávkově v denním cyklu nebo po manuální aktualizaci
     toast.info("Vlákno uloženo. Kartotéka i report se zpracují při denním cyklu nebo po kliknutí na Aktualizovat kartotéku.");
 
+    const endedPartName = activeThread?.partName || "";
     clearMessages(mode);
     setActiveThread(null);
+    // Generate a stable session ID for the post-call mamka conversation to prevent duplicate saves
+    const postCallSessionId = `postcall-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setDidSubMode("mamka");
+    setDidSessionId(postCallSessionId);
     setDidFlowState("chat");
-    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}.
+    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${endedPartName ? ` s částí ${endedPartName}` : ""}.
 
 Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
   };
@@ -1099,6 +1103,32 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
               });
             }
           } catch { buffer = line + "\n" + buffer; break; }
+        }
+      }
+
+      // ═══ SWITCH DETECTION: If Karel detects a switch, update the thread part_name ═══
+      if (activeThread && didSubMode === "cast" && assistantContent) {
+        const switchMatch = assistantContent.match(/\[SWITCH:([^\]]+)\]/);
+        if (switchMatch) {
+          const newPartName = switchMatch[1].trim();
+          if (newPartName && newPartName.toLowerCase() !== activeThread.partName.toLowerCase()) {
+            console.log(`[switch-detect] Part switched from "${activeThread.partName}" to "${newPartName}"`);
+            // Update thread in DB
+            await supabase
+              .from("did_threads")
+              .update({ part_name: newPartName })
+              .eq("id", activeThread.id);
+            // Update local state
+            setActiveThread(prev => prev ? { ...prev, partName: newPartName } : prev);
+            toast.info(`Switch detekován: ${activeThread.partName} → ${newPartName}`);
+          }
+          // Clean the switch marker from displayed message
+          assistantContent = assistantContent.replace(/\[SWITCH:[^\]]+\]/g, "").trim();
+          setMessages((prev) => {
+            const n = [...prev];
+            if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
+            return n;
+          });
         }
       }
 
