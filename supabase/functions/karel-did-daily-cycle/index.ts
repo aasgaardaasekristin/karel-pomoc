@@ -1333,6 +1333,9 @@ serve(async (req) => {
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
+    // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
+    const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0;
+
     if (threads.length === 0 && conversations.length === 0) {
       if (cycle) {
         await sb.from("did_update_cycles").update({
