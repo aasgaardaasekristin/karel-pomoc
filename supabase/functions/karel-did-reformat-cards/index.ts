@@ -277,17 +277,49 @@ SEKCE K – Výstupy ze sezení: Formát: | Datum | Navrženo | Výsledek | Hodn
 SEKCE L – Aktivita a přítomnost: Aktuální úroveň, délka neaktivity.
 SEKCE M – Karlova analytická poznámka: Syntéza, hypotézy, doporučený směr.
 
+═══ FORMÁTOVÁNÍ OBSAHU – VZOR (jako karta Tundrupka/Gustík) ═══
+
+1. STRUKTUROVANÁ POLE na začátku sekce A (a kde to dává smysl):
+   * ID: 005
+   * Jméno: Lincoln
+   * Klastr: Klastr_Lincoln_Linie
+   * Typ: Ochranná část / Strážce
+   * Věk: ~14 let
+   * Status: ✅ Aktivní (od 03/2026)
+   * Pohlaví: chlapec
+
+2. POJMENOVANÉ PODSEKCE (bez ══ dekorací):
+   Historický kontext:
+   Text popisující historii části...
+
+   Vazba na Haničku:
+   Text o vazbě...
+
+   Co uklidňuje:
+   * Hravé techniky, pískoviště s figurkami
+   * Hudba (piano, klidné melodie)
+   * Fyzický kontakt (objetí, držení za ruku)
+
+3. ODRÁŽKY pro seznamy:
+   - Senzorická kotva: vůně lesa
+   - Trigger: hlasité zvuky
+   - Vztah: spojenec Lincolna
+
+4. ŽÁDNÉ surové logy typu "[2026-03-10] - text text text". Místo toho informaci INTEGRUJ do struktury.
+
 ═══ PRAVIDLA ═══
-1. NERESUM – zachovej plný obsah.
+1. NERESUM – zachovej plný obsah, ale RESTRUKTURUJ ho do přehledné formy.
 2. Každý údaj do JEDNÉ sekce.
 3. Prázdné sekce: "(zatím prázdné)".
 4. Zachovej ⚠️ varování.
 5. Data ve formátu YYYY-MM-DD.
 6. Integruj Perplexity výzkum do I a D/M.
-7. NEKOPÍRUJ bloky doslovně – restrukturuj.
-8. Hlavička: KARTA ČÁSTI: [JMÉNO] (BEZ ═══ znaků – ty se špatně zobrazují v Google Docs)
+7. NEKOPÍRUJ bloky doslovně – restrukturuj do přehledných polí a podsekci.
+8. Hlavička: KARTA ČÁSTI: [JMÉNO] (BEZ ═══ znaků)
 9. .txt data INTEGRUJ do příslušných sekcí.
 10. Formát sekcí: SEKCE X – [název] (BEZ ═══ znaků)
+11. ŽÁDNÉ dekorativní čáry (══, ──, ---) v obsahu.
+12. Každý nový záznam s datem [YYYY-MM-DD] a zdrojem.
 
 ═══ METADATA Z REGISTRU ═══
 ID: ${entry.id} | Jméno: ${entry.name} | Stav: ${entry.status} | Klastr: ${entry.cluster} | Poznámka: ${entry.note}`;
