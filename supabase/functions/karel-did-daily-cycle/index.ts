@@ -935,6 +935,21 @@ serve(async (req) => {
 Jeden dokument/konverzace = mnoho informací = každá informace má svou sekci.
 NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obsah – pouze doplňuješ nebo upřesňuješ.
 
+═══ KRITICKÉ PRAVIDLO: ROZLIŠUJ "ZMÍNĚNO" vs "AKTIVNÍ" ═══
+⚠️ Pokud terapeut (Hanka/Káťa) v rozhovoru ZMÍNÍ jméno části (např. "Jak se má Anička?"), to NEZNAMENÁ že se část probudila nebo je aktivní!
+- "Zmíněno v rozhovoru" ≠ "Část je aktivní"
+- Pouze pokud část SAMA komunikuje (má vlastní zprávy s role "user" v režimu "cast"), je aktivní
+- V režimu "kata" nebo "mamka" mluví TERAPEUT, ne části. Jakékoli zmínky o částech jsou jen dotazy/konzultace.
+
+═══ KRITICKÉ PRAVIDLO: BIOLOGICKÉ OSOBY vs DID ČÁSTI ═══
+⚠️ Následující osoby NEJSOU části DID systému, jsou to reální lidé:
+- Amálka (7 let) – biologická dcera Káti a Jiřího
+- Tonička (4 roky) – biologická dcera Káti a Jiřího
+- Jiří – Kátin manžel
+- Káťa – druhý terapeut, Hančina biologická dcera
+- Hanka/Hanička – první terapeut
+NIKDY pro tyto osoby NEVYTVÁŘEJ karty DID částí. NIKDY je nezapisuj jako fragmenty/části systému.
+
 ═══ POSTUP ═══
 1. Identifikuj o které části každá konverzace pojednává
 2. Projdi konverzaci odstavec po odstavci
