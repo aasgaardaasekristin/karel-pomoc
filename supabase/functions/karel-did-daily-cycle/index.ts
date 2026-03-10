@@ -965,13 +965,15 @@ NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obs
 - V režimu "kata" nebo "mamka" mluví TERAPEUT, ne části. Jakékoli zmínky o částech jsou jen dotazy/konzultace.
 
 ═══ KRITICKÉ PRAVIDLO: BIOLOGICKÉ OSOBY vs DID ČÁSTI ═══
-⚠️ Následující osoby NEJSOU části DID systému, jsou to reální lidé:
+⚠️ Následující osoby NEJSOU části DID systému, jsou to reální lidé. NIKDY pro ně NEVYTVÁŘEJ [KARTA:...] blok:
 - Amálka (7 let) – biologická dcera Káti a Jiřího
-- Tonička (4 roky) – biologická dcera Káti a Jiřího
+- Tonička (4 roky) – biologická dcera Káti a Jiřího  
 - Jiří – Kátin manžel
-- Káťa – druhý terapeut, Hančina biologická dcera
-- Hanka/Hanička – první terapeut
-NIKDY pro tyto osoby NEVYTVÁŘEJ karty DID částí. NIKDY je nezapisuj jako fragmenty/části systému.
+- Káťa / Katka / Kája – druhý terapeut, Hančina biologická dcera
+- Hanka / Hanička / Hana – první terapeut
+- Jakékoli jméno z tohoto seznamu NESMÍ mít vlastní [KARTA:] blok
+- Pokud terapeut o nich mluví, je to VNĚJŠÍ KONTEXT, ne DID dynamika
+- Pokud si nejsi jistý zda jméno je část nebo reálná osoba, NEZAPISUJ kartu a zmíň to v [REPORT]
 
 ═══ POSTUP ═══
 1. Identifikuj o které části každá konverzace pojednává
