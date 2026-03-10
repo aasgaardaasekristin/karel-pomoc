@@ -428,7 +428,7 @@ function parseCardSections(content: string): Record<string, string> {
 
 function buildCard(partName: string, sections: Record<string, string>): string {
   const lines: string[] = [];
-  lines.push(sections["_preamble"] || `═══ KARTA ČÁSTI: ${partName} ═══`);
+  lines.push(sections["_preamble"] || `KARTA ČÁSTI: ${partName.toUpperCase()}`);
   lines.push("");
   for (const letter of SECTION_ORDER) {
     lines.push(sectionHeader(letter));
