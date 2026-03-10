@@ -851,12 +851,35 @@ serve(async (req) => {
     );
     let driveContext = "";
     let existingCards: Record<string, string> = {};
+    let instructionContext = "";
 
     if (folderId) {
       try {
         const partsFileId = await findFile(token, "00_Seznam_casti.txt", folderId);
         if (partsFileId) driveContext = await readFileContent(token, partsFileId);
       } catch (e) { console.error("Drive read error:", e); }
+
+      // Load 02_Instrukce from 00_CENTRUM for context about who is who
+      try {
+        const centerFolderId = registryContext?.activeFolderId
+          ? (await findFolder(token, "00_CENTRUM")) || null
+          : null;
+        // Try to find instruction document in center folder
+        const rootChildren = await listFilesInFolder(token, folderId);
+        const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
+        if (centerFolder) {
+          const centerFiles = await listFilesInFolder(token, centerFolder.id);
+          const instrFile = centerFiles.find(f => canonicalText(f.name).includes("instrukce"));
+          if (instrFile) {
+            try {
+              const instrContent = await readFileContent(token, instrFile.id);
+              // Take first 4000 chars to keep token budget manageable
+              instructionContext = instrContent.length > 4000 ? instrContent.slice(0, 4000) + "…" : instrContent;
+              console.log(`[daily-cycle] Loaded instruction doc: ${instrFile.name} (${instructionContext.length} chars)`);
+            } catch (e) { console.warn(`Failed to read instruction doc:`, e); }
+          }
+        }
+      } catch (e) { console.warn("Failed to load 02_Instrukce:", e); }
 
       // Load cards only for explicitly named thread parts (fast)
       const threadParts = [...new Set(threads.map(t => normalizePartHint(t.part_name || "").trim()).filter(Boolean))];
@@ -934,6 +957,21 @@ serve(async (req) => {
 ═══ ZÁKLADNÍ PRAVIDLO ═══
 Jeden dokument/konverzace = mnoho informací = každá informace má svou sekci.
 NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obsah – pouze doplňuješ nebo upřesňuješ.
+
+═══ KRITICKÉ PRAVIDLO: ROZLIŠUJ "ZMÍNĚNO" vs "AKTIVNÍ" ═══
+⚠️ Pokud terapeut (Hanka/Káťa) v rozhovoru ZMÍNÍ jméno části (např. "Jak se má Anička?"), to NEZNAMENÁ že se část probudila nebo je aktivní!
+- "Zmíněno v rozhovoru" ≠ "Část je aktivní"
+- Pouze pokud část SAMA komunikuje (má vlastní zprávy s role "user" v režimu "cast"), je aktivní
+- V režimu "kata" nebo "mamka" mluví TERAPEUT, ne části. Jakékoli zmínky o částech jsou jen dotazy/konzultace.
+
+═══ KRITICKÉ PRAVIDLO: BIOLOGICKÉ OSOBY vs DID ČÁSTI ═══
+⚠️ Následující osoby NEJSOU části DID systému, jsou to reální lidé:
+- Amálka (7 let) – biologická dcera Káti a Jiřího
+- Tonička (4 roky) – biologická dcera Káti a Jiřího
+- Jiří – Kátin manžel
+- Káťa – druhý terapeut, Hančina biologická dcera
+- Hanka/Hanička – první terapeut
+NIKDY pro tyto osoby NEVYTVÁŘEJ karty DID částí. NIKDY je nezapisuj jako fragmenty/části systému.
 
 ═══ POSTUP ═══
 1. Identifikuj o které části každá konverzace pojednává
@@ -1046,6 +1084,7 @@ Po všech kartách:
 - Pokud informace není v konverzaci ani v kartě, NEZAPISUJ ji
 - Jeden záznam = jeden fakt. Nekombinouj nesouvisející fakta do jednoho odstavce
 
+${instructionContext ? `\n═══ INSTRUKCE PRO KARLA (z 00_CENTRUM) ═══\n${instructionContext}` : ""}
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
 ${perplexityContext}`,
@@ -1284,22 +1323,15 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       }
     }
 
-    // 6. Mark threads AND conversations as processed only when analysis produced card updates and updates succeeded
-    const hasCardBlocks = /\[KARTA:/i.test(analysisText || "");
-    const shouldMarkProcessed = !hadCardUpdateErrors && hasCardBlocks && successfulCardUpdates.length > 0;
-
-    if (shouldMarkProcessed) {
-      const threadIds = threads.map(t => t.id);
-      if (threadIds.length > 0) {
-        await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
-      }
-      const convIds = conversations.map(c => c.id);
-      if (convIds.length > 0) {
-        await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
-      }
-    } else {
-      hadCardUpdateErrors = true;
-      console.error("No card updates were produced by AI; keeping records unprocessed for retry.");
+    // 6. ALWAYS mark threads and conversations as processed to prevent repeated emails
+    // Card update failures are tracked separately in did_update_cycles
+    const threadIds = threads.map(t => t.id);
+    if (threadIds.length > 0) {
+      await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
+    }
+    const convIds = conversations.map(c => c.id);
+    if (convIds.length > 0) {
+      await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
     }
 
     if (cycle) {

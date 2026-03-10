@@ -31,6 +31,32 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 
+    // ═══ LANGUAGE ADAPTATION for "cast" mode ═══
+    // Detect language of last user message and enforce matching response language
+    if (didSubMode === "cast" && messages.length >= 1) {
+      const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+      const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+      if (lastUserText.length > 0) {
+        // Check if text contains non-Czech characters or patterns
+        const hasCyrillic = /[\u0400-\u04FF]/.test(lastUserText);
+        const hasNordic = /[æøåÆØÅ]/.test(lastUserText);
+        const looksEnglish = /\b(the|is|are|was|were|have|has|my|your|this|that|what|how|why|do|don't|I'm|I am|you|hello|hi|please|thank)\b/i.test(lastUserText);
+        const looksGerman = /\b(ich|bin|ist|das|die|der|und|nicht|ein|eine|haben|sein|mir|mich|wie|was|warum)\b/i.test(lastUserText);
+        const looksNorwegian = /\b(jeg|er|det|og|ikke|har|vil|kan|med|fra|hei|takk|hva|hvorfor|fordi)\b/i.test(lastUserText);
+        const looksCzech = /\b(jsem|jsi|je|jsou|mám|máš|co|jak|proč|kde|kdy|ale|a|že|to|ta|ten|se|si|na|do|od|za)\b/i.test(lastUserText);
+        
+        let detectedLang = "";
+        if (hasNordic || looksNorwegian) detectedLang = "norsky (Norwegian)";
+        else if (looksEnglish && !looksCzech) detectedLang = "anglicky (English)";
+        else if (looksGerman && !looksCzech) detectedLang = "německy (German)";
+        else if (hasCyrillic) detectedLang = "v jazyce zprávy (detected Cyrillic script)";
+        
+        if (detectedLang) {
+          systemPrompt += `\n\n═══ ⚠️ POVINNÁ JAZYKOVÁ INSTRUKCE ═══\nPoslední zpráva části je ${detectedLang}. MUSÍŠ odpovědět VE STEJNÉM JAZYCE jako část. Neodpovídej česky! Odpověz ${detectedLang}. Toto je ABSOLUTNÍ pravidlo bez výjimky pro tento rozhovor.`;
+        }
+      }
+    }
+
     // Hard runtime truth-guard for DID mode
     if (mode === "childcare") {
       systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu části.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni části že se vzkaz posílá – systém ho odešle automaticky emailem.`;
