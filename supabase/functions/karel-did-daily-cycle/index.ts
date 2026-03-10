@@ -1195,17 +1195,19 @@ async function updateCardSections(
       const normalizedName = canonicalPartName.replace(/\s+/g, "_").toUpperCase();
       const expectedFileName = `${paddedId}_${normalizedName}`;
 
+      // Extract metadata from card content for registry
+      const meta = extractCardMetadata(card.content);
       // Add row to registry
-      const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+      const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName, "Aktivní", meta.age, meta.cluster, meta.role);
       if (added) {
         console.log(`[updateCardSections] ✅ Orphan "${canonicalPartName}" added to registry as ID ${paddedId}`);
-        // Also add to in-memory entries so subsequent cards get correct next ID
         rc.entries.push({
           id: paddedId,
           name: canonicalPartName,
+          age: meta.age,
           status: "Aktivní",
-          cluster: "",
-          note: "",
+          cluster: meta.cluster,
+          note: meta.role,
           normalizedName: canonicalText(canonicalPartName),
         });
       }
