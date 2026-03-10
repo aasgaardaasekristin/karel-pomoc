@@ -1062,9 +1062,12 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
           };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90000);
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`, {
-        method: "POST", headers, body: JSON.stringify(body),
+        method: "POST", headers, body: JSON.stringify(body), signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
       const reader = response.body.getReader();
