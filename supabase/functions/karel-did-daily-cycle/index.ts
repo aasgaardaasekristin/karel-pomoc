@@ -1585,25 +1585,8 @@ ${perplexityContext}`,
               continue; // Skip this card entirely
             }
 
-            // ═══ FORCED AWAKENING: Programmatically ensure E, G, K, L are updated ═══
-            if (target.actionType === "probuzeni_z_archivu") {
-              const forcedSections = buildAwakeningForcedSections(resolvedPartName);
-              for (const [letter, content] of Object.entries(forcedSections)) {
-                if (!newSections[letter]) {
-                  newSections[letter] = content;
-                  console.log(`[PROBUZENÍ] 📝 Forced section ${letter} for "${resolvedPartName}" (AI didn't generate it)`);
-                }
-              }
-              // Update registry spreadsheet status from "Spí" to "Aktivní"
-              if (registryContext && target.registryEntry) {
-                const registryUpdated = await updateRegistryStatus(token, registryContext, target.registryEntry, "Aktivní");
-                if (registryUpdated) {
-                  console.log(`[PROBUZENÍ] ✅ Registry status updated to "Aktivní" for "${resolvedPartName}"`);
-                } else {
-                  console.warn(`[PROBUZENÍ] ⚠️ Failed to update registry status for "${resolvedPartName}"`);
-                }
-              }
-            }
+            // Awakening updates already done programmatically in resolveCardTarget
+            // AI-generated sections will be APPENDED on top of forced sections
 
             const result = await updateCardSections(
               token,
