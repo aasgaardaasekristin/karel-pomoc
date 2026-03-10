@@ -619,15 +619,83 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
   }
 }
 
-// ═══ FORCED AWAKENING SECTIONS: Programmatic fallback for E, G, K, L ═══
-function buildAwakeningForcedSections(partName: string): Record<string, string> {
+
+// ═══ IMMEDIATE AWAKENING: Update card content + registry right after file move ═══
+async function performImmediateAwakeningUpdates(
+  token: string,
+  fileId: string,
+  fileMimeType: string | undefined,
+  partName: string,
+  registryContext: RegistryContext,
+  entry: RegistryEntry,
+): Promise<{ cardUpdated: boolean; registryUpdated: boolean }> {
   const dateStr = new Date().toISOString().slice(0, 10);
-  return {
-    E: `Probuzení – část komunikovala s Karlem. Aktuální stav: Aktivní. Komunikuje s Karlem od ${dateStr}.`,
-    G: `| ${dateStr} | Probuzení – první kontakt po archivaci | Rozhovor s Karlem | Sledovat stabilitu, pokračovat v komunikaci |`,
-    K: `| ${dateStr} | První rozhovor po probuzení z archivu | Probíhá | Čekáme na další sezení |`,
-    L: `| ${dateStr} | Probuzení – komunikace s Karlem | Přesunuto z 03_ARCHIV do 01_AKTIVNI |`,
-  };
+  let cardUpdated = false;
+  let registryUpdated = false;
+
+  // 1) Read current card content and update sections E, G, K, L
+  try {
+    const content = await readFileContent(token, fileId);
+    const sections = parseCardSections(content);
+
+    // ── SECTION A: Update Status field from "💤 Spí" to "Aktivní" ──
+    if (sections["A"]) {
+      sections["A"] = sections["A"].replace(
+        /Status:\s*💤\s*Spí[^\n]*/i,
+        `Status: ✅ Aktivní – probuzení ${dateStr}, komunikuje s Karlem`
+      );
+    }
+
+    // ── SECTION E: Change "Aktuální stav" from sleeping to active + add chronological entry ──
+    const sectionE = sections["E"] || "";
+    // Replace the sleeping status line
+    const updatedE = sectionE.replace(
+      /(?:Aktuální stav\s*\n?)?\s*💤\s*Spí[^\n]*/i,
+      `Aktuální stav\n✅ Aktivní – komunikuje s Karlem od ${dateStr}.`
+    );
+    // Add chronological row
+    sections["E"] = updatedE + `\n\n${dateStr}\tProbuzení – část komunikovala s Karlem. Přesunuto z 03_ARCHIV do 01_AKTIVNI.`;
+
+    // ── SECTION G: Add diary row ──
+    const sectionG = sections["G"] || "";
+    const gRow = `\n${dateStr}\tProbuzení – první kontakt po archivaci\tRozhovor s Karlem\tSledovat stabilitu, pokračovat v komunikaci`;
+    sections["G"] = sectionG.includes("(zatím prázdné)")
+      ? sectionG.replace("(zatím prázdné)", gRow.trim())
+      : sectionG + gRow;
+
+    // ── SECTION K: Add output row ──
+    const sectionK = sections["K"] || "";
+    const kRow = `\n${dateStr}\tPrvní rozhovor po probuzení z archivu\tProbíhá\tČekáme na další sezení`;
+    sections["K"] = sectionK.includes("(zatím prázdné)")
+      ? sectionK.replace("(zatím prázdné)", kRow.trim())
+      : sectionK + kRow;
+
+    // ── SECTION L: Add activity row ──
+    const sectionL = sections["L"] || "";
+    const lRow = `\n${dateStr}\tProbuzení – komunikace s Karlem\tPřesunuto z 03_ARCHIV do 01_AKTIVNI`;
+    sections["L"] = sectionL + lRow;
+
+    // Rebuild and write
+    const resolvedName = entry.name || partName;
+    const fullCard = buildCard(resolvedName, sections);
+    await updateFileById(token, fileId, fullCard, fileMimeType);
+    console.log(`[PROBUZENÍ] ✅ Karta "${resolvedName}" programaticky aktualizována (sekce A, E, G, K, L)`);
+    cardUpdated = true;
+  } catch (e) {
+    console.error(`[PROBUZENÍ] ❌ Aktualizace obsahu karty selhala:`, e);
+  }
+
+  // 2) Update registry spreadsheet status
+  try {
+    registryUpdated = await updateRegistryStatus(token, registryContext, entry, "Aktivní");
+    if (registryUpdated) {
+      console.log(`[PROBUZENÍ] ✅ Registry status změněn na "Aktivní" pro "${entry.name}"`);
+    }
+  } catch (e) {
+    console.error(`[PROBUZENÍ] ❌ Aktualizace registru selhala:`, e);
+  }
+
+  return { cardUpdated, registryUpdated };
 }
 
 async function resolveCardTarget(
@@ -635,7 +703,7 @@ async function resolveCardTarget(
   rootFolderId: string,
   partName: string,
   registryContext: RegistryContext | null
-): Promise<CardTargetResolution & { actionType: CardActionType }> {
+): Promise<CardTargetResolution & { actionType: CardActionType; awakeningDone?: boolean }> {
   const entry = registryContext ? findBestRegistryEntry(partName, registryContext.entries) : null;
 
   if (!registryContext) {
@@ -678,6 +746,14 @@ async function resolveCardTarget(
       } catch (e) {
         console.error(`[PROBUZENÍ] ❌ Přesun složky selhal:`, e);
       }
+
+      // Find the card file inside the moved folder and update it immediately
+      const cardInFolder = await findCardFile(token, entry.name || partName, partFolder.id);
+      let awakeningDone = false;
+      if (cardInFolder) {
+        const result = await performImmediateAwakeningUpdates(token, cardInFolder.fileId, cardInFolder.mimeType, partName, registryContext, entry);
+        awakeningDone = result.cardUpdated;
+      }
       
       return {
         searchRootId: partFolder.id,
@@ -685,6 +761,7 @@ async function resolveCardTarget(
         pathLabel: `01_AKTIVNI_FRAGMENTY/${partFolder.name} (přesunuto z archivu)`,
         registryEntry: entry,
         actionType: "probuzeni_z_archivu",
+        awakeningDone,
       };
     }
     
@@ -699,6 +776,9 @@ async function resolveCardTarget(
       } catch (e) {
         console.error(`[PROBUZENÍ] ❌ Přesun souboru selhal:`, e);
       }
+
+      // Immediately update the card content + registry
+      const result = await performImmediateAwakeningUpdates(token, partFile.id, partFile.mimeType, partName, registryContext, entry);
       
       return {
         searchRootId: registryContext.activeFolderId,
@@ -706,6 +786,7 @@ async function resolveCardTarget(
         pathLabel: `01_AKTIVNI_FRAGMENTY/${partFile.name} (přesunuto z archivu)`,
         registryEntry: entry,
         actionType: "probuzeni_z_archivu",
+        awakeningDone: result.cardUpdated,
       };
     }
     
@@ -1494,25 +1575,8 @@ ${perplexityContext}`,
               continue; // Skip this card entirely
             }
 
-            // ═══ FORCED AWAKENING: Programmatically ensure E, G, K, L are updated ═══
-            if (target.actionType === "probuzeni_z_archivu") {
-              const forcedSections = buildAwakeningForcedSections(resolvedPartName);
-              for (const [letter, content] of Object.entries(forcedSections)) {
-                if (!newSections[letter]) {
-                  newSections[letter] = content;
-                  console.log(`[PROBUZENÍ] 📝 Forced section ${letter} for "${resolvedPartName}" (AI didn't generate it)`);
-                }
-              }
-              // Update registry spreadsheet status from "Spí" to "Aktivní"
-              if (registryContext && target.registryEntry) {
-                const registryUpdated = await updateRegistryStatus(token, registryContext, target.registryEntry, "Aktivní");
-                if (registryUpdated) {
-                  console.log(`[PROBUZENÍ] ✅ Registry status updated to "Aktivní" for "${resolvedPartName}"`);
-                } else {
-                  console.warn(`[PROBUZENÍ] ⚠️ Failed to update registry status for "${resolvedPartName}"`);
-                }
-              }
-            }
+            // Awakening updates already done programmatically in resolveCardTarget
+            // AI-generated sections will be APPENDED on top of forced sections
 
             const result = await updateCardSections(
               token,
