@@ -735,10 +735,15 @@ function buildDeterministicDailyReport(params: {
   lines.push("Co bylo SKUTEČNĚ zapsáno:");
 
   if (params.successful.length === 0) {
-    lines.push("- Žádná karta nebyla dnes bezpečně aktualizována.");
+    lines.push("- Žádná karta nebyla dnes aktualizována.");
   } else {
     for (const item of params.successful) {
-      lines.push(`- ${item.partName}: sekce ${item.sectionsUpdated.join(", ")} [${item.pathLabel}]`);
+      const actionLabel = item.actionType === "nova_karta"
+        ? "📝 NOVÁ KARTA ZALOŽENA"
+        : item.actionType === "probuzeni_z_archivu"
+          ? "🔄 PROBUZENÍ – karta přesunuta z archivu do aktivních"
+          : "✏️ Zápis do existující karty";
+      lines.push(`- ${item.partName}: ${actionLabel}, sekce ${item.sectionsUpdated.join(", ")} [${item.pathLabel}]`);
     }
   }
 
