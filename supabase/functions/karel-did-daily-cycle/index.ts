@@ -1461,7 +1461,7 @@ Formát HTML emailu:
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
 
-    const threadSummaries = threads.map(t => {
+    const threadSummaries = reportThreads.map(t => {
       const msgs = ((t.messages as any[]) || []).slice(-20);
       
       // ═══ ROLE LABELING: Rozliš kdo mluví podle sub_mode ═══
