@@ -303,7 +303,42 @@ function isArchivedFromRegistry(entry: RegistryEntry): boolean {
   return false;
 }
 
-function findBestRegistryEntry(partName: string, entries: RegistryEntry[]): RegistryEntry | null {
+// ═══ AUTO-INCREMENT ID ═══
+function getNextRegistryId(entries: RegistryEntry[]): number {
+  let maxId = 0;
+  for (const e of entries) {
+    const num = parseInt(e.id, 10);
+    if (!isNaN(num) && num > maxId) maxId = num;
+  }
+  return maxId + 1;
+}
+
+// ═══ ADD NEW ROW TO REGISTRY ═══
+async function addRegistryRow(token: string, registryFileId: string, sheetName: string, id: string, name: string, status: string = "Aktivní"): Promise<boolean> {
+  try {
+    const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
+    const range = `${escapedSheet}!A:E`;
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${registryFileId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ values: [[id, name, status, "", ""]] }),
+      }
+    );
+    if (res.ok) {
+      console.log(`[addRegistryRow] ✅ Added: ID=${id}, Name=${name}`);
+      return true;
+    }
+    console.error(`[addRegistryRow] ❌ ${await res.text()}`);
+    return false;
+  } catch (e) {
+    console.error(`[addRegistryRow] Failed:`, e);
+    return false;
+  }
+}
+
+
   const cp = canonicalText(partName);
   if (!cp) return null;
   const scored = entries.map(e => ({ entry: e, score: scoreNameMatch(cp, e.normalizedName) })).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
