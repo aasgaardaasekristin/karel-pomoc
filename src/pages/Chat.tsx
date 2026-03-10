@@ -897,11 +897,15 @@ const Chat = () => {
     // Zápis do karet + email report běží dávkově v denním cyklu nebo po manuální aktualizaci
     toast.info("Vlákno uloženo. Kartotéka i report se zpracují při denním cyklu nebo po kliknutí na Aktualizovat kartotéku.");
 
+    const endedPartName = activeThread?.partName || "";
     clearMessages(mode);
     setActiveThread(null);
+    // Generate a stable session ID for the post-call mamka conversation to prevent duplicate saves
+    const postCallSessionId = `postcall-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setDidSubMode("mamka");
+    setDidSessionId(postCallSessionId);
     setDidFlowState("chat");
-    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${activeThread ? ` s částí ${activeThread.partName}` : ""}.
+    setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${endedPartName ? ` s částí ${endedPartName}` : ""}.
 
 Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
   };
