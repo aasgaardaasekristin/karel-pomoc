@@ -2031,8 +2031,12 @@ ${perplexityContext}`,
             }
 
             // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
-            if (!target.registryEntry && !knownThreadParts.has(resolvedCanonical)) {
-              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName}`);
+            // Use fuzzy matching: check if resolved name is a substring of any thread part or vice versa
+            const isInThreads = [...knownThreadParts].some(tp => 
+              tp === resolvedCanonical || tp.includes(resolvedCanonical) || resolvedCanonical.includes(tp)
+            );
+            if (!target.registryEntry && !isInThreads) {
+              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName} (canonical: ${resolvedCanonical}, known: ${[...knownThreadParts].join(",")})`);
               continue;
             }
 
