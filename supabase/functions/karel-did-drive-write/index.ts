@@ -338,7 +338,7 @@ async function addRegistryRow(token: string, registryFileId: string, sheetName: 
   }
 }
 
-
+function findBestRegistryEntry(partName: string, entries: RegistryEntry[]): RegistryEntry | null {
   const cp = canonicalText(partName);
   if (!cp) return null;
   const scored = entries.map(e => ({ entry: e, score: scoreNameMatch(cp, e.normalizedName) })).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
