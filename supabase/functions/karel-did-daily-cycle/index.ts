@@ -1450,104 +1450,101 @@ serve(async (req) => {
   }
 
   try {
-    // ═══ FAST-PATH: syncRegistry – scan Drive cards, register orphans, rename to ID_NAME ═══
+    // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
     if (requestBody?.syncRegistry) {
+      const mode = requestBody.syncMode || "list";
       const token = await getAccessToken();
       const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
       if (!folderId) throw new Error("Kartotéka_DID folder not found");
       const rc = await loadRegistryContext(token, folderId);
       if (!rc.activeFolderId) throw new Error("01_AKTIVNI_FRAGMENTY not found");
 
-      // Collect all card files from active + archive folders
-      const allCardFiles: Array<{ file: DriveFile; folderId: string; folderLabel: string }> = [];
-      for (const [fid, label] of [[rc.activeFolderId, "01_AKTIVNI"], [rc.archiveFolderId, "03_ARCHIV"]] as [string | null, string][]) {
-        if (!fid) continue;
-        const files = await listFilesRecursive(token, fid);
-        for (const f of files) {
-          if (isTextCandidateFile(f)) allCardFiles.push({ file: f, folderId: fid, folderLabel: label });
+      if (mode === "list") {
+        // Phase 1: Collect all card files, return list for client to iterate
+        const allCardFiles: Array<{ fileId: string; fileName: string; folderLabel: string }> = [];
+        for (const [fid, label] of [[rc.activeFolderId, "01_AKTIVNI"], [rc.archiveFolderId, "03_ARCHIV"]] as [string | null, string][]) {
+          if (!fid) continue;
+          const files = await listFilesRecursive(token, fid);
+          for (const f of files) {
+            if (isTextCandidateFile(f)) allCardFiles.push({ fileId: f.id, fileName: f.name, folderLabel: label });
+          }
         }
+        return new Response(JSON.stringify({
+          success: true,
+          entries: allCardFiles,
+          registryCount: rc.entries.length,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      const results: string[] = [];
-      for (const { file, folderLabel } of allCardFiles) {
-        // Check if file looks like a DID card
-        let content: string;
-        try { content = await readFileContent(token, file.id); } catch { continue; }
-        if (!looksLikeDidCard(file.name, content)) continue;
+      if (mode === "process_one") {
+        // Phase 2: Process a single card by fileId
+        const { fileId, fileName, folderLabel } = requestBody as { fileId: string; fileName: string; folderLabel: string };
+        if (!fileId) throw new Error("Missing fileId");
 
-        const partName = partNameFromFileName(file.name);
+        let content: string;
+        try { content = await readFileContent(token, fileId); } catch {
+          return new Response(JSON.stringify({ result: "skip", reason: "unreadable" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        if (!looksLikeDidCard(fileName || "", content)) {
+          return new Response(JSON.stringify({ result: "skip", reason: "not_a_card" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const partName = partNameFromFileName(fileName || "");
         const entry = findBestRegistryEntry(partName, rc.entries);
+        let resultMsg = "";
 
         if (entry) {
-          // Already registered – check if filename matches convention
+          // Already registered – rename if needed
           const expectedPrefix = `${entry.id}_`;
-          if (!file.name.startsWith(expectedPrefix)) {
+          if (!fileName.startsWith(expectedPrefix)) {
             const normalizedName = entry.name.replace(/\s+/g, "_").toUpperCase();
             const expectedFileName = `${entry.id}_${normalizedName}`;
-            await renameDriveFile(token, file.id, expectedFileName);
-            results.push(`✏️ Přejmenováno: "${file.name}" → "${expectedFileName}" (${folderLabel})`);
+            await renameDriveFile(token, fileId, expectedFileName);
+            resultMsg += `✏️ Přejmenováno → ${expectedFileName}. `;
           }
 
-          // Update existing row with metadata from card content (age, status→D, cluster, note)
+          // Update existing row with metadata
           const meta = extractCardMetadata(content);
-          const isArchived = folderLabel === "03_ARCHIV";
+          const isArchived = (folderLabel || "").includes("ARCHIV");
           const currentStatus = isArchived ? "Spí" : "Aktivní";
-          // Find the row number in the spreadsheet (entry.id is 1-based from registry)
           const rowIndex = rc.entries.indexOf(entry);
           if (rowIndex >= 0 && rc.registryFileId && rc.registrySheetName) {
-            // Registry has header row, so data starts at row 2; rowIndex is 0-based
             const sheetRow = rowIndex + 2;
             const escapedSheet = `'${rc.registrySheetName.replace(/'/g, "''")}'`;
             const range = `${escapedSheet}!C${sheetRow}:F${sheetRow}`;
-            try {
-              const updateRes = await fetch(
-                `https://sheets.googleapis.com/v4/spreadsheets/${rc.registryFileId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
-                {
-                  method: "PUT",
-                  headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    values: [[meta.age, currentStatus, meta.cluster, meta.role]],
-                  }),
-                }
-              );
-              if (updateRes.ok) {
-                results.push(`📊 Aktualizován řádek ${sheetRow}: ${entry.name} (Věk=${meta.age || "?"}, Status=${currentStatus}, Klastr=${meta.cluster || "?"}, Role=${meta.role?.slice(0, 40) || "?"})`);
-              } else {
-                const errText = await updateRes.text();
-                console.warn(`[syncRegistry] Row update failed for ${entry.name}: ${errText}`);
-                results.push(`⚠️ Nepodařilo se aktualizovat řádek: ${entry.name}`);
+            const updateRes = await fetch(
+              `https://sheets.googleapis.com/v4/spreadsheets/${rc.registryFileId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+              {
+                method: "PUT",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ values: [[meta.age, currentStatus, meta.cluster, meta.role]] }),
               }
-            } catch (e) {
-              console.warn(`[syncRegistry] Row update error for ${entry.name}:`, e);
+            );
+            if (updateRes.ok) {
+              resultMsg += `📊 Řádek ${sheetRow}: Věk=${meta.age || "?"}, Status=${currentStatus}, Klastr=${meta.cluster || "?"}, Role=${(meta.role || "?").slice(0, 40)}`;
+            } else {
+              await updateRes.text();
+              resultMsg += `⚠️ Nepodařilo se aktualizovat řádek`;
             }
-          } else {
-            results.push(`✅ OK: "${file.name}" (ID ${entry.id}, ${folderLabel})`);
           }
+          return new Response(JSON.stringify({ result: "updated", name: entry.name, detail: resultMsg }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         } else {
           // Orphan – register and rename
           const nextId = getNextRegistryId(rc.entries);
           const paddedId = String(nextId).padStart(3, "0");
           const normalizedName = partName.replace(/\s+/g, "_").toUpperCase();
           const expectedFileName = `${paddedId}_${normalizedName}`;
+          const meta = extractCardMetadata(content);
 
           if (rc.registryFileId && rc.registrySheetName) {
-            // Extract metadata from card content for registry
-            const meta = extractCardMetadata(content);
-            const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName, "Aktivní", meta.age, meta.cluster, meta.role);
-            if (added) {
-              rc.entries.push({ id: paddedId, name: partName, age: meta.age, status: "Aktivní", cluster: meta.cluster, note: meta.role, normalizedName: canonicalText(partName) });
-            }
+            await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName, "Aktivní", meta.age, meta.cluster, meta.role);
           }
-          await renameDriveFile(token, file.id, expectedFileName);
-          results.push(`📝 NOVÝ: "${file.name}" → "${expectedFileName}" (ID ${paddedId}, ${folderLabel})`);
+          await renameDriveFile(token, fileId, expectedFileName);
+          return new Response(JSON.stringify({ result: "new", name: partName, newId: paddedId, newFileName: expectedFileName }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
         }
       }
 
-      return new Response(JSON.stringify({
-        success: true,
-        message: `Synchronizace registru: ${results.length} karet zkontrolováno`,
-        results,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: "Unknown syncMode" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ═══ FAST-PATH: reformat only (no DB, no AI, no email) ═══
