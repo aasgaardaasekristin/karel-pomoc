@@ -119,6 +119,7 @@ const Chat = () => {
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
@@ -1008,7 +1009,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
 
       // Phase 2: Automatically sync registry (backfill missing columns C-F)
       try {
-        toast.info("Synchronizuji registr – doplňuji chybějící sloupce...");
+        toast.info("Synchronizuji registr – načítám seznam karet...");
         const syncHeaders = await getAuthHeaders();
         const listRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
           method: "POST", headers: syncHeaders,
@@ -1016,20 +1017,28 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
         });
         const listData = await listRes.json();
         const entries = listData.entries || [];
-        let synced = 0, errors = 0;
-        for (const entry of entries) {
+        const total = entries.length;
+        let synced = 0, skipped = 0, errors = 0;
+        setSyncProgress({ current: 0, total, currentName: "..." });
+        for (let i = 0; i < total; i++) {
+          const entry = entries[i];
+          const displayName = (entry.fileName || "").replace(/^\d+_/, "").replace(/\.[^.]+$/, "");
+          setSyncProgress({ current: i + 1, total, currentName: displayName });
           try {
             const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
               method: "POST", headers: syncHeaders,
               body: JSON.stringify({ syncRegistry: true, syncMode: "process_one", fileId: entry.fileId, fileName: entry.fileName, folderLabel: entry.folderLabel }),
             });
             const data = await res.json();
-            if (data.result !== "skip") synced++;
+            if (data.result === "skip") skipped++;
+            else synced++;
           } catch { errors++; }
         }
-        if (synced > 0) toast.success(`Registr synchronizován – ${synced} karet aktualizováno`);
+        setSyncProgress(null);
+        if (synced > 0 || skipped > 0) toast.success(`Registr: ${synced} aktualizováno, ${skipped} přeskočeno${errors ? `, ${errors} chyb` : ""}`);
       } catch (e) {
         console.warn("Registry sync failed:", e);
+        setSyncProgress(null);
       }
 
       // Clear ALL local DID data after successful update
@@ -1259,7 +1268,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       // Dashboard + submode selector
       return (
         <ScrollArea className="flex-1">
-          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} />
+          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} />
           <DidConversationHistory
             conversations={history}
             onLoad={handleRestoreConversation}
