@@ -1343,8 +1343,8 @@ ${perplexityContext}`,
       });
       const dateStr = new Date().toISOString().slice(0, 10);
 
-      // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA
-      if (RESEND_API_KEY && finalReportText) {
+      // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA – ONLY from cron
+      if (shouldSendEmails && RESEND_API_KEY && finalReportText) {
         try {
           const resend = new Resend(RESEND_API_KEY);
           const dateCz = new Date().toLocaleDateString("cs-CZ");
