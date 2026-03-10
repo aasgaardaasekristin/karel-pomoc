@@ -1497,9 +1497,11 @@ serve(async (req) => {
           const expectedFileName = `${paddedId}_${normalizedName}`;
 
           if (rc.registryFileId && rc.registrySheetName) {
-            const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName);
+            // Extract metadata from card content for registry
+            const meta = extractCardMetadata(content);
+            const added = await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, partName, "Aktivní", meta.age, meta.cluster, meta.role);
             if (added) {
-              rc.entries.push({ id: paddedId, name: partName, status: "Aktivní", cluster: "", note: "", normalizedName: canonicalText(partName) });
+              rc.entries.push({ id: paddedId, name: partName, age: meta.age, status: "Aktivní", cluster: meta.cluster, note: meta.role, normalizedName: canonicalText(partName) });
             }
           }
           await renameDriveFile(token, file.id, expectedFileName);
