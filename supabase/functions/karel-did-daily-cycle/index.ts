@@ -1053,8 +1053,10 @@ function isTextCandidateFile(file: DriveFile): boolean {
   if (lower.includes("denni_report") || lower.includes("tydenni_report")) return false;
   if (lower.includes("instrukce") || lower.includes("mapa_vztahu")) return false;
 
-  const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
+  // Accept Google Docs (no extension, MIME = application/vnd.google-apps.document)
+  if (file.mimeType === DRIVE_DOC_MIME) return true;
 
+  const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
   return isTextExtension;
 }
 
