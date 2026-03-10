@@ -345,6 +345,111 @@ async function collectTxtFilesRecursive(token: string, folderId: string, current
   return txtFiles;
 }
 
+// ═══ DOCS API FORMATTING ═══
+// Applies Heading 1/2 and bold labels to a Google Doc after content is written
+async function applyDocFormatting(token: string, fileId: string, content: string): Promise<void> {
+  try {
+    const normalizedContent = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    // Read authoritative document length
+    const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!docRes.ok) return;
+    const docData = await docRes.json();
+    const bodyContent = docData?.body?.content || [];
+    const segmentEndIndex = bodyContent.length > 0
+      ? Number(bodyContent[bodyContent.length - 1]?.endIndex || normalizedContent.length + 1)
+      : normalizedContent.length + 1;
+
+    const clampRange = (startIndex: number, endIndex: number) => {
+      const safeStart = Math.max(1, Math.min(startIndex, segmentEndIndex - 1));
+      const safeEnd = Math.max(safeStart + 1, Math.min(endIndex, segmentEndIndex));
+      if (safeStart >= segmentEndIndex || safeEnd <= safeStart) return null;
+      return { startIndex: safeStart, endIndex: safeEnd };
+    };
+
+    const lines = normalizedContent.split("\n");
+    const formatRequests: any[] = [];
+    let charIndex = 1;
+
+    const BOLD_LABELS = [
+      "ID:", "Jméno:", "Věk:", "Pohlaví:", "Jazyk:", "Typ:", "Klastr:",
+      "Status:", "Historický kontext", "Senzorické kotvy", "Triggery",
+      "Co ho uklidňuje", "Vztahy", "Povědomí o systému",
+      "Datum", "Událost", "Co se dělo", "Stabilizační opatření", "Další krok",
+      "Co bylo navrženo", "Výsledek", "Hodnocení", "Období", "Aktivita", "Poznámka",
+      "Cíl:", "Vhodné nyní:", "Postup:", "Proč funguje:", "Zdroj:", "Obtížnost:",
+      "Metoda:", "Termín:", "Poznámky:", "Jádrové přesvědčení",
+      "Ochranný mechanismus:", "Vzorce chování:", "Doporučený směr:", "Hypotéza:",
+    ];
+
+    for (const line of lines) {
+      const lineLen = line.length;
+      if (lineLen > 0) {
+        // Card title → Heading 1
+        if (/^═*\s*KARTA\s+[ČC]ÁSTI/i.test(line) || /^KARTA\s+[ČC]ÁSTI/i.test(line)) {
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_1" }, fields: "namedStyleType" } });
+          }
+        }
+        // Section headers → Heading 2
+        else if (/^═*\s*SEKCE\s+[A-M]\s*[–\-:]/i.test(line) || /^SEKCE\s+[A-M]\s*[–\-:]/i.test(line)) {
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_2" }, fields: "namedStyleType" } });
+          }
+        }
+        // Sub-headers → Heading 3
+        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav|Bezpečnostní pravidla|Situační karta)/i.test(line)) {
+          const range = clampRange(charIndex, charIndex + lineLen);
+          if (range) {
+            formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_3" }, fields: "namedStyleType" } });
+          }
+        }
+
+        // Bold labels
+        const trimmedLine = line.trimStart();
+        const leadingSpaces = line.length - trimmedLine.length;
+        const bulletPrefixMatch = trimmedLine.match(/^([*•\-]\s+)/);
+        const bulletPrefixLen = bulletPrefixMatch ? bulletPrefixMatch[1].length : 0;
+        const labelLine = bulletPrefixLen > 0 ? trimmedLine.slice(bulletPrefixLen) : trimmedLine;
+
+        for (const label of BOLD_LABELS) {
+          if (labelLine.startsWith(label)) {
+            const boldStart = charIndex + leadingSpaces + bulletPrefixLen;
+            const boldEnd = boldStart + label.length;
+            const range = clampRange(boldStart, boldEnd);
+            if (range) {
+              formatRequests.push({ updateTextStyle: { range, textStyle: { bold: true }, fields: "bold" } });
+            }
+            break;
+          }
+        }
+      }
+      charIndex += lineLen + 1;
+    }
+
+    if (formatRequests.length > 0) {
+      const CHUNK = 500;
+      for (let i = 0; i < formatRequests.length; i += CHUNK) {
+        const chunk = formatRequests.slice(i, i + CHUNK);
+        const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ requests: chunk }),
+        });
+        if (!fmtRes.ok) {
+          console.warn(`[applyDocFormatting] Chunk failed: ${await fmtRes.text()}`);
+        }
+      }
+    }
+  } catch (fmtErr) {
+    console.warn(`[applyDocFormatting] Non-fatal error: ${fmtErr}`);
+  }
+}
+
 // ═══ MODES ═══
 // mode=list → returns registry entries + txt files (no processing)
 // mode=process_one → processes a single card by index
