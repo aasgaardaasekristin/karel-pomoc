@@ -59,6 +59,27 @@ export const useDidThreads = () => {
     partLanguage: string = "cs",
     initialMessages: { role: string; content: string }[] = []
   ): Promise<DidThread | null> => {
+    // Double-check for existing thread to prevent duplicates (race condition guard)
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: existing } = await supabase
+      .from("did_threads")
+      .select("*")
+      .ilike("part_name", partName)
+      .eq("sub_mode", subMode)
+      .gte("last_activity_at", cutoff)
+      .order("last_activity_at", { ascending: false })
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      console.log(`[createThread] Found existing thread for "${partName}", reusing it`);
+      const thread = rowToThread(existing[0]);
+      setThreads(prev => {
+        if (prev.some(t => t.id === thread.id)) return prev;
+        return [thread, ...prev];
+      });
+      return thread;
+    }
+
     const { data, error } = await supabase
       .from("did_threads")
       .insert({
