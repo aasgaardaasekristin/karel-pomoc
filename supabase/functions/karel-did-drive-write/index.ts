@@ -575,10 +575,17 @@ serve(async (req) => {
         resultFileName = card.fileName;
         console.log(`[update-card-sections] Updated ${card.fileName} in-place, sections: ${updatedKeys.join(",")}`);
       } else {
-        const newFileName = `Karta_${partName.replace(/\s+/g, "_")}.txt`;
+        // Auto-increment ID from registry and create as Google Doc
+        const nextId = getNextRegistryId(registry?.entries || []);
+        const paddedId = String(nextId).padStart(3, "0");
+        const newFileName = `DID_${paddedId}_${partName.replace(/\s+/g, "_")}`;
         await createFileInFolder(token, newFileName, fullCard, target.searchRootId);
         resultFileName = newFileName;
-        console.log(`[update-card-sections] Created: ${newFileName} in ${target.pathLabel}`);
+        // Add entry to registry
+        if (registry?.registryFileId && registry?.registrySheetName) {
+          await addRegistryRow(token, registry.registryFileId, registry.registrySheetName, paddedId, partName);
+        }
+        console.log(`[update-card-sections] Created Google Doc: ${newFileName} (ID: ${paddedId}) in ${target.pathLabel}`);
       }
 
       return new Response(JSON.stringify({
