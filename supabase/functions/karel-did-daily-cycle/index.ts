@@ -965,13 +965,15 @@ NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obs
 - V režimu "kata" nebo "mamka" mluví TERAPEUT, ne části. Jakékoli zmínky o částech jsou jen dotazy/konzultace.
 
 ═══ KRITICKÉ PRAVIDLO: BIOLOGICKÉ OSOBY vs DID ČÁSTI ═══
-⚠️ Následující osoby NEJSOU části DID systému, jsou to reální lidé:
+⚠️ Následující osoby NEJSOU části DID systému, jsou to reální lidé. NIKDY pro ně NEVYTVÁŘEJ [KARTA:...] blok:
 - Amálka (7 let) – biologická dcera Káti a Jiřího
-- Tonička (4 roky) – biologická dcera Káti a Jiřího
+- Tonička (4 roky) – biologická dcera Káti a Jiřího  
 - Jiří – Kátin manžel
-- Káťa – druhý terapeut, Hančina biologická dcera
-- Hanka/Hanička – první terapeut
-NIKDY pro tyto osoby NEVYTVÁŘEJ karty DID částí. NIKDY je nezapisuj jako fragmenty/části systému.
+- Káťa / Katka / Kája – druhý terapeut, Hančina biologická dcera
+- Hanka / Hanička / Hana – první terapeut
+- Jakékoli jméno z tohoto seznamu NESMÍ mít vlastní [KARTA:] blok
+- Pokud terapeut o nich mluví, je to VNĚJŠÍ KONTEXT, ne DID dynamika
+- Pokud si nejsi jistý zda jméno je část nebo reálná osoba, NEZAPISUJ kartu a zmíň to v [REPORT]
 
 ═══ POSTUP ═══
 1. Identifikuj o které části každá konverzace pojednává
@@ -1110,12 +1112,37 @@ ${perplexityContext}`,
 
     // 4. PARSE AND UPDATE CARDS IN-PLACE
 
+    // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
+    const NON_DID_BLACKLIST = new Set([
+      "amalka", "tonička", "tonicka", "jiří", "jiri", "jirka",
+      "kata", "katka", "kája", "kaja", "káťa", "katya",
+      "hanka", "hana", "hanička", "hanicka", "mamka",
+      // Common variations without diacritics
+      "amalka", "tonicka", "jiri", "kata", "hana",
+    ].map(n => canonicalText(n)));
+
+    function isBlacklisted(name: string): boolean {
+      const canonical = canonicalText(name);
+      for (const blocked of NON_DID_BLACKLIST) {
+        if (canonical === blocked || canonical.includes(blocked) || blocked.includes(canonical)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     if (folderId && analysisText) {
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of analysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
+
+        // ═══ BLACKLIST CHECK: Skip biological persons and therapists ═══
+        if (isBlacklisted(normalizedPartName) || isBlacklisted(rawPartName)) {
+          console.warn(`[BLACKLIST] ⛔ Blocked card creation for non-DID person: "${rawPartName}" – this is a biological person or therapist, NOT a DID part.`);
+          continue;
+        }
 
         const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
         const newSections: Record<string, string> = {};
@@ -1130,6 +1157,12 @@ ${perplexityContext}`,
             const target = await resolveCardTarget(token, folderId, normalizedPartName, registryContext);
             const resolvedPartName = target.registryEntry?.name || normalizedPartName;
             const resolvedCanonical = canonicalText(resolvedPartName);
+
+            // Double-check blacklist with resolved name too
+            if (isBlacklisted(resolvedPartName)) {
+              console.warn(`[BLACKLIST] ⛔ Blocked card creation for resolved non-DID person: "${resolvedPartName}"`);
+              continue;
+            }
 
             // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
             if (!target.registryEntry && !knownThreadParts.has(resolvedCanonical)) {
