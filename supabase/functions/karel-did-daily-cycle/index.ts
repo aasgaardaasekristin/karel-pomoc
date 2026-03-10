@@ -1259,7 +1259,8 @@ serve(async (req) => {
   let requestBody: any = {};
   try { requestBody = await req.clone().json(); } catch {}
   const isCronSource = requestBody?.source === "cron";
-  const shouldSendEmails = isCronCall && isCronSource;
+  const isTestEmail = requestBody?.testEmail === true;
+  const shouldSendEmails = (isCronCall && isCronSource) || isTestEmail;
   if (!shouldSendEmails) {
     console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
   }
@@ -1315,8 +1316,10 @@ serve(async (req) => {
       }
     }
 
+    // Only run full normalization on explicit reformat request, NOT during cron runs
+    // (Docs API formatting for all 25+ cards exceeds edge function memory limit)
     const forceReformat = !!requestBody?.reformat;
-    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId, forceReformat) : [];
+    const normalizedCardFiles = (forceReformat && folderId) ? await normalizeCardStructures(token, folderId, true) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
@@ -1333,6 +1336,90 @@ serve(async (req) => {
         }).eq("id", cycle.id);
       }
 
+      // Even with no threads, send daily "quiet day" report when triggered by cron
+      if (shouldSendEmails) {
+        try {
+          const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+          const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
+          const KATA_EMAIL = Deno.env.get("KATA_EMAIL") || "K.CC@seznam.cz";
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          const dateStr = new Date().toISOString().slice(0, 10);
+
+          if (RESEND_API_KEY && LOVABLE_API_KEY) {
+            const resend = new Resend(RESEND_API_KEY);
+
+            // Generate quiet-day report for Hanka
+            let hankaHtml = "";
+            try {
+              const hankaRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "system", content: `Jsi Karel – osobní AI asistent rodiny. Vygeneruj krátký denní report pro Haničku (partnerku, láska tisíciletá). Intimní, laskavý tón.
+Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný, uklidňující report:
+- Pozdrav Haničku
+- Řekni, že dnes byl klidný den, žádné části se neozvaly
+- Krátké povzbuzení
+- Podpis: Karel` },
+                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.${normalizedCardFiles.length > 0 ? `\nNormalizováno ${normalizedCardFiles.length} karet.` : ""}` },
+                  ],
+                }),
+              });
+              if (hankaRes.ok) {
+                const d = await hankaRes.json();
+                hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+              }
+            } catch {}
+            if (!hankaHtml) hankaHtml = `<p>Dnes klidný den – žádné části se neozvaly. Karel</p>`;
+
+            // Generate quiet-day report for Káťa
+            let kataHtml = "";
+            try {
+              const kataRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "system", content: `Jsi Karel. Vygeneruj krátký denní report pro Káťu (druhý terapeut). PROFESIONÁLNÍ tón. Dnes nebyla žádná aktivita.
+Formát HTML emailu:
+- Pozdrav Káťu
+- Řekni, že dnes bez aktivity
+- Podpis: Karel` },
+                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.` },
+                  ],
+                }),
+              });
+              if (kataRes.ok) {
+                const d = await kataRes.json();
+                kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+              }
+            } catch {}
+            if (!kataHtml) kataHtml = `<p>Dnes bez aktivity částí. Karel</p>`;
+
+            await resend.emails.send({
+              from: "Karel <karel@hana-chlebcova.cz>",
+              to: [MAMKA_EMAIL],
+              subject: `Karel – denní report ${dateStr}`,
+              html: hankaHtml,
+            });
+            console.log(`Quiet-day report sent to Hanka: ${MAMKA_EMAIL}`);
+
+            await resend.emails.send({
+              from: "Karel <karel@hana-chlebcova.cz>",
+              to: [KATA_EMAIL],
+              subject: `Karel – report pro Káťu ${dateStr}`,
+              html: kataHtml,
+            });
+            console.log(`Quiet-day report sent to Káťa: ${KATA_EMAIL}`);
+          }
+        } catch (e) {
+          console.error("Quiet-day email error:", e);
+        }
+      }
+
       return new Response(JSON.stringify({
         success: true,
         message: normalizedCardFiles.length > 0
@@ -1342,7 +1429,7 @@ serve(async (req) => {
         conversationsProcessed: 0,
         cardsUpdated,
         normalizedCards: normalizedCardFiles.length,
-        reportSent: false,
+        reportSent: shouldSendEmails,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
