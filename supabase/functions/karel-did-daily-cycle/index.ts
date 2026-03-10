@@ -636,7 +636,7 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
 
   if (!centerFolderId) {
     console.warn("[registry] 00_CENTRUM folder not found");
-    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null };
+    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null, registryFileId: null, registrySheetName: null };
   }
 
   const centerFiles = await listFilesInFolder(token, centerFolderId);
@@ -659,18 +659,35 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
   const registryFile = registryCandidates[0]?.file;
   if (!registryFile) {
     console.warn("[registry] Registry spreadsheet not found in 00_CENTRUM");
-    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null };
+    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null, registryFileId: null, registrySheetName: null };
   }
 
   const rows = await readRegistryRows(token, registryFile);
   const entries = parseRegistryEntries(rows);
   console.log(`[registry] Loaded ${entries.length} entries from ${registryFile.name}`);
 
+  // Get actual sheet name for Sheets API operations
+  let registrySheetName = "Sheet1";
+  if (registryFile.mimeType === DRIVE_SHEET_MIME) {
+    try {
+      const metaRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}?fields=sheets.properties.title`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (metaRes.ok) {
+        const metaData = await metaRes.json();
+        registrySheetName = metaData.sheets?.[0]?.properties?.title || "Sheet1";
+      }
+    } catch {}
+  }
+
   return {
     entries,
     activeFolderId,
     archiveFolderId,
     sourceFileName: registryFile.name,
+    registryFileId: registryFile.id,
+    registrySheetName,
   };
 }
 
