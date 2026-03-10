@@ -511,7 +511,10 @@ const Chat = () => {
       toast.error("Nepodařilo se vytvořit vlákno");
       setDidFlowState("thread-list");
     }
-  }, [didInitialContext, setDidInitialContext, setMessages]);
+    } finally {
+      setIsPartSelecting(false);
+    }
+  }, [didInitialContext, setDidInitialContext, setMessages, isPartSelecting]);
 
   const handleLeaveThread = useCallback(() => {
     if (activeThread && messages.length >= 2) {
