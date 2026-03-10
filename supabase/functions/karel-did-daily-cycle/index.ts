@@ -1293,12 +1293,21 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // 1. SBĚR DAT – ALL unprocessed threads + conversations (no time cutoff!)
-    const { data: threadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
-    const threads = threadRows ?? [];
+    // 1. SBĚR DAT
+    // For card updates: only unprocessed items
+    const { data: unprocessedThreadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
+    const threads = unprocessedThreadRows ?? [];
 
-    const { data: convRows } = await sb.from("did_conversations").select("*").eq("is_processed", false);
-    const conversations = convRows ?? [];
+    const { data: unprocessedConvRows } = await sb.from("did_conversations").select("*").eq("is_processed", false);
+    const conversations = unprocessedConvRows ?? [];
+
+    // For daily EMAIL REPORT: ALL threads/conversations from last 24h (including already-processed ones)
+    // This prevents "quiet day" false reports when manual updates already processed the data
+    const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: allRecentThreadRows } = await sb.from("did_threads").select("*").gte("last_activity_at", cutoff24h);
+    const allRecentThreads = allRecentThreadRows ?? [];
+    const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
+    const allRecentConversations = allRecentConvRows ?? [];
 
     const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
 
