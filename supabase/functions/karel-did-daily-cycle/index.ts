@@ -165,6 +165,19 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
     const formatRequests: any[] = [];
     let charIndex = 1; // Docs API uses 1-based index
 
+    // Labels that should be bold (the label part before the value)
+    const BOLD_LABELS = [
+      "ID:", "Jméno:", "Věk:", "Pohlaví:", "Jazyk:", "Typ:", "Klastr:",
+      "Status:", "Historický kontext", "Datum", "Událost",
+      "Co se dělo", "Stabilizační opatření", "Další krok",
+      "Co bylo navrženo", "Výsledek", "Hodnocení",
+      "Období", "Aktivita", "Poznámka",
+      "Cíl:", "Vhodné nyní:", "Postup:", "Proč funguje:", "Zdroj:", "Obtížnost:",
+      "Metoda:", "Termín:", "Poznámky:", "Jádrové přesvědčení",
+      "Ochranný mechanismus:", "Vzorce chování:",
+      "Doporučený směr:", "Hypotéza:",
+    ];
+
     for (const line of lines) {
       const lineLen = line.length;
       if (lineLen > 0) {
@@ -188,8 +201,8 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
             },
           });
         }
-        // Sub-headers (lines starting with ⚠️ or specific labels like "Základní identita", etc.)
-        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav)/i.test(line)) {
+        // Sub-headers
+        else if (/^(⚠️|Základní identita|Senzorické kotvy|Triggery|Co ho uklidňuje|Vztahy|Povědomí|Hlavní potřeby|Hlavní strachy|Rizika probuzení|Typické konflikty|Principy práce|Kontraindikace|Aktuální stav|Bezpečnostní pravidla|Situační karta|NAVAZUJÍCÍ DOKUMENTY)/i.test(line)) {
           formatRequests.push({
             updateParagraphStyle: {
               range: { startIndex: charIndex, endIndex: charIndex + lineLen },
@@ -198,33 +211,70 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
             },
           });
         }
-        // Thin dividers and labels like "KONTEXT:", "KOMPLEXNÍ ANALÝZA" etc.
-        else if (/^(─+|KONTEXT:|KLÍČOVÉ TÉMA|EMOCE TERAPEUTA|PŘENOS|RIZIKA:|KOMPLEXNÍ ANALÝZA|PRŮBĚH SUPERVIZE|DOPORUČENÉ METODY|HODNOCENÍ RIZIK|HLASOVÁ ANALÝZA|POZNÁMKY:)/i.test(line)) {
+        // Thin dividers and analysis labels
+        else if (/^(─+|KONTEXT:|KLÍČOVÉ TÉMA|EMOCE TERAPEUTA|PŘENOS|RIZIKA:|KOMPLEXNÍ ANALÝZA|PRŮBĚH SUPERVIZE|DOPORUČENÉ METODY|HODNOCENÍ RIZIK|HLASOVÁ ANALÝZA|POZNÁMKY:|UPOZORNĚNÍ KARLA)/i.test(line)) {
           formatRequests.push({
             updateParagraphStyle: {
               range: { startIndex: charIndex, endIndex: charIndex + lineLen },
               paragraphStyle: { namedStyleType: "HEADING_3" },
               fields: "namedStyleType",
+            },
+          });
+        }
+
+        // Bold labels: find label prefix and bold just that part
+        const trimmedLine = line.trimStart();
+        const leadingSpaces = line.length - trimmedLine.length;
+        for (const label of BOLD_LABELS) {
+          if (trimmedLine.startsWith(label)) {
+            const boldStart = charIndex + leadingSpaces;
+            const boldEnd = boldStart + label.length;
+            formatRequests.push({
+              updateTextStyle: {
+                range: { startIndex: boldStart, endIndex: boldEnd },
+                textStyle: { bold: true },
+                fields: "bold",
+              },
+            });
+            break;
+          }
+        }
+
+        // Also bold lines starting with ► (task items)
+        if (trimmedLine.startsWith("►")) {
+          const boldStart = charIndex + leadingSpaces;
+          const colonIdx = trimmedLine.indexOf("[");
+          const boldEnd = colonIdx > 0 ? boldStart + colonIdx : boldStart + Math.min(lineLen, 60);
+          formatRequests.push({
+            updateTextStyle: {
+              range: { startIndex: boldStart, endIndex: boldEnd },
+              textStyle: { bold: true },
+              fields: "bold",
             },
           });
         }
       }
-      charIndex += lineLen + 1; // +1 for newline character
+      charIndex += lineLen + 1;
     }
 
     if (formatRequests.length > 0) {
-      const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ requests: formatRequests }),
-      });
-      if (!fmtRes.ok) {
-        console.warn(`[updateGoogleDocInPlace] Formatting failed (non-fatal): ${await fmtRes.text()}`);
-      } else {
-        console.log(`[updateGoogleDocInPlace] Applied ${formatRequests.length} heading styles`);
+      // Google Docs API has a limit; batch in chunks of 500
+      const CHUNK = 500;
+      for (let i = 0; i < formatRequests.length; i += CHUNK) {
+        const chunk = formatRequests.slice(i, i + CHUNK);
+        const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ requests: chunk }),
+        });
+        if (!fmtRes.ok) {
+          console.warn(`[updateGoogleDocInPlace] Formatting chunk failed (non-fatal): ${await fmtRes.text()}`);
+        } else {
+          console.log(`[updateGoogleDocInPlace] Applied ${chunk.length} format styles (chunk ${Math.floor(i/CHUNK)+1})`);
+        }
       }
     }
   } catch (fmtErr) {
@@ -996,15 +1046,19 @@ async function updateCardSections(
 
 function isTextCandidateFile(file: DriveFile): boolean {
   if (file.mimeType === "application/vnd.google-apps.folder") return false;
+  if (file.mimeType === DRIVE_SHEET_MIME) return false;
+  for (const mime of XLS_MIME_TYPES) { if (file.mimeType === mime) return false; }
 
   const lower = file.name.toLowerCase();
-  if (lower.startsWith("did_")) return false;
-  if (lower.startsWith("00_") || lower.startsWith("01_") || lower.startsWith("02_")) return false;
+  // Skip registry/index/instruction files but NOT DID_ card files
+  if (lower.startsWith("00_") || lower.startsWith("01_index") || lower.startsWith("02_instrukce") || lower.startsWith("02_klast")) return false;
   if (lower.includes("denni_report") || lower.includes("tydenni_report")) return false;
   if (lower.includes("instrukce") || lower.includes("mapa_vztahu")) return false;
 
-  const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
+  // Accept Google Docs (DID cards stored as Google Docs)
+  if (file.mimeType === DRIVE_DOC_MIME) return true;
 
+  const isTextExtension = /\.(txt|md|doc|docx)$/i.test(file.name);
   return isTextExtension;
 }
 
@@ -1110,10 +1164,20 @@ async function listFilesRecursive(token: string, rootFolderId: string): Promise<
   return collected;
 }
 
-async function normalizeCardStructures(token: string, rootFolderId: string): Promise<string[]> {
+async function normalizeCardStructures(token: string, rootFolderId: string, forceReformat = false, targetPart?: string): Promise<string[]> {
   const files = await listFilesRecursive(token, rootFolderId);
-  const candidateFiles = files.filter(isTextCandidateFile);
+  let candidateFiles = files.filter(isTextCandidateFile);
   const normalized: string[] = [];
+
+  // If targetPart specified, filter to only matching files
+  if (targetPart) {
+    const targetCanonical = canonicalText(targetPart);
+    candidateFiles = candidateFiles.filter(f => {
+      const fileCanonical = canonicalText(f.name);
+      return scoreNameMatch(targetCanonical, fileCanonical) > 0 || fileCanonical.includes(targetCanonical);
+    });
+    console.log(`[normalizeCardStructures] Targeting "${targetPart}", found ${candidateFiles.length} matching files`);
+  }
 
   for (const file of candidateFiles) {
     try {
@@ -1121,9 +1185,10 @@ async function normalizeCardStructures(token: string, rootFolderId: string): Pro
       if (!looksLikeDidCard(file.name, original)) continue;
 
       const rebuilt = buildCard(partNameFromFileName(file.name), parseCardSections(original));
-      if (rebuilt.trim() !== original.trim()) {
+      if (forceReformat || rebuilt.trim() !== original.trim()) {
         await updateFileById(token, file.id, rebuilt, file.mimeType);
         normalized.push(file.name);
+        console.log(`[normalizeCardStructures] Reformatted: ${file.name} (mimeType: ${file.mimeType})`);
       }
     } catch (e) {
       console.error(`[normalizeCardStructures] Failed for ${file.name}:`, e);
@@ -1156,6 +1221,23 @@ serve(async (req) => {
   }
 
   try {
+    // ═══ FAST-PATH: reformat only (no DB, no AI, no email) ═══
+    if (requestBody?.reformat) {
+      const token = await getAccessToken();
+      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      
+      // If partName specified, only reformat that one card
+      const targetPart = requestBody?.partName as string | undefined;
+      const normalizedCardFiles = await normalizeCardStructures(token, folderId, true, targetPart);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        message: `Přeformátováno ${normalizedCardFiles.length} karet`,
+        reformattedCards: normalizedCardFiles,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
@@ -1189,7 +1271,8 @@ serve(async (req) => {
       }
     }
 
-    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId) : [];
+    const forceReformat = !!requestBody?.reformat;
+    const normalizedCardFiles = folderId ? await normalizeCardStructures(token, folderId, forceReformat) : [];
     const cardsUpdated: string[] = normalizedCardFiles.map(name => `${name} (normalizace A-M)`);
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
