@@ -1160,7 +1160,7 @@ async function listFilesRecursive(token: string, rootFolderId: string): Promise<
   return collected;
 }
 
-async function normalizeCardStructures(token: string, rootFolderId: string): Promise<string[]> {
+async function normalizeCardStructures(token: string, rootFolderId: string, forceReformat = false): Promise<string[]> {
   const files = await listFilesRecursive(token, rootFolderId);
   const candidateFiles = files.filter(isTextCandidateFile);
   const normalized: string[] = [];
@@ -1171,7 +1171,7 @@ async function normalizeCardStructures(token: string, rootFolderId: string): Pro
       if (!looksLikeDidCard(file.name, original)) continue;
 
       const rebuilt = buildCard(partNameFromFileName(file.name), parseCardSections(original));
-      if (rebuilt.trim() !== original.trim()) {
+      if (forceReformat || rebuilt.trim() !== original.trim()) {
         await updateFileById(token, file.id, rebuilt, file.mimeType);
         normalized.push(file.name);
       }
