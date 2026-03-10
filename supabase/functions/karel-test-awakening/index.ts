@@ -23,302 +23,194 @@ async function getAccessToken(): Promise<string> {
 }
 
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
-const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
 const DRIVE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
 
 const canonicalText = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\.(txt|md|doc|docx|xls|xlsx)$/gi, "").replace(/[^a-z0-9]/g, "");
 
-async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
+async function listFilesInFolder(token: string, folderId: string) {
   const q = `'${folderId}' in parents and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files || [];
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return (await res.json()).files || [];
 }
 
-async function findFolder(token: string, name: string): Promise<string | null> {
+async function findFolder(token: string, name: string) {
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files?.[0]?.id || null;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return (await res.json()).files?.[0]?.id || null;
 }
 
-async function moveFile(token: string, fileId: string, newParentId: string, oldParentId: string): Promise<void> {
+async function moveFile(token: string, fileId: string, newParent: string, oldParent: string) {
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${newParentId}&removeParents=${oldParentId}&supportsAllDrives=true`,
-    { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) }
+    `https://www.googleapis.com/drive/v3/files/${fileId}?addParents=${newParent}&removeParents=${oldParent}&supportsAllDrives=true`,
+    { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: "{}" }
   );
   if (!res.ok) throw new Error(`Move failed: ${await res.text()}`);
 }
 
-async function readFileContent(token: string, fileId: string): Promise<string> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+async function readFileContent(token: string, fileId: string) {
+  let res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
-    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!exportRes.ok) throw new Error(`Cannot read file ${fileId}`);
-    return await exportRes.text();
+    res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Cannot read ${fileId}`);
   }
-  return await res.text();
+  return res.text();
+}
+
+async function findRegistryInfo(token: string, centerFolderId: string, targetName: string) {
+  const centerFiles = await listFilesInFolder(token, centerFolderId);
+  const registryFile = centerFiles.find((f: any) => f.mimeType === DRIVE_SHEET_MIME && canonicalText(f.name).includes("index"));
+  if (!registryFile) return null;
+
+  const exportRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const csvText = await exportRes.text();
+  const workbook = XLSX.read(csvText, { type: "string" });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][];
+
+  const headerIdx = rawRows.findIndex((row: any, idx: number) => {
+    if (idx > 10) return false;
+    const norm = row.map((c: any) => canonicalText(String(c)));
+    return norm.some((c: string) => ["id", "cislo"].some(v => c.includes(v)))
+      && norm.some((c: string) => ["jmeno", "nazev", "cast"].some(v => c.includes(v)));
+  });
+  if (headerIdx < 0) return null;
+
+  const header = rawRows[headerIdx].map((c: any) => canonicalText(String(c)));
+  const statusCol = header.findIndex((h: string) => ["stav", "status"].some(hint => h.includes(hint)));
+  const nameCol = header.findIndex((h: string) => ["jmeno", "nazev", "cast"].some(hint => h.includes(hint)));
+
+  for (let i = headerIdx + 1; i < rawRows.length; i++) {
+    const rowName = canonicalText(String(rawRows[i][nameCol] ?? ""));
+    if (rowName.includes(targetName)) {
+      return {
+        registryFileId: registryFile.id,
+        sheetName,
+        statusCol,
+        rowIndex: i,
+        currentStatus: String(rawRows[i][statusCol] ?? ""),
+      };
+    }
+  }
+  return null;
+}
+
+async function updateRegistryCell(token: string, fileId: string, sheetName: string, col: number, row: number, value: string) {
+  const colLetter = String.fromCharCode(65 + col);
+  const cellRange = `${sheetName}!${colLetter}${row + 1}`;
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${fileId}/values/${encodeURIComponent(cellRange)}?valueInputOption=USER_ENTERED`,
+    { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ range: cellRange, majorDimension: "ROWS", values: [[value]] }) }
+  );
+  return { ok: res.ok, cellRange };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
   try {
     const token = await getAccessToken();
     const log: string[] = [];
+    let body: any = {};
+    try { body = await req.json(); } catch {}
+    const step = body.step || "prepare";
 
-    // Find KARTOTEKA_DID root
     const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
-    if (!kartotekaId) throw new Error("KARTOTEKA_DID folder not found");
-    log.push(`✅ Kartoteka root: ${kartotekaId}`);
+    if (!kartotekaId) throw new Error("KARTOTEKA_DID not found");
 
-    // Find 01_AKTIVNI and 03_ARCHIV
     const rootChildren = await listFilesInFolder(token, kartotekaId);
-    const activeFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && /^01/.test(f.name.trim()));
-    const archiveFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && /^03/.test(f.name.trim()));
-    const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && /^00/.test(f.name.trim()));
-    if (!activeFolder || !archiveFolder) throw new Error("Active or Archive folder not found");
-    log.push(`✅ Active: ${activeFolder.name} (${activeFolder.id})`);
-    log.push(`✅ Archive: ${archiveFolder.name} (${archiveFolder.id})`);
+    const activeFolder = rootChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && /^01/.test(f.name.trim()));
+    const archiveFolder = rootChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && /^03/.test(f.name.trim()));
+    const centerFolder = rootChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && /^00/.test(f.name.trim()));
+    if (!activeFolder || !archiveFolder) throw new Error("Folders not found");
 
-    // STEP 1: Find Christoffer in active folder and move back to archive
-    const activeFiles = await listFilesInFolder(token, activeFolder.id);
-    const christofferFile = activeFiles.find(f => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
-    
-    if (!christofferFile) {
-      // Maybe already in archive?
-      const archiveFiles = await listFilesInFolder(token, archiveFolder.id);
-      const inArchive = archiveFiles.find(f => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
-      if (inArchive) {
-        log.push(`ℹ️ Christoffer already in archive: ${inArchive.name}`);
+    if (step === "prepare") {
+      // Move Christoffer to archive
+      const activeFiles = await listFilesInFolder(token, activeFolder.id);
+      const cf = activeFiles.find((f: any) => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
+      if (cf) {
+        await moveFile(token, cf.id, archiveFolder.id, activeFolder.id);
+        log.push(`✅ Moved "${cf.name}" → ARCHIV`);
       } else {
-        throw new Error("Christoffer not found in active or archive!");
+        log.push(`ℹ️ Already in archive`);
       }
-    } else {
-      await moveFile(token, christofferFile.id, archiveFolder.id, activeFolder.id);
-      log.push(`✅ STEP 1: Moved "${christofferFile.name}" from AKTIVNI → ARCHIV`);
-    }
 
-    // STEP 2: Reset registry status to "Spí"
-    if (centerFolder) {
-      const centerFiles = await listFilesInFolder(token, centerFolder.id);
-      const registryFile = centerFiles.find(f => f.mimeType === DRIVE_SHEET_MIME && canonicalText(f.name).includes("index"));
-      
-      if (registryFile) {
-        // Read CSV to find Christoffer's row
-        const exportRes = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const csvText = await exportRes.text();
-        const workbook = XLSX.read(csvText, { type: "string" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][];
+      // Reset registry to "Spí"
+      if (centerFolder) {
+        const info = await findRegistryInfo(token, centerFolder.id, "christoffer");
+        if (!info) { const info2 = await findRegistryInfo(token, centerFolder.id, "kristoffer"); }
+        const regInfo = info || await findRegistryInfo(token, centerFolder.id, "kristoffer");
+        if (regInfo) {
+          const r = await updateRegistryCell(token, regInfo.registryFileId, regInfo.sheetName, regInfo.statusCol, regInfo.rowIndex, "Spí");
+          log.push(r.ok ? `✅ Registry reset to "Spí" at ${r.cellRange}` : `❌ Registry reset failed`);
+        } else {
+          log.push(`❌ Christoffer not found in registry`);
+        }
+      }
 
-        // Find header
-        const headerIdx = rawRows.findIndex((row, idx) => {
-          if (idx > 10) return false;
-          const norm = row.map((c: any) => canonicalText(String(c)));
-          return norm.some(c => ["id", "cislo"].some(v => c.includes(v)))
-            && norm.some(c => ["jmeno", "nazev", "cast"].some(v => c.includes(v)));
+      // Create fake thread
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data: existing } = await sb.from("did_threads").select("id").eq("part_name", "Christoffer").eq("is_processed", false);
+      if (existing?.length) {
+        log.push(`ℹ️ Thread already exists: ${existing[0].id}`);
+      } else {
+        const { data: any } = await sb.from("did_threads").select("user_id").limit(1).single();
+        const { error } = await sb.from("did_threads").insert({
+          part_name: "Christoffer", sub_mode: "cast", part_language: "no", user_id: any?.user_id,
+          messages: [
+            { role: "user", content: "Hei... jeg er Christoffer. Jeg er her." },
+            { role: "assistant", content: "Hei, Christoffer. Du er trygg." },
+            { role: "user", content: "Jeg var borte lenge. Men nå er jeg her igjen." },
+          ],
+          is_processed: false,
         });
+        log.push(error ? `❌ Thread: ${error.message}` : `✅ Thread created`);
+      }
+      log.push(`\n🔜 Now call daily cycle, then verify.`);
 
-        if (headerIdx >= 0) {
-          const header = rawRows[headerIdx].map((c: any) => canonicalText(String(c)));
-          const statusCol = header.findIndex(h => ["stav", "status"].some(hint => h.includes(hint)));
-          const nameCol = header.findIndex(h => ["jmeno", "nazev", "cast"].some(hint => h.includes(hint)));
+    } else if (step === "verify") {
+      // Check card in active
+      const activeFiles = await listFilesInFolder(token, activeFolder.id);
+      const cf = activeFiles.find((f: any) => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
+      if (cf) {
+        log.push(`✅ Christoffer in AKTIVNI: ${cf.name}`);
+        const card = await readFileContent(token, cf.id);
+        log.push(`\n📋 VERIFICATION:`);
+        log.push(`   A: Status has "Aktivní": ${/Status:.*Aktivní/i.test(card)}`);
+        log.push(`   A: Status NO "💤 Spí": ${!/Status:\s*💤/.test(card)}`);
+        log.push(`   E: Has probuzení entry: ${card.includes("Probuzení")}`);
+        log.push(`   E: No "💤 Spí" as current: ${!/Aktuální stav\s*\n?\s*💤/.test(card)}`);
+        log.push(`   G: Has new row: ${card.includes("první kontakt po archivaci") || card.includes("Probuzení")}`);
+        log.push(`   K: Has new row: ${card.includes("probuzení z archivu") || card.includes("Probíhá")}`);
+        log.push(`   L: Has přesun: ${card.includes("03_ARCHIV") || card.includes("ARCHIV do 01_AKTIVNI")}`);
+        
+        // Show sections
+        for (const s of ["A", "E", "G", "K", "L"]) {
+          const re = new RegExp(`SEKCE ${s}[^═]*([\\s\\S]*?)(?=═══ SEKCE|$)`);
+          const m = card.match(re);
+          log.push(`\n--- SECTION ${s} (first 500 chars) ---\n${m ? m[1].trim().slice(0, 500) : "NOT FOUND"}`);
+        }
+      } else {
+        log.push(`❌ Christoffer NOT in AKTIVNI!`);
+      }
 
-          let targetRow = -1;
-          for (let i = headerIdx + 1; i < rawRows.length; i++) {
-            const rowName = canonicalText(String(rawRows[i][nameCol] ?? ""));
-            if (rowName.includes("christoffer") || rowName.includes("kristoffer")) {
-              targetRow = i;
-              break;
-            }
-          }
-
-          if (targetRow >= 0 && statusCol >= 0) {
-            const colLetter = String.fromCharCode(65 + statusCol);
-            const cellRange = `${sheetName}!${colLetter}${targetRow + 1}`;
-            
-            const updateRes = await fetch(
-              `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}/values/${encodeURIComponent(cellRange)}?valueInputOption=USER_ENTERED`,
-              {
-                method: "PUT",
-                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ range: cellRange, majorDimension: "ROWS", values: [["Spí"]] }),
-              }
-            );
-            if (updateRes.ok) {
-              log.push(`✅ STEP 2: Registry status reset to "Spí" at ${cellRange}`);
-            } else {
-              log.push(`❌ STEP 2: Registry update failed: ${await updateRes.text()}`);
-            }
-          } else {
-            log.push(`❌ STEP 2: Could not find Christoffer row (${targetRow}) or status col (${statusCol})`);
-          }
+      // Check registry
+      if (centerFolder) {
+        let regInfo = await findRegistryInfo(token, centerFolder.id, "christoffer");
+        if (!regInfo) regInfo = await findRegistryInfo(token, centerFolder.id, "kristoffer");
+        if (regInfo) {
+          log.push(`\n📊 REGISTRY: "${regInfo.currentStatus}" (expected "Aktivní", match: ${regInfo.currentStatus === "Aktivní"})`);
         }
       }
     }
 
-    // STEP 3: Create a fake unprocessed thread for Christoffer to trigger awakening
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sb = createClient(supabaseUrl, supabaseKey);
-
-    // First check if there's already an unprocessed thread
-    const { data: existingThreads } = await sb.from("did_threads")
-      .select("id")
-      .eq("part_name", "Christoffer")
-      .eq("is_processed", false);
-
-    if (existingThreads && existingThreads.length > 0) {
-      log.push(`ℹ️ STEP 3: Unprocessed Christoffer thread already exists (${existingThreads[0].id})`);
-    } else {
-      // Get any user_id from existing threads
-      const { data: anyThread } = await sb.from("did_threads").select("user_id").limit(1).single();
-      const userId = anyThread?.user_id;
-      if (!userId) throw new Error("No user_id found");
-
-      const { data: newThread, error: threadErr } = await sb.from("did_threads").insert({
-        part_name: "Christoffer",
-        sub_mode: "cast",
-        part_language: "no",
-        user_id: userId,
-        messages: [
-          { role: "user", content: "Hei... jeg er Christoffer. Jeg er her." },
-          { role: "assistant", content: "Hei, Christoffer. Du er trygg. Jeg er her. Ingen skal skade deg. Kan du fortelle meg hvordan du har det?" },
-          { role: "user", content: "Jeg vet ikke... jeg var borte lenge. Men nå er jeg her igjen. Er bestemor her?" },
-        ],
-        is_processed: false,
-      }).select().single();
-
-      if (threadErr) throw new Error(`Thread insert failed: ${threadErr.message}`);
-      log.push(`✅ STEP 3: Created test thread ${newThread.id} for Christoffer`);
-    }
-
-    // STEP 4: Read card content BEFORE triggering daily cycle (for comparison)
-    const archiveFilesBefore = await listFilesInFolder(token, archiveFolder.id);
-    const christofferInArchive = archiveFilesBefore.find(f => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
-    let cardBefore = "";
-    if (christofferInArchive) {
-      cardBefore = await readFileContent(token, christofferInArchive.id);
-      // Check key sections
-      const hasSpíInA = cardBefore.includes("💤 Spí");
-      const hasSpíInE = cardBefore.includes("💤 Spí");
-      log.push(`✅ STEP 4: Card BEFORE – has "💤 Spí" in content: ${hasSpíInA}`);
-      log.push(`   Card file: ${christofferInArchive.name} (${christofferInArchive.id}), ${cardBefore.length} chars`);
-    }
-
-    // STEP 5: Trigger the daily cycle with source=test_manual
-    log.push(`🔄 STEP 5: Triggering daily cycle...`);
-    const cycleRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-daily-cycle`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${supabaseKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ source: "test_manual" }),
-    });
-    const cycleResult = await cycleRes.json();
-    log.push(`✅ STEP 5: Daily cycle result: ${JSON.stringify(cycleResult).slice(0, 500)}`);
-
-    // STEP 6: Verify results
-    // 6a: Check if Christoffer is now in active folder
-    const activeFilesAfter = await listFilesInFolder(token, activeFolder.id);
-    const christofferInActive = activeFilesAfter.find(f => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
-    
-    if (christofferInActive) {
-      log.push(`✅ STEP 6a: Christoffer FOUND in AKTIVNI: ${christofferInActive.name}`);
-      
-      // 6b: Read card content AFTER
-      const cardAfter = await readFileContent(token, christofferInActive.id);
-      
-      // Check sections
-      const hasAktivniInA = cardAfter.includes("Aktivní") && !cardAfter.match(/Status:\s*💤/);
-      const hasAktivniInE = !cardAfter.match(/Aktuální stav\s*\n?\s*💤/);
-      const hasGEntry = cardAfter.includes("Probuzení") && cardAfter.includes("první kontakt");
-      const hasKEntry = cardAfter.includes("probuzení z archivu") || cardAfter.includes("probuzení");
-      const hasLEntry = cardAfter.includes("Přesunuto z 03_ARCHIV");
-      
-      log.push(`✅ STEP 6b: Card content verification:`);
-      log.push(`   Section A - Status changed from Spí to Aktivní: ${hasAktivniInA}`);
-      log.push(`   Section E - Aktuální stav no longer Spí: ${hasAktivniInE}`);
-      log.push(`   Section G - Has probuzení entry: ${hasGEntry}`);
-      log.push(`   Section K - Has probuzení entry: ${hasKEntry}`);
-      log.push(`   Section L - Has přesun entry: ${hasLEntry}`);
-      
-      // Show relevant snippets
-      const sectionEMatch = cardAfter.match(/SEKCE E[^═]*([\s\S]*?)(?=═══ SEKCE F|$)/);
-      if (sectionEMatch) {
-        log.push(`\n📄 SECTION E content (first 500 chars):\n${sectionEMatch[1].trim().slice(0, 500)}`);
-      }
-      const sectionGMatch = cardAfter.match(/SEKCE G[^═]*([\s\S]*?)(?=═══ SEKCE H|$)/);
-      if (sectionGMatch) {
-        log.push(`\n📄 SECTION G content (first 300 chars):\n${sectionGMatch[1].trim().slice(0, 300)}`);
-      }
-      const sectionLMatch = cardAfter.match(/SEKCE L[^═]*([\s\S]*?)(?=═══ SEKCE M|$)/);
-      if (sectionLMatch) {
-        log.push(`\n📄 SECTION L content (first 300 chars):\n${sectionLMatch[1].trim().slice(0, 300)}`);
-      }
-    } else {
-      log.push(`❌ STEP 6a: Christoffer NOT found in AKTIVNI after daily cycle!`);
-      // Check if still in archive
-      const archiveFilesAfter = await listFilesInFolder(token, archiveFolder.id);
-      const stillInArchive = archiveFilesAfter.find(f => canonicalText(f.name).includes("christoffer") || /009/.test(f.name));
-      if (stillInArchive) {
-        log.push(`   ⚠️ Still in archive: ${stillInArchive.name}`);
-      }
-    }
-
-    // 6c: Check registry status
-    if (centerFolder) {
-      const centerFiles = await listFilesInFolder(token, centerFolder.id);
-      const registryFile = centerFiles.find(f => f.mimeType === DRIVE_SHEET_MIME && canonicalText(f.name).includes("index"));
-      if (registryFile) {
-        const exportRes = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${registryFile.id}/export?mimeType=text/csv&supportsAllDrives=true`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        const csvText = await exportRes.text();
-        const workbook = XLSX.read(csvText, { type: "string" });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][];
-
-        const headerIdx = rawRows.findIndex((row, idx) => {
-          if (idx > 10) return false;
-          const norm = row.map((c: any) => canonicalText(String(c)));
-          return norm.some(c => ["id", "cislo"].some(v => c.includes(v)))
-            && norm.some(c => ["jmeno", "nazev", "cast"].some(v => c.includes(v)));
-        });
-        if (headerIdx >= 0) {
-          const header = rawRows[headerIdx].map((c: any) => canonicalText(String(c)));
-          const statusCol = header.findIndex(h => ["stav", "status"].some(hint => h.includes(hint)));
-          const nameCol = header.findIndex(h => ["jmeno", "nazev", "cast"].some(hint => h.includes(hint)));
-          for (let i = headerIdx + 1; i < rawRows.length; i++) {
-            const rowName = canonicalText(String(rawRows[i][nameCol] ?? ""));
-            if (rowName.includes("christoffer") || rowName.includes("kristoffer")) {
-              const currentStatus = String(rawRows[i][statusCol] ?? "");
-              log.push(`\n✅ STEP 6c: Registry status for Christoffer: "${currentStatus}"`);
-              log.push(`   Expected: "Aktivní" — Match: ${currentStatus === "Aktivní"}`);
-              break;
-            }
-          }
-        }
-      }
-    }
-
-    return new Response(JSON.stringify({ success: true, log }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ success: true, step, log }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    return new Response(JSON.stringify({ success: false, error: e.message }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
