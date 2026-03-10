@@ -574,7 +574,100 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    return new Response(JSON.stringify({ error: "Unknown mode. Use: list, audit, process_one, cleanup_txt" }), {
+    // ═══ MODE: CONVERT_TO_DOC ═══
+    // Converts .txt card files to Google Docs AND strips ═══ lines from all cards
+    // Processes in batches (default 3 at a time) to avoid timeouts
+    if (mode === "convert_to_doc") {
+      const start = typeof index === "number" ? index : 0;
+      const count = body.count || 3;
+      const end = Math.min(start + count, entries.length);
+
+      const results: Array<{
+        index: number;
+        name: string;
+        action: "converted" | "cleaned" | "not_found" | "error";
+        oldFileName?: string;
+        newFileName?: string;
+        detail?: string;
+      }> = [];
+
+      for (let i = start; i < end; i++) {
+        const entry = entries[i];
+        const located = await findCardWithFallback(token, entry, activeFolderId, archiveFolderId);
+
+        if (!located.card) {
+          results.push({ index: i, name: entry.name, action: "not_found", detail: "Karta nenalezena" });
+          continue;
+        }
+
+        const card = located.card;
+        try {
+          // Clean content: strip ═══ characters from section headers and title
+          let cleanedContent = card.content;
+          // Clean section headers: ═══ SEKCE X – Name ═══ → SEKCE X – Name
+          cleanedContent = cleanedContent.replace(/═+\s*(SEKCE\s+[A-M]\s*[–\-:][^\n]*?)═*/g, "$1").replace(/\s+$/gm, "");
+          // Clean card title: ═══ KARTA ČÁSTI: NAME ═══ → KARTA ČÁSTI: NAME
+          cleanedContent = cleanedContent.replace(/═+\s*(KARTA\s+[ČC]ÁSTI:[^\n]*?)═*/gi, "$1").replace(/\s+$/gm, "");
+          // Remove remaining ═══ and ─── decorative lines (standalone lines of only these chars)
+          cleanedContent = cleanedContent.replace(/^[═─]{3,}\s*$/gm, "");
+          // Remove excessive blank lines (more than 2 consecutive)
+          cleanedContent = cleanedContent.replace(/\n{4,}/g, "\n\n\n");
+
+          const isTxtFile = card.mimeType !== DRIVE_DOC_MIME;
+
+          if (isTxtFile) {
+            // CREATE new Google Doc + delete old .txt
+            const newName = card.fileName.replace(/\.txt$/i, "");
+            const parentFolderId = located.locatedIn === "archive" ? archiveFolderId : activeFolderId;
+            if (!parentFolderId) throw new Error("Parent folder not found");
+
+            // Create Google Doc
+            const boundary = "----ConvertBoundary";
+            const metadata = JSON.stringify({ name: newName, parents: [parentFolderId], mimeType: DRIVE_DOC_MIME });
+            const uploadBody = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${cleanedContent}\r\n--${boundary}--`;
+            const createRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+              body: uploadBody,
+            });
+            if (!createRes.ok) throw new Error(`Create failed: ${await createRes.text()}`);
+            const newDoc = await createRes.json();
+
+            // Apply formatting via Docs API
+            await applyDocFormatting(token, newDoc.id, cleanedContent);
+
+            // Delete old .txt
+            await deleteDriveFile(token, card.fileId);
+
+            console.log(`[convert] ✅ ${entry.name}: ${card.fileName} (.txt) → ${newName} (Google Doc)`);
+            results.push({ index: i, name: entry.name, action: "converted", oldFileName: card.fileName, newFileName: newName });
+          } else {
+            // Already a Google Doc – just clean content and reformat
+            await updateGoogleDocInPlace(token, card.fileId, cleanedContent);
+            // Apply formatting
+            await applyDocFormatting(token, card.fileId, cleanedContent);
+
+            console.log(`[convert] ✅ ${entry.name}: ${card.fileName} cleaned (removed ═══)`);
+            results.push({ index: i, name: entry.name, action: "cleaned", oldFileName: card.fileName });
+          }
+        } catch (e) {
+          console.error(`[convert] ❌ ${entry.name}:`, e);
+          results.push({ index: i, name: entry.name, action: "error", detail: e instanceof Error ? e.message : String(e) });
+        }
+      }
+
+      return new Response(JSON.stringify({
+        mode: "convert_to_doc",
+        totalRegistry: entries.length,
+        rangeStart: start,
+        rangeEnd: end,
+        hasMore: end < entries.length,
+        nextIndex: end < entries.length ? end : null,
+        results,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    return new Response(JSON.stringify({ error: "Unknown mode. Use: list, audit, process_one, cleanup_txt, convert_to_doc" }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 
