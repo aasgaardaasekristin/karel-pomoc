@@ -422,6 +422,27 @@ async function findBestPartFolder(token: string, stateFolderId: string, entry: R
   return scored[0]?.folder || null;
 }
 
+// Find a card FILE (not folder) directly in a parent folder – for archives where cards aren't in subfolders
+async function findBestPartFile(token: string, parentFolderId: string, entry: RegistryEntry): Promise<DriveFile | null> {
+  const files = await listFilesInFolder(token, parentFolderId);
+  const nonFolders = files.filter((f) => f.mimeType !== DRIVE_FOLDER_MIME);
+
+  const idPrefixRegex = entry.id ? new RegExp(`^0*${Number(entry.id)}(?:[_\\s-]|$)`) : null;
+
+  const scored = nonFolders
+    .map((file) => {
+      const fileCanonical = canonicalText(file.name);
+      let score = scoreNameMatch(entry.normalizedName, fileCanonical);
+      if (idPrefixRegex && idPrefixRegex.test(file.name)) score += 8;
+      if (entry.id && fileCanonical.includes(entry.id)) score += 2;
+      return { file, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.file || null;
+}
+
 async function loadRegistryContext(token: string, rootFolderId: string): Promise<RegistryContext> {
   const rootChildren = await listFilesInFolder(token, rootFolderId);
   const rootFolders = rootChildren.filter((f) => f.mimeType === DRIVE_FOLDER_MIME);
@@ -530,10 +551,11 @@ async function resolveCardTarget(
   // ═══ PROBUZENÍ Z ARCHIVU: Pokud je část archivovaná ale komunikuje, přesuň ji ═══
   if (shouldUseArchive && registryContext.archiveFolderId && registryContext.activeFolderId) {
     console.log(`[PROBUZENÍ] 🔄 Část "${entry.name}" je v archivu ale komunikuje – hledám kartu v archivu pro přesun...`);
+    
+    // 1) Zkus najít podsložku části v archivu
     const partFolder = await findBestPartFolder(token, registryContext.archiveFolderId, entry);
     
     if (partFolder) {
-      // Přesuň celou složku části z archivu do aktivních
       try {
         await moveFolderToParent(token, partFolder.id, registryContext.activeFolderId, registryContext.archiveFolderId);
         console.log(`[PROBUZENÍ] ✅ Složka "${partFolder.name}" přesunuta z 03_ARCHIV do 01_AKTIVNI`);
@@ -550,8 +572,29 @@ async function resolveCardTarget(
       };
     }
     
-    // Karta v archivu nenalezena – zkus aktivní složku
-    console.warn(`[PROBUZENÍ] Složka části "${entry.name}" nenalezena v archivu, zkouším aktivní...`);
+    // 2) Složka nenalezena – zkus najít soubor (kartu) přímo v archivu
+    const partFile = await findBestPartFile(token, registryContext.archiveFolderId, entry);
+    
+    if (partFile) {
+      console.log(`[PROBUZENÍ] 📄 Nalezen soubor "${partFile.name}" přímo v archivu – přesouvám do aktivních...`);
+      try {
+        await moveFileToFolder(token, partFile.id, registryContext.activeFolderId, registryContext.archiveFolderId);
+        console.log(`[PROBUZENÍ] ✅ Soubor "${partFile.name}" přesunut z 03_ARCHIV do 01_AKTIVNI`);
+      } catch (e) {
+        console.error(`[PROBUZENÍ] ❌ Přesun souboru selhal:`, e);
+      }
+      
+      return {
+        searchRootId: registryContext.activeFolderId,
+        allowCreate: false,
+        pathLabel: `01_AKTIVNI_FRAGMENTY/${partFile.name} (přesunuto z archivu)`,
+        registryEntry: entry,
+        actionType: "probuzeni_z_archivu",
+      };
+    }
+    
+    // 3) Nic nenalezeno v archivu – zkus aktivní složku
+    console.warn(`[PROBUZENÍ] Část "${entry.name}" nenalezena v archivu (ani složka, ani soubor), zkouším aktivní...`);
   }
 
   const stateFolderId = shouldUseArchive ? registryContext.archiveFolderId : registryContext.activeFolderId;
