@@ -433,8 +433,8 @@ const Chat = () => {
         if (response.ok) {
           const data = await response.json();
           const docs = data.documents || {};
-          const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-          setDidInitialContext(prev => prev + "\n\n" + partDocs);
+           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+            setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
       } catch {}
     })();
@@ -464,7 +464,7 @@ const Chat = () => {
             const data = await response.json();
             const docs = data.documents || {};
             const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-            setDidInitialContext(prev => prev + "\n\n" + partDocs);
+             setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
           }
         } catch {}
       })();
@@ -498,7 +498,7 @@ const Chat = () => {
             const data = await response.json();
             const docs = data.documents || {};
             const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-            setDidInitialContext(prev => prev + "\n\n" + partDocs);
+             setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
             setDidDocsLoaded(true);
           }
         } catch {}
@@ -564,7 +564,7 @@ const Chat = () => {
           const docData = await response.json();
           const docs = docData.documents || {};
           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-          setDidInitialContext(prev => prev + "\n\n" + partDocs);
+           setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
       } catch {}
     })();
@@ -1062,9 +1062,12 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
           };
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 90000);
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${endpoint}`, {
-        method: "POST", headers, body: JSON.stringify(body),
+        method: "POST", headers, body: JSON.stringify(body), signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
       const reader = response.body.getReader();
