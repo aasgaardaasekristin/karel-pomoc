@@ -212,8 +212,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           ) : (
             <RefreshCw className="w-3.5 h-3.5" />
           )}
-          <span className="hidden sm:inline">Aktualizovat kartoteka_DID ihned</span>
-          <span className="sm:hidden">Aktual. kartotéku</span>
+          {syncProgress ? (
+            <span>{syncProgress.current}/{syncProgress.total} {syncProgress.currentName}</span>
+          ) : (
+            <>
+              <span className="hidden sm:inline">Aktualizovat kartoteka_DID ihned</span>
+              <span className="sm:hidden">Aktual. kartotéku</span>
+            </>
+          )}
         </Button>
         <Button
           variant="outline"
