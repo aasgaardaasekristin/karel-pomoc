@@ -363,7 +363,8 @@ async function updateFileById(token: string, fileId: string, content: string, mi
 
 async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
   const boundary = "----DIDCycleBoundary";
-  const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
+  // Create as Google Doc (not .txt) by specifying mimeType in metadata
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
   const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
     method: "POST",
@@ -371,7 +372,15 @@ async function createFileInFolder(token: string, fileName: string, content: stri
     body,
   });
   if (!res.ok) throw new Error(`Drive create failed: ${await res.text()}`);
-  return await res.json();
+  const result = await res.json();
+  // Apply formatting (Heading 1/2, bold labels) to the new Google Doc
+  try {
+    await updateGoogleDocInPlace(token, result.id, content);
+    console.log(`[createFileInFolder] ✅ Created & formatted Google Doc: ${fileName}`);
+  } catch (fmtErr) {
+    console.warn(`[createFileInFolder] Created but formatting failed (non-fatal): ${fmtErr}`);
+  }
+  return result;
 }
 
 // Also keep uploadOrUpdate for daily report file (not a card)
