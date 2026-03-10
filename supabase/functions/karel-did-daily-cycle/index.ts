@@ -1317,14 +1317,19 @@ ${perplexityContext}`,
                 canonicalPartName: resolvedPartName,
               }
             );
-            cardsUpdated.push(`${resolvedPartName} (${result.sectionsUpdated.join(",")}${result.isNew ? " – NOVÁ" : ""}) [${target.pathLabel}]`);
+            const effectiveAction: CardActionType = result.isNew ? "nova_karta" : target.actionType;
+            const actionLabel = effectiveAction === "nova_karta" ? "NOVÁ KARTA" 
+              : effectiveAction === "probuzeni_z_archivu" ? "PROBUZENÍ Z ARCHIVU" 
+              : "AKTUALIZACE";
+            cardsUpdated.push(`${resolvedPartName} (${actionLabel}: ${result.sectionsUpdated.join(",")}) [${target.pathLabel}]`);
             successfulCardUpdates.push({
               partName: resolvedPartName,
               fileName: result.fileName,
               sectionsUpdated: result.sectionsUpdated,
               pathLabel: target.pathLabel,
+              actionType: effectiveAction,
             });
-            console.log(`Updated card: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
+            console.log(`[card] ${actionLabel}: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
           } catch (e) {
             hadCardUpdateErrors = true;
             console.error(`Failed to update card for ${rawPartName}:`, e);
