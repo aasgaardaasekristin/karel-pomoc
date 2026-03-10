@@ -1154,6 +1154,11 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 
 Po všech kartách:
 [REPORT]
+- ⚠️ TERMINOLOGIE: Rozlišuj přesně:
+  • "Zápis do existující karty [jméno]" = karta JIŽ EXISTUJE, pouze jsi zapsal nový obsah
+  • "Založena NOVÁ karta [jméno]" = část NEMĚLA kartu, vytvořil jsi novou
+  • "Probuzení [jméno] z archivu" = karta existovala v 03_ARCHIV, přesunuta do 01_AKTIVNI
+  NIKDY neříkej "založil jsem kartu" pokud karta již existovala!
 - Co bylo změněno (karta + sekce) a proč
 - Shrnutí: kdo dnes mluvil a jaké části byly aktivní
 - Doporučení pro mamku (co dělat večer + proč)
