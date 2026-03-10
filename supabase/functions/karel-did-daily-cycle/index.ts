@@ -1259,7 +1259,8 @@ serve(async (req) => {
   let requestBody: any = {};
   try { requestBody = await req.clone().json(); } catch {}
   const isCronSource = requestBody?.source === "cron";
-  const shouldSendEmails = isCronCall && isCronSource;
+  const isTestEmail = requestBody?.testEmail === true;
+  const shouldSendEmails = (isCronCall && isCronSource) || isTestEmail;
   if (!shouldSendEmails) {
     console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
   }
