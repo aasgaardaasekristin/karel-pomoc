@@ -1143,6 +1143,9 @@ SEKCE D – Terapeutická doporučení:
 SEKCE E – Chronologický log / Handover:
 - Časová osa událostí s datumem
 - Datum vzniku dokumentu, datum kontaktu
+- ⚠️ AKTUÁLNÍ STAV: Pokud část komunikuje, NESMÍ mít stav "💤 Spí" – aktualizuj na aktivní stav!
+- Při probuzení z archivu POVINNĚ přidej řádek: "[datum] Probuzení – část komunikovala s Karlem"
+- Aktuální stav přepiš z "💤 Spí..." na aktuální situaci (např. "Aktivní. Komunikuje s Karlem.")
 
 SEKCE F – Poznámky pro Karla:
 - Situační karta ("Jsi v roce 2026, jsi v bezpečí...")
@@ -1151,6 +1154,7 @@ SEKCE F – Poznámky pro Karla:
 
 SEKCE G – Deník sezení:
 - Záznamy: | Datum | Co se dělo | Stabilizace | Další krok |
+- ⚠️ POVINNÉ při KAŽDÉM rozhovoru: Přidej řádek do tabulky s datem, shrnutím co se dělo, jaká stabilizace byla použita, a co je další krok
 
 SEKCE H – Dlouhodobé cíle:
 - Směr vývoje části (integrace, stabilizace, budování důvěry)
@@ -1175,9 +1179,12 @@ SEKCE J – Krátkodobé cíle a aktuální intervence:
 
 SEKCE K – Výstupy ze sezení a zpětná vazba:
 - Co se osvědčilo/neosvědčilo: | Datum | Co bylo navrženo | Výsledek | Hodnocení |
+- ⚠️ Po KAŽDÉM rozhovoru přidej řádek – i pokud výsledek zatím nelze hodnotit (napiš "probíhá" nebo "čekáme")
 
 SEKCE L – Aktivita a přítomnost části:
 - | Období | Aktivita | Poznámka |
+- ⚠️ POVINNÉ: Přidej nový řádek s aktuálním datem a popisem aktivity
+- Při probuzení z archivu: "[datum] | Probuzení – komunikace s Karlem | Přesunuto z 03_ARCHIV do 01_AKTIVNI"
 
 SEKCE M – Karlova analytická poznámka:
 - Karlova syntéza a dedukce z konverzace
@@ -1207,6 +1214,14 @@ Po všech kartách:
 - Doporučení pro mamku (co dělat večer + proč)
 - Doporučení pro Káťu (jak reagovat + proč)
 [/REPORT]
+
+═══ SPECIÁLNÍ PŘÍPAD: PROBUZENÍ ČÁSTI Z ARCHIVU ═══
+Pokud část byla dosud ve stavu "💤 Spí" nebo v archivu a nyní komunikuje s Karlem, POVINNĚ aktualizuj:
+1. SEKCE E: Změň "Aktuální stav" z "💤 Spí..." na "Aktivní. Komunikuje s Karlem od [datum]." + přidej chronologický řádek o probuzení
+2. SEKCE G: Přidej řádek do tabulky: | [datum] | Probuzení – první kontakt po archivaci | [co bylo použito] | [další krok] |
+3. SEKCE K: Přidej řádek: | [datum] | První rozhovor po probuzení | [výsledek] | [hodnocení] |
+4. SEKCE L: Přidej řádek: | [datum] | Probuzení – komunikace s Karlem | Přesunuto z archivu do aktivních |
+Tyto 4 sekce jsou POVINNÉ při probuzení. Nestačí pouze přesunout soubor – karta musí reflektovat změnu stavu!
 
 ═══ PRAVIDLA ═══
 - Sekce A–L = věcná fakta z konverzací/karet/rešerše. Nepiš domněnky jako fakta.
