@@ -428,11 +428,16 @@ function parseCardSections(content: string): Record<string, string> {
 
 function buildCard(partName: string, sections: Record<string, string>): string {
   const lines: string[] = [];
-  lines.push(sections["_preamble"] || `KARTA ČÁSTI: ${partName.toUpperCase()}`);
+  // Strip ══ decorators from preamble
+  const preamble = (sections["_preamble"] || `KARTA ČÁSTI: ${partName.toUpperCase()}`)
+    .replace(/[═]+/g, "").trim();
+  lines.push(preamble);
   lines.push("");
   for (const letter of SECTION_ORDER) {
     lines.push(sectionHeader(letter));
-    lines.push(sections[letter] || "(zatím prázdné)");
+    // Strip ══ decorators from section content
+    const content = (sections[letter] || "(zatím prázdné)").replace(/[═]+/g, "").trim();
+    lines.push(content);
     lines.push("");
   }
   return lines.join("\n");
