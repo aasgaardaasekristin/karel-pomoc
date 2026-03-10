@@ -204,7 +204,7 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
       const lineLen = line.length;
       if (lineLen > 0) {
         // Main card title (═══ KARTA ČÁSTI: ...)
-        if (/^═+\s*KARTA\s+[ČC]ÁSTI/i.test(line)) {
+        if (/^═*\s*KARTA\s+[ČC]ÁSTI/i.test(line)) {
           const range = clampRange(charIndex, charIndex + lineLen);
           if (range) {
             formatRequests.push({
@@ -363,7 +363,8 @@ async function updateFileById(token: string, fileId: string, content: string, mi
 
 async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
   const boundary = "----DIDCycleBoundary";
-  const metadata = JSON.stringify({ name: fileName, parents: [folderId] });
+  // Create as Google Doc (not .txt) by specifying mimeType in metadata
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
   const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
   const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
     method: "POST",
@@ -371,7 +372,15 @@ async function createFileInFolder(token: string, fileName: string, content: stri
     body,
   });
   if (!res.ok) throw new Error(`Drive create failed: ${await res.text()}`);
-  return await res.json();
+  const result = await res.json();
+  // Apply formatting (Heading 1/2, bold labels) to the new Google Doc
+  try {
+    await updateGoogleDocInPlace(token, result.id, content);
+    console.log(`[createFileInFolder] ✅ Created & formatted Google Doc: ${fileName}`);
+  } catch (fmtErr) {
+    console.warn(`[createFileInFolder] Created but formatting failed (non-fatal): ${fmtErr}`);
+  }
+  return result;
 }
 
 // Also keep uploadOrUpdate for daily report file (not a card)
@@ -394,7 +403,7 @@ const SECTION_DEFINITIONS: Record<string, string> = {
 const SECTION_ORDER = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
 
 function sectionHeader(letter: string): string {
-  return `═══ SEKCE ${letter} – ${SECTION_DEFINITIONS[letter]} ═══`;
+  return `SEKCE ${letter} – ${SECTION_DEFINITIONS[letter]}`;
 }
 
 function parseCardSections(content: string): Record<string, string> {
@@ -419,7 +428,7 @@ function parseCardSections(content: string): Record<string, string> {
 
 function buildCard(partName: string, sections: Record<string, string>): string {
   const lines: string[] = [];
-  lines.push(sections["_preamble"] || `═══ KARTA ČÁSTI: ${partName} ═══`);
+  lines.push(sections["_preamble"] || `KARTA ČÁSTI: ${partName.toUpperCase()}`);
   lines.push("");
   for (const letter of SECTION_ORDER) {
     lines.push(sectionHeader(letter));
@@ -447,6 +456,8 @@ interface RegistryContext {
   activeFolderId: string | null;
   archiveFolderId: string | null;
   sourceFileName: string | null;
+  registryFileId: string | null;
+  registrySheetName: string | null;
 }
 
 interface CardTargetResolution {
@@ -625,7 +636,7 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
 
   if (!centerFolderId) {
     console.warn("[registry] 00_CENTRUM folder not found");
-    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null };
+    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null, registryFileId: null, registrySheetName: null };
   }
 
   const centerFiles = await listFilesInFolder(token, centerFolderId);
@@ -648,18 +659,35 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
   const registryFile = registryCandidates[0]?.file;
   if (!registryFile) {
     console.warn("[registry] Registry spreadsheet not found in 00_CENTRUM");
-    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null };
+    return { entries: [], activeFolderId, archiveFolderId, sourceFileName: null, registryFileId: null, registrySheetName: null };
   }
 
   const rows = await readRegistryRows(token, registryFile);
   const entries = parseRegistryEntries(rows);
   console.log(`[registry] Loaded ${entries.length} entries from ${registryFile.name}`);
 
+  // Get actual sheet name for Sheets API operations
+  let registrySheetName = "Sheet1";
+  if (registryFile.mimeType === DRIVE_SHEET_MIME) {
+    try {
+      const metaRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${registryFile.id}?fields=sheets.properties.title`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (metaRes.ok) {
+        const metaData = await metaRes.json();
+        registrySheetName = metaData.sheets?.[0]?.properties?.title || "Sheet1";
+      }
+    } catch {}
+  }
+
   return {
     entries,
     activeFolderId,
     archiveFolderId,
     sourceFileName: registryFile.name,
+    registryFileId: registryFile.id,
+    registrySheetName,
   };
 }
 
@@ -800,8 +828,53 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
   }
 }
 
+// ═══ AUTO-INCREMENT ID: Find next available ID from registry ═══
+function getNextRegistryId(entries: RegistryEntry[]): number {
+  let maxId = 0;
+  for (const e of entries) {
+    const num = parseInt(e.id, 10);
+    if (!isNaN(num) && num > maxId) maxId = num;
+  }
+  return maxId + 1;
+}
 
-// ═══ IMMEDIATE AWAKENING: Update card content + registry right after file move ═══
+// ═══ ADD NEW ROW TO REGISTRY SPREADSHEET ═══
+async function addRegistryRow(
+  token: string,
+  registryFileId: string,
+  sheetName: string,
+  id: string,
+  name: string,
+  status: string = "Aktivní"
+): Promise<boolean> {
+  try {
+    const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
+    const range = `${escapedSheet}!A:E`;
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${registryFileId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          values: [[id, name, status, "", ""]],
+        }),
+      }
+    );
+    if (res.ok) {
+      console.log(`[addRegistryRow] ✅ Added new row: ID=${id}, Name=${name}, Status=${status}`);
+      return true;
+    } else {
+      const errText = await res.text();
+      console.error(`[addRegistryRow] ❌ Sheets API error: ${errText}`);
+      return false;
+    }
+  } catch (e) {
+    console.error(`[addRegistryRow] Failed:`, e);
+    return false;
+  }
+}
+
+
 async function performImmediateAwakeningUpdates(
   token: string,
   fileId: string,
@@ -1043,7 +1116,7 @@ async function updateCardSections(
   partName: string,
   newSections: Record<string, string>,
   folderId: string,
-  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string }
+  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string; registryContext?: RegistryContext | null }
 ): Promise<{ fileName: string; sectionsUpdated: string[]; isNew: boolean }> {
   const allowCreate = options?.allowCreate ?? false;
   const searchName = options?.searchName || partName;
@@ -1083,8 +1156,17 @@ async function updateCardSections(
     return { fileName: card.fileName, sectionsUpdated: updatedKeys, isNew: false };
   }
 
-  const newFileName = `Karta_${canonicalPartName.replace(/\s+/g, "_")}.txt`;
+  // Auto-increment ID from registry and create as Google Doc
+  const rc = options?.registryContext;
+  const nextId = getNextRegistryId(rc?.entries || []);
+  const paddedId = String(nextId).padStart(3, "0");
+  const newFileName = `DID_${paddedId}_${canonicalPartName.replace(/\s+/g, "_")}`;
   await createFileInFolder(token, newFileName, fullCard, folderId);
+  // Add new entry to registry spreadsheet
+  if (rc?.registryFileId && rc?.registrySheetName) {
+    await addRegistryRow(token, rc.registryFileId, rc.registrySheetName, paddedId, canonicalPartName);
+  }
+  console.log(`[updateCardSections] ✅ Created new Google Doc: ${newFileName} (ID: ${paddedId})`);
   return { fileName: newFileName, sectionsUpdated: updatedKeys, isNew: true };
 }
 
@@ -1911,6 +1993,7 @@ ${perplexityContext}`,
                 allowCreate: target.allowCreate,
                 searchName: resolvedPartName,
                 canonicalPartName: resolvedPartName,
+                registryContext,
               }
             );
             const effectiveAction: CardActionType = result.isNew ? "nova_karta" : target.actionType;
