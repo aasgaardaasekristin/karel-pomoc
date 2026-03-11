@@ -544,7 +544,7 @@ const Chat = () => {
     
     if (error || !data) {
       toast.error("Vlákno nenalezeno");
-      setDidFlowState("dashboard");
+      setDidFlowState("entry");
       return;
     }
     
