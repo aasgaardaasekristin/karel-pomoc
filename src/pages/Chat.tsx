@@ -36,7 +36,7 @@ import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
-type HubSection = "did" | "hana" | null;
+type HubSection = "did" | "hana" | "research" | null;
 
 // localStorage helpers
 const STORAGE_KEY_PREFIX = "karel_chat_";
@@ -257,6 +257,8 @@ const Chat = () => {
         // Auto-set mode based on hub section
         if (hubSection === "did" && mode !== "childcare") {
           setMode("childcare");
+        } else if (hubSection === "research" && mode !== "research") {
+          setMode("research");
         } else if (hubSection === "hana" && mode === "childcare") {
           setMode("debrief");
         }
@@ -1691,8 +1693,57 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           <CrisisBriefPanel />
           {renderDidContent()}
         </>
+      ) : hubSection === "research" ? (
+        /* Research Section - no mode toggle, straight to Research */
+        <>
+          <CrisisBriefPanel />
+          <div className="border-b border-border bg-card/30">
+            <div className="max-w-4xl mx-auto px-4 py-3">
+              <ModeSelector currentMode={mode} onModeChange={setMode} hideDid hideResearch />
+            </div>
+          </div>
+
+          {/* Research Chat - similar structure to non-DID chat */}
+          <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+            <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+              {messages.map((message, index) => (
+                <ChatMessage key={index} message={message} />
+              ))}
+              {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+            </div>
+          </ScrollArea>
+
+          <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+            <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
+              <div className="flex gap-2 sm:gap-3 items-end relative">
+                <UniversalAttachmentBar
+                  attachments={attachments} onRemove={removeAttachment}
+                  onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
+                  onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
+                  disabled={isLoading || isSoapLoading}
+                  fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                  onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
+                />
+                <Textarea
+                  ref={textareaRef} value={input}
+                  onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                  placeholder="Napiš svou zprávu..."
+                  className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+                  disabled={isLoading || isSoapLoading}
+                />
+                <Button
+                  onClick={sendMessage}
+                  disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
+                  size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </>
       ) : (
-        /* Hana Section - mode toggle + mode selector (without DID) */
+        /* Hana Section - mode toggle + mode selector (without DID and research) */
         <>
           {/* Main Mode Toggle */}
           <div className="border-b border-border bg-card/30">
@@ -1706,7 +1757,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
               <CrisisBriefPanel />
               <div className="border-b border-border bg-card/30">
                 <div className="max-w-4xl mx-auto px-4 py-3">
-                  <ModeSelector currentMode={mode} onModeChange={setMode} hideDid />
+                  <ModeSelector currentMode={mode} onModeChange={setMode} hideDid hideResearch />
                 </div>
               </div>
 

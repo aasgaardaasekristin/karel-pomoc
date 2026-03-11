@@ -12,9 +12,10 @@ interface ModeSelectorProps {
   currentMode: ConversationMode;
   onModeChange: (mode: ConversationMode) => void;
   hideDid?: boolean;
+  hideResearch?: boolean;
 }
 
-const ModeSelector = ({ currentMode, onModeChange, hideDid }: ModeSelectorProps) => {
+const ModeSelector = ({ currentMode, onModeChange, hideDid, hideResearch }: ModeSelectorProps) => {
   const modes = [
     {
       id: "debrief" as const,
@@ -56,7 +57,7 @@ const ModeSelector = ({ currentMode, onModeChange, hideDid }: ModeSelectorProps)
       icon: Search,
       className: "mode-button-supervision",
     },
-  ].filter(m => !hideDid || m.id !== "childcare");
+  ].filter(m => (!hideDid || m.id !== "childcare") && (!hideResearch || m.id !== "research"));
 
   return (
     <TooltipProvider delayDuration={300}>
