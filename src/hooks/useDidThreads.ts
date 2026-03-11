@@ -53,6 +53,27 @@ export const useDidThreads = () => {
     }
   }, []);
 
+  // Fetch ALL threads for a sub_mode (no 24h limit) - used for therapist sections
+  const fetchAllThreads = useCallback(async (subMode: string) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("did_threads")
+        .select("*")
+        .eq("sub_mode", subMode)
+        .order("last_activity_at", { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error("Fetch all threads error:", error);
+        return;
+      }
+      setThreads((data || []).map(rowToThread));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const createThread = useCallback(async (
     partName: string,
     subMode: string,
