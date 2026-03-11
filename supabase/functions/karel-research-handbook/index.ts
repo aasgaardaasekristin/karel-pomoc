@@ -113,7 +113,7 @@ Vytvoř příručku v tomto JSON formátu. KAŽDÁ metoda/aktivita musí být KO
       "description": "stručný popis relevance"
     }
   ],
-  "karel_notes": "Karlovy poznámky – jak výsledky propojit s praxí, doporučení pro terapeuta"
+  "karel_notes": "Karlovy poznámky pro ${osobniOsloveni} – jak výsledky propojit s praxí, doporučení pro terapeuta. OSLOVUJ VÝHRADNĚ ${osobniOsloveni}."
 }
 
 PRAVIDLA:
