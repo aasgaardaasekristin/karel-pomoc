@@ -532,6 +532,7 @@ export async function generateResearchHandbook(
   // ── 2. Build PDF ──
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
   const margin = 15;
   const contentWidth = pageWidth - 2 * margin;
   let y = 20;
@@ -555,125 +556,248 @@ export async function generateResearchHandbook(
     console.warn("Failed to load custom font:", e);
   }
 
-  // ── Title ──
-  doc.setFontSize(20);
-  doc.setTextColor(60, 90, 140);
-  doc.text("Profesní zdroje – Příručka", pageWidth / 2, y, { align: "center" });
-  y += 9;
-  doc.setFontSize(11);
+  const checkPage = (needed: number) => {
+    if (y > pageHeight - needed) { doc.addPage(); y = 20; }
+  };
+
+  // ── Title page ──
+  doc.setFontSize(22);
+  doc.setTextColor(40, 75, 130);
+  doc.text("Terapeutická příručka", pageWidth / 2, y, { align: "center" });
+  y += 10;
+
+  doc.setFontSize(12);
   doc.setTextColor(80, 80, 80);
-  const topicLines = doc.splitTextToSize(`Téma: ${handbook.topic || topic || "konzultace"}`, contentWidth);
+  const topicLines = doc.splitTextToSize(handbook.topic || topic || "konzultace", contentWidth - 20);
   doc.text(topicLines, pageWidth / 2, y, { align: "center" });
-  y += topicLines.length * 5 + 4;
+  y += topicLines.length * 6 + 5;
+
   doc.setFontSize(9);
   doc.setTextColor(130, 130, 130);
-  doc.text(`Vypracoval/a: ${createdBy} • ${formatDate(new Date().toISOString())}`, pageWidth / 2, y, { align: "center" });
-  y += 10;
-  doc.setDrawColor(140, 170, 210);
-  doc.setLineWidth(0.5);
-  doc.line(margin, y, pageWidth - margin, y);
+  doc.text(`Připravil/a: ${createdBy} | ${formatDate(new Date().toISOString())}`, pageWidth / 2, y, { align: "center" });
+  y += 4;
+  doc.text("Vygenerováno aplikací Karel – supervizní partner", pageWidth / 2, y, { align: "center" });
   y += 8;
+
+  // Divider
+  doc.setDrawColor(40, 75, 130);
+  doc.setLineWidth(0.6);
+  doc.line(margin + 20, y, pageWidth - margin - 20, y);
+  y += 10;
 
   // ── Summary ──
   if (handbook.summary) {
     doc.setFontSize(10);
-    doc.setTextColor(60, 60, 60);
+    doc.setTextColor(50, 50, 50);
     y = addWrappedText(doc, handbook.summary, margin, y, contentWidth, 5);
-    y += 6;
+    y += 8;
   }
 
-  // ── Methods ──
-  if (handbook.methods?.length > 0) {
-    doc.setFontSize(14);
-    doc.setTextColor(60, 90, 140);
-    doc.text("Metody a přístupy", margin, y);
-    y += 8;
+  // ── Activities / Methods ──
+  const activities = handbook.activities || handbook.methods || [];
+  if (activities.length > 0) {
+    for (let i = 0; i < activities.length; i++) {
+      const a = activities[i];
 
-    for (let i = 0; i < handbook.methods.length; i++) {
-      const m = handbook.methods[i];
-      if (y > 250) { doc.addPage(); y = 20; }
+      // Start each activity on a fresh page if not enough space
+      checkPage(60);
 
-      doc.setFontSize(11);
-      doc.setTextColor(40, 70, 120);
-      doc.text(`${i + 1}. ${m.name || "Metoda"}${m.difficulty ? ` (${m.difficulty})` : ""}`, margin, y);
-      y += 6;
+      // ── Activity header with number ──
+      doc.setFillColor(40, 75, 130);
+      doc.roundedRect(margin, y - 1, contentWidth, 9, 2, 2, "F");
+      doc.setFontSize(12);
+      doc.setTextColor(255, 255, 255);
+      doc.text(`${i + 1}. ${a.name || "Metoda"}`, margin + 4, y + 5);
+      y += 13;
 
-      doc.setFontSize(9);
-      doc.setTextColor(50, 50, 50);
-      if (m.description) {
-        y = addWrappedText(doc, m.description, margin + 3, y, contentWidth - 6, 4.5);
-        y += 2;
+      // ── Quick info row ──
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      const infoParts: string[] = [];
+      if (a.difficulty) infoParts.push(`Obtížnost: ${a.difficulty}`);
+      if (a.duration) infoParts.push(`Délka: ${a.duration}`);
+      if (infoParts.length > 0) {
+        doc.text(infoParts.join("  |  "), margin + 2, y);
+        y += 5;
       }
-      if (m.application) {
-        doc.setTextColor(80, 110, 80);
-        y = addWrappedText(doc, `Využití: ${m.application}`, margin + 3, y, contentWidth - 6, 4.5);
+
+      // ── Cílová skupina ──
+      if (a.target_group) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Pro koho je určena:", margin + 2, y);
+        y += 4.5;
+        doc.setTextColor(50, 50, 50);
+        y = addWrappedText(doc, a.target_group, margin + 4, y, contentWidth - 8, 4.5);
         y += 4;
       }
-    }
-    y += 4;
-  }
 
-  // ── Diagnostic tools ──
-  if (handbook.diagnostic_tools?.length > 0) {
-    if (y > 240) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(90, 60, 130);
-    doc.text("Diagnostické nástroje a testy", margin, y);
-    y += 8;
-
-    for (const dt of handbook.diagnostic_tools) {
-      if (y > 250) { doc.addPage(); y = 20; }
-      doc.setFontSize(10);
-      doc.setTextColor(70, 50, 110);
-      doc.text(dt.name || "Nástroj", margin + 3, y);
-      y += 5;
-
-      doc.setFontSize(9);
-      doc.setTextColor(50, 50, 50);
-      if (dt.description) {
-        y = addWrappedText(doc, dt.description, margin + 5, y, contentWidth - 10, 4.5);
-        y += 1;
+      // ── Účel ──
+      if (a.goal) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Účel a cíl aktivity:", margin + 2, y);
+        y += 4.5;
+        doc.setTextColor(50, 50, 50);
+        y = addWrappedText(doc, a.goal, margin + 4, y, contentWidth - 8, 4.5);
+        y += 4;
       }
-      if (dt.target_group) {
-        doc.setTextColor(100, 100, 100);
-        y = addWrappedText(doc, `Cílová skupina: ${dt.target_group}`, margin + 5, y, contentWidth - 10, 4.5);
+
+      // ── Princip ──
+      if (a.principle) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Proč to funguje (princip):", margin + 2, y);
+        y += 4.5;
+        doc.setTextColor(50, 50, 50);
+        y = addWrappedText(doc, a.principle, margin + 4, y, contentWidth - 8, 4.5);
+        y += 4;
+      }
+
+      // ── Pomůcky ──
+      const materials = a.materials || [];
+      if (materials.length > 0) {
+        checkPage(15);
+        doc.setFillColor(245, 248, 255);
+        const matText = materials.join(", ");
+        const matLines = doc.splitTextToSize(matText, contentWidth - 16);
+        const matBlockH = matLines.length * 4.5 + 8;
+        doc.roundedRect(margin, y - 1, contentWidth, matBlockH, 1.5, 1.5, "F");
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Pomůcky k přípravě:", margin + 4, y + 3);
+        y += 7;
+        doc.setTextColor(50, 50, 50);
+        y = addWrappedText(doc, matText, margin + 6, y, contentWidth - 12, 4.5);
+        y += 5;
+      }
+
+      // ── Jak uvést ──
+      if (a.introduction) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Jak aktivitu uvést (slova, příběh, hra):", margin + 2, y);
+        y += 4.5;
+        doc.setTextColor(50, 50, 50);
+        y = addWrappedText(doc, a.introduction, margin + 4, y, contentWidth - 8, 4.5);
+        y += 4;
+      }
+
+      // ── Kroky ──
+      const steps = a.steps || [];
+      if (steps.length > 0) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Postup krok za krokem:", margin + 2, y);
+        y += 5;
+        doc.setTextColor(50, 50, 50);
+        for (const step of steps) {
+          checkPage(10);
+          y = addWrappedText(doc, step, margin + 6, y, contentWidth - 12, 4.5);
+          y += 2;
+        }
         y += 3;
       }
+
+      // ── Očekávaný průběh ──
+      if (a.expected_course) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(40, 75, 130);
+        doc.text("Očekávaný průběh:", margin + 2, y);
+        y += 4.5;
+        doc.setTextColor(50, 50, 50);
+        y = addWrappedText(doc, a.expected_course, margin + 4, y, contentWidth - 8, 4.5);
+        y += 4;
+      }
+
+      // ── Očekávaný výsledek ──
+      if (a.expected_outcome) {
+        checkPage(15);
+        doc.setFillColor(240, 250, 240);
+        const outcomeLines = doc.splitTextToSize(a.expected_outcome, contentWidth - 16);
+        const outcomeH = outcomeLines.length * 4.5 + 8;
+        doc.roundedRect(margin, y - 1, contentWidth, outcomeH, 1.5, 1.5, "F");
+        doc.setFontSize(9);
+        doc.setTextColor(40, 120, 50);
+        doc.text("Očekávaný výsledek:", margin + 4, y + 3);
+        y += 7;
+        doc.setTextColor(50, 80, 50);
+        y = addWrappedText(doc, a.expected_outcome, margin + 6, y, contentWidth - 12, 4.5);
+        y += 5;
+      }
+
+      // ── Diagnostické pozorování ──
+      const diagWatch = a.diagnostic_watch || [];
+      if (diagWatch.length > 0) {
+        checkPage(15);
+        doc.setFontSize(9);
+        doc.setTextColor(130, 80, 30);
+        doc.text("Na co si všímat (diagnostika):", margin + 2, y);
+        y += 5;
+        doc.setFontSize(8);
+        doc.setTextColor(100, 70, 30);
+        for (const dw of diagWatch) {
+          checkPage(8);
+          y = addWrappedText(doc, `• ${dw}`, margin + 6, y, contentWidth - 12, 4);
+          y += 1.5;
+        }
+        y += 3;
+      }
+
+      // ── Varování ──
+      const warnings = a.warnings || [];
+      if (warnings.length > 0) {
+        checkPage(15);
+        doc.setFillColor(255, 245, 240);
+        let warnText = warnings.join("\n");
+        const warnLines = doc.splitTextToSize(warnText, contentWidth - 16);
+        const warnH = warnLines.length * 4 + 8;
+        doc.roundedRect(margin, y - 1, contentWidth, warnH, 1.5, 1.5, "F");
+        doc.setFontSize(8);
+        doc.setTextColor(180, 60, 30);
+        doc.text("Upozornění / kontraindikace:", margin + 4, y + 3);
+        y += 7;
+        doc.setTextColor(140, 50, 30);
+        for (const w of warnings) {
+          checkPage(8);
+          y = addWrappedText(doc, `! ${w}`, margin + 6, y, contentWidth - 12, 4);
+          y += 1;
+        }
+        y += 4;
+      }
+
+      // Divider between activities
+      if (i < activities.length - 1) {
+        checkPage(10);
+        doc.setDrawColor(200, 210, 220);
+        doc.setLineWidth(0.3);
+        doc.line(margin + 10, y, pageWidth - margin - 10, y);
+        y += 8;
+      }
     }
-    y += 4;
   }
 
-  // ── Warnings ──
-  if (handbook.warnings?.length > 0) {
-    if (y > 250) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(180, 80, 40);
-    doc.text("Na co si dát pozor", margin, y);
-    y += 7;
-
-    doc.setFontSize(9);
-    doc.setTextColor(100, 50, 30);
-    for (const w of handbook.warnings) {
-      if (y > 270) { doc.addPage(); y = 20; }
-      y = addWrappedText(doc, `⚠ ${w}`, margin + 3, y, contentWidth - 6, 4.5);
-      y += 2;
-    }
+  // ── General tips ──
+  const tips = handbook.general_tips || handbook.tips || [];
+  if (tips.length > 0) {
+    checkPage(20);
     y += 4;
-  }
-
-  // ── Tips ──
-  if (handbook.tips?.length > 0) {
-    if (y > 250) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(50, 120, 60);
-    doc.text("Praktické tipy", margin, y);
+    doc.setFontSize(13);
+    doc.setTextColor(40, 75, 130);
+    doc.text("Obecné tipy pro praxi", margin, y);
     y += 7;
 
     doc.setFontSize(9);
     doc.setTextColor(50, 50, 50);
-    for (const tip of handbook.tips) {
-      if (y > 270) { doc.addPage(); y = 20; }
-      y = addWrappedText(doc, `💡 ${tip}`, margin + 3, y, contentWidth - 6, 4.5);
+    for (const tip of tips) {
+      checkPage(10);
+      y = addWrappedText(doc, `• ${tip}`, margin + 3, y, contentWidth - 6, 4.5);
       y += 2;
     }
     y += 4;
@@ -681,74 +805,56 @@ export async function generateResearchHandbook(
 
   // ── Sources ──
   if (handbook.sources?.length > 0) {
-    if (y > 240) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(60, 90, 130);
-    doc.text("Zdroje a odkazy", margin, y);
+    checkPage(20);
+    doc.setFontSize(13);
+    doc.setTextColor(40, 75, 130);
+    doc.text("Zdroje a další literatura", margin, y);
     y += 8;
 
     for (let i = 0; i < handbook.sources.length; i++) {
       const s = handbook.sources[i];
-      if (y > 255) { doc.addPage(); y = 20; }
+      checkPage(12);
       doc.setFontSize(9);
       doc.setTextColor(40, 60, 110);
       y = addWrappedText(doc, `${i + 1}. ${s.title || "Zdroj"}`, margin + 3, y, contentWidth - 6, 4.5);
       if (s.url) {
         doc.setTextColor(80, 80, 180);
-        doc.setFontSize(8);
-        y = addWrappedText(doc, s.url, margin + 6, y, contentWidth - 12, 4);
+        doc.setFontSize(7);
+        y = addWrappedText(doc, s.url, margin + 6, y, contentWidth - 12, 3.5);
       }
       if (s.description) {
         doc.setTextColor(80, 80, 80);
         doc.setFontSize(8);
         y = addWrappedText(doc, s.description, margin + 6, y, contentWidth - 12, 4);
       }
-      y += 2;
-    }
-    y += 4;
-  }
-
-  // ── Action plan ──
-  if (handbook.action_plan?.length > 0) {
-    if (y > 250) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(60, 90, 140);
-    doc.text("Akční plán", margin, y);
-    y += 7;
-
-    doc.setFontSize(9);
-    doc.setTextColor(50, 50, 50);
-    for (let i = 0; i < handbook.action_plan.length; i++) {
-      if (y > 270) { doc.addPage(); y = 20; }
-      y = addWrappedText(doc, `${i + 1}. ${handbook.action_plan[i]}`, margin + 3, y, contentWidth - 6, 4.5);
-      y += 2;
+      y += 3;
     }
     y += 4;
   }
 
   // ── Karel's notes ──
   if (handbook.karel_notes) {
-    if (y > 240) { doc.addPage(); y = 20; }
-    doc.setFontSize(14);
-    doc.setTextColor(50, 100, 80);
+    checkPage(20);
+    doc.setFontSize(13);
+    doc.setTextColor(40, 75, 130);
     doc.text("Karlovy poznámky", margin, y);
     y += 7;
 
     doc.setFontSize(9);
-    doc.setTextColor(50, 80, 60);
+    doc.setTextColor(50, 70, 60);
     y = addWrappedText(doc, handbook.karel_notes, margin + 3, y, contentWidth - 6, 4.5);
   }
 
-  // ── Footer ──
+  // ── Footer on all pages ──
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
+    doc.setFontSize(7);
     doc.setTextColor(160, 160, 160);
-    doc.text(`Profesní zdroje • ${createdBy} • Strana ${i}/${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
+    doc.text(`Terapeutická příručka • ${handbook.topic || topic} • ${createdBy} • Strana ${i}/${pageCount}`, pageWidth / 2, pageHeight - 7, { align: "center" });
   }
 
   const dateStr = new Date().toISOString().slice(0, 10);
   const safeTopic = (topic || "konzultace").replace(/[^a-zA-Z0-9áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ ]/g, "").replace(/\s+/g, "_").slice(0, 40);
-  doc.save(`Profesni_zdroje_${safeTopic}_${dateStr}.pdf`);
+  doc.save(`Terapeuticka_prirucka_${safeTopic}_${dateStr}.pdf`);
 }
