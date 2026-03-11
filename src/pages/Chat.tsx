@@ -267,6 +267,8 @@ const Chat = () => {
           setMode("childcare");
         } else if (hubSection === "research" && mode !== "research") {
           setMode("research");
+          // Load research threads
+          researchThreads.fetchThreads();
         } else if (hubSection === "hana" && mode === "childcare") {
           setMode("debrief");
         }
