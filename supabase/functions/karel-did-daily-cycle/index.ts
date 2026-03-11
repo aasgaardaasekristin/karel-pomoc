@@ -1706,6 +1706,19 @@ serve(async (req) => {
     const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
     const allRecentConversations = allRecentConvRows ?? [];
 
+    // Load DID-relevant research threads for therapeutic plan context
+    const { data: researchThreadRows } = await sb.from("research_threads").select("*").eq("is_deleted", false);
+    const researchThreads = (researchThreadRows ?? []).filter((rt: any) => {
+      // Filter to DID-relevant threads by checking topic and message content
+      const topic = (rt.topic || "").toLowerCase();
+      const didKeywords = ["did", "disociat", "fragment", "část", "part", "alter", "system", "tundrupek", "arthur", "adam", "nikolas", "lincoln", "unhappy", "kluk", "kluci", "dítě", "deti", "trauma", "dissoci"];
+      return didKeywords.some(kw => topic.includes(kw)) || 
+        ((rt.messages as any[]) || []).some((m: any) => 
+          typeof m.content === "string" && didKeywords.some(kw => m.content.toLowerCase().includes(kw))
+        );
+    });
+    console.log(`[daily-cycle] Research threads loaded: ${researchThreadRows?.length || 0} total, ${researchThreads.length} DID-relevant`);
+
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
@@ -1902,7 +1915,13 @@ Formát HTML emailu:
       return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
-    const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
+    // Compile DID-relevant research thread summaries
+    const researchSummaries = researchThreads.map((rt: any) => {
+      const msgs = ((rt.messages as any[]) || []).slice(-15);
+      return `=== Profesní zdroj: ${rt.topic} (autor: ${rt.created_by}) ===\nVytvořeno: ${rt.created_at}\nPoslední aktivita: ${rt.last_activity_at}\n\nKlíčové body:\n${msgs.map((m: any) => `[${m.role === "user" ? "TERAPEUT" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content, 400) : "(multimodal)"}`).join("\n")}`;
+    }).join("\n\n---\n\n");
+
+    const allSummaries = [threadSummaries, convSummaries, researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
     const knownThreadParts = new Set(
       reportThreads
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
@@ -2229,7 +2248,61 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 Pokud z rozhovorů (zejména terapeutických – mamka/kata režim) vyplývají relevantní informace pro CENTRUM dokumenty, vypiš je v tomto formátu:
 
 [CENTRUM:05_Terapeuticky_Plan_Aktualni]
-Nové informace pro terapeutický plán – cíle, strategie, změny v přístupu, které vyplynuly z rozhovorů.
+⚠️ TENTO DOKUMENT JE KLÍČOVÝ – Karel jej spravuje jako vedoucí terapeutického týmu.
+Vygeneruj KOMPLETNÍ aktualizovaný dokument (ne jen doplněk). Struktura:
+
+SEKCE 1 – PŘEHLED AKTIVNÍCH ČÁSTÍ A AKTUÁLNÍ STAV
+Tabulka: | Část / ID | Krátkodobý cíl | Dlouhodobý cíl | Kdo pracuje | Stav | Poznámka |
+Pro KAŽDOU aktivní část vyplň konkrétní data z dnešních rozhovorů, karet a rešerší.
+Legenda ke stavu: 🟢 sladěno | 🟡 částečně | 🔴 nesoulad | ❓ neznámý
+
+SEKCE 2 – AKTIVNÍ TERAPEUTICKÉ DOHODY
+Konkrétní platné dohody mezi terapeuty. U každé dohody uveď:
+- Platnost (od–do)
+- Co konkrétně dělat a s kým
+- Zaměření pro Hanku vs zaměření pro Káťu
+- Co se záměrně NEŘEŠÍ a proč
+- Společný cíl
+
+SEKCE 3 – ARCHIV UZAVŘENÝCH DOHOD
+Dohody po uplynutí platnosti sem přesuň (zachovej historii).
+
+SEKCE 4 – KOORDINAČNÍ POZNÁMKY
+Tabulka: | Datum | Téma | Hanka | Káťa | Karlova syntéza | Stav |
+Karel zde zaznamenává: co která terapeutka udělala, co chybí, na co upozornit, kde je třeba kooperace.
+Karel aktivně sleduje, zda terapeutky splnily navržené aktivity, a vyptává se na výsledky.
+Karel upozorňuje na opomenutí (např. zapomenutý fragment, nedokončená aktivita).
+
+SEKCE 5 – OBLASTI KTERÉ SE ZÁMĚRNĚ NEŘEŠÍ
+Tabulka: | Téma | Důvod odložení | Odloženo do | Poznámka |
+
+SEKCE 6 – KARLOVY NÁVRHY NA PŘÍŠTÍ SEZENÍ
+Pro KAŽDOU aktivní část konkrétně:
+- S kým pracovat (Hanka/Káťa/obě)
+- Jakou metodou/hrou/technikou (z rešerší i z karet části sekce I)
+- Co tím zjistit/dosáhnout
+- Jak fragment oslovit (tón, jazyk, přístup)
+- Jak reagovat na očekávané odpovědi
+- Priorita (🔴 urgentní / 🟡 důležité / 🟢 běžné)
+
+SEKCE 7 – DENNÍ SHRNUTÍ A MOTIVACE
+- Co se dnes odehrálo (stručně)
+- Co fungovalo a co ne
+- Motivace pro terapeutky – pochvala, podpora, směr
+- Karlovy analytické postřehy a hypotézy
+- Propojení s poznatky z profesních zdrojů (Research vláken)
+
+SEKCE 8 – CHECKLIST PRO TERAPEUTY
+☐/☑ položky: co má Hanka udělat dnes/zítra
+☐/☑ položky: co má Káťa udělat dnes/zítra
+Karel sem zapisuje i úkoly z minulých dnů které nebyly splněny.
+
+DŮLEŽITÉ PRO TENTO DOKUMENT:
+- Piš CELÝ dokument, ne jen doplněk – dokument se přepisuje celý
+- Čerpej z VŠECH zdrojů: dnešní rozhovory s částmi, rozhovory s terapeuty (mamka/kata režim), profesní zdroje (Research vlákna POUZE ta co se týkají DID), existující karty částí, dohody
+- Karel vystupuje jako vedoucí týmu – koordinuje, superviduje, navrhuje, motivuje
+- Dokument musí být OKAMŽITĚ AKČNÍ – terapeut otevře a hned ví co dělat
+- Formátuj esteticky, přehledně, s tabulkami a odrážkami
 [/CENTRUM]
 
 [CENTRUM:06_Terapeuticke_Dohody]
@@ -2473,15 +2546,31 @@ ${perplexityContext}`,
           if (!newContent || newContent.length < 10) continue;
 
           try {
-            // Find the target document
             const docCanonical = canonicalText(docName);
+
+            // ═══ SPECIAL: 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
+            if (docCanonical.includes("terapeutick") && docCanonical.includes("plan")) {
+              const planFile = centerFiles.find(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("plan"));
+              if (!planFile) {
+                console.warn(`[CENTRUM] Therapeutic plan doc not found, skipping`);
+                continue;
+              }
+
+              // Full rewrite – the AI already generated the complete document content
+              const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
+              await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
+              console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
+              continue;
+            }
+
+            // Find the target document
             let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
 
             // Handle 06_Terapeuticke_Dohody specially - it might be a folder
             if (!targetFile && docCanonical.includes("dohod")) {
               const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
               if (dohodaFolder) {
-                // Create a new dohoda file with date prefix
                 const dohodaFileName = `${dateStr}_aktualizace`;
                 await createFileInFolder(token, dohodaFileName, `[${dateStr}] Aktualizace z denního cyklu\n\n${newContent}`, dohodaFolder.id);
                 cardsUpdated.push(`CENTRUM: ${docName} (nová dohoda ${dateStr})`);
@@ -2498,8 +2587,6 @@ ${perplexityContext}`,
             // Read existing content for dedup
             const existingContent = await readFileContent(token, targetFile.id);
 
-            // Simple dedup: check if the new content (first 100 chars) already exists
-            const contentPreview = newContent.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             if (existingContent.includes(newContent.slice(0, 80))) {
               console.log(`[CENTRUM] Skipping "${docName}" – content already present (dedup)`);
               continue;
