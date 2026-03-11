@@ -311,7 +311,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             Navázat na rozhovor
           </h4>
           <div className="flex flex-wrap gap-2">
-            {activeThreads.map(t => (
+            {activeThreads.slice(0, 10).map(t => (
               <Button
                 key={t.id}
                 variant="outline"
@@ -325,38 +325,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
               </Button>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Interactive System Map */}
-      <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
-
-      {parts.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {parts.map((part) => (
-            <div
-              key={part.name}
-              className={`rounded-lg border p-3 ${
-                part.status === "warning"
-                  ? "border-yellow-500/50 bg-yellow-500/5"
-                  : part.status === "active"
-                  ? "border-green-500/30 bg-green-500/5"
-                  : "border-border bg-card/50"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                {statusIcon(part.status)}
-                <span className="text-sm font-medium text-foreground truncate">{part.name}</span>
-              </div>
-              <div className="text-[10px] text-muted-foreground">
-                {statusLabel(part.status)} • {formatTimeAgo(part.lastSeen)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-lg border border-dashed border-border bg-card/30 px-3 py-4 text-xs text-muted-foreground text-center">
-          Zatím žádné záznamy o částech. Data se naplní po prvních rozhovorech.
         </div>
       )}
 
