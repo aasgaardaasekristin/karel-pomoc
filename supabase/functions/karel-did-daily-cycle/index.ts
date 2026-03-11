@@ -2214,6 +2214,8 @@ ${perplexityContext}`,
       "amalka", "tonička", "tonicka", "jiří", "jiri", "jirka",
       "kata", "katka", "kája", "kaja", "káťa", "katya",
       "hanka", "hana", "hanička", "hanicka", "mamka",
+      // Aliases for Amálka + Tonička
+      "holky", "holčičky", "holcicky", "děti", "deti", "malé", "male",
       // Common variations without diacritics
       "amalka", "tonicka", "jiri", "kata", "hana",
     ].map(n => canonicalText(n)));
