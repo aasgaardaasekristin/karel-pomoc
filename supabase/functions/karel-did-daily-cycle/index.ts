@@ -1706,6 +1706,19 @@ serve(async (req) => {
     const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
     const allRecentConversations = allRecentConvRows ?? [];
 
+    // Load DID-relevant research threads for therapeutic plan context
+    const { data: researchThreadRows } = await sb.from("research_threads").select("*").eq("is_deleted", false);
+    const researchThreads = (researchThreadRows ?? []).filter((rt: any) => {
+      // Filter to DID-relevant threads by checking topic and message content
+      const topic = (rt.topic || "").toLowerCase();
+      const didKeywords = ["did", "disociat", "fragment", "část", "part", "alter", "system", "tundrupek", "arthur", "adam", "nikolas", "lincoln", "unhappy", "kluk", "kluci", "dítě", "deti", "trauma", "dissoci"];
+      return didKeywords.some(kw => topic.includes(kw)) || 
+        ((rt.messages as any[]) || []).some((m: any) => 
+          typeof m.content === "string" && didKeywords.some(kw => m.content.toLowerCase().includes(kw))
+        );
+    });
+    console.log(`[daily-cycle] Research threads loaded: ${researchThreadRows?.length || 0} total, ${researchThreads.length} DID-relevant`);
+
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
