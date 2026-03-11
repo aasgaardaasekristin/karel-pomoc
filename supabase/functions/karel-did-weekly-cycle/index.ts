@@ -381,7 +381,7 @@ serve(async (req) => {
 7. School and social adaptation strategies for DID systems with child-age alters
 Active parts in this system: ${activeFragments}`;
 
-        const pRes = await fetch("https://api.perplexity.ai/chat/completions", {
+        const pRes = await withTimeout(fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -393,7 +393,7 @@ Active parts in this system: ${activeFragments}`;
             search_mode: "academic",
             search_recency_filter: "year",
           }),
-        });
+        }), 30000, "Perplexity research");
 
         if (pRes.ok) {
           const pData = await pRes.json();
