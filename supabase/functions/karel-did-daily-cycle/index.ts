@@ -1756,10 +1756,9 @@ serve(async (req) => {
       } else if (shouldSendEmails && !hasRecentActivity) {
         // Truly quiet day - no activity at all in 24h
         try {
-          const dateStr = new Date().toISOString().slice(0, 10);
+          const dateStr = reportDatePrague;
 
-          if (RESEND_API_KEY && LOVABLE_API_KEY) {
-            const resend = new Resend(RESEND_API_KEY);
+          if (resend && LOVABLE_API_KEY) {
 
             let hankaHtml = "";
             try {
