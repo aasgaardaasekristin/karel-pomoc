@@ -82,22 +82,61 @@ serve(async (req) => {
       console.warn("Drive read failed:", e);
     }
 
-    // 2. Recent threads (last 7 days)
+    // 2. Recent threads (last 7 days) – ALL sub_modes
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: recentThreads } = await sb
       .from("did_threads")
-      .select("part_name, last_activity_at, messages, is_processed")
-      .eq("sub_mode", "cast")
+      .select("part_name, sub_mode, last_activity_at, messages, is_processed")
       .gte("last_activity_at", sevenDaysAgo)
-      .order("last_activity_at", { ascending: false });
+      .order("last_activity_at", { ascending: false })
+      .limit(30);
 
-    // Build thread summaries
+    // Build thread summaries separated by type
     let threadSummary = "";
+    let therapistSummary = "";
     if (recentThreads && recentThreads.length > 0) {
       for (const t of recentThreads) {
         const msgs = Array.isArray(t.messages) ? t.messages : [];
         const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
-        threadSummary += `\n--- ${t.part_name} (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+        const entry = `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
+          therapistSummary += entry;
+        } else {
+          threadSummary += entry;
+        }
+      }
+    }
+
+    // 2b. Read cards of active parts from Drive (01_AKTIVNI_FRAGMENTY)
+    let activePartCards = "";
+    const activePartNames = recentThreads
+      ? [...new Set(recentThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))]
+      : [];
+    if (activePartNames.length > 0) {
+      try {
+        const token = await getAccessToken();
+        const kartotekaId = await findFolder(token, "Kartoteka_DID");
+        if (kartotekaId) {
+          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY");
+          if (aktivniId) {
+            const partFiles = await listFilesInFolder(token, aktivniId);
+            for (const partName of activePartNames.slice(0, 6)) {
+              const normalizedName = partName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              const matchedFile = partFiles.find(f => {
+                const fn = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                return fn.includes(normalizedName);
+              });
+              if (matchedFile) {
+                try {
+                  const content = await readFileContent(token, matchedFile.id);
+                  activePartCards += `\n[KARTA: ${matchedFile.name}]\n${content.slice(0, 4000)}\n`;
+                } catch { /* skip */ }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Active part cards read failed:", e);
       }
     }
 
