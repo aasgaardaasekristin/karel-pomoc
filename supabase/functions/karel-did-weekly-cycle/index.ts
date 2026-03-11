@@ -282,7 +282,7 @@ serve(async (req) => {
               for (const df of dohodaFiles) {
                 try {
                   const content = await readFileContent(token, df.id);
-                  agreementsContent += `\n=== DOHODA: ${df.name} ===\n${content}\n`;
+                  agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
                 } catch {}
               }
               console.log(`[weekly] Loaded ${dohodaFiles.length} agreement files`);
