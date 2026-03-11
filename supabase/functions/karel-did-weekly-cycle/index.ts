@@ -3,6 +3,31 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
+const MAX_CARD_CHARS = 900;
+const MAX_CENTRUM_CHARS = 1600;
+const MAX_AGREEMENT_CHARS = 1800;
+const MAX_SYSTEM_MAP_CHARS = 2500;
+const MAX_INSTRUCTION_CHARS = 3500;
+const MAX_RESEARCH_MESSAGE_CHARS = 180;
+const MAX_CONVERSATION_MESSAGE_CHARS = 180;
+
+const truncate = (value: string, max: number) =>
+  value.length > max ? `${value.slice(0, max)}…` : value;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+
 // ═══ OAuth2 token helper ═══
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
