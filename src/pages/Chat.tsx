@@ -1423,7 +1423,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           />
           <div className="flex justify-center pb-4">
             <Button variant="ghost" size="sm" onClick={handleDidBack}>
-              ← Zpět na výběr podrežimu
+              ← Zpět
             </Button>
           </div>
         </ScrollArea>
