@@ -2344,6 +2344,61 @@ ${perplexityContext}`,
         }
       }
 
+      // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
+      if (centrumFolderId) {
+        const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
+        const centerFiles = await listFilesInFolder(token, centrumFolderId);
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        for (const match of analysisText.matchAll(centrumBlockRegex)) {
+          const docName = match[1].trim();
+          const newContent = match[2].trim();
+          if (!newContent || newContent.length < 10) continue;
+
+          try {
+            // Find the target document
+            const docCanonical = canonicalText(docName);
+            let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
+
+            // Handle 06_Terapeuticke_Dohody specially - it might be a folder
+            if (!targetFile && docCanonical.includes("dohod")) {
+              const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+              if (dohodaFolder) {
+                // Create a new dohoda file with date prefix
+                const dohodaFileName = `${dateStr}_aktualizace`;
+                await createFileInFolder(token, dohodaFileName, `[${dateStr}] Aktualizace z denního cyklu\n\n${newContent}`, dohodaFolder.id);
+                cardsUpdated.push(`CENTRUM: ${docName} (nová dohoda ${dateStr})`);
+                console.log(`[CENTRUM] ✅ Created new dohoda: ${dohodaFileName}`);
+                continue;
+              }
+            }
+
+            if (!targetFile) {
+              console.warn(`[CENTRUM] Document "${docName}" not found in 00_CENTRUM, skipping`);
+              continue;
+            }
+
+            // Read existing content for dedup
+            const existingContent = await readFileContent(token, targetFile.id);
+
+            // Simple dedup: check if the new content (first 100 chars) already exists
+            const contentPreview = newContent.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (existingContent.includes(newContent.slice(0, 80))) {
+              console.log(`[CENTRUM] Skipping "${docName}" – content already present (dedup)`);
+              continue;
+            }
+
+            // Append new content with date header
+            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu:\n${newContent}`;
+            await updateFileById(token, targetFile.id, updatedContent, targetFile.mimeType);
+            cardsUpdated.push(`CENTRUM: ${docName} (aktualizace)`);
+            console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
+          } catch (e) {
+            console.error(`[CENTRUM] Failed to update "${docName}":`, e);
+          }
+        }
+      }
+
       // Daily report (deterministický, pouze skutečně provedené změny)
       // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
