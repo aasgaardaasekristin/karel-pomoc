@@ -802,15 +802,12 @@ ${perplexityContext}`,
       }
     }
 
-    // ═══ 6. SAVE CYCLE AS COMPLETED (before optional email/sync steps) ═══
+    // ═══ 6. UPDATE CYCLE with final cardsUpdated list (already completed in step 5b) ═══
     if (cycle) {
       await sb.from("did_update_cycles").update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        report_summary: analysisText.slice(0, 2000),
         cards_updated: cardsUpdated,
       }).eq("id", cycle.id);
-      console.log(`[weekly] ✅ Cycle marked as completed (${cardsUpdated.length} items)`);
+      console.log(`[weekly] ✅ Cycle updated with ${cardsUpdated.length} items`);
     }
 
     // ═══ 7. SEND WEEKLY EMAILS (best-effort, won't block cycle) ═══
