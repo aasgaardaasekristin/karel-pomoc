@@ -1434,9 +1434,17 @@ serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const isCronCall = authHeader === `Bearer ${serviceRoleKey}` || authHeader === `Bearer ${anonKey}`;
 
+  let resolvedUserId: string | null = null;
   if (!isCronCall) {
     const authResult = await requireAuth(req);
     if (authResult instanceof Response) return authResult;
+    resolvedUserId = (authResult as { user: any }).user?.id || null;
+  }
+  // For cron calls, look up any user from did_threads to use as owner
+  if (!resolvedUserId) {
+    const tmpSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: anyThread } = await tmpSb.from("did_threads").select("user_id").limit(1).single();
+    resolvedUserId = anyThread?.user_id || null;
   }
 
   // ═══ EMAIL GUARD: Only send report emails from scheduled cron calls ═══
