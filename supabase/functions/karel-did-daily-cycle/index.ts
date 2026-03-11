@@ -1583,7 +1583,112 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sb = createClient(supabaseUrl, supabaseKey);
+    sb = createClient(supabaseUrl, supabaseKey);
+
+    const reportDatePrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+    const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+    let emailSentToHanka = false;
+    let emailSentToKata = false;
+
+    const reserveDispatchSlot = async (recipient: "hanka" | "kata"): Promise<boolean> => {
+      const nowIso = new Date().toISOString();
+      const dispatchTable = (sb as any).from("did_daily_report_dispatches");
+
+      const { data: existing, error: existingErr } = await dispatchTable
+        .select("id, status, updated_at")
+        .eq("report_date", reportDatePrague)
+        .eq("recipient", recipient)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.error(`[email-dedupe] lookup failed (${recipient}):`, existingErr.message);
+        return false;
+      }
+
+      if (existing?.status === "sent") {
+        console.log(`[email-dedupe] ${recipient} already sent for ${reportDatePrague}, skipping.`);
+        return false;
+      }
+
+      if (existing) {
+        const updatedAt = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+        const isStalePending = existing.status === "pending" && (Date.now() - updatedAt > 90 * 60 * 1000);
+
+        if (existing.status === "pending" && !isStalePending) {
+          console.log(`[email-dedupe] ${recipient} dispatch currently pending, skipping duplicate send.`);
+          return false;
+        }
+
+        const { error: bumpErr } = await dispatchTable
+          .update({
+            status: "pending",
+            cycle_id: cycleId,
+            updated_at: nowIso,
+            error_message: null,
+          })
+          .eq("id", existing.id);
+
+        if (bumpErr) {
+          console.error(`[email-dedupe] failed to reserve existing row (${recipient}):`, bumpErr.message);
+          return false;
+        }
+        return true;
+      }
+
+      const { error: insertErr } = await dispatchTable.insert({
+        report_date: reportDatePrague,
+        recipient,
+        status: "pending",
+        cycle_id: cycleId,
+      });
+
+      if (insertErr) {
+        if ((insertErr as any).code === "23505") {
+          console.log(`[email-dedupe] concurrent reservation detected for ${recipient}, skipping.`);
+          return false;
+        }
+        console.error(`[email-dedupe] failed to reserve slot (${recipient}):`, insertErr.message);
+        return false;
+      }
+
+      return true;
+    };
+
+    const markDispatchSent = async (recipient: "hanka" | "kata") => {
+      await (sb as any)
+        .from("did_daily_report_dispatches")
+        .update({ status: "sent", sent_at: new Date().toISOString(), updated_at: new Date().toISOString(), error_message: null })
+        .eq("report_date", reportDatePrague)
+        .eq("recipient", recipient);
+    };
+
+    const markDispatchFailed = async (recipient: "hanka" | "kata", errorMessage: string) => {
+      await (sb as any)
+        .from("did_daily_report_dispatches")
+        .update({ status: "failed", updated_at: new Date().toISOString(), error_message: errorMessage.slice(0, 1000) })
+        .eq("report_date", reportDatePrague)
+        .eq("recipient", recipient);
+    };
+
+    const sendEmailOnce = async (recipient: "hanka" | "kata", to: string, subject: string, html: string): Promise<boolean> => {
+      if (!shouldSendEmails || !resend) return false;
+      const reserved = await reserveDispatchSlot(recipient);
+      if (!reserved) return false;
+
+      try {
+        await resend.emails.send({
+          from: "Karel <karel@hana-chlebcova.cz>",
+          to: [to],
+          subject,
+          html,
+        });
+        await markDispatchSent(recipient);
+        return true;
+      } catch (e) {
+        await markDispatchFailed(recipient, e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+    };
 
     // 1. SBĚR DAT
     // For card updates: only unprocessed items
@@ -1605,6 +1710,7 @@ serve(async (req) => {
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
+    cycleId = cycle?.id || null;
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
