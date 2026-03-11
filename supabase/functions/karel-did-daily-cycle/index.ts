@@ -2535,6 +2535,7 @@ ${perplexityContext}`,
       }
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
+      let therapeuticPlanContent = ""; // Capture for email inclusion
       if (centrumFolderId) {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
