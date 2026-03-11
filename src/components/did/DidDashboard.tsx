@@ -302,7 +302,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setOverviewLoaded(false); loadSystemOverview(); }}
+              onClick={() => { setOverviewLoaded(false); setOverviewText(""); try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {} loadSystemOverview(); }}
               className="h-6 text-[10px] px-2"
             >
               Obnovit
