@@ -134,7 +134,12 @@ serve(async (req) => {
   const authHeader = req.headers.get("Authorization") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  const isCronCall = authHeader === `Bearer ${serviceRoleKey}` || authHeader === `Bearer ${anonKey}`;
+  const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+
+  // Allow cron/service calls with known keys, or calls with no auth (verify_jwt=false in config)
+  const knownKeys = [serviceRoleKey, anonKey, publishableKey].filter(Boolean);
+  const bearerToken = authHeader.replace("Bearer ", "");
+  const isCronCall = !authHeader || knownKeys.includes(bearerToken);
 
   if (!isCronCall) {
     const authResult = await requireAuth(req);
@@ -154,8 +159,13 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, supabaseKey);
     const dateStr = new Date().toISOString().slice(0, 10);
 
+    // Get a valid user_id for DB inserts (service role calls don't have auth.uid())
+    const { data: anyUser } = await sb.from("did_threads").select("user_id").limit(1).single();
+    const userId = anyUser?.user_id;
+    if (!userId) throw new Error("No user found in did_threads for cycle attribution");
+
     // Create weekly cycle record
-    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running" }).select().single();
+    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running", user_id: userId }).select().single();
 
     // ═══ 1. READ ALL CARDS + CENTRUM DOCS FROM DRIVE ═══
     let allCardsContent = "";
@@ -190,7 +200,7 @@ serve(async (req) => {
             if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
               const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
               const folderLabel = folder === archiveFolder ? "ARCHIV/SPÍ" : "AKTIVNÍ";
-              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 4000 ? content.slice(0, 4000) + "…" : content}`;
+              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 2500 ? content.slice(0, 2500) + "…" : content}`;
               cardNames.push(`${partName} [${folderLabel}]`);
             }
           } catch (e) { console.warn(`Failed to read ${file.name}:`, e); }
@@ -612,6 +622,7 @@ ${perplexityContext}`,
               source_agreement: source,
               priority,
               note: `Vytvořeno týdenním cyklem ${dateStr}`,
+              user_id: userId,
             });
             insertedTasks++;
           }
