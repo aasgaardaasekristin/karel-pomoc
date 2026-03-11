@@ -1803,6 +1803,8 @@ Formát HTML emailu:
     let driveContext = "";
     let existingCards: Record<string, string> = {};
     let instructionContext = "";
+    let centrumDocsContext = "";
+    let centrumFolderId: string | null = null;
 
     if (folderId) {
       try {
@@ -1847,8 +1849,7 @@ Formát HTML emailu:
       // Cards for parts mentioned in conversations will be found by AI + updateCardSections()
 
       // Load 00_CENTRUM documents for dedup context
-      let centrumDocsContext = "";
-      let centrumFolderId: string | null = null;
+      // centrumDocsContext and centrumFolderId declared above
       try {
         const rootChildren = await listFilesInFolder(token, folderId);
         const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
