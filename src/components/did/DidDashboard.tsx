@@ -233,10 +233,9 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
       {/* Header */}
       <div className="mb-4">
-        <h3 className="text-sm font-medium text-foreground">Přehled systému</h3>
-        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1">
           <Clock className="w-3 h-3" />
-          Poslední aktualizace kartotéky: {formatTimeAgo(lastCycleTime)}
+          Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
         </p>
         {lastCardsUpdated.length > 0 && (
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">

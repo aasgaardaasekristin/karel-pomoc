@@ -153,9 +153,9 @@ serve(async (req) => {
 
     // 6. Synthesize with Lovable AI (streaming)
     const now = new Date();
-    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav PŘEHLED SYSTÉMU jako souvislý, čtivý text pro terapeutky (Haničku a Káťu). Dnešní datum: ${now.toLocaleDateString("cs-CZ")}.
+    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum: ${now.toLocaleDateString("cs-CZ")}.
 
-═══ VSTUPNÍ DATA ═══
+VSTUPNÍ DATA:
 
 DOKUMENTY Z KARTOTÉKY (00_CENTRUM):
 ${centrumDocs || "(nepodařilo se načíst)"}
@@ -169,27 +169,31 @@ ${cycleInfo || "(žádné záznamy)"}
 TERAPEUTICKÉ TIPY Z ODBORNÝCH ZDROJŮ:
 ${perplexityTips || "(nedostupné)"}
 
-═══ FORMÁT VÝSTUPU ═══
+FORMÁT VÝSTUPU:
 
-Napiš SOUVISLÝ TEXT (ne odrážky, ne tabulky – plynulý text jako by Karel mluvil k terapeutkám). Struktura:
+Začni neformálním, osobním pozdravem – např. "Krásného [den a datum], Hani a Káťo!" (NIKDY "Vážené", NIKDY formální tón).
+Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci.
 
-1. **Aktuální stav systému** (2-3 odstavce): Jak vypadá systém právě teď? Které části jsou aktivní, co komunikují, jaký je jejich stav? Které části umlkly (neozývají se delší dobu)? Je někdo destabilizovaný?
+NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, jak funguje systém obecně, co je ANP/EP/Host. Piš POUZE o tom co se DĚJE TEĎ a co je relevantní.
 
-2. **Přehled posledního týdne** (1-2 odstavce): Stručně – kdo s Karlem mluvil, jaký byl jejich stav, co řešili? Jak to Karel hodnotí?
+Struktura (jako plynulý souvislý text, ne odrážky):
 
-3. **Kdo potřebuje pozornost** (1-2 odstavce): Které části vyžadují péči? Je potřeba krizová intervence? Je to spíše úkol pro Káťu (didaktický, terapeutický přístup) nebo pro Hani (emoční, attachment) nebo pro obě v tandemu? Karel vyzve konkrétní terapeutku, ať se mu ozve v jejím podrežimu.
+1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný?
 
-4. **Terapeutická doporučení** (1-2 odstavce): Konkrétní tipy – co by terapeutky mohly vyzkoušet s aktivními částmi? Jaké hry, techniky, přístupy? (Použij odborné zdroje z Perplexity, pokud jsou k dispozici.)
+2. **Přehled posledního týdne** – Kdo s Karlem mluvil včera/předevčírem? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici.
 
-5. **Poslední aktualizace kartotéky**: Kdy proběhla, co se změnilo, co Karel zjistil.
+3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání.
+
+4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem.
+
+5. **Poslední aktualizace kartotéky** – Kdy proběhla, co se změnilo.
 
 PRAVIDLA:
-- Piš v češtině, přirozeným jazykem, jako by Karel mluvil k Hani a Kátě
-- Nepoužívej dekorativní oddělovače (═══, ───)
-- Nadpisy formátuj jako markdown (## a ###)
-- Pokud nemáš dost dat k některé sekci, napiš co víš a co bys potřeboval
-- NIKDY nevymýšlej informace – piš jen to co je v datech
-- Pokud jsou k dispozici terapeutické tipy z Perplexity, zakomponuj je přirozeně do textu s odkazem na zdroj`;
+- Piš česky, osobním tónem, jako by Karel mluvil k Hani a Kátě které zná a má rád
+- Nepoužívej dekorativní oddělovače
+- Nadpisy jako markdown (## a ###)
+- NIKDY nevymýšlej informace – piš jen co je v datech
+- NEPIŠ obecné poučky o DID které terapeutky znají`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
