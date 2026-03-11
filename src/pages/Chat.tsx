@@ -1051,7 +1051,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       setDidInitialContext("");
       setDidDocsLoaded(false);
       setDidSessionId(null);
-      setDidFlowState("dashboard");
+      setDidFlowState("entry");
       clearMessages("childcare");
       try {
         localStorage.removeItem("karel_did_submode");
