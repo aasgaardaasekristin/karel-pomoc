@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen, GraduationCap } from "lucide-react";
+import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
