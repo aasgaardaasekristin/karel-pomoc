@@ -8,6 +8,7 @@ import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import { ActiveSessionsProvider } from "@/contexts/ActiveSessionsContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
+import Hub from "./pages/Hub";
 import Chat from "./pages/Chat";
 import CalmMode from "./pages/CalmMode";
 import Kartoteka from "./pages/Kartoteka";
@@ -39,6 +40,7 @@ const App = () => (
             ) : (
               <>
                 <Route path="/" element={<Login />} />
+                <Route path="/hub" element={<ProtectedRoute><Hub /></ProtectedRoute>} />
                 <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
                 <Route path="/kartoteka" element={<ProtectedRoute><Kartoteka /></ProtectedRoute>} />
                 <Route path="/calm" element={<ProtectedRoute><CalmMode /></ProtectedRoute>} />

@@ -36,6 +36,7 @@ import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
+type HubSection = "did" | "hana" | null;
 
 // localStorage helpers
 const STORAGE_KEY_PREFIX = "karel_chat_";
@@ -102,12 +103,22 @@ const handleApiError = (response: Response) => {
 // DID flow states
 type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
 
+const HANA_PIN_KEY = "karel_hana_pin_verified";
+
 const Chat = () => {
   const {
     messages, setMessages, mode, setMode, mainMode, setMainMode,
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
+
+  // Determine hub section from sessionStorage
+  const [hubSection] = useState<HubSection>(() => {
+    try {
+      const section = sessionStorage.getItem("karel_hub_section") as HubSection;
+      return section || null;
+    } catch { return null; }
+  });
 
   const [input, setInput] = useState("");
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
@@ -225,7 +236,32 @@ const Chat = () => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });
-      else setAuthChecked(true);
+      else {
+        // Redirect to hub if no section selected
+        if (!hubSection) {
+          navigate("/hub", { replace: true });
+          return;
+        }
+        // For Hana section, verify PIN
+        if (hubSection === "hana") {
+          try {
+            if (sessionStorage.getItem(HANA_PIN_KEY) !== "1") {
+              navigate("/hub", { replace: true });
+              return;
+            }
+          } catch {
+            navigate("/hub", { replace: true });
+            return;
+          }
+        }
+        // Auto-set mode based on hub section
+        if (hubSection === "did" && mode !== "childcare") {
+          setMode("childcare");
+        } else if (hubSection === "hana" && mode === "childcare") {
+          setMode("debrief");
+        }
+        setAuthChecked(true);
+      }
     };
     checkAuth();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -1347,7 +1383,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 setDidFlowState("thread-list");
               })();
             }}
-            onBack={() => setMode("debrief")}
+            onBack={() => navigate("/hub")}
           />
         </ScrollArea>
       );
@@ -1605,12 +1641,18 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">Carl Gustav Jung</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Tvůj partner a supervizní mentor</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/hub")} className="h-8 px-2 shrink-0">
+              ← Hub
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
+                {hubSection === "did" ? "DID" : "Hana"}
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {mode === "childcare" ? (
+            {hubSection === "did" ? (
               <>
                 <Button variant="outline" size="sm" onClick={handleManualUpdate} disabled={isManualUpdateLoading} className="h-8 px-2 sm:px-3">
                   {isManualUpdateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -1643,35 +1685,31 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
         </div>
       </header>
 
-      {/* Main Mode Toggle */}
-      <div className="border-b border-border bg-card/30">
-        <div className="max-w-4xl mx-auto px-4 py-3">
-          <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
-        </div>
-      </div>
-
-      {mainMode === "chat" ? (
+      {hubSection === "did" ? (
+        /* DID Section - no mode toggle, no mode selector, straight to DID content */
         <>
           <CrisisBriefPanel />
+          {renderDidContent()}
+        </>
+      ) : (
+        /* Hana Section - mode toggle + mode selector (without DID) */
+        <>
+          {/* Main Mode Toggle */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">
-              <ModeSelector currentMode={mode} onModeChange={(newMode) => {
-                if (newMode === "childcare") {
-                  setDidSubMode(null);
-                  setDidInitialContext("");
-                  setDidDocsLoaded(false);
-                  setDidSessionId(null);
-                  setActiveThread(null);
-                  setDidFlowState("entry");
-                  setMessages([]);
-                }
-                setMode(newMode);
-              }} />
+              <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
             </div>
           </div>
 
-          {mode === "childcare" ? renderDidContent() : (
+          {mainMode === "chat" ? (
             <>
+              <CrisisBriefPanel />
+              <div className="border-b border-border bg-card/30">
+                <div className="max-w-4xl mx-auto px-4 py-3">
+                  <ModeSelector currentMode={mode} onModeChange={setMode} hideDid />
+                </div>
+              </div>
+
               {/* Non-DID Chat */}
               <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
                 <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
@@ -1738,21 +1776,21 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 </div>
               </div>
             </>
+          ) : (
+            <>
+              <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
+                <SessionSidebar />
+                <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
+                    <SessionReportForm />
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
+                    <SupervisionChat />
+                  </div>
+                </div>
+              </div>
+            </>
           )}
-        </>
-      ) : (
-        <>
-          <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
-            <SessionSidebar />
-            <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
-              <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
-                <SessionReportForm />
-              </div>
-              <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
-                <SupervisionChat />
-              </div>
-            </div>
-          </div>
         </>
       )}
       {studyMaterial && <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />}
