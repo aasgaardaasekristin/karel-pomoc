@@ -2559,6 +2559,7 @@ ${perplexityContext}`,
 
               // Full rewrite – the AI already generated the complete document content
               const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
+              therapeuticPlanContent = newContent; // Store for email inclusion
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
               cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
