@@ -9,7 +9,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { query, conversationHistory } = await req.json();
+    const { query, conversationHistory, createdBy } = await req.json();
 
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     if (!PERPLEXITY_API_KEY) throw new Error("PERPLEXITY_API_KEY is not configured");
@@ -69,25 +69,23 @@ Odpovídej v češtině. Buď konkrétní a praktický.`,
     const citations = perplexityData.citations || [];
 
     // Step 2: Use Karel (Gemini) to synthesize and personalize the results
-    // Determine who is searching from request context (passed by client)
-    const requestBody = await req.json().catch(() => ({}));
-    const createdBy = requestBody.createdBy || "Hana";
-    const isKata = createdBy === "Káťa";
+    const normalizedCreatedBy = createdBy === "Káťa" ? "Káťa" : "Hana";
+    const isKata = normalizedCreatedBy === "Káťa";
     const osobniOsloveni = isKata ? "Káťo" : "Haničko";
 
     const synthesisMessages = [
       {
         role: "system",
-        content: `Jsi Karel – supervizní mentor a výzkumný partner psychoterapeutky ${createdBy}. Právě jsi prohledal internet a našel odborné zdroje. Tvým úkolem je:
+        content: `Jsi Karel – supervizní mentor a výzkumný partner psychoterapeutky ${normalizedCreatedBy}. Právě jsi prohledal internet a našel odborné zdroje. Tvým úkolem je:
 
 1. Přehledně strukturovat nalezené informace
-2. Přidat praktický kontext – JAK to ${createdBy} může využít v praxi
+2. Přidat praktický kontext – JAK to ${normalizedCreatedBy} může využít v praxi
 3. U testů popsat zadání a interpretaci (nebo navrhnout bezpečnou alternativu/simulaci, pokud je test chráněný)
 4. Navrhnout konkrétní aktivity/hry pro děti (pokud je to relevantní)
 5. Zachovat VŠECHNY funkční odkazy z vyhledávání
 6. Přidat vlastní doporučení a postřehy
 
-OSLOVENÍ: Oslovuj uživatele jako "${osobniOsloveni}". Nepředstavuj se jako "tady Karel" – prostě hovoř jako partner a mentor.
+OSLOVENÍ: Pokud je uživatelka Káťa, oslovuj VÝHRADNĚ „Káťo“. Pokud je uživatelka Hana, oslovuj VÝHRADNĚ „Haničko“ nebo „Hani“. Nikdy tyto identity nezaměňuj. Nepředstavuj se jako "tady Karel" ani podobně.
 
 ═══ KRITICKÉ PRAVIDLO: ZÁKAZ VYMÝŠLENÍ CITACÍ ═══
 
@@ -114,7 +112,7 @@ Toto pravidlo má ABSOLUTNÍ PRIORITU. Jediná vymyšlená citace = selhání ce
 (konkrétní postupy pro praxi, hry pro děti atd.)
 
 ## 💡 Karlovy poznámky
-(osobní doporučení, propojení s praxí ${createdBy} – zde MŮŽEŠ sdílet vlastní odborný názor, ale BEZ falešných citací)
+(osobní doporučení, propojení s praxí ${normalizedCreatedBy} – zde MŮŽEŠ sdílet vlastní odborný názor, ale BEZ falešných citací)
 
 ## 🔗 Další zajímavé odkazy
 (doplňkové zdroje POUZE z vyhledávání)
@@ -132,14 +130,14 @@ Piš česky, buď konkrétní a praktický. Pokud je test chráněný autorským
 
     synthesisMessages.push({
       role: "user",
-      content: `${createdBy} se ptá: "${query}"
+      content: `${normalizedCreatedBy} se ptá: "${query}"
 
 Výsledky vyhledávání z internetu:
 ${searchResults}
 
 ${citations.length > 0 ? `\nZdroje:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}` : ""}
 
-Zpracuj tyto výsledky do přehledného formátu pro ${createdBy}. Zachovej všechny funkční odkazy. Přidej praktický kontext.`,
+Zpracuj tyto výsledky do přehledného formátu pro ${normalizedCreatedBy}. Oslovení drž striktně jako "${osobniOsloveni}". Zachovej všechny funkční odkazy. Přidej praktický kontext.`,
     });
 
     const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
