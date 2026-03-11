@@ -1357,7 +1357,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
             <div className="space-y-2">
               <button
-                onClick={() => handleDidSubModeSelect("mamka")}
+                onClick={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
                 className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-pink-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-pink-500"
               >
                 <span className="text-lg">💗</span>
@@ -1367,7 +1367,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 </div>
               </button>
               <button
-                onClick={() => handleDidSubModeSelect("kata")}
+                onClick={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
                 className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-blue-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-blue-500"
               >
                 <span className="text-lg">💙</span>
@@ -1383,6 +1383,76 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
               </Button>
             </div>
           </div>
+        </ScrollArea>
+      );
+    }
+
+    // PIN entry for therapists
+    if (didFlowState === "pin-entry" && (didSubMode === "mamka" || didSubMode === "kata")) {
+      const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
+      return (
+        <DidPinEntry
+          therapistName={name}
+          onSuccess={async () => {
+            setDidFlowState("loading");
+            await didThreads.fetchAllThreads(didSubMode);
+            if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
+            setDidFlowState("therapist-threads");
+          }}
+          onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
+        />
+      );
+    }
+
+    // Therapist thread list (Hanička/Káťa)
+    if (didFlowState === "therapist-threads" && (didSubMode === "mamka" || didSubMode === "kata")) {
+      const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
+      return (
+        <ScrollArea className="flex-1">
+          <DidTherapistThreads
+            therapistName={name}
+            threads={didThreads.threads}
+            onSelectThread={(thread) => {
+              setActiveThread(thread);
+              setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
+              setDidFlowState("chat");
+              // Load docs in background
+              (async () => {
+                try {
+                  const headers = await getAuthHeaders();
+                  const response = await fetch(
+                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+                    { method: "POST", headers, body: JSON.stringify({ documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "05_Terapeuticky_Plan_Aktualni"], subFolder: "00_CENTRUM" }) }
+                  );
+                  if (response.ok) {
+                    const data = await response.json();
+                    const docs = data.documents || {};
+                    const enriched = Object.entries(docs)
+                      .filter(([, val]) => typeof val === "string" && !(val as string).startsWith("[Dokument"))
+                      .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
+                      .join("\n\n");
+                    setDidInitialContext(prev => prev ? prev + "\n\n" + enriched : enriched);
+                  }
+                } catch {}
+              })();
+            }}
+            onDeleteThread={(id) => didThreads.deleteThread(id)}
+            onNewThread={async () => {
+              const greetings: Record<string, string> = {
+                mamka: `Haničko, jsem tady s tebou. Mám přehled o systému.\n\nCo teď potřebuješ? Můžeme řešit:\n- 🧩 **Konkrétní část** nebo klastr\n- 🔥 **Akutní situaci**, kterou potřebuješ probrat\n- 💡 **Obecnou radu** k přístupu nebo metodám\n\nPověz mi, co se děje.`,
+                kata: `Ahoj Káťo! 😊 Mám přehled o aktuálním stavu systému.\n\nCo potřebuješ?\n- 🧩 Poradit se ohledně **konkrétní části**?\n- 🔥 Probrat **situaci**, která nastala?\n- 💡 Obecnou **radu** jak reagovat?\n\nŘekni mi, co řešíš.`,
+              };
+              const greeting = greetings[didSubMode!] || greetings.mamka;
+              const initialMsgs = [{ role: "assistant" as const, content: greeting }];
+              const thread = await didThreads.createThread(name, didSubMode!, "cs", initialMsgs as any);
+              if (thread) {
+                setActiveThread(thread);
+                setMessages(initialMsgs as { role: "user" | "assistant"; content: string }[]);
+                setDidFlowState("chat");
+              }
+            }}
+            onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
+          />
         </ScrollArea>
       );
     }
