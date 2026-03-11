@@ -1915,7 +1915,13 @@ Formát HTML emailu:
       return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
-    const allSummaries = [threadSummaries, convSummaries].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
+    // Compile DID-relevant research thread summaries
+    const researchSummaries = researchThreads.map((rt: any) => {
+      const msgs = ((rt.messages as any[]) || []).slice(-15);
+      return `=== Profesní zdroj: ${rt.topic} (autor: ${rt.created_by}) ===\nVytvořeno: ${rt.created_at}\nPoslední aktivita: ${rt.last_activity_at}\n\nKlíčové body:\n${msgs.map((m: any) => `[${m.role === "user" ? "TERAPEUT" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content, 400) : "(multimodal)"}`).join("\n")}`;
+    }).join("\n\n---\n\n");
+
+    const allSummaries = [threadSummaries, convSummaries, researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
     const knownThreadParts = new Set(
       reportThreads
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
