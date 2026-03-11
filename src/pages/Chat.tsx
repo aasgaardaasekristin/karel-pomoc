@@ -1383,7 +1383,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 setDidFlowState("thread-list");
               })();
             }}
-            onBack={() => setMode("debrief")}
+            onBack={() => navigate("/hub")}
           />
         </ScrollArea>
       );
