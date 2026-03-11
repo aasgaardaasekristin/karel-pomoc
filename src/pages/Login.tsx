@@ -22,7 +22,7 @@ const Login = () => {
     checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate("/chat");
+      if (session) navigate("/hub");
     });
     return () => subscription.unsubscribe();
   }, [navigate]);

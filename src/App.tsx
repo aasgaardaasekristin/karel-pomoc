@@ -40,6 +40,7 @@ const App = () => (
             ) : (
               <>
                 <Route path="/" element={<Login />} />
+                <Route path="/hub" element={<ProtectedRoute><Hub /></ProtectedRoute>} />
                 <Route path="/chat" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
                 <Route path="/kartoteka" element={<ProtectedRoute><Kartoteka /></ProtectedRoute>} />
                 <Route path="/calm" element={<ProtectedRoute><CalmMode /></ProtectedRoute>} />
