@@ -21,6 +21,7 @@ import SessionReportForm from "@/components/report/SessionReportForm";
 import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
+import DidEntryScreen from "@/components/did/DidEntryScreen";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
 import DidActionButtons from "@/components/did/DidActionButtons";
 import DidDashboard from "@/components/did/DidDashboard";
@@ -97,7 +98,7 @@ const handleApiError = (response: Response) => {
 };
 
 // DID flow states
-type DidFlowState = "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
+type DidFlowState = "entry" | "terapeut" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
 
 const Chat = () => {
   const {
@@ -132,7 +133,7 @@ const Chat = () => {
   });
 
   // DID thread architecture
-  const [didFlowState, setDidFlowState] = useState<DidFlowState>("dashboard");
+  const [didFlowState, setDidFlowState] = useState<DidFlowState>("entry");
   const [activeThread, setActiveThread] = useState<DidThread | null>(null);
   const [knownParts, setKnownParts] = useState<string[]>([]);
   const didThreads = useDidThreads();
@@ -203,7 +204,7 @@ const Chat = () => {
         if (savedMessages && savedMessages.length > 0) {
           setDidFlowState("chat");
         } else {
-          setDidFlowState("dashboard");
+          setDidFlowState("entry");
         }
       }
       setDidInitialContext(savedContext);
@@ -309,14 +310,14 @@ const Chat = () => {
     if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
-      setDidFlowState("dashboard");
+      setDidFlowState("entry");
       setActiveThread(null);
     }
 
     if (mode === "childcare") {
       if (prevModeRef.current !== mode) {
         setMessages([]);
-        setDidFlowState("dashboard");
+        setDidFlowState("entry");
         setActiveThread(null);
         // Pre-load basic docs from 00_CENTRUM in background
         (async () => {
@@ -389,7 +390,7 @@ const Chat = () => {
     setDidSessionId(null);
     setActiveThread(null);
     setMessages([]);
-    setDidFlowState("dashboard");
+    setDidFlowState("entry");
     refreshHistory();
   }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
 
@@ -405,7 +406,7 @@ const Chat = () => {
     setDidSessionId(null);
     setActiveThread(null);
     setMessages([]);
-    setDidFlowState("dashboard");
+    setDidFlowState("entry");
     refreshHistory();
   }, [didSubMode, messages, didInitialContext, didSessionId, activeThread]);
 
@@ -543,7 +544,7 @@ const Chat = () => {
     
     if (error || !data) {
       toast.error("Vlákno nenalezeno");
-      setDidFlowState("dashboard");
+      setDidFlowState("entry");
       return;
     }
     
@@ -1050,7 +1051,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       setDidInitialContext("");
       setDidDocsLoaded(false);
       setDidSessionId(null);
-      setDidFlowState("dashboard");
+      setDidFlowState("entry");
       clearMessages("childcare");
       try {
         localStorage.removeItem("karel_did_submode");
@@ -1324,12 +1325,78 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
   // ── Render ──
 
   const renderDidContent = () => {
-    if (!didSubMode) {
-      // Dashboard + submode selector
+    // Entry screen: Terapeut / Kluci
+    if (didFlowState === "entry" && !didSubMode) {
+      return (
+        <ScrollArea className="flex-1">
+          <DidEntryScreen
+            onSelectTerapeut={() => setDidFlowState("terapeut")}
+            onSelectKluci={() => {
+              setDidSubMode("cast");
+              setDidFlowState("loading");
+              (async () => {
+                await didThreads.fetchActiveThreads("cast");
+                if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
+                setDidFlowState("thread-list");
+              })();
+            }}
+            onBack={() => setMode("debrief")}
+          />
+        </ScrollArea>
+      );
+    }
+
+    // Terapeut view: Dashboard + Hanička/Káťa buttons
+    if (didFlowState === "terapeut" && !didSubMode) {
       return (
         <ScrollArea className="flex-1">
           <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
-          <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
+            <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => handleDidSubModeSelect("mamka")}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-pink-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-pink-500"
+              >
+                <span className="text-lg">💗</span>
+                <div>
+                  <div className="font-medium text-foreground">Hanička</div>
+                  <div className="text-xs text-muted-foreground">Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleDidSubModeSelect("kata")}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-blue-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-blue-500"
+              >
+                <span className="text-lg">💙</span>
+                <div>
+                  <div className="font-medium text-foreground">Káťa</div>
+                  <div className="text-xs text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
+                </div>
+              </button>
+            </div>
+            <div className="flex justify-center mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
+                ← Zpět
+              </Button>
+            </div>
+          </div>
+        </ScrollArea>
+      );
+    }
+
+    if (!didSubMode) {
+      // Fallback
+      return (
+        <ScrollArea className="flex-1">
+          <DidEntryScreen
+            onSelectTerapeut={() => setDidFlowState("terapeut")}
+            onSelectKluci={() => {
+              setDidSubMode("cast");
+              setDidFlowState("thread-list");
+            }}
+            onBack={() => setMode("debrief")}
+          />
         </ScrollArea>
       );
     }
@@ -1356,7 +1423,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           />
           <div className="flex justify-center pb-4">
             <Button variant="ghost" size="sm" onClick={handleDidBack}>
-              ← Zpět na výběr podrežimu
+              ← Zpět
             </Button>
           </div>
         </ScrollArea>
@@ -1518,7 +1585,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                   setDidDocsLoaded(false);
                   setDidSessionId(null);
                   setActiveThread(null);
-                  setDidFlowState("dashboard");
+                  setDidFlowState("entry");
                   setMessages([]);
                 }
                 setMode(newMode);

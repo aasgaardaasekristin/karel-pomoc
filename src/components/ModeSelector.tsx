@@ -41,9 +41,9 @@ const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
     },
     {
       id: "childcare" as const,
-      label: "Péče o dítě",
+      label: "DID",
       sublabel: "DID",
-      tooltip: "Podpora při péči o dítě s disociativní poruchou",
+      tooltip: "Režim pro práci s DID systémem – terapeuti i části",
       icon: Baby,
       className: "mode-button-childcare",
     },

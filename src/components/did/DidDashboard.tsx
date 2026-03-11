@@ -40,18 +40,30 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [lastCycleReport, setLastCycleReport] = useState<string | null>(null);
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
 
-  // System overview streaming state
-  const [overviewText, setOverviewText] = useState<string>("");
+  // System overview - cached between updates
+  const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
+  const [overviewText, setOverviewText] = useState<string>(() => {
+    try {
+      const cached = localStorage.getItem(OVERVIEW_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.text || "";
+      }
+    } catch {}
+    return "";
+  });
   const [overviewLoading, setOverviewLoading] = useState(false);
-  const [overviewLoaded, setOverviewLoaded] = useState(false);
+  const [overviewLoaded, setOverviewLoaded] = useState(() => {
+    try { return !!localStorage.getItem(OVERVIEW_CACHE_KEY); } catch { return false; }
+  });
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  // Auto-load overview after dashboard data is ready
+  // Auto-load overview only if no cached version exists
   useEffect(() => {
-    if (!loading && !overviewLoaded && !overviewLoading) {
+    if (!loading && !overviewLoaded && !overviewLoading && !overviewText) {
       loadSystemOverview();
     }
   }, [loading]);
@@ -105,6 +117,13 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       }
 
       setOverviewLoaded(true);
+      // Cache the overview text with the cycle timestamp
+      try {
+        localStorage.setItem(OVERVIEW_CACHE_KEY, JSON.stringify({
+          text: accumulated,
+          generatedAt: new Date().toISOString(),
+        }));
+      } catch {}
     } catch (e) {
       console.error("System overview error:", e);
       toast.error("Chyba při načítání přehledu systému.");
@@ -283,7 +302,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setOverviewLoaded(false); loadSystemOverview(); }}
+              onClick={() => { setOverviewLoaded(false); setOverviewText(""); try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {} loadSystemOverview(); }}
               className="h-6 text-[10px] px-2"
             >
               Obnovit
