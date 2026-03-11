@@ -132,14 +132,14 @@ Piš česky, buď konkrétní a praktický. Pokud je test chráněný autorským
 
     synthesisMessages.push({
       role: "user",
-      content: `Hana se ptá: "${query}"
+      content: `${createdBy} se ptá: "${query}"
 
 Výsledky vyhledávání z internetu:
 ${searchResults}
 
 ${citations.length > 0 ? `\nZdroje:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}` : ""}
 
-Zpracuj tyto výsledky do přehledného formátu pro Hanu. Zachovej všechny funkční odkazy. Přidej praktický kontext.`,
+Zpracuj tyto výsledky do přehledného formátu pro ${createdBy}. Zachovej všechny funkční odkazy. Přidej praktický kontext.`,
     });
 
     const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
