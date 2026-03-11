@@ -82,22 +82,61 @@ serve(async (req) => {
       console.warn("Drive read failed:", e);
     }
 
-    // 2. Recent threads (last 7 days)
+    // 2. Recent threads (last 7 days) – ALL sub_modes
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: recentThreads } = await sb
       .from("did_threads")
-      .select("part_name, last_activity_at, messages, is_processed")
-      .eq("sub_mode", "cast")
+      .select("part_name, sub_mode, last_activity_at, messages, is_processed")
       .gte("last_activity_at", sevenDaysAgo)
-      .order("last_activity_at", { ascending: false });
+      .order("last_activity_at", { ascending: false })
+      .limit(30);
 
-    // Build thread summaries
+    // Build thread summaries separated by type
     let threadSummary = "";
+    let therapistSummary = "";
     if (recentThreads && recentThreads.length > 0) {
       for (const t of recentThreads) {
         const msgs = Array.isArray(t.messages) ? t.messages : [];
         const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
-        threadSummary += `\n--- ${t.part_name} (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+        const entry = `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
+          therapistSummary += entry;
+        } else {
+          threadSummary += entry;
+        }
+      }
+    }
+
+    // 2b. Read cards of active parts from Drive (01_AKTIVNI_FRAGMENTY)
+    let activePartCards = "";
+    const activePartNames = recentThreads
+      ? [...new Set(recentThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))]
+      : [];
+    if (activePartNames.length > 0) {
+      try {
+        const token = await getAccessToken();
+        const kartotekaId = await findFolder(token, "Kartoteka_DID");
+        if (kartotekaId) {
+          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY");
+          if (aktivniId) {
+            const partFiles = await listFilesInFolder(token, aktivniId);
+            for (const partName of activePartNames.slice(0, 6)) {
+              const normalizedName = partName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              const matchedFile = partFiles.find(f => {
+                const fn = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                return fn.includes(normalizedName);
+              });
+              if (matchedFile) {
+                try {
+                  const content = await readFileContent(token, matchedFile.id);
+                  activePartCards += `\n[KARTA: ${matchedFile.name}]\n${content.slice(0, 4000)}\n`;
+                } catch { /* skip */ }
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("Active part cards read failed:", e);
       }
     }
 
@@ -116,12 +155,7 @@ serve(async (req) => {
       }
     }
 
-    // 4. Get active part names for Perplexity search
-    const activePartNames = recentThreads
-      ? [...new Set(recentThreads.map(t => t.part_name))]
-      : [];
-
-    // 5. Perplexity therapeutic tips (if available)
+    // 4. Get active part names for Perplexity search (already computed above)
     let perplexityTips = "";
     if (PERPLEXITY_API_KEY && activePartNames.length > 0) {
       try {
@@ -160,8 +194,14 @@ VSTUPNÍ DATA:
 DOKUMENTY Z KARTOTÉKY (00_CENTRUM):
 ${centrumDocs || "(nepodařilo se načíst)"}
 
-VLÁKNA Z POSLEDNÍHO TÝDNE (rozhovory částí s Karlem):
+VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ S KARLEM:
 ${threadSummary || "(žádná vlákna za poslední týden)"}
+
+VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK S KARLEM (Hanička=mamka, Káťa=kata):
+${therapistSummary || "(žádné rozhovory terapeutek za poslední týden)"}
+
+KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky – sekce A-M):
+${activePartCards || "(nepodařilo se načíst nebo žádné aktivní části)"}
 
 CYKLY AKTUALIZACE KARTOTÉKY:
 ${cycleInfo || "(žádné záznamy)"}
@@ -178,13 +218,13 @@ NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, 
 
 Struktura (jako plynulý souvislý text, ne odrážky):
 
-1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný?
+1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný? Použij data z karet aktivních částí pro hlubší kontext.
 
-2. **Přehled posledního týdne** – Kdo s Karlem mluvil včera/předevčírem? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici.
+2. **Přehled posledního týdne** – Kdo s Karlem mluvil včera/předevčírem? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici. ZAHRŇ i co řešily terapeutky (Hanička a Káťa) s Karlem – jejich obavy, postřehy, otázky.
 
-3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání.
+3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání. Využij informace z karet částí (diagnózy, triggery, terapeutické poznámky).
 
-4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem.
+4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem. Navrhuj s ohledem na specifika konkrétních částí (věk, role, stav) z jejich karet.
 
 5. **Poslední aktualizace kartotéky** – Kdy proběhla, co se změnilo.
 
@@ -193,7 +233,9 @@ PRAVIDLA:
 - Nepoužívej dekorativní oddělovače
 - Nadpisy jako markdown (## a ###)
 - NIKDY nevymýšlej informace – piš jen co je v datech
-- NEPIŠ obecné poučky o DID které terapeutky znají`;
+- NEPIŠ obecné poučky o DID které terapeutky znají
+- Pokud máš data z karet částí, VYUŽIJ JE pro konkrétní doporučení (ne obecná)
+- Pokud terapeutky s Karlem řešily něco důležitého, ZDŮRAZNI TO`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
