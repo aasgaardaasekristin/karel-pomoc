@@ -622,6 +622,7 @@ ${perplexityContext}`,
               source_agreement: source,
               priority,
               note: `Vytvořeno týdenním cyklem ${dateStr}`,
+              user_id: userId,
             });
             insertedTasks++;
           }
