@@ -2649,10 +2649,17 @@ Seznam aktualizovaných dokumentů
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Káťou: [téma]"
 
+<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY:</h3>
+Shrň 5-8 nejdůležitějších bodů z terapeutického plánu:
+▸ Krátkodobé cíle a dohody
+▸ S jakými fragmenty dnes/zítra pracovat a jak
+▸ Co zkontrolovat / co bylo odloženo
+▸ Aktuální doporučení a návrhy metod
+
 Podpis: "Jsem tady. Tvůj Karel"
 
 Tón: intimní, partnerský, podporující, hluboký.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
                 ],
               }),
             });
