@@ -328,6 +328,7 @@ const Chat = () => {
         if (messages.length > 0) {
           saveMessages(mode, messages);
           if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
+          if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
         }
         if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
           saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
@@ -339,13 +340,14 @@ const Chat = () => {
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, refreshHistory, activeThread]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, refreshHistory, activeThread, activeResearchThread]);
 
   useEffect(() => {
     const persistNow = () => {
       if (messages.length > 0) {
         saveMessages(mode, messages);
         if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
+        if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
       }
     };
     window.addEventListener("beforeunload", persistNow);
@@ -354,7 +356,7 @@ const Chat = () => {
       window.removeEventListener("beforeunload", persistNow);
       window.removeEventListener("pagehide", persistNow);
     };
-  }, [messages, mode, activeThread]);
+  }, [messages, mode, activeThread, activeResearchThread]);
 
   // Welcome message when mode changes
   useEffect(() => {
