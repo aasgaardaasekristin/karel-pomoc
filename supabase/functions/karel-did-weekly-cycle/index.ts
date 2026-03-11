@@ -360,9 +360,9 @@ serve(async (req) => {
     }).join("\n\n---\n\n");
 
     // Research threads summary
-    const researchSummary = (researchThreads || []).map(rt => {
-      const msgs = ((rt.messages as any[]) || []).slice(-8);
-      return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? m.content.slice(0, 300) : ""}`).join("\n")}`;
+    const researchSummary = (researchThreads || []).slice(0, 8).map(rt => {
+      const msgs = ((rt.messages as any[]) || []).slice(-4);
+      return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? truncate(m.content, MAX_RESEARCH_MESSAGE_CHARS) : ""}`).join("\n")}`;
     }).join("\n---\n");
 
     // ═══ 3. PERPLEXITY RESEARCH – Novel approaches ═══
