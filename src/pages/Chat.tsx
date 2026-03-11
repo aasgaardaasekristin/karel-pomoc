@@ -1208,6 +1208,20 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     }
   };
 
+  const handleResearchHandbook = async () => {
+    if (isResearchHandbookLoading || !activeResearchThread || messages.length < 2) return;
+    setIsResearchHandbookLoading(true);
+    try {
+      const { generateResearchHandbook } = await import("@/lib/didPdfExport");
+      await generateResearchHandbook(messages, activeResearchThread.topic, activeResearchThread.createdBy);
+      toast.success("Příručka z profesních zdrojů vygenerována a stažena");
+    } catch (error) {
+      console.error("Research handbook error:", error);
+      toast.error("Chyba při generování příručky");
+    } finally {
+      setIsResearchHandbookLoading(false);
+    }
+  };
 
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
