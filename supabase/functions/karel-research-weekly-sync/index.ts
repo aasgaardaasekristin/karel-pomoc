@@ -234,20 +234,72 @@ PRAVIDLA:
       const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
       if (!centrumId) throw new Error("00_CENTRUM folder not found");
 
-      // Find 07_Knihovna document
-      const knihovnaFile = await findFile(token, "07_Knihovna", centrumId);
-      if (knihovnaFile) {
-        // Extract the ZDROJ entries from synthesis (before DID-specific markers)
-        const zdrojEntries = synthesisText.split(/\[DID_/)[0].trim();
-        if (zdrojEntries) {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          const header = `\n\n════════════════════════════════════════\nTÝDENNÍ AKTUALIZACE: ${dateStr}\nZpracováno vláken: ${threads.length}\n════════════════════════════════════════\n\n`;
-          await appendToGoogleDoc(token, knihovnaFile.id, header + zdrojEntries);
+      // Find or create 07_Knihovna FOLDER (not a single document)
+      let knihovnaFolderId = await findFolder(token, "07_Knihovna", centrumId);
+      if (!knihovnaFolderId) {
+        // Check for existing file named 07_Knihovna and use folder approach
+        const knihovnaFile = await findFile(token, "07_Knihovna", centrumId);
+        if (knihovnaFile) {
+          // Legacy: single doc exists. Append to it for backward compat, but also create folder structure.
+          console.log("07_Knihovna exists as document, creating folder structure alongside it");
+        }
+        knihovnaFolderId = await findOrCreateFolder(token, "07_Knihovna", centrumId);
+      }
+
+      if (knihovnaFolderId) {
+        const dateStr = new Date().toISOString().slice(0, 10);
+        // Create date subfolder for this sync
+        const dateSubfolderId = await findOrCreateFolder(token, dateStr, knihovnaFolderId);
+
+        if (dateSubfolderId) {
+          // Extract ZDROJ entries (before DID markers)
+          const zdrojEntries = synthesisText.split(/\[DID_/)[0].trim();
+
+          // Try to split into individual ZDROJ blocks
+          const zdrojBlocks = zdrojEntries.split(/(?=ZDROJ_\d+_)/);
+          let savedCount = 0;
+
+          for (const block of zdrojBlocks) {
+            const trimmed = block.trim();
+            if (!trimmed || trimmed.length < 20) continue;
+
+            // Extract topic name from the block
+            const topicMatch = trimmed.match(/Téma:\s*(.+)/);
+            const topicName = topicMatch ? topicMatch[1].trim().replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 60) : `Zdroj_${savedCount + 1}`;
+            const zdrojIdMatch = trimmed.match(/^(ZDROJ_\d+_[\d-]+)/);
+            const fileName = zdrojIdMatch ? `${zdrojIdMatch[1]}_${topicName}` : topicName;
+
+            // Create Google Doc for this source
+            const boundary = "----ResearchSyncBoundary";
+            const metadata = JSON.stringify({ name: fileName, parents: [dateSubfolderId], mimeType: "application/vnd.google-apps.document" });
+            const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${trimmed}\r\n--${boundary}--`;
+            const createRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+              body,
+            });
+            if (createRes.ok) savedCount++;
+            else console.warn(`Failed to create ZDROJ doc: ${createRes.status}`);
+          }
+
+          // Create a summary index doc in the date subfolder
+          if (zdrojEntries && zdrojEntries.length > 20) {
+            const summaryContent = `TÝDENNÍ AKTUALIZACE KNIHOVNY\nDatum: ${dateStr}\nZpracováno vláken: ${threads.length}\nVytvořeno zdrojů: ${savedCount}\n\n${zdrojEntries}`;
+            const boundary = "----ResearchSyncBoundary";
+            const metadata = JSON.stringify({ name: `00_Prehled_${dateStr}`, parents: [dateSubfolderId], mimeType: "application/vnd.google-apps.document" });
+            const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${summaryContent}\r\n--${boundary}--`;
+            await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+              body,
+            });
+          }
+
           knihovnaUpdated = true;
-          console.log("07_Knihovna updated successfully");
+          console.log(`07_Knihovna: saved ${savedCount} sources to subfolder ${dateStr}`);
         }
       } else {
-        console.warn("07_Knihovna document not found in 00_CENTRUM");
+        console.warn("Could not find or create 07_Knihovna folder in 00_CENTRUM");
       }
 
       // 5. PROCESS DID-SPECIFIC UPDATES
