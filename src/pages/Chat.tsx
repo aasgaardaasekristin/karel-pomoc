@@ -1065,7 +1065,65 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     } finally { setIsManualUpdateLoading(false); }
   };
 
-  const handleGenerateHandbook = async () => {
+  const handleReformatCards = async () => {
+    if (isReformatting) return;
+    setIsReformatting(true);
+    setReformatProgress(null);
+    toast.info("Načítám seznam karet...");
+    try {
+      const headers = await getAuthHeaders();
+      const listRes = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+        { method: "POST", headers, body: JSON.stringify({ mode: "list" }) }
+      );
+      const listData = await listRes.json();
+      if (!listRes.ok) throw new Error(listData.error);
+
+      const entries = listData.entries || [];
+      const txtContentByPart = listData.txtContentByPart || {};
+      const total = entries.length;
+      let reformatted = 0, notFound = 0, errors = 0;
+
+      toast.info(`Přeformátování ${total} karet zahájeno...`);
+
+      for (let i = 0; i < total; i++) {
+        const entry = entries[i];
+        setReformatProgress({ current: i + 1, total, currentName: entry.name });
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+            { method: "POST", headers, body: JSON.stringify({ mode: "process_one", index: i, txtContentForPart: txtContentByPart[entry.name] || "" }) }
+          );
+          const data = await res.json();
+          if (data.result === "reformatted") reformatted++;
+          else if (data.result === "not_found") notFound++;
+          else errors++;
+        } catch (e) {
+          console.error(`Card ${entry.name} failed:`, e);
+          errors++;
+        }
+      }
+
+      if ((listData.txtFiles || []).length > 0) {
+        try {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+            { method: "POST", headers, body: JSON.stringify({ mode: "cleanup_txt" }) }
+          );
+        } catch {}
+      }
+
+      toast.success(`Hotovo! Přeformátováno: ${reformatted}/${total}, nenalezeno: ${notFound}, chyby: ${errors}`);
+    } catch (e) {
+      toast.error("Přeformátování selhalo");
+      console.error(e);
+    } finally {
+      setIsReformatting(false);
+      setReformatProgress(null);
+    }
+  };
+
+
     if (isHandbookLoading) return;
     setIsHandbookLoading(true);
     try {
