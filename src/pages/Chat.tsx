@@ -317,7 +317,7 @@ const Chat = () => {
     if (mode === "childcare") {
       if (prevModeRef.current !== mode) {
         setMessages([]);
-        setDidFlowState("dashboard");
+        setDidFlowState("entry");
         setActiveThread(null);
         // Pre-load basic docs from 00_CENTRUM in background
         (async () => {
