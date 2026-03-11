@@ -595,8 +595,7 @@ ${researchSummary || "Žádné"}
 ${perplexityContext}`,
           },
         ],
-      }),
-    });
+      }), 90000, "Weekly AI analysis");
 
     let analysisText = "";
     if (analysisResponse.ok) {
