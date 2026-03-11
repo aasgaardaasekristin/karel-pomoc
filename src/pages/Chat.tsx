@@ -103,12 +103,22 @@ const handleApiError = (response: Response) => {
 // DID flow states
 type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
 
+const HANA_PIN_KEY = "karel_hana_pin_verified";
+
 const Chat = () => {
   const {
     messages, setMessages, mode, setMode, mainMode, setMainMode,
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
+
+  // Determine hub section from sessionStorage
+  const [hubSection] = useState<HubSection>(() => {
+    try {
+      const section = sessionStorage.getItem("karel_hub_section") as HubSection;
+      return section || null;
+    } catch { return null; }
+  });
 
   const [input, setInput] = useState("");
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
