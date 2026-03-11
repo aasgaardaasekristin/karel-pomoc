@@ -138,6 +138,7 @@ const Chat = () => {
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
+  const [isResearchHandbookLoading, setIsResearchHandbookLoading] = useState(false);
   const [isReformatting, setIsReformatting] = useState(false);
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
@@ -1207,6 +1208,20 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     }
   };
 
+  const handleResearchHandbook = async () => {
+    if (isResearchHandbookLoading || !activeResearchThread || messages.length < 2) return;
+    setIsResearchHandbookLoading(true);
+    try {
+      const { generateResearchHandbook } = await import("@/lib/didPdfExport");
+      await generateResearchHandbook(messages, activeResearchThread.topic, activeResearchThread.createdBy);
+      toast.success("Příručka z profesních zdrojů vygenerována a stažena");
+    } catch (error) {
+      console.error("Research handbook error:", error);
+      toast.error("Chyba při generování příručky");
+    } finally {
+      setIsResearchHandbookLoading(false);
+    }
+  };
 
   const sendMessage = async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
@@ -1758,22 +1773,35 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                       <strong className="text-foreground">{activeResearchThread.topic}</strong>
                       <span className="text-xs text-muted-foreground ml-2">({activeResearchThread.createdBy})</span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (activeResearchThread && messages.length >= 2) {
-                          researchThreads.updateMessages(activeResearchThread.id, messages);
-                        }
-                        setActiveResearchThread(null);
-                        setMessages([]);
-                        setResearchFlowState("thread-list");
-                        researchThreads.fetchThreads();
-                      }}
-                      className="h-7 px-2 text-xs"
-                    >
-                      ← Vlákna
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResearchHandbook}
+                        disabled={isResearchHandbookLoading || messages.length < 2}
+                        className="h-7 px-2 text-xs gap-1"
+                      >
+                        {isResearchHandbookLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                        <span className="hidden sm:inline">Příručka (PDF)</span>
+                        <span className="sm:hidden">PDF</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (activeResearchThread && messages.length >= 2) {
+                            researchThreads.updateMessages(activeResearchThread.id, messages);
+                          }
+                          setActiveResearchThread(null);
+                          setMessages([]);
+                          setResearchFlowState("thread-list");
+                          researchThreads.fetchThreads();
+                        }}
+                        className="h-7 px-2 text-xs"
+                      >
+                        ← Vlákna
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}

@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.karel-did-verify-cards]
 verify_jwt = false
+
+[functions.karel-research-handbook]
+verify_jwt = false
