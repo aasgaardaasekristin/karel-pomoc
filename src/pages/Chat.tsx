@@ -528,9 +528,14 @@ const Chat = () => {
     }
     setActiveThread(null);
     setMessages([]);
-    setDidFlowState("thread-list");
-    didThreads.fetchActiveThreads("cast");
-  }, [activeThread, messages, setMessages]);
+    if (didSubMode === "mamka" || didSubMode === "kata") {
+      setDidFlowState("therapist-threads");
+      didThreads.fetchAllThreads(didSubMode);
+    } else {
+      setDidFlowState("thread-list");
+      didThreads.fetchActiveThreads("cast");
+    }
+  }, [activeThread, messages, setMessages, didSubMode]);
 
   // Quick thread entry from dashboard — load thread directly by ID
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
