@@ -117,6 +117,13 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       }
 
       setOverviewLoaded(true);
+      // Cache the overview text with the cycle timestamp
+      try {
+        localStorage.setItem(OVERVIEW_CACHE_KEY, JSON.stringify({
+          text: accumulated,
+          generatedAt: new Date().toISOString(),
+        }));
+      } catch {}
     } catch (e) {
       console.error("System overview error:", e);
       toast.error("Chyba při načítání přehledu systému.");
