@@ -1228,7 +1228,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
         ? didInitialContext.slice(0, 80000) + "\n[...kontext zkrácen...]"
         : didInitialContext;
       const body = isResearch
-        ? { query: userMessage, conversationHistory: messages.slice(-20) }
+        ? { query: userMessage, conversationHistory: messages.slice(-20), createdBy: activeResearchThread?.createdBy || "Hana" }
         : {
             messages: recentMessages,
             mode,
