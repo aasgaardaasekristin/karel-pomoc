@@ -1773,22 +1773,35 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                       <strong className="text-foreground">{activeResearchThread.topic}</strong>
                       <span className="text-xs text-muted-foreground ml-2">({activeResearchThread.createdBy})</span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (activeResearchThread && messages.length >= 2) {
-                          researchThreads.updateMessages(activeResearchThread.id, messages);
-                        }
-                        setActiveResearchThread(null);
-                        setMessages([]);
-                        setResearchFlowState("thread-list");
-                        researchThreads.fetchThreads();
-                      }}
-                      className="h-7 px-2 text-xs"
-                    >
-                      ← Vlákna
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleResearchHandbook}
+                        disabled={isResearchHandbookLoading || messages.length < 2}
+                        className="h-7 px-2 text-xs gap-1"
+                      >
+                        {isResearchHandbookLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                        <span className="hidden sm:inline">Příručka (PDF)</span>
+                        <span className="sm:hidden">PDF</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (activeResearchThread && messages.length >= 2) {
+                            researchThreads.updateMessages(activeResearchThread.id, messages);
+                          }
+                          setActiveResearchThread(null);
+                          setMessages([]);
+                          setResearchFlowState("thread-list");
+                          researchThreads.fetchThreads();
+                        }}
+                        className="h-7 px-2 text-xs"
+                      >
+                        ← Vlákna
+                      </Button>
+                    </div>
                   </div>
                 </div>
               )}
