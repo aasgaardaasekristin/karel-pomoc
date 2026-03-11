@@ -2670,6 +2670,19 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
     });
   } catch (error) {
     console.error("Daily cycle error:", error);
+
+    if (sb && cycleId) {
+      try {
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          report_summary: `ERROR: ${error instanceof Error ? error.message.slice(0, 1800) : "Unknown error"}`,
+        }).eq("id", cycleId);
+      } catch (cycleUpdateErr) {
+        console.error("[daily-cycle] Failed to mark cycle as failed:", cycleUpdateErr);
+      }
+    }
+
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
