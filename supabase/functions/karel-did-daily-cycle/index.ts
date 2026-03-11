@@ -2525,7 +2525,7 @@ ${perplexityContext}`,
         blocked: blockedCardUpdates,
         aiRecommendations: extractAiRecommendations(aiReportText),
       });
-      const dateStr = new Date().toISOString().slice(0, 10);
+      const dateStr = reportDatePrague;
 
       // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA – ONLY from cron
       if (shouldSendEmails && RESEND_API_KEY && finalReportText) {
