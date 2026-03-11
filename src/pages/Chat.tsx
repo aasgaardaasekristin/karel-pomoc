@@ -133,7 +133,7 @@ const Chat = () => {
   });
 
   // DID thread architecture
-  const [didFlowState, setDidFlowState] = useState<DidFlowState>("dashboard");
+  const [didFlowState, setDidFlowState] = useState<DidFlowState>("entry");
   const [activeThread, setActiveThread] = useState<DidThread | null>(null);
   const [knownParts, setKnownParts] = useState<string[]>([]);
   const didThreads = useDidThreads();
