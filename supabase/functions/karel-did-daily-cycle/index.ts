@@ -1809,19 +1809,19 @@ Formát HTML emailu:
             } catch {}
             if (!kataHtml) kataHtml = `<p>Dnes bez aktivity částí. Karel</p>`;
 
-            await resend.emails.send({
-              from: "Karel <karel@hana-chlebcova.cz>",
-              to: [MAMKA_EMAIL],
-              subject: `Karel – denní report ${dateStr}`,
-              html: hankaHtml,
-            });
+            emailSentToHanka = await sendEmailOnce(
+              "hanka",
+              MAMKA_EMAIL,
+              `Karel – denní report ${dateStr}`,
+              hankaHtml,
+            );
 
-            await resend.emails.send({
-              from: "Karel <karel@hana-chlebcova.cz>",
-              to: [KATA_EMAIL],
-              subject: `Karel – report pro Káťu ${dateStr}`,
-              html: kataHtml,
-            });
+            emailSentToKata = await sendEmailOnce(
+              "kata",
+              KATA_EMAIL,
+              `Karel – report pro Káťu ${dateStr}`,
+              kataHtml,
+            );
           }
         } catch (e) {
           console.error("Quiet-day email error:", e);
