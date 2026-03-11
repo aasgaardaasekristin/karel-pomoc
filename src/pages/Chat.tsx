@@ -390,7 +390,7 @@ const Chat = () => {
     setDidSessionId(null);
     setActiveThread(null);
     setMessages([]);
-    setDidFlowState("dashboard");
+    setDidFlowState("entry");
     refreshHistory();
   }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
 
