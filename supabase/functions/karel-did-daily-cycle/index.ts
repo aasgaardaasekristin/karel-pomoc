@@ -2535,6 +2535,7 @@ ${perplexityContext}`,
       }
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
+      let therapeuticPlanContent = ""; // Capture for email inclusion
       if (centrumFolderId) {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
@@ -2558,6 +2559,7 @@ ${perplexityContext}`,
 
               // Full rewrite – the AI already generated the complete document content
               const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
+              therapeuticPlanContent = newContent; // Store for email inclusion
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
               cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
@@ -2647,10 +2649,17 @@ Seznam aktualizovaných dokumentů
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Káťou: [téma]"
 
+<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY:</h3>
+Shrň 5-8 nejdůležitějších bodů z terapeutického plánu:
+▸ Krátkodobé cíle a dohody
+▸ S jakými fragmenty dnes/zítra pracovat a jak
+▸ Co zkontrolovat / co bylo odloženo
+▸ Aktuální doporučení a návrhy metod
+
 Podpis: "Jsem tady. Tvůj Karel"
 
 Tón: intimní, partnerský, podporující, hluboký.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
                 ],
               }),
             });
@@ -2683,10 +2692,16 @@ Pouze části relevantní pro Kátinu roli (socializace, komunikace s kluky, šk
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Hankou: [téma]"
 
+<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY PRO KÁŤU:</h3>
+Shrň 4-6 bodů relevantních pro Kátinu roli:
+▸ Konkrétní úkoly pro Káťu
+▸ S jakými fragmenty pracovat a jak
+▸ Aktuální dohody a doporučení
+
 Podpis: "Karel"
 
 DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
                 ],
               }),
             });
