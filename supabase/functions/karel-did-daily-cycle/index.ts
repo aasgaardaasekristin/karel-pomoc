@@ -1995,20 +1995,25 @@ Formát HTML emailu:
               } catch {}
             }
           }
-          // Also check 06_Terapeuticke_Dohody subfolder
+          // Load ALL files from 06_Terapeuticke_Dohody folder for mirroring active agreements into 05
           const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
           if (dohodyCandidates.length > 0) {
-            // It might be a folder or a file
             for (const d of dohodyCandidates.slice(0, 1)) {
               if (d.mimeType === DRIVE_FOLDER_MIME) {
                 const subFiles = await listFilesInFolder(token, d.id);
-                const latest = subFiles.sort((a, b) => b.name.localeCompare(a.name))[0];
-                if (latest) {
+                // Load ALL agreement files (not just latest) so AI can mirror active ones into section 2 of 05
+                let totalDohodaChars = 0;
+                const MAX_DOHODA_CHARS = 12000;
+                for (const sf of subFiles.sort((a, b) => b.name.localeCompare(a.name))) {
+                  if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
                   try {
-                    const content = await readFileContent(token, latest.id);
-                    centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${latest.name} (nejnovější dohoda) ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
+                    const content = await readFileContent(token, sf.id);
+                    const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
+                    centrumDocsContext += `\n=== TERAPEUTICKÁ DOHODA: ${sf.name} ===\n${trimmed}\n`;
+                    totalDohodaChars += trimmed.length;
                   } catch {}
                 }
+                console.log(`[daily-cycle] Loaded ${subFiles.length} agreement files from 06_Terapeuticke_Dohody (${totalDohodaChars} chars)`);
               } else {
                 try {
                   const content = await readFileContent(token, d.id);
