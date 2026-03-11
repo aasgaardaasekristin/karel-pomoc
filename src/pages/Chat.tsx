@@ -1641,12 +1641,18 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">Carl Gustav Jung</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Tvůj partner a supervizní mentor</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="ghost" size="sm" onClick={() => navigate("/hub")} className="h-8 px-2 shrink-0">
+              ← Hub
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
+                {hubSection === "did" ? "DID" : "Hana"}
+              </h1>
+            </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {mode === "childcare" ? (
+            {hubSection === "did" ? (
               <>
                 <Button variant="outline" size="sm" onClick={handleManualUpdate} disabled={isManualUpdateLoading} className="h-8 px-2 sm:px-3">
                   {isManualUpdateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -1679,34 +1685,30 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
         </div>
       </header>
 
-      {/* Main Mode Toggle */}
-      <div className="border-b border-border bg-card/30">
-        <div className="max-w-4xl mx-auto px-4 py-3">
-          <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
-        </div>
-      </div>
-
-      {mainMode === "chat" ? (
+      {hubSection === "did" ? (
+        /* DID Section - no mode toggle, no mode selector, straight to DID content */
         <>
           <CrisisBriefPanel />
+          {renderDidContent()}
+        </>
+      ) : (
+        /* Hana Section - mode toggle + mode selector (without DID) */
+        <>
+          {/* Main Mode Toggle */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">
-              <ModeSelector currentMode={mode} onModeChange={(newMode) => {
-                if (newMode === "childcare") {
-                  setDidSubMode(null);
-                  setDidInitialContext("");
-                  setDidDocsLoaded(false);
-                  setDidSessionId(null);
-                  setActiveThread(null);
-                  setDidFlowState("entry");
-                  setMessages([]);
-                }
-                setMode(newMode);
-              }} />
+              <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
             </div>
           </div>
 
-          {mode === "childcare" ? renderDidContent() : (
+          {mainMode === "chat" ? (
+            <>
+              <CrisisBriefPanel />
+              <div className="border-b border-border bg-card/30">
+                <div className="max-w-4xl mx-auto px-4 py-3">
+                  <ModeSelector currentMode={mode} onModeChange={setMode} hideDid />
+                </div>
+              </div>
             <>
               {/* Non-DID Chat */}
               <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
