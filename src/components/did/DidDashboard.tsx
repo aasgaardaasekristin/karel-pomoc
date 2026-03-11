@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, RefreshCw, Loader2, MessageCircle, Zap, FileText } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Clock, AlertTriangle, Loader2, MessageCircle, Zap, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
-
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import type { DidSubMode } from "./DidSubModeSelector";
@@ -27,17 +26,18 @@ interface Props {
   syncProgress?: { current: number; total: number; currentName: string } | null;
   onQuickSubMode?: (subMode: DidSubMode) => void;
   onQuickThread?: (threadId: string, partName: string) => void;
+  contextDocs?: string;
 }
 
-const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode, onQuickThread }: Props) => {
+const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode, onQuickThread, contextDocs }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
-  const [isReformatting, setIsReformatting] = useState(false);
-  const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
+  const [lastCycleReport, setLastCycleReport] = useState<string | null>(null);
+  const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
 
   useEffect(() => {
     loadDashboardData();
@@ -47,20 +47,18 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     setLoading(true);
     try {
       // Get all unique part names from threads
-      const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data: threads } = await supabase
         .from("did_threads")
         .select("id, part_name, last_activity_at, messages, sub_mode")
         .eq("sub_mode", "cast")
         .order("last_activity_at", { ascending: false });
 
-      // Extract active threads (last 24h) for system map click-to-resume
-      // Include ALL recent threads regardless of is_processed status
+      // Show unprocessed threads (not 24h limit) — visible until Karel processes them
       const { data: recentThreads } = await supabase
         .from("did_threads")
         .select("id, part_name, last_activity_at, messages")
         .eq("sub_mode", "cast")
-        .gte("last_activity_at", cutoff24h)
+        .eq("is_processed", false)
         .order("last_activity_at", { ascending: false });
 
       if (recentThreads) {
@@ -95,16 +93,21 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         setParts(partList);
       }
 
-      // Get last update cycle
+      // Get last update cycle (any type)
       const { data: cycles } = await supabase
         .from("did_update_cycles")
-        .select("completed_at")
+        .select("completed_at, report_summary, cards_updated")
         .eq("status", "completed")
         .order("completed_at", { ascending: false })
         .limit(1);
 
       if (cycles && cycles.length > 0) {
         setLastCycleTime(cycles[0].completed_at);
+        setLastCycleReport(cycles[0].report_summary || null);
+        const cards = cycles[0].cards_updated;
+        if (Array.isArray(cards)) {
+          setLastCardsUpdated(cards.map((c: any) => typeof c === "string" ? c : c?.name || ""));
+        }
       }
 
       // Check last daily cycle for auto-backup
@@ -159,21 +162,40 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     return `před ${days} dny`;
   };
 
-  const statusIcon = (status: PartActivity["status"]) => {
-    switch (status) {
-      case "active": return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case "sleeping": return <Moon className="w-4 h-4 text-muted-foreground" />;
-      case "warning": return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
-    }
-  };
+  // Extract key insights from preloaded 00_CENTRUM docs
+  const contextSummary = useMemo(() => {
+    if (!contextDocs) return null;
+    const sections: { title: string; content: string }[] = [];
 
-  const statusLabel = (status: PartActivity["status"]) => {
-    switch (status) {
-      case "active": return "aktivní";
-      case "sleeping": return "spí";
-      case "warning": return "⚠️ neaktivní 7+ dní";
+    // Extract dashboard section
+    const dashboardMatch = contextDocs.match(/\[Kartoteka_DID\/00_CENTRUM: 00_Aktualni_Dashboard\]\n([\s\S]*?)(?=\[Kartoteka_DID|$)/);
+    if (dashboardMatch) {
+      const text = dashboardMatch[1].trim().slice(0, 600);
+      if (text && !text.startsWith("[Dokument")) {
+        sections.push({ title: "Aktuální dashboard", content: text });
+      }
     }
-  };
+
+    // Extract therapeutic plan
+    const planMatch = contextDocs.match(/\[Kartoteka_DID\/00_CENTRUM: 05_Terapeuticky_Plan_Aktualni\]\n([\s\S]*?)(?=\[Kartoteka_DID|$)/);
+    if (planMatch) {
+      const text = planMatch[1].trim().slice(0, 400);
+      if (text && !text.startsWith("[Dokument")) {
+        sections.push({ title: "Terapeutický plán", content: text });
+      }
+    }
+
+    // Extract relationship map highlights
+    const mapMatch = contextDocs.match(/\[Kartoteka_DID\/00_CENTRUM: Mapa_Vztahu_a_Vazeb\]\n([\s\S]*?)(?=\[Kartoteka_DID|$)/);
+    if (mapMatch) {
+      const text = mapMatch[1].trim().slice(0, 300);
+      if (text && !text.startsWith("[Dokument")) {
+        sections.push({ title: "Mapa vztahů", content: text });
+      }
+    }
+
+    return sections.length > 0 ? sections : null;
+  }, [contextDocs]);
 
   if (loading) {
     return (
@@ -186,124 +208,48 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
       {/* Header with last update indicator */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div>
-          <h3 className="text-sm font-medium text-foreground">Přehled systému</h3>
-          <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <Clock className="w-3 h-3" />
-            Poslední aktualizace kartotéky: {formatTimeAgo(lastCycleTime)}
+      <div className="mb-4">
+        <h3 className="text-sm font-medium text-foreground">Přehled systému</h3>
+        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+          <Clock className="w-3 h-3" />
+          Poslední aktualizace kartotéky: {formatTimeAgo(lastCycleTime)}
+        </p>
+        {lastCardsUpdated.length > 0 && (
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
+            Naposledy aktualizováno: {lastCardsUpdated.slice(0, 5).join(", ")}{lastCardsUpdated.length > 5 ? ` (+${lastCardsUpdated.length - 5})` : ""}
           </p>
-          {isAutoBackupRunning && (
-            <p className="text-[10px] sm:text-xs text-primary flex items-center gap-1 mt-0.5">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Probíhá automatická záloha...
-            </p>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onManualUpdate}
-          disabled={isUpdating}
-          className="h-8 text-xs gap-1.5"
-        >
-          {isUpdating ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="w-3.5 h-3.5" />
-          )}
-          {syncProgress ? (
-            <span>{syncProgress.current}/{syncProgress.total} {syncProgress.currentName}</span>
-          ) : (
-            <>
-              <span className="hidden sm:inline">Aktualizovat kartoteka_DID ihned</span>
-              <span className="sm:hidden">Aktual. kartotéku</span>
-            </>
-          )}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            setIsReformatting(true);
-            setReformatProgress(null);
-            toast.info("Načítám seznam karet...");
-            try {
-              const headers = await getAuthHeaders();
-              // Step 1: Get list of entries + classify txt
-              const listRes = await fetch(
-                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
-                { method: "POST", headers, body: JSON.stringify({ mode: "list" }) }
-              );
-              const listData = await listRes.json();
-              if (!listRes.ok) throw new Error(listData.error);
-
-              const entries = listData.entries || [];
-              const txtContentByPart = listData.txtContentByPart || {};
-              const total = entries.length;
-              let reformatted = 0, notFound = 0, errors = 0;
-
-              toast.info(`Přeformátování ${total} karet zahájeno...`);
-
-              // Step 2: Process each card one by one
-              for (let i = 0; i < total; i++) {
-                const entry = entries[i];
-                setReformatProgress({ current: i + 1, total, currentName: entry.name });
-                try {
-                  const res = await fetch(
-                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
-                    { method: "POST", headers, body: JSON.stringify({ mode: "process_one", index: i, txtContentForPart: txtContentByPart[entry.name] || "" }) }
-                  );
-                  const data = await res.json();
-                  if (data.result === "reformatted") reformatted++;
-                  else if (data.result === "not_found") notFound++;
-                  else errors++;
-                } catch (e) {
-                  console.error(`Card ${entry.name} failed:`, e);
-                  errors++;
-                }
-              }
-
-              // Step 3: Cleanup txt files
-              if ((listData.txtFiles || []).length > 0) {
-                try {
-                  await fetch(
-                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
-                    { method: "POST", headers, body: JSON.stringify({ mode: "cleanup_txt" }) }
-                  );
-                } catch {}
-              }
-
-              toast.success(`Hotovo! Přeformátováno: ${reformatted}/${total}, nenalezeno: ${notFound}, chyby: ${errors}`);
-            } catch (e) {
-              toast.error("Přeformátování selhalo");
-              console.error(e);
-            } finally {
-              setIsReformatting(false);
-              setReformatProgress(null);
-            }
-          }}
-          disabled={isReformatting}
-          className="h-8 text-xs gap-1.5"
-        >
-          {isReformatting ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <FileText className="w-3.5 h-3.5" />
-          )}
-          {reformatProgress ? (
-            <span>{reformatProgress.current}/{reformatProgress.total} {reformatProgress.currentName}</span>
-          ) : (
-            <>
-              <span className="hidden sm:inline">Přeformátovat karty A–M</span>
-              <span className="sm:hidden">Přeformátovat</span>
-            </>
-          )}
-        </Button>
+        )}
+        {lastCycleReport && (
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-2">
+            📋 {lastCycleReport.slice(0, 150)}{lastCycleReport.length > 150 ? "…" : ""}
+          </p>
+        )}
+        {isAutoBackupRunning && (
+          <p className="text-[10px] sm:text-xs text-primary flex items-center gap-1 mt-0.5">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Probíhá automatická záloha...
+          </p>
+        )}
       </div>
 
-      {/* Parts overview */}
-      {/* Quick Entry — active threads from last 24h */}
+      {/* Context summary from 00_CENTRUM */}
+      {contextSummary && (
+        <div className="mb-4 space-y-2">
+          {contextSummary.map((section, idx) => (
+            <details key={idx} className="rounded-lg border border-border bg-card/50 overflow-hidden">
+              <summary className="flex items-center gap-2 text-xs font-medium text-foreground px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors">
+                <Info className="w-3.5 h-3.5 text-primary flex-shrink-0" />
+                {section.title}
+              </summary>
+              <div className="px-3 pb-2 text-[11px] text-muted-foreground whitespace-pre-line leading-relaxed">
+                {section.content}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+
+      {/* Quick Entry — unprocessed threads (visible until Karel processes them) */}
       {activeThreads.length > 0 && onQuickThread && (
         <div className="mb-4">
           <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
@@ -311,7 +257,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             Navázat na rozhovor
           </h4>
           <div className="flex flex-wrap gap-2">
-            {activeThreads.slice(0, 10).map(t => (
+            {activeThreads.map(t => (
               <Button
                 key={t.id}
                 variant="outline"
@@ -328,6 +274,9 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         </div>
       )}
 
+      {/* System Map (clickable squares + chronology) */}
+      <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
+
       {/* Warnings */}
       {parts.filter(p => p.status === "warning").length > 0 && (
         <div className="mt-3 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
@@ -340,8 +289,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           </p>
         </div>
       )}
-
-      {/* Pattern detection is now automated in daily/weekly cycles */}
     </div>
   );
 };
