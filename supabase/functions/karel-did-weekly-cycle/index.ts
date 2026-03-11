@@ -649,83 +649,89 @@ ${perplexityContext}`,
     // ═══ 5c. PROCESS OUTPUTS – Update Drive (best-effort) ═══
 
     if (folderId && analysisText) {
-      // 5a. Save weekly report
-      if (centrumFolderId) {
+      // 5a. Ensure 06_Terapeuticke_Dohody folder exists
+      if (centrumFolderId && !dohodaFolderId) {
+        const centerFiles = await listFilesInFolder(token, centrumFolderId);
+        const existing = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+        if (existing) {
+          dohodaFolderId = existing.id;
+        } else {
+          const createRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: "06_Terapeuticke_Dohody", mimeType: DRIVE_FOLDER_MIME, parents: [centrumFolderId] }),
+          });
+          if (createRes.ok) {
+            const folder = await createRes.json();
+            dohodaFolderId = folder.id;
+            console.log(`[weekly] ✅ Created 06_Terapeuticke_Dohody folder`);
+          }
+        }
+      }
+
+      // 5b. Create date subfolder inside 06_Terapeuticke_Dohody for this week's outputs
+      let weeklySubfolderId: string | null = null;
+      if (dohodaFolderId) {
+        // Check if subfolder for this date already exists
+        const existingSubfolders = await listFilesInFolder(token, dohodaFolderId);
+        const existingSub = existingSubfolders.find(f => f.mimeType === DRIVE_FOLDER_MIME && f.name === dateStr);
+        if (existingSub) {
+          weeklySubfolderId = existingSub.id;
+        } else {
+          const createSubRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ name: dateStr, mimeType: DRIVE_FOLDER_MIME, parents: [dohodaFolderId] }),
+          });
+          if (createSubRes.ok) {
+            const sub = await createSubRes.json();
+            weeklySubfolderId = sub.id;
+            console.log(`[weekly] ✅ Created weekly subfolder: ${dateStr}`);
+          }
+        }
+      }
+
+      // 5c. Save weekly report into the date subfolder
+      const targetFolderForReport = weeklySubfolderId || centrumFolderId;
+      if (targetFolderForReport) {
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
         if (reportContent) {
           const reportFileName = `Tydenni_Report_${dateStr}`;
-          await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, centrumFolderId);
+          await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, targetFolderForReport);
           cardsUpdated.push("Tydenni_Report");
           console.log(`[weekly] ✅ Weekly report saved`);
         }
       }
 
-      // 5b. Process therapeutic agreements (06_Terapeuticke_Dohody)
+      // 5d. Process therapeutic agreements into the date subfolder
       const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
-      if (dohodaSection && centrumFolderId) {
-        // Ensure 06_Terapeuticke_Dohody folder exists
-        if (!dohodaFolderId) {
-          const centerFiles = await listFilesInFolder(token, centrumFolderId);
-          const existing = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
-          if (existing) {
-            dohodaFolderId = existing.id;
-          } else {
-            // Create the folder
-            const createRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ name: "06_Terapeuticke_Dohody", mimeType: DRIVE_FOLDER_MIME, parents: [centrumFolderId] }),
-            });
-            if (createRes.ok) {
-              const folder = await createRes.json();
-              dohodaFolderId = folder.id;
-              console.log(`[weekly] ✅ Created 06_Terapeuticke_Dohody folder`);
-            }
-          }
+      if (dohodaSection && weeklySubfolderId) {
+        const dohodaBlockRegex = /\[DOHODA:\s*(.+?)\]([\s\S]*?)\[\/DOHODA\]/g;
+
+        for (const match of dohodaSection.matchAll(dohodaBlockRegex)) {
+          const topic = match[1].trim();
+          const content = match[2].trim();
+          const safeFileName = `${topic.replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 60)}`;
+          const fullContent = `TERAPEUTICKÁ DOHODA: ${topic}\nDatum: ${dateStr}\nSprávce: Karel\n\n${content}`;
+          await createFileInFolder(token, safeFileName, fullContent, weeklySubfolderId);
+          cardsUpdated.push(`Dohoda: ${topic}`);
         }
 
-        if (dohodaFolderId) {
-          // Parse individual agreements
-          const dohodaBlockRegex = /\[DOHODA:\s*(.+?)\]([\s\S]*?)\[\/DOHODA\]/g;
-          const dohodaFiles = await listFilesInFolder(token, dohodaFolderId);
+        console.log(`[weekly] ✅ Agreements saved to subfolder ${dateStr}`);
+      }
 
-          for (const match of dohodaSection.matchAll(dohodaBlockRegex)) {
-            const topic = match[1].trim();
-            const content = match[2].trim();
-            const safeFileName = `${dateStr}_${topic.replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 50)}`;
-
-            // Check if agreement with similar topic exists
-            const existingFile = dohodaFiles.find(f => {
-              const fCanonical = canonicalText(f.name);
-              const topicCanonical = canonicalText(topic);
-              return fCanonical.includes(topicCanonical) || topicCanonical.includes(fCanonical.slice(-20));
-            });
-
-            if (existingFile) {
-              // Update existing
-              const existingContent = await readFileContent(token, existingFile.id);
-              const updatedContent = existingContent.trimEnd() + `\n\n═══ TÝDENNÍ REVIZE ${dateStr} ═══\n${content}`;
-              await updateFileById(token, existingFile.id, updatedContent, existingFile.mimeType);
-              cardsUpdated.push(`Dohoda: ${topic} (aktualizace)`);
-            } else {
-              // Create new
-              const fullContent = `TERAPEUTICKÁ DOHODA: ${topic}\nVytvořeno: ${dateStr}\nSprávce: Karel\n\n${content}`;
-              await createFileInFolder(token, safeFileName, fullContent, dohodaFolderId);
-              cardsUpdated.push(`Dohoda: ${topic} (nová)`);
-            }
-          }
-
-          // Update/create 00_Prehled_Dohod index
-          const indexContent = `PŘEHLED TERAPEUTICKÝCH DOHOD\nAktualizace: ${dateStr}\n\n${dohodaSection}`;
-          const indexFile = dohodaFiles.find(f => canonicalText(f.name).includes("prehled"));
-          if (indexFile) {
-            await updateFileById(token, indexFile.id, indexContent, indexFile.mimeType);
-          } else {
-            await createFileInFolder(token, "00_Prehled_Dohod", indexContent, dohodaFolderId);
-          }
-          cardsUpdated.push("00_Prehled_Dohod");
-          console.log(`[weekly] ✅ Agreements processed`);
+      // 5e. Update/create 00_Prehled_Dohod index at the root of 06_Terapeuticke_Dohody
+      if (dohodaSection && dohodaFolderId) {
+        const rootDohodaFiles = await listFilesInFolder(token, dohodaFolderId);
+        const indexContent = `PŘEHLED TERAPEUTICKÝCH DOHOD\nAktualizace: ${dateStr}\n\n${dohodaSection}`;
+        const indexFile = rootDohodaFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("prehled"));
+        if (indexFile) {
+          await updateFileById(token, indexFile.id, indexContent, indexFile.mimeType);
+        } else {
+          await createFileInFolder(token, "00_Prehled_Dohod", indexContent, dohodaFolderId);
         }
+        cardsUpdated.push("00_Prehled_Dohod");
+        console.log(`[weekly] ✅ Index updated`);
       }
 
       // (therapist tasks already inserted in step 5 above)
