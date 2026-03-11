@@ -69,10 +69,8 @@ Odpovídej v češtině. Buď konkrétní a praktický.`,
     const citations = perplexityData.citations || [];
 
     // Step 2: Use Karel (Gemini) to synthesize and personalize the results
-    // Determine who is searching from request context (passed by client)
-    const requestBody = await req.json().catch(() => ({}));
-    const createdBy = requestBody.createdBy || "Hana";
-    const isKata = createdBy === "Káťa";
+    const normalizedCreatedBy = createdBy === "Káťa" ? "Káťa" : "Hana";
+    const isKata = normalizedCreatedBy === "Káťa";
     const osobniOsloveni = isKata ? "Káťo" : "Haničko";
 
     const synthesisMessages = [
