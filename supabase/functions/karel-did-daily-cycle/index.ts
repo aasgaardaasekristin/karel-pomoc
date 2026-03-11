@@ -1434,9 +1434,17 @@ serve(async (req) => {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const isCronCall = authHeader === `Bearer ${serviceRoleKey}` || authHeader === `Bearer ${anonKey}`;
 
+  let resolvedUserId: string | null = null;
   if (!isCronCall) {
     const authResult = await requireAuth(req);
     if (authResult instanceof Response) return authResult;
+    resolvedUserId = (authResult as { user: any }).user?.id || null;
+  }
+  // For cron calls, look up any user from did_threads to use as owner
+  if (!resolvedUserId) {
+    const tmpSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: anyThread } = await tmpSb.from("did_threads").select("user_id").limit(1).single();
+    resolvedUserId = anyThread?.user_id || null;
   }
 
   // ═══ EMAIL GUARD: Only send report emails from scheduled cron calls ═══
@@ -1590,7 +1598,10 @@ serve(async (req) => {
     const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
     const allRecentConversations = allRecentConvRows ?? [];
 
-    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
+    const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
+    if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
+    const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
+    if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();

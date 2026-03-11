@@ -170,6 +170,9 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         if (Array.isArray(cards)) {
           setLastCardsUpdated(cards.map((c: any) => typeof c === "string" ? c : c?.name || ""));
         }
+      } else if (threads && threads.length > 0) {
+        // Fallback: use latest thread activity as proxy for last update
+        setLastCycleTime(threads[0].last_activity_at);
       }
 
       const { data: dailyCycles } = await supabase
@@ -197,6 +200,19 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           if (backupResponse.ok) {
             toast.success("Automatická záloha kartotéky dokončena");
             setLastBackupTime(new Date().toISOString());
+            // Reload cycle data to show the newly created record
+            const { data: newCycles } = await supabase
+              .from("did_update_cycles")
+              .select("completed_at, report_summary, cards_updated")
+              .eq("status", "completed")
+              .order("completed_at", { ascending: false })
+              .limit(1);
+            if (newCycles && newCycles.length > 0) {
+              setLastCycleTime(newCycles[0].completed_at);
+              setLastCycleReport(newCycles[0].report_summary || null);
+            } else {
+              setLastCycleTime(new Date().toISOString());
+            }
           }
         } catch (e) {
           console.warn("Auto-backup failed:", e);
