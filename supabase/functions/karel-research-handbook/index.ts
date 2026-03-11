@@ -43,7 +43,7 @@ serve(async (req) => {
               },
               {
                 role: "user",
-                content: `Najdi další odborné zdroje, metody a přístupy relevantní k tomuto terapeutickému/výzkumnému tématu: "${topic || "konzultace"}". Zaměř se na: 1) Konkrétní terapeutické techniky, 2) Diagnostické nástroje a testy, 3) Vědecky podložené přístupy, 4) Doporučené články a studie.`,
+                content: `Najdi další odborné zdroje, metody a přístupy relevantní k tomuto terapeutickému/výzkumnému tématu: "${topic || "konzultace"}". Zaměř se na: 1) Konkrétní terapeutické techniky s detailním postupem, 2) Diagnostické nástroje a testy, 3) Vědecky podložené přístupy, 4) Doporučené články a studie.`,
               },
             ],
             search_mode: "academic",
@@ -68,39 +68,39 @@ serve(async (req) => {
       .map((m: any) => `${m.role === "user" ? therapistLabel : "Karel"}: ${m.content}`)
       .join("\n\n");
 
-    // ── 3. Synthesize handbook ──
-    const synthesisPrompt = `Jsi Karel, supervizní AI asistent a výzkumný partner. Na základě níže uvedeného rozhovoru s terapeutem (${therapistLabel}) vytvoř STRUKTUROVANOU PŘÍRUČKU – profesní zdroj shrnující výsledky rešerše a konzultace.
+    // ── 3. Synthesize handbook with therapist-focused structure ──
+    const synthesisPrompt = `Jsi Karel, supervizní AI asistent. Na základě níže uvedeného rozhovoru s terapeutem/kou (${therapistLabel}) vytvoř STRUKTUROVANOU PŘÍRUČKU – praktický návod pro terapeuta k vytištění.
 
 ROZHOVOR:
 ${conversationText}
 
 ${perplexityEnrichment ? `DOPLŇUJÍCÍ ODBORNÉ INFORMACE Z REŠERŠE:\n${perplexityEnrichment}` : ""}
 
-Vytvoř příručku v tomto JSON formátu:
+Vytvoř příručku v tomto JSON formátu. KAŽDÁ metoda/aktivita musí být KOMPLETNÍ NÁVOD pro terapeuta:
+
 {
   "topic": "stručný název tématu (max 100 znaků)",
   "createdBy": "${therapistLabel}",
-  "summary": "shrnutí tématu, cíle rešerše a klíčové závěry v 3-5 větách",
-  "methods": [
+  "summary": "shrnutí tématu a klíčové závěry v 3-5 větách – co terapeut najde v této příručce",
+  "activities": [
     {
-      "name": "název metody/techniky/přístupu",
-      "description": "detailní popis – jak metodu aplikovat, krok za krokem",
-      "application": "kde a u koho lze metodu použít (cílová skupina, typy problémů)",
-      "difficulty": "snadné | střední | pokročilé"
+      "name": "NÁZEV metody/hry/aktivity/techniky",
+      "target_group": "pro koho je určena – např. 'děti předškolního věku (3-6 let)', 'adolescenti', 'dospělí s traumatem', 'dětské části v DID systému' apod.",
+      "goal": "účel aktivity – CO má metoda dosáhnout (např. regulace emocí, budování důvěry, prolomení vnitřních zábran, stabilizace...)",
+      "principle": "srozumitelné vysvětlení PROČ metoda funguje – jaký je psychologický/neurovědní princip za ní",
+      "materials": ["seznam pomůcek, které si terapeut musí připravit PŘEDEM – např. 'papíry A4', 'pastelky', 'figurky zvířat', 'přikrývka', 'hudební přehrávač' atd."],
+      "introduction": "JAK metodu/hru uvést – konkrétní slova, příběh, pohádka, pokus, hra. Jak to terapeut klientovi představí, aby to bylo přirozené a bezpečné.",
+      "steps": ["krok 1: ...", "krok 2: ...", "krok 3: ..."],
+      "expected_course": "jak by měl průběh ideálně vypadat – co se typicky děje, jak klient reaguje",
+      "expected_outcome": "očekávaný výsledek – např. 'dítě by se mělo uklidnit', 'klient se více otevře', 'získá důvěru v terapeuta', 'prolomí vnitřní zábrany' apod.",
+      "diagnostic_watch": ["na co si terapeut má VŠÍMAT – konkrétní reakce klienta, signály, projevy, které mají diagnostickou hodnotu"],
+      "warnings": ["bezpečnostní poznámky, kontraindikace, co NEDĚLAT"],
+      "difficulty": "snadné | střední | pokročilé",
+      "duration": "přibližná délka aktivity (např. '15-20 minut', '30-45 minut')"
     }
   ],
-  "diagnostic_tools": [
-    {
-      "name": "název testu/nástroje",
-      "description": "popis, zadání, interpretace",
-      "target_group": "pro koho je vhodný"
-    }
-  ],
-  "warnings": [
-    "konkrétní upozornění, kontraindikace, rizika"
-  ],
-  "tips": [
-    "praktický tip pro terapeutickou praxi"
+  "general_tips": [
+    "obecné praktické tipy pro terapeutickou praxi relevantní k tématu"
   ],
   "sources": [
     {
@@ -109,19 +109,17 @@ Vytvoř příručku v tomto JSON formátu:
       "description": "stručný popis relevance"
     }
   ],
-  "action_plan": [
-    "konkrétní krok/návrh pro další postup"
-  ],
-  "karel_notes": "Karlovy poznámky – jak výsledky propojit s praxí, návrhy na využití v kartotéce, doporučení pro oba terapeuty"
+  "karel_notes": "Karlovy poznámky – jak výsledky propojit s praxí, doporučení pro terapeuta"
 }
 
 PRAVIDLA:
-- SYNTETIZUJ rozhovor do praktických rad, neopisuj doslovně
-- Metody popisuj DETAILNĚ s konkrétními kroky
+- Každá aktivita musí být KOMPLETNÍ NÁVOD – terapeut by měl být schopen ji provést jen z tohoto PDF
+- Popisuj KONKRÉTNĚ: jaká slova použít, jaké pomůcky, jak uvést, co pozorovat
+- Pokud je aktivit více, seřaď je logicky (od jednodušších ke složitějším, nebo podle průběhu sezení)
 - U zdrojů používej VÝHRADNĚ zdroje z vyhledávání a rozhovoru – NEVYMÝŠLEJ citace
 - Všechno piš česky
-- Zaměř se na PRAKTICKOU POUŽITELNOST v terapeutické praxi
-- Pokud jde o DID-relevantní téma, zdůrazni to v karel_notes`;
+- Materiály/pomůcky VŽDY uveď – i kdyby to bylo "žádné speciální pomůcky nejsou potřeba"
+- "steps" musí být KONKRÉTNÍ kroky, ne obecné fráze`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -152,7 +150,7 @@ PRAVIDLA:
     try {
       handbook = JSON.parse(content);
     } catch {
-      handbook = { topic: topic || "konzultace", summary: content, methods: [], diagnostic_tools: [], warnings: [], tips: [], sources: [], action_plan: [], karel_notes: "" };
+      handbook = { topic: topic || "konzultace", summary: content, activities: [], general_tips: [], sources: [], karel_notes: "" };
     }
 
     return new Response(JSON.stringify(handbook), {
