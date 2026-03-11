@@ -700,7 +700,7 @@ ${perplexityContext}`,
           const source = m[3].trim();
           const priority = m[4].trim();
           if (task) {
-            await sb.from("did_therapist_tasks").insert({
+            const { error: insertTaskError } = await sb.from("did_therapist_tasks").insert({
               task,
               assigned_to: assignee,
               source_agreement: source,
@@ -708,6 +708,10 @@ ${perplexityContext}`,
               note: `Vytvořeno týdenním cyklem ${dateStr}`,
               user_id: userId,
             });
+            if (insertTaskError) {
+              console.error("[weekly] Failed to insert therapist task:", insertTaskError);
+              continue;
+            }
             insertedTasks++;
           }
         }
