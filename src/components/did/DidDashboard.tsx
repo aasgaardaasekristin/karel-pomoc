@@ -122,11 +122,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         .eq("sub_mode", "cast")
         .order("last_activity_at", { ascending: false });
 
+      const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data: recentThreads } = await supabase
         .from("did_threads")
         .select("id, part_name, last_activity_at, messages")
         .eq("sub_mode", "cast")
-        .eq("is_processed", false)
+        .gte("last_activity_at", cutoff24h)
         .order("last_activity_at", { ascending: false });
 
       if (recentThreads) {
