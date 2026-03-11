@@ -1123,7 +1123,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     }
   };
 
-
+  const handleGenerateHandbook = async () => {
     if (isHandbookLoading) return;
     setIsHandbookLoading(true);
     try {
