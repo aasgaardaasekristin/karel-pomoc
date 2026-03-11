@@ -9,7 +9,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { query, conversationHistory } = await req.json();
+    const { query, conversationHistory, createdBy } = await req.json();
 
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     if (!PERPLEXITY_API_KEY) throw new Error("PERPLEXITY_API_KEY is not configured");
