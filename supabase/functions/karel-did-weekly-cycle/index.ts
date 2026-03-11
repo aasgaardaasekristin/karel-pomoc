@@ -849,11 +849,11 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
     // ═══ 7. TRIGGER RESEARCH WEEKLY SYNC ═══
     let researchSyncResult = null;
     try {
-      const researchRes = await fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+      const researchRes = await withTimeout(fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      });
+      }), 25000, "Research weekly sync");
       if (researchRes.ok) {
         researchSyncResult = await researchRes.json();
         console.log("[weekly] Research sync completed");
