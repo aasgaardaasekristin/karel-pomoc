@@ -7,6 +7,8 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { DidSubMode } from "./DidSubModeSelector";
+import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
+import DidAgreementsPanel from "./DidAgreementsPanel";
 
 interface PartActivity {
   name: string;
