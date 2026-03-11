@@ -11,6 +11,7 @@ type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "re
 interface ModeSelectorProps {
   currentMode: ConversationMode;
   onModeChange: (mode: ConversationMode) => void;
+  hideDid?: boolean;
 }
 
 const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
