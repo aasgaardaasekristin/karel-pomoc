@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
@@ -7,6 +7,8 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import type { DidSubMode } from "./DidSubModeSelector";
+import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
+import DidAgreementsPanel from "./DidAgreementsPanel";
 
 interface PartActivity {
   name: string;
@@ -349,6 +351,20 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             {overviewLoading && <Loader2 className="w-3 h-3 animate-spin text-primary inline-block ml-1" />}
           </div>
         )}
+      </div>
+
+      {/* Therapist Tasks */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-3">
+          <ListChecks className="w-3.5 h-3.5 text-primary" />
+          Úkoly pro terapeutky
+        </h4>
+        <DidTherapistTaskBoard />
+      </div>
+
+      {/* Agreements Panel */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <DidAgreementsPanel />
       </div>
 
       {/* System Map */}

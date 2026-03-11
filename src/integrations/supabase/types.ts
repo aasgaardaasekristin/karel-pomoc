@@ -377,6 +377,57 @@ export type Database = {
           },
         ]
       }
+      did_therapist_tasks: {
+        Row: {
+          assigned_to: string
+          category: string | null
+          completed_at: string | null
+          completed_note: string | null
+          created_at: string
+          due_date: string | null
+          id: string
+          note: string | null
+          priority: string | null
+          source_agreement: string | null
+          status: string
+          task: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assigned_to?: string
+          category?: string | null
+          completed_at?: string | null
+          completed_note?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          note?: string | null
+          priority?: string | null
+          source_agreement?: string | null
+          status?: string
+          task: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          assigned_to?: string
+          category?: string | null
+          completed_at?: string | null
+          completed_note?: string | null
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          note?: string | null
+          priority?: string | null
+          source_agreement?: string | null
+          status?: string
+          task?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_threads: {
         Row: {
           created_at: string

@@ -434,7 +434,15 @@ Karlovy poznámky: ...
 Plnění: X%
 [/DOHODA]
 
-═══ 3. CENTRUM UPDATES ═══
+═══ 2b. ÚKOLY PRO TERAPEUTKY ═══
+Formát: [UKOLY]...[/UKOLY]
+
+Pro každý úkol vytvoř řádek ve formátu:
+[UKOL] assignee=hanka|kata|both | task=Popis úkolu | source=Název dohody nebo kontext | priority=normal|high [/UKOL]
+
+Vytvoř konkrétní, splnitelné úkoly pro Hanku a Káťu na základě analýzy a dohod.
+
+
 Formát:
 
 [CENTRUM:05_Terapeuticky_Plan_Aktualni]
@@ -584,6 +592,33 @@ ${perplexityContext}`,
           }
           cardsUpdated.push("00_Prehled_Dohod");
           console.log(`[weekly] ✅ Agreements processed`);
+        }
+      }
+
+      // 5b2. Extract and insert therapist tasks into DB
+      const ukolySection = analysisText.match(/\[UKOLY\]([\s\S]*?)\[\/UKOLY\]/)?.[1]?.trim();
+      if (ukolySection) {
+        const ukolRegex = /\[UKOL\]\s*assignee=(\S+)\s*\|\s*task=([^|]+)\|\s*source=([^|]+)\|\s*priority=(\S+)\s*\[\/UKOL\]/g;
+        let insertedTasks = 0;
+        for (const m of ukolySection.matchAll(ukolRegex)) {
+          const assignee = m[1].trim();
+          const task = m[2].trim();
+          const source = m[3].trim();
+          const priority = m[4].trim();
+          if (task) {
+            await sb.from("did_therapist_tasks").insert({
+              task,
+              assigned_to: assignee,
+              source_agreement: source,
+              priority,
+              note: `Vytvořeno týdenním cyklem ${dateStr}`,
+            });
+            insertedTasks++;
+          }
+        }
+        if (insertedTasks > 0) {
+          cardsUpdated.push(`${insertedTasks} úkolů pro terapeutky`);
+          console.log(`[weekly] ✅ Inserted ${insertedTasks} therapist tasks`);
         }
       }
 
