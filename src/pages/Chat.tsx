@@ -1471,14 +1471,31 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Tvůj partner a supervizní mentor</p>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <Button variant="outline" size="sm" onClick={() => navigate("/kartoteka")} className="h-8 px-2 sm:px-3">
-              <FolderOpen className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Kartotéka</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/calm")} className="h-8 px-2 sm:px-3">
-              <Leaf className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Zklidnění</span>
-            </Button>
+            {mode === "childcare" ? (
+              <>
+                <Button variant="outline" size="sm" onClick={handleManualUpdate} disabled={isManualUpdateLoading} className="h-8 px-2 sm:px-3">
+                  {isManualUpdateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  {syncProgress ? (
+                    <span className="text-xs ml-1">{syncProgress.current}/{syncProgress.total}</span>
+                  ) : (
+                    <span className="hidden sm:inline ml-1">Aktual. kartotéku</span>
+                  )}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleReformatCards} disabled={isReformatting} className="h-8 px-2 sm:px-3">
+                  {isReformatting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  {reformatProgress ? (
+                    <span className="text-xs ml-1">{reformatProgress.current}/{reformatProgress.total}</span>
+                  ) : (
+                    <span className="hidden sm:inline ml-1">Přeformátovat</span>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => navigate("/kartoteka")} className="h-8 px-2 sm:px-3">
+                <FolderOpen className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Kartotéka</span>
+              </Button>
+            )
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
               <LogOut className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Odejít</span>
