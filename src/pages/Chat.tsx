@@ -138,6 +138,7 @@ const Chat = () => {
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
+  const [isResearchHandbookLoading, setIsResearchHandbookLoading] = useState(false);
   const [isReformatting, setIsReformatting] = useState(false);
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
