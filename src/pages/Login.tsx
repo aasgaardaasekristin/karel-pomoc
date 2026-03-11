@@ -17,7 +17,7 @@ const Login = () => {
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) navigate("/chat");
+      if (session) navigate("/hub");
     };
     checkAuth();
 
