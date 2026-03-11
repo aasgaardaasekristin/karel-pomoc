@@ -879,6 +879,23 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("[weekly] Error:", error);
+
+    if (cycleId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseKey);
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          report_summary: `Týdenní cyklus selhal: ${error instanceof Error ? error.message : "Unknown error"}`.slice(0, 2000),
+          cards_updated: [],
+        }).eq("id", cycleId);
+      } catch (updateError) {
+        console.error("[weekly] Failed to persist failure state:", updateError);
+      }
+    }
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
