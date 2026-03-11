@@ -1709,7 +1709,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                   <ModeSelector currentMode={mode} onModeChange={setMode} hideDid />
                 </div>
               </div>
-            <>
+
               {/* Non-DID Chat */}
               <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
                 <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
@@ -1776,21 +1776,21 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 </div>
               </div>
             </>
+          ) : (
+            <>
+              <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
+                <SessionSidebar />
+                <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
+                    <SessionReportForm />
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
+                    <SupervisionChat />
+                  </div>
+                </div>
+              </div>
+            </>
           )}
-        </>
-      ) : (
-        <>
-          <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
-            <SessionSidebar />
-            <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
-              <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
-                <SessionReportForm />
-              </div>
-              <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
-                <SupervisionChat />
-              </div>
-            </div>
-          </div>
         </>
       )}
       {studyMaterial && <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />}
