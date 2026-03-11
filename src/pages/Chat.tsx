@@ -406,7 +406,7 @@ const Chat = () => {
     setDidSessionId(null);
     setActiveThread(null);
     setMessages([]);
-    setDidFlowState("dashboard");
+    setDidFlowState("entry");
     refreshHistory();
   }, [didSubMode, messages, didInitialContext, didSessionId, activeThread]);
 
