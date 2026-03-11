@@ -2546,15 +2546,31 @@ ${perplexityContext}`,
           if (!newContent || newContent.length < 10) continue;
 
           try {
-            // Find the target document
             const docCanonical = canonicalText(docName);
+
+            // ═══ SPECIAL: 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
+            if (docCanonical.includes("terapeutick") && docCanonical.includes("plan")) {
+              const planFile = centerFiles.find(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("plan"));
+              if (!planFile) {
+                console.warn(`[CENTRUM] Therapeutic plan doc not found, skipping`);
+                continue;
+              }
+
+              // Full rewrite – the AI already generated the complete document content
+              const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
+              await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
+              console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
+              continue;
+            }
+
+            // Find the target document
             let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
 
             // Handle 06_Terapeuticke_Dohody specially - it might be a folder
             if (!targetFile && docCanonical.includes("dohod")) {
               const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
               if (dohodaFolder) {
-                // Create a new dohoda file with date prefix
                 const dohodaFileName = `${dateStr}_aktualizace`;
                 await createFileInFolder(token, dohodaFileName, `[${dateStr}] Aktualizace z denního cyklu\n\n${newContent}`, dohodaFolder.id);
                 cardsUpdated.push(`CENTRUM: ${docName} (nová dohoda ${dateStr})`);
@@ -2571,8 +2587,6 @@ ${perplexityContext}`,
             // Read existing content for dedup
             const existingContent = await readFileContent(token, targetFile.id);
 
-            // Simple dedup: check if the new content (first 100 chars) already exists
-            const contentPreview = newContent.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             if (existingContent.includes(newContent.slice(0, 80))) {
               console.log(`[CENTRUM] Skipping "${docName}" – content already present (dedup)`);
               continue;
