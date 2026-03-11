@@ -183,10 +183,10 @@ const Hub = () => {
             {/* Research Mode - No PIN */}
             <button
               onClick={handleResearchClick}
-              className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-blue-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-blue-500 group"
+              className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-accent/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-accent group"
             >
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 group-hover:bg-blue-500/20 transition-colors">
-                <Search className="w-6 h-6 text-blue-500" />
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
+                <Search className="w-6 h-6 text-accent" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
