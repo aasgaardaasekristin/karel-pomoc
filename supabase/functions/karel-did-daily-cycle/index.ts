@@ -2660,7 +2660,7 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       threadsProcessed: threads.length,
       conversationsProcessed: conversations.length,
       cardsUpdated,
-      reportSent: !!RESEND_API_KEY,
+      reportSent: emailSentToHanka || emailSentToKata,
       processingRetained: hadCardUpdateErrors,
       message: hadCardUpdateErrors
         ? "Aktualizace některých karet selhala – konverzace zůstaly neoznačené pro další pokus."
