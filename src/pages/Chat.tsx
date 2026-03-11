@@ -257,6 +257,8 @@ const Chat = () => {
         // Auto-set mode based on hub section
         if (hubSection === "did" && mode !== "childcare") {
           setMode("childcare");
+        } else if (hubSection === "research" && mode !== "research") {
+          setMode("research");
         } else if (hubSection === "hana" && mode === "childcare") {
           setMode("debrief");
         }
