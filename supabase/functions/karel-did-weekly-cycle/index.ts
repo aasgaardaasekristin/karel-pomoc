@@ -411,7 +411,7 @@ Active parts in this system: ${activeFragments}`;
     }
 
     // ═══ 4. AI COMPREHENSIVE WEEKLY ANALYSIS ═══
-    const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const analysisResponse = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
