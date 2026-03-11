@@ -464,7 +464,32 @@ Nové poznatky o vztazích mezi částmi.
 [/CENTRUM]
 
 [CENTRUM:00_Aktualni_Dashboard]
-Aktualizace stavu systému.
+⚠️ TENTO DOKUMENT SE PŘEPISUJE CELÝ – vygeneruj kompletní nový obsah.
+Dashboard je "kontrolní panel" – čitelný za 30 sekund.
+
+POVINNÁ STRUKTURA (7 sekcí):
+
+SEKCE 1 – STAV SYSTÉMU TEĎ
+Pro KAŽDOU aktivní část: Jméno [emoji stav] – stabilita (🟢🟡🔴), poslední kontakt
+Souhrn: počet aktivních/spících, celková stabilita 1-10
+
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️
+Triggery, nesplněné dohody, části v ohrožení, blížící se termíny
+
+SEKCE 3 – SOUHRN TÝDNE (v týdenním cyklu místo 24h)
+Kdo mluvil, klíčové momenty, změny stavů, nové poznatky
+
+SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤
+Pro každou spící: jak dlouho, riziko probuzení, doporučení
+
+SEKCE 5 – TERAPEUTICKÝ FOKUS 🎯
+Top 3 priority na příští týden – s kým, jakou metodou, co dosáhnout
+
+SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬
+Vzkazy mezi Hankou a Kátou, strategické sdílení
+
+SEKCE 7 – KARLOVY POSTŘEHY 🔍
+Nezařazené vzorce, hypotézy, propojení, měkká data
 [/CENTRUM]
 
 ═══ PRAVIDLA ═══
