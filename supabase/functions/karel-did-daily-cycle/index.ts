@@ -2528,10 +2528,8 @@ ${perplexityContext}`,
       const dateStr = reportDatePrague;
 
       // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA – ONLY from cron
-      if (shouldSendEmails && RESEND_API_KEY && finalReportText) {
+      if (shouldSendEmails && resend && finalReportText) {
         try {
-          const resend = new Resend(RESEND_API_KEY);
-          const dateCz = new Date().toLocaleDateString("cs-CZ");
 
           // Generate personalized reports using AI
           const partsSummary = successfulCardUpdates.map(s => s.partName).join(", ") || "žádné";
