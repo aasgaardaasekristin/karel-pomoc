@@ -25,7 +25,7 @@ const ResearchThreadList = ({ threads, onSelect, onDelete, onNew, loading }: Pro
       <div className="text-center mb-6">
         <h2 className="text-lg font-serif font-semibold text-foreground">🔬 Profesní zdroje</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Vlákna výzkumů a odborných rešerší (aktivní 7 dní)
+          Vlákna výzkumů a odborných rešerší
         </p>
       </div>
 
