@@ -1845,6 +1845,53 @@ Formát HTML emailu:
         }
       }
       // Cards for parts mentioned in conversations will be found by AI + updateCardSections()
+
+      // Load 00_CENTRUM documents for dedup context
+      let centrumDocsContext = "";
+      let centrumFolderId: string | null = null;
+      try {
+        const rootChildren = await listFilesInFolder(token, folderId);
+        const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
+        if (centerFolder) {
+          centrumFolderId = centerFolder.id;
+          const centrumDocNames = ["05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu"];
+          const centerFiles = await listFilesInFolder(token, centerFolder.id);
+          for (const docName of centrumDocNames) {
+            const canonical = canonicalText(docName);
+            const file = centerFiles.find(f => canonicalText(f.name).includes(canonical) || f.name.includes(docName));
+            if (file) {
+              try {
+                const content = await readFileContent(token, file.id);
+                const trimmed = content.length > 3000 ? content.slice(0, 3000) + "…" : content;
+                centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${file.name} ===\n${trimmed}\n`;
+              } catch {}
+            }
+          }
+          // Also check 06_Terapeuticke_Dohody subfolder
+          const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
+          if (dohodyCandidates.length > 0) {
+            // It might be a folder or a file
+            for (const d of dohodyCandidates.slice(0, 1)) {
+              if (d.mimeType === DRIVE_FOLDER_MIME) {
+                const subFiles = await listFilesInFolder(token, d.id);
+                const latest = subFiles.sort((a, b) => b.name.localeCompare(a.name))[0];
+                if (latest) {
+                  try {
+                    const content = await readFileContent(token, latest.id);
+                    centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${latest.name} (nejnovější dohoda) ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
+                  } catch {}
+                }
+              } else {
+                try {
+                  const content = await readFileContent(token, d.id);
+                  centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
+                } catch {}
+              }
+            }
+          }
+          if (centrumDocsContext) console.log(`[daily-cycle] Loaded CENTRUM docs context (${centrumDocsContext.length} chars)`);
+        }
+      } catch (e) { console.warn("Failed to load CENTRUM docs for dedup:", e); }
     }
 
     // 3. AI ANALÝZA – full A-M decomposition
@@ -2063,14 +2110,41 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 [SEKCE:M] Karlova analytická poznámka
 [/KARTA]
 
-Po všech kartách:
+═══ AKTUALIZACE DOKUMENTŮ 00_CENTRUM ═══
+Pokud z rozhovorů (zejména terapeutických – mamka/kata režim) vyplývají relevantní informace pro CENTRUM dokumenty, vypiš je v tomto formátu:
+
+[CENTRUM:05_Terapeuticky_Plan_Aktualni]
+Nové informace pro terapeutický plán – cíle, strategie, změny v přístupu, které vyplynuly z rozhovorů.
+[/CENTRUM]
+
+[CENTRUM:06_Terapeuticke_Dohody]
+Nové dohody mezi terapeuty – konkrétní zaměření, společné cíle, co se záměrně neřeší.
+[/CENTRUM]
+
+[CENTRUM:00_Aktualni_Dashboard]
+Aktualizace přehledu – změny ve stavu systému, nové trendy, důležité události.
+[/CENTRUM]
+
+[CENTRUM:04_Mapa_Vztahu]
+Nové poznatky o vztazích mezi částmi, změny v dynamice.
+[/CENTRUM]
+
+PRAVIDLA PRO CENTRUM:
+- Piš POUZE nové informace, které ještě NEJSOU v existujícím dokumentu
+- Každý záznam začni datem [YYYY-MM-DD]
+- Informace z terapeutických rozhovorů (mamka/kata) jsou PRIMÁRNÍ zdroj pro CENTRUM
+- Informace z rozhovorů částí (cast) jsou SEKUNDÁRNÍ – zapiš pouze pokud mění celkový stav systému
+- NEVYTVÁŘEJ CENTRUM blok pokud nemáš nové relevantní informace pro daný dokument
+
+Po všech kartách a CENTRUM blocích:
 [REPORT]
 - ⚠️ TERMINOLOGIE: Rozlišuj přesně:
   • "Zápis do existující karty [jméno]" = karta JIŽ EXISTUJE, pouze jsi zapsal nový obsah
   • "Založena NOVÁ karta [jméno]" = část NEMĚLA kartu, vytvořil jsi novou
   • "Probuzení [jméno] z archivu" = karta existovala v 03_ARCHIV, přesunuta do 01_AKTIVNI
+  • "Aktualizace CENTRUM dokumentu [název]" = zapsal nové info do dokumentu v 00_CENTRUM
   NIKDY neříkej "založil jsem kartu" pokud karta již existovala!
-- Co bylo změněno (karta + sekce) a proč
+- Co bylo změněno (karta + sekce + CENTRUM dokumenty) a proč
 - Shrnutí: kdo dnes mluvil a jaké části byly aktivní
 - Doporučení pro mamku (co dělat večer + proč)
 - Doporučení pro Káťu (jak reagovat + proč)
@@ -2105,6 +2179,7 @@ Tyto 4 sekce jsou POVINNÉ při probuzení. Nestačí pouze přesunout soubor �
 ${instructionContext ? `\n═══ INSTRUKCE PRO KARLA (z 00_CENTRUM) ═══\n${instructionContext}` : ""}
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
+${centrumDocsContext ? `\nEXISTUJÍCÍ DOKUMENTY 00_CENTRUM (pro deduplikaci – NEPIŠ info které tam už je):\n${centrumDocsContext}` : ""}
 ${perplexityContext}`,
           },
           { role: "user", content: allSummaries },
@@ -2265,6 +2340,61 @@ ${perplexityContext}`,
           } catch (e) {
             hadCardUpdateErrors = true;
             console.error(`Failed to update card for ${rawPartName}:`, e);
+          }
+        }
+      }
+
+      // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
+      if (centrumFolderId) {
+        const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
+        const centerFiles = await listFilesInFolder(token, centrumFolderId);
+        const dateStr = new Date().toISOString().slice(0, 10);
+
+        for (const match of analysisText.matchAll(centrumBlockRegex)) {
+          const docName = match[1].trim();
+          const newContent = match[2].trim();
+          if (!newContent || newContent.length < 10) continue;
+
+          try {
+            // Find the target document
+            const docCanonical = canonicalText(docName);
+            let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
+
+            // Handle 06_Terapeuticke_Dohody specially - it might be a folder
+            if (!targetFile && docCanonical.includes("dohod")) {
+              const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+              if (dohodaFolder) {
+                // Create a new dohoda file with date prefix
+                const dohodaFileName = `${dateStr}_aktualizace`;
+                await createFileInFolder(token, dohodaFileName, `[${dateStr}] Aktualizace z denního cyklu\n\n${newContent}`, dohodaFolder.id);
+                cardsUpdated.push(`CENTRUM: ${docName} (nová dohoda ${dateStr})`);
+                console.log(`[CENTRUM] ✅ Created new dohoda: ${dohodaFileName}`);
+                continue;
+              }
+            }
+
+            if (!targetFile) {
+              console.warn(`[CENTRUM] Document "${docName}" not found in 00_CENTRUM, skipping`);
+              continue;
+            }
+
+            // Read existing content for dedup
+            const existingContent = await readFileContent(token, targetFile.id);
+
+            // Simple dedup: check if the new content (first 100 chars) already exists
+            const contentPreview = newContent.slice(0, 100).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            if (existingContent.includes(newContent.slice(0, 80))) {
+              console.log(`[CENTRUM] Skipping "${docName}" – content already present (dedup)`);
+              continue;
+            }
+
+            // Append new content with date header
+            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu:\n${newContent}`;
+            await updateFileById(token, targetFile.id, updatedContent, targetFile.mimeType);
+            cardsUpdated.push(`CENTRUM: ${docName} (aktualizace)`);
+            console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
+          } catch (e) {
+            console.error(`[CENTRUM] Failed to update "${docName}":`, e);
           }
         }
       }
