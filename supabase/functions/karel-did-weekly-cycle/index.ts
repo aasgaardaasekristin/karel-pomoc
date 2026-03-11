@@ -595,6 +595,33 @@ ${perplexityContext}`,
         }
       }
 
+      // 5b2. Extract and insert therapist tasks into DB
+      const ukolySection = analysisText.match(/\[UKOLY\]([\s\S]*?)\[\/UKOLY\]/)?.[1]?.trim();
+      if (ukolySection) {
+        const ukolRegex = /\[UKOL\]\s*assignee=(\S+)\s*\|\s*task=([^|]+)\|\s*source=([^|]+)\|\s*priority=(\S+)\s*\[\/UKOL\]/g;
+        let insertedTasks = 0;
+        for (const m of ukolySection.matchAll(ukolRegex)) {
+          const assignee = m[1].trim();
+          const task = m[2].trim();
+          const source = m[3].trim();
+          const priority = m[4].trim();
+          if (task) {
+            await sb.from("did_therapist_tasks").insert({
+              task,
+              assigned_to: assignee,
+              source_agreement: source,
+              priority,
+              note: `Vytvořeno týdenním cyklem ${dateStr}`,
+            });
+            insertedTasks++;
+          }
+        }
+        if (insertedTasks > 0) {
+          cardsUpdated.push(`${insertedTasks} úkolů pro terapeutky`);
+          console.log(`[weekly] ✅ Inserted ${insertedTasks} therapist tasks`);
+        }
+      }
+
       // 5c. Process CENTRUM updates (05, 04, 00)
       if (centrumFolderId) {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
