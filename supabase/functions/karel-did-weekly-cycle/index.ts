@@ -683,6 +683,18 @@ ${perplexityContext}`,
               continue;
             }
 
+            // 00_Aktualni_Dashboard – FULL REWRITE
+            if (docCanonical.includes("dashboard")) {
+              const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
+              if (dashFile) {
+                const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${newContent}`;
+                await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
+                cardsUpdated.push("00_Dashboard (týdenní přepis)");
+                console.log(`[weekly] ✅ Dashboard rewritten`);
+              }
+              continue;
+            }
+
             // Other CENTRUM docs – append
             const targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
             if (targetFile) {
