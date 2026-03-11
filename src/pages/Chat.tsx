@@ -310,7 +310,7 @@ const Chat = () => {
     if (mode !== "childcare") {
       setDidSubMode(null);
       setDidInitialContext("");
-      setDidFlowState("dashboard");
+      setDidFlowState("entry");
       setActiveThread(null);
     }
 
