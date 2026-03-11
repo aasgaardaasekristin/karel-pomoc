@@ -2063,14 +2063,41 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 [SEKCE:M] Karlova analytická poznámka
 [/KARTA]
 
-Po všech kartách:
+═══ AKTUALIZACE DOKUMENTŮ 00_CENTRUM ═══
+Pokud z rozhovorů (zejména terapeutických – mamka/kata režim) vyplývají relevantní informace pro CENTRUM dokumenty, vypiš je v tomto formátu:
+
+[CENTRUM:05_Terapeuticky_Plan_Aktualni]
+Nové informace pro terapeutický plán – cíle, strategie, změny v přístupu, které vyplynuly z rozhovorů.
+[/CENTRUM]
+
+[CENTRUM:06_Terapeuticke_Dohody]
+Nové dohody mezi terapeuty – konkrétní zaměření, společné cíle, co se záměrně neřeší.
+[/CENTRUM]
+
+[CENTRUM:00_Aktualni_Dashboard]
+Aktualizace přehledu – změny ve stavu systému, nové trendy, důležité události.
+[/CENTRUM]
+
+[CENTRUM:04_Mapa_Vztahu]
+Nové poznatky o vztazích mezi částmi, změny v dynamice.
+[/CENTRUM]
+
+PRAVIDLA PRO CENTRUM:
+- Piš POUZE nové informace, které ještě NEJSOU v existujícím dokumentu
+- Každý záznam začni datem [YYYY-MM-DD]
+- Informace z terapeutických rozhovorů (mamka/kata) jsou PRIMÁRNÍ zdroj pro CENTRUM
+- Informace z rozhovorů částí (cast) jsou SEKUNDÁRNÍ – zapiš pouze pokud mění celkový stav systému
+- NEVYTVÁŘEJ CENTRUM blok pokud nemáš nové relevantní informace pro daný dokument
+
+Po všech kartách a CENTRUM blocích:
 [REPORT]
 - ⚠️ TERMINOLOGIE: Rozlišuj přesně:
   • "Zápis do existující karty [jméno]" = karta JIŽ EXISTUJE, pouze jsi zapsal nový obsah
   • "Založena NOVÁ karta [jméno]" = část NEMĚLA kartu, vytvořil jsi novou
   • "Probuzení [jméno] z archivu" = karta existovala v 03_ARCHIV, přesunuta do 01_AKTIVNI
+  • "Aktualizace CENTRUM dokumentu [název]" = zapsal nové info do dokumentu v 00_CENTRUM
   NIKDY neříkej "založil jsem kartu" pokud karta již existovala!
-- Co bylo změněno (karta + sekce) a proč
+- Co bylo změněno (karta + sekce + CENTRUM dokumenty) a proč
 - Shrnutí: kdo dnes mluvil a jaké části byly aktivní
 - Doporučení pro mamku (co dělat večer + proč)
 - Doporučení pro Káťu (jak reagovat + proč)
