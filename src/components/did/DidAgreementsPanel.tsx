@@ -27,6 +27,15 @@ const DidAgreementsPanel = () => {
 
   const loadData = async () => {
     setLoading(true);
+
+    // Auto-cleanup: mark stuck "running" cycles older than 10 min as "failed"
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    await supabase
+      .from("did_update_cycles")
+      .update({ status: "failed", completed_at: new Date().toISOString(), report_summary: "Automaticky označeno jako neúspěšné (timeout)." })
+      .eq("status", "running")
+      .lt("started_at", tenMinAgo);
+
     const { data } = await supabase
       .from("did_update_cycles")
       .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status")
