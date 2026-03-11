@@ -333,7 +333,28 @@ PRAVIDLA:
       }
     }
 
-    // 6. UPDATE CYCLE RECORD
+    // 6.5 TRIGGER RESEARCH WEEKLY SYNC
+    let researchSyncResult = null;
+    try {
+      const researchRes = await fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      if (researchRes.ok) {
+        researchSyncResult = await researchRes.json();
+        console.log("Research weekly sync completed:", researchSyncResult);
+      } else {
+        console.warn("Research weekly sync failed:", researchRes.status);
+      }
+    } catch (e) {
+      console.error("Research weekly sync error:", e);
+    }
+
+    // 7. UPDATE CYCLE RECORD
     if (cycle) {
       await sb.from("did_update_cycles").update({
         status: "completed",
@@ -348,6 +369,7 @@ PRAVIDLA:
       cardsAnalyzed: cardNames.length,
       cardsUpdated,
       reportSent: !!RESEND_API_KEY,
+      researchSync: researchSyncResult,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
