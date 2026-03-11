@@ -23,34 +23,34 @@ const rowToThread = (row: any): ResearchThread => ({
   isProcessed: row.is_processed,
 });
 
+// Use 'as any' to bypass type checking since research_threads may not be in auto-generated types yet
+const rt = () => (supabase as any).from("research_threads");
+
 export const useResearchThreads = () => {
   const [threads, setThreads] = useState<ResearchThread[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Fetch active (non-deleted) threads from last 7 days
   const fetchThreads = useCallback(async () => {
     setLoading(true);
     try {
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const { data, error } = await supabase
-        .from("research_threads")
+      const { data, error } = await rt()
         .select("*")
         .eq("is_deleted", false)
         .gte("started_at", weekAgo)
         .order("last_activity_at", { ascending: false });
-      if (!error && data) setThreads(data.map(rowToThread));
+      if (!error && data) setThreads((data as any[]).map(rowToThread));
     } finally {
       setLoading(false);
     }
   }, []);
 
   const createThread = useCallback(async (topic: string, createdBy: string, initialMessages: { role: string; content: string }[]): Promise<ResearchThread | null> => {
-    const { data, error } = await supabase
-      .from("research_threads")
+    const { data, error } = await rt()
       .insert({
         topic,
         created_by: createdBy,
-        messages: initialMessages as any,
+        messages: initialMessages,
       })
       .select()
       .single();
@@ -61,10 +61,9 @@ export const useResearchThreads = () => {
   }, []);
 
   const updateMessages = useCallback(async (id: string, messages: { role: string; content: string }[]) => {
-    await supabase
-      .from("research_threads")
+    await rt()
       .update({
-        messages: messages as any,
+        messages,
         last_activity_at: new Date().toISOString(),
       })
       .eq("id", id);
@@ -72,8 +71,7 @@ export const useResearchThreads = () => {
   }, []);
 
   const deleteThread = useCallback(async (id: string) => {
-    await supabase
-      .from("research_threads")
+    await rt()
       .update({ is_deleted: true })
       .eq("id", id);
     setThreads(prev => prev.filter(t => t.id !== id));
