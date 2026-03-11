@@ -1845,6 +1845,53 @@ Formát HTML emailu:
         }
       }
       // Cards for parts mentioned in conversations will be found by AI + updateCardSections()
+
+      // Load 00_CENTRUM documents for dedup context
+      let centrumDocsContext = "";
+      let centrumFolderId: string | null = null;
+      try {
+        const rootChildren = await listFilesInFolder(token, folderId);
+        const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
+        if (centerFolder) {
+          centrumFolderId = centerFolder.id;
+          const centrumDocNames = ["05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu"];
+          const centerFiles = await listFilesInFolder(token, centerFolder.id);
+          for (const docName of centrumDocNames) {
+            const canonical = canonicalText(docName);
+            const file = centerFiles.find(f => canonicalText(f.name).includes(canonical) || f.name.includes(docName));
+            if (file) {
+              try {
+                const content = await readFileContent(token, file.id);
+                const trimmed = content.length > 3000 ? content.slice(0, 3000) + "…" : content;
+                centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${file.name} ===\n${trimmed}\n`;
+              } catch {}
+            }
+          }
+          // Also check 06_Terapeuticke_Dohody subfolder
+          const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
+          if (dohodyCandidates.length > 0) {
+            // It might be a folder or a file
+            for (const d of dohodyCandidates.slice(0, 1)) {
+              if (d.mimeType === DRIVE_FOLDER_MIME) {
+                const subFiles = await listFilesInFolder(token, d.id);
+                const latest = subFiles.sort((a, b) => b.name.localeCompare(a.name))[0];
+                if (latest) {
+                  try {
+                    const content = await readFileContent(token, latest.id);
+                    centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${latest.name} (nejnovější dohoda) ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
+                  } catch {}
+                }
+              } else {
+                try {
+                  const content = await readFileContent(token, d.id);
+                  centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
+                } catch {}
+              }
+            }
+          }
+          if (centrumDocsContext) console.log(`[daily-cycle] Loaded CENTRUM docs context (${centrumDocsContext.length} chars)`);
+        }
+      } catch (e) { console.warn("Failed to load CENTRUM docs for dedup:", e); }
     }
 
     // 3. AI ANALÝZA – full A-M decomposition
