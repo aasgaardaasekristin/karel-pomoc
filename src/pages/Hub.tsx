@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Lock, Users, Heart, LogOut, Leaf, ArrowLeft, KeyRound } from "lucide-react";
+import { Lock, Users, Heart, LogOut, Leaf, ArrowLeft, KeyRound, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -37,13 +37,16 @@ const Hub = () => {
   };
 
   const handleDidClick = () => {
-    // Store selected section and go to chat
     try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
     navigate("/chat");
   };
 
+  const handleResearchClick = () => {
+    try { sessionStorage.setItem("karel_hub_section", "research"); } catch {}
+    navigate("/chat");
+  };
+
   const handleHanaClick = () => {
-    // Check if PIN already verified this session
     try {
       if (sessionStorage.getItem(HANA_PIN_KEY) === "1") {
         try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
@@ -136,7 +139,6 @@ const Hub = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
           <div>
@@ -150,7 +152,6 @@ const Hub = () => {
         </div>
       </header>
 
-      {/* Main content */}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="max-w-lg w-full space-y-6">
           <div className="text-center mb-8">
@@ -163,7 +164,7 @@ const Hub = () => {
           </div>
 
           <div className="space-y-4">
-            {/* DID Mode */}
+            {/* DID Mode - No PIN */}
             <button
               onClick={handleDidClick}
               className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-primary group"
@@ -179,7 +180,25 @@ const Hub = () => {
               </div>
             </button>
 
-            {/* Hana Mode */}
+            {/* Research Mode - No PIN */}
+            <button
+              onClick={handleResearchClick}
+              className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-blue-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-blue-500 group"
+            >
+              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                <Search className="w-6 h-6 text-blue-500" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-foreground text-lg">Profesní zdroje</span>
+                </div>
+                <div className="text-sm text-muted-foreground mt-0.5">
+                  Karel prohledá internet – odborné články, testy, metody, trendy v psychologii
+                </div>
+              </div>
+            </button>
+
+            {/* Hana Mode - Requires PIN */}
             <button
               onClick={handleHanaClick}
               className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-pink-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-pink-500 group"
@@ -193,7 +212,7 @@ const Hub = () => {
                   <Lock className="w-3.5 h-3.5 text-muted-foreground" />
                 </div>
                 <div className="text-sm text-muted-foreground mt-0.5">
-                  Debrief, supervize, bezpečnost, profesní zdroje, klinický report
+                  Debrief, supervize, bezpečnost, klinický report
                 </div>
               </div>
             </button>
