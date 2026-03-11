@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
-import { Clock, AlertTriangle, Loader2, MessageCircle, Zap, Info } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Clock, AlertTriangle, Loader2, MessageCircle, Zap, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import type { DidSubMode } from "./DidSubModeSelector";
 
 interface PartActivity {
@@ -39,21 +40,88 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [lastCycleReport, setLastCycleReport] = useState<string | null>(null);
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
 
+  // System overview streaming state
+  const [overviewText, setOverviewText] = useState<string>("");
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewLoaded, setOverviewLoaded] = useState(false);
+
   useEffect(() => {
     loadDashboardData();
   }, []);
 
+  // Auto-load overview after dashboard data is ready
+  useEffect(() => {
+    if (!loading && !overviewLoaded && !overviewLoading) {
+      loadSystemOverview();
+    }
+  }, [loading]);
+
+  const loadSystemOverview = async () => {
+    setOverviewLoading(true);
+    setOverviewText("");
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-system-overview`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      );
+
+      if (!resp.ok || !resp.body) {
+        if (resp.status === 429) toast.error("Přehled systému: příliš mnoho požadavků, zkus to za chvíli.");
+        else if (resp.status === 402) toast.error("Přehled systému: nedostatek kreditů.");
+        else toast.error("Nepodařilo se načíst přehled systému.");
+        setOverviewLoading(false);
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let newlineIdx: number;
+        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
+          let line = buffer.slice(0, newlineIdx);
+          buffer = buffer.slice(newlineIdx + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              accumulated += content;
+              setOverviewText(accumulated);
+            }
+          } catch { /* partial JSON */ }
+        }
+      }
+
+      setOverviewLoaded(true);
+    } catch (e) {
+      console.error("System overview error:", e);
+      toast.error("Chyba při načítání přehledu systému.");
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
+
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Get all unique part names from threads
       const { data: threads } = await supabase
         .from("did_threads")
         .select("id, part_name, last_activity_at, messages, sub_mode")
         .eq("sub_mode", "cast")
         .order("last_activity_at", { ascending: false });
 
-      // Show unprocessed threads (not 24h limit) — visible until Karel processes them
       const { data: recentThreads } = await supabase
         .from("did_threads")
         .select("id, part_name, last_activity_at, messages")
@@ -73,15 +141,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       if (threads) {
         const partMap = new Map<string, string>();
         for (const t of threads) {
-          if (!partMap.has(t.part_name)) {
-            partMap.set(t.part_name, t.last_activity_at);
-          }
+          if (!partMap.has(t.part_name)) partMap.set(t.part_name, t.last_activity_at);
         }
-
         const now = Date.now();
         const sevenDays = 7 * 24 * 60 * 60 * 1000;
         const oneDay = 24 * 60 * 60 * 1000;
-
         const partList: PartActivity[] = Array.from(partMap.entries()).map(([name, lastSeen]) => {
           const diff = now - new Date(lastSeen).getTime();
           let status: PartActivity["status"] = "sleeping";
@@ -89,11 +153,9 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           else if (diff > sevenDays) status = "warning";
           return { name, lastSeen, status };
         });
-
         setParts(partList);
       }
 
-      // Get last update cycle (any type)
       const { data: cycles } = await supabase
         .from("did_update_cycles")
         .select("completed_at, report_summary, cards_updated")
@@ -110,7 +172,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         }
       }
 
-      // Check last daily cycle for auto-backup
       const { data: dailyCycles } = await supabase
         .from("did_update_cycles")
         .select("completed_at")
@@ -122,10 +183,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       const lastDaily = dailyCycles?.[0]?.completed_at || null;
       setLastBackupTime(lastDaily);
 
-      // Auto-backup if last daily cycle was more than 24h ago
       const twentyFourHours = 24 * 60 * 60 * 1000;
       const needsBackup = !lastDaily || (Date.now() - new Date(lastDaily).getTime() > twentyFourHours);
-      
       if (needsBackup) {
         setIsAutoBackupRunning(true);
         toast.info("Automatická záloha kartotéky se spouští...");
@@ -162,41 +221,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     return `před ${days} dny`;
   };
 
-  // Extract key insights from preloaded 00_CENTRUM docs
-  const contextSummary = useMemo(() => {
-    if (!contextDocs) return null;
-    const sections: { title: string; content: string }[] = [];
-
-    // Extract dashboard section
-    const dashboardMatch = contextDocs.match(/\[Kartoteka_DID\/00_CENTRUM: 00_Aktualni_Dashboard\]\n([\s\S]*?)(?=\[Kartoteka_DID|$)/);
-    if (dashboardMatch) {
-      const text = dashboardMatch[1].trim().slice(0, 600);
-      if (text && !text.startsWith("[Dokument")) {
-        sections.push({ title: "Aktuální dashboard", content: text });
-      }
-    }
-
-    // Extract therapeutic plan
-    const planMatch = contextDocs.match(/\[Kartoteka_DID\/00_CENTRUM: 05_Terapeuticky_Plan_Aktualni\]\n([\s\S]*?)(?=\[Kartoteka_DID|$)/);
-    if (planMatch) {
-      const text = planMatch[1].trim().slice(0, 400);
-      if (text && !text.startsWith("[Dokument")) {
-        sections.push({ title: "Terapeutický plán", content: text });
-      }
-    }
-
-    // Extract relationship map highlights
-    const mapMatch = contextDocs.match(/\[Kartoteka_DID\/00_CENTRUM: Mapa_Vztahu_a_Vazeb\]\n([\s\S]*?)(?=\[Kartoteka_DID|$)/);
-    if (mapMatch) {
-      const text = mapMatch[1].trim().slice(0, 300);
-      if (text && !text.startsWith("[Dokument")) {
-        sections.push({ title: "Mapa vztahů", content: text });
-      }
-    }
-
-    return sections.length > 0 ? sections : null;
-  }, [contextDocs]);
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -207,7 +231,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
-      {/* Header with last update indicator */}
+      {/* Header */}
       <div className="mb-4">
         <h3 className="text-sm font-medium text-foreground">Přehled systému</h3>
         <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
@@ -232,24 +256,49 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         )}
       </div>
 
-      {/* Context summary from 00_CENTRUM */}
-      {contextSummary && (
-        <div className="mb-4 space-y-2">
-          {contextSummary.map((section, idx) => (
-            <details key={idx} className="rounded-lg border border-border bg-card/50 overflow-hidden">
-              <summary className="flex items-center gap-2 text-xs font-medium text-foreground px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors">
-                <Info className="w-3.5 h-3.5 text-primary flex-shrink-0" />
-                {section.title}
-              </summary>
-              <div className="px-3 pb-2 text-[11px] text-muted-foreground whitespace-pre-line leading-relaxed">
-                {section.content}
-              </div>
-            </details>
-          ))}
+      {/* Streaming system overview */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <BookOpen className="w-3.5 h-3.5 text-primary" />
+            Karlův přehled
+          </h4>
+          {overviewLoaded && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setOverviewLoaded(false); loadSystemOverview(); }}
+              className="h-6 text-[10px] px-2"
+            >
+              Obnovit
+            </Button>
+          )}
         </div>
-      )}
+        {overviewLoading && !overviewText && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Karel analyzuje systém a připravuje přehled...
+          </div>
+        )}
+        {overviewText && (
+          <div className="prose prose-sm dark:prose-invert max-w-none text-[11px] sm:text-xs leading-relaxed">
+            <ReactMarkdown
+              components={{
+                h2: ({ children }) => <h2 className="text-sm font-semibold text-foreground mt-3 mb-1.5 first:mt-0">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-xs font-medium text-foreground mt-2 mb-1">{children}</h3>,
+                p: ({ children }) => <p className="text-muted-foreground mb-2 leading-relaxed">{children}</p>,
+                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{children}</a>,
+                strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
+              }}
+            >
+              {overviewText}
+            </ReactMarkdown>
+            {overviewLoading && <Loader2 className="w-3 h-3 animate-spin text-primary inline-block ml-1" />}
+          </div>
+        )}
+      </div>
 
-      {/* Quick Entry — unprocessed threads (visible until Karel processes them) */}
+      {/* Quick Entry — unprocessed threads */}
       {activeThreads.length > 0 && onQuickThread && (
         <div className="mb-4">
           <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
@@ -274,7 +323,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         </div>
       )}
 
-      {/* System Map (clickable squares + chronology) */}
+      {/* System Map */}
       <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
 
       {/* Warnings */}
