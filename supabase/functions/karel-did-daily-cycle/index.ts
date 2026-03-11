@@ -1833,7 +1833,7 @@ Formát HTML emailu:
           threadsProcessed: 0,
           conversationsProcessed: 0,
           cardsUpdated,
-          reportSent: shouldSendEmails,
+          reportSent: emailSentToHanka || emailSentToKata,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
