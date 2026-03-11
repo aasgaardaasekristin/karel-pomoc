@@ -812,7 +812,7 @@ Používej barvy: zelená=pokrok, oranžová=pozor, červená=riziko.` },
         // Generate Káťa's email
         let kataHtml = "";
         try {
-          const kRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          const kRes = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -831,7 +831,7 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
                 { role: "user", content: reportSection },
               ],
             }),
-          });
+          }), 20000, "Kata email generation");
           if (kRes.ok) {
             const d = await kRes.json();
             kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
