@@ -607,8 +607,46 @@ ${perplexityContext}`,
       console.error(`[weekly] AI error ${analysisResponse.status}: ${(await analysisResponse.text()).slice(0, 500)}`);
     }
 
-    // ═══ 5. PROCESS OUTPUTS – Update Drive ═══
+    // ═══ 5. INSERT THERAPIST TASKS IMMEDIATELY (before slow Drive writes) ═══
     const cardsUpdated: string[] = [];
+    if (analysisText) {
+      const ukolySection = analysisText.match(/\[UKOLY\]([\s\S]*?)\[\/UKOLY\]/)?.[1]?.trim();
+      if (ukolySection) {
+        const ukolRegex = /\[UKOL\]\s*assignee=(\S+)\s*\|\s*task=([^|]+)\|\s*source=([^|]+)\|\s*priority=(\S+)\s*\[\/UKOL\]/g;
+        let insertedTasks = 0;
+        for (const m of ukolySection.matchAll(ukolRegex)) {
+          const assignee = m[1].trim();
+          const task = m[2].trim();
+          const source = m[3].trim();
+          const priority = m[4].trim();
+          if (task) {
+            const { error: insertTaskError } = await sb.from("did_therapist_tasks").insert({
+              task, assigned_to: assignee, source_agreement: source, priority,
+              note: `Vytvořeno týdenním cyklem ${dateStr}`, user_id: userId,
+            });
+            if (!insertTaskError) insertedTasks++;
+            else console.error("[weekly] Task insert error:", insertTaskError);
+          }
+        }
+        if (insertedTasks > 0) {
+          cardsUpdated.push(`${insertedTasks} úkolů pro terapeutky`);
+          console.log(`[weekly] ✅ Inserted ${insertedTasks} therapist tasks`);
+        }
+      }
+    }
+
+    // ═══ 5b. SAVE CYCLE AS COMPLETED (tasks are in DB, Drive writes are best-effort) ═══
+    if (cycle) {
+      await sb.from("did_update_cycles").update({
+        status: "completed",
+        completed_at: new Date().toISOString(),
+        report_summary: analysisText.slice(0, 2000),
+        cards_updated: cardsUpdated,
+      }).eq("id", cycle.id);
+      console.log(`[weekly] ✅ Cycle marked as completed`);
+    }
+
+    // ═══ 5c. PROCESS OUTPUTS – Update Drive (best-effort) ═══
 
     if (folderId && analysisText) {
       // 5a. Save weekly report
