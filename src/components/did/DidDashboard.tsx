@@ -192,21 +192,24 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
       const { data: cycles } = await supabase
         .from("did_update_cycles")
-        .select("completed_at, report_summary, cards_updated")
-        .eq("status", "completed")
-        .order("completed_at", { ascending: false })
+        .select("created_at, started_at, completed_at, status, report_summary, cards_updated")
+        .order("created_at", { ascending: false })
         .limit(1);
 
       if (cycles && cycles.length > 0) {
-        setLastCycleTime(cycles[0].completed_at);
-        setLastCycleReport(cycles[0].report_summary || null);
-        const cards = cycles[0].cards_updated;
+        const latestCycle = cycles[0];
+        const cycleTs = latestCycle.completed_at || latestCycle.started_at || latestCycle.created_at;
+        setLastCycleTime(cycleTs);
+        setLastCycleStatus(latestCycle.status || null);
+        setLastCycleReport(latestCycle.report_summary || null);
+        const cards = latestCycle.cards_updated;
         if (Array.isArray(cards)) {
           setLastCardsUpdated(cards.map((c: any) => typeof c === "string" ? c : c?.name || ""));
         }
       } else if (threads && threads.length > 0) {
         // Fallback: use latest thread activity as proxy for last update
         setLastCycleTime(threads[0].last_activity_at);
+        setLastCycleStatus(null);
       }
 
       const { data: dailyCycles } = await supabase
