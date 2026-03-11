@@ -778,7 +778,7 @@ ${perplexityContext}`,
         // Generate Hanka's email
         let hankaHtml = "";
         try {
-          const hRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const hRes = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -801,7 +801,7 @@ Používej barvy: zelená=pokrok, oranžová=pozor, červená=riziko.` },
                 { role: "user", content: reportSection },
               ],
             }),
-          });
+          }), 20000, "Hanka email generation");
           if (hRes.ok) {
             const d = await hRes.json();
             hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
