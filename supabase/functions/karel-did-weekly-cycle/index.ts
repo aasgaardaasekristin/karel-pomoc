@@ -293,11 +293,11 @@ serve(async (req) => {
             const content = await readFileContent(token, file.id);
             const cn = canonicalText(file.name);
             if (cn.includes("instrukce")) {
-              instructionContext = content.length > 5000 ? content.slice(0, 5000) + "…" : content;
+              instructionContext = truncate(content, MAX_INSTRUCTION_CHARS);
             } else if (cn.includes("mapa") && cn.includes("vztah")) {
-              systemMap = content;
+              systemMap = truncate(content, MAX_SYSTEM_MAP_CHARS);
             }
-            centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${content.length > 3000 ? content.slice(0, 3000) + "…" : content}\n`;
+            centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
           } catch {}
         }
       }
