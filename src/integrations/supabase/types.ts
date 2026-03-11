@@ -333,6 +333,50 @@ export type Database = {
         }
         Relationships: []
       }
+      did_daily_report_dispatches: {
+        Row: {
+          created_at: string
+          cycle_id: string | null
+          error_message: string | null
+          id: string
+          recipient: string
+          report_date: string
+          sent_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_id?: string | null
+          error_message?: string | null
+          id?: string
+          recipient: string
+          report_date: string
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          cycle_id?: string | null
+          error_message?: string | null
+          id?: string
+          recipient?: string
+          report_date?: string
+          sent_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_daily_report_dispatches_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "did_update_cycles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_threads: {
         Row: {
           created_at: string

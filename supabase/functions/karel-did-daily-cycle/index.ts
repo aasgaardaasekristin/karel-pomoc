@@ -1457,6 +1457,9 @@ serve(async (req) => {
     console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
   }
 
+  let cycleId: string | null = null;
+  let sb: ReturnType<typeof createClient> | null = null;
+
   try {
     // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
     if (requestBody?.syncRegistry) {
@@ -1580,7 +1583,112 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const sb = createClient(supabaseUrl, supabaseKey);
+    sb = createClient(supabaseUrl, supabaseKey);
+
+    const reportDatePrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+    const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+    let emailSentToHanka = false;
+    let emailSentToKata = false;
+
+    const reserveDispatchSlot = async (recipient: "hanka" | "kata"): Promise<boolean> => {
+      const nowIso = new Date().toISOString();
+      const dispatchTable = (sb as any).from("did_daily_report_dispatches");
+
+      const { data: existing, error: existingErr } = await dispatchTable
+        .select("id, status, updated_at")
+        .eq("report_date", reportDatePrague)
+        .eq("recipient", recipient)
+        .maybeSingle();
+
+      if (existingErr) {
+        console.error(`[email-dedupe] lookup failed (${recipient}):`, existingErr.message);
+        return false;
+      }
+
+      if (existing?.status === "sent") {
+        console.log(`[email-dedupe] ${recipient} already sent for ${reportDatePrague}, skipping.`);
+        return false;
+      }
+
+      if (existing) {
+        const updatedAt = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+        const isStalePending = existing.status === "pending" && (Date.now() - updatedAt > 90 * 60 * 1000);
+
+        if (existing.status === "pending" && !isStalePending) {
+          console.log(`[email-dedupe] ${recipient} dispatch currently pending, skipping duplicate send.`);
+          return false;
+        }
+
+        const { error: bumpErr } = await dispatchTable
+          .update({
+            status: "pending",
+            cycle_id: cycleId,
+            updated_at: nowIso,
+            error_message: null,
+          })
+          .eq("id", existing.id);
+
+        if (bumpErr) {
+          console.error(`[email-dedupe] failed to reserve existing row (${recipient}):`, bumpErr.message);
+          return false;
+        }
+        return true;
+      }
+
+      const { error: insertErr } = await dispatchTable.insert({
+        report_date: reportDatePrague,
+        recipient,
+        status: "pending",
+        cycle_id: cycleId,
+      });
+
+      if (insertErr) {
+        if ((insertErr as any).code === "23505") {
+          console.log(`[email-dedupe] concurrent reservation detected for ${recipient}, skipping.`);
+          return false;
+        }
+        console.error(`[email-dedupe] failed to reserve slot (${recipient}):`, insertErr.message);
+        return false;
+      }
+
+      return true;
+    };
+
+    const markDispatchSent = async (recipient: "hanka" | "kata") => {
+      await (sb as any)
+        .from("did_daily_report_dispatches")
+        .update({ status: "sent", sent_at: new Date().toISOString(), updated_at: new Date().toISOString(), error_message: null })
+        .eq("report_date", reportDatePrague)
+        .eq("recipient", recipient);
+    };
+
+    const markDispatchFailed = async (recipient: "hanka" | "kata", errorMessage: string) => {
+      await (sb as any)
+        .from("did_daily_report_dispatches")
+        .update({ status: "failed", updated_at: new Date().toISOString(), error_message: errorMessage.slice(0, 1000) })
+        .eq("report_date", reportDatePrague)
+        .eq("recipient", recipient);
+    };
+
+    const sendEmailOnce = async (recipient: "hanka" | "kata", to: string, subject: string, html: string): Promise<boolean> => {
+      if (!shouldSendEmails || !resend) return false;
+      const reserved = await reserveDispatchSlot(recipient);
+      if (!reserved) return false;
+
+      try {
+        await resend.emails.send({
+          from: "Karel <karel@hana-chlebcova.cz>",
+          to: [to],
+          subject,
+          html,
+        });
+        await markDispatchSent(recipient);
+        return true;
+      } catch (e) {
+        await markDispatchFailed(recipient, e instanceof Error ? e.message : String(e));
+        throw e;
+      }
+    };
 
     // 1. SBĚR DAT
     // For card updates: only unprocessed items
@@ -1602,6 +1710,7 @@ serve(async (req) => {
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
+    cycleId = cycle?.id || null;
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
@@ -1647,10 +1756,9 @@ serve(async (req) => {
       } else if (shouldSendEmails && !hasRecentActivity) {
         // Truly quiet day - no activity at all in 24h
         try {
-          const dateStr = new Date().toISOString().slice(0, 10);
+          const dateStr = reportDatePrague;
 
-          if (RESEND_API_KEY && LOVABLE_API_KEY) {
-            const resend = new Resend(RESEND_API_KEY);
+          if (resend && LOVABLE_API_KEY) {
 
             let hankaHtml = "";
             try {
@@ -1701,19 +1809,19 @@ Formát HTML emailu:
             } catch {}
             if (!kataHtml) kataHtml = `<p>Dnes bez aktivity částí. Karel</p>`;
 
-            await resend.emails.send({
-              from: "Karel <karel@hana-chlebcova.cz>",
-              to: [MAMKA_EMAIL],
-              subject: `Karel – denní report ${dateStr}`,
-              html: hankaHtml,
-            });
+            emailSentToHanka = await sendEmailOnce(
+              "hanka",
+              MAMKA_EMAIL,
+              `Karel – denní report ${dateStr}`,
+              hankaHtml,
+            );
 
-            await resend.emails.send({
-              from: "Karel <karel@hana-chlebcova.cz>",
-              to: [KATA_EMAIL],
-              subject: `Karel – report pro Káťu ${dateStr}`,
-              html: kataHtml,
-            });
+            emailSentToKata = await sendEmailOnce(
+              "kata",
+              KATA_EMAIL,
+              `Karel – report pro Káťu ${dateStr}`,
+              kataHtml,
+            );
           }
         } catch (e) {
           console.error("Quiet-day email error:", e);
@@ -1725,7 +1833,7 @@ Formát HTML emailu:
           threadsProcessed: 0,
           conversationsProcessed: 0,
           cardsUpdated,
-          reportSent: shouldSendEmails,
+          reportSent: emailSentToHanka || emailSentToKata,
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -2417,13 +2525,11 @@ ${perplexityContext}`,
         blocked: blockedCardUpdates,
         aiRecommendations: extractAiRecommendations(aiReportText),
       });
-      const dateStr = new Date().toISOString().slice(0, 10);
+      const dateStr = reportDatePrague;
 
       // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA – ONLY from cron
-      if (shouldSendEmails && RESEND_API_KEY && finalReportText) {
+      if (shouldSendEmails && resend && finalReportText) {
         try {
-          const resend = new Resend(RESEND_API_KEY);
-          const dateCz = new Date().toLocaleDateString("cs-CZ");
 
           // Generate personalized reports using AI
           const partsSummary = successfulCardUpdates.map(s => s.partName).join(", ") || "žádné";
@@ -2504,22 +2610,25 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
           } catch {}
           if (!kataHtml) kataHtml = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalReportText}</pre>`;
 
-          // Send separate emails
-          await resend.emails.send({
-            from: "Karel <karel@hana-chlebcova.cz>",
-            to: [MAMKA_EMAIL],
-            subject: `Karel – denní report ${dateStr}`,
-            html: hankaHtml,
-          });
-          console.log(`Daily report sent to Hanka: ${MAMKA_EMAIL}`);
+          emailSentToHanka = await sendEmailOnce(
+            "hanka",
+            MAMKA_EMAIL,
+            `Karel – denní report ${dateStr}`,
+            hankaHtml,
+          );
+          if (emailSentToHanka) {
+            console.log(`Daily report sent to Hanka: ${MAMKA_EMAIL}`);
+          }
 
-          await resend.emails.send({
-            from: "Karel <karel@hana-chlebcova.cz>",
-            to: [KATA_EMAIL],
-            subject: `Karel – report pro Káťu ${dateStr}`,
-            html: kataHtml,
-          });
-          console.log(`Daily report sent to Káťa: ${KATA_EMAIL}`);
+          emailSentToKata = await sendEmailOnce(
+            "kata",
+            KATA_EMAIL,
+            `Karel – report pro Káťu ${dateStr}`,
+            kataHtml,
+          );
+          if (emailSentToKata) {
+            console.log(`Daily report sent to Káťa: ${KATA_EMAIL}`);
+          }
         } catch (e) { console.error("Email send error:", e); }
       }
     }
@@ -2549,7 +2658,7 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       threadsProcessed: threads.length,
       conversationsProcessed: conversations.length,
       cardsUpdated,
-      reportSent: !!RESEND_API_KEY,
+      reportSent: emailSentToHanka || emailSentToKata,
       processingRetained: hadCardUpdateErrors,
       message: hadCardUpdateErrors
         ? "Aktualizace některých karet selhala – konverzace zůstaly neoznačené pro další pokus."
@@ -2559,6 +2668,19 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
     });
   } catch (error) {
     console.error("Daily cycle error:", error);
+
+    if (sb && cycleId) {
+      try {
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          report_summary: `ERROR: ${error instanceof Error ? error.message.slice(0, 1800) : "Unknown error"}`,
+        }).eq("id", cycleId);
+      } catch (cycleUpdateErr) {
+        console.error("[daily-cycle] Failed to mark cycle as failed:", cycleUpdateErr);
+      }
+    }
+
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Clock, AlertTriangle, Loader2, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +33,7 @@ interface Props {
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode, onQuickThread, contextDocs }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
+  const [lastCycleStatus, setLastCycleStatus] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
@@ -56,6 +57,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [overviewLoaded, setOverviewLoaded] = useState(() => {
     try { return !!localStorage.getItem(OVERVIEW_CACHE_KEY); } catch { return false; }
   });
+  const prevIsUpdatingRef = useRef(isUpdating);
 
   useEffect(() => {
     loadDashboardData();
@@ -67,6 +69,18 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       loadSystemOverview();
     }
   }, [loading]);
+
+  // After manual update finishes, force-refresh dashboard + overview cache
+  useEffect(() => {
+    if (prevIsUpdatingRef.current && !isUpdating) {
+      loadDashboardData();
+      try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {}
+      setOverviewLoaded(false);
+      setOverviewText("");
+      loadSystemOverview();
+    }
+    prevIsUpdatingRef.current = isUpdating;
+  }, [isUpdating]);
 
   const loadSystemOverview = async () => {
     setOverviewLoading(true);
@@ -178,21 +192,24 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
       const { data: cycles } = await supabase
         .from("did_update_cycles")
-        .select("completed_at, report_summary, cards_updated")
-        .eq("status", "completed")
-        .order("completed_at", { ascending: false })
+        .select("created_at, started_at, completed_at, status, report_summary, cards_updated")
+        .order("created_at", { ascending: false })
         .limit(1);
 
       if (cycles && cycles.length > 0) {
-        setLastCycleTime(cycles[0].completed_at);
-        setLastCycleReport(cycles[0].report_summary || null);
-        const cards = cycles[0].cards_updated;
+        const latestCycle = cycles[0];
+        const cycleTs = latestCycle.completed_at || latestCycle.started_at || latestCycle.created_at;
+        setLastCycleTime(cycleTs);
+        setLastCycleStatus(latestCycle.status || null);
+        setLastCycleReport(latestCycle.report_summary || null);
+        const cards = latestCycle.cards_updated;
         if (Array.isArray(cards)) {
           setLastCardsUpdated(cards.map((c: any) => typeof c === "string" ? c : c?.name || ""));
         }
       } else if (threads && threads.length > 0) {
         // Fallback: use latest thread activity as proxy for last update
         setLastCycleTime(threads[0].last_activity_at);
+        setLastCycleStatus(null);
       }
 
       const { data: dailyCycles } = await supabase
@@ -272,6 +289,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1">
           <Clock className="w-3 h-3" />
           Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
+          {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
         </p>
         {lastCardsUpdated.length > 0 && (
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
