@@ -155,12 +155,7 @@ serve(async (req) => {
       }
     }
 
-    // 4. Get active part names for Perplexity search
-    const activePartNames = recentThreads
-      ? [...new Set(recentThreads.map(t => t.part_name))]
-      : [];
-
-    // 5. Perplexity therapeutic tips (if available)
+    // 4. Get active part names for Perplexity search (already computed above)
     let perplexityTips = "";
     if (PERPLEXITY_API_KEY && activePartNames.length > 0) {
       try {
