@@ -159,6 +159,39 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, supabaseKey);
     const dateStr = new Date().toISOString().slice(0, 10);
 
+    // ═══ AUTO-CLEANUP: Mark stuck "running" cycles as "failed" (>10 min) ═══
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: stuckCycles } = await sb.from("did_update_cycles")
+      .select("id, cycle_type, started_at")
+      .eq("status", "running")
+      .lt("started_at", tenMinAgo);
+
+    if (stuckCycles && stuckCycles.length > 0) {
+      for (const stuck of stuckCycles) {
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          report_summary: `Cyklus automaticky označen jako neúspěšný (timeout po 10 min). Spuštěn: ${stuck.started_at}`,
+        }).eq("id", stuck.id);
+      }
+      console.log(`[weekly] Auto-cleanup: ${stuckCycles.length} stuck cycles marked as failed`);
+
+      // Send notification email about stuck cycles
+      if (RESEND_API_KEY) {
+        try {
+          const resend = new Resend(RESEND_API_KEY);
+          await resend.emails.send({
+            from: "Karel <karel@hana-chlebcova.cz>",
+            to: [MAMKA_EMAIL],
+            subject: `⚠️ Karel – ${stuckCycles.length} zaseklý cyklus vyčištěn`,
+            html: `<p>Karel automaticky vyčistil <strong>${stuckCycles.length}</strong> zaseklý/é cyklus/y (běžely déle než 10 minut).</p>
+<ul>${stuckCycles.map(s => `<li>${s.cycle_type} – spuštěn ${new Date(s.started_at).toLocaleString("cs-CZ", { timeZone: "Europe/Prague" })}</li>`).join("")}</ul>
+<p>Nový týdenní cyklus nyní pokračuje normálně.</p><p>Karel</p>`,
+          });
+        } catch (emailErr) { console.warn("[weekly] Cleanup notification email failed:", emailErr); }
+      }
+    }
+
     // Get a valid user_id for DB inserts (service role calls don't have auth.uid())
     const { data: anyUser } = await sb.from("did_threads").select("user_id").limit(1).single();
     const userId = anyUser?.user_id;
