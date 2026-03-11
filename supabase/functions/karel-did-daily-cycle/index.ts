@@ -2619,6 +2619,21 @@ ${perplexityContext}`,
               continue;
             }
 
+            // ═══ SPECIAL: 00_Aktualni_Dashboard – FULL DOCUMENT REWRITE ═══
+            if (docCanonical.includes("dashboard") || (docCanonical.includes("aktualn") && docCanonical.includes("dashboard"))) {
+              const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
+              if (!dashFile) {
+                console.warn(`[CENTRUM] Dashboard doc not found, skipping`);
+                continue;
+              }
+
+              const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${newContent}`;
+              await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
+              console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
+              continue;
+            }
+
             // Find the target document
             let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
 
