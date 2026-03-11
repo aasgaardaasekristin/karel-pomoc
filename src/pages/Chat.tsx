@@ -1519,7 +1519,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                   setDidDocsLoaded(false);
                   setDidSessionId(null);
                   setActiveThread(null);
-                  setDidFlowState("dashboard");
+                  setDidFlowState("entry");
                   setMessages([]);
                 }
                 setMode(newMode);
