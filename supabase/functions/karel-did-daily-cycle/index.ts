@@ -1803,6 +1803,8 @@ Formát HTML emailu:
     let driveContext = "";
     let existingCards: Record<string, string> = {};
     let instructionContext = "";
+    let centrumDocsContext = "";
+    let centrumFolderId: string | null = null;
 
     if (folderId) {
       try {
