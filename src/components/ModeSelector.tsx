@@ -56,7 +56,7 @@ const ModeSelector = ({ currentMode, onModeChange, hideDid }: ModeSelectorProps)
       icon: Search,
       className: "mode-button-supervision",
     },
-  ];
+  ].filter(m => !hideDid || m.id !== "childcare");
 
   return (
     <TooltipProvider delayDuration={300}>
