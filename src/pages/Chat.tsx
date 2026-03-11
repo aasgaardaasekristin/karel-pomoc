@@ -141,6 +141,11 @@ const Chat = () => {
   const [isReformatting, setIsReformatting] = useState(false);
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  // Research thread state
+  type ResearchFlowState = "thread-list" | "new-topic" | "chat";
+  const [researchFlowState, setResearchFlowState] = useState<ResearchFlowState>("thread-list");
+  const [activeResearchThread, setActiveResearchThread] = useState<ResearchThread | null>(null);
+  const researchThreads = useResearchThreads();
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
