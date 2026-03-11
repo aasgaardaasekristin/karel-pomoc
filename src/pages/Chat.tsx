@@ -1495,7 +1495,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 <FolderOpen className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">Kartotéka</span>
               </Button>
-            )
+            )}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
               <LogOut className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Odejít</span>
