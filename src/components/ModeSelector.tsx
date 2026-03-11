@@ -12,9 +12,10 @@ interface ModeSelectorProps {
   currentMode: ConversationMode;
   onModeChange: (mode: ConversationMode) => void;
   hideDid?: boolean;
+  hideResearch?: boolean;
 }
 
-const ModeSelector = ({ currentMode, onModeChange, hideDid }: ModeSelectorProps) => {
+const ModeSelector = ({ currentMode, onModeChange, hideDid, hideResearch }: ModeSelectorProps) => {
   const modes = [
     {
       id: "debrief" as const,
