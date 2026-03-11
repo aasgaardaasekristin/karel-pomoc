@@ -691,27 +691,41 @@ ${perplexityContext}`,
         }
       }
 
-      // 5c. Save weekly report into the date subfolder
-      const targetFolderForReport = weeklySubfolderId || centrumFolderId;
-      if (targetFolderForReport) {
+      // 5c. Save weekly report ONLY into the date subfolder (never into 00_CENTRUM root)
+      if (weeklySubfolderId) {
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
         if (reportContent) {
           const reportFileName = `Tydenni_Report_${dateStr}`;
-          await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, targetFolderForReport);
-          cardsUpdated.push("Tydenni_Report");
-          console.log(`[weekly] ✅ Weekly report saved`);
+          // Deduplication: check if report already exists in this subfolder
+          const existingFiles = await listFilesInFolder(token, weeklySubfolderId);
+          const alreadyExists = existingFiles.some(f => f.name === reportFileName);
+          if (!alreadyExists) {
+            await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, weeklySubfolderId);
+            cardsUpdated.push("Tydenni_Report");
+            console.log(`[weekly] ✅ Weekly report saved to subfolder ${dateStr}`);
+          } else {
+            console.log(`[weekly] ⏭️ Weekly report already exists in ${dateStr}, skipping`);
+          }
         }
+      } else {
+        console.warn(`[weekly] ⚠️ No weekly subfolder created, report NOT saved to avoid polluting 00_CENTRUM`);
       }
 
-      // 5d. Process therapeutic agreements into the date subfolder
+      // 5d. Process therapeutic agreements into the date subfolder (with deduplication)
       const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
       if (dohodaSection && weeklySubfolderId) {
         const dohodaBlockRegex = /\[DOHODA:\s*(.+?)\]([\s\S]*?)\[\/DOHODA\]/g;
+        const existingFiles = await listFilesInFolder(token, weeklySubfolderId);
+        const existingNames = new Set(existingFiles.map(f => f.name));
 
         for (const match of dohodaSection.matchAll(dohodaBlockRegex)) {
           const topic = match[1].trim();
           const content = match[2].trim();
           const safeFileName = `${topic.replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 60)}`;
+          if (existingNames.has(safeFileName)) {
+            console.log(`[weekly] ⏭️ Agreement "${safeFileName}" already exists, skipping`);
+            continue;
+          }
           const fullContent = `TERAPEUTICKÁ DOHODA: ${topic}\nDatum: ${dateStr}\nSprávce: Karel\n\n${content}`;
           await createFileInFolder(token, safeFileName, fullContent, weeklySubfolderId);
           cardsUpdated.push(`Dohoda: ${topic}`);
@@ -788,15 +802,12 @@ ${perplexityContext}`,
       }
     }
 
-    // ═══ 6. SAVE CYCLE AS COMPLETED (before optional email/sync steps) ═══
+    // ═══ 6. UPDATE CYCLE with final cardsUpdated list (already completed in step 5b) ═══
     if (cycle) {
       await sb.from("did_update_cycles").update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-        report_summary: analysisText.slice(0, 2000),
         cards_updated: cardsUpdated,
       }).eq("id", cycle.id);
-      console.log(`[weekly] ✅ Cycle marked as completed (${cardsUpdated.length} items)`);
+      console.log(`[weekly] ✅ Cycle updated with ${cardsUpdated.length} items`);
     }
 
     // ═══ 7. SEND WEEKLY EMAILS (best-effort, won't block cycle) ═══
