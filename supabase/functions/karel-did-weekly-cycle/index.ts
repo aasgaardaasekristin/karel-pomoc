@@ -691,16 +691,24 @@ ${perplexityContext}`,
         }
       }
 
-      // 5c. Save weekly report into the date subfolder
-      const targetFolderForReport = weeklySubfolderId || centrumFolderId;
-      if (targetFolderForReport) {
+      // 5c. Save weekly report ONLY into the date subfolder (never into 00_CENTRUM root)
+      if (weeklySubfolderId) {
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
         if (reportContent) {
           const reportFileName = `Tydenni_Report_${dateStr}`;
-          await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, targetFolderForReport);
-          cardsUpdated.push("Tydenni_Report");
-          console.log(`[weekly] ✅ Weekly report saved`);
+          // Deduplication: check if report already exists in this subfolder
+          const existingFiles = await listFilesInFolder(token, weeklySubfolderId);
+          const alreadyExists = existingFiles.some(f => f.name === reportFileName);
+          if (!alreadyExists) {
+            await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, weeklySubfolderId);
+            cardsUpdated.push("Tydenni_Report");
+            console.log(`[weekly] ✅ Weekly report saved to subfolder ${dateStr}`);
+          } else {
+            console.log(`[weekly] ⏭️ Weekly report already exists in ${dateStr}, skipping`);
+          }
         }
+      } else {
+        console.warn(`[weekly] ⚠️ No weekly subfolder created, report NOT saved to avoid polluting 00_CENTRUM`);
       }
 
       // 5d. Process therapeutic agreements into the date subfolder
