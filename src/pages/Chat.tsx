@@ -266,9 +266,9 @@ const Chat = () => {
         // Auto-set mode based on hub section
         if (hubSection === "did" && mode !== "childcare") {
           setMode("childcare");
-        } else if (hubSection === "research" && mode !== "research") {
-          setMode("research");
-          // Load research threads
+        } else if (hubSection === "research") {
+          if (mode !== "research") setMode("research");
+          // Always load research threads when entering research section
           researchThreads.fetchThreads();
         } else if (hubSection === "hana" && mode === "childcare") {
           setMode("debrief");
