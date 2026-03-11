@@ -3,6 +3,31 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
+const MAX_CARD_CHARS = 900;
+const MAX_CENTRUM_CHARS = 1600;
+const MAX_AGREEMENT_CHARS = 1800;
+const MAX_SYSTEM_MAP_CHARS = 2500;
+const MAX_INSTRUCTION_CHARS = 3500;
+const MAX_RESEARCH_MESSAGE_CHARS = 180;
+const MAX_CONVERSATION_MESSAGE_CHARS = 180;
+
+const truncate = (value: string, max: number) =>
+  value.length > max ? `${value.slice(0, max)}…` : value;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+
 // ═══ OAuth2 token helper ═══
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -135,6 +160,7 @@ serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+  let cycleId: string | null = null;
 
   // Allow cron/service calls with known keys, or calls with no auth (verify_jwt=false in config)
   const knownKeys = [serviceRoleKey, anonKey, publishableKey].filter(Boolean);
@@ -199,6 +225,7 @@ serve(async (req) => {
 
     // Create weekly cycle record
     const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running", user_id: userId }).select().single();
+    cycleId = cycle?.id ?? null;
 
     // ═══ 1. READ ALL CARDS + CENTRUM DOCS FROM DRIVE ═══
     let allCardsContent = "";
@@ -233,7 +260,7 @@ serve(async (req) => {
             if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
               const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
               const folderLabel = folder === archiveFolder ? "ARCHIV/SPÍ" : "AKTIVNÍ";
-              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 1500 ? content.slice(0, 1500) + "…" : content}`;
+              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${truncate(content, MAX_CARD_CHARS)}`;
               cardNames.push(`${partName} [${folderLabel}]`);
             }
           } catch (e) { console.warn(`Failed to read ${file.name}:`, e); }
@@ -255,7 +282,7 @@ serve(async (req) => {
               for (const df of dohodaFiles) {
                 try {
                   const content = await readFileContent(token, df.id);
-                  agreementsContent += `\n=== DOHODA: ${df.name} ===\n${content}\n`;
+                  agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
                 } catch {}
               }
               console.log(`[weekly] Loaded ${dohodaFiles.length} agreement files`);
@@ -266,11 +293,11 @@ serve(async (req) => {
             const content = await readFileContent(token, file.id);
             const cn = canonicalText(file.name);
             if (cn.includes("instrukce")) {
-              instructionContext = content.length > 5000 ? content.slice(0, 5000) + "…" : content;
+              instructionContext = truncate(content, MAX_INSTRUCTION_CHARS);
             } else if (cn.includes("mapa") && cn.includes("vztah")) {
-              systemMap = content;
+              systemMap = truncate(content, MAX_SYSTEM_MAP_CHARS);
             }
-            centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${content.length > 3000 ? content.slice(0, 3000) + "…" : content}\n`;
+            centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
           } catch {}
         }
       }
@@ -326,16 +353,16 @@ serve(async (req) => {
       .join("\n---\n");
 
     // Weekly thread conversations (truncated for context)
-    const weekConversations = (weekThreads || []).slice(0, 20).map(t => {
-      const msgs = ((t.messages as any[]) || []).slice(-10);
+    const weekConversations = (weekThreads || []).slice(0, 12).map(t => {
+      const msgs = ((t.messages as any[]) || []).slice(-6);
       const isCast = t.sub_mode === "cast";
-      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? (m.content.length > 300 ? m.content.slice(0, 300) + "…" : m.content) : "(multimodal)"}`).join("\n")}`;
+      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     // Research threads summary
-    const researchSummary = (researchThreads || []).map(rt => {
-      const msgs = ((rt.messages as any[]) || []).slice(-8);
-      return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? m.content.slice(0, 300) : ""}`).join("\n")}`;
+    const researchSummary = (researchThreads || []).slice(0, 8).map(rt => {
+      const msgs = ((rt.messages as any[]) || []).slice(-4);
+      return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? truncate(m.content, MAX_RESEARCH_MESSAGE_CHARS) : ""}`).join("\n")}`;
     }).join("\n---\n");
 
     // ═══ 3. PERPLEXITY RESEARCH – Novel approaches ═══
@@ -354,7 +381,7 @@ serve(async (req) => {
 7. School and social adaptation strategies for DID systems with child-age alters
 Active parts in this system: ${activeFragments}`;
 
-        const pRes = await fetch("https://api.perplexity.ai/chat/completions", {
+        const pRes = await withTimeout(fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -366,7 +393,7 @@ Active parts in this system: ${activeFragments}`;
             search_mode: "academic",
             search_recency_filter: "year",
           }),
-        });
+        }), 30000, "Perplexity research");
 
         if (pRes.ok) {
           const pData = await pRes.json();
@@ -384,7 +411,7 @@ Active parts in this system: ${activeFragments}`;
     }
 
     // ═══ 4. AI COMPREHENSIVE WEEKLY ANALYSIS ═══
-    const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const analysisResponse = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -569,7 +596,7 @@ ${perplexityContext}`,
           },
         ],
       }),
-    });
+    }), 90000, "Weekly AI analysis");
 
     let analysisText = "";
     if (analysisResponse.ok) {
@@ -674,7 +701,7 @@ ${perplexityContext}`,
           const source = m[3].trim();
           const priority = m[4].trim();
           if (task) {
-            await sb.from("did_therapist_tasks").insert({
+            const { error: insertTaskError } = await sb.from("did_therapist_tasks").insert({
               task,
               assigned_to: assignee,
               source_agreement: source,
@@ -682,6 +709,10 @@ ${perplexityContext}`,
               note: `Vytvořeno týdenním cyklem ${dateStr}`,
               user_id: userId,
             });
+            if (insertTaskError) {
+              console.error("[weekly] Failed to insert therapist task:", insertTaskError);
+              continue;
+            }
             insertedTasks++;
           }
         }
@@ -752,7 +783,7 @@ ${perplexityContext}`,
         // Generate Hanka's email
         let hankaHtml = "";
         try {
-          const hRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        const hRes = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -775,7 +806,7 @@ Používej barvy: zelená=pokrok, oranžová=pozor, červená=riziko.` },
                 { role: "user", content: reportSection },
               ],
             }),
-          });
+          }), 20000, "Hanka email generation");
           if (hRes.ok) {
             const d = await hRes.json();
             hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
@@ -786,7 +817,7 @@ Používej barvy: zelená=pokrok, oranžová=pozor, červená=riziko.` },
         // Generate Káťa's email
         let kataHtml = "";
         try {
-          const kRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          const kRes = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -805,7 +836,7 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
                 { role: "user", content: reportSection },
               ],
             }),
-          });
+          }), 20000, "Kata email generation");
           if (kRes.ok) {
             const d = await kRes.json();
             kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
@@ -823,14 +854,16 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
     // ═══ 7. TRIGGER RESEARCH WEEKLY SYNC ═══
     let researchSyncResult = null;
     try {
-      const researchRes = await fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+      const researchRes = await withTimeout(fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      });
+      }), 25000, "Research weekly sync");
       if (researchRes.ok) {
         researchSyncResult = await researchRes.json();
         console.log("[weekly] Research sync completed");
+      } else {
+        console.warn(`[weekly] Research sync error ${researchRes.status}`);
       }
     } catch (e) { console.error("[weekly] Research sync error:", e); }
 
@@ -853,6 +886,23 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
     console.error("[weekly] Error:", error);
+
+    if (cycleId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseKey);
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          report_summary: `Týdenní cyklus selhal: ${error instanceof Error ? error.message : "Unknown error"}`.slice(0, 2000),
+          cards_updated: [],
+        }).eq("id", cycleId);
+      } catch (updateError) {
+        console.error("[weekly] Failed to persist failure state:", updateError);
+      }
+    }
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
