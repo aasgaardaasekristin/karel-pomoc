@@ -77,3 +77,9 @@ verify_jwt = false
 
 [functions.karel-did-system-overview]
 verify_jwt = false
+
+[functions.karel-research-weekly-sync]
+verify_jwt = false
+
+[functions.karel-did-verify-cards]
+verify_jwt = false
