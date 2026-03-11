@@ -33,11 +33,9 @@ export const useResearchThreads = () => {
   const fetchThreads = useCallback(async () => {
     setLoading(true);
     try {
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await rt()
         .select("*")
         .eq("is_deleted", false)
-        .gte("started_at", weekAgo)
         .order("last_activity_at", { ascending: false });
       if (!error && data) setThreads((data as any[]).map(rowToThread));
     } finally {
