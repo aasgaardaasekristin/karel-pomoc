@@ -2612,22 +2612,25 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
           } catch {}
           if (!kataHtml) kataHtml = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalReportText}</pre>`;
 
-          // Send separate emails
-          await resend.emails.send({
-            from: "Karel <karel@hana-chlebcova.cz>",
-            to: [MAMKA_EMAIL],
-            subject: `Karel – denní report ${dateStr}`,
-            html: hankaHtml,
-          });
-          console.log(`Daily report sent to Hanka: ${MAMKA_EMAIL}`);
+          emailSentToHanka = await sendEmailOnce(
+            "hanka",
+            MAMKA_EMAIL,
+            `Karel – denní report ${dateStr}`,
+            hankaHtml,
+          );
+          if (emailSentToHanka) {
+            console.log(`Daily report sent to Hanka: ${MAMKA_EMAIL}`);
+          }
 
-          await resend.emails.send({
-            from: "Karel <karel@hana-chlebcova.cz>",
-            to: [KATA_EMAIL],
-            subject: `Karel – report pro Káťu ${dateStr}`,
-            html: kataHtml,
-          });
-          console.log(`Daily report sent to Káťa: ${KATA_EMAIL}`);
+          emailSentToKata = await sendEmailOnce(
+            "kata",
+            KATA_EMAIL,
+            `Karel – report pro Káťu ${dateStr}`,
+            kataHtml,
+          );
+          if (emailSentToKata) {
+            console.log(`Daily report sent to Káťa: ${KATA_EMAIL}`);
+          }
         } catch (e) { console.error("Email send error:", e); }
       }
     }
