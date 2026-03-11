@@ -179,6 +179,7 @@ export const useDidThreads = () => {
     threads,
     loading,
     fetchActiveThreads,
+    fetchAllThreads,
     createThread,
     updateThreadMessages,
     getThreadByPart,
