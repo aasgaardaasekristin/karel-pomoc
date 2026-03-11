@@ -353,6 +353,20 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         )}
       </div>
 
+      {/* Therapist Tasks */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-3">
+          <ListChecks className="w-3.5 h-3.5 text-primary" />
+          Úkoly pro terapeutky
+        </h4>
+        <DidTherapistTaskBoard />
+      </div>
+
+      {/* Agreements Panel */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <DidAgreementsPanel />
+      </div>
+
       {/* System Map */}
       <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
 
