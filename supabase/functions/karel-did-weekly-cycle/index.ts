@@ -200,7 +200,7 @@ serve(async (req) => {
             if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
               const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
               const folderLabel = folder === archiveFolder ? "ARCHIV/SPÍ" : "AKTIVNÍ";
-              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 4000 ? content.slice(0, 4000) + "…" : content}`;
+              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 2500 ? content.slice(0, 2500) + "…" : content}`;
               cardNames.push(`${partName} [${folderLabel}]`);
             }
           } catch (e) { console.warn(`Failed to read ${file.name}:`, e); }
