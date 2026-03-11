@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.karel-did-reformat-cards]
 verify_jwt = false
+
+[functions.karel-did-system-overview]
+verify_jwt = false
