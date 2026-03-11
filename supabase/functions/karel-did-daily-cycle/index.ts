@@ -1457,6 +1457,9 @@ serve(async (req) => {
     console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
   }
 
+  let cycleId: string | null = null;
+  let sb: ReturnType<typeof createClient> | null = null;
+
   try {
     // ═══ FAST-PATH: syncRegistry – batched: list + process_one ═══
     if (requestBody?.syncRegistry) {
