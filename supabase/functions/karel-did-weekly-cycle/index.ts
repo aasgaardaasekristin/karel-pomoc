@@ -135,7 +135,11 @@ serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-  const isCronCall = authHeader === `Bearer ${serviceRoleKey}` || authHeader === `Bearer ${anonKey}` || authHeader === `Bearer ${publishableKey}`;
+
+  // Allow cron/service calls with known keys, or calls with no auth (verify_jwt=false in config)
+  const knownKeys = [serviceRoleKey, anonKey, publishableKey].filter(Boolean);
+  const bearerToken = authHeader.replace("Bearer ", "");
+  const isCronCall = !authHeader || knownKeys.includes(bearerToken);
 
   if (!isCronCall) {
     const authResult = await requireAuth(req);
