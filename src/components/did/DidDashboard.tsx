@@ -33,6 +33,7 @@ interface Props {
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode, onQuickThread, contextDocs }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [lastCycleTime, setLastCycleTime] = useState<string | null>(null);
+  const [lastCycleStatus, setLastCycleStatus] = useState<string | null>(null);
   const [lastBackupTime, setLastBackupTime] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAutoBackupRunning, setIsAutoBackupRunning] = useState(false);
@@ -56,6 +57,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [overviewLoaded, setOverviewLoaded] = useState(() => {
     try { return !!localStorage.getItem(OVERVIEW_CACHE_KEY); } catch { return false; }
   });
+  const prevIsUpdatingRef = useRef(isUpdating);
 
   useEffect(() => {
     loadDashboardData();
@@ -67,6 +69,18 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       loadSystemOverview();
     }
   }, [loading]);
+
+  // After manual update finishes, force-refresh dashboard + overview cache
+  useEffect(() => {
+    if (prevIsUpdatingRef.current && !isUpdating) {
+      loadDashboardData();
+      try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {}
+      setOverviewLoaded(false);
+      setOverviewText("");
+      loadSystemOverview();
+    }
+    prevIsUpdatingRef.current = isUpdating;
+  }, [isUpdating]);
 
   const loadSystemOverview = async () => {
     setOverviewLoading(true);
