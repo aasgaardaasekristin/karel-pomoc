@@ -353,10 +353,10 @@ serve(async (req) => {
       .join("\n---\n");
 
     // Weekly thread conversations (truncated for context)
-    const weekConversations = (weekThreads || []).slice(0, 20).map(t => {
-      const msgs = ((t.messages as any[]) || []).slice(-10);
+    const weekConversations = (weekThreads || []).slice(0, 12).map(t => {
+      const msgs = ((t.messages as any[]) || []).slice(-6);
       const isCast = t.sub_mode === "cast";
-      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? (m.content.length > 300 ? m.content.slice(0, 300) + "…" : m.content) : "(multimodal)"}`).join("\n")}`;
+      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     // Research threads summary
