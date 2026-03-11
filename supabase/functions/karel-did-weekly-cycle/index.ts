@@ -134,7 +134,8 @@ serve(async (req) => {
   const authHeader = req.headers.get("Authorization") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  const isCronCall = authHeader === `Bearer ${serviceRoleKey}` || authHeader === `Bearer ${anonKey}`;
+  const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+  const isCronCall = authHeader === `Bearer ${serviceRoleKey}` || authHeader === `Bearer ${anonKey}` || authHeader === `Bearer ${publishableKey}`;
 
   if (!isCronCall) {
     const authResult = await requireAuth(req);
