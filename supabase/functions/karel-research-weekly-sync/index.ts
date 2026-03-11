@@ -19,15 +19,38 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-// Drive helpers
+const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+
 async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
-  let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  let q = `name='${name}' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();
   return data.files?.[0]?.id || null;
+}
+
+async function findOrCreateFolder(token: string, name: string, parentId: string): Promise<string | null> {
+  const existing = await findFolder(token, name, parentId);
+  if (existing) return existing;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name, mimeType: DRIVE_FOLDER_MIME, parents: [parentId] }),
+  });
+  if (!res.ok) { console.error(`Failed to create folder ${name}: ${res.status}`); return null; }
+  const folder = await res.json();
+  return folder.id;
+}
+
+async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
+  const q = `'${folderId}' in parents and trashed=false`;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  return data.files || [];
 }
 
 async function findFile(token: string, name: string, parentId: string): Promise<{ id: string; name: string } | null> {
