@@ -63,13 +63,17 @@ serve(async (req) => {
     }
 
     // ── 2. Build conversation text ──
-    const therapistLabel = createdBy || "Terapeut";
+    const normalizedCreatedBy = createdBy === "Káťa" ? "Káťa" : (createdBy || "Hana");
+    const therapistLabel = normalizedCreatedBy;
+    const osobniOsloveni = normalizedCreatedBy === "Káťa" ? "Káťo" : "Haničko";
     const conversationText = messages
       .map((m: any) => `${m.role === "user" ? therapistLabel : "Karel"}: ${m.content}`)
       .join("\n\n");
 
     // ── 3. Synthesize handbook with therapist-focused structure ──
     const synthesisPrompt = `Jsi Karel, supervizní AI asistent. Na základě níže uvedeného rozhovoru s terapeutem/kou (${therapistLabel}) vytvoř STRUKTUROVANOU PŘÍRUČKU – praktický návod pro terapeuta k vytištění.
+
+KRITICKÉ PRAVIDLO OSLOVENÍ: Tato příručka je pro ${therapistLabel}. V textu oslovuj VÝHRADNĚ "${osobniOsloveni}". NIKDY nepoužívej jiné jméno. Nepředstavuj se jako "tady Karel".
 
 ROZHOVOR:
 ${conversationText}
@@ -109,7 +113,7 @@ Vytvoř příručku v tomto JSON formátu. KAŽDÁ metoda/aktivita musí být KO
       "description": "stručný popis relevance"
     }
   ],
-  "karel_notes": "Karlovy poznámky – jak výsledky propojit s praxí, doporučení pro terapeuta"
+  "karel_notes": "Karlovy poznámky pro ${osobniOsloveni} – jak výsledky propojit s praxí, doporučení pro terapeuta. OSLOVUJ VÝHRADNĚ ${osobniOsloveni}."
 }
 
 PRAVIDLA:
