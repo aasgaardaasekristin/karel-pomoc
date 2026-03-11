@@ -1325,12 +1325,78 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
   // ── Render ──
 
   const renderDidContent = () => {
-    if (!didSubMode) {
-      // Dashboard + submode selector
+    // Entry screen: Terapeut / Kluci
+    if (didFlowState === "entry" && !didSubMode) {
+      return (
+        <ScrollArea className="flex-1">
+          <DidEntryScreen
+            onSelectTerapeut={() => setDidFlowState("terapeut")}
+            onSelectKluci={() => {
+              setDidSubMode("cast");
+              setDidFlowState("loading");
+              (async () => {
+                await didThreads.fetchActiveThreads("cast");
+                if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
+                setDidFlowState("thread-list");
+              })();
+            }}
+            onBack={() => setMode("debrief")}
+          />
+        </ScrollArea>
+      );
+    }
+
+    // Terapeut view: Dashboard + Hanička/Káťa buttons
+    if (didFlowState === "terapeut" && !didSubMode) {
       return (
         <ScrollArea className="flex-1">
           <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
-          <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
+            <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
+            <div className="space-y-2">
+              <button
+                onClick={() => handleDidSubModeSelect("mamka")}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-pink-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-pink-500"
+              >
+                <span className="text-lg">💗</span>
+                <div>
+                  <div className="font-medium text-foreground">Hanička</div>
+                  <div className="text-xs text-muted-foreground">Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleDidSubModeSelect("kata")}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-blue-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-blue-500"
+              >
+                <span className="text-lg">💙</span>
+                <div>
+                  <div className="font-medium text-foreground">Káťa</div>
+                  <div className="text-xs text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
+                </div>
+              </button>
+            </div>
+            <div className="flex justify-center mt-4">
+              <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
+                ← Zpět
+              </Button>
+            </div>
+          </div>
+        </ScrollArea>
+      );
+    }
+
+    if (!didSubMode) {
+      // Fallback
+      return (
+        <ScrollArea className="flex-1">
+          <DidEntryScreen
+            onSelectTerapeut={() => setDidFlowState("terapeut")}
+            onSelectKluci={() => {
+              setDidSubMode("cast");
+              setDidFlowState("thread-list");
+            }}
+            onBack={() => setMode("debrief")}
+          />
         </ScrollArea>
       );
     }
