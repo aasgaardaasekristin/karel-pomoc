@@ -196,11 +196,11 @@ serve(async (req) => {
         for (const file of files) {
           if (file.mimeType === DRIVE_FOLDER_MIME) continue;
           try {
-            const content = await readFileContent(token, file.id);
+              const content = await readFileContent(token, file.id);
             if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
               const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
               const folderLabel = folder === archiveFolder ? "ARCHIV/SPÍ" : "AKTIVNÍ";
-              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 2500 ? content.slice(0, 2500) + "…" : content}`;
+              allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${content.length > 1500 ? content.slice(0, 1500) + "…" : content}`;
               cardNames.push(`${partName} [${folderLabel}]`);
             }
           } catch (e) { console.warn(`Failed to read ${file.name}:`, e); }
@@ -293,10 +293,10 @@ serve(async (req) => {
       .join("\n---\n");
 
     // Weekly thread conversations (truncated for context)
-    const weekConversations = (weekThreads || []).map(t => {
-      const msgs = ((t.messages as any[]) || []).slice(-15);
+    const weekConversations = (weekThreads || []).slice(0, 20).map(t => {
+      const msgs = ((t.messages as any[]) || []).slice(-10);
       const isCast = t.sub_mode === "cast";
-      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? (m.content.length > 400 ? m.content.slice(0, 400) + "…" : m.content) : "(multimodal)"}`).join("\n")}`;
+      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? (m.content.length > 300 ? m.content.slice(0, 300) + "…" : m.content) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     // Research threads summary
@@ -355,7 +355,7 @@ Active parts in this system: ${activeFragments}`;
       method: "POST",
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-2.5-flash",
         messages: [
           {
             role: "system",
