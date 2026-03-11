@@ -434,7 +434,15 @@ Karlovy poznámky: ...
 Plnění: X%
 [/DOHODA]
 
-═══ 3. CENTRUM UPDATES ═══
+═══ 2b. ÚKOLY PRO TERAPEUTKY ═══
+Formát: [UKOLY]...[/UKOLY]
+
+Pro každý úkol vytvoř řádek ve formátu:
+[UKOL] assignee=hanka|kata|both | task=Popis úkolu | source=Název dohody nebo kontext | priority=normal|high [/UKOL]
+
+Vytvoř konkrétní, splnitelné úkoly pro Hanku a Káťu na základě analýzy a dohod.
+
+
 Formát:
 
 [CENTRUM:05_Terapeuticky_Plan_Aktualni]
