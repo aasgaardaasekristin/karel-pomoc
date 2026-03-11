@@ -194,8 +194,14 @@ VSTUPNÍ DATA:
 DOKUMENTY Z KARTOTÉKY (00_CENTRUM):
 ${centrumDocs || "(nepodařilo se načíst)"}
 
-VLÁKNA Z POSLEDNÍHO TÝDNE (rozhovory částí s Karlem):
+VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ S KARLEM:
 ${threadSummary || "(žádná vlákna za poslední týden)"}
+
+VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK S KARLEM (Hanička=mamka, Káťa=kata):
+${therapistSummary || "(žádné rozhovory terapeutek za poslední týden)"}
+
+KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky – sekce A-M):
+${activePartCards || "(nepodařilo se načíst nebo žádné aktivní části)"}
 
 CYKLY AKTUALIZACE KARTOTÉKY:
 ${cycleInfo || "(žádné záznamy)"}
@@ -212,13 +218,13 @@ NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, 
 
 Struktura (jako plynulý souvislý text, ne odrážky):
 
-1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný?
+1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný? Použij data z karet aktivních částí pro hlubší kontext.
 
-2. **Přehled posledního týdne** – Kdo s Karlem mluvil včera/předevčírem? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici.
+2. **Přehled posledního týdne** – Kdo s Karlem mluvil včera/předevčírem? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici. ZAHRŇ i co řešily terapeutky (Hanička a Káťa) s Karlem – jejich obavy, postřehy, otázky.
 
-3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání.
+3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání. Využij informace z karet částí (diagnózy, triggery, terapeutické poznámky).
 
-4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem.
+4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem. Navrhuj s ohledem na specifika konkrétních částí (věk, role, stav) z jejich karet.
 
 5. **Poslední aktualizace kartotéky** – Kdy proběhla, co se změnilo.
 
@@ -227,7 +233,9 @@ PRAVIDLA:
 - Nepoužívej dekorativní oddělovače
 - Nadpisy jako markdown (## a ###)
 - NIKDY nevymýšlej informace – piš jen co je v datech
-- NEPIŠ obecné poučky o DID které terapeutky znají`;
+- NEPIŠ obecné poučky o DID které terapeutky znají
+- Pokud máš data z karet částí, VYUŽIJ JE pro konkrétní doporučení (ne obecná)
+- Pokud terapeutky s Karlem řešily něco důležitého, ZDŮRAZNI TO`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
