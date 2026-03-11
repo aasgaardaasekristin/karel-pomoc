@@ -1583,7 +1583,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 subMode={didSubMode}
                 onEndCall={handleDidEndCall}
                 onManualUpdate={handleManualUpdate}
-                onLeaveThread={didSubMode === "cast" && activeThread ? handleLeaveThread : undefined}
+                onLeaveThread={(didSubMode === "cast" || didSubMode === "mamka" || didSubMode === "kata") && activeThread ? handleLeaveThread : undefined}
                 onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
                 onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
                 isUpdateLoading={isManualUpdateLoading}
