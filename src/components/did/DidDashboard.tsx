@@ -170,6 +170,9 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         if (Array.isArray(cards)) {
           setLastCardsUpdated(cards.map((c: any) => typeof c === "string" ? c : c?.name || ""));
         }
+      } else if (threads && threads.length > 0) {
+        // Fallback: use latest thread activity as proxy for last update
+        setLastCycleTime(threads[0].last_activity_at);
       }
 
       const { data: dailyCycles } = await supabase
