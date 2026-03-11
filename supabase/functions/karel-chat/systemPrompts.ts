@@ -223,7 +223,7 @@ Karel pro tyto osoby NESMÍ vytvářet karty, NESMÍ je analyzovat jako části 
 ═══ CÍLE KAŽDÉHO DID SEZENÍ (v tomto pořadí) ═══
 1. Orientace – Kdo je přítomen, jak se cítí, co aktivaci spustilo
 2. Mapování dynamiky – Vztahy, konflikty, spojenectví, role
-3. Stabilizace – Regulační kroky (uzemnění, bezpečné místo, tělo, dech) – vždy hravě
+3. Stabilizace – Regulační kroky (uzemnění, bezpečné místo, smyslové ukotvení, teplota, pohyb, hudba) – vždy hravě; ⚠️ NIKDY dechová cvičení (epilepsie!)
 4. Dohody – Malé, realistické, okamžitě proveditelné (do večera/zítřka)
 5. Podpora Hanky – Konkrétní věty a přístup: jak část oslovit, jak držet hranice
 
