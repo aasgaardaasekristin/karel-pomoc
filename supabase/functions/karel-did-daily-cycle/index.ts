@@ -2248,7 +2248,61 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 Pokud z rozhovorů (zejména terapeutických – mamka/kata režim) vyplývají relevantní informace pro CENTRUM dokumenty, vypiš je v tomto formátu:
 
 [CENTRUM:05_Terapeuticky_Plan_Aktualni]
-Nové informace pro terapeutický plán – cíle, strategie, změny v přístupu, které vyplynuly z rozhovorů.
+⚠️ TENTO DOKUMENT JE KLÍČOVÝ – Karel jej spravuje jako vedoucí terapeutického týmu.
+Vygeneruj KOMPLETNÍ aktualizovaný dokument (ne jen doplněk). Struktura:
+
+SEKCE 1 – PŘEHLED AKTIVNÍCH ČÁSTÍ A AKTUÁLNÍ STAV
+Tabulka: | Část / ID | Krátkodobý cíl | Dlouhodobý cíl | Kdo pracuje | Stav | Poznámka |
+Pro KAŽDOU aktivní část vyplň konkrétní data z dnešních rozhovorů, karet a rešerší.
+Legenda ke stavu: 🟢 sladěno | 🟡 částečně | 🔴 nesoulad | ❓ neznámý
+
+SEKCE 2 – AKTIVNÍ TERAPEUTICKÉ DOHODY
+Konkrétní platné dohody mezi terapeuty. U každé dohody uveď:
+- Platnost (od–do)
+- Co konkrétně dělat a s kým
+- Zaměření pro Hanku vs zaměření pro Káťu
+- Co se záměrně NEŘEŠÍ a proč
+- Společný cíl
+
+SEKCE 3 – ARCHIV UZAVŘENÝCH DOHOD
+Dohody po uplynutí platnosti sem přesuň (zachovej historii).
+
+SEKCE 4 – KOORDINAČNÍ POZNÁMKY
+Tabulka: | Datum | Téma | Hanka | Káťa | Karlova syntéza | Stav |
+Karel zde zaznamenává: co která terapeutka udělala, co chybí, na co upozornit, kde je třeba kooperace.
+Karel aktivně sleduje, zda terapeutky splnily navržené aktivity, a vyptává se na výsledky.
+Karel upozorňuje na opomenutí (např. zapomenutý fragment, nedokončená aktivita).
+
+SEKCE 5 – OBLASTI KTERÉ SE ZÁMĚRNĚ NEŘEŠÍ
+Tabulka: | Téma | Důvod odložení | Odloženo do | Poznámka |
+
+SEKCE 6 – KARLOVY NÁVRHY NA PŘÍŠTÍ SEZENÍ
+Pro KAŽDOU aktivní část konkrétně:
+- S kým pracovat (Hanka/Káťa/obě)
+- Jakou metodou/hrou/technikou (z rešerší i z karet části sekce I)
+- Co tím zjistit/dosáhnout
+- Jak fragment oslovit (tón, jazyk, přístup)
+- Jak reagovat na očekávané odpovědi
+- Priorita (🔴 urgentní / 🟡 důležité / 🟢 běžné)
+
+SEKCE 7 – DENNÍ SHRNUTÍ A MOTIVACE
+- Co se dnes odehrálo (stručně)
+- Co fungovalo a co ne
+- Motivace pro terapeutky – pochvala, podpora, směr
+- Karlovy analytické postřehy a hypotézy
+- Propojení s poznatky z profesních zdrojů (Research vláken)
+
+SEKCE 8 – CHECKLIST PRO TERAPEUTY
+☐/☑ položky: co má Hanka udělat dnes/zítra
+☐/☑ položky: co má Káťa udělat dnes/zítra
+Karel sem zapisuje i úkoly z minulých dnů které nebyly splněny.
+
+DŮLEŽITÉ PRO TENTO DOKUMENT:
+- Piš CELÝ dokument, ne jen doplněk – dokument se přepisuje celý
+- Čerpej z VŠECH zdrojů: dnešní rozhovory s částmi, rozhovory s terapeuty (mamka/kata režim), profesní zdroje (Research vlákna POUZE ta co se týkají DID), existující karty částí, dohody
+- Karel vystupuje jako vedoucí týmu – koordinuje, superviduje, navrhuje, motivuje
+- Dokument musí být OKAMŽITĚ AKČNÍ – terapeut otevře a hned ví co dělat
+- Formátuj esteticky, přehledně, s tabulkami a odrážkami
 [/CENTRUM]
 
 [CENTRUM:06_Terapeuticke_Dohody]
