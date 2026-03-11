@@ -228,6 +228,12 @@ Struktura (jako plynulý souvislý text, ne odrážky):
 
 5. **Poslední aktualizace kartotéky** – Kdy proběhla, co se změnilo.
 
+6. **📋 Úkoly pro tento týden** – Na základě VŠECH dat (rozhovory částí, rozhovory terapeutek, karty, terapeutický plán) sestav KONKRÉTNÍ úkoly pro každou terapeutku zvlášť:
+   - **Hanička**: Co konkrétně má tento týden udělat? S kým promluvit? Jakou techniku vyzkoušet? Co sledovat?
+   - **Káťa**: Co konkrétně má tento týden udělat? Na co se zaměřit? Koho oslovit? Jak podpořit systém?
+   - **Společné**: Co mají řešit jako tandem? Je potřeba koordinace?
+   Úkoly formuluj jako jasné, akční body (ne obecné rady). Např. "Oslovit Lincolna – zkusit techniku bezpečného místa, je destabilizovaný od středy" nebo "Probrat s Káťou výsledky posledního rozhovoru s [část]".
+
 PRAVIDLA:
 - Piš česky, osobním tónem, jako by Karel mluvil k Hani a Kátě které zná a má rád
 - Nepoužívej dekorativní oddělovače
