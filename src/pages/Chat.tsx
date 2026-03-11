@@ -236,7 +236,32 @@ const Chat = () => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });
-      else setAuthChecked(true);
+      else {
+        // Redirect to hub if no section selected
+        if (!hubSection) {
+          navigate("/hub", { replace: true });
+          return;
+        }
+        // For Hana section, verify PIN
+        if (hubSection === "hana") {
+          try {
+            if (sessionStorage.getItem(HANA_PIN_KEY) !== "1") {
+              navigate("/hub", { replace: true });
+              return;
+            }
+          } catch {
+            navigate("/hub", { replace: true });
+            return;
+          }
+        }
+        // Auto-set mode based on hub section
+        if (hubSection === "did" && mode !== "childcare") {
+          setMode("childcare");
+        } else if (hubSection === "hana" && mode === "childcare") {
+          setMode("debrief");
+        }
+        setAuthChecked(true);
+      }
     };
     checkAuth();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
