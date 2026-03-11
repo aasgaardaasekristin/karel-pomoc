@@ -503,3 +503,252 @@ export async function generateKataHandbook(currentMessages?: { role: string; con
   const dateStr = new Date().toISOString().slice(0, 10);
   doc.save(`Prirucka_pro_Katu_${dateStr}.pdf`);
 }
+
+// ══════════════════════════════════════════════
+// generateResearchHandbook — Příručka z Profesních zdrojů
+// ══════════════════════════════════════════════
+
+export async function generateResearchHandbook(
+  currentMessages: { role: string; content: string }[],
+  topic: string,
+  createdBy: string
+): Promise<void> {
+  if (!currentMessages || currentMessages.length < 2) {
+    throw new Error("Žádné zprávy k zpracování – nejprve veď rozhovor s Karlem.");
+  }
+
+  // ── 1. Call synthesis edge function ──
+  const headers = await getAuthHeaders();
+  const synthRes = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-research-handbook`,
+    { method: "POST", headers, body: JSON.stringify({ messages: currentMessages, topic, createdBy }) }
+  );
+  if (!synthRes.ok) {
+    const errText = await synthRes.text();
+    throw new Error(`Syntéza příručky selhala: ${errText}`);
+  }
+  const handbook = await synthRes.json();
+
+  // ── 2. Build PDF ──
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 15;
+  const contentWidth = pageWidth - 2 * margin;
+  let y = 20;
+
+  // Load font
+  try {
+    const fontResponse = await fetch("/fonts/Roboto-Regular.ttf");
+    if (fontResponse.ok) {
+      const fontBuffer = await fontResponse.arrayBuffer();
+      const fontBytes = new Uint8Array(fontBuffer);
+      let binary = "";
+      for (let i = 0; i < fontBytes.length; i++) {
+        binary += String.fromCharCode(fontBytes[i]);
+      }
+      const base64Font = btoa(binary);
+      doc.addFileToVFS("Roboto-Regular.ttf", base64Font);
+      doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+      doc.setFont("Roboto");
+    }
+  } catch (e) {
+    console.warn("Failed to load custom font:", e);
+  }
+
+  // ── Title ──
+  doc.setFontSize(20);
+  doc.setTextColor(60, 90, 140);
+  doc.text("Profesní zdroje – Příručka", pageWidth / 2, y, { align: "center" });
+  y += 9;
+  doc.setFontSize(11);
+  doc.setTextColor(80, 80, 80);
+  const topicLines = doc.splitTextToSize(`Téma: ${handbook.topic || topic || "konzultace"}`, contentWidth);
+  doc.text(topicLines, pageWidth / 2, y, { align: "center" });
+  y += topicLines.length * 5 + 4;
+  doc.setFontSize(9);
+  doc.setTextColor(130, 130, 130);
+  doc.text(`Vypracoval/a: ${createdBy} • ${formatDate(new Date().toISOString())}`, pageWidth / 2, y, { align: "center" });
+  y += 10;
+  doc.setDrawColor(140, 170, 210);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, pageWidth - margin, y);
+  y += 8;
+
+  // ── Summary ──
+  if (handbook.summary) {
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
+    y = addWrappedText(doc, handbook.summary, margin, y, contentWidth, 5);
+    y += 6;
+  }
+
+  // ── Methods ──
+  if (handbook.methods?.length > 0) {
+    doc.setFontSize(14);
+    doc.setTextColor(60, 90, 140);
+    doc.text("Metody a přístupy", margin, y);
+    y += 8;
+
+    for (let i = 0; i < handbook.methods.length; i++) {
+      const m = handbook.methods[i];
+      if (y > 250) { doc.addPage(); y = 20; }
+
+      doc.setFontSize(11);
+      doc.setTextColor(40, 70, 120);
+      doc.text(`${i + 1}. ${m.name || "Metoda"}${m.difficulty ? ` (${m.difficulty})` : ""}`, margin, y);
+      y += 6;
+
+      doc.setFontSize(9);
+      doc.setTextColor(50, 50, 50);
+      if (m.description) {
+        y = addWrappedText(doc, m.description, margin + 3, y, contentWidth - 6, 4.5);
+        y += 2;
+      }
+      if (m.application) {
+        doc.setTextColor(80, 110, 80);
+        y = addWrappedText(doc, `Využití: ${m.application}`, margin + 3, y, contentWidth - 6, 4.5);
+        y += 4;
+      }
+    }
+    y += 4;
+  }
+
+  // ── Diagnostic tools ──
+  if (handbook.diagnostic_tools?.length > 0) {
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(90, 60, 130);
+    doc.text("Diagnostické nástroje a testy", margin, y);
+    y += 8;
+
+    for (const dt of handbook.diagnostic_tools) {
+      if (y > 250) { doc.addPage(); y = 20; }
+      doc.setFontSize(10);
+      doc.setTextColor(70, 50, 110);
+      doc.text(dt.name || "Nástroj", margin + 3, y);
+      y += 5;
+
+      doc.setFontSize(9);
+      doc.setTextColor(50, 50, 50);
+      if (dt.description) {
+        y = addWrappedText(doc, dt.description, margin + 5, y, contentWidth - 10, 4.5);
+        y += 1;
+      }
+      if (dt.target_group) {
+        doc.setTextColor(100, 100, 100);
+        y = addWrappedText(doc, `Cílová skupina: ${dt.target_group}`, margin + 5, y, contentWidth - 10, 4.5);
+        y += 3;
+      }
+    }
+    y += 4;
+  }
+
+  // ── Warnings ──
+  if (handbook.warnings?.length > 0) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(180, 80, 40);
+    doc.text("Na co si dát pozor", margin, y);
+    y += 7;
+
+    doc.setFontSize(9);
+    doc.setTextColor(100, 50, 30);
+    for (const w of handbook.warnings) {
+      if (y > 270) { doc.addPage(); y = 20; }
+      y = addWrappedText(doc, `⚠ ${w}`, margin + 3, y, contentWidth - 6, 4.5);
+      y += 2;
+    }
+    y += 4;
+  }
+
+  // ── Tips ──
+  if (handbook.tips?.length > 0) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(50, 120, 60);
+    doc.text("Praktické tipy", margin, y);
+    y += 7;
+
+    doc.setFontSize(9);
+    doc.setTextColor(50, 50, 50);
+    for (const tip of handbook.tips) {
+      if (y > 270) { doc.addPage(); y = 20; }
+      y = addWrappedText(doc, `💡 ${tip}`, margin + 3, y, contentWidth - 6, 4.5);
+      y += 2;
+    }
+    y += 4;
+  }
+
+  // ── Sources ──
+  if (handbook.sources?.length > 0) {
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(60, 90, 130);
+    doc.text("Zdroje a odkazy", margin, y);
+    y += 8;
+
+    for (let i = 0; i < handbook.sources.length; i++) {
+      const s = handbook.sources[i];
+      if (y > 255) { doc.addPage(); y = 20; }
+      doc.setFontSize(9);
+      doc.setTextColor(40, 60, 110);
+      y = addWrappedText(doc, `${i + 1}. ${s.title || "Zdroj"}`, margin + 3, y, contentWidth - 6, 4.5);
+      if (s.url) {
+        doc.setTextColor(80, 80, 180);
+        doc.setFontSize(8);
+        y = addWrappedText(doc, s.url, margin + 6, y, contentWidth - 12, 4);
+      }
+      if (s.description) {
+        doc.setTextColor(80, 80, 80);
+        doc.setFontSize(8);
+        y = addWrappedText(doc, s.description, margin + 6, y, contentWidth - 12, 4);
+      }
+      y += 2;
+    }
+    y += 4;
+  }
+
+  // ── Action plan ──
+  if (handbook.action_plan?.length > 0) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(60, 90, 140);
+    doc.text("Akční plán", margin, y);
+    y += 7;
+
+    doc.setFontSize(9);
+    doc.setTextColor(50, 50, 50);
+    for (let i = 0; i < handbook.action_plan.length; i++) {
+      if (y > 270) { doc.addPage(); y = 20; }
+      y = addWrappedText(doc, `${i + 1}. ${handbook.action_plan[i]}`, margin + 3, y, contentWidth - 6, 4.5);
+      y += 2;
+    }
+    y += 4;
+  }
+
+  // ── Karel's notes ──
+  if (handbook.karel_notes) {
+    if (y > 240) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(50, 100, 80);
+    doc.text("Karlovy poznámky", margin, y);
+    y += 7;
+
+    doc.setFontSize(9);
+    doc.setTextColor(50, 80, 60);
+    y = addWrappedText(doc, handbook.karel_notes, margin + 3, y, contentWidth - 6, 4.5);
+  }
+
+  // ── Footer ──
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(160, 160, 160);
+    doc.text(`Profesní zdroje • ${createdBy} • Strana ${i}/${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
+  }
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const safeTopic = (topic || "konzultace").replace(/[^a-zA-Z0-9áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ ]/g, "").replace(/\s+/g, "_").slice(0, 40);
+  doc.save(`Profesni_zdroje_${safeTopic}_${dateStr}.pdf`);
+}
