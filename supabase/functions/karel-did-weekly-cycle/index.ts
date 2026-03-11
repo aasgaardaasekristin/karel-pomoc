@@ -159,8 +159,13 @@ serve(async (req) => {
     const sb = createClient(supabaseUrl, supabaseKey);
     const dateStr = new Date().toISOString().slice(0, 10);
 
+    // Get a valid user_id for DB inserts (service role calls don't have auth.uid())
+    const { data: anyUser } = await sb.from("did_threads").select("user_id").limit(1).single();
+    const userId = anyUser?.user_id;
+    if (!userId) throw new Error("No user found in did_threads for cycle attribution");
+
     // Create weekly cycle record
-    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running" }).select().single();
+    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running", user_id: userId }).select().single();
 
     // ═══ 1. READ ALL CARDS + CENTRUM DOCS FROM DRIVE ═══
     let allCardsContent = "";
