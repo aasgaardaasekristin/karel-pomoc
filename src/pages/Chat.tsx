@@ -21,6 +21,7 @@ import SessionReportForm from "@/components/report/SessionReportForm";
 import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
+import DidEntryScreen from "@/components/did/DidEntryScreen";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
 import DidActionButtons from "@/components/did/DidActionButtons";
 import DidDashboard from "@/components/did/DidDashboard";
