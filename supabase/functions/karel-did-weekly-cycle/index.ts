@@ -861,6 +861,8 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
       if (researchRes.ok) {
         researchSyncResult = await researchRes.json();
         console.log("[weekly] Research sync completed");
+      } else {
+        console.warn(`[weekly] Research sync error ${researchRes.status}`);
       }
     } catch (e) { console.error("[weekly] Research sync error:", e); }
 
