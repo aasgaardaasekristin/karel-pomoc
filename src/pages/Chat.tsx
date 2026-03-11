@@ -1670,7 +1670,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
-                {hubSection === "did" ? "DID" : "Hana"}
+                {hubSection === "did" ? "DID" : hubSection === "research" ? "Profesní zdroje" : "Hana"}
               </h1>
             </div>
           </div>
