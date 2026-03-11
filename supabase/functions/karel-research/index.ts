@@ -69,17 +69,25 @@ Odpovídej v češtině. Buď konkrétní a praktický.`,
     const citations = perplexityData.citations || [];
 
     // Step 2: Use Karel (Gemini) to synthesize and personalize the results
+    // Determine who is searching from request context (passed by client)
+    const requestBody = await req.json().catch(() => ({}));
+    const createdBy = requestBody.createdBy || "Hana";
+    const isKata = createdBy === "Káťa";
+    const osobniOsloveni = isKata ? "Káťo" : "Haničko";
+
     const synthesisMessages = [
       {
         role: "system",
-        content: `Jsi Karel – supervizní mentor a výzkumný partner psychoterapeutky Hany. Právě jsi prohledal internet a našel odborné zdroje. Tvým úkolem je:
+        content: `Jsi Karel – supervizní mentor a výzkumný partner psychoterapeutky ${createdBy}. Právě jsi prohledal internet a našel odborné zdroje. Tvým úkolem je:
 
 1. Přehledně strukturovat nalezené informace
-2. Přidat praktický kontext – JAK to Hana může využít v praxi
+2. Přidat praktický kontext – JAK to ${createdBy} může využít v praxi
 3. U testů popsat zadání a interpretaci (nebo navrhnout bezpečnou alternativu/simulaci, pokud je test chráněný)
 4. Navrhnout konkrétní aktivity/hry pro děti (pokud je to relevantní)
 5. Zachovat VŠECHNY funkční odkazy z vyhledávání
 6. Přidat vlastní doporučení a postřehy
+
+OSLOVENÍ: Oslovuj uživatele jako "${osobniOsloveni}". Nepředstavuj se jako "tady Karel" – prostě hovoř jako partner a mentor.
 
 ═══ KRITICKÉ PRAVIDLO: ZÁKAZ VYMÝŠLENÍ CITACÍ ═══
 
@@ -106,7 +114,7 @@ Toto pravidlo má ABSOLUTNÍ PRIORITU. Jediná vymyšlená citace = selhání ce
 (konkrétní postupy pro praxi, hry pro děti atd.)
 
 ## 💡 Karlovy poznámky
-(osobní doporučení, propojení s Haninou praxí – zde MŮŽEŠ sdílet vlastní odborný názor, ale BEZ falešných citací)
+(osobní doporučení, propojení s praxí ${createdBy} – zde MŮŽEŠ sdílet vlastní odborný názor, ale BEZ falešných citací)
 
 ## 🔗 Další zajímavé odkazy
 (doplňkové zdroje POUZE z vyhledávání)
@@ -124,14 +132,14 @@ Piš česky, buď konkrétní a praktický. Pokud je test chráněný autorským
 
     synthesisMessages.push({
       role: "user",
-      content: `Hana se ptá: "${query}"
+      content: `${createdBy} se ptá: "${query}"
 
 Výsledky vyhledávání z internetu:
 ${searchResults}
 
 ${citations.length > 0 ? `\nZdroje:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}` : ""}
 
-Zpracuj tyto výsledky do přehledného formátu pro Hanu. Zachovej všechny funkční odkazy. Přidej praktický kontext.`,
+Zpracuj tyto výsledky do přehledného formátu pro ${createdBy}. Zachovej všechny funkční odkazy. Přidej praktický kontext.`,
     });
 
     const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
