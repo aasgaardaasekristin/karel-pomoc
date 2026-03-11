@@ -2315,7 +2315,55 @@ Nové dohody mezi terapeuty – konkrétní zaměření, společné cíle, co se
 [/CENTRUM]
 
 [CENTRUM:00_Aktualni_Dashboard]
-Aktualizace přehledu – změny ve stavu systému, nové trendy, důležité události.
+⚠️ TENTO DOKUMENT SE PŘEPISUJE CELÝ – vygeneruj kompletní nový obsah, ne doplněk.
+Dashboard je "kontrolní panel" – čitelný za 30 sekund, nikdy archiv.
+
+POVINNÁ STRUKTURA (7 sekcí):
+
+SEKCE 1 – STAV SYSTÉMU TEĎ
+Pro KAŽDOU aktivní část:
+▸ Jméno [stav emoji] – kdo frontuje, nálada, stabilita (🟢🟡🔴), poslední kontakt
+▸ Aktuální riziko (nízké/střední/vysoké)
+Souhrn: kolik částí aktivních, kolik spí, celková stabilita systému 1-10
+
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️
+- Triggery dne (roční období, blížící se události, výročí traumat)
+- Nesplněné dohody nebo úkoly po termínu
+- Části v ohrožení (destabilizace, regrese, konflikty)
+- Blížící se termíny (škola, terapie, lékař)
+Pokud žádná upozornění: "✅ Žádná kritická upozornění"
+
+SEKCE 3 – CO SE DĚLO POSLEDNÍCH 24H
+- Kdo mluvil s Karlem (jména, délka, téma)
+- Klíčové momenty a důležité výroky
+- Změny stavů (probuzení, usnutí, switche)
+- Co nového se Karel dozvěděl
+
+SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤
+Pro KAŽDOU spící část:
+▸ Jméno – jak dlouho spí, důvod
+▸ Riziko spontánního probuzení (nízké/střední/vysoké)
+▸ Doporučení: nechat/probudit a proč
+
+SEKCE 5 – TERAPEUTICKÝ FOKUS DNE 🎯
+Top 1-3 priority (zjednodušené z 05_Terapeuticky_Plan):
+▸ S kým pracovat
+▸ Jakou metodou
+▸ Co tím dosáhnout
+Akční, okamžitě srozumitelné – "dnes udělej tohle"
+
+SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬
+- Vzkazy Hanka → Káťa
+- Vzkazy Káťa → Hanka
+- Co jedna potřebuje vědět od druhé
+- Strategické postřehy pro sdílení
+Pokud žádné vzkazy: "Žádné nové vzkazy"
+
+SEKCE 7 – KARLOVY POSTŘEHY 🔍
+- Vzorce které Karel zaznamenal ale ještě nezařadil
+- Hypotézy a intuice (explicitně označené jako hypotézy)
+- Propojení mezi částmi/událostmi která si zaslouží pozornost
+- Měkká data a dojmy z rozhovorů
 [/CENTRUM]
 
 [CENTRUM:04_Mapa_Vztahu]
@@ -2568,6 +2616,21 @@ ${perplexityContext}`,
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
               cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
+              continue;
+            }
+
+            // ═══ SPECIAL: 00_Aktualni_Dashboard – FULL DOCUMENT REWRITE ═══
+            if (docCanonical.includes("dashboard") || (docCanonical.includes("aktualn") && docCanonical.includes("dashboard"))) {
+              const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
+              if (!dashFile) {
+                console.warn(`[CENTRUM] Dashboard doc not found, skipping`);
+                continue;
+              }
+
+              const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${newContent}`;
+              await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
+              console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
               continue;
             }
 

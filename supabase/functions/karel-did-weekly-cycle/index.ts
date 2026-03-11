@@ -464,7 +464,32 @@ Nové poznatky o vztazích mezi částmi.
 [/CENTRUM]
 
 [CENTRUM:00_Aktualni_Dashboard]
-Aktualizace stavu systému.
+⚠️ TENTO DOKUMENT SE PŘEPISUJE CELÝ – vygeneruj kompletní nový obsah.
+Dashboard je "kontrolní panel" – čitelný za 30 sekund.
+
+POVINNÁ STRUKTURA (7 sekcí):
+
+SEKCE 1 – STAV SYSTÉMU TEĎ
+Pro KAŽDOU aktivní část: Jméno [emoji stav] – stabilita (🟢🟡🔴), poslední kontakt
+Souhrn: počet aktivních/spících, celková stabilita 1-10
+
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️
+Triggery, nesplněné dohody, části v ohrožení, blížící se termíny
+
+SEKCE 3 – SOUHRN TÝDNE (v týdenním cyklu místo 24h)
+Kdo mluvil, klíčové momenty, změny stavů, nové poznatky
+
+SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤
+Pro každou spící: jak dlouho, riziko probuzení, doporučení
+
+SEKCE 5 – TERAPEUTICKÝ FOKUS 🎯
+Top 3 priority na příští týden – s kým, jakou metodou, co dosáhnout
+
+SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬
+Vzkazy mezi Hankou a Kátou, strategické sdílení
+
+SEKCE 7 – KARLOVY POSTŘEHY 🔍
+Nezařazené vzorce, hypotézy, propojení, měkká data
 [/CENTRUM]
 
 ═══ PRAVIDLA ═══
@@ -654,6 +679,18 @@ ${perplexityContext}`,
                 await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
                 cardsUpdated.push("05_Terapeuticky_Plan (týdenní přepis)");
                 console.log(`[weekly] ✅ Therapeutic plan rewritten`);
+              }
+              continue;
+            }
+
+            // 00_Aktualni_Dashboard – FULL REWRITE
+            if (docCanonical.includes("dashboard")) {
+              const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
+              if (dashFile) {
+                const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${newContent}`;
+                await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
+                cardsUpdated.push("00_Dashboard (týdenní přepis)");
+                console.log(`[weekly] ✅ Dashboard rewritten`);
               }
               continue;
             }
