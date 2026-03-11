@@ -1598,7 +1598,10 @@ serve(async (req) => {
     const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
     const allRecentConversations = allRecentConvRows ?? [];
 
-    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "daily", status: "running" }).select().single();
+    const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
+    if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
+    const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
+    if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
