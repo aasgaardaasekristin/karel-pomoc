@@ -36,6 +36,7 @@ import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
+type HubSection = "did" | "hana" | null;
 
 // localStorage helpers
 const STORAGE_KEY_PREFIX = "karel_chat_";
