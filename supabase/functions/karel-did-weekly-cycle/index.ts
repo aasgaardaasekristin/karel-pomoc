@@ -711,15 +711,21 @@ ${perplexityContext}`,
         console.warn(`[weekly] ⚠️ No weekly subfolder created, report NOT saved to avoid polluting 00_CENTRUM`);
       }
 
-      // 5d. Process therapeutic agreements into the date subfolder
+      // 5d. Process therapeutic agreements into the date subfolder (with deduplication)
       const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
       if (dohodaSection && weeklySubfolderId) {
         const dohodaBlockRegex = /\[DOHODA:\s*(.+?)\]([\s\S]*?)\[\/DOHODA\]/g;
+        const existingFiles = await listFilesInFolder(token, weeklySubfolderId);
+        const existingNames = new Set(existingFiles.map(f => f.name));
 
         for (const match of dohodaSection.matchAll(dohodaBlockRegex)) {
           const topic = match[1].trim();
           const content = match[2].trim();
           const safeFileName = `${topic.replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 60)}`;
+          if (existingNames.has(safeFileName)) {
+            console.log(`[weekly] ⏭️ Agreement "${safeFileName}" already exists, skipping`);
+            continue;
+          }
           const fullContent = `TERAPEUTICKÁ DOHODA: ${topic}\nDatum: ${dateStr}\nSprávce: Karel\n\n${content}`;
           await createFileInFolder(token, safeFileName, fullContent, weeklySubfolderId);
           cardsUpdated.push(`Dohoda: ${topic}`);
