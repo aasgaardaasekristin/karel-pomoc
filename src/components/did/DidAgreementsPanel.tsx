@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, FileText, RefreshCw } from "lucide-react";
+import { Loader2, FileText, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getAuthHeaders } from "@/lib/auth";
@@ -9,10 +9,12 @@ import ReactMarkdown from "react-markdown";
 
 interface WeeklyCycleData {
   id: string;
-  completed_at: string;
+  completed_at: string | null;
+  started_at: string;
   report_summary: string | null;
   cards_updated: any;
   cycle_type: string;
+  status: string;
 }
 
 const DidAgreementsPanel = () => {
@@ -27,10 +29,10 @@ const DidAgreementsPanel = () => {
     setLoading(true);
     const { data } = await supabase
       .from("did_update_cycles")
-      .select("id, completed_at, report_summary, cards_updated, cycle_type")
+      .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status")
       .eq("cycle_type", "weekly")
-      .eq("status", "completed")
-      .order("completed_at", { ascending: false })
+      .in("status", ["completed", "running"])
+      .order("created_at", { ascending: false })
       .limit(10);
 
     if (data) setCycles(data as WeeklyCycleData[]);
@@ -39,38 +41,35 @@ const DidAgreementsPanel = () => {
 
   const handleRunWeekly = async () => {
     setRunningWeekly(true);
-    toast.info("Spouštím týdenní analýzu... Může trvat několik minut.");
+    toast.info("Spouštím týdenní analýzu... Může trvat 2-5 minut.");
     try {
       const headers = await getAuthHeaders();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 280000); // 280s timeout
+      
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`,
-        { method: "POST", headers, body: JSON.stringify({}) }
+        { method: "POST", headers, body: JSON.stringify({}), signal: controller.signal }
       );
+      clearTimeout(timeout);
+      
       if (resp.ok) {
         const result = await resp.json();
         toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result.cardsUpdated?.length || 0} položek.`);
-        loadData();
       } else {
         const err = await resp.text();
         toast.error(`Chyba: ${err.slice(0, 200)}`);
       }
     } catch (e: any) {
-      toast.error(e.message || "Chyba při spouštění týdenního cyklu");
+      if (e.name === "AbortError") {
+        toast.info("Cyklus pravděpodobně stále běží na pozadí. Obnovte stránku za chvíli.");
+      } else {
+        toast.error(e.message || "Chyba při spouštění týdenního cyklu");
+      }
     } finally {
       setRunningWeekly(false);
+      loadData();
     }
-  };
-
-  const extractAgreements = (summary: string | null): string[] => {
-    if (!summary) return [];
-    const matches = summary.match(/\[DOHODA:\s*(.+?)\]/g);
-    if (matches) return matches.map(m => m.replace(/\[DOHODA:\s*/, "").replace(/\]$/, ""));
-    // Fallback: look for agreement-like patterns
-    const lines = summary.split("\n");
-    return lines
-      .filter(l => /dohod|agreement|splně|plnění/i.test(l))
-      .slice(0, 5)
-      .map(l => l.trim().slice(0, 100));
   };
 
   if (loading) {
@@ -111,37 +110,39 @@ const DidAgreementsPanel = () => {
       ) : (
         cycles.map(cycle => {
           const cards = Array.isArray(cycle.cards_updated) ? cycle.cards_updated : [];
-          const agreements = cards.filter((c: any) => {
-            const s = typeof c === "string" ? c : c?.name || "";
-            return /dohod/i.test(s);
-          });
+          const isRunning = cycle.status === "running";
           const isExpanded = expandedCycle === cycle.id;
+          const displayDate = cycle.completed_at || cycle.started_at;
 
           return (
-            <div key={cycle.id} className="rounded-lg border border-border bg-card/50">
+            <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
               <button
-                onClick={() => setExpandedCycle(isExpanded ? null : cycle.id)}
+                onClick={() => !isRunning && setExpandedCycle(isExpanded ? null : cycle.id)}
                 className="w-full p-3 text-left hover:bg-muted/30 transition-colors"
+                disabled={isRunning}
               >
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-medium text-foreground">
-                      Týden {cycle.completed_at ? new Date(cycle.completed_at).toLocaleDateString("cs-CZ") : "?"}
+                      {isRunning ? "⏳ Probíhá analýza..." : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
                     </span>
                     <div className="flex gap-1 mt-1 flex-wrap">
-                      {agreements.length > 0 && (
+                      {isRunning ? (
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> Běží...
+                        </Badge>
+                      ) : (
                         <Badge variant="outline" className="text-[9px] px-1 py-0">
-                          📋 {agreements.length} dohod
+                          {cards.length} aktualizací
                         </Badge>
                       )}
-                      <Badge variant="outline" className="text-[9px] px-1 py-0">
-                        {cards.length} aktualizací
-                      </Badge>
                     </div>
                   </div>
-                  <span className="text-[10px] text-muted-foreground">
-                    {isExpanded ? "▲" : "▼"}
-                  </span>
+                  {!isRunning && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
+                  )}
                 </div>
               </button>
 
