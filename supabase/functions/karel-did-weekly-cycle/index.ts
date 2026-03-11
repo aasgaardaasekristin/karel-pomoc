@@ -160,6 +160,7 @@ serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+  let cycleId: string | null = null;
 
   // Allow cron/service calls with known keys, or calls with no auth (verify_jwt=false in config)
   const knownKeys = [serviceRoleKey, anonKey, publishableKey].filter(Boolean);
