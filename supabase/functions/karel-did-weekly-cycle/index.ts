@@ -774,100 +774,7 @@ ${perplexityContext}`,
       }
     }
 
-    // ═══ 6. SEND WEEKLY EMAILS ═══
-    if (RESEND_API_KEY && analysisText) {
-      try {
-        const resend = new Resend(RESEND_API_KEY);
-        const reportSection = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText;
-
-        // Generate Hanka's email
-        let hankaHtml = "";
-        try {
-        const hRes = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
-              messages: [
-                { role: "system", content: `Jsi Karel. Vytvoř TÝDENNÍ HTML email pro Haničku. Intimní, partnerský tón.
-Struktura:
-<h2>Moje milá Haničko, tady je náš týdenní přehled</h2>
-- Celkový stav systému (stabilita, pokroky)
-- Pro každou aktivní část: shrnutí týdne, pokroky, rizika, plán na další týden
-- Spící části: doporučení
-- Kritická upozornění
-- Nové metody a přístupy (z výzkumu)
-- Talenty a potenciál částí
-- Terapeutický plán – klíčové body
-- Terapeutické dohody – stav plnění
-- Koordinace s Káťou
-Podpis: "Jsem tady. Tvůj Karel"
-Používej barvy: zelená=pokrok, oranžová=pozor, červená=riziko.` },
-                { role: "user", content: reportSection },
-              ],
-            }),
-          }), 20000, "Hanka email generation");
-          if (hRes.ok) {
-            const d = await hRes.json();
-            hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-          }
-        } catch {}
-        if (!hankaHtml) hankaHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection}</pre>`;
-
-        // Generate Káťa's email
-        let kataHtml = "";
-        try {
-          const kRes = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash-lite",
-              messages: [
-                { role: "system", content: `Jsi Karel. Vytvoř TÝDENNÍ HTML email pro Káťu. Profesionální tón, tykání.
-Struktura:
-<h2>Káťo, týdenní souhrn</h2>
-- Přehled týdne (části relevantní pro Káťu)
-- Pokroky a rizika
-- Úkoly pro Káťu z terapeutických dohod
-- Nové metody k vyzkoušení
-- Koordinace s Hankou
-Podpis: "Karel"
-Nepoužívej intimní tón. Pouze profesionální respekt.` },
-                { role: "user", content: reportSection },
-              ],
-            }),
-          }), 20000, "Kata email generation");
-          if (kRes.ok) {
-            const d = await kRes.json();
-            kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-          }
-        } catch {}
-        if (!kataHtml) kataHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection}</pre>`;
-
-        const dateCz = new Date().toLocaleDateString("cs-CZ");
-        await resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – TÝDENNÍ report ${dateCz}`, html: hankaHtml });
-        await resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Týdenní report ${dateCz}`, html: kataHtml });
-        console.log(`[weekly] ✅ Emails sent`);
-      } catch (e) { console.error("[weekly] Email error:", e); }
-    }
-
-    // ═══ 7. TRIGGER RESEARCH WEEKLY SYNC ═══
-    let researchSyncResult = null;
-    try {
-      const researchRes = await withTimeout(fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }), 25000, "Research weekly sync");
-      if (researchRes.ok) {
-        researchSyncResult = await researchRes.json();
-        console.log("[weekly] Research sync completed");
-      } else {
-        console.warn(`[weekly] Research sync error ${researchRes.status}`);
-      }
-    } catch (e) { console.error("[weekly] Research sync error:", e); }
-
-    // ═══ 8. UPDATE CYCLE RECORD ═══
+    // ═══ 6. SAVE CYCLE AS COMPLETED (before optional email/sync steps) ═══
     if (cycle) {
       await sb.from("did_update_cycles").update({
         status: "completed",
@@ -875,7 +782,89 @@ Nepoužívej intimní tón. Pouze profesionální respekt.` },
         report_summary: analysisText.slice(0, 2000),
         cards_updated: cardsUpdated,
       }).eq("id", cycle.id);
+      console.log(`[weekly] ✅ Cycle marked as completed (${cardsUpdated.length} items)`);
     }
+
+    // ═══ 7. SEND WEEKLY EMAILS (best-effort, won't block cycle) ═══
+    if (RESEND_API_KEY && analysisText) {
+      try {
+        const resend = new Resend(RESEND_API_KEY);
+        const reportSection = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 8000);
+
+        // Generate both emails in parallel
+        const [hankaResult, kataResult] = await Promise.allSettled([
+          withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                { role: "system", content: `Jsi Karel. Vytvoř STRUČNÝ TÝDENNÍ HTML email pro Haničku. Intimní, partnerský tón. Max 3000 znaků.
+<h2>Moje milá Haničko, tady je náš týdenní přehled</h2>
+- Celkový stav systému
+- Pro každou aktivní část: shrnutí, pokroky, rizika
+- Prioritní úkoly
+Podpis: "Jsem tady. Tvůj Karel"` },
+                { role: "user", content: reportSection.slice(0, 6000) },
+              ],
+            }),
+          }), 15000, "Hanka email"),
+          withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash-lite",
+              messages: [
+                { role: "system", content: `Jsi Karel. Vytvoř STRUČNÝ TÝDENNÍ HTML email pro Káťu. Profesionální tón. Max 2000 znaků.
+<h2>Káťo, týdenní souhrn</h2>
+- Přehled týdne
+- Úkoly pro Káťu
+- Koordinace s Hankou
+Podpis: "Karel"` },
+                { role: "user", content: reportSection.slice(0, 4000) },
+              ],
+            }),
+          }), 15000, "Kata email"),
+        ]);
+
+        let hankaHtml = "";
+        if (hankaResult.status === "fulfilled" && hankaResult.value.ok) {
+          const d = await hankaResult.value.json();
+          hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+        }
+        if (!hankaHtml) hankaHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 4000)}</pre>`;
+
+        let kataHtml = "";
+        if (kataResult.status === "fulfilled" && kataResult.value.ok) {
+          const d = await kataResult.value.json();
+          kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+        }
+        if (!kataHtml) kataHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 3000)}</pre>`;
+
+        const dateCz = new Date().toLocaleDateString("cs-CZ");
+        await Promise.allSettled([
+          resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – TÝDENNÍ report ${dateCz}`, html: hankaHtml }),
+          resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Týdenní report ${dateCz}`, html: kataHtml }),
+        ]);
+        console.log(`[weekly] ✅ Emails sent`);
+      } catch (e) { console.error("[weekly] Email error:", e); }
+    }
+
+    // ═══ 8. TRIGGER RESEARCH WEEKLY SYNC (best-effort) ═══
+    let researchSyncResult = null;
+    try {
+      const researchRes = await withTimeout(fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }), 20000, "Research weekly sync");
+      if (researchRes.ok) {
+        researchSyncResult = await researchRes.json();
+        console.log("[weekly] Research sync completed");
+      } else {
+        console.warn(`[weekly] Research sync error ${researchRes.status}`);
+      }
+    } catch (e) { console.error("[weekly] Research sync error:", e); }
 
     return new Response(JSON.stringify({
       success: true,
