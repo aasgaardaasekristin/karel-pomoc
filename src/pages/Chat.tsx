@@ -98,7 +98,7 @@ const handleApiError = (response: Response) => {
 };
 
 // DID flow states
-type DidFlowState = "entry" | "terapeut" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
+type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
 
 const Chat = () => {
   const {
