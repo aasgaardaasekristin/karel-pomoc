@@ -225,6 +225,7 @@ serve(async (req) => {
 
     // Create weekly cycle record
     const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running", user_id: userId }).select().single();
+    cycleId = cycle?.id ?? null;
 
     // ═══ 1. READ ALL CARDS + CENTRUM DOCS FROM DRIVE ═══
     let allCardsContent = "";
