@@ -204,7 +204,7 @@ const Chat = () => {
         if (savedMessages && savedMessages.length > 0) {
           setDidFlowState("chat");
         } else {
-          setDidFlowState("dashboard");
+          setDidFlowState("entry");
         }
       }
       setDidInitialContext(savedContext);
