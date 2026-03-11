@@ -14,7 +14,7 @@ interface ModeSelectorProps {
   hideDid?: boolean;
 }
 
-const ModeSelector = ({ currentMode, onModeChange }: ModeSelectorProps) => {
+const ModeSelector = ({ currentMode, onModeChange, hideDid }: ModeSelectorProps) => {
   const modes = [
     {
       id: "debrief" as const,
