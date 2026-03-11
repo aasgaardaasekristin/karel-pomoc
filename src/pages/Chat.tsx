@@ -1329,11 +1329,6 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       return (
         <ScrollArea className="flex-1">
           <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
-          <DidConversationHistory
-            conversations={history}
-            onLoad={handleRestoreConversation}
-            onDelete={(id) => { deleteConversation(id); refreshHistory(); }}
-          />
           <DidSubModeSelector onSelect={handleDidSubModeSelect} onBack={() => setMode("debrief")} />
         </ScrollArea>
       );

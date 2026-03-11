@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Clock, AlertTriangle, Loader2, MessageCircle, Zap, BookOpen } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
@@ -313,31 +313,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           </div>
         )}
       </div>
-
-      {/* Quick Entry — unprocessed threads */}
-      {activeThreads.length > 0 && onQuickThread && (
-        <div className="mb-4">
-          <h4 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5" />
-            Navázat na rozhovor
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {activeThreads.map(t => (
-              <Button
-                key={t.id}
-                variant="outline"
-                size="sm"
-                onClick={() => onQuickThread(t.id, t.partName)}
-                className="h-9 text-xs gap-1.5 border-primary/30 hover:border-primary"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                {t.partName}
-                <span className="text-muted-foreground">({formatTimeAgo(t.lastActivityAt)})</span>
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* System Map */}
       <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
