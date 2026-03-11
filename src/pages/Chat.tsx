@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, Leaf, RotateCcw, FolderOpen, GraduationCap } from "lucide-react";
+import { Send, LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
@@ -121,6 +121,8 @@ const Chat = () => {
   const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
   const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
+  const [isReformatting, setIsReformatting] = useState(false);
+  const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
@@ -1063,6 +1065,64 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     } finally { setIsManualUpdateLoading(false); }
   };
 
+  const handleReformatCards = async () => {
+    if (isReformatting) return;
+    setIsReformatting(true);
+    setReformatProgress(null);
+    toast.info("Načítám seznam karet...");
+    try {
+      const headers = await getAuthHeaders();
+      const listRes = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+        { method: "POST", headers, body: JSON.stringify({ mode: "list" }) }
+      );
+      const listData = await listRes.json();
+      if (!listRes.ok) throw new Error(listData.error);
+
+      const entries = listData.entries || [];
+      const txtContentByPart = listData.txtContentByPart || {};
+      const total = entries.length;
+      let reformatted = 0, notFound = 0, errors = 0;
+
+      toast.info(`Přeformátování ${total} karet zahájeno...`);
+
+      for (let i = 0; i < total; i++) {
+        const entry = entries[i];
+        setReformatProgress({ current: i + 1, total, currentName: entry.name });
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+            { method: "POST", headers, body: JSON.stringify({ mode: "process_one", index: i, txtContentForPart: txtContentByPart[entry.name] || "" }) }
+          );
+          const data = await res.json();
+          if (data.result === "reformatted") reformatted++;
+          else if (data.result === "not_found") notFound++;
+          else errors++;
+        } catch (e) {
+          console.error(`Card ${entry.name} failed:`, e);
+          errors++;
+        }
+      }
+
+      if ((listData.txtFiles || []).length > 0) {
+        try {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+            { method: "POST", headers, body: JSON.stringify({ mode: "cleanup_txt" }) }
+          );
+        } catch {}
+      }
+
+      toast.success(`Hotovo! Přeformátováno: ${reformatted}/${total}, nenalezeno: ${notFound}, chyby: ${errors}`);
+    } catch (e) {
+      toast.error("Přeformátování selhalo");
+      console.error(e);
+    } finally {
+      setIsReformatting(false);
+      setReformatProgress(null);
+    }
+  };
+
   const handleGenerateHandbook = async () => {
     if (isHandbookLoading) return;
     setIsHandbookLoading(true);
@@ -1268,7 +1328,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       // Dashboard + submode selector
       return (
         <ScrollArea className="flex-1">
-          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} />
+          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
           <DidConversationHistory
             conversations={history}
             onLoad={handleRestoreConversation}
@@ -1411,14 +1471,31 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Tvůj partner a supervizní mentor</p>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <Button variant="outline" size="sm" onClick={() => navigate("/kartoteka")} className="h-8 px-2 sm:px-3">
-              <FolderOpen className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Kartotéka</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => navigate("/calm")} className="h-8 px-2 sm:px-3">
-              <Leaf className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Zklidnění</span>
-            </Button>
+            {mode === "childcare" ? (
+              <>
+                <Button variant="outline" size="sm" onClick={handleManualUpdate} disabled={isManualUpdateLoading} className="h-8 px-2 sm:px-3">
+                  {isManualUpdateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  {syncProgress ? (
+                    <span className="text-xs ml-1">{syncProgress.current}/{syncProgress.total}</span>
+                  ) : (
+                    <span className="hidden sm:inline ml-1">Aktual. kartotéku</span>
+                  )}
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleReformatCards} disabled={isReformatting} className="h-8 px-2 sm:px-3">
+                  {isReformatting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                  {reformatProgress ? (
+                    <span className="text-xs ml-1">{reformatProgress.current}/{reformatProgress.total}</span>
+                  ) : (
+                    <span className="hidden sm:inline ml-1">Přeformátovat</span>
+                  )}
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => navigate("/kartoteka")} className="h-8 px-2 sm:px-3">
+                <FolderOpen className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Kartotéka</span>
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
               <LogOut className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Odejít</span>
