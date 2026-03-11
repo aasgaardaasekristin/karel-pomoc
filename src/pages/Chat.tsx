@@ -34,6 +34,9 @@ import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
 import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
+import ResearchThreadList from "@/components/research/ResearchThreadList";
+import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
+import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
@@ -138,6 +141,11 @@ const Chat = () => {
   const [isReformatting, setIsReformatting] = useState(false);
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
+  // Research thread state
+  type ResearchFlowState = "thread-list" | "new-topic" | "chat";
+  const [researchFlowState, setResearchFlowState] = useState<ResearchFlowState>("thread-list");
+  const [activeResearchThread, setActiveResearchThread] = useState<ResearchThread | null>(null);
+  const researchThreads = useResearchThreads();
   const [notebookProject, setNotebookProject] = useState(() => {
     try { return localStorage.getItem("karel_notebook_project") || "DID – vnitřní mapa systému (pracovní)"; } catch { return "DID – vnitřní mapa systému (pracovní)"; }
   });
@@ -259,6 +267,8 @@ const Chat = () => {
           setMode("childcare");
         } else if (hubSection === "research" && mode !== "research") {
           setMode("research");
+          // Load research threads
+          researchThreads.fetchThreads();
         } else if (hubSection === "hana" && mode === "childcare") {
           setMode("debrief");
         }
@@ -282,7 +292,16 @@ const Chat = () => {
     if (messages.length > 0 && prevModeRef.current === mode) saveMessages(mode, messages);
   }, [messages, mode]);
 
-  // Auto-save threads to DB
+  // Auto-save research threads
+  useEffect(() => {
+    if (messages.length === 0 || !activeResearchThread) return;
+    const interval = setInterval(() => {
+      researchThreads.updateMessages(activeResearchThread.id, messages);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [messages, activeResearchThread]);
+
+  // Auto-save threads to DB (DID)
   useEffect(() => {
     if (messages.length === 0 || !activeThread) return;
     const interval = setInterval(() => {
@@ -293,7 +312,7 @@ const Chat = () => {
 
   // Periodical save for non-thread modes
   useEffect(() => {
-    if (messages.length === 0 || activeThread) return;
+    if (messages.length === 0 || activeThread || activeResearchThread) return;
     const interval = setInterval(() => {
       saveMessages(mode, messages);
       if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
@@ -301,7 +320,7 @@ const Chat = () => {
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation, activeThread]);
+  }, [messages, mode, didSubMode, didInitialContext, didSessionId, saveConversation, activeThread, activeResearchThread]);
 
   useEffect(() => {
     const handleVisibility = () => {
@@ -309,6 +328,7 @@ const Chat = () => {
         if (messages.length > 0) {
           saveMessages(mode, messages);
           if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
+          if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
         }
         if (mode === "childcare" && didSubMode && didSubMode !== "cast" && messages.length >= 2) {
           saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
@@ -320,13 +340,14 @@ const Chat = () => {
     };
     document.addEventListener("visibilitychange", handleVisibility);
     return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, refreshHistory, activeThread]);
+  }, [mode, messages, didSubMode, didInitialContext, didSessionId, saveConversation, refreshHistory, activeThread, activeResearchThread]);
 
   useEffect(() => {
     const persistNow = () => {
       if (messages.length > 0) {
         saveMessages(mode, messages);
         if (activeThread) didThreads.updateThreadMessages(activeThread.id, messages);
+        if (activeResearchThread) researchThreads.updateMessages(activeResearchThread.id, messages);
       }
     };
     window.addEventListener("beforeunload", persistNow);
@@ -335,7 +356,7 @@ const Chat = () => {
       window.removeEventListener("beforeunload", persistNow);
       window.removeEventListener("pagehide", persistNow);
     };
-  }, [messages, mode, activeThread]);
+  }, [messages, mode, activeThread, activeResearchThread]);
 
   // Welcome message when mode changes
   useEffect(() => {
@@ -1649,7 +1670,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
-                {hubSection === "did" ? "DID" : "Hana"}
+                {hubSection === "did" ? "DID" : hubSection === "research" ? "Profesní zdroje" : "Hana"}
               </h1>
             </div>
           </div>
@@ -1694,53 +1715,108 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           {renderDidContent()}
         </>
       ) : hubSection === "research" ? (
-        /* Research Section - no mode toggle, straight to Research */
+        /* Research Section - thread-based UI */
         <>
-          <CrisisBriefPanel />
-          <div className="border-b border-border bg-card/30">
-            <div className="max-w-4xl mx-auto px-4 py-3">
-              <ModeSelector currentMode={mode} onModeChange={setMode} hideDid hideResearch />
-            </div>
-          </div>
+          {researchFlowState === "thread-list" ? (
+            <ScrollArea className="flex-1">
+              <ResearchThreadList
+                threads={researchThreads.threads}
+                loading={researchThreads.loading}
+                onSelect={(thread) => {
+                  setActiveResearchThread(thread);
+                  setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
+                  setResearchFlowState("chat");
+                }}
+                onDelete={(id) => researchThreads.deleteThread(id)}
+                onNew={() => setResearchFlowState("new-topic")}
+              />
+            </ScrollArea>
+          ) : researchFlowState === "new-topic" ? (
+            <ScrollArea className="flex-1">
+              <ResearchNewTopicDialog
+                onSubmit={async (topic, createdBy) => {
+                  const greeting = `🔬 **${topic}**\n\nVýborně, ${createdBy}! Začínám rešerši na téma "${topic}". Řekni mi, co konkrétně tě zajímá – metody, studie, testy, trendy? Nebo mi popiš situaci a já najdu relevantní zdroje.`;
+                  const initialMsgs = [{ role: "assistant" as const, content: greeting }];
+                  const thread = await researchThreads.createThread(topic, createdBy, initialMsgs);
+                  if (thread) {
+                    setActiveResearchThread(thread);
+                    setMessages(initialMsgs as { role: "user" | "assistant"; content: string }[]);
+                    setResearchFlowState("chat");
+                  }
+                }}
+                onCancel={() => setResearchFlowState("thread-list")}
+              />
+            </ScrollArea>
+          ) : (
+            <>
+              {/* Thread indicator */}
+              {activeResearchThread && (
+                <div className="border-b border-border bg-card/30">
+                  <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Téma:</span>{" "}
+                      <strong className="text-foreground">{activeResearchThread.topic}</strong>
+                      <span className="text-xs text-muted-foreground ml-2">({activeResearchThread.createdBy})</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (activeResearchThread && messages.length >= 2) {
+                          researchThreads.updateMessages(activeResearchThread.id, messages);
+                        }
+                        setActiveResearchThread(null);
+                        setMessages([]);
+                        setResearchFlowState("thread-list");
+                        researchThreads.fetchThreads();
+                      }}
+                      className="h-7 px-2 text-xs"
+                    >
+                      ← Vlákna
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-          {/* Research Chat - similar structure to non-DID chat */}
-          <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
-            <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
-              {messages.map((message, index) => (
-                <ChatMessage key={index} message={message} />
-              ))}
-              {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
-            </div>
-          </ScrollArea>
+              <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+                <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+                  {messages.map((message, index) => (
+                    <ChatMessage key={index} message={message} />
+                  ))}
+                  {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+                </div>
+              </ScrollArea>
 
-          <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-            <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-              <div className="flex gap-2 sm:gap-3 items-end relative">
-                <UniversalAttachmentBar
-                  attachments={attachments} onRemove={removeAttachment}
-                  onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-                  onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-                  disabled={isLoading || isSoapLoading}
-                  fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                  onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-                />
-                <Textarea
-                  ref={textareaRef} value={input}
-                  onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                  placeholder="Napiš svou zprávu..."
-                  className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
-                  disabled={isLoading || isSoapLoading}
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                  size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-                </Button>
+              <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+                <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
+                  <div className="flex gap-2 sm:gap-3 items-end relative">
+                    <UniversalAttachmentBar
+                      attachments={attachments} onRemove={removeAttachment}
+                      onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
+                      onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
+                      disabled={isLoading || isSoapLoading}
+                      fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                      onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
+                    />
+                    <Textarea
+                      ref={textareaRef} value={input}
+                      onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                      placeholder="Napiš svou zprávu..."
+                      className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+                      disabled={isLoading || isSoapLoading}
+                    />
+                    <Button
+                      onClick={sendMessage}
+                      disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
+                      size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+                    >
+                      {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </>
       ) : (
         /* Hana Section - mode toggle + mode selector (without DID and research) */
