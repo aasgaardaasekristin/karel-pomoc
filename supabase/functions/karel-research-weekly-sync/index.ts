@@ -623,7 +623,7 @@ PRAVIDLA:
 
     return new Response(JSON.stringify({
       success: true,
-      threadsProcessed: threads.length,
+      threadsProcessed: processedThreadIds.length,
       handbooksSaved: savedHandbooks,
       skippedDuplicates,
       prehledUpdated: prehledEntries.length > 0,

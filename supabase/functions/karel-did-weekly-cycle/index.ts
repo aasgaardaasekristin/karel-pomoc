@@ -882,7 +882,7 @@ Podpis: "Karel"` },
         method: "POST",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      }), 20000, "Research weekly sync");
+      }), 120000, "Research weekly sync");
       if (researchRes.ok) {
         researchSyncResult = await researchRes.json();
         console.log("[weekly] Research sync completed");
