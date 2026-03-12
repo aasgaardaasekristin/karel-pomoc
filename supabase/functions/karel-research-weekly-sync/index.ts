@@ -693,7 +693,7 @@ PRAVIDLA:
       });
     }
 
-    // 5. UPDATE 00_Prehled — flat list of sources, no duplicates, no stats headers
+    // 5. CLEAN + UPDATE 00_Prehled (no duplicate reconciliation records)
     if (prehledFile) {
       try {
         let prehledContent = "";
@@ -703,66 +703,74 @@ PRAVIDLA:
           console.warn("[sync] Could not read 00_Prehled for reconciliation:", e);
         }
 
-        const prehledCanonical = canonicalText(prehledContent);
-        const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+        // 5a. Cleanup duplicate reconciliation block from previous runs
+        const { cleaned, changed } = cleanupReconFromPrehled(prehledContent);
+        if (changed) {
+          await updateGoogleDocInPlace(token, prehledFile.id, cleaned);
+          prehledContent = cleaned;
+          prehledChanged = true;
+          console.log("[sync] Removed stale reconciliation duplicates from 00_Prehled");
+        }
 
-        // Collect ALL entries to potentially add (from new handbooks + reconciliation)
+        const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+        const prehledCanonical = canonicalText(prehledContent);
+        const listedSourceCanonicals = extractListedSourceCanonicals(prehledContent);
+
+        // Collect entries to append in this run
         const entriesToAdd: Array<{ fileName: string; author: string; summary: string }> = [];
 
         // Add new handbook entries
         for (const entry of prehledEntries) {
-          // Double-check it's not already in existing doc
-          const entryCanonical = canonicalText(entry.fileName.replace(/\.\w{2,5}$/, ""));
-          if (entryCanonical.length > 6 && prehledCanonical.includes(entryCanonical)) continue;
+          const entryCanonical = canonicalSourceName(entry.fileName);
+          if (!entryCanonical) continue;
+          if (listedSourceCanonicals.has(entryCanonical)) continue;
           entriesToAdd.push(entry);
+          listedSourceCanonicals.add(entryCanonical);
         }
 
-        // Reconcile: check all files in 07_Knihovna missing from 00_Prehled
+        // Reconcile ALL files in 07_Knihovna (any extension), except 00_Prehled itself
         for (const file of allKnihovnaFiles) {
           if (canonicalText(file.name).startsWith("00prehled")) continue;
           if (file.mimeType === DRIVE_FOLDER_MIME) continue;
 
-          const nameWithoutExt = file.name.replace(/\.\w{2,5}$/, "");
-          const fileCanonical = canonicalText(nameWithoutExt);
-          if (fileCanonical.length < 6) continue;
+          const fileCanonical = canonicalSourceName(file.name);
+          if (!fileCanonical || fileCanonical.length < 6) continue;
 
-          // Check if already in 00_Prehled (exact or 60% substring match)
-          const matchLen = Math.floor(fileCanonical.length * 0.6);
-          const isInPrehled = prehledCanonical.includes(fileCanonical) ||
-            (fileCanonical.length > 12 && prehledCanonical.includes(fileCanonical.slice(0, matchLen)));
-          if (isInPrehled) continue;
-
-          // Check if already in entries we're about to add
-          const alreadyInNew = entriesToAdd.some(e => {
-            const ec = canonicalText(e.fileName.replace(/\.\w{2,5}$/, ""));
-            return ec === fileCanonical || ec.includes(fileCanonical) || fileCanonical.includes(ec);
-          });
-          if (alreadyInNew) continue;
+          // Strict canonical set check + fallback fuzzy check against full document text
+          if (listedSourceCanonicals.has(fileCanonical)) continue;
+          const fuzzyPrefix = fileCanonical.slice(0, Math.max(8, Math.floor(fileCanonical.length * 0.6)));
+          if (prehledCanonical.includes(fileCanonical) || prehledCanonical.includes(fuzzyPrefix)) {
+            listedSourceCanonicals.add(fileCanonical);
+            continue;
+          }
 
           console.log(`[sync] Reconciling missing file: "${file.name}"`);
           entriesToAdd.push({
             fileName: file.name,
             author: "neuvedeno",
-            summary: "(Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu)",
+            summary: "Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu.",
           });
+          listedSourceCanonicals.add(fileCanonical);
         }
 
+        // 5b. Append new entries in required architecture (no weekly headers)
         if (entriesToAdd.length > 0) {
           const existingSourceCount = (prehledContent.match(/Název zdroje:/g) || []).length;
           const formattedEntries = entriesToAdd.map((e, i) => {
             const sourceNum = existingSourceCount + i + 1;
             return [
-              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
               `Datum: ${dateStr}`,
+              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
               `Název zdroje: ${e.fileName}`,
               `Kdo požádal: ${e.author}`,
               `Stručný popis/shrnutí: ${e.summary}`,
               `Poznámky terapeuta: [ ]`,
               `Reakce Karla: [ ]`,
             ].join("\n");
-          }).join("\n\n---\n\n");
+          }).join("\n\n");
 
           await appendToGoogleDoc(token, prehledFile.id, formattedEntries);
+          prehledChanged = true;
           console.log(`[sync] 00_Prehled updated with ${entriesToAdd.length} new entries`);
         } else {
           console.log("[sync] No new entries for 00_Prehled");
