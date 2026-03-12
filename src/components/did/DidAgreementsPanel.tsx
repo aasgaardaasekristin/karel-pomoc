@@ -17,13 +17,22 @@ interface WeeklyCycleData {
   status: string;
 }
 
+const RUNNING_TIMEOUT_MS = 10 * 60 * 1000;
+
 const DidAgreementsPanel = () => {
   const [cycles, setCycles] = useState<WeeklyCycleData[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningWeekly, setRunningWeekly] = useState(false);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+    const intervalId = window.setInterval(() => {
+      loadData();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -40,7 +49,7 @@ const DidAgreementsPanel = () => {
       .from("did_update_cycles")
       .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status")
       .eq("cycle_type", "weekly")
-      .in("status", ["completed", "running"])
+      .in("status", ["completed", "running", "failed"])
       .order("created_at", { ascending: false })
       .limit(10);
 
@@ -58,16 +67,28 @@ const DidAgreementsPanel = () => {
       
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`,
-        { method: "POST", headers, body: JSON.stringify({}), signal: controller.signal }
+        { method: "POST", headers, body: JSON.stringify({ source: "manual" }), signal: controller.signal }
       );
       clearTimeout(timeout);
-      
+
+      let result: any = null;
+      try {
+        result = await resp.json();
+      } catch {
+        result = null;
+      }
+
       if (resp.ok) {
-        const result = await resp.json();
-        toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result.cardsUpdated?.length || 0} položek.`);
+        if (result?.skipped && result?.reason === "already_running") {
+          toast.info("Týdenní cyklus už běží na pozadí. Průběh se obnovuje automaticky.");
+        } else if (result?.skipped && result?.reason === "not_sunday") {
+          toast.info("Automatické spuštění z cron je povoleno jen v neděli.");
+        } else {
+          toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result?.cardsUpdated?.length || 0} položek.`);
+        }
       } else {
-        const err = await resp.text();
-        toast.error(`Chyba: ${err.slice(0, 200)}`);
+        const errText = result?.error || "Neznámá chyba";
+        toast.error(`Chyba: ${String(errText).slice(0, 200)}`);
       }
     } catch (e: any) {
       if (e.name === "AbortError") {
@@ -80,6 +101,12 @@ const DidAgreementsPanel = () => {
       loadData();
     }
   };
+
+  const hasActiveWeekly = cycles.some((cycle) => {
+    if (cycle.status !== "running") return false;
+    const startedAt = new Date(cycle.started_at).getTime();
+    return Date.now() - startedAt < RUNNING_TIMEOUT_MS;
+  });
 
   if (loading) {
     return (
@@ -101,11 +128,13 @@ const DidAgreementsPanel = () => {
           variant="outline"
           size="sm"
           onClick={handleRunWeekly}
-          disabled={runningWeekly}
+          disabled={runningWeekly || hasActiveWeekly}
           className="h-6 text-[10px] px-2"
         >
           {runningWeekly ? (
             <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</>
+          ) : hasActiveWeekly ? (
+            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží na pozadí...</>
           ) : (
             <><RefreshCw className="w-3 h-3 mr-1" /> Spustit týdenní cyklus</>
           )}
@@ -119,12 +148,15 @@ const DidAgreementsPanel = () => {
       ) : (
         cycles.map(cycle => {
           const cards = Array.isArray(cycle.cards_updated) ? cycle.cards_updated : [];
-          const isRunning = cycle.status === "running";
+          const runningDurationMs = Date.now() - new Date(cycle.started_at).getTime();
+          const isRunning = cycle.status === "running" && runningDurationMs < RUNNING_TIMEOUT_MS;
+          const isTimedOut = cycle.status === "running" && runningDurationMs >= RUNNING_TIMEOUT_MS;
+          const isFailed = cycle.status === "failed" || isTimedOut;
           const isExpanded = expandedCycle === cycle.id;
           const displayDate = cycle.completed_at || cycle.started_at;
 
           return (
-            <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
+            <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : isFailed ? "border-destructive/40" : "border-border"}`}>
               <button
                 onClick={() => !isRunning && setExpandedCycle(isExpanded ? null : cycle.id)}
                 className="w-full p-3 text-left hover:bg-muted/30 transition-colors"
@@ -133,12 +165,16 @@ const DidAgreementsPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-medium text-foreground">
-                      {isRunning ? "⏳ Probíhá analýza..." : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
+                      {isRunning ? "⏳ Probíhá analýza..." : isFailed ? "⚠️ Nedokončený cyklus" : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
                     </span>
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {isRunning ? (
                         <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary">
                           <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> Běží...
+                        </Badge>
+                      ) : isFailed ? (
+                        <Badge variant="destructive" className="text-[9px] px-1 py-0">
+                          <AlertCircle className="w-2.5 h-2.5 mr-0.5" /> Timeout/Chyba
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[9px] px-1 py-0">
