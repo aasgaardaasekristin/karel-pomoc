@@ -42,6 +42,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [lastCycleReport, setLastCycleReport] = useState<string | null>(null);
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
