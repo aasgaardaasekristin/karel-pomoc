@@ -183,11 +183,23 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                       )}
                     </div>
                   </div>
-                  {!isRunning && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {isExpanded ? "▲" : "▼"}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {!isRunning && (
+                      <span className="text-[10px] text-muted-foreground">
+                        {isExpanded ? "▲" : "▼"}
+                      </span>
+                    )}
+                    {!isRunning && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cycle.id); }}
+                        className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </button>
 
