@@ -17,6 +17,8 @@ interface WeeklyCycleData {
   status: string;
 }
 
+const RUNNING_TIMEOUT_MS = 10 * 60 * 1000;
+
 const DidAgreementsPanel = () => {
   const [cycles, setCycles] = useState<WeeklyCycleData[]>([]);
   const [loading, setLoading] = useState(true);
