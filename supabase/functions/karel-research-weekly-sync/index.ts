@@ -411,16 +411,22 @@ function extractListedSourceCanonicals(text: string): Set<string> {
     const line = rawLine.trim();
     if (!line) continue;
 
-    if (line.startsWith("Název zdroje:")) {
-      const name = line.replace(/^Název zdroje:\s*/i, "").trim();
-      const canonical = canonicalSourceName(name);
+    // Match ZDROJ_XX_YYYY-MM-DD: header with Téma on same or next line
+    const zdrojMatch = line.match(/^ZDROJ_\d+_\d{4}-\d{2}-\d{2}:/i);
+    if (zdrojMatch) continue; // The topic is on the Téma: line
+
+    // Match Téma: line (primary dedup key)
+    if (line.startsWith("Téma:")) {
+      const topic = line.replace(/^Téma:\s*/i, "").trim();
+      const canonical = canonicalSourceName(topic);
       if (canonical) listed.add(canonical);
       continue;
     }
 
-    const docMatch = line.match(/^Dokument v 07_Knihovna:\s*"(.+)"\s*$/i);
-    if (docMatch?.[1]) {
-      const canonical = canonicalSourceName(docMatch[1]);
+    // Legacy formats for backward compat
+    if (line.startsWith("Název zdroje:")) {
+      const name = line.replace(/^Název zdroje:\s*/i, "").trim();
+      const canonical = canonicalSourceName(name);
       if (canonical) listed.add(canonical);
       continue;
     }
@@ -433,6 +439,10 @@ function extractListedSourceCanonicals(text: string): Set<string> {
   }
 
   return listed;
+}
+
+function countExistingSources(text: string): number {
+  return (text.match(/^ZDROJ_\d+/gm) || []).length;
 }
 
 function cleanupReconFromPrehled(content: string): { cleaned: string; changed: boolean } {
@@ -526,7 +536,7 @@ serve(async (req) => {
     // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS FORMATTED DOC
     const savedHandbooks: string[] = [];
     const skippedDuplicates: string[] = [];
-    const prehledEntries: Array<{ fileName: string; author: string; summary: string }> = [];
+    const prehledEntries: Array<{ fileName: string; author: string; summary: string; detailedDesc: string; karelNotes: string }> = [];
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
     let prehledChanged = false;
@@ -689,7 +699,9 @@ PRAVIDLA:
       prehledEntries.push({
         fileName: exactFileName,
         author: normalizedCreatedBy,
-        summary: (handbook.summary || "").slice(0, 200),
+        summary: (handbook.summary || "").slice(0, 300),
+        detailedDesc: (handbook.activities || []).map((a: any) => a.name).join(", ").slice(0, 300) || handbook.summary || "",
+        karelNotes: (handbook.karel_notes || "").slice(0, 500),
       });
     }
 
@@ -749,25 +761,29 @@ PRAVIDLA:
             fileName: file.name,
             author: "neuvedeno",
             summary: "Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu.",
+            detailedDesc: "",
+            karelNotes: "",
           });
           listedSourceCanonicals.add(fileCanonical);
         }
 
         // 5b. Append new entries in required architecture (no weekly headers)
         if (entriesToAdd.length > 0) {
-          const existingSourceCount = (prehledContent.match(/Název zdroje:/g) || []).length;
+          const existingSourceCount = countExistingSources(prehledContent);
           const formattedEntries = entriesToAdd.map((e, i) => {
             const sourceNum = existingSourceCount + i + 1;
+            const numStr = String(sourceNum).padStart(2, "0");
+            const authorLabel = e.author === "Káťa" ? "Vyhledala Káťa" : (e.author === "neuvedeno" ? "Neuvedeno" : "Vyhledala Hana");
             return [
-              `Datum: ${dateStr}`,
-              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
-              `Název zdroje: ${e.fileName}`,
-              `Kdo požádal: ${e.author}`,
-              `Stručný popis/shrnutí: ${e.summary}`,
-              `Poznámky terapeuta: [ ]`,
-              `Reakce Karla: [ ]`,
+              `ZDROJ_${numStr}_${dateStr}:`,
+              `Téma: ${e.fileName.replace(/\.\w{2,5}$/, "")}`,
+              `Záznam: ${authorLabel}. ${e.summary}`,
+              `Podrobný popis: ${e.detailedDesc || "Viz příručka v 07_Knihovna."}`,
+              `Karlovy připomínky a úkoly: ${e.karelNotes || "Bude doplněno při další aktualizaci."}`,
+              `Zkušenosti terapeutů: [ ]`,
+              `Karlova dodatečná reakce: [ ]`,
             ].join("\n");
-          }).join("\n\n");
+          }).join("\n\n---\n\n");
 
           await appendToGoogleDoc(token, prehledFile.id, formattedEntries);
           prehledChanged = true;
