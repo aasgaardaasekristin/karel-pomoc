@@ -2730,6 +2730,25 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
       }
 
+      // ═══ ACCOUNTABILITY: Parse [ACCOUNTABILITY] block and escalate stale tasks ═══
+      let accountabilityBlock = "";
+      const accountabilityMatch = analysisText.match(/\[ACCOUNTABILITY\]([\s\S]*?)\[\/ACCOUNTABILITY\]/);
+      if (accountabilityMatch) {
+        accountabilityBlock = accountabilityMatch[1].trim();
+        console.log(`[daily-cycle] Accountability block found (${accountabilityBlock.length} chars)`);
+        
+        // Auto-escalate tasks older than 3 days to high priority
+        if (pendingTasks && pendingTasks.length > 0) {
+          for (const task of pendingTasks) {
+            const age = Math.floor((Date.now() - new Date(task.created_at).getTime()) / (1000*60*60*24));
+            if (age >= 3 && task.priority !== "high") {
+              await sb.from("did_therapist_tasks").update({ priority: "high" }).eq("task", task.task).eq("assigned_to", task.assigned_to);
+              console.log(`[accountability] ⚠️ Escalated task to HIGH: "${task.task}" (${age} days old)`);
+            }
+          }
+        }
+      }
+
       // ═══ 07_KNIHOVNA ANALYSIS: Scan for DID-relevant content and distribute to kartotéka ═══
       try {
         if (centrumFolderId) {
