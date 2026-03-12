@@ -3027,6 +3027,40 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
     }
 
+    // ═══ AUTO-CLEANUP: remove old duplicates and completed tasks from therapist task board ═══
+    try {
+      // 1. Remove tasks completed (both statuses "done") more than 14 days ago
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+      await sb.from("did_therapist_tasks")
+        .delete()
+        .eq("status", "done")
+        .lt("completed_at", fourteenDaysAgo);
+
+      // 2. Remove exact duplicate tasks (same task text, same assigned_to, same status, keep newest)
+      const { data: allTasks } = await sb.from("did_therapist_tasks")
+        .select("id, task, assigned_to, status, created_at")
+        .order("created_at", { ascending: false });
+
+      if (allTasks && allTasks.length > 0) {
+        const seen = new Set<string>();
+        const dupeIds: string[] = [];
+        for (const t of allTasks) {
+          const key = `${t.task.trim().toLowerCase()}|${t.assigned_to}`;
+          if (seen.has(key)) {
+            dupeIds.push(t.id);
+          } else {
+            seen.add(key);
+          }
+        }
+        if (dupeIds.length > 0) {
+          await sb.from("did_therapist_tasks").delete().in("id", dupeIds);
+          console.log(`[daily-cycle] Cleaned up ${dupeIds.length} duplicate therapist tasks`);
+        }
+      }
+    } catch (cleanupErr) {
+      console.warn("[daily-cycle] Task cleanup error (non-fatal):", cleanupErr);
+    }
+
     if (cycle) {
       await sb.from("did_update_cycles").update({
         status: hadCardUpdateErrors ? "failed" : "completed",
