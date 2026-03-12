@@ -769,19 +769,21 @@ PRAVIDLA:
 
         // 5b. Append new entries in required architecture (no weekly headers)
         if (entriesToAdd.length > 0) {
-          const existingSourceCount = (prehledContent.match(/Název zdroje:/g) || []).length;
+          const existingSourceCount = countExistingSources(prehledContent);
           const formattedEntries = entriesToAdd.map((e, i) => {
             const sourceNum = existingSourceCount + i + 1;
+            const numStr = String(sourceNum).padStart(2, "0");
+            const authorLabel = e.author === "Káťa" ? "Vyhledala Káťa" : (e.author === "neuvedeno" ? "Neuvedeno" : "Vyhledala Hana");
             return [
-              `Datum: ${dateStr}`,
-              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
-              `Název zdroje: ${e.fileName}`,
-              `Kdo požádal: ${e.author}`,
-              `Stručný popis/shrnutí: ${e.summary}`,
-              `Poznámky terapeuta: [ ]`,
-              `Reakce Karla: [ ]`,
+              `ZDROJ_${numStr}_${dateStr}:`,
+              `Téma: ${e.fileName.replace(/\.\w{2,5}$/, "")}`,
+              `Záznam: ${authorLabel}. ${e.summary}`,
+              `Podrobný popis: ${e.detailedDesc || "Viz příručka v 07_Knihovna."}`,
+              `Karlovy připomínky a úkoly: ${e.karelNotes || "Bude doplněno při další aktualizaci."}`,
+              `Zkušenosti terapeutů: [ ]`,
+              `Karlova dodatečná reakce: [ ]`,
             ].join("\n");
-          }).join("\n\n");
+          }).join("\n\n---\n\n");
 
           await appendToGoogleDoc(token, prehledFile.id, formattedEntries);
           prehledChanged = true;
