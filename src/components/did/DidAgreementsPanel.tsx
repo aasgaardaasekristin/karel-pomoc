@@ -28,8 +28,8 @@ const DidAgreementsPanel = () => {
   useEffect(() => {
     loadData();
     const intervalId = window.setInterval(() => {
-      loadData();
-    }, 15000);
+      loadData(true);
+    }, 30000);
 
     return () => window.clearInterval(intervalId);
   }, []);
