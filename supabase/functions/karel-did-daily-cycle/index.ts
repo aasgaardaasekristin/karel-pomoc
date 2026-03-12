@@ -376,6 +376,7 @@ async function appendToDoc(token: string, fileId: string, textToAppend: string):
   if (!updateRes.ok) console.warn(`[appendToDoc] Failed: ${updateRes.status}`);
 }
 
+async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
   const boundary = "----DIDCycleBoundary";
   // Create as Google Doc (not .txt) by specifying mimeType in metadata
   const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
