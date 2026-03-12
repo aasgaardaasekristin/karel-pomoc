@@ -1734,6 +1734,17 @@ serve(async (req) => {
     });
     console.log(`[daily-cycle] Research threads loaded: ${researchThreadRows?.length || 0} total, ${researchThreads.length} DID-relevant`);
 
+    // Load pending therapist tasks for accountability analysis
+    const { data: pendingTasks } = await sb.from("did_therapist_tasks")
+      .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
+      .neq("status", "done")
+      .order("created_at", { ascending: true });
+    const pendingTasksSummary = (pendingTasks || []).map((t: any) => {
+      const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+      return `- [${age}d] ${t.task} | pro: ${t.assigned_to} | Hanka: ${t.status_hanka} | Káťa: ${t.status_kata} | priorita: ${t.priority}${age >= 3 ? " ⚠️ ESKALACE" : ""}`;
+    }).join("\n");
+    console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
+
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
