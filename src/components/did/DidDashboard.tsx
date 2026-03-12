@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
@@ -9,6 +9,8 @@ import ReactMarkdown from "react-markdown";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
+import DidSessionPrep from "./DidSessionPrep";
+import DidMonthlyPanel from "./DidMonthlyPanel";
 
 interface PartActivity {
   name: string;
