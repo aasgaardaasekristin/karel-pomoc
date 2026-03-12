@@ -128,7 +128,7 @@ const DidAgreementsPanel = () => {
           variant="outline"
           size="sm"
           onClick={handleRunWeekly}
-          disabled={runningWeekly}
+          disabled={runningWeekly || hasActiveWeekly}
           className="h-6 text-[10px] px-2"
         >
           {runningWeekly ? (
