@@ -613,12 +613,13 @@ PRAVIDLA:
       }
     }
 
-    // 6. MARK THREADS AS PROCESSED
-    const threadIds = threads.map((t: any) => t.id);
-    await sb
-      .from("research_threads")
-      .update({ is_processed: true, processed_at: new Date().toISOString() })
-      .in("id", threadIds);
+    // 6. MARK ONLY SUCCESSFULLY HANDLED THREADS AS PROCESSED
+    if (processedThreadIds.length > 0) {
+      await sb
+        .from("research_threads")
+        .update({ is_processed: true, processed_at: new Date().toISOString() })
+        .in("id", processedThreadIds);
+    }
 
     return new Response(JSON.stringify({
       success: true,
