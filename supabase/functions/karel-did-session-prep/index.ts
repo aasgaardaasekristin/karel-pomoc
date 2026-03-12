@@ -123,15 +123,21 @@ serve(async (req) => {
           }
         }
 
-        // 05_Terapeuticky_Plan
+        // 05_Operativni_Plan (or legacy 05_Terapeuticky)
         const centrumFolder = folders.find(f => f.name.includes("00_CENTRUM"));
         if (centrumFolder) {
           const centrumFiles = await listFilesInFolder(token, centrumFolder.id);
-          const planFile = centrumFiles.find(f => f.name.includes("05_Terapeuticky") || f.name.includes("Terapeuticky_Plan"));
+          const planFile = centrumFiles.find(f => f.name.includes("05_Operativni") || f.name.includes("05_Terapeuticky") || f.name.includes("Terapeuticky_Plan"));
           if (planFile) therapyPlan = truncate(await readFileContent(token, planFile.id), 2000);
 
-          const agreementsFile = centrumFiles.find(f => f.name.includes("06_Terapeuticke") || f.name.includes("Dohody"));
-          if (agreementsFile) agreements = truncate(await readFileContent(token, agreementsFile.id), 2000);
+          // 06_Strategicky_Vyhled (or legacy 06_Terapeuticke)
+          const strategicFile = centrumFiles.find(f => 
+            f.name.includes("06_Strategicky") || f.name.includes("Strategicky_Vyhled") ||
+            f.name.includes("06_Terapeuticke") || f.name.includes("Dohody")
+          );
+          if (strategicFile && strategicFile.mimeType !== "application/vnd.google-apps.folder") {
+            agreements = truncate(await readFileContent(token, strategicFile.id), 2000);
+          }
         }
 
         return { partCard, therapyPlan, agreements };
@@ -192,11 +198,11 @@ DŮLEŽITÉ: Nikdy nepoužívej dechová cvičení — klientka má epilepsii.`;
     const userContent = `KARTA ČÁSTI "${partName}":
 ${drive.partCard || "(karta nenalezena)"}
 
-TERAPEUTICKÝ PLÁN:
+OPERATIVNÍ PLÁN:
 ${drive.therapyPlan || "(nenalezen)"}
 
-TERAPEUTICKÉ DOHODY:
-${drive.agreements || "(nenalezeny)"}
+STRATEGICKÝ VÝHLED:
+${drive.agreements || "(nenalezen)"}
 
 POSLEDNÍ ROZHOVORY S ČÁSTÍ:
 ${conversationSummaries || "(žádné nedávné rozhovory)"}
