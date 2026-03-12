@@ -761,6 +761,8 @@ PRAVIDLA:
             fileName: file.name,
             author: "neuvedeno",
             summary: "Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu.",
+            detailedDesc: "",
+            karelNotes: "",
           });
           listedSourceCanonicals.add(fileCanonical);
         }
