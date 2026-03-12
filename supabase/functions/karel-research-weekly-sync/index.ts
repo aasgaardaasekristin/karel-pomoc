@@ -699,7 +699,9 @@ PRAVIDLA:
       prehledEntries.push({
         fileName: exactFileName,
         author: normalizedCreatedBy,
-        summary: (handbook.summary || "").slice(0, 200),
+        summary: (handbook.summary || "").slice(0, 300),
+        detailedDesc: (handbook.activities || []).map((a: any) => a.name).join(", ").slice(0, 300) || handbook.summary || "",
+        karelNotes: (handbook.karel_notes || "").slice(0, 500),
       });
     }
 
