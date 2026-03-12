@@ -133,6 +133,8 @@ const DidAgreementsPanel = () => {
         >
           {runningWeekly ? (
             <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</>
+          ) : hasActiveWeekly ? (
+            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží na pozadí...</>
           ) : (
             <><RefreshCw className="w-3 h-3 mr-1" /> Spustit týdenní cyklus</>
           )}
