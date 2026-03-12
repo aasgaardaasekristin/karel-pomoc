@@ -138,17 +138,22 @@ const DidAgreementsPanel = () => {
           Zatím neproběhl žádný týdenní cyklus. Spusť ho tlačítkem výše.
         </p>
       ) : (
-        cycles.map(cycle => {
+        cycles
+          .filter(cycle => {
+            // Hide stuck "running" cycles older than 10 min (client-side only, no DB write)
+            if (cycle.status === "running") {
+              return Date.now() - new Date(cycle.started_at).getTime() < RUNNING_TIMEOUT_MS;
+            }
+            return true;
+          })
+          .map(cycle => {
           const cards = Array.isArray(cycle.cards_updated) ? cycle.cards_updated : [];
-          const runningDurationMs = Date.now() - new Date(cycle.started_at).getTime();
-          const isRunning = cycle.status === "running" && runningDurationMs < RUNNING_TIMEOUT_MS;
-          const isTimedOut = cycle.status === "running" && runningDurationMs >= RUNNING_TIMEOUT_MS;
-          const isFailed = cycle.status === "failed" || isTimedOut;
+          const isRunning = cycle.status === "running";
           const isExpanded = expandedCycle === cycle.id;
           const displayDate = cycle.completed_at || cycle.started_at;
 
           return (
-            <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : isFailed ? "border-destructive/40" : "border-border"}`}>
+            <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
               <button
                 onClick={() => !isRunning && setExpandedCycle(isExpanded ? null : cycle.id)}
                 className="w-full p-3 text-left hover:bg-muted/30 transition-colors"
@@ -157,16 +162,12 @@ const DidAgreementsPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-medium text-foreground">
-                      {isRunning ? "⏳ Probíhá analýza..." : isFailed ? "⚠️ Nedokončený cyklus" : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
+                      {isRunning ? "⏳ Probíhá analýza..." : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
                     </span>
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {isRunning ? (
                         <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary">
                           <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> Běží...
-                        </Badge>
-                      ) : isFailed ? (
-                        <Badge variant="destructive" className="text-[9px] px-1 py-0">
-                          <AlertCircle className="w-2.5 h-2.5 mr-0.5" /> Timeout/Chyba
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[9px] px-1 py-0">
