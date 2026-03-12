@@ -404,13 +404,9 @@ serve(async (req) => {
       .eq("is_processed", false);
 
     if (threadsError) throw new Error(`DB error: ${threadsError.message}`);
-    if (!threads || threads.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: "No research threads to process" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`Processing ${threads.length} research threads`);
+    
+    const activeThreads = threads || [];
+    console.log(`Found ${activeThreads.length} unprocessed research threads`);
 
     // 2. FIND 07_KNIHOVNA FOLDER
     const token = await getAccessToken();
@@ -442,7 +438,7 @@ serve(async (req) => {
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
 
-    for (const thread of threads) {
+    for (const thread of activeThreads) {
       const msgs = (thread.messages || []) as { role: string; content: string }[];
       if (msgs.length < 2) {
         console.log(`[sync] Skipping thread "${thread.topic}" – too few messages`);
@@ -646,7 +642,7 @@ PRAVIDLA:
           const reconcileNote = missingEntries.length > 0
             ? `\nReconcilováno chybějících záznamů: ${missingEntries.length}\n`
             : "";
-          const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}${reconcileNote}\n${allEntries.join("\n\n")}`;
+          const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${activeThreads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}${reconcileNote}\n${allEntries.join("\n\n")}`;
           await appendToGoogleDoc(token, prehledFile.id, appendText);
           console.log(`[sync] 00_Prehled updated with ${prehledEntries.length} new + ${missingEntries.length} reconciled entries`);
         }
@@ -668,7 +664,7 @@ PRAVIDLA:
       threadsProcessed: processedThreadIds.length,
       handbooksSaved: savedHandbooks,
       skippedDuplicates,
-      prehledUpdated: prehledEntries.length > 0,
+      prehledUpdated: prehledEntries.length > 0 || savedHandbooks.length > 0,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
