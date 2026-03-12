@@ -2021,30 +2021,40 @@ Formát HTML emailu:
               } catch {}
             }
           }
-          // Load ALL files from 06_Terapeuticke_Dohody folder for mirroring active agreements into 05
-          const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
-          if (dohodyCandidates.length > 0) {
-            for (const d of dohodyCandidates.slice(0, 1)) {
-              if (d.mimeType === DRIVE_FOLDER_MIME) {
-                const subFiles = await listFilesInFolder(token, d.id);
-                // Load ALL agreement files (not just latest) so AI can mirror active ones into section 2 of 05
-                let totalDohodaChars = 0;
-                const MAX_DOHODA_CHARS = 12000;
-                for (const sf of subFiles.sort((a, b) => b.name.localeCompare(a.name))) {
-                  if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
+          // Load 06_Strategicky_Vyhled as a single document (no longer a folder of agreements)
+          const strategicFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && (canonicalText(f.name).includes("strategick") || canonicalText(f.name).includes("06strategick")));
+          if (strategicFile) {
+            try {
+              const content = await readFileContent(token, strategicFile.id);
+              const trimmed = content.length > 3000 ? content.slice(0, 3000) + "…" : content;
+              centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${strategicFile.name} ===\n${trimmed}\n`;
+              console.log(`[daily-cycle] Loaded 06_Strategicky_Vyhled (${content.length} chars)`);
+            } catch {}
+          }
+          // Fallback: also check old 06_Terapeuticke_Dohody folder for backward compatibility
+          if (!strategicFile) {
+            const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
+            if (dohodyCandidates.length > 0) {
+              for (const d of dohodyCandidates.slice(0, 1)) {
+                if (d.mimeType === DRIVE_FOLDER_MIME) {
+                  const subFiles = await listFilesInFolder(token, d.id);
+                  let totalDohodaChars = 0;
+                  const MAX_DOHODA_CHARS = 12000;
+                  for (const sf of subFiles.sort((a, b) => b.name.localeCompare(a.name))) {
+                    if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
+                    try {
+                      const content = await readFileContent(token, sf.id);
+                      const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
+                      centrumDocsContext += `\n=== LEGACY DOHODA: ${sf.name} ===\n${trimmed}\n`;
+                      totalDohodaChars += trimmed.length;
+                    } catch {}
+                  }
+                } else {
                   try {
-                    const content = await readFileContent(token, sf.id);
-                    const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
-                    centrumDocsContext += `\n=== TERAPEUTICKÁ DOHODA: ${sf.name} ===\n${trimmed}\n`;
-                    totalDohodaChars += trimmed.length;
+                    const content = await readFileContent(token, d.id);
+                    centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
                   } catch {}
                 }
-                console.log(`[daily-cycle] Loaded ${subFiles.length} agreement files from 06_Terapeuticke_Dohody (${totalDohodaChars} chars)`);
-              } else {
-                try {
-                  const content = await readFileContent(token, d.id);
-                  centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
-                } catch {}
               }
             }
           }
