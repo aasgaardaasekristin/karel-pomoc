@@ -90,6 +90,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
     } finally {
       setRunningWeekly(false);
       loadData();
+      onWeeklyCycleComplete?.();
     }
   };
 
