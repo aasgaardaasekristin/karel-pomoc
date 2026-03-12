@@ -1576,8 +1576,8 @@ serve(async (req) => {
     // ═══ FAST-PATH: reformat only (no DB, no AI, no email) ═══
     if (requestBody?.reformat) {
       const token = await getAccessToken();
-      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
-      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+      if (!folderId) throw new Error("kartoteka_DID folder not found");
       
       // If partName specified, only reformat that one card
       const targetPart = requestBody?.partName as string | undefined;
