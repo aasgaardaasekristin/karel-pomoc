@@ -536,7 +536,7 @@ serve(async (req) => {
     // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS FORMATTED DOC
     const savedHandbooks: string[] = [];
     const skippedDuplicates: string[] = [];
-    const prehledEntries: Array<{ fileName: string; author: string; summary: string }> = [];
+    const prehledEntries: Array<{ fileName: string; author: string; summary: string; detailedDesc: string; karelNotes: string }> = [];
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
     let prehledChanged = false;
