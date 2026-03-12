@@ -813,7 +813,6 @@ PRAVIDLA:
               `ZDROJ_${numStr}_${dateStr}:`,
               `Téma: ${e.fileName.replace(/\.\w{2,5}$/, "")}`,
               `Záznam: ${authorLabel}. ${e.summary}`,
-              `Podrobný popis: ${e.detailedDesc || "Viz příručka v 07_Knihovna."}`,
               `Karlovy připomínky a úkoly: ${e.karelNotes || "Bude doplněno při další aktualizaci."}`,
               `Zkušenosti terapeutů: [ ]`,
               `Karlova dodatečná reakce: [ ]`,
