@@ -361,6 +361,21 @@ async function updateFileById(token: string, fileId: string, content: string, mi
   return await res.json();
 }
 
+async function appendToDoc(token: string, fileId: string, textToAppend: string): Promise<void> {
+  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!docRes.ok) return;
+  const doc = await docRes.json();
+  const endIndex = doc.body?.content?.slice(-1)?.[0]?.endIndex || 1;
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests: [{ insertText: { location: { index: endIndex - 1 }, text: textToAppend } }] }),
+  });
+  if (!updateRes.ok) console.warn(`[appendToDoc] Failed: ${updateRes.status}`);
+}
+
 async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
   const boundary = "----DIDCycleBoundary";
   // Create as Google Doc (not .txt) by specifying mimeType in metadata
@@ -2691,13 +2706,21 @@ ${perplexityContext}`,
                 f.mimeType !== DRIVE_FOLDER_MIME && !f.name.startsWith("00_Prehled")
               );
 
-              // Build handbook summaries for AI analysis
+              // Build handbook summaries for AI analysis – skip already distributed ones
               let handbookContext = "";
+              const distributedHandbooks: string[] = [];
+              const undistributedHandbooks: Array<{ id: string; name: string }> = [];
               const MAX_HANDBOOK_CHARS = 2000;
               for (const hf of handbookFiles.slice(0, 10)) {
                 try {
                   const hContent = await readFileContent(token, hf.id);
+                  // Skip handbooks already distributed to kartotéka
+                  if (hContent.includes("[DISTRIBUOVÁNO DO KARTOTÉKY")) {
+                    console.log(`[knihovna] Skipping already distributed: "${hf.name}"`);
+                    continue;
+                  }
                   handbookContext += `\n\n=== PŘÍRUČKA: ${hf.name} ===\n${hContent.length > MAX_HANDBOOK_CHARS ? hContent.slice(0, MAX_HANDBOOK_CHARS) + "…" : hContent}`;
+                  undistributedHandbooks.push({ id: hf.id, name: hf.name });
                 } catch {}
               }
 
@@ -2839,6 +2862,17 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
                       } catch (e) {
                         console.warn(`[knihovna] CENTRUM update failed for ${docName}:`, e);
                       }
+                    }
+                  }
+
+                  // Mark all undistributed handbooks as processed by appending marker
+                  const distribDateStr = new Date().toISOString().slice(0, 10);
+                  for (const uh of undistributedHandbooks) {
+                    try {
+                      await appendToDoc(token, uh.id, `\n\n[DISTRIBUOVÁNO DO KARTOTÉKY: ${distribDateStr}]`);
+                      console.log(`[knihovna] Marked as distributed: "${uh.name}"`);
+                    } catch (markErr) {
+                      console.warn(`[knihovna] Failed to mark "${uh.name}" as distributed:`, markErr);
                     }
                   }
                 } else {
