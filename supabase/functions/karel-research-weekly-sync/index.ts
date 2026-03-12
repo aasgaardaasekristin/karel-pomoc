@@ -575,6 +575,7 @@ PRAVIDLA:
       if (isTopicDuplicate(topicName, currentKnihovnaFiles)) {
         console.log(`[sync] Duplicate detected: "${topicName}" – skipping`);
         skippedDuplicates.push(topicName);
+        processedThreadIds.push(thread.id);
         continue;
       }
 
