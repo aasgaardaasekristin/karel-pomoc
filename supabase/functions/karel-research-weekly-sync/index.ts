@@ -20,6 +20,7 @@ async function getAccessToken(): Promise<string> {
 }
 
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
 
 async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
   let q = `name='${name}' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
@@ -71,7 +72,6 @@ async function readGoogleDoc(token: string, fileId: string): Promise<string> {
 }
 
 async function appendToGoogleDoc(token: string, fileId: string, textToAppend: string): Promise<void> {
-  // Get current document to find end index
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -100,6 +100,121 @@ async function appendToGoogleDoc(token: string, fileId: string, textToAppend: st
   }
 }
 
+async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
+  const boundary = "----ResearchSyncBoundary";
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${boundary}--`;
+  const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+    body,
+  });
+  if (!res.ok) throw new Error(`Drive create failed: ${res.status}`);
+  return await res.json();
+}
+
+// ═══ HANDBOOK JSON → Formatted text for Google Doc ═══
+function handbookToFormattedText(handbook: any): string {
+  const lines: string[] = [];
+
+  lines.push(`TERAPEUTICKÁ PŘÍRUČKA`);
+  lines.push(`Téma: ${handbook.topic || "konzultace"}`);
+  lines.push(`Připravil/a: ${handbook.createdBy || "neznámé"}`);
+  lines.push(`Datum: ${new Date().toISOString().slice(0, 10)}`);
+  lines.push(`Vygenerováno aplikací Karel – supervizní partner`);
+  lines.push("");
+
+  if (handbook.summary) {
+    lines.push("SHRNUTÍ");
+    lines.push(handbook.summary);
+    lines.push("");
+  }
+
+  const activities = handbook.activities || [];
+  for (let i = 0; i < activities.length; i++) {
+    const a = activities[i];
+    lines.push(`METODA ${i + 1}: ${a.name || "Bez názvu"}`);
+    lines.push("");
+
+    if (a.target_group) lines.push(`Cílová skupina: ${a.target_group}`);
+    if (a.goal) lines.push(`Účel/Cíl: ${a.goal}`);
+    if (a.principle) lines.push(`Psychologický princip: ${a.principle}`);
+    if (a.difficulty) lines.push(`Obtížnost: ${a.difficulty}`);
+    if (a.duration) lines.push(`Délka: ${a.duration}`);
+    lines.push("");
+
+    if (a.materials && a.materials.length > 0) {
+      lines.push("Pomůcky:");
+      for (const m of a.materials) lines.push(`  - ${m}`);
+      lines.push("");
+    }
+
+    if (a.introduction) {
+      lines.push("Jak uvést:");
+      lines.push(a.introduction);
+      lines.push("");
+    }
+
+    if (a.steps && a.steps.length > 0) {
+      lines.push("Postup krok za krokem:");
+      for (const s of a.steps) lines.push(`  ${s}`);
+      lines.push("");
+    }
+
+    if (a.expected_course) {
+      lines.push("Očekávaný průběh:");
+      lines.push(a.expected_course);
+      lines.push("");
+    }
+
+    if (a.expected_outcome) {
+      lines.push("Očekávaný výsledek:");
+      lines.push(a.expected_outcome);
+      lines.push("");
+    }
+
+    if (a.diagnostic_watch && a.diagnostic_watch.length > 0) {
+      lines.push("Diagnostická pozorování:");
+      for (const d of a.diagnostic_watch) lines.push(`  - ${d}`);
+      lines.push("");
+    }
+
+    if (a.warnings && a.warnings.length > 0) {
+      lines.push("⚠️ Upozornění:");
+      for (const w of a.warnings) lines.push(`  - ${w}`);
+      lines.push("");
+    }
+
+    lines.push("---");
+    lines.push("");
+  }
+
+  if (handbook.general_tips && handbook.general_tips.length > 0) {
+    lines.push("OBECNÉ TIPY PRO PRAXI");
+    for (const tip of handbook.general_tips) lines.push(`- ${tip}`);
+    lines.push("");
+  }
+
+  if (handbook.sources && handbook.sources.length > 0) {
+    lines.push("ZDROJE");
+    for (const src of handbook.sources) {
+      let line = `- ${src.title || "Bez názvu"}`;
+      if (src.url) line += ` (${src.url})`;
+      if (src.description) line += ` – ${src.description}`;
+      lines.push(line);
+    }
+    lines.push("");
+  }
+
+  if (handbook.karel_notes) {
+    lines.push("KARLOVY POZNÁMKY");
+    lines.push(handbook.karel_notes);
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -116,20 +231,19 @@ serve(async (req) => {
 
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // 1. GET ALL RESEARCH THREADS FROM LAST WEEK
-    const weekAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    // 1. GET ALL UNPROCESSED RESEARCH THREADS
     const { data: threads, error: threadsError } = await sb
       .from("research_threads")
       .select("*")
       .eq("is_deleted", false)
-      .eq("is_processed", false)
-      .gte("started_at", weekAgo);
+      .eq("is_processed", false);
 
     if (threadsError) throw new Error(`DB error: ${threadsError.message}`);
     if (!threads || threads.length === 0) {
@@ -140,218 +254,194 @@ serve(async (req) => {
 
     console.log(`Processing ${threads.length} research threads`);
 
-    // 2. BUILD THREAD SUMMARIES FOR AI
-    const threadSummaries = threads.map((t: any) => {
-      const msgs = (t.messages || []) as { role: string; content: string }[];
-      const userMsgs = msgs.filter(m => m.role === "user").map(m => typeof m.content === "string" ? m.content.slice(0, 500) : "").join("\n");
-      const assistantMsgs = msgs.filter(m => m.role === "assistant").map(m => typeof m.content === "string" ? m.content.slice(0, 1500) : "").join("\n---\n");
-      return `
-═══ VLÁKNO: ${t.topic} ═══
-Založil/a: ${t.created_by}
-Datum: ${t.started_at}
-Počet zpráv: ${msgs.length}
+    // 2. FIND 07_KNIHOVNA FOLDER
+    const token = await getAccessToken();
+    const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+    if (!kartotekaId) throw new Error("Kartoteka_DID folder not found");
 
-DOTAZY UŽIVATELE:
-${userMsgs}
+    const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
+    if (!centrumId) throw new Error("00_CENTRUM folder not found");
 
-ODPOVĚDI KARLA (výzkum):
-${assistantMsgs}
-`;
-    }).join("\n\n");
+    let knihovnaFolderId = await findFolder(token, "07_Knihovna", centrumId);
+    if (!knihovnaFolderId) {
+      knihovnaFolderId = await findOrCreateFolder(token, "07_Knihovna", centrumId);
+    }
+    if (!knihovnaFolderId) throw new Error("Could not find/create 07_Knihovna");
 
-    // 3. AI SYNTHESIS — Create structured entries for 07_Knihovna
-    const synthesisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: `Jsi Karel – supervizní partner a archivář profesních zdrojů pro terapeutky Hanu a Káťu.
+    // 3. FIND OR CREATE 00_Prehled DOC
+    const knihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+    let prehledFile = knihovnaFiles.find(f => f.name.startsWith("00_Prehled"));
+    if (!prehledFile) {
+      const created = await createFileInFolder(token, "00_Prehled", "PŘEHLED KNIHOVNY – PROFESNÍ ZDROJE\n\nZde se ukládají stručné přehledy nových zdrojů z Profesních rešerší.\n", knihovnaFolderId);
+      prehledFile = { id: created.id, name: "00_Prehled" };
+      console.log("[sync] ✅ Created 00_Prehled");
+    }
 
-Tvým úkolem je zpracovat výzkumná vlákna z posledního týdne a vytvořit strukturované záznamy do dokumentu 07_Knihovna.
+    // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS DOC
+    const savedHandbooks: string[] = [];
+    const prehledEntries: string[] = [];
+    const dateStr = new Date().toISOString().slice(0, 10);
 
-PRO KAŽDÉ VLÁKNO vytvoř záznam v tomto formátu:
+    for (const thread of threads) {
+      const msgs = (thread.messages || []) as { role: string; content: string }[];
+      if (msgs.length < 2) {
+        console.log(`[sync] Skipping thread "${thread.topic}" – too few messages`);
+        continue;
+      }
 
-ZDROJ_[číslo]_[datum YYYY-MM-DD]:
-Téma: [název vlákna]
-Záznam: Vyhledal/a [jméno]. [Pro jaký účel se to hodí]. [Stručná sumarizace – 2-3 věty]
-Podrobný popis: [Detailní popis metody/tématu, použití, návrhy jak a kde to použít]
-Karlovy připomínky a úkoly: [Tvé doporučení, jak to začlenit do praxe, co zkusit, u jakého klienta/části]
-Zkušenosti terapeutů: [zatím prázdné – terapeuti doplní později]
-Karlova dodatečná reakce: [zatím prázdné – Karel doplní při příští aktualizaci]
+      const normalizedCreatedBy = thread.created_by === "Káťa" ? "Káťa" : (thread.created_by || "Hana");
+      const osobniOsloveni = normalizedCreatedBy === "Káťa" ? "Káťo" : "Haničko";
 
----
+      // 4a. Generate handbook via AI (same logic as karel-research-handbook)
+      let handbook: any = null;
+      try {
+        // Perplexity enrichment
+        let perplexityEnrichment = "";
+        if (PERPLEXITY_API_KEY) {
+          try {
+            const pxRes = await fetch("https://api.perplexity.ai/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "sonar-pro",
+                messages: [
+                  { role: "system", content: "Jsi výzkumný asistent zaměřený na psychoterapii. Hledej odborné články relevantní k zadanému tématu. Odpověz česky." },
+                  { role: "user", content: `Najdi odborné zdroje k tématu: "${thread.topic}". Zaměř se na konkrétní terapeutické techniky a evidence-based přístupy.` },
+                ],
+                search_mode: "academic",
+              }),
+            });
+            if (pxRes.ok) {
+              const pxData = await pxRes.json();
+              perplexityEnrichment = pxData.choices?.[0]?.message?.content || "";
+              const citations = pxData.citations || [];
+              if (citations.length > 0) {
+                perplexityEnrichment += "\n\nZdroje:\n" + citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n");
+              }
+            }
+          } catch (e) { console.warn(`[sync] Perplexity enrichment failed for "${thread.topic}":`, e); }
+        }
 
-Dále identifikuj informace relevantní pro DID systém a navrhni:
-1. [DID_PLAN] Co přidat do 05_Terapeuticky_Plan_Aktualni
-2. [DID_DOHODY] Co přidat do 06_Terapeuticke_Dohody
-3. [DID_DASHBOARD] Co aktualizovat v 00_Aktualni_Dashboard
-4. [DID_KARTA:jméno_části] Co zapsat do karty konkrétní části (pokud je metoda vhodná pro konkrétní část)
-5. [UKOL_HANA] Úkol pro Hanu (krátkodobý/dlouhodobý)
-6. [UKOL_KATA] Úkol pro Káťu
-7. [UKOL_TANDEM] Společný úkol pro oba terapeuty
+        const conversationText = msgs
+          .map((m) => `${m.role === "user" ? normalizedCreatedBy : "Karel"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`)
+          .join("\n\n");
+
+        const synthesisPrompt = `Jsi Karel, supervizní AI asistent. Na základě rozhovoru s terapeutem/kou (${normalizedCreatedBy}) vytvoř STRUKTUROVANOU PŘÍRUČKU.
+
+PRAVIDLO OSLOVENÍ: Příručka je pro ${normalizedCreatedBy}. Oslovuj "${osobniOsloveni}". Nepředstavuj se jako "tady Karel".
+
+ROZHOVOR:
+${conversationText}
+
+${perplexityEnrichment ? `DOPLŇUJÍCÍ ODBORNÉ INFORMACE:\n${perplexityEnrichment}` : ""}
+
+Vytvoř příručku v JSON formátu:
+{
+  "topic": "stručný název tématu",
+  "createdBy": "${normalizedCreatedBy}",
+  "summary": "shrnutí v 3-5 větách",
+  "activities": [
+    {
+      "name": "NÁZEV metody",
+      "target_group": "pro koho",
+      "goal": "účel",
+      "principle": "psychologický princip",
+      "materials": ["seznam pomůcek"],
+      "introduction": "jak uvést",
+      "steps": ["krok 1", "krok 2"],
+      "expected_course": "očekávaný průběh",
+      "expected_outcome": "očekávaný výsledek",
+      "diagnostic_watch": ["na co pozor"],
+      "warnings": ["bezpečnostní poznámky"],
+      "difficulty": "snadné|střední|pokročilé",
+      "duration": "délka"
+    }
+  ],
+  "general_tips": ["tipy"],
+  "sources": [{"title": "název", "url": "URL", "description": "popis"}],
+  "karel_notes": "Karlovy poznámky pro ${osobniOsloveni}"
+}
 
 PRAVIDLA:
-- Čísluj ZDROJ_ postupně od posledního čísla v dokumentu (pokud není známé, začni od 1)
-- Buď konkrétní a praktický
-- NIKDY nevymýšlej citace – použij pouze zdroje z vláken
-- Zaměř se na terapeutickou hodnotu informací`,
-          },
-          {
-            role: "user",
-            content: `Zpracuj tato výzkumná vlákna z posledního týdne:\n\n${threadSummaries}`,
-          },
-        ],
-      }),
-    });
+- Každá aktivita = kompletní návod
+- Piš česky
+- NEVYMÝŠLEJ citace – používej jen zdroje z rozhovoru a rešerše`;
 
-    if (!synthesisResponse.ok) {
-      const errText = await synthesisResponse.text();
-      console.error("AI synthesis error:", synthesisResponse.status, errText);
-      throw new Error(`AI synthesis failed: ${synthesisResponse.status}`);
+        const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: "Jsi klinický supervizní asistent. Odpovídej VŽDY validním JSON." },
+              { role: "user", content: synthesisPrompt },
+            ],
+            response_format: { type: "json_object" },
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content || "{}";
+          try {
+            handbook = JSON.parse(content);
+          } catch {
+            handbook = { topic: thread.topic, summary: content, activities: [], general_tips: [], sources: [], karel_notes: "" };
+          }
+        } else {
+          console.error(`[sync] AI synthesis failed for "${thread.topic}": ${response.status}`);
+        }
+      } catch (e) {
+        console.error(`[sync] Handbook generation failed for "${thread.topic}":`, e);
+      }
+
+      if (!handbook) continue;
+
+      // 4b. Create descriptive filename from topic
+      const topicName = (handbook.topic || thread.topic || "Bez_tematu")
+        .replace(/[^a-zA-Zá-žÁ-Ž0-9\s()–\-]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80);
+
+      // 4c. Check if doc with this topic already exists (deduplication)
+      const existingDoc = knihovnaFiles.find(f => f.name === topicName);
+      if (existingDoc) {
+        console.log(`[sync] ⏭️ "${topicName}" already exists in 07_Knihovna, skipping`);
+        continue;
+      }
+
+      // 4d. Convert handbook to formatted text and save as Google Doc
+      const formattedText = handbookToFormattedText(handbook);
+      try {
+        await createFileInFolder(token, topicName, formattedText, knihovnaFolderId);
+        savedHandbooks.push(topicName);
+        console.log(`[sync] ✅ Saved handbook: "${topicName}"`);
+      } catch (e) {
+        console.error(`[sync] Failed to save "${topicName}":`, e);
+        continue;
+      }
+
+      // 4e. Build prehled entry
+      const methodNames = (handbook.activities || []).map((a: any) => a.name || "").filter(Boolean).join(", ");
+      prehledEntries.push(
+        `[${dateStr}] ${topicName}\n` +
+        `  Autor: ${normalizedCreatedBy}\n` +
+        `  Shrnutí: ${(handbook.summary || "").slice(0, 200)}\n` +
+        `  Metody: ${methodNames || "neuvedeny"}\n` +
+        `  Dokument v 07_Knihovna: "${topicName}"`
+      );
     }
 
-    const synthesisData = await synthesisResponse.json();
-    const synthesisText = synthesisData.choices?.[0]?.message?.content || "";
-
-    if (!synthesisText) {
-      return new Response(JSON.stringify({ success: true, message: "AI returned empty synthesis" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // 4. WRITE TO GOOGLE DRIVE — 07_Knihovna
-    let knihovnaUpdated = false;
-    const didUpdates: string[] = [];
-
-    try {
-      const token = await getAccessToken();
-      const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
-      if (!kartotekaId) throw new Error("Kartoteka_DID folder not found");
-
-      const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
-      if (!centrumId) throw new Error("00_CENTRUM folder not found");
-
-      // Find or create 07_Knihovna FOLDER (not a single document)
-      let knihovnaFolderId = await findFolder(token, "07_Knihovna", centrumId);
-      if (!knihovnaFolderId) {
-        // Check for existing file named 07_Knihovna and use folder approach
-        const knihovnaFile = await findFile(token, "07_Knihovna", centrumId);
-        if (knihovnaFile) {
-          // Legacy: single doc exists. Append to it for backward compat, but also create folder structure.
-          console.log("07_Knihovna exists as document, creating folder structure alongside it");
-        }
-        knihovnaFolderId = await findOrCreateFolder(token, "07_Knihovna", centrumId);
+    // 5. UPDATE 00_Prehled with new entries
+    if (prehledEntries.length > 0 && prehledFile) {
+      const appendText = `\n═══ AKTUALIZACE ${dateStr} ═══\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n\n${prehledEntries.join("\n\n")}`;
+      try {
+        await appendToGoogleDoc(token, prehledFile.id, appendText);
+        console.log(`[sync] ✅ 00_Prehled updated with ${prehledEntries.length} entries`);
+      } catch (e) {
+        console.error("[sync] Failed to update 00_Prehled:", e);
       }
-
-      if (knihovnaFolderId) {
-        const dateStr = new Date().toISOString().slice(0, 10);
-        // Create date subfolder for this sync
-        const dateSubfolderId = await findOrCreateFolder(token, dateStr, knihovnaFolderId);
-
-        if (dateSubfolderId) {
-          // Extract ZDROJ entries (before DID markers)
-          const zdrojEntries = synthesisText.split(/\[DID_/)[0].trim();
-
-          // Try to split into individual ZDROJ blocks
-          const zdrojBlocks = zdrojEntries.split(/(?=ZDROJ_\d+_)/);
-          let savedCount = 0;
-
-          for (const block of zdrojBlocks) {
-            const trimmed = block.trim();
-            if (!trimmed || trimmed.length < 20) continue;
-
-            // Extract topic name from the block
-            const topicMatch = trimmed.match(/Téma:\s*(.+)/);
-            const topicName = topicMatch ? topicMatch[1].trim().replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 60) : `Zdroj_${savedCount + 1}`;
-            const zdrojIdMatch = trimmed.match(/^(ZDROJ_\d+_[\d-]+)/);
-            const fileName = zdrojIdMatch ? `${zdrojIdMatch[1]}_${topicName}` : topicName;
-
-            // Create Google Doc for this source
-            const boundary = "----ResearchSyncBoundary";
-            const metadata = JSON.stringify({ name: fileName, parents: [dateSubfolderId], mimeType: "application/vnd.google-apps.document" });
-            const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${trimmed}\r\n--${boundary}--`;
-            const createRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
-              body,
-            });
-            if (createRes.ok) savedCount++;
-            else console.warn(`Failed to create ZDROJ doc: ${createRes.status}`);
-          }
-
-          // Create a summary index doc in the date subfolder
-          if (zdrojEntries && zdrojEntries.length > 20) {
-            const summaryContent = `TÝDENNÍ AKTUALIZACE KNIHOVNY\nDatum: ${dateStr}\nZpracováno vláken: ${threads.length}\nVytvořeno zdrojů: ${savedCount}\n\n${zdrojEntries}`;
-            const boundary = "----ResearchSyncBoundary";
-            const metadata = JSON.stringify({ name: `00_Prehled_${dateStr}`, parents: [dateSubfolderId], mimeType: "application/vnd.google-apps.document" });
-            const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${summaryContent}\r\n--${boundary}--`;
-            await fetch(`https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
-              body,
-            });
-          }
-
-          knihovnaUpdated = true;
-          console.log(`07_Knihovna: saved ${savedCount} sources to subfolder ${dateStr}`);
-        }
-      } else {
-        console.warn("Could not find or create 07_Knihovna folder in 00_CENTRUM");
-      }
-
-      // 5. PROCESS DID-SPECIFIC UPDATES
-      // Update 05_Terapeuticky_Plan_Aktualni
-      const planMatch = synthesisText.match(/\[DID_PLAN\]([\s\S]*?)(?=\[DID_|\[UKOL_|$)/);
-      if (planMatch && planMatch[1].trim()) {
-        const planFile = await findFile(token, "05_Terapeuticky_Plan", centrumId);
-        if (planFile) {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          await appendToGoogleDoc(token, planFile.id, `\n[${dateStr} – z profesních zdrojů]\n${planMatch[1].trim()}`);
-          didUpdates.push("05_Terapeuticky_Plan_Aktualni");
-        }
-      }
-
-      // Update 06_Terapeuticke_Dohody
-      const dohodyMatch = synthesisText.match(/\[DID_DOHODY\]([\s\S]*?)(?=\[DID_|\[UKOL_|$)/);
-      if (dohodyMatch && dohodyMatch[1].trim()) {
-        const dohodyFile = await findFile(token, "06_Terapeuticke_Dohody", centrumId);
-        if (dohodyFile) {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          await appendToGoogleDoc(token, dohodyFile.id, `\n[${dateStr} – z profesních zdrojů]\n${dohodyMatch[1].trim()}`);
-          didUpdates.push("06_Terapeuticke_Dohody");
-        }
-      }
-
-      // Update 00_Aktualni_Dashboard
-      const dashMatch = synthesisText.match(/\[DID_DASHBOARD\]([\s\S]*?)(?=\[DID_|\[UKOL_|$)/);
-      if (dashMatch && dashMatch[1].trim()) {
-        const dashFile = await findFile(token, "00_Aktualni_Dashboard", centrumId) || await findFile(token, "Dashboard", centrumId);
-        if (dashFile) {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          await appendToGoogleDoc(token, dashFile.id, `\n[${dateStr} – Profesní zdroje]\n${dashMatch[1].trim()}`);
-          didUpdates.push("00_Aktualni_Dashboard");
-        }
-      }
-
-      // Update individual part cards
-      const partCardMatches = synthesisText.matchAll(/\[DID_KARTA:([^\]]+)\]([\s\S]*?)(?=\[DID_|\[UKOL_|$)/g);
-      const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaId);
-      for (const match of partCardMatches) {
-        const partName = match[1].trim();
-        const content = match[2].trim();
-        if (!content || !aktivniId) continue;
-        const partFile = await findFile(token, partName, aktivniId);
-        if (partFile) {
-          const dateStr = new Date().toISOString().slice(0, 10);
-          await appendToGoogleDoc(token, partFile.id, `\n[${dateStr} – z profesních zdrojů]\n${content}`);
-          didUpdates.push(`Karta: ${partName}`);
-        }
-      }
-    } catch (e) {
-      console.error("Drive update error:", e);
     }
 
     // 6. MARK THREADS AS PROCESSED
@@ -364,8 +454,8 @@ PRAVIDLA:
     return new Response(JSON.stringify({
       success: true,
       threadsProcessed: threads.length,
-      knihovnaUpdated,
-      didUpdates,
+      handbooksSaved: savedHandbooks,
+      prehledUpdated: prehledEntries.length > 0,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

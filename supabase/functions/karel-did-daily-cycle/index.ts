@@ -2673,6 +2673,185 @@ ${perplexityContext}`,
         }
       }
 
+      // ═══ 07_KNIHOVNA ANALYSIS: Scan for DID-relevant content and distribute to kartotéka ═══
+      try {
+        if (centrumFolderId) {
+          const centerFiles = await listFilesInFolder(token, centrumFolderId);
+          const knihovnaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && f.name.includes("07_Knihovna"));
+
+          if (knihovnaFolder) {
+            const knihovnaFiles = await listFilesInFolder(token, knihovnaFolder.id);
+            const prehledFile = knihovnaFiles.find(f => f.name.startsWith("00_Prehled"));
+
+            if (prehledFile) {
+              const prehledContent = await readFileContent(token, prehledFile.id);
+
+              // Read all handbook docs (non-folder, non-prehled files)
+              const handbookFiles = knihovnaFiles.filter(f =>
+                f.mimeType !== DRIVE_FOLDER_MIME && !f.name.startsWith("00_Prehled")
+              );
+
+              // Build handbook summaries for AI analysis
+              let handbookContext = "";
+              const MAX_HANDBOOK_CHARS = 2000;
+              for (const hf of handbookFiles.slice(0, 10)) {
+                try {
+                  const hContent = await readFileContent(token, hf.id);
+                  handbookContext += `\n\n=== PŘÍRUČKA: ${hf.name} ===\n${hContent.length > MAX_HANDBOOK_CHARS ? hContent.slice(0, MAX_HANDBOOK_CHARS) + "…" : hContent}`;
+                } catch {}
+              }
+
+              if (handbookContext.length > 100) {
+                // AI analysis: determine where handbook content should be distributed
+                const knihovnaAnalysisRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash",
+                    messages: [
+                      {
+                        role: "system",
+                        content: `Jsi Karel – analytik DID systému. Tvým úkolem je projít příručky uložené v 07_Knihovna a pro KAŽDOU příručku, která se JAKKOLIV týká DID systému, určit KAM v kartotéce by měly být informace zapsány.
+
+═══ CO JE DID-RELEVANTNÍ ═══
+- Metoda/technika použitelná pro konkrétní fragment/část (např. hra pro dětskou část, stabilizační technika)
+- Obecná terapeutická metoda pro DID (senzorická integrace, projektivní techniky, sandtray)
+- Výzkum relevantní pro práci s DID systémem
+- Článek o traumatu, disociaci, attachment teorii
+- Plánované sezení s konkrétní částí
+
+═══ KAM ZAPSAT ═══
+Pro každou DID-relevantní příručku vypiš záznamy v tomto formátu:
+
+[KNIHOVNA_KARTA:jméno_části]
+Stručné shrnutí co je relevantní pro tuto část. Odkaz: viz příručka "název příručky" v 07_Knihovna.
+Sekce kam zapsat (I = metody, J = krátkodobé cíle, G = deník sezení pokud je sezení plánováno brzy):
+[SEKCE:I] Konkrétní metoda z příručky – stručný popis, odkaz na příručku
+[SEKCE:J] Plán na sezení / krátkodobý cíl – pokud vyplývá z příručky
+[/KNIHOVNA_KARTA]
+
+[KNIHOVNA_CENTRUM:05_Terapeuticky_Plan_Aktualni]
+Informace relevantní pro terapeutický plán – stručně, s odkazem na příručku.
+[/KNIHOVNA_CENTRUM]
+
+[KNIHOVNA_CENTRUM:06_Terapeuticke_Dohody]
+Informace pro dohody – jen pokud jde o dlouhodobý směr/plán.
+[/KNIHOVNA_CENTRUM]
+
+[KNIHOVNA_CENTRUM:00_Aktualni_Dashboard]
+Informace pro dashboard – jen pokud je něco urgentní nebo nového k pozornosti.
+[/KNIHOVNA_CENTRUM]
+
+═══ PRAVIDLA ═══
+- NIKDY nevkládej celý obsah příručky – jen stručné shrnutí + odkaz na příručku v 07_Knihovna
+- Formát odkazu: "Viz příručka: [název příručky] v 07_Knihovna"
+- Pokud příručka NENÍ DID-relevantní, ignoruj ji
+- Buď inteligentní: rozliš zda je sezení plánováno na příští dny (→ sekce J krátkodobé) nebo obecně v budoucnu (→ sekce H dlouhodobé, nebo 06_Dohody)
+- Pokud je příručka o konkrétní části, zapiš do karty té části
+- Pokud je obecnější, zapiš do plánu/dohod
+- Pokud nemáš jistotu o existenci karty, zmíň to v [KNIHOVNA_CENTRUM:05_Terapeuticky_Plan_Aktualni]
+
+${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence částí):\n${existingCardsContext.slice(0, 3000)}` : ""}`,
+                      },
+                      {
+                        role: "user",
+                        content: `PŘEHLED KNIHOVNY (00_Prehled):\n${prehledContent.slice(0, 2000)}\n\nPŘÍRUČKY:\n${handbookContext}`,
+                      },
+                    ],
+                  }),
+                });
+
+                if (knihovnaAnalysisRes.ok) {
+                  const knihovnaData = await knihovnaAnalysisRes.json();
+                  const knihovnaText = knihovnaData.choices?.[0]?.message?.content || "";
+
+                  if (knihovnaText.length > 50) {
+                    console.log(`[knihovna] AI analysis: ${knihovnaText.length} chars`);
+
+                    // Process [KNIHOVNA_KARTA:...] blocks → write to cards
+                    const kartaRegex = /\[KNIHOVNA_KARTA:(.+?)\]([\s\S]*?)\[\/KNIHOVNA_KARTA\]/g;
+                    for (const km of knihovnaText.matchAll(kartaRegex)) {
+                      const partName = km[1].trim();
+                      const block = km[2].trim();
+
+                      // Skip blacklisted names
+                      if (isBlacklisted(partName)) continue;
+
+                      const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
+                      const newSections: Record<string, string> = {};
+                      for (const sm of block.matchAll(sectionRegex)) {
+                        const content = sm[2].trim();
+                        if (content) newSections[sm[1].toUpperCase()] = content;
+                      }
+
+                      if (Object.keys(newSections).length > 0) {
+                        try {
+                          const target = await resolveCardTarget(token, folderId!, partName, registryContext);
+                          if (target.registryEntry) {
+                            const probeCard = await findCardFile(token, target.registryEntry.name || partName, target.searchRootId);
+                            if (probeCard) {
+                              const result = await updateCardSections(
+                                token, target.registryEntry.name || partName, newSections, target.searchRootId,
+                                { searchName: target.registryEntry.name || partName, canonicalPartName: target.registryEntry.name || partName, registryContext }
+                              );
+                              cardsUpdated.push(`${partName} (z 07_Knihovna: ${result.sectionsUpdated.join(",")})`);
+                              console.log(`[knihovna] ✅ Card ${partName}: sections ${result.sectionsUpdated.join(",")}`);
+                            }
+                          }
+                        } catch (e) {
+                          console.warn(`[knihovna] Card update failed for ${partName}:`, e);
+                        }
+                      }
+                    }
+
+                    // Process [KNIHOVNA_CENTRUM:...] blocks → append to CENTRUM docs
+                    const centrumRegex = /\[KNIHOVNA_CENTRUM:(.+?)\]([\s\S]*?)\[\/KNIHOVNA_CENTRUM\]/g;
+                    for (const cm of knihovnaText.matchAll(centrumRegex)) {
+                      const docName = cm[1].trim();
+                      const newContent = cm[2].trim();
+                      if (!newContent || newContent.length < 10) continue;
+
+                      try {
+                        const docCanonical = canonicalText(docName);
+                        const targetFile = centerFiles.find(f => {
+                          const fc = canonicalText(f.name);
+                          if (docCanonical.includes("plan") && docCanonical.includes("terapeutick")) return fc.includes("terapeutick") && fc.includes("plan");
+                          if (docCanonical.includes("dashboard")) return fc.includes("dashboard");
+                          if (docCanonical.includes("dohod")) return fc.includes("dohod");
+                          return fc.includes(docCanonical);
+                        });
+
+                        if (targetFile) {
+                          if (targetFile.mimeType === DRIVE_FOLDER_MIME) {
+                            // 06_Dohody is a folder – create file inside
+                            const dStr = new Date().toISOString().slice(0, 10);
+                            await createFileInFolder(token, `${dStr}_z_Knihovny`, `[${dStr}] Z profesních zdrojů (07_Knihovna)\n\n${newContent}`, targetFile.id);
+                          } else {
+                            const existing = await readFileContent(token, targetFile.id);
+                            if (!existing.includes(newContent.slice(0, 60))) {
+                              const updated = existing.trimEnd() + `\n\n[${new Date().toISOString().slice(0, 10)}] Z 07_Knihovna:\n${newContent}`;
+                              await updateFileById(token, targetFile.id, updated, targetFile.mimeType);
+                            }
+                          }
+                          cardsUpdated.push(`CENTRUM: ${docName} (z 07_Knihovna)`);
+                          console.log(`[knihovna] ✅ CENTRUM ${docName} updated from 07_Knihovna`);
+                        }
+                      } catch (e) {
+                        console.warn(`[knihovna] CENTRUM update failed for ${docName}:`, e);
+                      }
+                    }
+                  }
+                } else {
+                  console.warn(`[knihovna] AI analysis failed: ${knihovnaAnalysisRes.status}`);
+                }
+              }
+            }
+          }
+        }
+      } catch (knihovnaErr) {
+        console.warn("[knihovna] 07_Knihovna analysis error (non-fatal):", knihovnaErr);
+      }
+
       // Daily report (deterministický, pouze skutečně provedené změny)
       // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
