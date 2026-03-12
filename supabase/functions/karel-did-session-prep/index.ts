@@ -198,11 +198,11 @@ DŮLEŽITÉ: Nikdy nepoužívej dechová cvičení — klientka má epilepsii.`;
     const userContent = `KARTA ČÁSTI "${partName}":
 ${drive.partCard || "(karta nenalezena)"}
 
-TERAPEUTICKÝ PLÁN:
+OPERATIVNÍ PLÁN:
 ${drive.therapyPlan || "(nenalezen)"}
 
-TERAPEUTICKÉ DOHODY:
-${drive.agreements || "(nenalezeny)"}
+STRATEGICKÝ VÝHLED:
+${drive.agreements || "(nenalezen)"}
 
 POSLEDNÍ ROZHOVORY S ČÁSTÍ:
 ${conversationSummaries || "(žádné nedávné rozhovory)"}

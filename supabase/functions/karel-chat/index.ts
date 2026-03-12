@@ -31,6 +31,33 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 
+    // ═══ RUNTIME INJECTION: Pending therapist tasks for proactive follow-up ═══
+    if (mode === "childcare" && (didSubMode === "mamka" || didSubMode === "kata")) {
+      try {
+        const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const sb = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+        const { data: tasks } = await sb.from("did_therapist_tasks")
+          .select("task, assigned_to, status_hanka, status_kata, priority, due_date, created_at")
+          .neq("status", "done")
+          .order("priority", { ascending: false });
+
+        if (tasks && tasks.length > 0) {
+          const therapist = didSubMode === "mamka" ? "Hanka" : "Káťa";
+          const taskList = tasks.map((t: any) => {
+            const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+            const escalation = age >= 3 ? " ⚠️ ESKALACE (3+ dní!)" : "";
+            return `- [${t.priority}${escalation}] ${t.task} (pro: ${t.assigned_to}, Hanka: ${t.status_hanka}, Káťa: ${t.status_kata}${t.due_date ? `, termín: ${t.due_date}` : ""}, stáří: ${age}d)`;
+          }).join("\n");
+          systemPrompt += `\n\n═══ AKTUÁLNÍ NESPLNĚNÉ ÚKOLY ═══\nKarel, na začátku rozhovoru se ZEPTEJ ${therapist === "Hanka" ? "Haničky" : "Káti"} na stav těchto úkolů:\n${taskList}\n\nPokud je úkol starší 3 dní a nesplněný, Karel laskavě ale důsledně upozorní a navrhne řešení. Pokud více úkolů pokulhává, Karel navrhne "poradu" – strukturované sezení o strategii.`;
+        }
+      } catch (e) {
+        console.warn("Task injection error (non-fatal):", e);
+      }
+    }
+
     // ═══ LANGUAGE ADAPTATION for "cast" mode ═══
     // Detect language of last user message and enforce matching response language
     let detectedLang = "";
