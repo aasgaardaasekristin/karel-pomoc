@@ -529,6 +529,7 @@ serve(async (req) => {
     const prehledEntries: Array<{ fileName: string; author: string; summary: string }> = [];
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
+    let prehledChanged = false;
 
     for (const thread of activeThreads) {
       const msgs = (thread.messages || []) as { role: string; content: string }[];
