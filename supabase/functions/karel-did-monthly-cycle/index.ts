@@ -238,7 +238,7 @@ serve(async (req) => {
         const centrumFolder = folders.find(f => f.name.includes("00_CENTRUM"));
         if (centrumFolder) {
           const centrumFiles = await listFilesInFolder(token, centrumFolder.id);
-          const docsToRead = ["00_Dashboard", "03_Geografie", "04_Mapa_Vztahu", "05_Terapeuticky", "06_Terapeuticke"];
+          const docsToRead = ["00_Dashboard", "03_Geografie", "04_Mapa_Vztahu", "05_Operativni", "06_Strategicky"];
           for (const prefix of docsToRead) {
             const file = centrumFiles.find(f => f.name.includes(prefix));
             if (file) {
