@@ -810,13 +810,38 @@ ${perplexityContext}`,
       console.log(`[weekly] ✅ Cycle updated with ${cardsUpdated.length} items`);
     }
 
-    // ═══ 7. SEND WEEKLY EMAILS (best-effort, won't block cycle) ═══
-    if (RESEND_API_KEY && analysisText) {
+    // ═══ 7. SEND EMAILS + RESEARCH SYNC IN PARALLEL ═══
+    let researchSyncResult = "not_started";
+
+    // Research sync promise (with 90s timeout)
+    const researchSyncPromise = (async () => {
+      console.log("[weekly] Starting research sync...");
+      const syncResp = await withTimeout(
+        fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        90000,
+        "Research weekly sync"
+      );
+      const syncBody = await syncResp.text();
+      const result = syncResp.ok ? "completed" : `failed:${syncResp.status}`;
+      console.log(`[weekly] ✅ Research sync ${result}: ${syncBody.slice(0, 200)}`);
+      return result;
+    })().catch(e => {
+      const msg = `error:${e instanceof Error ? e.message : "unknown"}`;
+      console.error("[weekly] Research sync error:", e);
+      return msg;
+    });
+
+    // Email promise
+    const emailPromise = (async () => {
+      if (!RESEND_API_KEY || !analysisText) return;
       try {
         const resend = new Resend(RESEND_API_KEY);
         const reportSection = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 8000);
 
-        // Generate both emails in parallel
         const [hankaResult, kataResult] = await Promise.allSettled([
           withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
@@ -873,20 +898,11 @@ Podpis: "Karel"` },
         ]);
         console.log(`[weekly] ✅ Emails sent`);
       } catch (e) { console.error("[weekly] Email error:", e); }
-    }
+    })();
 
-    // ═══ 8. TRIGGER RESEARCH WEEKLY SYNC (fire-and-forget, don't block cycle) ═══
-    let researchSyncResult = "triggered";
-    try {
-      // Fire-and-forget: don't await the response to avoid timeout
-      fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }).then(r => console.log(`[weekly] Research sync response: ${r.status}`))
-        .catch(e => console.warn("[weekly] Research sync fire-and-forget error:", e));
-      console.log("[weekly] Research sync triggered (fire-and-forget)");
-    } catch (e) { console.error("[weekly] Research sync trigger error:", e); }
+    // Wait for BOTH to finish before returning response
+    const [syncResult] = await Promise.allSettled([researchSyncPromise, emailPromise]);
+    researchSyncResult = syncResult.status === "fulfilled" ? (syncResult.value as string) : "promise_rejected";
 
     return new Response(JSON.stringify({
       success: true,
