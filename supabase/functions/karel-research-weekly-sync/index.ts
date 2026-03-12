@@ -884,11 +884,27 @@ PRAVIDLA:
         }
 
         const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
-        const prehledCanonical = canonicalText(prehledContent);
-        const listedSourceCanonicals = extractListedSourceCanonicals(prehledContent);
+
+        // Enrich placeholders already present in 00_Prehled (without requiring manual delete)
+        let workingPrehledContent = prehledContent;
+        const enrichedExisting = await enrichPlaceholderEntriesInPrehled(
+          token,
+          LOVABLE_API_KEY,
+          workingPrehledContent,
+          allKnihovnaFiles,
+        );
+        if (enrichedExisting.changed) {
+          await updateGoogleDocInPlace(token, prehledFile.id, enrichedExisting.content);
+          workingPrehledContent = enrichedExisting.content;
+          prehledChanged = true;
+          console.log("[sync] Enriched existing placeholder summaries in 00_Prehled");
+        }
+
+        const prehledCanonical = canonicalText(workingPrehledContent);
+        const listedSourceCanonicals = extractListedSourceCanonicals(workingPrehledContent);
 
         // Collect entries to append in this run
-        const entriesToAdd: Array<{ fileName: string; author: string; summary: string }> = [];
+        const entriesToAdd: Array<{ fileName: string; author: string; summary: string; detailedDesc: string; karelNotes: string }> = [];
 
         // Add new handbook entries
         for (const entry of prehledEntries) {
@@ -917,53 +933,21 @@ PRAVIDLA:
 
           console.log(`[sync] Reconciling missing file: "${file.name}"`);
 
-          // Read the actual document content and generate a real summary
-          let fileSummary = "";
-          let fileKarelNotes = "";
-          try {
-            if (file.mimeType === DRIVE_DOC_MIME) {
-              const docContent = await readGoogleDoc(token, file.id);
-              if (docContent && docContent.length > 50) {
-                // Use AI to generate a concise summary
-                const summaryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-                  method: "POST",
-                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    model: "google/gemini-2.5-flash-lite",
-                    messages: [
-                      { role: "system", content: "Jsi stručný odborný asistent. Odpověz POUZE JSON objektem." },
-                      { role: "user", content: `Na základě tohoto textu vytvoř stručné shrnutí (2-3 věty, co to je a k čemu to slouží) a Karlovy připomínky (1-2 věty, odborná rada). NEPOUŽÍVEJ markdown. Odpověz JSON: {"summary": "...", "karelNotes": "..."}\n\nTEXT:\n${docContent.slice(0, 3000)}` },
-                    ],
-                    response_format: { type: "json_object" },
-                  }),
-                });
-                if (summaryRes.ok) {
-                  const summaryData = await summaryRes.json();
-                  try {
-                    const parsed = JSON.parse(summaryData.choices?.[0]?.message?.content || "{}");
-                    fileSummary = parsed.summary || "";
-                    fileKarelNotes = parsed.karelNotes || "";
-                  } catch {}
-                }
-              }
-            }
-          } catch (e) {
-            console.warn(`[sync] Could not summarize "${file.name}":`, e);
-          }
+          const summarized = await summarizeLibrarySource(token, LOVABLE_API_KEY, file);
 
           entriesToAdd.push({
             fileName: file.name,
             author: "neuvedeno",
-            summary: fileSummary || "Zdroj uložený v 07_Knihovna.",
+            summary: summarized.summary,
             detailedDesc: "",
-            karelNotes: fileKarelNotes || "",
+            karelNotes: summarized.karelNotes,
           });
           listedSourceCanonicals.add(fileCanonical);
         }
 
         // 5b. Append new entries in required architecture (no weekly headers)
         if (entriesToAdd.length > 0) {
-          const existingSourceCount = countExistingSources(prehledContent);
+          const existingSourceCount = countExistingSources(workingPrehledContent);
           const formattedEntries = entriesToAdd.map((e, i) => {
             const sourceNum = existingSourceCount + i + 1;
             const numStr = String(sourceNum).padStart(2, "0");
