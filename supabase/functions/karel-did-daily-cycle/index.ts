@@ -2641,19 +2641,22 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           try {
             const docCanonical = canonicalText(docName);
 
-            // ═══ SPECIAL: 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
-            if (docCanonical.includes("terapeutick") && docCanonical.includes("plan")) {
-              const planFile = centerFiles.find(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("plan"));
+            // ═══ SPECIAL: 05_Operativni_Plan or 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
+            if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
+              const planFile = centerFiles.find(f => {
+                const fc = canonicalText(f.name);
+                return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
+              });
               if (!planFile) {
-                console.warn(`[CENTRUM] Therapeutic plan doc not found, skipping`);
+                console.warn(`[CENTRUM] Operative plan doc not found, skipping`);
                 continue;
               }
 
               // Full rewrite – the AI already generated the complete document content
-              const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
+              const planDocument = `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
               therapeuticPlanContent = newContent; // Store for email inclusion
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
+              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
               continue;
             }
