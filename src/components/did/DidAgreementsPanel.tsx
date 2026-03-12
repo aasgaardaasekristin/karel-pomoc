@@ -49,7 +49,7 @@ const DidAgreementsPanel = () => {
       .from("did_update_cycles")
       .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status")
       .eq("cycle_type", "weekly")
-      .in("status", ["completed", "running"])
+      .in("status", ["completed", "running", "failed"])
       .order("created_at", { ascending: false })
       .limit(10);
 
