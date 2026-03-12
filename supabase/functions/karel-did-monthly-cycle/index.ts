@@ -238,7 +238,7 @@ serve(async (req) => {
         const centrumFolder = folders.find(f => f.name.includes("00_CENTRUM"));
         if (centrumFolder) {
           const centrumFiles = await listFilesInFolder(token, centrumFolder.id);
-          const docsToRead = ["00_Dashboard", "03_Geografie", "04_Mapa_Vztahu", "05_Terapeuticky", "06_Terapeuticke"];
+          const docsToRead = ["00_Dashboard", "03_Geografie", "04_Mapa_Vztahu", "05_Operativni", "06_Strategicky"];
           for (const prefix of docsToRead) {
             const file = centrumFiles.find(f => f.name.includes(prefix));
             if (file) {
@@ -279,13 +279,17 @@ Tvým úkolem je:
 1. Vytvořit komplexní měsíční report
 2. Identifikovat změny a trendy
 3. Navrhnout KONKRÉTNÍ redistribuci informací do dokumentů v kartotéce
+4. Provést hloubkovou revizi STRATEGICKÉHO VÝHLEDU (06_Strategicky_Vyhled):
+   - Revize dlouhodobých cílů (sekce 3)
+   - Strategická reflexe (sekce 7)
+   - Přehodnocení střednědobých cílů na základě měsíčních dat
 
 FORMÁT VÝSTUPU (JSON):
 {
   "report": "markdown text měsíčního reportu",
   "redistributions": [
     {
-      "target": "název cílového dokumentu (00_Dashboard | 03_Geografie | 04_Mapa_Vztahu | 05_Terapeuticky_Plan | 06_Terapeuticke_Dohody | karta_[jmeno_casti])",
+      "target": "název cílového dokumentu (00_Dashboard | 03_Geografie | 04_Mapa_Vztahu | 05_Operativni_Plan | 06_Strategicky_Vyhled | karta_[jmeno_casti])",
       "action": "append | update_section",
       "content": "text k zápisu/aktualizaci",
       "reason": "proč tato změna"
@@ -299,17 +303,26 @@ FORMÁT VÝSTUPU (JSON):
       "reason": "důvod změny"
     }
   ],
-  "key_insights": ["klíčový poznatek 1", "klíčový poznatek 2"]
+  "key_insights": ["klíčový poznatek 1", "klíčový poznatek 2"],
+  "accountability": {
+    "team_score": 8,
+    "hanka_summary": "hodnocení plnění Hanky za měsíc",
+    "kata_summary": "hodnocení plnění Káti za měsíc",
+    "unresolved_issues": ["problém 1", "problém 2"],
+    "recommendations": ["doporučení 1"]
+  }
 }
 
 REPORT musí obsahovat:
 ## 📊 Měsíční přehled systému (datum)
 ### Aktivita částí — trendy
 ### Splněné vs. nesplněné úkoly
+### Hodnocení spolupráce terapeutického týmu
 ### Změny ve vzorcích chování
 ### Posun v terapeutických cílech
 ### Doporučení pro další měsíc
 ### Návrhy na aktualizaci kartotéky
+### Strategická reflexe (pro 06_Strategicky_Vyhled sekce 7)
 
 Buď konkrétní, klinicky relevantní. Piš česky.
 DŮLEŽITÉ: Nikdy nenavrhuj dechová cvičení — klientka má epilepsii.`;

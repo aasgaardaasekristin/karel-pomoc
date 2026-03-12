@@ -1734,6 +1734,17 @@ serve(async (req) => {
     });
     console.log(`[daily-cycle] Research threads loaded: ${researchThreadRows?.length || 0} total, ${researchThreads.length} DID-relevant`);
 
+    // Load pending therapist tasks for accountability analysis
+    const { data: pendingTasks } = await sb.from("did_therapist_tasks")
+      .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
+      .neq("status", "done")
+      .order("created_at", { ascending: true });
+    const pendingTasksSummary = (pendingTasks || []).map((t: any) => {
+      const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+      return `- [${age}d] ${t.task} | pro: ${t.assigned_to} | Hanka: ${t.status_hanka} | Káťa: ${t.status_kata} | priorita: ${t.priority}${age >= 3 ? " ⚠️ ESKALACE" : ""}`;
+    }).join("\n");
+    console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
+
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
@@ -1997,7 +2008,7 @@ Formát HTML emailu:
         const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
         if (centerFolder) {
           centrumFolderId = centerFolder.id;
-          const centrumDocNames = ["05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu"];
+          const centrumDocNames = ["05_Operativni_Plan", "05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu", "06_Strategicky_Vyhled"];
           const centerFiles = await listFilesInFolder(token, centerFolder.id);
           for (const docName of centrumDocNames) {
             const canonical = canonicalText(docName);
@@ -2010,30 +2021,40 @@ Formát HTML emailu:
               } catch {}
             }
           }
-          // Load ALL files from 06_Terapeuticke_Dohody folder for mirroring active agreements into 05
-          const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
-          if (dohodyCandidates.length > 0) {
-            for (const d of dohodyCandidates.slice(0, 1)) {
-              if (d.mimeType === DRIVE_FOLDER_MIME) {
-                const subFiles = await listFilesInFolder(token, d.id);
-                // Load ALL agreement files (not just latest) so AI can mirror active ones into section 2 of 05
-                let totalDohodaChars = 0;
-                const MAX_DOHODA_CHARS = 12000;
-                for (const sf of subFiles.sort((a, b) => b.name.localeCompare(a.name))) {
-                  if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
+          // Load 06_Strategicky_Vyhled as a single document (no longer a folder of agreements)
+          const strategicFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && (canonicalText(f.name).includes("strategick") || canonicalText(f.name).includes("06strategick")));
+          if (strategicFile) {
+            try {
+              const content = await readFileContent(token, strategicFile.id);
+              const trimmed = content.length > 3000 ? content.slice(0, 3000) + "…" : content;
+              centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${strategicFile.name} ===\n${trimmed}\n`;
+              console.log(`[daily-cycle] Loaded 06_Strategicky_Vyhled (${content.length} chars)`);
+            } catch {}
+          }
+          // Fallback: also check old 06_Terapeuticke_Dohody folder for backward compatibility
+          if (!strategicFile) {
+            const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
+            if (dohodyCandidates.length > 0) {
+              for (const d of dohodyCandidates.slice(0, 1)) {
+                if (d.mimeType === DRIVE_FOLDER_MIME) {
+                  const subFiles = await listFilesInFolder(token, d.id);
+                  let totalDohodaChars = 0;
+                  const MAX_DOHODA_CHARS = 12000;
+                  for (const sf of subFiles.sort((a, b) => b.name.localeCompare(a.name))) {
+                    if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
+                    try {
+                      const content = await readFileContent(token, sf.id);
+                      const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
+                      centrumDocsContext += `\n=== LEGACY DOHODA: ${sf.name} ===\n${trimmed}\n`;
+                      totalDohodaChars += trimmed.length;
+                    } catch {}
+                  }
+                } else {
                   try {
-                    const content = await readFileContent(token, sf.id);
-                    const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
-                    centrumDocsContext += `\n=== TERAPEUTICKÁ DOHODA: ${sf.name} ===\n${trimmed}\n`;
-                    totalDohodaChars += trimmed.length;
+                    const content = await readFileContent(token, d.id);
+                    centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
                   } catch {}
                 }
-                console.log(`[daily-cycle] Loaded ${subFiles.length} agreement files from 06_Terapeuticke_Dohody (${totalDohodaChars} chars)`);
-              } else {
-                try {
-                  const content = await readFileContent(token, d.id);
-                  centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
-                } catch {}
               }
             }
           }
@@ -2267,66 +2288,56 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 ═══ AKTUALIZACE DOKUMENTŮ 00_CENTRUM ═══
 Pokud z rozhovorů (zejména terapeutických – mamka/kata režim) vyplývají relevantní informace pro CENTRUM dokumenty, vypiš je v tomto formátu:
 
-[CENTRUM:05_Terapeuticky_Plan_Aktualni]
+[CENTRUM:05_Operativni_Plan]
 ⚠️ TENTO DOKUMENT JE KLÍČOVÝ – Karel jej spravuje jako vedoucí terapeutického týmu.
 Vygeneruj KOMPLETNÍ aktualizovaný dokument (ne jen doplněk). Struktura:
 
-SEKCE 1 – PŘEHLED AKTIVNÍCH ČÁSTÍ A AKTUÁLNÍ STAV
-Tabulka: | Část / ID | Krátkodobý cíl | Dlouhodobý cíl | Kdo pracuje | Stav | Poznámka |
+SEKCE 1 – AKTIVNÍ ČÁSTI A AKTUÁLNÍ STAV
+Tabulka: | Část / ID | Aktuální stav | Kdo pracuje | Priorita tento týden | Poznámka |
 Pro KAŽDOU aktivní část vyplň konkrétní data z dnešních rozhovorů, karet a rešerší.
-Legenda ke stavu: 🟢 sladěno | 🟡 částečně | 🔴 nesoulad | ❓ neznámý
 
-SEKCE 2 – AKTIVNÍ TERAPEUTICKÉ DOHODY
-Konkrétní platné dohody mezi terapeuty. U každé dohody uveď:
-- Platnost (od–do)
-- Co konkrétně dělat a s kým
-- Zaměření pro Hanku vs zaměření pro Káťu
-- Co se záměrně NEŘEŠÍ a proč
-- Společný cíl
+SEKCE 2 – PLÁN SEZENÍ NA TENTO TÝDEN
+Pro každou aktivní část:
+- S kým (Hanka/Káťa)
+- Metoda/technika (z rešerší + karet)
+- Cíl sezení
+- Jak oslovit (tón, jazyk)
+- Na co si dát pozor
 
-SEKCE 3 – ARCHIV UZAVŘENÝCH DOHOD
-Dohody po uplynutí platnosti sem přesuň (zachovej historii).
+SEKCE 3 – AKTIVNÍ ÚKOLY + HODNOCENÍ PLNĚNÍ
+☐/☑ Hanka: [úkol, termín, zdroj, stav plnění]
+☐/☑ Káťa: [úkol, termín, zdroj, stav plnění]
+Nesplněné z minulého týdne se přenesou automaticky.
+Karel zde zaznamenává kdo co splnil a kdo ne – accountability tracking.
 
-SEKCE 4 – KOORDINAČNÍ POZNÁMKY
-Tabulka: | Datum | Téma | Hanka | Káťa | Karlova syntéza | Stav |
-Karel zde zaznamenává: co která terapeutka udělala, co chybí, na co upozornit, kde je třeba kooperace.
-Karel aktivně sleduje, zda terapeutky splnily navržené aktivity, a vyptává se na výsledky.
-Karel upozorňuje na opomenutí (např. zapomenutý fragment, nedokončená aktivita).
+SEKCE 4 – KOORDINACE TERAPEUTŮ + DNEŠNÍ MOST
+- Dnešní most (téma pro telefonát): "Dnes by stálo za to probrat: [téma]"
+- Co Hanka udělala / co Káťa udělala
+- Kde je třeba synchronizace
+- Přímé otázky: "Hani, jak dopadlo X?" / "Káťo, pokročilas s Y?"
 
-SEKCE 5 – OBLASTI KTERÉ SE ZÁMĚRNĚ NEŘEŠÍ
-Tabulka: | Téma | Důvod odložení | Odloženo do | Poznámka |
+SEKCE 5 – UPOZORNĚNÍ A RIZIKA
+- Triggery (výročí, události, změny)
+- Části v ohrožení
+- Kontraindikace
+- Nesplněné úkoly 3+ dní → ESKALACE
 
-SEKCE 6 – KARLOVY NÁVRHY NA PŘÍŠTÍ SEZENÍ
-Pro KAŽDOU aktivní část konkrétně:
-- S kým pracovat (Hanka/Káťa/obě)
-- Jakou metodou/hrou/technikou (z rešerší i z karet části sekce I)
-- Co tím zjistit/dosáhnout
-- Jak fragment oslovit (tón, jazyk, přístup)
-- Jak reagovat na očekávané odpovědi
-- Priorita (🔴 urgentní / 🟡 důležité / 🟢 běžné)
-
-SEKCE 7 – DENNÍ SHRNUTÍ A MOTIVACE
-- Co se dnes odehrálo (stručně)
-- Co fungovalo a co ne
-- Motivace pro terapeutky – pochvala, podpora, směr
-- Karlovy analytické postřehy a hypotézy
-- Propojení s poznatky z profesních zdrojů (Research vláken)
-
-SEKCE 8 – CHECKLIST PRO TERAPEUTY
-☐/☑ položky: co má Hanka udělat dnes/zítra
-☐/☑ položky: co má Káťa udělat dnes/zítra
-Karel sem zapisuje i úkoly z minulých dnů které nebyly splněny.
+SEKCE 6 – KARLOVY POZNÁMKY
+- Postřehy z rozhovorů
+- Hypotézy k ověření
+- Co fungovalo / nefungovalo
+- Hodnocení spolupráce terapeutického týmu
 
 DŮLEŽITÉ PRO TENTO DOKUMENT:
 - Piš CELÝ dokument, ne jen doplněk – dokument se přepisuje celý
-- Čerpej z VŠECH zdrojů: dnešní rozhovory s částmi, rozhovory s terapeuty (mamka/kata režim), profesní zdroje (Research vlákna POUZE ta co se týkají DID), existující karty částí, dohody
-- Karel vystupuje jako vedoucí týmu – koordinuje, superviduje, navrhuje, motivuje
+- Čerpej z VŠECH zdrojů: dnešní rozhovory s částmi, rozhovory s terapeuty (mamka/kata režim), profesní zdroje (Research vlákna POUZE ta co se týkají DID), existující karty částí, strategický výhled
+- Karel vystupuje jako AKTIVNÍ vedoucí týmu – koordinuje, superviduje, hodnotí, motivuje
 - Dokument musí být OKAMŽITĚ AKČNÍ – terapeut otevře a hned ví co dělat
 - Formátuj esteticky, přehledně, s tabulkami a odrážkami
 [/CENTRUM]
 
-[CENTRUM:06_Terapeuticke_Dohody]
-Nové dohody mezi terapeuty – konkrétní zaměření, společné cíle, co se záměrně neřeší.
+[CENTRUM:06_Strategicky_Vyhled]
+Nové strategické poznatky – POUZE pokud z dnešních rozhovorů vyplývají změny pro střednědobé/dlouhodobé cíle, strategii práce s částmi, nebo odložená témata. Denní cyklus pouze DOPLŇUJE (append) do strategického výhledu.
 [/CENTRUM]
 
 [CENTRUM:00_Aktualni_Dashboard]
@@ -2436,9 +2447,22 @@ ${instructionContext ? `\n═══ INSTRUKCE PRO KARLA (z 00_CENTRUM) ═══
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
 ${centrumDocsContext ? `\nEXISTUJÍCÍ DOKUMENTY 00_CENTRUM (pro deduplikaci – NEPIŠ info které tam už je):\n${centrumDocsContext}` : ""}
-${perplexityContext}`,
+${perplexityContext}
+
+═══ ACCOUNTABILITY ENGINE ═══
+Na základě seznamu nesplněných úkolů POVINNĚ vygeneruj blok na konci výstupu:
+
+[ACCOUNTABILITY]
+SPLNĚNÍ_HANKA: úkol | stav (splněno/nesplněno/neověřeno) | komentář
+SPLNĚNÍ_KATA: úkol | stav | komentář
+HODNOCENÍ_TÝMU: skóre 1-10, slovní hodnocení
+NESPLNĚNÉ_3+_DNÍ: seznam úkolů nesplněných 3+ dny → ESKALACE
+POZVÁNKA_NA_PORADU: ano/ne | důvod | navržený formát
+[/ACCOUNTABILITY]
+
+Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".`,
           },
-          { role: "user", content: allSummaries },
+          { role: "user", content: `${allSummaries}\n\n═══ NESPLNĚNÉ ÚKOLY TERAPEUTŮ ═══\n${pendingTasksSummary || "Žádné nesplněné úkoly"}` },
         ],
       }),
     });
@@ -2617,19 +2641,22 @@ ${perplexityContext}`,
           try {
             const docCanonical = canonicalText(docName);
 
-            // ═══ SPECIAL: 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
-            if (docCanonical.includes("terapeutick") && docCanonical.includes("plan")) {
-              const planFile = centerFiles.find(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("plan"));
+            // ═══ SPECIAL: 05_Operativni_Plan or 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
+            if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
+              const planFile = centerFiles.find(f => {
+                const fc = canonicalText(f.name);
+                return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
+              });
               if (!planFile) {
-                console.warn(`[CENTRUM] Therapeutic plan doc not found, skipping`);
+                console.warn(`[CENTRUM] Operative plan doc not found, skipping`);
                 continue;
               }
 
               // Full rewrite – the AI already generated the complete document content
-              const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
+              const planDocument = `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
               therapeuticPlanContent = newContent; // Store for email inclusion
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 05_Terapeuticky_Plan (kompletní aktualizace)`);
+              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
               continue;
             }
@@ -2652,7 +2679,22 @@ ${perplexityContext}`,
             // Find the target document
             let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
 
-            // Handle 06_Terapeuticke_Dohody specially - it might be a folder
+            // ═══ SPECIAL: 06_Strategicky_Vyhled – APPEND (not rewrite, weekly does rewrite) ═══
+            if (docCanonical.includes("strategick") && docCanonical.includes("vyhled")) {
+              const stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+              if (stratFile) {
+                const existingContent = await readFileContent(token, stratFile.id);
+                if (!existingContent.includes(newContent.slice(0, 80))) {
+                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace:\n${newContent}`;
+                  await updateFileById(token, stratFile.id, updatedContent, stratFile.mimeType);
+                  cardsUpdated.push(`CENTRUM: 06_Strategicky_Vyhled (append)`);
+                  console.log(`[CENTRUM] ✅ Appended to 06_Strategicky_Vyhled`);
+                }
+              }
+              continue;
+            }
+
+            // Handle old 06_Terapeuticke_Dohody folder for backward compatibility
             if (!targetFile && docCanonical.includes("dohod")) {
               const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
               if (dohodaFolder) {
@@ -2684,6 +2726,25 @@ ${perplexityContext}`,
             console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
           } catch (e) {
             console.error(`[CENTRUM] Failed to update "${docName}":`, e);
+          }
+        }
+      }
+
+      // ═══ ACCOUNTABILITY: Parse [ACCOUNTABILITY] block and escalate stale tasks ═══
+      let accountabilityBlock = "";
+      const accountabilityMatch = analysisText.match(/\[ACCOUNTABILITY\]([\s\S]*?)\[\/ACCOUNTABILITY\]/);
+      if (accountabilityMatch) {
+        accountabilityBlock = accountabilityMatch[1].trim();
+        console.log(`[daily-cycle] Accountability block found (${accountabilityBlock.length} chars)`);
+        
+        // Auto-escalate tasks older than 3 days to high priority
+        if (pendingTasks && pendingTasks.length > 0) {
+          for (const task of pendingTasks) {
+            const age = Math.floor((Date.now() - new Date(task.created_at).getTime()) / (1000*60*60*24));
+            if (age >= 3 && task.priority !== "high") {
+              await sb.from("did_therapist_tasks").update({ priority: "high" }).eq("task", task.task).eq("assigned_to", task.assigned_to);
+              console.log(`[accountability] ⚠️ Escalated task to HIGH: "${task.task}" (${age} days old)`);
+            }
           }
         }
       }
@@ -2930,17 +2991,29 @@ Seznam aktualizovaných dokumentů
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Káťou: [téma]"
 
-<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY:</h3>
-Shrň 5-8 nejdůležitějších bodů z terapeutického plánu:
-▸ Krátkodobé cíle a dohody
+<h3>📋 OPERATIVNÍ PLÁN – KLÍČOVÉ BODY:</h3>
+Shrň 5-8 nejdůležitějších bodů z operativního plánu:
+▸ Krátkodobé cíle a aktivní úkoly
 ▸ S jakými fragmenty dnes/zítra pracovat a jak
 ▸ Co zkontrolovat / co bylo odloženo
 ▸ Aktuální doporučení a návrhy metod
 
+<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
+Na základě accountability dat uveď:
+▸ Co bylo splněno (pochvala)
+▸ Co nebylo splněno (laskavě ale důsledně)
+▸ Přímé otázky: "Hani, jak dopadlo [konkrétní úkol]?"
+
+Pokud existují úkoly nesplněné 3+ dny, přidej sekci:
+<h3>📋 KAREL SVOLÁVÁ PORADU</h3>
+Téma: [problém]
+Proč: [co Karel pozoruje]
+Co Karel navrhuje: [řešení]
+
 Podpis: "Jsem tady. Tvůj Karel"
 
 Tón: intimní, partnerský, podporující, hluboký.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}` },
                 ],
               }),
             });
@@ -2973,16 +3046,20 @@ Pouze části relevantní pro Kátinu roli (socializace, komunikace s kluky, šk
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Hankou: [téma]"
 
-<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY PRO KÁŤU:</h3>
+<h3>📋 OPERATIVNÍ PLÁN – KLÍČOVÉ BODY PRO KÁŤU:</h3>
 Shrň 4-6 bodů relevantních pro Kátinu roli:
 ▸ Konkrétní úkoly pro Káťu
 ▸ S jakými fragmenty pracovat a jak
-▸ Aktuální dohody a doporučení
+▸ Aktuální doporučení
+
+<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
+▸ Co Káťa splnila (pochvala)
+▸ Co zbývá (přímé otázky: "Káťo, jak jsi pokročila s [úkol]?")
 
 Podpis: "Karel"
 
 DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}` },
                 ],
               }),
             });
