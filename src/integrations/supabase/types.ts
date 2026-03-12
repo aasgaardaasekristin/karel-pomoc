@@ -390,6 +390,8 @@ export type Database = {
           priority: string | null
           source_agreement: string | null
           status: string
+          status_hanka: string
+          status_kata: string
           task: string
           updated_at: string
           user_id: string
@@ -406,6 +408,8 @@ export type Database = {
           priority?: string | null
           source_agreement?: string | null
           status?: string
+          status_hanka?: string
+          status_kata?: string
           task: string
           updated_at?: string
           user_id?: string
@@ -422,6 +426,8 @@ export type Database = {
           priority?: string | null
           source_agreement?: string | null
           status?: string
+          status_hanka?: string
+          status_kata?: string
           task?: string
           updated_at?: string
           user_id?: string
