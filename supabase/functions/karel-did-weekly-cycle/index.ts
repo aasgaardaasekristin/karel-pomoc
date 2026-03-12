@@ -695,30 +695,62 @@ ${perplexityContext}`,
 
     // ═══ 5. INSERT THERAPIST TASKS IMMEDIATELY (before slow Drive writes) ═══
     const cardsUpdated: string[] = [];
+
+    // Load existing tasks for deduplication
+    const { data: existingTasks } = await sb.from("did_therapist_tasks")
+      .select("task, assigned_to")
+      .eq("user_id", userId);
+    const existingTaskKeys = new Set(
+      (existingTasks || []).map(t => `${t.task.trim().toLowerCase()}|${t.assigned_to}`)
+    );
+
+    const insertTask = async (task: string, assignee: string, source: string, priority: string, origin: string) => {
+      const key = `${task.trim().toLowerCase()}|${assignee}`;
+      if (existingTaskKeys.has(key)) {
+        console.log(`[weekly] ⏭️ Duplicate task skipped: "${task}" (${assignee})`);
+        return false;
+      }
+      existingTaskKeys.add(key);
+      const { error } = await sb.from("did_therapist_tasks").insert({
+        task: task.trim(),
+        assigned_to: assignee,
+        source_agreement: source.trim(),
+        priority: priority.trim() || "normal",
+        note: `${origin} ${dateStr}`,
+        user_id: userId,
+        status_hanka: "not_started",
+        status_kata: "not_started",
+      });
+      if (error) { console.error("[weekly] Task insert error:", error); return false; }
+      return true;
+    };
+
+    let totalInserted = 0;
+
+    // 5a. Extract [UKOL] from AI analysis
     if (analysisText) {
       const ukolySection = analysisText.match(/\[UKOLY\]([\s\S]*?)\[\/UKOLY\]/)?.[1]?.trim();
       if (ukolySection) {
         const ukolRegex = /\[UKOL\]\s*assignee=(\S+)\s*\|\s*task=([^|]+)\|\s*source=([^|]+)\|\s*priority=(\S+)\s*\[\/UKOL\]/g;
-        let insertedTasks = 0;
         for (const m of ukolySection.matchAll(ukolRegex)) {
-          const assignee = m[1].trim();
-          const task = m[2].trim();
-          const source = m[3].trim();
-          const priority = m[4].trim();
-          if (task) {
-            const { error: insertTaskError } = await sb.from("did_therapist_tasks").insert({
-              task, assigned_to: assignee, source_agreement: source, priority,
-              note: `Vytvořeno týdenním cyklem ${dateStr}`, user_id: userId,
-            });
-            if (!insertTaskError) insertedTasks++;
-            else console.error("[weekly] Task insert error:", insertTaskError);
-          }
-        }
-        if (insertedTasks > 0) {
-          cardsUpdated.push(`${insertedTasks} úkolů pro terapeutky`);
-          console.log(`[weekly] ✅ Inserted ${insertedTasks} therapist tasks`);
+          if (await insertTask(m[2], m[1], m[3], m[4], "Vytvořeno týdenním cyklem")) totalInserted++;
         }
       }
+    }
+
+    // 5b. Extract [UKOL] markers from agreement documents on Drive
+    if (agreementsContent) {
+      // Scan raw agreement text for inline [UKOL] markers
+      // Format: [UKOL] assignee=hanka|kata|both | task=... | source=... | priority=normal|high [/UKOL]
+      const driveUkolRegex = /\[UKOL\]\s*assignee=(\S+)\s*\|\s*task=([^|]+)\|\s*source=([^|]+?)(?:\|\s*priority=(\S+))?\s*\[\/UKOL\]/g;
+      for (const m of agreementsContent.matchAll(driveUkolRegex)) {
+        if (await insertTask(m[2], m[1], m[3], m[4] || "normal", "Z dohody (Drive)")) totalInserted++;
+      }
+    }
+
+    if (totalInserted > 0) {
+      cardsUpdated.push(`${totalInserted} úkolů pro terapeutky`);
+      console.log(`[weekly] ✅ Inserted ${totalInserted} therapist tasks (deduplicated)`);
     }
 
     // ═══ 5b. SAVE CYCLE AS COMPLETED (tasks are in DB, Drive writes are best-effort) ═══
