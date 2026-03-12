@@ -393,7 +393,7 @@ Active parts in this system: ${activeFragments}`;
             search_mode: "academic",
             search_recency_filter: "year",
           }),
-        }), 30000, "Perplexity research");
+        }), 20000, "Perplexity research");
 
         if (pRes.ok) {
           const pData = await pRes.json();
