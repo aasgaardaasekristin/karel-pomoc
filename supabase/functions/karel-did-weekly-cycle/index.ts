@@ -875,21 +875,18 @@ Podpis: "Karel"` },
       } catch (e) { console.error("[weekly] Email error:", e); }
     }
 
-    // ═══ 8. TRIGGER RESEARCH WEEKLY SYNC (best-effort) ═══
-    let researchSyncResult = null;
+    // ═══ 8. TRIGGER RESEARCH WEEKLY SYNC (fire-and-forget, don't block cycle) ═══
+    let researchSyncResult = "triggered";
     try {
-      const researchRes = await withTimeout(fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+      // Fire-and-forget: don't await the response to avoid timeout
+      fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
         method: "POST",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({}),
-      }), 120000, "Research weekly sync");
-      if (researchRes.ok) {
-        researchSyncResult = await researchRes.json();
-        console.log("[weekly] Research sync completed");
-      } else {
-        console.warn(`[weekly] Research sync error ${researchRes.status}`);
-      }
-    } catch (e) { console.error("[weekly] Research sync error:", e); }
+      }).then(r => console.log(`[weekly] Research sync response: ${r.status}`))
+        .catch(e => console.warn("[weekly] Research sync fire-and-forget error:", e));
+      console.log("[weekly] Research sync triggered (fire-and-forget)");
+    } catch (e) { console.error("[weekly] Research sync trigger error:", e); }
 
     return new Response(JSON.stringify({
       success: true,
