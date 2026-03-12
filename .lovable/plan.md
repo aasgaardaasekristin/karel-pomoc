@@ -1,87 +1,106 @@
 
+# Vylepšení DID režimu – Komplexní plán
 
-## Plán implementace – 3 úkoly
+## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-6)
 
-### 1. RefreshTrigger pro DidTherapistTaskBoard a DidAgreementsPanel
+## Co bylo provedeno
 
-**Problém:** Po dokončení manuální aktualizace kartotéky (denní cyklus) ani po týdenním cyklu se tyto komponenty nerefreshují.
+### ✅ 1. Drive read/write funkce
+- `supabase/functions/karel-did-drive-read/index.ts` – čte dokumenty ze složky Kartoteka_DID
+- `supabase/functions/karel-did-drive-write/index.ts` – zapisuje/aktualizuje dokumenty
 
-**Řešení:**
-- `DidDashboard` zavede stav `refreshTrigger: number`, který inkrementuje v existujícím `useEffect` reagujícím na `isUpdating` přechod true→false
-- Předá `refreshTrigger` jako prop do `DidTherapistTaskBoard` a `DidAgreementsPanel`
-- Obě komponenty přidají `useEffect` na změnu `refreshTrigger` → zavolají `loadTasks()` / `loadData()`
-- `DidAgreementsPanel` navíc inkrementuje lokální trigger po dokončení `handleRunWeekly`, aby se refresh propagoval i po týdenním cyklu
+### ✅ 2. Odstranění Document Gate + automatické načítání
+- Smazána `DidDocumentGate.tsx`
+- Po výběru podrežimu Karel automaticky načte dokumenty z Drive
+- Loading indikátor během načítání
 
-**Soubory:** `DidDashboard.tsx`, `DidTherapistTaskBoard.tsx`, `DidAgreementsPanel.tsx`
+### ✅ 3. Nová tlačítka (deník, vzkaz, záloha)
+- `DidActionButtons.tsx` – Zapsat do deníku, Vzkaz mamce, Vzkaz Káti, Záloha na Drive, Ukončit rozhovor
+- Tlačítka se zobrazují kontextově (deník/vzkazy jen v cast režimu)
 
----
+### ✅ 4. Automatické emaily po ukončení hovoru
+- `karel-email-report` rozšířen o typy: did_handover, did_message_mom, did_message_kata
+- Automatický email po ukončení rozhovoru s částí
 
-### 2. Session Prep – „Připrav mě na sezení s [část]"
+### ✅ 5. Podrežim Káťa
+- Přidán 4. podrežim "Káťa mluví s Karlem" (kata)
+- Vlastní system prompt (kataPrompt)
+- Typ přidán do ChatContext
 
-**Nová edge funkce:** `karel-did-session-prep`
-- Vstup: `{ partName: string }`
-- Načte z Google Drive: kartu části (01_AKTIVNI_FRAGMENTY), terapeutický plán (05), dohody (06)
-- Načte z DB: poslední vlákna dané části (did_threads), nedokončené úkoly (did_therapist_tasks), vzorce (karel-did-patterns data)
-- AI (gemini-2.5-flash, streaming) vytvoří strukturovaný briefing:
-  - Co se dělo v posledních rozhovorech
-  - Na co navázat
-  - Co sledovat (rizika, triggery z karty)
-  - Doporučené metody a techniky
-  - Relevantní úkoly a dohody
+### ✅ 6. Aktualizace system promptu
+- Kompletní přepis childcarePrompt – odstranění NotebookLM referencí
+- Nový kataPrompt pro Káťu
+- Zákaz vymýšlení citací
+- Instrukce pro automatické emaily a Drive integraci
 
-**Frontend:**
-- Nová komponenta `DidSessionPrep.tsx` — dialog/panel s výběrem části (autocomplete z existujících part_name v did_threads) a streaming zobrazení briefingu
-- Tlačítko na dashboardu vedle systémové mapy: „📋 Příprava na sezení"
-- Alternativně: klik na část v systémové mapě → „Připrav sezení s [část]"
+### ✅ 7. Automatické přepnutí do supervize
+- Po ukončení hovoru s částí Karel automaticky přepne do režimu mamka
 
-**Config:** Přidat `[functions.karel-did-session-prep]` do config.toml
+### ✅ 8. Thread-per-part architektura (Fáze 1)
+- DB tabulky `did_threads` + `did_update_cycles` s RLS
+- Hook `useDidThreads` pro CRUD na vláknech
+- `DidDashboard` – přehled aktivity částí (aktivní/spí/varování)
+- `DidThreadList` – seznam aktivních vláken s 24h pamětí
+- `DidPartIdentifier` – "Kdo teď mluví?" s výběrem/zadáním jména
+- Nový DID flow: Dashboard → Submode → Thread List → Part ID → Chat
+- Auto-save vláken do DB každých 5s
 
----
+### ✅ 9. Denní cyklus (14:00 CET)
+- `karel-did-daily-cycle` edge function
+- pg_cron schedule: `0 13 * * *` UTC (14:00 CET)
+- 5 kroků: sběr → AI analýza → Drive update (sekce E/G/J/K/L) → email → uvolnění paměti
+- Manuální spuštění tlačítkem "Aktualizovat nyní"
 
-### 3. Měsíční report s redistribucí do kartotéky
+### ✅ 10. Týdenní cyklus (Fáze 2)
+- `karel-did-weekly-cycle` edge function
+- pg_cron schedule: `0 9 * * 0` UTC (neděle 10:00 CET)
+- Čte VŠECHNY karty z Drive, analyzuje aktivitu za celý týden
+- Aktualizuje dlouhodobé sekce H (vzorce), I (inter-part vztahy), M (dlouhodobé cíle)
+- Aktualizuje mapu systému při změnách
+- Detekce neaktivních částí (7+ dní)
+- Týdenní report na email (mamka + Káťa)
+- Manuální spuštění tlačítkem "Týdenní analýza"
 
-**Nová edge funkce:** `karel-did-monthly-cycle`
-- Spouští se: pg_cron (1. den v měsíci v 10:00) + manuálně z UI
-- Shromáždí data za posledních 30 dní:
-  - Denní cykly (did_update_cycles, cycle_type=daily) — report_summary, cards_updated
-  - Týdenní cykly (cycle_type=weekly) — report_summary
-  - Aktivita částí (did_threads) — frekvence, poslední kontakt, počet zpráv
-  - Úkoly (did_therapist_tasks) — splněné vs. nesplněné
-  - Karty částí z Drive (aktuální stav)
-  - Centrum dokumenty (Dashboard, Geografie, Mapa vztahů, Terap. plán, Dohody)
-- AI analýza (gemini-2.5-pro pro komplexní reasoning):
-  - Porovnání stavu systému: před 30 dny vs. teď
-  - Počet aktivních/spících/varovných částí — změny
-  - Frekvence komunikace — trendy
-  - Splněné úkoly — efektivita
-  - Změny ve vzorcích chování
-  - **Návrhy redistribuce**: AI identifikuje co kam zapsat:
-    - Změna statusu části (aktivní↔spící) → aktualizovat kartu
-    - Nové poznatky o vnitřním světě → Geografie
-    - Změny ve vztazích mezi částmi → Mapa vztahů  
-    - Aktualizace terapeutického plánu → 05_Terapeuticky_Plan
-    - Nové dohody/uzavřené dohody → 06_Terapeuticke_Dohody
-    - Systémové změny → 00_Dashboard
-- Karel provede zápis pomocí existujících Drive helper funkcí (batchUpdate/append)
-- Uloží report do did_update_cycles (cycle_type="monthly")
-- Odešle email s PDF přílohou (jspdf) pro supervizi
-- PDF se zároveň uloží do kartotéky na Drive (nová složka 08_Mesicni_Reporty)
+### ✅ 11. Automatická 24h záloha (Fáze 3)
+- Při vstupu do DID režimu Dashboard kontroluje poslední denní cyklus z DB
+- Pokud > 24h od posledního, automaticky spouští `karel-did-daily-cycle`
+- Toast notifikace o průběhu a dokončení
+- Indikátor `isAutoBackupRunning` v Dashboardu
 
-**Frontend:**
-- Nová sekce na dashboardu pod týdenními cykly: „Měsíční přehledy"
-- Tlačítko „Spustit měsíční analýzu" (s 30denním cooldownem)
-- Zobrazení posledních 3 měsíčních reportů (expandovatelné)
+### ✅ 12. Perplexity integrace v DID režimu (Fáze 3)
+- Tlačítko "Hledat metody" dostupné ve VŠECH DID podrežimech (včetně cast)
+- `karel-did-research` přijímá `partName` pro kontextově specifické vyhledávání
+- Perplexity sonar-pro hledá DID terapeutické metody, techniky, výzkumy
+- Gemini syntetizuje výsledky do praktického formátu s funkčními odkazy
+- Přísný zákaz halucinování citací
 
-**DB:** Žádné nové tabulky — použije existující `did_update_cycles` s `cycle_type = 'monthly'`
+### ✅ 13. Audio tandem režim (Fáze 4)
+- `karel-audio-analysis` rozšířen o DID-specifický tandem kontext
+- Při nahrávání v DID režimu se automaticky přenáší: jméno části, podrežim, kontext z kartotéky
+- Analýza zaměřená na: komunikaci s částí, validaci, přepínání, dysregulaci
+- Konkrétní rady pro mamku: co říct, co neříkat, stabilizační aktivity
+- Zpráva v chatu zobrazuje jméno části u audio analýzy
 
-**Config:** Přidat `[functions.karel-did-monthly-cycle]` do config.toml
+### ✅ 16. PDF Export DID Reportu (Fáze 6)
+- `src/lib/didPdfExport.ts` – generování kompletního PDF reportu
+- Sekce: přehled částí, historie synchronizačních cyklů, AI analýza vzorců, nedávné rozhovory
+- Tabulky s autoTable plugin (jsPDF + jspdf-autotable)
+- Tlačítko "PDF Report" integrováno do DID Dashboardu
+- Automatické stránkování a záhlaví/zápatí
 
-**pg_cron:** Nový job pro 1. den měsíce v 10:00
+## Zbývá (budoucí iterace)
 
----
+### ✅ 14. Vizualizace systému (Fáze 5)
+- `DidSystemMap.tsx` – interaktivní mapa částí s barvami podle aktivity
+- Barevné kódování: zelená (aktivní), šedá (spí), žlutá (varování 7+ dní)
+- Hover tooltip s detailním časem poslední aktivity
+- Chronologie aktivity seřazená podle posledního kontaktu
+- Collapsible panel integrovaný do Dashboardu
 
-### Pořadí implementace
-1. RefreshTrigger (rychlá oprava, základ pro další)
-2. Session Prep (nová edge funkce + UI komponenta)
-3. Monthly Cycle (nejkomplexnější — edge funkce s Drive zápisem + UI + cron)
-
+### ✅ 15. Automatická detekce vzorců (Fáze 5)
+- `karel-did-patterns` edge function – analyzuje 30 dní dat z vláken a cyklů
+- AI detekce opakujících se témat, emočních a behaviorálních vzorců
+- Systém upozornění s třemi úrovněmi (info/watch/concern)
+- Detekce pozitivních trendů
+- `DidPatternPanel.tsx` – UI pro zobrazení vzorců, alertů a trendů
+- On-demand spuštění tlačítkem z Dashboardu

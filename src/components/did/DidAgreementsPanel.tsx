@@ -19,11 +19,15 @@ interface WeeklyCycleData {
 
 const RUNNING_TIMEOUT_MS = 10 * 60 * 1000;
 
-const DidAgreementsPanel = () => {
+const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { refreshTrigger?: number; onWeeklyCycleComplete?: () => void }) => {
   const [cycles, setCycles] = useState<WeeklyCycleData[]>([]);
   const [loading, setLoading] = useState(true);
   const [runningWeekly, setRunningWeekly] = useState(false);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (refreshTrigger > 0) loadData(true);
+  }, [refreshTrigger]);
 
   useEffect(() => {
     loadData();
@@ -86,6 +90,7 @@ const DidAgreementsPanel = () => {
     } finally {
       setRunningWeekly(false);
       loadData();
+      onWeeklyCycleComplete?.();
     }
   };
 

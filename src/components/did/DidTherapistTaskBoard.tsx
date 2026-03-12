@@ -65,7 +65,7 @@ const TrafficLight = ({
   </button>
 );
 
-const DidTherapistTaskBoard = () => {
+const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) => {
   const [tasks, setTasks] = useState<TherapistTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTask, setNewTask] = useState("");
@@ -85,6 +85,10 @@ const DidTherapistTaskBoard = () => {
   }, []);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
+
+  useEffect(() => {
+    if (refreshTrigger > 0) loadTasks();
+  }, [refreshTrigger, loadTasks]);
 
   const handleAddTask = async () => {
     if (!newTask.trim()) return;

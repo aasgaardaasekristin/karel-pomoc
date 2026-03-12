@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
@@ -9,6 +9,8 @@ import ReactMarkdown from "react-markdown";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
+import DidSessionPrep from "./DidSessionPrep";
+import DidMonthlyPanel from "./DidMonthlyPanel";
 
 interface PartActivity {
   name: string;
@@ -42,6 +44,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [lastCycleReport, setLastCycleReport] = useState<string | null>(null);
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
@@ -76,6 +79,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   useEffect(() => {
     if (prevIsUpdatingRef.current && !isUpdating) {
       loadDashboardData();
+      setRefreshTrigger(prev => prev + 1);
       try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {}
       setOverviewLoaded(false);
       setOverviewText("");
@@ -255,11 +259,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
       {/* Header */}
       <div className="mb-4">
-        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
-          {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
+            {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
+          </p>
+          <DidSessionPrep />
+        </div>
         {lastCardsUpdated.length > 0 && (
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
             Naposledy aktualizováno: {lastCardsUpdated.slice(0, 5).join(", ")}{lastCardsUpdated.length > 5 ? ` (+${lastCardsUpdated.length - 5})` : ""}
@@ -326,12 +333,17 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           <ListChecks className="w-3.5 h-3.5 text-primary" />
           Úkoly pro terapeutky
         </h4>
-        <DidTherapistTaskBoard />
+        <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
       </div>
 
       {/* Agreements Panel */}
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <DidAgreementsPanel />
+        <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(prev => prev + 1)} />
+      </div>
+
+      {/* Monthly Panel */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <DidMonthlyPanel refreshTrigger={refreshTrigger} />
       </div>
 
       {/* System Map */}
