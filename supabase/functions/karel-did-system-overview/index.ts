@@ -62,7 +62,7 @@ serve(async (req) => {
     let centrumDocs = "";
     try {
       const token = await getAccessToken();
-      const kartotekaId = await findFolder(token, "Kartoteka_DID");
+      const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID");
       if (kartotekaId) {
         const centrumId = await findFolder(token, "00_CENTRUM");
         if (centrumId) {
