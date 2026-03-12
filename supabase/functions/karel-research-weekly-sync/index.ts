@@ -587,15 +587,17 @@ PRAVIDLA:
         continue;
       }
 
-      // 4e. Build prehled entry
-      const methodNames = (handbook.activities || []).map((a: any) => a.name || "").filter(Boolean).join(", ");
-      prehledEntries.push(
-        `[${dateStr}] ${topicName}\n` +
-        `  Autor: ${normalizedCreatedBy}\n` +
-        `  Shrnutí: ${(handbook.summary || "").slice(0, 200)}\n` +
-        `  Metody: ${methodNames || "neuvedeny"}\n` +
-        `  Dokument v 07_Knihovna: "${topicName}"`
-      );
+      // 4e. Build prehled entry - find the actual saved filename (Google Doc name)
+      // We need to list files again to get exact name with any extension
+      const latestFiles = await listFilesInFolder(token, knihovnaFolderId);
+      const savedFile = latestFiles.find(f => canonicalText(f.name) === canonicalText(topicName));
+      const exactFileName = savedFile ? savedFile.name : topicName;
+
+      prehledEntries.push({
+        fileName: exactFileName,
+        author: normalizedCreatedBy,
+        summary: (handbook.summary || "").slice(0, 200),
+      });
     }
 
     // 5. UPDATE 00_Prehled with new entries + RECONCILE missing documents
