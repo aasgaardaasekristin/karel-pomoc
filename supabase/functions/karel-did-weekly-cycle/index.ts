@@ -789,103 +789,63 @@ ${perplexityContext}`,
     // ═══ 5c. PROCESS OUTPUTS – Update Drive (best-effort) ═══
 
     if (folderId && analysisText) {
-      // 5a. Ensure 06_Terapeuticke_Dohody folder exists
-      if (centrumFolderId && !dohodaFolderId) {
-        const centerFiles = await listFilesInFolder(token, centrumFolderId);
-        const existing = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
-        if (existing) {
-          dohodaFolderId = existing.id;
-        } else {
-          const createRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ name: "06_Terapeuticke_Dohody", mimeType: DRIVE_FOLDER_MIME, parents: [centrumFolderId] }),
-          });
-          if (createRes.ok) {
-            const folder = await createRes.json();
-            dohodaFolderId = folder.id;
-            console.log(`[weekly] ✅ Created 06_Terapeuticke_Dohody folder`);
-          }
-        }
-      }
-
-      // 5b. Create date subfolder inside 06_Terapeuticke_Dohody for this week's outputs
-      let weeklySubfolderId: string | null = null;
-      if (dohodaFolderId) {
-        // Check if subfolder for this date already exists
-        const existingSubfolders = await listFilesInFolder(token, dohodaFolderId);
-        const existingSub = existingSubfolders.find(f => f.mimeType === DRIVE_FOLDER_MIME && f.name === dateStr);
-        if (existingSub) {
-          weeklySubfolderId = existingSub.id;
-        } else {
-          const createSubRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
-            method: "POST",
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ name: dateStr, mimeType: DRIVE_FOLDER_MIME, parents: [dohodaFolderId] }),
-          });
-          if (createSubRes.ok) {
-            const sub = await createSubRes.json();
-            weeklySubfolderId = sub.id;
-            console.log(`[weekly] ✅ Created weekly subfolder: ${dateStr}`);
-          }
-        }
-      }
-
-      // 5c. Save weekly report ONLY into the date subfolder (never into 00_CENTRUM root)
-      if (weeklySubfolderId) {
-        const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
-        if (reportContent) {
-          const reportFileName = `Tydenni_Report_${dateStr}`;
-          // Deduplication: check if report already exists in this subfolder
-          const existingFiles = await listFilesInFolder(token, weeklySubfolderId);
-          const alreadyExists = existingFiles.some(f => f.name === reportFileName);
-          if (!alreadyExists) {
-            await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, weeklySubfolderId);
-            cardsUpdated.push("Tydenni_Report");
-            console.log(`[weekly] ✅ Weekly report saved to subfolder ${dateStr}`);
+      // 5c. Ensure 06_Strategicky_Vyhled exists and write full rewrite
+      if (centrumFolderId) {
+        const strategicSection = analysisText.match(/\[STRATEGICKY_VYHLED\]([\s\S]*?)\[\/STRATEGICKY_VYHLED\]/)?.[1]?.trim();
+        if (strategicSection) {
+          const centerFiles = await listFilesInFolder(token, centrumFolderId);
+          // Find 06_Strategicky_Vyhled document
+          let stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+          if (stratFile) {
+            const fullContent = `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${strategicSection}`;
+            await updateFileById(token, stratFile.id, fullContent, stratFile.mimeType);
+            cardsUpdated.push("06_Strategicky_Vyhled (týdenní přepis)");
+            console.log(`[weekly] ✅ Strategic outlook rewritten`);
           } else {
-            console.log(`[weekly] ⏭️ Weekly report already exists in ${dateStr}, skipping`);
+            // Fallback: create new document
+            await createFileInFolder(token, "06_Strategicky_Vyhled", `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${strategicSection}`, centrumFolderId);
+            cardsUpdated.push("06_Strategicky_Vyhled (vytvořen)");
+            console.log(`[weekly] ✅ Strategic outlook created`);
           }
         }
-      } else {
-        console.warn(`[weekly] ⚠️ No weekly subfolder created, report NOT saved to avoid polluting 00_CENTRUM`);
-      }
 
-      // 5d. Process therapeutic agreements into the date subfolder (with deduplication)
-      const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
-      if (dohodaSection && weeklySubfolderId) {
-        const dohodaBlockRegex = /\[DOHODA:\s*(.+?)\]([\s\S]*?)\[\/DOHODA\]/g;
-        const existingFiles = await listFilesInFolder(token, weeklySubfolderId);
-        const existingNames = new Set(existingFiles.map(f => f.name));
+        // Save weekly report into a date subfolder if 06 folder exists
+        let dohodaFolderForReport = dohodaFolderId;
+        if (!dohodaFolderForReport) {
+          const centerFiles2 = await listFilesInFolder(token, centrumFolderId);
+          const existing = centerFiles2.find(f => f.mimeType === DRIVE_FOLDER_MIME && (canonicalText(f.name).includes("dohod") || canonicalText(f.name).includes("report")));
+          dohodaFolderForReport = existing?.id || null;
+        }
 
-        for (const match of dohodaSection.matchAll(dohodaBlockRegex)) {
-          const topic = match[1].trim();
-          const content = match[2].trim();
-          const safeFileName = `${topic.replace(/[^a-zA-Zá-žÁ-Ž0-9\s]/g, "").replace(/\s+/g, "_").slice(0, 60)}`;
-          if (existingNames.has(safeFileName)) {
-            console.log(`[weekly] ⏭️ Agreement "${safeFileName}" already exists, skipping`);
-            continue;
+        const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
+        if (reportContent && dohodaFolderForReport) {
+          const existingFiles = await listFilesInFolder(token, dohodaFolderForReport);
+          // Create date subfolder
+          let weeklySubfolderId: string | null = null;
+          const existingSub = existingFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && f.name === dateStr);
+          if (existingSub) {
+            weeklySubfolderId = existingSub.id;
+          } else {
+            const createSubRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ name: dateStr, mimeType: DRIVE_FOLDER_MIME, parents: [dohodaFolderForReport] }),
+            });
+            if (createSubRes.ok) {
+              const sub = await createSubRes.json();
+              weeklySubfolderId = sub.id;
+            }
           }
-          const fullContent = `TERAPEUTICKÁ DOHODA: ${topic}\nDatum: ${dateStr}\nSprávce: Karel\n\n${content}`;
-          await createFileInFolder(token, safeFileName, fullContent, weeklySubfolderId);
-          cardsUpdated.push(`Dohoda: ${topic}`);
+          if (weeklySubfolderId) {
+            const subFiles = await listFilesInFolder(token, weeklySubfolderId);
+            const reportFileName = `Tydenni_Report_${dateStr}`;
+            if (!subFiles.some(f => f.name === reportFileName)) {
+              await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, weeklySubfolderId);
+              cardsUpdated.push("Tydenni_Report");
+              console.log(`[weekly] ✅ Weekly report saved`);
+            }
+          }
         }
-
-        console.log(`[weekly] ✅ Agreements saved to subfolder ${dateStr}`);
-      }
-
-      // 5e. Update/create 00_Prehled_Dohod index at the root of 06_Terapeuticke_Dohody
-      if (dohodaSection && dohodaFolderId) {
-        const rootDohodaFiles = await listFilesInFolder(token, dohodaFolderId);
-        const indexContent = `PŘEHLED TERAPEUTICKÝCH DOHOD\nAktualizace: ${dateStr}\n\n${dohodaSection}`;
-        const indexFile = rootDohodaFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("prehled"));
-        if (indexFile) {
-          await updateFileById(token, indexFile.id, indexContent, indexFile.mimeType);
-        } else {
-          await createFileInFolder(token, "00_Prehled_Dohod", indexContent, dohodaFolderId);
-        }
-        cardsUpdated.push("00_Prehled_Dohod");
-        console.log(`[weekly] ✅ Index updated`);
       }
 
       // (therapist tasks already inserted in step 5 above)
