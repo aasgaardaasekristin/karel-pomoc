@@ -757,12 +757,47 @@ PRAVIDLA:
           }
 
           console.log(`[sync] Reconciling missing file: "${file.name}"`);
+
+          // Read the actual document content and generate a real summary
+          let fileSummary = "";
+          let fileKarelNotes = "";
+          try {
+            if (file.mimeType === DRIVE_DOC_MIME) {
+              const docContent = await readGoogleDoc(token, file.id);
+              if (docContent && docContent.length > 50) {
+                // Use AI to generate a concise summary
+                const summaryRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash-lite",
+                    messages: [
+                      { role: "system", content: "Jsi stručný odborný asistent. Odpověz POUZE JSON objektem." },
+                      { role: "user", content: `Na základě tohoto textu vytvoř stručné shrnutí (2-3 věty, co to je a k čemu to slouží) a Karlovy připomínky (1-2 věty, odborná rada). NEPOUŽÍVEJ markdown. Odpověz JSON: {"summary": "...", "karelNotes": "..."}\n\nTEXT:\n${docContent.slice(0, 3000)}` },
+                    ],
+                    response_format: { type: "json_object" },
+                  }),
+                });
+                if (summaryRes.ok) {
+                  const summaryData = await summaryRes.json();
+                  try {
+                    const parsed = JSON.parse(summaryData.choices?.[0]?.message?.content || "{}");
+                    fileSummary = parsed.summary || "";
+                    fileKarelNotes = parsed.karelNotes || "";
+                  } catch {}
+                }
+              }
+            }
+          } catch (e) {
+            console.warn(`[sync] Could not summarize "${file.name}":`, e);
+          }
+
           entriesToAdd.push({
             fileName: file.name,
             author: "neuvedeno",
-            summary: "Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu.",
+            summary: fileSummary || "Zdroj uložený v 07_Knihovna.",
             detailedDesc: "",
-            karelNotes: "",
+            karelNotes: fileKarelNotes || "",
           });
           listedSourceCanonicals.add(fileCanonical);
         }
@@ -778,7 +813,6 @@ PRAVIDLA:
               `ZDROJ_${numStr}_${dateStr}:`,
               `Téma: ${e.fileName.replace(/\.\w{2,5}$/, "")}`,
               `Záznam: ${authorLabel}. ${e.summary}`,
-              `Podrobný popis: ${e.detailedDesc || "Viz příručka v 07_Knihovna."}`,
               `Karlovy připomínky a úkoly: ${e.karelNotes || "Bude doplněno při další aktualizaci."}`,
               `Zkušenosti terapeutů: [ ]`,
               `Karlova dodatečná reakce: [ ]`,
