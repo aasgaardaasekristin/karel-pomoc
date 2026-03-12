@@ -2849,6 +2849,17 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
                       }
                     }
                   }
+
+                  // Mark all undistributed handbooks as processed by appending marker
+                  const distribDateStr = new Date().toISOString().slice(0, 10);
+                  for (const uh of undistributedHandbooks) {
+                    try {
+                      await appendToDoc(token, uh.id, `\n\n[DISTRIBUOVÁNO DO KARTOTÉKY: ${distribDateStr}]`);
+                      console.log(`[knihovna] Marked as distributed: "${uh.name}"`);
+                    } catch (markErr) {
+                      console.warn(`[knihovna] Failed to mark "${uh.name}" as distributed:`, markErr);
+                    }
+                  }
                 } else {
                   console.warn(`[knihovna] AI analysis failed: ${knihovnaAnalysisRes.status}`);
                 }
