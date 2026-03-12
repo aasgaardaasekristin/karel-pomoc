@@ -2679,7 +2679,22 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             // Find the target document
             let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
 
-            // Handle 06_Terapeuticke_Dohody specially - it might be a folder
+            // ═══ SPECIAL: 06_Strategicky_Vyhled – APPEND (not rewrite, weekly does rewrite) ═══
+            if (docCanonical.includes("strategick") && docCanonical.includes("vyhled")) {
+              const stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+              if (stratFile) {
+                const existingContent = await readFileContent(token, stratFile.id);
+                if (!existingContent.includes(newContent.slice(0, 80))) {
+                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace:\n${newContent}`;
+                  await updateFileById(token, stratFile.id, updatedContent, stratFile.mimeType);
+                  cardsUpdated.push(`CENTRUM: 06_Strategicky_Vyhled (append)`);
+                  console.log(`[CENTRUM] ✅ Appended to 06_Strategicky_Vyhled`);
+                }
+              }
+              continue;
+            }
+
+            // Handle old 06_Terapeuticke_Dohody folder for backward compatibility
             if (!targetFile && docCanonical.includes("dohod")) {
               const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
               if (dohodaFolder) {
