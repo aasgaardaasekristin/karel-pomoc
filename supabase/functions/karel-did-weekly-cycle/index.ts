@@ -280,29 +280,28 @@ serve(async (req) => {
       });
     }
 
-    // Prevent duplicate cron reruns shortly after a completed weekly run
-    if (isCronCall) {
-      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-      const { data: recentCompleted } = await sb
-        .from("did_update_cycles")
-        .select("id, completed_at")
-        .eq("cycle_type", "weekly")
-        .eq("status", "completed")
-        .gte("completed_at", sixHoursAgo)
-        .order("completed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    // Prevent reruns within 6 hours of a completed weekly cycle (both cron AND manual)
+    const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const { data: recentCompleted } = await sb
+      .from("did_update_cycles")
+      .select("id, completed_at")
+      .eq("cycle_type", "weekly")
+      .eq("status", "completed")
+      .gte("completed_at", sixHoursAgo)
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      if (recentCompleted) {
-        return new Response(JSON.stringify({
-          success: true,
-          skipped: true,
-          reason: "already_completed_recently",
-          cycleId: recentCompleted.id,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (recentCompleted) {
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "already_completed_recently",
+        completedAt: recentCompleted.completed_at,
+        cycleId: recentCompleted.id,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Create weekly cycle record

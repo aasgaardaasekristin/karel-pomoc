@@ -27,21 +27,21 @@ interface TherapistTask {
 type TrafficStatus = "not_started" | "in_progress" | "done";
 
 const TRAFFIC_COLORS: Record<TrafficStatus, string> = {
-  not_started: "bg-red-500",
+  not_started: "bg-destructive",
   in_progress: "bg-orange-400",
   done: "bg-green-500",
-};
-
-const TRAFFIC_RING: Record<TrafficStatus, string> = {
-  not_started: "ring-red-500/30",
-  in_progress: "ring-orange-400/30",
-  done: "ring-green-500/30",
 };
 
 const NEXT_STATUS: Record<TrafficStatus, TrafficStatus> = {
   not_started: "in_progress",
   in_progress: "done",
   done: "not_started",
+};
+
+const STATUS_LABEL: Record<TrafficStatus, string> = {
+  not_started: "Nezapočato",
+  in_progress: "Rozpracováno",
+  done: "Splněno",
 };
 
 const TrafficLight = ({
@@ -55,13 +55,13 @@ const TrafficLight = ({
 }) => (
   <button
     onClick={onClick}
-    className="flex items-center gap-1 group"
-    title={`${label}: ${status === "not_started" ? "Nezapočato" : status === "in_progress" ? "Rozpracováno" : "Splněno"}`}
+    className="flex items-center gap-1 group cursor-pointer"
+    title={`${label}: ${STATUS_LABEL[status]}`}
   >
     <span
-      className={`w-3 h-3 rounded-full ${TRAFFIC_COLORS[status]} ring-2 ${TRAFFIC_RING[status]} transition-all group-hover:scale-125 group-hover:ring-4`}
+      className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-150 group-hover:shadow-md`}
     />
-    <span className="text-[9px] text-muted-foreground">{label}</span>
+    <span className="text-[8px] font-medium text-muted-foreground opacity-70">{label}</span>
   </button>
 );
 
@@ -110,7 +110,6 @@ const DidTherapistTaskBoard = () => {
       updated_at: new Date().toISOString(),
     };
 
-    // Derive overall status from both
     const otherField = who === "hanka" ? "status_kata" : "status_hanka";
     const otherStatus = (task[otherField] || "not_started") as TrafficStatus;
     const bothDone = next === "done" && (task.assigned_to !== "both" || otherStatus === "done");
@@ -155,22 +154,20 @@ const DidTherapistTaskBoard = () => {
   };
 
   const assigneeLabel = (a: string) => {
+    if (a === "hanka") return "H";
+    if (a === "kata") return "K";
+    return "H+K";
+  };
+
+  const assigneeFull = (a: string) => {
     if (a === "hanka") return "Hanka";
     if (a === "kata") return "Káťa";
     return "Obě";
   };
 
-  const assigneeColor = (a: string) => {
-    if (a === "hanka") return "bg-pink-500/10 text-pink-600 border-pink-500/20";
-    if (a === "kata") return "bg-blue-500/10 text-blue-600 border-blue-500/20";
-    return "bg-primary/10 text-primary border-primary/20";
-  };
-
   const getDriveLink = (task: TherapistTask) => {
     if (!task.source_agreement) return null;
-    // If it looks like a Drive file ID or URL, use it directly
     if (task.source_agreement.startsWith("http")) return task.source_agreement;
-    // Otherwise construct a search link
     return `https://drive.google.com/drive/search?q=${encodeURIComponent(task.source_agreement)}`;
   };
 
@@ -192,178 +189,166 @@ const DidTherapistTaskBoard = () => {
   }
 
   return (
-    <div className="space-y-3">
-      {/* Add new task */}
-      <div className="rounded-lg border border-border bg-card/50 p-3 space-y-2">
-        <div className="flex gap-2">
-          <Input
-            value={newTask}
-            onChange={(e) => setNewTask(e.target.value)}
-            placeholder="Nový úkol pro terapeuta..."
-            className="flex-1 h-8 text-xs"
-            onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }}
-          />
-          <Button size="sm" onClick={handleAddTask} disabled={!newTask.trim() || adding} className="h-8 px-2">
-            {adding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-          </Button>
-        </div>
-        <div className="flex gap-1">
+    <div className="space-y-2">
+      {/* Add new task — compact */}
+      <div className="flex gap-1.5 items-center">
+        <Input
+          value={newTask}
+          onChange={(e) => setNewTask(e.target.value)}
+          placeholder="Nový úkol..."
+          className="flex-1 h-7 text-[11px] bg-background"
+          onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }}
+        />
+        <div className="flex gap-0.5">
           {(["both", "hanka", "kata"] as const).map(a => (
             <Button
               key={a}
-              variant={newAssignee === a ? "default" : "outline"}
+              variant={newAssignee === a ? "default" : "ghost"}
               size="sm"
               onClick={() => setNewAssignee(a)}
-              className="h-6 text-[10px] px-2"
+              className="h-7 text-[9px] px-1.5 min-w-0"
             >
-              {assigneeLabel(a)}
+              {assigneeFull(a)}
             </Button>
           ))}
         </div>
+        <Button size="sm" onClick={handleAddTask} disabled={!newTask.trim() || adding} className="h-7 w-7 p-0">
+          {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+        </Button>
       </div>
 
       {/* Active tasks */}
       {activeTasks.length === 0 && doneTasks.length === 0 && (
-        <p className="text-xs text-muted-foreground text-center py-4">Zatím žádné úkoly.</p>
+        <p className="text-[10px] text-muted-foreground text-center py-3">Zatím žádné úkoly.</p>
       )}
 
-      {activeTasks.map(task => {
-        const isExpanded = expandedTask === task.id;
-        const driveLink = getDriveLink(task);
+      <div className="space-y-1">
+        {activeTasks.map(task => {
+          const isExpanded = expandedTask === task.id;
+          const driveLink = getDriveLink(task);
 
-        return (
-          <div key={task.id} className="rounded-lg border border-border bg-card/50 p-2.5 transition-colors hover:border-primary/20">
-            <div className="flex items-center gap-2">
-              {/* Traffic lights */}
-              <div className="flex flex-col gap-1 shrink-0">
-                {(task.assigned_to === "hanka" || task.assigned_to === "both") && (
-                  <TrafficLight
-                    status={(task.status_hanka || "not_started") as TrafficStatus}
-                    label="H"
-                    onClick={() => handleToggleTraffic(task, "hanka")}
-                  />
-                )}
-                {(task.assigned_to === "kata" || task.assigned_to === "both") && (
-                  <TrafficLight
-                    status={(task.status_kata || "not_started") as TrafficStatus}
-                    label="K"
-                    onClick={() => handleToggleTraffic(task, "kata")}
-                  />
-                )}
-              </div>
-
-              {/* Task content */}
-              <button
-                className="flex-1 min-w-0 text-left"
-                onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-              >
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-medium text-foreground leading-tight">{task.task}</span>
-                  <Badge variant="outline" className={`text-[9px] px-1 py-0 ${assigneeColor(task.assigned_to)}`}>
-                    {assigneeLabel(task.assigned_to)}
-                  </Badge>
+          return (
+            <div
+              key={task.id}
+              className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30"
+            >
+              <div className="flex items-center gap-1.5">
+                {/* Traffic lights — tiny inline */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {(task.assigned_to === "hanka" || task.assigned_to === "both") && (
+                    <TrafficLight
+                      status={(task.status_hanka || "not_started") as TrafficStatus}
+                      label="H"
+                      onClick={() => handleToggleTraffic(task, "hanka")}
+                    />
+                  )}
+                  {(task.assigned_to === "kata" || task.assigned_to === "both") && (
+                    <TrafficLight
+                      status={(task.status_kata || "not_started") as TrafficStatus}
+                      label="K"
+                      onClick={() => handleToggleTraffic(task, "kata")}
+                    />
+                  )}
                 </div>
-              </button>
 
-              {/* Actions */}
-              <div className="flex items-center gap-0.5 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="sm"
+                {/* Task text */}
+                <button
+                  className="flex-1 min-w-0 text-left truncate"
                   onClick={() => setExpandedTask(isExpanded ? null : task.id)}
-                  className="h-6 w-6 p-0"
                 >
-                  {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(task.id)}
-                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
-            </div>
+                  <span className="text-[11px] text-foreground leading-tight">{task.task}</span>
+                </button>
 
-            {/* Expanded detail */}
-            {isExpanded && (
-              <div className="mt-2 pt-2 border-t border-border/50 space-y-2">
-                {/* Note / detail description */}
-                {task.note && (
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">{task.note}</p>
-                )}
-                {task.source_agreement && (
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="outline" className="text-[9px] px-1 py-0">
-                      📋 {task.source_agreement.slice(0, 50)}
-                    </Badge>
-                    {driveLink && (
-                      <a
-                        href={driveLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline"
-                      >
-                        <ExternalLink className="w-2.5 h-2.5" />
-                        Otevřít v Drive
-                      </a>
-                    )}
-                  </div>
-                )}
-
-                {/* Existing notes */}
-                {task.completed_note && (
-                  <div className="text-[10px] text-muted-foreground bg-muted/50 rounded p-1.5 whitespace-pre-line">
-                    <MessageSquare className="w-3 h-3 inline mr-1" />
-                    {task.completed_note}
-                  </div>
-                )}
-
-                {/* Add note */}
-                <div className="flex gap-1.5">
-                  <Input
-                    value={noteInputs[task.id] || ""}
-                    onChange={(e) => setNoteInputs(prev => ({ ...prev, [task.id]: e.target.value }))}
-                    placeholder="Poznámka / vzkaz..."
-                    className="flex-1 h-7 text-[10px]"
-                    onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(task.id); }}
-                  />
-                  <Button size="sm" onClick={() => handleAddNote(task.id)} className="h-7 px-2" disabled={!noteInputs[task.id]?.trim()}>
-                    <Send className="w-3 h-3" />
+                {/* Compact actions */}
+                <div className="flex items-center gap-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExpandedTask(isExpanded ? null : task.id)}
+                    className="h-5 w-5 p-0"
+                  >
+                    {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(task.id)}
+                    className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
                   </Button>
                 </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
+                  {task.note && (
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">{task.note}</p>
+                  )}
+                  {task.source_agreement && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-[9px] text-muted-foreground truncate max-w-[200px]">
+                        📋 {task.source_agreement.slice(0, 50)}
+                      </span>
+                      {driveLink && (
+                        <a
+                          href={driveLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline shrink-0"
+                        >
+                          <ExternalLink className="w-2.5 h-2.5" />
+                          Drive
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {task.completed_note && (
+                    <div className="text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 whitespace-pre-line">
+                      <MessageSquare className="w-2.5 h-2.5 inline mr-0.5 opacity-60" />
+                      {task.completed_note}
+                    </div>
+                  )}
+
+                  <div className="flex gap-1">
+                    <Input
+                      value={noteInputs[task.id] || ""}
+                      onChange={(e) => setNoteInputs(prev => ({ ...prev, [task.id]: e.target.value }))}
+                      placeholder="Poznámka..."
+                      className="flex-1 h-6 text-[9px] bg-background"
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(task.id); }}
+                    />
+                    <Button size="sm" onClick={() => handleAddNote(task.id)} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim()}>
+                      <Send className="w-2.5 h-2.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       {/* Done tasks */}
       {doneTasks.length > 0 && (
-        <details className="group">
-          <summary className="text-[10px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors">
+        <details className="group/done">
+          <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none">
             ✅ Splněné ({doneTasks.length})
           </summary>
-          <div className="mt-2 space-y-1.5">
+          <div className="mt-1 space-y-0.5">
             {doneTasks.slice(0, 10).map(task => (
-              <div key={task.id} className="rounded-lg border border-border/50 bg-muted/30 p-2 opacity-60 flex items-center gap-2">
-                <div className="flex flex-col gap-0.5 shrink-0">
-                  {(task.assigned_to === "hanka" || task.assigned_to === "both") && (
-                    <span className="w-3 h-3 rounded-full bg-green-500 ring-2 ring-green-500/30" />
-                  )}
-                  {(task.assigned_to === "kata" || task.assigned_to === "both") && (
-                    <span className="w-3 h-3 rounded-full bg-green-500 ring-2 ring-green-500/30" />
-                  )}
-                </div>
-                <span className="text-xs text-muted-foreground line-through flex-1">{task.task}</span>
+              <div key={task.id} className="rounded px-2 py-1 bg-muted/20 flex items-center gap-1.5 opacity-50">
+                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+                <span className="text-[10px] text-muted-foreground line-through flex-1 truncate">{task.task}</span>
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => handleDelete(task.id)}
-                  className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
+                  className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/done:opacity-100"
                 >
-                  <Trash2 className="w-2.5 h-2.5" />
+                  <Trash2 className="w-2 h-2" />
                 </Button>
               </div>
             ))}
