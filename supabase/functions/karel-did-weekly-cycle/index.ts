@@ -244,13 +244,73 @@ serve(async (req) => {
       }
     }
 
-    // Get a valid user_id for DB inserts (service role calls don't have auth.uid())
-    const { data: anyUser } = await sb.from("did_threads").select("user_id").limit(1).single();
-    const userId = anyUser?.user_id;
+    // Resolve user_id for DB inserts
+    let userId = requesterUserId;
+    if (!userId) {
+      const { data: anyUser } = await sb
+        .from("did_threads")
+        .select("user_id, last_activity_at")
+        .order("last_activity_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      userId = anyUser?.user_id ?? null;
+    }
     if (!userId) throw new Error("No user found in did_threads for cycle attribution");
 
+    // Prevent duplicate runs (manual double-click / overlapping triggers)
+    const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data: alreadyRunning } = await sb
+      .from("did_update_cycles")
+      .select("id, started_at")
+      .eq("cycle_type", "weekly")
+      .eq("status", "running")
+      .gte("started_at", fifteenMinAgo)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (alreadyRunning) {
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "already_running",
+        cycleId: alreadyRunning.id,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Prevent duplicate cron reruns shortly after a completed weekly run
+    if (isCronCall) {
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data: recentCompleted } = await sb
+        .from("did_update_cycles")
+        .select("id, completed_at")
+        .eq("cycle_type", "weekly")
+        .eq("status", "completed")
+        .gte("completed_at", sixHoursAgo)
+        .order("completed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (recentCompleted) {
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "already_completed_recently",
+          cycleId: recentCompleted.id,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Create weekly cycle record
-    const { data: cycle } = await sb.from("did_update_cycles").insert({ cycle_type: "weekly", status: "running", user_id: userId }).select().single();
+    const { data: cycle } = await sb
+      .from("did_update_cycles")
+      .insert({ cycle_type: "weekly", status: "running", user_id: userId })
+      .select()
+      .single();
     cycleId = cycle?.id ?? null;
 
     // ═══ 1. READ ALL CARDS + CENTRUM DOCS FROM DRIVE ═══
