@@ -361,7 +361,21 @@ async function updateFileById(token: string, fileId: string, content: string, mi
   return await res.json();
 }
 
-async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
+async function appendToDoc(token: string, fileId: string, textToAppend: string): Promise<void> {
+  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!docRes.ok) return;
+  const doc = await docRes.json();
+  const endIndex = doc.body?.content?.slice(-1)?.[0]?.endIndex || 1;
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests: [{ insertText: { location: { index: endIndex - 1 }, text: textToAppend } }] }),
+  });
+  if (!updateRes.ok) console.warn(`[appendToDoc] Failed: ${updateRes.status}`);
+}
+
   const boundary = "----DIDCycleBoundary";
   // Create as Google Doc (not .txt) by specifying mimeType in metadata
   const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME });
