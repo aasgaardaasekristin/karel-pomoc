@@ -259,11 +259,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
       {/* Header */}
       <div className="mb-4">
-        <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
-          {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
-        </p>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] sm:text-xs text-muted-foreground flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
+            {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
+          </p>
+          <DidSessionPrep />
+        </div>
         {lastCardsUpdated.length > 0 && (
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
             Naposledy aktualizováno: {lastCardsUpdated.slice(0, 5).join(", ")}{lastCardsUpdated.length > 5 ? ` (+${lastCardsUpdated.length - 5})` : ""}
