@@ -439,6 +439,7 @@ serve(async (req) => {
     const savedHandbooks: string[] = [];
     const skippedDuplicates: string[] = [];
     const prehledEntries: string[] = [];
+    const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
 
     for (const thread of threads) {
@@ -574,6 +575,7 @@ PRAVIDLA:
       if (isTopicDuplicate(topicName, currentKnihovnaFiles)) {
         console.log(`[sync] Duplicate detected: "${topicName}" – skipping`);
         skippedDuplicates.push(topicName);
+        processedThreadIds.push(thread.id);
         continue;
       }
 
@@ -582,6 +584,7 @@ PRAVIDLA:
         const newDoc = await createDocInFolder(token, topicName, knihovnaFolderId);
         await writeFormattedHandbook(token, newDoc.id, handbook);
         savedHandbooks.push(topicName);
+        processedThreadIds.push(thread.id);
         console.log(`[sync] Saved formatted handbook: "${topicName}"`);
       } catch (e) {
         console.error(`[sync] Failed to save "${topicName}":`, e);
@@ -610,16 +613,17 @@ PRAVIDLA:
       }
     }
 
-    // 6. MARK THREADS AS PROCESSED
-    const threadIds = threads.map((t: any) => t.id);
-    await sb
-      .from("research_threads")
-      .update({ is_processed: true, processed_at: new Date().toISOString() })
-      .in("id", threadIds);
+    // 6. MARK ONLY SUCCESSFULLY HANDLED THREADS AS PROCESSED
+    if (processedThreadIds.length > 0) {
+      await sb
+        .from("research_threads")
+        .update({ is_processed: true, processed_at: new Date().toISOString() })
+        .in("id", processedThreadIds);
+    }
 
     return new Response(JSON.stringify({
       success: true,
-      threadsProcessed: threads.length,
+      threadsProcessed: processedThreadIds.length,
       handbooksSaved: savedHandbooks,
       skippedDuplicates,
       prehledUpdated: prehledEntries.length > 0,
