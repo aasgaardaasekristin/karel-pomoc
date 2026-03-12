@@ -25,7 +25,14 @@ const DidAgreementsPanel = () => {
   const [runningWeekly, setRunningWeekly] = useState(false);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+    const intervalId = window.setInterval(() => {
+      loadData();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
