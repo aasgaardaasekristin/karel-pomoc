@@ -67,16 +67,28 @@ const DidAgreementsPanel = () => {
       
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`,
-        { method: "POST", headers, body: JSON.stringify({}), signal: controller.signal }
+        { method: "POST", headers, body: JSON.stringify({ source: "manual" }), signal: controller.signal }
       );
       clearTimeout(timeout);
-      
+
+      let result: any = null;
+      try {
+        result = await resp.json();
+      } catch {
+        result = null;
+      }
+
       if (resp.ok) {
-        const result = await resp.json();
-        toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result.cardsUpdated?.length || 0} položek.`);
+        if (result?.skipped && result?.reason === "already_running") {
+          toast.info("Týdenní cyklus už běží na pozadí. Průběh se obnovuje automaticky.");
+        } else if (result?.skipped && result?.reason === "not_sunday") {
+          toast.info("Automatické spuštění z cron je povoleno jen v neděli.");
+        } else {
+          toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result?.cardsUpdated?.length || 0} položek.`);
+        }
       } else {
-        const err = await resp.text();
-        toast.error(`Chyba: ${err.slice(0, 200)}`);
+        const errText = result?.error || "Neznámá chyba";
+        toast.error(`Chyba: ${String(errText).slice(0, 200)}`);
       }
     } catch (e: any) {
       if (e.name === "AbortError") {
