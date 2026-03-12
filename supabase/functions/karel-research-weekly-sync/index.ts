@@ -602,12 +602,54 @@ PRAVIDLA:
       );
     }
 
-    // 5. UPDATE 00_Prehled with new entries
-    if (prehledEntries.length > 0 && prehledFile) {
-      const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}\n${prehledEntries.join("\n\n")}`;
+    // 5. UPDATE 00_Prehled with new entries + RECONCILE missing documents
+    if (prehledFile) {
       try {
-        await appendToGoogleDoc(token, prehledFile.id, appendText);
-        console.log(`[sync] 00_Prehled updated with ${prehledEntries.length} entries`);
+        // Read current 00_Prehled content to find which files are already listed
+        let prehledContent = "";
+        try {
+          prehledContent = await readGoogleDoc(token, prehledFile.id);
+        } catch (e) {
+          console.warn("[sync] Could not read 00_Prehled for reconciliation:", e);
+        }
+
+        const prehledCanonical = canonicalText(prehledContent);
+
+        // Refresh file list in 07_Knihovna
+        const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+        const missingEntries: string[] = [];
+
+        for (const file of allKnihovnaFiles) {
+          // Skip 00_PREHLED itself and folders
+          if (canonicalText(file.name).startsWith("00prehled")) continue;
+          if (file.mimeType === DRIVE_FOLDER_MIME) continue;
+
+          // Check if this file is already mentioned in 00_Prehled
+          const fileCanonical = canonicalText(file.name);
+          if (fileCanonical.length > 6 && prehledCanonical.includes(fileCanonical)) continue;
+
+          // Also check if it's in the new prehledEntries we're about to add
+          const alreadyInNew = prehledEntries.some(e => canonicalText(e).includes(fileCanonical));
+          if (alreadyInNew) continue;
+
+          // This file is missing from 00_Prehled — add a reconciliation entry
+          console.log(`[sync] Reconciling missing file in 00_Prehled: "${file.name}"`);
+          missingEntries.push(
+            `[${dateStr}] ${file.name}\n` +
+            `  (Doplněno automatickou reconciliací – dokument existoval v 07_Knihovna, ale chyběl v přehledu)`
+          );
+        }
+
+        const allEntries = [...prehledEntries, ...missingEntries];
+
+        if (allEntries.length > 0) {
+          const reconcileNote = missingEntries.length > 0
+            ? `\nReconcilováno chybějících záznamů: ${missingEntries.length}\n`
+            : "";
+          const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}${reconcileNote}\n${allEntries.join("\n\n")}`;
+          await appendToGoogleDoc(token, prehledFile.id, appendText);
+          console.log(`[sync] 00_Prehled updated with ${prehledEntries.length} new + ${missingEntries.length} reconciled entries`);
+        }
       } catch (e) {
         console.error("[sync] Failed to update 00_Prehled:", e);
       }
