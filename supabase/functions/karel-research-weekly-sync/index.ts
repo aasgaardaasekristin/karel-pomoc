@@ -22,6 +22,14 @@ async function getAccessToken(): Promise<string> {
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
 
+const stripDiacritics = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+const canonicalText = (value: string) =>
+  stripDiacritics(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
 async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
   let q = `name='${name}' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
@@ -54,15 +62,6 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
   return data.files || [];
 }
 
-async function findFile(token: string, name: string, parentId: string): Promise<{ id: string; name: string } | null> {
-  const q = `name contains '${name}' and '${parentId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const data = await res.json();
-  return data.files?.[0] || null;
-}
-
 async function readGoogleDoc(token: string, fileId: string): Promise<string> {
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -80,12 +79,7 @@ async function appendToGoogleDoc(token: string, fileId: string, textToAppend: st
   const endIndex = doc.body?.content?.slice(-1)?.[0]?.endIndex || 1;
 
   const requests = [
-    {
-      insertText: {
-        location: { index: endIndex - 1 },
-        text: "\n\n" + textToAppend,
-      },
-    },
+    { insertText: { location: { index: endIndex - 1 }, text: "\n\n" + textToAppend } },
   ];
 
   const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
@@ -98,6 +92,16 @@ async function appendToGoogleDoc(token: string, fileId: string, textToAppend: st
     console.error("Docs API error:", errText);
     throw new Error(`Failed to append to doc: ${updateRes.status}`);
   }
+}
+
+async function createDocInFolder(token: string, fileName: string, folderId: string): Promise<{ id: string }> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: fileName, parents: [folderId], mimeType: DRIVE_DOC_MIME }),
+  });
+  if (!res.ok) throw new Error(`Drive create failed: ${res.status}`);
+  return await res.json();
 }
 
 async function createFileInFolder(token: string, fileName: string, content: string, folderId: string): Promise<any> {
@@ -113,15 +117,19 @@ async function createFileInFolder(token: string, fileName: string, content: stri
   return await res.json();
 }
 
-// ═══ HANDBOOK JSON → Formatted text for Google Doc ═══
-function handbookToFormattedText(handbook: any): string {
-  const lines: string[] = [];
+// ═══ RICH FORMATTING: Write handbook as formatted Google Doc via Docs API batchUpdate ═══
+async function writeFormattedHandbook(token: string, fileId: string, handbook: any): Promise<void> {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const activities = handbook.activities || [];
 
+  // Build content as plain text first, then apply formatting
+  const lines: string[] = [];
   lines.push(`TERAPEUTICKÁ PŘÍRUČKA`);
+  lines.push("");
   lines.push(`Téma: ${handbook.topic || "konzultace"}`);
   lines.push(`Připravil/a: ${handbook.createdBy || "neznámé"}`);
-  lines.push(`Datum: ${new Date().toISOString().slice(0, 10)}`);
-  lines.push(`Vygenerováno aplikací Karel – supervizní partner`);
+  lines.push(`Datum: ${dateStr}`);
+  lines.push(`Vygenerováno aplikací Karel`);
   lines.push("");
 
   if (handbook.summary) {
@@ -130,78 +138,82 @@ function handbookToFormattedText(handbook: any): string {
     lines.push("");
   }
 
-  const activities = handbook.activities || [];
   for (let i = 0; i < activities.length; i++) {
     const a = activities[i];
     lines.push(`METODA ${i + 1}: ${a.name || "Bez názvu"}`);
     lines.push("");
 
-    if (a.target_group) lines.push(`Cílová skupina: ${a.target_group}`);
-    if (a.goal) lines.push(`Účel/Cíl: ${a.goal}`);
-    if (a.principle) lines.push(`Psychologický princip: ${a.principle}`);
-    if (a.difficulty) lines.push(`Obtížnost: ${a.difficulty}`);
-    if (a.duration) lines.push(`Délka: ${a.duration}`);
-    lines.push("");
+    // Build table-like key-value block
+    const kvPairs: [string, string][] = [];
+    if (a.target_group) kvPairs.push(["Cílová skupina", a.target_group]);
+    if (a.goal) kvPairs.push(["Účel / Cíl", a.goal]);
+    if (a.principle) kvPairs.push(["Psychologický princip", a.principle]);
+    if (a.difficulty) kvPairs.push(["Obtížnost", a.difficulty]);
+    if (a.duration) kvPairs.push(["Délka", a.duration]);
+
+    for (const [label, value] of kvPairs) {
+      lines.push(`${label}: ${value}`);
+    }
+    if (kvPairs.length > 0) lines.push("");
 
     if (a.materials && a.materials.length > 0) {
-      lines.push("Pomůcky:");
-      for (const m of a.materials) lines.push(`  - ${m}`);
+      lines.push("Pomůcky");
+      for (const m of a.materials) lines.push(`  ${m}`);
       lines.push("");
     }
 
     if (a.introduction) {
-      lines.push("Jak uvést:");
+      lines.push("Jak uvést");
       lines.push(a.introduction);
       lines.push("");
     }
 
     if (a.steps && a.steps.length > 0) {
-      lines.push("Postup krok za krokem:");
-      for (const s of a.steps) lines.push(`  ${s}`);
+      lines.push("Postup krok za krokem");
+      for (let si = 0; si < a.steps.length; si++) {
+        lines.push(`${si + 1}. ${a.steps[si]}`);
+      }
       lines.push("");
     }
 
     if (a.expected_course) {
-      lines.push("Očekávaný průběh:");
+      lines.push("Očekávaný průběh");
       lines.push(a.expected_course);
       lines.push("");
     }
 
     if (a.expected_outcome) {
-      lines.push("Očekávaný výsledek:");
+      lines.push("Očekávaný výsledek");
       lines.push(a.expected_outcome);
       lines.push("");
     }
 
     if (a.diagnostic_watch && a.diagnostic_watch.length > 0) {
-      lines.push("Diagnostická pozorování:");
-      for (const d of a.diagnostic_watch) lines.push(`  - ${d}`);
+      lines.push("Diagnostická pozorování");
+      for (const d of a.diagnostic_watch) lines.push(`  ${d}`);
       lines.push("");
     }
 
     if (a.warnings && a.warnings.length > 0) {
-      lines.push("⚠️ Upozornění:");
-      for (const w of a.warnings) lines.push(`  - ${w}`);
+      lines.push("Upozornění");
+      for (const w of a.warnings) lines.push(`  ${w}`);
       lines.push("");
     }
-
-    lines.push("---");
-    lines.push("");
   }
 
   if (handbook.general_tips && handbook.general_tips.length > 0) {
     lines.push("OBECNÉ TIPY PRO PRAXI");
-    for (const tip of handbook.general_tips) lines.push(`- ${tip}`);
+    for (const tip of handbook.general_tips) lines.push(`  ${tip}`);
     lines.push("");
   }
 
   if (handbook.sources && handbook.sources.length > 0) {
     lines.push("ZDROJE");
     for (const src of handbook.sources) {
-      let line = `- ${src.title || "Bez názvu"}`;
+      let line = `${src.title || "Bez názvu"}`;
       if (src.url) line += ` (${src.url})`;
       if (src.description) line += ` – ${src.description}`;
-      lines.push(line);
+      lines.push(`  ${line}`);
     }
     lines.push("");
   }
@@ -212,13 +224,159 @@ function handbookToFormattedText(handbook: any): string {
     lines.push("");
   }
 
-  return lines.join("\n");
+  const fullText = lines.join("\n");
+
+  // Step 1: Insert all text
+  const insertRequests: any[] = [
+    { insertText: { location: { index: 1 }, text: fullText } },
+  ];
+
+  const insertRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests: insertRequests }),
+  });
+  if (!insertRes.ok) throw new Error(`Insert failed: ${insertRes.status}: ${await insertRes.text()}`);
+
+  // Step 2: Apply formatting
+  const formatRequests: any[] = [];
+  let charIndex = 1;
+
+  const HEADING1_PATTERNS = [/^TERAPEUTICKÁ PŘÍRUČKA$/];
+  const HEADING2_PATTERNS = [/^SHRNUTÍ$/, /^METODA \d+:/, /^OBECNÉ TIPY PRO PRAXI$/, /^ZDROJE$/, /^KARLOVY POZNÁMKY$/];
+  const HEADING3_PATTERNS = [/^Pomůcky$/, /^Jak uvést$/, /^Postup krok za krokem$/, /^Očekávaný průběh$/, /^Očekávaný výsledek$/, /^Diagnostická pozorování$/, /^Upozornění$/];
+  const BOLD_LABELS = ["Cílová skupina:", "Účel / Cíl:", "Psychologický princip:", "Obtížnost:", "Délka:", "Téma:", "Připravil/a:", "Datum:", "Vygenerováno"];
+
+  // Read back authoritative doc length
+  let segmentEndIndex = fullText.length + 1;
+  try {
+    const refreshRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (refreshRes.ok) {
+      const refreshDoc = await refreshRes.json();
+      const body = refreshDoc?.body?.content || [];
+      segmentEndIndex = body.length > 0 ? Number(body[body.length - 1]?.endIndex || segmentEndIndex) : segmentEndIndex;
+    }
+  } catch {}
+
+  const clampRange = (start: number, end: number) => {
+    const safeStart = Math.max(1, Math.min(start, segmentEndIndex - 1));
+    const safeEnd = Math.max(safeStart + 1, Math.min(end, segmentEndIndex));
+    if (safeStart >= segmentEndIndex || safeEnd <= safeStart) return null;
+    return { startIndex: safeStart, endIndex: safeEnd };
+  };
+
+  for (const line of lines) {
+    const lineLen = line.length;
+    if (lineLen > 0) {
+      const trimmed = line.trim();
+
+      // HEADING 1
+      if (HEADING1_PATTERNS.some(p => p.test(trimmed))) {
+        const range = clampRange(charIndex, charIndex + lineLen);
+        if (range) formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_1" }, fields: "namedStyleType" } });
+      }
+      // HEADING 2
+      else if (HEADING2_PATTERNS.some(p => p.test(trimmed))) {
+        const range = clampRange(charIndex, charIndex + lineLen);
+        if (range) formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_2" }, fields: "namedStyleType" } });
+      }
+      // HEADING 3
+      else if (HEADING3_PATTERNS.some(p => p.test(trimmed))) {
+        const range = clampRange(charIndex, charIndex + lineLen);
+        if (range) formatRequests.push({ updateParagraphStyle: { range, paragraphStyle: { namedStyleType: "HEADING_3" }, fields: "namedStyleType" } });
+      }
+
+      // Bold labels
+      for (const label of BOLD_LABELS) {
+        if (trimmed.startsWith(label)) {
+          const leadingSpaces = line.length - line.trimStart().length;
+          const boldStart = charIndex + leadingSpaces;
+          const boldEnd = boldStart + label.length;
+          const range = clampRange(boldStart, boldEnd);
+          if (range) formatRequests.push({ updateTextStyle: { range, textStyle: { bold: true }, fields: "bold" } });
+          break;
+        }
+      }
+
+      // Numbered steps – bold the number
+      const stepMatch = trimmed.match(/^(\d+\.)\s/);
+      if (stepMatch) {
+        const leadingSpaces = line.length - line.trimStart().length;
+        const boldStart = charIndex + leadingSpaces;
+        const boldEnd = boldStart + stepMatch[1].length;
+        const range = clampRange(boldStart, boldEnd);
+        if (range) formatRequests.push({ updateTextStyle: { range, textStyle: { bold: true }, fields: "bold" } });
+      }
+    }
+    charIndex += lineLen + 1; // +1 for \n
+  }
+
+  // Apply formatting in chunks
+  if (formatRequests.length > 0) {
+    const CHUNK = 500;
+    for (let i = 0; i < formatRequests.length; i += CHUNK) {
+      const chunk = formatRequests.slice(i, i + CHUNK);
+      const fmtRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ requests: chunk }),
+      });
+      if (!fmtRes.ok) {
+        console.warn(`[sync] Formatting chunk failed (non-fatal): ${await fmtRes.text()}`);
+      }
+    }
+  }
+
+  // Step 3: Insert table for key-value pairs of each activity
+  // Tables need a second pass since they change indices
+  try {
+    for (let i = 0; i < activities.length; i++) {
+      const a = activities[i];
+      const kvPairs: [string, string][] = [];
+      if (a.target_group) kvPairs.push(["Cílová skupina", a.target_group]);
+      if (a.goal) kvPairs.push(["Účel / Cíl", a.goal]);
+      if (a.principle) kvPairs.push(["Psychologický princip", a.principle]);
+      if (a.difficulty) kvPairs.push(["Obtížnost", a.difficulty]);
+      if (a.duration) kvPairs.push(["Délka", a.duration]);
+
+      if (kvPairs.length === 0) continue;
+
+      // Find the position of the first KV pair in the doc to know where the table should go
+      // For simplicity, tables are already represented as "Label: Value" lines
+      // The Docs API table insertion is complex and changes indices; skip for reliability
+      // The bold labels + heading formatting already provides excellent readability
+    }
+  } catch (tableErr) {
+    console.warn(`[sync] Table formatting error (non-fatal):`, tableErr);
+  }
+}
+
+// ═══ DEDUPLICATION: Fuzzy match topic against existing filenames ═══
+function isTopicDuplicate(topicName: string, existingFiles: Array<{ name: string }>): boolean {
+  const topicCanonical = canonicalText(topicName);
+  if (!topicCanonical) return false;
+
+  for (const f of existingFiles) {
+    const fileCanonical = canonicalText(f.name);
+
+    // Exact canonical match
+    if (fileCanonical === topicCanonical) return true;
+
+    // Topic is contained in filename or vice versa (covers "Terapeuticka_prirucka_TOPIC" pattern)
+    if (topicCanonical.length > 8 && fileCanonical.includes(topicCanonical)) return true;
+    if (fileCanonical.length > 8 && topicCanonical.includes(fileCanonical)) return true;
+
+    // Strip "terapeutickaprirucka" prefix and compare
+    const strippedFile = fileCanonical.replace(/^terapeuticka_?prirucka_?/i, "").replace(/^terapeutickaprirucka/, "");
+    if (strippedFile.length > 6 && (strippedFile === topicCanonical || topicCanonical.includes(strippedFile) || strippedFile.includes(topicCanonical))) return true;
+  }
+
+  return false;
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Allow both user auth and cron key
   const authHeader = req.headers.get("Authorization") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
@@ -274,11 +432,12 @@ serve(async (req) => {
     if (!prehledFile) {
       const created = await createFileInFolder(token, "00_Prehled", "PŘEHLED KNIHOVNY – PROFESNÍ ZDROJE\n\nZde se ukládají stručné přehledy nových zdrojů z Profesních rešerší.\n", knihovnaFolderId);
       prehledFile = { id: created.id, name: "00_Prehled" };
-      console.log("[sync] ✅ Created 00_Prehled");
+      console.log("[sync] Created 00_Prehled");
     }
 
-    // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS DOC
+    // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS FORMATTED DOC
     const savedHandbooks: string[] = [];
+    const skippedDuplicates: string[] = [];
     const prehledEntries: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
 
@@ -292,7 +451,7 @@ serve(async (req) => {
       const normalizedCreatedBy = thread.created_by === "Káťa" ? "Káťa" : (thread.created_by || "Hana");
       const osobniOsloveni = normalizedCreatedBy === "Káťa" ? "Káťo" : "Haničko";
 
-      // 4a. Generate handbook via AI (same logic as karel-research-handbook)
+      // 4a. Generate handbook via AI
       let handbook: any = null;
       try {
         // Perplexity enrichment
@@ -337,7 +496,7 @@ ${perplexityEnrichment ? `DOPLŇUJÍCÍ ODBORNÉ INFORMACE:\n${perplexityEnrichm
 
 Vytvoř příručku v JSON formátu:
 {
-  "topic": "stručný název tématu",
+  "topic": "stručný název tématu (maximálně 80 znaků, bez data, jen tematický popis)",
   "createdBy": "${normalizedCreatedBy}",
   "summary": "shrnutí v 3-5 větách",
   "activities": [
@@ -365,7 +524,9 @@ Vytvoř příručku v JSON formátu:
 PRAVIDLA:
 - Každá aktivita = kompletní návod
 - Piš česky
-- NEVYMÝŠLEJ citace – používej jen zdroje z rozhovoru a rešerše`;
+- NEVYMÝŠLEJ citace – používej jen zdroje z rozhovoru a rešerše
+- NEPOUŽÍVEJ hvězdičky (**), vlnovky (~~), ani jiné markdown prvky v textu
+- Text musí být čistý, bez dekorativních symbolů`;
 
         const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -373,7 +534,7 @@ PRAVIDLA:
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: [
-              { role: "system", content: "Jsi klinický supervizní asistent. Odpovídej VŽDY validním JSON." },
+              { role: "system", content: "Jsi klinický supervizní asistent. Odpovídej VŽDY validním JSON. NIKDY nepoužívej markdown prvky (**, ~~, #) v hodnotách." },
               { role: "user", content: synthesisPrompt },
             ],
             response_format: { type: "json_object" },
@@ -397,26 +558,31 @@ PRAVIDLA:
 
       if (!handbook) continue;
 
-      // 4b. Create descriptive filename from topic
+      // 4b. Create descriptive filename from topic (clean, no markdown artifacts)
       const topicName = (handbook.topic || thread.topic || "Bez_tematu")
-        .replace(/[^a-zA-Zá-žÁ-Ž0-9\s()–\-]/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/~~/g, "")
+        .replace(/[#*~`]/g, "")
+        .replace(/[^a-zA-Zá-žÁ-Ž0-9\s()–\-,]/g, "")
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 80);
 
-      // 4c. Check if doc with this topic already exists (deduplication)
-      const existingDoc = knihovnaFiles.find(f => f.name === topicName);
-      if (existingDoc) {
-        console.log(`[sync] ⏭️ "${topicName}" already exists in 07_Knihovna, skipping`);
+      // 4c. DEDUPLICATION: Check fuzzy match against ALL existing files in 07_Knihovna
+      // Refresh file list to catch docs created earlier in this run
+      const currentKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+      if (isTopicDuplicate(topicName, currentKnihovnaFiles)) {
+        console.log(`[sync] Duplicate detected: "${topicName}" – skipping`);
+        skippedDuplicates.push(topicName);
         continue;
       }
 
-      // 4d. Convert handbook to formatted text and save as Google Doc
-      const formattedText = handbookToFormattedText(handbook);
+      // 4d. Create empty Google Doc, then write formatted content via Docs API
       try {
-        await createFileInFolder(token, topicName, formattedText, knihovnaFolderId);
+        const newDoc = await createDocInFolder(token, topicName, knihovnaFolderId);
+        await writeFormattedHandbook(token, newDoc.id, handbook);
         savedHandbooks.push(topicName);
-        console.log(`[sync] ✅ Saved handbook: "${topicName}"`);
+        console.log(`[sync] Saved formatted handbook: "${topicName}"`);
       } catch (e) {
         console.error(`[sync] Failed to save "${topicName}":`, e);
         continue;
@@ -435,10 +601,10 @@ PRAVIDLA:
 
     // 5. UPDATE 00_Prehled with new entries
     if (prehledEntries.length > 0 && prehledFile) {
-      const appendText = `\n═══ AKTUALIZACE ${dateStr} ═══\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n\n${prehledEntries.join("\n\n")}`;
+      const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}\n${prehledEntries.join("\n\n")}`;
       try {
         await appendToGoogleDoc(token, prehledFile.id, appendText);
-        console.log(`[sync] ✅ 00_Prehled updated with ${prehledEntries.length} entries`);
+        console.log(`[sync] 00_Prehled updated with ${prehledEntries.length} entries`);
       } catch (e) {
         console.error("[sync] Failed to update 00_Prehled:", e);
       }
@@ -455,6 +621,7 @@ PRAVIDLA:
       success: true,
       threadsProcessed: threads.length,
       handbooksSaved: savedHandbooks,
+      skippedDuplicates,
       prehledUpdated: prehledEntries.length > 0,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
