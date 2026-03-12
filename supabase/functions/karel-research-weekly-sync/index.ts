@@ -70,6 +70,165 @@ async function readGoogleDoc(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+async function readDriveFileTextExcerpt(
+  token: string,
+  file: { id: string; name: string; mimeType?: string },
+): Promise<string> {
+  const mime = file.mimeType || "";
+
+  // Native Google Doc
+  if (mime === DRIVE_DOC_MIME) {
+    const txt = await readGoogleDoc(token, file.id);
+    return txt.slice(0, 6000);
+  }
+
+  // Plain text-like files
+  if (
+    mime.startsWith("text/") ||
+    mime === "application/json" ||
+    mime === "application/xml" ||
+    mime === "text/markdown"
+  ) {
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&supportsAllDrives=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Cannot download text file ${file.id}: ${res.status}`);
+    const txt = await res.text();
+    return txt.slice(0, 6000);
+  }
+
+  // PDF/DOC/DOCX and other binaries are not reliably parseable here in edge runtime
+  return "";
+}
+
+function fallbackSummaryFromTitle(fileName: string): { summary: string; karelNotes: string } {
+  const topic = fileName.replace(/\.\w{2,8}$/i, "").replace(/[_-]+/g, " ").trim();
+  return {
+    summary: `Zdroj k tématu „${topic}“. Slouží jako podpůrný materiál pro plánování terapie a výběr vhodných metod podle cíle práce s klientem.`,
+    karelNotes: "Při použití nejdřív ověř indikace a kontraindikace, pak metodu uprav podle stability klienta a aktuálního rizika dysregulace.",
+  };
+}
+
+async function summarizeLibrarySource(
+  token: string,
+  lovableApiKey: string,
+  file: { id: string; name: string; mimeType?: string },
+): Promise<{ summary: string; karelNotes: string }> {
+  let excerpt = "";
+  try {
+    excerpt = await readDriveFileTextExcerpt(token, file);
+  } catch (e) {
+    console.warn(`[sync] Text extract failed for "${file.name}":`, e);
+  }
+
+  const cleanTitle = file.name.replace(/\.\w{2,8}$/i, "").replace(/[_-]+/g, " ").trim();
+
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Jsi klinický asistent. Odpovídej pouze JSON objektem bez markdownu. Nevymýšlej konkrétní fakta, která nejsou v textu.",
+          },
+          {
+            role: "user",
+            content: excerpt
+              ? `Vytvoř stručné shrnutí terapeutického zdroje (2-3 věty: co to je, k čemu slouží) a Karlovy připomínky (1-2 věty praktické rady).\n\nNÁZEV: ${cleanTitle}\n\nTEXT ZDROJE:\n${excerpt}\n\nVrať JSON: {"summary":"...","karelNotes":"..."}`
+              : `Nemáme text obsahu, jen název zdroje. Vytvoř opatrné obecné shrnutí (2 věty: co to je, k čemu slouží) a praktickou poznámku Karla (1 věta) pouze podle názvu, bez halucinací detailů.\n\nNÁZEV: ${cleanTitle}\n\nVrať JSON: {"summary":"...","karelNotes":"..."}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.warn(`[sync] Summary AI failed for "${file.name}": ${response.status} ${err}`);
+      return fallbackSummaryFromTitle(file.name);
+    }
+
+    const data = await response.json();
+    const raw = data.choices?.[0]?.message?.content || "{}";
+    const parsed = JSON.parse(raw);
+    const summary = String(parsed.summary || "").trim();
+    const karelNotes = String(parsed.karelNotes || "").trim();
+
+    if (!summary) return fallbackSummaryFromTitle(file.name);
+
+    return {
+      summary,
+      karelNotes: karelNotes || fallbackSummaryFromTitle(file.name).karelNotes,
+    };
+  } catch (e) {
+    console.warn(`[sync] Summary parse/error for "${file.name}":`, e);
+    return fallbackSummaryFromTitle(file.name);
+  }
+}
+
+async function enrichPlaceholderEntriesInPrehled(
+  token: string,
+  lovableApiKey: string,
+  prehledContent: string,
+  knihovnaFiles: Array<{ id: string; name: string; mimeType?: string }>,
+): Promise<{ content: string; changed: boolean }> {
+  const lines = (prehledContent || "").split("\n");
+  let changed = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line.startsWith("Téma:")) continue;
+
+    const topic = line.replace(/^Téma:\s*/i, "").trim();
+    const topicCanonical = canonicalSourceName(topic);
+    if (!topicCanonical) continue;
+
+    // Block = until next ZDROJ_ header or end
+    let blockEnd = lines.length;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim().startsWith("ZDROJ_")) {
+        blockEnd = j;
+        break;
+      }
+    }
+
+    let zaznamIdx = -1;
+    let notesIdx = -1;
+    for (let j = i; j < blockEnd; j++) {
+      const t = lines[j].trim();
+      if (t.startsWith("Záznam:")) zaznamIdx = j;
+      if (t.startsWith("Karlovy připomínky a úkoly:")) notesIdx = j;
+    }
+
+    if (zaznamIdx < 0) continue;
+    const needsSummary = lines[zaznamIdx].includes("Zdroj uložený v 07_Knihovna") || lines[zaznamIdx].includes("Doplněno automaticky");
+    if (!needsSummary) continue;
+
+    const matchedFile = knihovnaFiles.find((f) => {
+      const fCanonical = canonicalSourceName(f.name);
+      return fCanonical === topicCanonical || fCanonical.includes(topicCanonical) || topicCanonical.includes(fCanonical);
+    });
+
+    if (!matchedFile) continue;
+
+    const summarized = await summarizeLibrarySource(token, lovableApiKey, matchedFile);
+    lines[zaznamIdx] = `Záznam: Neuvedeno. ${summarized.summary}`;
+    if (notesIdx >= 0 && lines[notesIdx].includes("Bude doplněno při další aktualizaci")) {
+      lines[notesIdx] = `Karlovy připomínky a úkoly: ${summarized.karelNotes}`;
+    }
+    changed = true;
+  }
+
+  return { content: lines.join("\n"), changed };
+}
+
 async function updateGoogleDocInPlace(token: string, fileId: string, content: string): Promise<void> {
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
