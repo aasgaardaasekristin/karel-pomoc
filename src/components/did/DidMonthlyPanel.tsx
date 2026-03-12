@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, BarChart3, RefreshCw } from "lucide-react";
+import { Loader2, BarChart3, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -37,6 +37,13 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
 
   useEffect(() => { loadData(); }, []);
   useEffect(() => { if (refreshTrigger > 0) loadData(true); }, [refreshTrigger]);
+
+  const handleDelete = async (cycleId: string) => {
+    const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
+    if (error) { toast.error("Nepodařilo se smazat záznam"); return; }
+    toast.success("Měsíční report smazán");
+    loadData(true);
+  };
 
   const handleRun = async () => {
     setRunning(true);
@@ -100,7 +107,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
         const displayDate = cycle.completed_at || cycle.started_at;
 
         return (
-          <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
+          <div key={cycle.id} className={`group rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
             <button
               onClick={() => !isRunning && setExpandedId(isExpanded ? null : cycle.id)}
               className="w-full p-3 text-left hover:bg-muted/30 transition-colors"
@@ -115,7 +122,19 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
                     {!isRunning && <Badge variant="outline" className="text-[9px] px-1 py-0">{cards.length} aktualizací</Badge>}
                   </div>
                 </div>
-                {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
+                <div className="flex items-center gap-1">
+                  {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
+                  {!isRunning && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(cycle.id); }}
+                      className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </button>
 
