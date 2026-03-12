@@ -2991,17 +2991,29 @@ Seznam aktualizovaných dokumentů
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Káťou: [téma]"
 
-<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY:</h3>
-Shrň 5-8 nejdůležitějších bodů z terapeutického plánu:
-▸ Krátkodobé cíle a dohody
+<h3>📋 OPERATIVNÍ PLÁN – KLÍČOVÉ BODY:</h3>
+Shrň 5-8 nejdůležitějších bodů z operativního plánu:
+▸ Krátkodobé cíle a aktivní úkoly
 ▸ S jakými fragmenty dnes/zítra pracovat a jak
 ▸ Co zkontrolovat / co bylo odloženo
 ▸ Aktuální doporučení a návrhy metod
 
+<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
+Na základě accountability dat uveď:
+▸ Co bylo splněno (pochvala)
+▸ Co nebylo splněno (laskavě ale důsledně)
+▸ Přímé otázky: "Hani, jak dopadlo [konkrétní úkol]?"
+
+Pokud existují úkoly nesplněné 3+ dny, přidej sekci:
+<h3>📋 KAREL SVOLÁVÁ PORADU</h3>
+Téma: [problém]
+Proč: [co Karel pozoruje]
+Co Karel navrhuje: [řešení]
+
 Podpis: "Jsem tady. Tvůj Karel"
 
 Tón: intimní, partnerský, podporující, hluboký.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}` },
                 ],
               }),
             });
