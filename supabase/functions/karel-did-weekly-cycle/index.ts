@@ -159,17 +159,43 @@ serve(async (req) => {
   const authHeader = req.headers.get("Authorization") || "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
-  const publishableKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
   let cycleId: string | null = null;
 
-  // Allow cron/service calls with known keys, or calls with no auth (verify_jwt=false in config)
-  const knownKeys = [serviceRoleKey, anonKey, publishableKey].filter(Boolean);
-  const bearerToken = authHeader.replace("Bearer ", "");
-  const isCronCall = !authHeader || knownKeys.includes(bearerToken);
+  let requestBody: Record<string, unknown> = {};
+  try {
+    requestBody = await req.json();
+  } catch {
+    requestBody = {};
+  }
 
-  if (!isCronCall) {
+  const source = typeof requestBody.source === "string" ? requestBody.source.trim().toLowerCase() : "manual";
+  const isCronCall = source === "cron";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.replace("Bearer ", "") : "";
+  const cronAllowedTokens = [serviceRoleKey, anonKey].filter(Boolean);
+  let requesterUserId: string | null = null;
+
+  if (isCronCall) {
+    if (!bearerToken || !cronAllowedTokens.includes(bearerToken)) {
+      return new Response(JSON.stringify({ error: "Unauthorized cron trigger" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const pragueWeekday = new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      timeZone: "Europe/Prague",
+    }).format(new Date());
+
+    if (pragueWeekday !== "Sun") {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: "not_sunday", source }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  } else {
     const authResult = await requireAuth(req);
     if (authResult instanceof Response) return authResult;
+    requesterUserId = authResult.user?.id ?? null;
   }
 
   try {
