@@ -778,37 +778,51 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════
-    // MODE F: "create-agreement" - New therapeutic agreement
-    // Location: 00_CENTRUM/06_Terapeuticke_Dohody/
-    // This is the ONLY mode that creates a NEW file
+    // MODE F: "update-strategic-outlook" - Update 06_Strategicky_Vyhled
+    // Location: 00_CENTRUM/06_Strategicky_Vyhled (single document)
     // ═══════════════════════════════════════════════════════
-    if (body.mode === "create-agreement") {
-      const { topic, content } = body;
-      if (!topic || !content) {
-        return new Response(JSON.stringify({ error: "topic and content required" }), {
+    if (body.mode === "update-strategic-outlook") {
+      const { content, fullRewrite } = body;
+      if (!content) {
+        return new Response(JSON.stringify({ error: "content required" }), {
           status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const targetFolderId = registry?.agreementsFolderId;
-      if (!targetFolderId) {
-        return new Response(JSON.stringify({ error: "06_Terapeuticke_Dohody folder not found" }), {
+      const centerFolderId = registry?.centerFolderId;
+      if (!centerFolderId) {
+        return new Response(JSON.stringify({ error: "00_CENTRUM folder not found" }), {
           status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      const fileName = `${dateStr}_${topic.replace(/\s+/g, "_")}`;
-      await createFileInFolder(token, fileName, content, targetFolderId);
-      console.log(`[create-agreement] Created: ${fileName}`);
+      const doc = await findDocumentByPattern(token, centerFolderId, [
+        "06_Strategicky_Vyhled", "06_Strategicky", "Strategicky_Vyhled",
+      ]);
+      if (!doc) {
+        return new Response(JSON.stringify({ error: "06_Strategicky_Vyhled not found in 00_CENTRUM" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
 
-      return new Response(JSON.stringify({ success: true, fileName }), {
+      if (fullRewrite) {
+        // Weekly cycle does full rewrite
+        const fullContent = `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${content}`;
+        await updateFileById(token, doc.fileId, fullContent, doc.mimeType);
+      } else {
+        // Daily/monthly cycle appends
+        const appendedContent = doc.content + `\n\n[${dateStr}]\n${content}`;
+        await updateFileById(token, doc.fileId, appendedContent, doc.mimeType);
+      }
+
+      return new Response(JSON.stringify({ success: true, fileName: doc.fileName }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // ═══ No valid mode ═══
     return new Response(JSON.stringify({
-      error: "Invalid mode. Supported: update-card-sections, update-dashboard, update-therapy-plan, update-relations, update-line-card, create-agreement",
+      error: "Invalid mode. Supported: update-card-sections, update-dashboard, update-therapy-plan, update-relations, update-line-card, update-strategic-outlook",
     }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
