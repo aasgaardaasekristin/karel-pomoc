@@ -510,7 +510,7 @@ Active parts in this system: ${activeFragments}`;
 
 Vytvoříš 3 výstupy:
 1. [TYDENNI_REPORT] – Komplexní týdenní report
-2. [DOHODY] – Aktualizace terapeutických dohod (06_Terapeuticke_Dohody)
+2. [STRATEGICKY_VYHLED] – Kompletní přepis 06_Strategicky_Vyhled (7 sekcí)
 3. [CENTRUM_UPDATES] – Aktualizace CENTRUM dokumentů
 
 ═══ 1. TÝDENNÍ REPORT ═══
@@ -562,46 +562,69 @@ F) TALENTY A POTENCIÁL ČÁSTÍ
 ▸ Návrhy konkrétních aktivit pro rozvoj talentů
 ▸ Příprava na budoucnost (studium, kariéra)
 
-G) KOORDINACE TERAPEUTŮ
+G) KOORDINACE TERAPEUTŮ + HODNOCENÍ SPOLUPRÁCE
 ▸ Co probrat na společném hovoru Hanka+Káťa
 ▸ Kde se terapeutické přístupy shodují/liší
 ▸ Návrhy na synchronizaci
+▸ Hodnocení plnění úkolů za týden (kdo co splnil, kdo ne)
+▸ Pokud je třeba eskalace → Karel svolává poradu
 
-═══ 2. TERAPEUTICKÉ DOHODY ═══
-Formát: [DOHODY]...[/DOHODY]
+═══ 2. STRATEGICKÝ VÝHLED ═══
+Formát: [STRATEGICKY_VYHLED]...[/STRATEGICKY_VYHLED]
 
-Zanalyzuj VŠECHNY existující dohody:
-- Které byly splněny? (změň status na "✅ Splněno")
-- Které se plní? (aktualizuj % plnění)
-- Které nefungují? (navrhni revizi nebo uzavření)
-- Navrhni NOVÉ dohody na základě týdenní analýzy
+Vygeneruj KOMPLETNÍ dokument 06_Strategicky_Vyhled se 7 sekcemi:
 
-Pro KAŽDOU novou/aktualizovanou dohodu:
-[DOHODA: téma]
-Status: Aktivní/Splněno/Revidováno
-Kontext: proč vznikla
-Cíl: konkrétní, měřitelný
-Úkoly Hanka: ...
-Úkoly Káťa: ...
-Neřeší se: ...
-Kritéria splnění: ...
-Karlovy poznámky: ...
-Plnění: X%
-[/DOHODA]
+SEKCE 1 – VIZE A SMĚŘOVÁNÍ SYSTÉMU
+- Kam směřuje terapie celého systému (3-6 měsíců)
+- Hlavní terapeutické cíle
+- Princip práce (integrace / koexistence / stabilizace)
+
+SEKCE 2 – STŘEDNĚDOBÉ CÍLE (horizont 2-6 týdnů)
+Pro každou relevantní část:
+  Cíl | Metoda | Kdo vede | Měřitelné kritérium | Stav (%)
+
+SEKCE 3 – DLOUHODOBÉ CÍLE (horizont měsíce+)
+Pro systém jako celek a klíčové části:
+  Cíl | Proč | Překážky | Milestone | Stav
+
+SEKCE 4 – STRATEGIE PRÁCE S ČÁSTMI
+Pro každou část (aktivní i spící):
+  - Terapeutický přístup a jeho vývoj
+  - Co funguje / co ne
+  - Doporučené metody z výzkumu
+  - Plán probuzení (u spících)
+
+SEKCE 5 – ODLOŽENÁ TÉMATA
+Tabulka: Téma | Důvod odložení | Vrátit se kdy | Poznámka
+
+SEKCE 6 – ARCHIV SPLNĚNÝCH CÍLŮ
+Sem se přesouvají splněné cíle ze sekce 2 a 3
+
+SEKCE 7 – KARLOVA STRATEGICKÁ REFLEXE
+- Vzorce a trendy
+- Propojení s výzkumem
+- Návrhy změny přístupu
+- Rizika na horizontu
 
 ═══ 2b. ÚKOLY PRO TERAPEUTKY ═══
 Formát: [UKOLY]...[/UKOLY]
 
 Pro každý úkol vytvoř řádek ve formátu:
-[UKOL] assignee=hanka|kata|both | task=Popis úkolu | source=Název dohody nebo kontext | priority=normal|high [/UKOL]
+[UKOL] assignee=hanka|kata|both | task=Popis úkolu | source=Název cíle nebo kontext | priority=normal|high [/UKOL]
 
-Vytvoř konkrétní, splnitelné úkoly pro Hanku a Káťu na základě analýzy a dohod.
+Vytvoř konkrétní, splnitelné úkoly pro Hanku a Káťu na základě analýzy a strategického výhledu.
 
 
 Formát:
 
-[CENTRUM:05_Terapeuticky_Plan_Aktualni]
-Kompletní přepis plánu – 8 sekcí (viz instrukce). Sekce 2 = aktivní dohody z 06.
+[CENTRUM:05_Operativni_Plan]
+Kompletní přepis plánu – 6 sekcí:
+1. Aktivní části a aktuální stav
+2. Plán sezení na tento týden
+3. Aktivní úkoly + hodnocení plnění
+4. Koordinace terapeutů + dnešní most
+5. Upozornění a rizika
+6. Karlovy poznámky
 [/CENTRUM]
 
 [CENTRUM:04_Mapa_Vztahu]
