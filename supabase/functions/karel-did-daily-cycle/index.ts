@@ -745,7 +745,7 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
 
   // Actually, we already have registryContext which was loaded. We need the file ID.
   // Let's search for the registry file by name across the root.
-  const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+  const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
   if (!kartotekaId) return false;
 
   const allRootChildren = await listFilesInFolder(token, kartotekaId);
