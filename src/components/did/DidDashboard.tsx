@@ -225,40 +225,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       const lastDaily = dailyCycles?.[0]?.completed_at || null;
       setLastBackupTime(lastDaily);
 
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      const needsBackup = !lastDaily || (Date.now() - new Date(lastDaily).getTime() > twentyFourHours);
-      if (needsBackup) {
-        setIsAutoBackupRunning(true);
-        toast.info("Automatická záloha kartotéky se spouští...");
-        try {
-          const headers = await getAuthHeaders();
-          const backupResponse = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`,
-            { method: "POST", headers, body: JSON.stringify({}) }
-          );
-          if (backupResponse.ok) {
-            toast.success("Automatická záloha kartotéky dokončena");
-            setLastBackupTime(new Date().toISOString());
-            // Reload cycle data to show the newly created record
-            const { data: newCycles } = await supabase
-              .from("did_update_cycles")
-              .select("completed_at, report_summary, cards_updated")
-              .eq("status", "completed")
-              .order("completed_at", { ascending: false })
-              .limit(1);
-            if (newCycles && newCycles.length > 0) {
-              setLastCycleTime(newCycles[0].completed_at);
-              setLastCycleReport(newCycles[0].report_summary || null);
-            } else {
-              setLastCycleTime(new Date().toISOString());
-            }
-          }
-        } catch (e) {
-          console.warn("Auto-backup failed:", e);
-        } finally {
-          setIsAutoBackupRunning(false);
-        }
-      }
+      // Auto-backup removed: daily cycle runs only via pg_cron or manual "Aktualizovat kartotéku" button
     } finally {
       setLoading(false);
     }
