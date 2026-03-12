@@ -135,6 +135,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
                     </Button>
                   )}
                 </div>
+              </div>
             </button>
 
             {isExpanded && cycle.report_summary && (
