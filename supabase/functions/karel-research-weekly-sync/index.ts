@@ -400,6 +400,72 @@ function isTopicDuplicate(topicName: string, existingFiles: Array<{ name: string
   return false;
 }
 
+function canonicalSourceName(fileName: string): string {
+  return canonicalText((fileName || "").trim().replace(/\.[a-z0-9]{2,8}$/i, ""));
+}
+
+function extractListedSourceCanonicals(text: string): Set<string> {
+  const listed = new Set<string>();
+
+  for (const rawLine of (text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (line.startsWith("Název zdroje:")) {
+      const name = line.replace(/^Název zdroje:\s*/i, "").trim();
+      const canonical = canonicalSourceName(name);
+      if (canonical) listed.add(canonical);
+      continue;
+    }
+
+    const docMatch = line.match(/^Dokument v 07_Knihovna:\s*"(.+)"\s*$/i);
+    if (docMatch?.[1]) {
+      const canonical = canonicalSourceName(docMatch[1]);
+      if (canonical) listed.add(canonical);
+      continue;
+    }
+
+    const datedMatch = line.match(/^\[(\d{4}-\d{2}-\d{2})\]\s+(.+)$/);
+    if (datedMatch?.[2]) {
+      const canonical = canonicalSourceName(datedMatch[2]);
+      if (canonical) listed.add(canonical);
+    }
+  }
+
+  return listed;
+}
+
+function cleanupReconFromPrehled(content: string): { cleaned: string; changed: boolean } {
+  const original = content || "";
+  let cleaned = original;
+
+  // Remove last trailing reconciliation run block (from AKTUALIZACE to end)
+  // only when it contains "Reconcilováno chybějících záznamů"
+  const reconcileIndex = cleaned.lastIndexOf("Reconcilováno chybějících záznamů:");
+  if (reconcileIndex >= 0) {
+    const beforeRecon = cleaned.slice(0, reconcileIndex);
+    const updateStart = beforeRecon.lastIndexOf("AKTUALIZACE ");
+    if (updateStart >= 0) {
+      cleaned = cleaned.slice(0, updateStart).trimEnd();
+    }
+  }
+
+  // Safety cleanup for any orphaned reconciliation lines
+  const filteredLines = cleaned
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (trimmed.includes("Doplněno automatickou reconciliací")) return false;
+      if (/^Reconcilováno chybějících záznamů:/i.test(trimmed)) return false;
+      return true;
+    });
+
+  cleaned = filteredLines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+
+  return { cleaned, changed: cleaned !== original };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
