@@ -682,8 +682,8 @@ ${allCardsContent || "Žádné karty nenalezeny"}
 ═══ CENTRUM DOKUMENTY ═══
 ${centrumDocsContent || "Žádné"}
 
-═══ EXISTUJÍCÍ TERAPEUTICKÉ DOHODY (06) ═══
-${agreementsContent || "Žádné dohody"}
+═══ EXISTUJÍCÍ STRATEGICKÝ VÝHLED (06) ═══
+${agreementsContent || "Žádný strategický výhled"}
 
 ═══ MAPA VZTAHŮ ═══
 ${systemMap || "Nedostupná"}
