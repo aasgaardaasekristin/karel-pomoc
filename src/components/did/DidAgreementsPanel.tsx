@@ -148,7 +148,10 @@ const DidAgreementsPanel = () => {
       ) : (
         cycles.map(cycle => {
           const cards = Array.isArray(cycle.cards_updated) ? cycle.cards_updated : [];
-          const isRunning = cycle.status === "running";
+          const runningDurationMs = Date.now() - new Date(cycle.started_at).getTime();
+          const isRunning = cycle.status === "running" && runningDurationMs < RUNNING_TIMEOUT_MS;
+          const isTimedOut = cycle.status === "running" && runningDurationMs >= RUNNING_TIMEOUT_MS;
+          const isFailed = cycle.status === "failed" || isTimedOut;
           const isExpanded = expandedCycle === cycle.id;
           const displayDate = cycle.completed_at || cycle.started_at;
 
