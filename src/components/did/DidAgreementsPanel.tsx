@@ -102,6 +102,12 @@ const DidAgreementsPanel = () => {
     }
   };
 
+  const hasActiveWeekly = cycles.some((cycle) => {
+    if (cycle.status !== "running") return false;
+    const startedAt = new Date(cycle.started_at).getTime();
+    return Date.now() - startedAt < RUNNING_TIMEOUT_MS;
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-6">
