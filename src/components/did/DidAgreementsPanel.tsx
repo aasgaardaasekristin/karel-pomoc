@@ -165,7 +165,7 @@ const DidAgreementsPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-medium text-foreground">
-                      {isRunning ? "⏳ Probíhá analýza..." : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
+                      {isRunning ? "⏳ Probíhá analýza..." : isFailed ? "⚠️ Nedokončený cyklus" : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
                     </span>
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {isRunning ? (
