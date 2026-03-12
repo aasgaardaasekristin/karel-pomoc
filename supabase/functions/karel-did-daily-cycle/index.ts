@@ -1480,8 +1480,8 @@ serve(async (req) => {
     if (requestBody?.syncRegistry) {
       const mode = requestBody.syncMode || "list";
       const token = await getAccessToken();
-      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
-      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+      if (!folderId) throw new Error("kartoteka_DID folder not found");
       const rc = await loadRegistryContext(token, folderId);
       if (!rc.activeFolderId) throw new Error("01_AKTIVNI_FRAGMENTY not found");
 
