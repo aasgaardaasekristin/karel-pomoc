@@ -70,6 +70,32 @@ async function readGoogleDoc(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+async function updateGoogleDocInPlace(token: string, fileId: string, content: string): Promise<void> {
+  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!docRes.ok) throw new Error(`Cannot read doc structure: ${docRes.status}`);
+  const doc = await docRes.json();
+  const endIndex = doc.body?.content?.slice(-1)?.[0]?.endIndex || 1;
+
+  const requests: any[] = [];
+  if (endIndex > 1) {
+    requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } });
+  }
+  requests.push({ insertText: { location: { index: 1 }, text: content } });
+
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests }),
+  });
+  if (!updateRes.ok) {
+    const errText = await updateRes.text();
+    console.error("Docs API in-place update error:", errText);
+    throw new Error(`Failed to update doc in place: ${updateRes.status}`);
+  }
+}
+
 async function appendToGoogleDoc(token: string, fileId: string, textToAppend: string): Promise<void> {
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -89,7 +115,7 @@ async function appendToGoogleDoc(token: string, fileId: string, textToAppend: st
   });
   if (!updateRes.ok) {
     const errText = await updateRes.text();
-    console.error("Docs API error:", errText);
+    console.error("Docs API append error:", errText);
     throw new Error(`Failed to append to doc: ${updateRes.status}`);
   }
 }
@@ -374,6 +400,72 @@ function isTopicDuplicate(topicName: string, existingFiles: Array<{ name: string
   return false;
 }
 
+function canonicalSourceName(fileName: string): string {
+  return canonicalText((fileName || "").trim().replace(/\.[a-z0-9]{2,8}$/i, ""));
+}
+
+function extractListedSourceCanonicals(text: string): Set<string> {
+  const listed = new Set<string>();
+
+  for (const rawLine of (text || "").split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (line.startsWith("Název zdroje:")) {
+      const name = line.replace(/^Název zdroje:\s*/i, "").trim();
+      const canonical = canonicalSourceName(name);
+      if (canonical) listed.add(canonical);
+      continue;
+    }
+
+    const docMatch = line.match(/^Dokument v 07_Knihovna:\s*"(.+)"\s*$/i);
+    if (docMatch?.[1]) {
+      const canonical = canonicalSourceName(docMatch[1]);
+      if (canonical) listed.add(canonical);
+      continue;
+    }
+
+    const datedMatch = line.match(/^\[(\d{4}-\d{2}-\d{2})\]\s+(.+)$/);
+    if (datedMatch?.[2]) {
+      const canonical = canonicalSourceName(datedMatch[2]);
+      if (canonical) listed.add(canonical);
+    }
+  }
+
+  return listed;
+}
+
+function cleanupReconFromPrehled(content: string): { cleaned: string; changed: boolean } {
+  const original = content || "";
+  let cleaned = original;
+
+  // Remove last trailing reconciliation run block (from AKTUALIZACE to end)
+  // only when it contains "Reconcilováno chybějících záznamů"
+  const reconcileIndex = cleaned.lastIndexOf("Reconcilováno chybějících záznamů:");
+  if (reconcileIndex >= 0) {
+    const beforeRecon = cleaned.slice(0, reconcileIndex);
+    const updateStart = beforeRecon.lastIndexOf("AKTUALIZACE ");
+    if (updateStart >= 0) {
+      cleaned = cleaned.slice(0, updateStart).trimEnd();
+    }
+  }
+
+  // Safety cleanup for any orphaned reconciliation lines
+  const filteredLines = cleaned
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      if (trimmed.includes("Doplněno automatickou reconciliací")) return false;
+      if (/^Reconcilováno chybějících záznamů:/i.test(trimmed)) return false;
+      return true;
+    });
+
+  cleaned = filteredLines.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd();
+
+  return { cleaned, changed: cleaned !== original };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -437,6 +529,7 @@ serve(async (req) => {
     const prehledEntries: Array<{ fileName: string; author: string; summary: string }> = [];
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
+    let prehledChanged = false;
 
     for (const thread of activeThreads) {
       const msgs = (thread.messages || []) as { role: string; content: string }[];
@@ -600,7 +693,7 @@ PRAVIDLA:
       });
     }
 
-    // 5. UPDATE 00_Prehled — flat list of sources, no duplicates, no stats headers
+    // 5. CLEAN + UPDATE 00_Prehled (no duplicate reconciliation records)
     if (prehledFile) {
       try {
         let prehledContent = "";
@@ -610,66 +703,74 @@ PRAVIDLA:
           console.warn("[sync] Could not read 00_Prehled for reconciliation:", e);
         }
 
-        const prehledCanonical = canonicalText(prehledContent);
-        const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+        // 5a. Cleanup duplicate reconciliation block from previous runs
+        const { cleaned, changed } = cleanupReconFromPrehled(prehledContent);
+        if (changed) {
+          await updateGoogleDocInPlace(token, prehledFile.id, cleaned);
+          prehledContent = cleaned;
+          prehledChanged = true;
+          console.log("[sync] Removed stale reconciliation duplicates from 00_Prehled");
+        }
 
-        // Collect ALL entries to potentially add (from new handbooks + reconciliation)
+        const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
+        const prehledCanonical = canonicalText(prehledContent);
+        const listedSourceCanonicals = extractListedSourceCanonicals(prehledContent);
+
+        // Collect entries to append in this run
         const entriesToAdd: Array<{ fileName: string; author: string; summary: string }> = [];
 
         // Add new handbook entries
         for (const entry of prehledEntries) {
-          // Double-check it's not already in existing doc
-          const entryCanonical = canonicalText(entry.fileName.replace(/\.\w{2,5}$/, ""));
-          if (entryCanonical.length > 6 && prehledCanonical.includes(entryCanonical)) continue;
+          const entryCanonical = canonicalSourceName(entry.fileName);
+          if (!entryCanonical) continue;
+          if (listedSourceCanonicals.has(entryCanonical)) continue;
           entriesToAdd.push(entry);
+          listedSourceCanonicals.add(entryCanonical);
         }
 
-        // Reconcile: check all files in 07_Knihovna missing from 00_Prehled
+        // Reconcile ALL files in 07_Knihovna (any extension), except 00_Prehled itself
         for (const file of allKnihovnaFiles) {
           if (canonicalText(file.name).startsWith("00prehled")) continue;
           if (file.mimeType === DRIVE_FOLDER_MIME) continue;
 
-          const nameWithoutExt = file.name.replace(/\.\w{2,5}$/, "");
-          const fileCanonical = canonicalText(nameWithoutExt);
-          if (fileCanonical.length < 6) continue;
+          const fileCanonical = canonicalSourceName(file.name);
+          if (!fileCanonical || fileCanonical.length < 6) continue;
 
-          // Check if already in 00_Prehled (exact or 60% substring match)
-          const matchLen = Math.floor(fileCanonical.length * 0.6);
-          const isInPrehled = prehledCanonical.includes(fileCanonical) ||
-            (fileCanonical.length > 12 && prehledCanonical.includes(fileCanonical.slice(0, matchLen)));
-          if (isInPrehled) continue;
-
-          // Check if already in entries we're about to add
-          const alreadyInNew = entriesToAdd.some(e => {
-            const ec = canonicalText(e.fileName.replace(/\.\w{2,5}$/, ""));
-            return ec === fileCanonical || ec.includes(fileCanonical) || fileCanonical.includes(ec);
-          });
-          if (alreadyInNew) continue;
+          // Strict canonical set check + fallback fuzzy check against full document text
+          if (listedSourceCanonicals.has(fileCanonical)) continue;
+          const fuzzyPrefix = fileCanonical.slice(0, Math.max(8, Math.floor(fileCanonical.length * 0.6)));
+          if (prehledCanonical.includes(fileCanonical) || prehledCanonical.includes(fuzzyPrefix)) {
+            listedSourceCanonicals.add(fileCanonical);
+            continue;
+          }
 
           console.log(`[sync] Reconciling missing file: "${file.name}"`);
           entriesToAdd.push({
             fileName: file.name,
             author: "neuvedeno",
-            summary: "(Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu)",
+            summary: "Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu.",
           });
+          listedSourceCanonicals.add(fileCanonical);
         }
 
+        // 5b. Append new entries in required architecture (no weekly headers)
         if (entriesToAdd.length > 0) {
           const existingSourceCount = (prehledContent.match(/Název zdroje:/g) || []).length;
           const formattedEntries = entriesToAdd.map((e, i) => {
             const sourceNum = existingSourceCount + i + 1;
             return [
-              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
               `Datum: ${dateStr}`,
+              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
               `Název zdroje: ${e.fileName}`,
               `Kdo požádal: ${e.author}`,
               `Stručný popis/shrnutí: ${e.summary}`,
               `Poznámky terapeuta: [ ]`,
               `Reakce Karla: [ ]`,
             ].join("\n");
-          }).join("\n\n---\n\n");
+          }).join("\n\n");
 
           await appendToGoogleDoc(token, prehledFile.id, formattedEntries);
+          prehledChanged = true;
           console.log(`[sync] 00_Prehled updated with ${entriesToAdd.length} new entries`);
         } else {
           console.log("[sync] No new entries for 00_Prehled");
@@ -692,7 +793,7 @@ PRAVIDLA:
       threadsProcessed: processedThreadIds.length,
       handbooksSaved: savedHandbooks,
       skippedDuplicates,
-      prehledUpdated: prehledEntries.length > 0 || savedHandbooks.length > 0,
+      prehledUpdated: prehledChanged,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
