@@ -434,7 +434,7 @@ serve(async (req) => {
     // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS FORMATTED DOC
     const savedHandbooks: string[] = [];
     const skippedDuplicates: string[] = [];
-    const prehledEntries: string[] = [];
+    const prehledEntries: Array<{ fileName: string; author: string; summary: string }> = [];
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
 
@@ -587,21 +587,22 @@ PRAVIDLA:
         continue;
       }
 
-      // 4e. Build prehled entry
-      const methodNames = (handbook.activities || []).map((a: any) => a.name || "").filter(Boolean).join(", ");
-      prehledEntries.push(
-        `[${dateStr}] ${topicName}\n` +
-        `  Autor: ${normalizedCreatedBy}\n` +
-        `  Shrnutí: ${(handbook.summary || "").slice(0, 200)}\n` +
-        `  Metody: ${methodNames || "neuvedeny"}\n` +
-        `  Dokument v 07_Knihovna: "${topicName}"`
-      );
+      // 4e. Build prehled entry - find the actual saved filename (Google Doc name)
+      // We need to list files again to get exact name with any extension
+      const latestFiles = await listFilesInFolder(token, knihovnaFolderId);
+      const savedFile = latestFiles.find(f => canonicalText(f.name) === canonicalText(topicName));
+      const exactFileName = savedFile ? savedFile.name : topicName;
+
+      prehledEntries.push({
+        fileName: exactFileName,
+        author: normalizedCreatedBy,
+        summary: (handbook.summary || "").slice(0, 200),
+      });
     }
 
-    // 5. UPDATE 00_Prehled with new entries + RECONCILE missing documents
+    // 5. UPDATE 00_Prehled — flat list of sources, no duplicates, no stats headers
     if (prehledFile) {
       try {
-        // Read current 00_Prehled content to find which files are already listed
         let prehledContent = "";
         try {
           prehledContent = await readGoogleDoc(token, prehledFile.id);
@@ -610,52 +611,68 @@ PRAVIDLA:
         }
 
         const prehledCanonical = canonicalText(prehledContent);
-
-        // Refresh file list in 07_Knihovna
         const allKnihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
-        const missingEntries: string[] = [];
 
+        // Collect ALL entries to potentially add (from new handbooks + reconciliation)
+        const entriesToAdd: Array<{ fileName: string; author: string; summary: string }> = [];
+
+        // Add new handbook entries
+        for (const entry of prehledEntries) {
+          // Double-check it's not already in existing doc
+          const entryCanonical = canonicalText(entry.fileName.replace(/\.\w{2,5}$/, ""));
+          if (entryCanonical.length > 6 && prehledCanonical.includes(entryCanonical)) continue;
+          entriesToAdd.push(entry);
+        }
+
+        // Reconcile: check all files in 07_Knihovna missing from 00_Prehled
         for (const file of allKnihovnaFiles) {
-          // Skip 00_PREHLED itself and folders
           if (canonicalText(file.name).startsWith("00prehled")) continue;
           if (file.mimeType === DRIVE_FOLDER_MIME) continue;
 
-          // Strip file extension (.pdf, .doc, etc.) before canonicalization
           const nameWithoutExt = file.name.replace(/\.\w{2,5}$/, "");
           const fileCanonical = canonicalText(nameWithoutExt);
           if (fileCanonical.length < 6) continue;
 
-          // Check if any meaningful substring (min 12 chars) of the file name exists in 00_Prehled
-          // This handles truncated filenames (e.g. "Pevnost_Tundru" vs "Pevnost Tundrupek")
+          // Check if already in 00_Prehled (exact or 60% substring match)
+          const matchLen = Math.floor(fileCanonical.length * 0.6);
           const isInPrehled = prehledCanonical.includes(fileCanonical) ||
-            (fileCanonical.length > 15 && prehledCanonical.includes(fileCanonical.slice(0, Math.floor(fileCanonical.length * 0.75))));
+            (fileCanonical.length > 12 && prehledCanonical.includes(fileCanonical.slice(0, matchLen)));
           if (isInPrehled) continue;
 
-          // Also check if it's in the new prehledEntries we're about to add
-          const alreadyInNew = prehledEntries.some(e => {
-            const entryCanonical = canonicalText(e);
-            return entryCanonical.includes(fileCanonical) ||
-              (fileCanonical.length > 15 && entryCanonical.includes(fileCanonical.slice(0, Math.floor(fileCanonical.length * 0.75))));
+          // Check if already in entries we're about to add
+          const alreadyInNew = entriesToAdd.some(e => {
+            const ec = canonicalText(e.fileName.replace(/\.\w{2,5}$/, ""));
+            return ec === fileCanonical || ec.includes(fileCanonical) || fileCanonical.includes(ec);
           });
           if (alreadyInNew) continue;
 
-          // This file is missing from 00_Prehled — add a reconciliation entry
-          console.log(`[sync] Reconciling missing file in 00_Prehled: "${file.name}"`);
-          missingEntries.push(
-            `[${dateStr}] ${file.name}\n` +
-            `  (Doplněno automatickou reconciliací – dokument existoval v 07_Knihovna, ale chyběl v přehledu)`
-          );
+          console.log(`[sync] Reconciling missing file: "${file.name}"`);
+          entriesToAdd.push({
+            fileName: file.name,
+            author: "neuvedeno",
+            summary: "(Doplněno automaticky – zdroj existoval v 07_Knihovna, ale chyběl v přehledu)",
+          });
         }
 
-        const allEntries = [...prehledEntries, ...missingEntries];
+        if (entriesToAdd.length > 0) {
+          const existingSourceCount = (prehledContent.match(/Název zdroje:/g) || []).length;
+          const formattedEntries = entriesToAdd.map((e, i) => {
+            const sourceNum = existingSourceCount + i + 1;
+            return [
+              `Zdroj ${String(sourceNum).padStart(2, "0")}`,
+              `Datum: ${dateStr}`,
+              `Název zdroje: ${e.fileName}`,
+              `Kdo požádal: ${e.author}`,
+              `Stručný popis/shrnutí: ${e.summary}`,
+              `Poznámky terapeuta: [ ]`,
+              `Reakce Karla: [ ]`,
+            ].join("\n");
+          }).join("\n\n---\n\n");
 
-        if (allEntries.length > 0) {
-          const reconcileNote = missingEntries.length > 0
-            ? `\nReconcilováno chybějících záznamů: ${missingEntries.length}\n`
-            : "";
-          const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${activeThreads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}${reconcileNote}\n${allEntries.join("\n\n")}`;
-          await appendToGoogleDoc(token, prehledFile.id, appendText);
-          console.log(`[sync] 00_Prehled updated with ${prehledEntries.length} new + ${missingEntries.length} reconciled entries`);
+          await appendToGoogleDoc(token, prehledFile.id, formattedEntries);
+          console.log(`[sync] 00_Prehled updated with ${entriesToAdd.length} new entries`);
+        } else {
+          console.log("[sync] No new entries for 00_Prehled");
         }
       } catch (e) {
         console.error("[sync] Failed to update 00_Prehled:", e);
