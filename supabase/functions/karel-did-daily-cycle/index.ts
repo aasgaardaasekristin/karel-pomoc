@@ -2691,13 +2691,21 @@ ${perplexityContext}`,
                 f.mimeType !== DRIVE_FOLDER_MIME && !f.name.startsWith("00_Prehled")
               );
 
-              // Build handbook summaries for AI analysis
+              // Build handbook summaries for AI analysis – skip already distributed ones
               let handbookContext = "";
+              const distributedHandbooks: string[] = [];
+              const undistributedHandbooks: Array<{ id: string; name: string }> = [];
               const MAX_HANDBOOK_CHARS = 2000;
               for (const hf of handbookFiles.slice(0, 10)) {
                 try {
                   const hContent = await readFileContent(token, hf.id);
+                  // Skip handbooks already distributed to kartotéka
+                  if (hContent.includes("[DISTRIBUOVÁNO DO KARTOTÉKY")) {
+                    console.log(`[knihovna] Skipping already distributed: "${hf.name}"`);
+                    continue;
+                  }
                   handbookContext += `\n\n=== PŘÍRUČKA: ${hf.name} ===\n${hContent.length > MAX_HANDBOOK_CHARS ? hContent.slice(0, MAX_HANDBOOK_CHARS) + "…" : hContent}`;
+                  undistributedHandbooks.push({ id: hf.id, name: hf.name });
                 } catch {}
               }
 
