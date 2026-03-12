@@ -333,7 +333,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
       {/* Agreements Panel */}
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <DidAgreementsPanel />
+        <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(prev => prev + 1)} />
       </div>
 
       {/* System Map */}
