@@ -584,6 +584,7 @@ PRAVIDLA:
         const newDoc = await createDocInFolder(token, topicName, knihovnaFolderId);
         await writeFormattedHandbook(token, newDoc.id, handbook);
         savedHandbooks.push(topicName);
+        processedThreadIds.push(thread.id);
         console.log(`[sync] Saved formatted handbook: "${topicName}"`);
       } catch (e) {
         console.error(`[sync] Failed to save "${topicName}":`, e);
