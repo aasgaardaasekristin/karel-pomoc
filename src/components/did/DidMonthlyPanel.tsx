@@ -38,6 +38,13 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
   useEffect(() => { loadData(); }, []);
   useEffect(() => { if (refreshTrigger > 0) loadData(true); }, [refreshTrigger]);
 
+  const handleDelete = async (cycleId: string) => {
+    const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
+    if (error) { toast.error("Nepodařilo se smazat záznam"); return; }
+    toast.success("Měsíční report smazán");
+    loadData(true);
+  };
+
   const handleRun = async () => {
     setRunning(true);
     toast.info("Spouštím měsíční analýzu... Může trvat 3-8 minut.");
