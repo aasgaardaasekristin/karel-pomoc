@@ -27,11 +27,6 @@ const DidAgreementsPanel = () => {
 
   useEffect(() => {
     loadData();
-    const intervalId = window.setInterval(() => {
-      loadData(true);
-    }, 30000);
-
-    return () => window.clearInterval(intervalId);
   }, []);
 
   const loadData = async (silent = false) => {
