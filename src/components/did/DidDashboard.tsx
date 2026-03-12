@@ -77,6 +77,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   useEffect(() => {
     if (prevIsUpdatingRef.current && !isUpdating) {
       loadDashboardData();
+      setRefreshTrigger(prev => prev + 1);
       try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {}
       setOverviewLoaded(false);
       setOverviewText("");
