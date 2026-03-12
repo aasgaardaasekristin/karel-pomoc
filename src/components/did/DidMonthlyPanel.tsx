@@ -107,7 +107,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
         const displayDate = cycle.completed_at || cycle.started_at;
 
         return (
-          <div key={cycle.id} className={`rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
+          <div key={cycle.id} className={`group rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
             <button
               onClick={() => !isRunning && setExpandedId(isExpanded ? null : cycle.id)}
               className="w-full p-3 text-left hover:bg-muted/30 transition-colors"
