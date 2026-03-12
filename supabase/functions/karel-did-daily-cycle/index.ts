@@ -3046,16 +3046,20 @@ Pouze části relevantní pro Kátinu roli (socializace, komunikace s kluky, šk
 <h3>📞 DNEŠNÍ MOST:</h3>
 "Dnes by stálo za to probrat s Hankou: [téma]"
 
-<h3>📋 TERAPEUTICKÝ PLÁN – KLÍČOVÉ BODY PRO KÁŤU:</h3>
+<h3>📋 OPERATIVNÍ PLÁN – KLÍČOVÉ BODY PRO KÁŤU:</h3>
 Shrň 4-6 bodů relevantních pro Kátinu roli:
 ▸ Konkrétní úkoly pro Káťu
 ▸ S jakými fragmenty pracovat a jak
-▸ Aktuální dohody a doporučení
+▸ Aktuální doporučení
+
+<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
+▸ Co Káťa splnila (pochvala)
+▸ Co zbývá (přímé otázky: "Káťo, jak jsi pokročila s [úkol]?")
 
 Podpis: "Karel"
 
 DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ TERAPEUTICKÝ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}` },
                 ],
               }),
             });
