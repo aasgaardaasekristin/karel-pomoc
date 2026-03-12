@@ -620,12 +620,23 @@ PRAVIDLA:
           if (canonicalText(file.name).startsWith("00prehled")) continue;
           if (file.mimeType === DRIVE_FOLDER_MIME) continue;
 
-          // Check if this file is already mentioned in 00_Prehled
-          const fileCanonical = canonicalText(file.name);
-          if (fileCanonical.length > 6 && prehledCanonical.includes(fileCanonical)) continue;
+          // Strip file extension (.pdf, .doc, etc.) before canonicalization
+          const nameWithoutExt = file.name.replace(/\.\w{2,5}$/, "");
+          const fileCanonical = canonicalText(nameWithoutExt);
+          if (fileCanonical.length < 6) continue;
+
+          // Check if any meaningful substring (min 12 chars) of the file name exists in 00_Prehled
+          // This handles truncated filenames (e.g. "Pevnost_Tundru" vs "Pevnost Tundrupek")
+          const isInPrehled = prehledCanonical.includes(fileCanonical) ||
+            (fileCanonical.length > 15 && prehledCanonical.includes(fileCanonical.slice(0, Math.floor(fileCanonical.length * 0.75))));
+          if (isInPrehled) continue;
 
           // Also check if it's in the new prehledEntries we're about to add
-          const alreadyInNew = prehledEntries.some(e => canonicalText(e).includes(fileCanonical));
+          const alreadyInNew = prehledEntries.some(e => {
+            const entryCanonical = canonicalText(e);
+            return entryCanonical.includes(fileCanonical) ||
+              (fileCanonical.length > 15 && entryCanonical.includes(fileCanonical.slice(0, Math.floor(fileCanonical.length * 0.75))));
+          });
           if (alreadyInNew) continue;
 
           // This file is missing from 00_Prehled — add a reconciliation entry
