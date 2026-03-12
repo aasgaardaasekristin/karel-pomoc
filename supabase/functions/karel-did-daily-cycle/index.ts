@@ -2447,9 +2447,22 @@ ${instructionContext ? `\n═══ INSTRUKCE PRO KARLA (z 00_CENTRUM) ═══
 ${driveContext ? `\nSOUČASNÝ SEZNAM ČÁSTÍ:\n${driveContext}` : ""}
 ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY:\n${existingCardsContext}` : ""}
 ${centrumDocsContext ? `\nEXISTUJÍCÍ DOKUMENTY 00_CENTRUM (pro deduplikaci – NEPIŠ info které tam už je):\n${centrumDocsContext}` : ""}
-${perplexityContext}`,
+${perplexityContext}
+
+═══ ACCOUNTABILITY ENGINE ═══
+Na základě seznamu nesplněných úkolů POVINNĚ vygeneruj blok na konci výstupu:
+
+[ACCOUNTABILITY]
+SPLNĚNÍ_HANKA: úkol | stav (splněno/nesplněno/neověřeno) | komentář
+SPLNĚNÍ_KATA: úkol | stav | komentář
+HODNOCENÍ_TÝMU: skóre 1-10, slovní hodnocení
+NESPLNĚNÉ_3+_DNÍ: seznam úkolů nesplněných 3+ dny → ESKALACE
+POZVÁNKA_NA_PORADU: ano/ne | důvod | navržený formát
+[/ACCOUNTABILITY]
+
+Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".`,
           },
-          { role: "user", content: allSummaries },
+          { role: "user", content: `${allSummaries}\n\n═══ NESPLNĚNÉ ÚKOLY TERAPEUTŮ ═══\n${pendingTasksSummary || "Žádné nesplněné úkoly"}` },
         ],
       }),
     });
