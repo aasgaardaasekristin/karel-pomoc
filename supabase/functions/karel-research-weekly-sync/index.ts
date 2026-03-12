@@ -404,13 +404,9 @@ serve(async (req) => {
       .eq("is_processed", false);
 
     if (threadsError) throw new Error(`DB error: ${threadsError.message}`);
-    if (!threads || threads.length === 0) {
-      return new Response(JSON.stringify({ success: true, message: "No research threads to process" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`Processing ${threads.length} research threads`);
+    
+    const activeThreads = threads || [];
+    console.log(`Found ${activeThreads.length} unprocessed research threads`);
 
     // 2. FIND 07_KNIHOVNA FOLDER
     const token = await getAccessToken();
