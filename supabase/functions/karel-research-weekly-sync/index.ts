@@ -70,6 +70,32 @@ async function readGoogleDoc(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+async function updateGoogleDocInPlace(token: string, fileId: string, content: string): Promise<void> {
+  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!docRes.ok) throw new Error(`Cannot read doc structure: ${docRes.status}`);
+  const doc = await docRes.json();
+  const endIndex = doc.body?.content?.slice(-1)?.[0]?.endIndex || 1;
+
+  const requests: any[] = [];
+  if (endIndex > 1) {
+    requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } });
+  }
+  requests.push({ insertText: { location: { index: 1 }, text: content } });
+
+  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests }),
+  });
+  if (!updateRes.ok) {
+    const errText = await updateRes.text();
+    console.error("Docs API in-place update error:", errText);
+    throw new Error(`Failed to update doc in place: ${updateRes.status}`);
+  }
+}
+
 async function appendToGoogleDoc(token: string, fileId: string, textToAppend: string): Promise<void> {
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -89,7 +115,7 @@ async function appendToGoogleDoc(token: string, fileId: string, textToAppend: st
   });
   if (!updateRes.ok) {
     const errText = await updateRes.text();
-    console.error("Docs API error:", errText);
+    console.error("Docs API append error:", errText);
     throw new Error(`Failed to append to doc: ${updateRes.status}`);
   }
 }
