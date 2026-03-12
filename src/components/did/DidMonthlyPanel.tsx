@@ -122,8 +122,19 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
                     {!isRunning && <Badge variant="outline" className="text-[9px] px-1 py-0">{cards.length} aktualizací</Badge>}
                   </div>
                 </div>
-                {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
-              </div>
+                <div className="flex items-center gap-1">
+                  {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
+                  {!isRunning && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(cycle.id); }}
+                      className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
             </button>
 
             {isExpanded && cycle.report_summary && (
