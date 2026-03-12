@@ -504,13 +504,13 @@ serve(async (req) => {
     const body = await req.json();
     const token = await getAccessToken();
 
-    // Find Kartoteka_DID folder
-    const folderId = await findFolder(token, "Kartoteka_DID")
-      || await findFolder(token, "Kartotéka_DID")
-      || await findFolder(token, "KARTOTEKA_DID");
+    // Find kartoteka_DID folder
+    const folderId = await findFolder(token, "kartoteka_DID")
+      || await findFolder(token, "Kartoteka_DID")
+      || await findFolder(token, "Kartotéka_DID");
 
     if (!folderId) {
-      return new Response(JSON.stringify({ error: "Kartoteka_DID folder not found" }), {
+      return new Response(JSON.stringify({ error: "kartoteka_DID folder not found" }), {
         status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

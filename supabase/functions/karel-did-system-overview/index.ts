@@ -115,7 +115,7 @@ serve(async (req) => {
     if (activePartNames.length > 0) {
       try {
         const token = await getAccessToken();
-        const kartotekaId = await findFolder(token, "Kartoteka_DID");
+        const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID");
         if (kartotekaId) {
           const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY");
           if (aktivniId) {

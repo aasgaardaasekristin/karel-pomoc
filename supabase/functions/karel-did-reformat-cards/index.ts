@@ -533,7 +533,7 @@ serve(async (req) => {
     // ═══ MODE: LIST ═══
     if (mode === "list") {
       // Also collect txt files
-      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "Kartoteka_DID");
+      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "kartoteka_DID");
       
       // Classify txt content if any
       let txtContentByPart: Record<string, string> = {};
