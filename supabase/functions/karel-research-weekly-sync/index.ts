@@ -439,6 +439,7 @@ serve(async (req) => {
     const savedHandbooks: string[] = [];
     const skippedDuplicates: string[] = [];
     const prehledEntries: string[] = [];
+    const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
 
     for (const thread of threads) {
