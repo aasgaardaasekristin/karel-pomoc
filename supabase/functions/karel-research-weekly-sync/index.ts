@@ -642,7 +642,7 @@ PRAVIDLA:
           const reconcileNote = missingEntries.length > 0
             ? `\nReconcilováno chybějících záznamů: ${missingEntries.length}\n`
             : "";
-          const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${threads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}${reconcileNote}\n${allEntries.join("\n\n")}`;
+          const appendText = `\nAKTUALIZACE ${dateStr}\nZpracováno vláken: ${activeThreads.length}\nUloženo příruček: ${savedHandbooks.length}\n${skippedDuplicates.length > 0 ? `Přeskočené duplicity: ${skippedDuplicates.join(", ")}\n` : ""}${reconcileNote}\n${allEntries.join("\n\n")}`;
           await appendToGoogleDoc(token, prehledFile.id, appendText);
           console.log(`[sync] 00_Prehled updated with ${prehledEntries.length} new + ${missingEntries.length} reconciled entries`);
         }
