@@ -86,3 +86,9 @@ verify_jwt = false
 
 [functions.karel-research-handbook]
 verify_jwt = false
+
+[functions.karel-did-session-prep]
+verify_jwt = false
+
+[functions.karel-did-monthly-cycle]
+verify_jwt = false

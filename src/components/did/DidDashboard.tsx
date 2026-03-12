@@ -341,6 +341,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(prev => prev + 1)} />
       </div>
 
+      {/* Monthly Panel */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+      </div>
+
       {/* System Map */}
       <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
 
