@@ -793,7 +793,7 @@ PRAVIDLA:
       threadsProcessed: processedThreadIds.length,
       handbooksSaved: savedHandbooks,
       skippedDuplicates,
-      prehledUpdated: prehledEntries.length > 0 || savedHandbooks.length > 0,
+      prehledUpdated: prehledChanged,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
