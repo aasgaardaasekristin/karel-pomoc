@@ -747,7 +747,7 @@ serve(async (req) => {
 
     // ═══ MODE: CLEANUP_TXT ═══
     if (mode === "cleanup_txt") {
-      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "Kartoteka_DID");
+      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "kartoteka_DID");
       const deleted: string[] = [];
       for (const f of txtFiles) {
         try {
