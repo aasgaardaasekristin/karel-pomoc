@@ -426,13 +426,13 @@ serve(async (req) => {
     }
     if (!knihovnaFolderId) throw new Error("Could not find/create 07_Knihovna");
 
-    // 3. FIND OR CREATE 00_Prehled DOC
+    // 3. FIND EXISTING 00_Prehled DOC (case-insensitive, never create a new one)
     const knihovnaFiles = await listFilesInFolder(token, knihovnaFolderId);
-    let prehledFile = knihovnaFiles.find(f => f.name.startsWith("00_Prehled"));
+    let prehledFile = knihovnaFiles.find(f => canonicalText(f.name).startsWith("00prehled"));
     if (!prehledFile) {
-      const created = await createFileInFolder(token, "00_Prehled", "PŘEHLED KNIHOVNY – PROFESNÍ ZDROJE\n\nZde se ukládají stručné přehledy nových zdrojů z Profesních rešerší.\n", knihovnaFolderId);
-      prehledFile = { id: created.id, name: "00_Prehled" };
-      console.log("[sync] Created 00_Prehled");
+      console.warn("[sync] 00_Prehled not found in 07_Knihovna – cannot update index. Continuing without it.");
+    } else {
+      console.log(`[sync] Found 00_Prehled: "${prehledFile.name}" (${prehledFile.id})`);
     }
 
     // 4. FOR EACH THREAD: GENERATE HANDBOOK + SAVE AS FORMATTED DOC
