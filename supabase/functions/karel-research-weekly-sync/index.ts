@@ -411,16 +411,22 @@ function extractListedSourceCanonicals(text: string): Set<string> {
     const line = rawLine.trim();
     if (!line) continue;
 
-    if (line.startsWith("Název zdroje:")) {
-      const name = line.replace(/^Název zdroje:\s*/i, "").trim();
-      const canonical = canonicalSourceName(name);
+    // Match ZDROJ_XX_YYYY-MM-DD: header with Téma on same or next line
+    const zdrojMatch = line.match(/^ZDROJ_\d+_\d{4}-\d{2}-\d{2}:/i);
+    if (zdrojMatch) continue; // The topic is on the Téma: line
+
+    // Match Téma: line (primary dedup key)
+    if (line.startsWith("Téma:")) {
+      const topic = line.replace(/^Téma:\s*/i, "").trim();
+      const canonical = canonicalSourceName(topic);
       if (canonical) listed.add(canonical);
       continue;
     }
 
-    const docMatch = line.match(/^Dokument v 07_Knihovna:\s*"(.+)"\s*$/i);
-    if (docMatch?.[1]) {
-      const canonical = canonicalSourceName(docMatch[1]);
+    // Legacy formats for backward compat
+    if (line.startsWith("Název zdroje:")) {
+      const name = line.replace(/^Název zdroje:\s*/i, "").trim();
+      const canonical = canonicalSourceName(name);
       if (canonical) listed.add(canonical);
       continue;
     }
@@ -433,6 +439,10 @@ function extractListedSourceCanonicals(text: string): Set<string> {
   }
 
   return listed;
+}
+
+function countExistingSources(text: string): number {
+  return (text.match(/^ZDROJ_\d+/gm) || []).length;
 }
 
 function cleanupReconFromPrehled(content: string): { cleaned: string; changed: boolean } {
