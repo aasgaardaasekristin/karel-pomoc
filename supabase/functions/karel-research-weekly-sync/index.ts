@@ -438,7 +438,7 @@ serve(async (req) => {
     const processedThreadIds: string[] = [];
     const dateStr = new Date().toISOString().slice(0, 10);
 
-    for (const thread of threads) {
+    for (const thread of activeThreads) {
       const msgs = (thread.messages || []) as { role: string; content: string }[];
       if (msgs.length < 2) {
         console.log(`[sync] Skipping thread "${thread.topic}" – too few messages`);
