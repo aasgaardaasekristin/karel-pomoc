@@ -122,10 +122,14 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       updates.completed_at = new Date().toISOString();
     } else {
       updates.status = "pending";
-      updates.completed_at = "";
+      updates.completed_at = null as any;
     }
 
-    await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
+    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
+    if (error) {
+      console.error("Traffic light update error:", error);
+      toast.error("Nepodařilo se změnit stav");
+    }
     loadTasks();
   };
 
