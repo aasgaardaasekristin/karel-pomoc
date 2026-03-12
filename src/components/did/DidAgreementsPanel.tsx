@@ -48,6 +48,13 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
     if (!silent) setLoading(false);
   };
 
+  const handleDeleteCycle = async (cycleId: string) => {
+    const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
+    if (error) { toast.error("Nepodařilo se smazat záznam"); return; }
+    toast.success("Týdenní report smazán");
+    loadData(true);
+  };
+
   const handleRunWeekly = async () => {
     setRunningWeekly(true);
     toast.info("Spouštím týdenní analýzu... Může trvat 2-5 minut.");
