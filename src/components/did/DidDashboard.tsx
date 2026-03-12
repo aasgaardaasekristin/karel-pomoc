@@ -328,7 +328,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           <ListChecks className="w-3.5 h-3.5 text-primary" />
           Úkoly pro terapeutky
         </h4>
-        <DidTherapistTaskBoard />
+        <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
       </div>
 
       {/* Agreements Panel */}
