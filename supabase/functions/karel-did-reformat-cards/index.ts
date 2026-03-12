@@ -497,11 +497,11 @@ serve(async (req) => {
     const token = await getAccessToken();
 
     // Find root
-    const findFolderQ = `name='Kartoteka_DID' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
+    const findFolderQ = `name='kartoteka_DID' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
     const findParams = new URLSearchParams({ q: findFolderQ, fields: "files(id)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
     const rootRes = await fetch(`https://www.googleapis.com/drive/v3/files?${findParams}`, { headers: { Authorization: `Bearer ${token}` } });
     const rootFolderId = (await rootRes.json()).files?.[0]?.id;
-    if (!rootFolderId) throw new Error("Kartoteka_DID not found");
+    if (!rootFolderId) throw new Error("kartoteka_DID not found");
 
     const rootChildren = await listFilesInFolder(token, rootFolderId);
     const rootFolders = rootChildren.filter(f => f.mimeType === DRIVE_FOLDER_MIME);
@@ -533,7 +533,7 @@ serve(async (req) => {
     // ═══ MODE: LIST ═══
     if (mode === "list") {
       // Also collect txt files
-      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "Kartoteka_DID");
+      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "kartoteka_DID");
       
       // Classify txt content if any
       let txtContentByPart: Record<string, string> = {};
@@ -747,7 +747,7 @@ serve(async (req) => {
 
     // ═══ MODE: CLEANUP_TXT ═══
     if (mode === "cleanup_txt") {
-      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "Kartoteka_DID");
+      const txtFiles = await collectTxtFilesRecursive(token, rootFolderId, "kartoteka_DID");
       const deleted: string[] = [];
       for (const f of txtFiles) {
         try {

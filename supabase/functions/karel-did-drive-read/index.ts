@@ -163,10 +163,10 @@ serve(async (req) => {
     const { documents, listAll, subFolder } = await req.json();
     const token = await getAccessToken();
 
-    // Find Kartotéka_DID folder
-    const rootFolderId = await findFolder(token, "Kartoteka_DID") 
-      || await findFolder(token, "Kartotéka_DID")
-      || await findFolder(token, "KARTOTEKA_DID");
+    // Find kartoteka_DID folder
+    const rootFolderId = await findFolder(token, "kartoteka_DID") 
+      || await findFolder(token, "Kartoteka_DID")
+      || await findFolder(token, "Kartotéka_DID");
 
     if (!rootFolderId) {
       return new Response(JSON.stringify({ 

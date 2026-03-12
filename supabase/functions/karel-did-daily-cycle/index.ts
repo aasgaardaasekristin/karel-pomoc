@@ -745,7 +745,7 @@ async function updateRegistryStatus(token: string, registryContext: RegistryCont
 
   // Actually, we already have registryContext which was loaded. We need the file ID.
   // Let's search for the registry file by name across the root.
-  const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+  const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
   if (!kartotekaId) return false;
 
   const allRootChildren = await listFilesInFolder(token, kartotekaId);
@@ -1480,8 +1480,8 @@ serve(async (req) => {
     if (requestBody?.syncRegistry) {
       const mode = requestBody.syncMode || "list";
       const token = await getAccessToken();
-      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
-      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+      if (!folderId) throw new Error("kartoteka_DID folder not found");
       const rc = await loadRegistryContext(token, folderId);
       if (!rc.activeFolderId) throw new Error("01_AKTIVNI_FRAGMENTY not found");
 
@@ -1576,8 +1576,8 @@ serve(async (req) => {
     // ═══ FAST-PATH: reformat only (no DB, no AI, no email) ═══
     if (requestBody?.reformat) {
       const token = await getAccessToken();
-      const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
-      if (!folderId) throw new Error("Kartotéka_DID folder not found");
+      const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+      if (!folderId) throw new Error("kartoteka_DID folder not found");
       
       // If partName specified, only reformat that one card
       const targetPart = requestBody?.partName as string | undefined;
@@ -1742,7 +1742,7 @@ serve(async (req) => {
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
-    const folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+    const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
 
     let registryContext: RegistryContext | null = null;
     if (folderId) {

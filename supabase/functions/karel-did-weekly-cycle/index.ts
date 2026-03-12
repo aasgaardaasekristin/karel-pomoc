@@ -324,7 +324,7 @@ serve(async (req) => {
     let folderId: string | null = null;
 
     const token = await getAccessToken();
-    folderId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID") || await findFolder(token, "KARTOTEKA_DID");
+    folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
 
     if (folderId) {
       const rootChildren = await listFilesInFolder(token, folderId);

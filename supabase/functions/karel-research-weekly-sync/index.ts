@@ -414,8 +414,8 @@ serve(async (req) => {
 
     // 2. FIND 07_KNIHOVNA FOLDER
     const token = await getAccessToken();
-    const kartotekaId = await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
-    if (!kartotekaId) throw new Error("Kartoteka_DID folder not found");
+    const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+    if (!kartotekaId) throw new Error("kartoteka_DID folder not found");
 
     const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
     if (!centrumId) throw new Error("00_CENTRUM folder not found");

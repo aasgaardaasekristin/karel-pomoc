@@ -43,7 +43,7 @@ serve(async (req) => {
     const token = await getAccessToken();
 
     // Find root
-    const q = `name='Kartoteka_DID' and mimeType='${FOLDER_MIME}' and trashed=false`;
+    const q = `name='kartoteka_DID' and mimeType='${FOLDER_MIME}' and trashed=false`;
     const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
     const rootId = ((await (await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })).json()).files?.[0]?.id);
 
