@@ -172,6 +172,10 @@ const DidAgreementsPanel = () => {
                         <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary">
                           <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> Běží...
                         </Badge>
+                      ) : isFailed ? (
+                        <Badge variant="destructive" className="text-[9px] px-1 py-0">
+                          <AlertCircle className="w-2.5 h-2.5 mr-0.5" /> Timeout/Chyba
+                        </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[9px] px-1 py-0">
                           {cards.length} aktualizací
