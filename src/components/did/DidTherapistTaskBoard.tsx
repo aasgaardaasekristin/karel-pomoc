@@ -122,10 +122,14 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       updates.completed_at = new Date().toISOString();
     } else {
       updates.status = "pending";
-      updates.completed_at = "";
+      updates.completed_at = null as any;
     }
 
-    await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
+    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
+    if (error) {
+      console.error("Traffic light update error:", error);
+      toast.error("Nepodařilo se změnit stav");
+    }
     loadTasks();
   };
 
@@ -264,11 +268,11 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 </button>
 
                 {/* Compact actions */}
-                <div className="flex items-center gap-0 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-0 shrink-0">
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setExpandedTask(isExpanded ? null : task.id)}
+                    onClick={(e) => { e.stopPropagation(); setExpandedTask(isExpanded ? null : task.id); }}
                     className="h-5 w-5 p-0"
                   >
                     {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
@@ -276,7 +280,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDelete(task.id)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }}
                     className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="w-2.5 h-2.5" />
