@@ -875,18 +875,26 @@ Podpis: "Karel"` },
       } catch (e) { console.error("[weekly] Email error:", e); }
     }
 
-    // ═══ 8. TRIGGER RESEARCH WEEKLY SYNC (fire-and-forget, don't block cycle) ═══
-    let researchSyncResult = "triggered";
+    // ═══ 8. TRIGGER RESEARCH WEEKLY SYNC (awaited with timeout) ═══
+    let researchSyncResult = "not_started";
     try {
-      // Fire-and-forget: don't await the response to avoid timeout
-      fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }).then(r => console.log(`[weekly] Research sync response: ${r.status}`))
-        .catch(e => console.warn("[weekly] Research sync fire-and-forget error:", e));
-      console.log("[weekly] Research sync triggered (fire-and-forget)");
-    } catch (e) { console.error("[weekly] Research sync trigger error:", e); }
+      console.log("[weekly] Starting research sync...");
+      const syncResp = await withTimeout(
+        fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        90000, // 90s timeout – enough for handbook generation
+        "Research weekly sync"
+      );
+      const syncBody = await syncResp.text();
+      researchSyncResult = syncResp.ok ? "completed" : `failed:${syncResp.status}`;
+      console.log(`[weekly] ✅ Research sync ${researchSyncResult}: ${syncBody.slice(0, 200)}`);
+    } catch (e) {
+      researchSyncResult = `error:${e instanceof Error ? e.message : "unknown"}`;
+      console.error("[weekly] Research sync error:", e);
+    }
 
     return new Response(JSON.stringify({
       success: true,
