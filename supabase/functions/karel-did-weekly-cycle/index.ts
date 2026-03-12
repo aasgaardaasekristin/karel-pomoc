@@ -863,11 +863,14 @@ ${perplexityContext}`,
           try {
             const docCanonical = canonicalText(docName);
 
-            // 05_Terapeuticky_Plan – FULL REWRITE
-            if (docCanonical.includes("terapeutick") && docCanonical.includes("plan")) {
-              const planFile = centerFiles.find(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("plan"));
+            // 05_Operativni_Plan (or legacy 05_Terapeuticky_Plan) – FULL REWRITE
+            if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
+              const planFile = centerFiles.find(f => {
+                const fc = canonicalText(f.name);
+                return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
+              });
               if (planFile) {
-                const planDocument = `TERAPEUTICKÝ PLÁN – AKTUÁLNÍ\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${newContent}`;
+                const planDocument = `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${newContent}`;
                 await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
                 cardsUpdated.push("05_Terapeuticky_Plan (týdenní přepis)");
                 console.log(`[weekly] ✅ Therapeutic plan rewritten`);
