@@ -1478,6 +1478,36 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             setDidFlowState("loading");
             await didThreads.fetchAllThreads(didSubMode);
             if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
+            
+            // AUTO-PREP: Load therapist tasks, recent threads, motivation profile
+            try {
+              const tn = didSubMode === "mamka" ? "hanka" : "kata";
+              const [tasksRes, threadsRes, profileRes] = await Promise.all([
+                supabase.from("did_therapist_tasks").select("task, assigned_to, status_hanka, status_kata, priority, due_date").neq("status", "done").order("created_at", { ascending: false }).limit(15),
+                supabase.from("did_threads").select("part_name, messages, last_activity_at").eq("sub_mode", didSubMode).order("last_activity_at", { ascending: false }).limit(3),
+                supabase.from("did_motivation_profiles").select("*").eq("therapist", tn).limit(1).maybeSingle(),
+              ]);
+              let ctx = "";
+              const tasks = (tasksRes.data || []).filter((t: any) => t.assigned_to === "both" || t.assigned_to === tn);
+              if (tasks.length > 0) {
+                ctx += `\n\n[AUTO-PREP: Úkoly pro ${tn}]\n` + tasks.slice(0, 10).map((t: any) => {
+                  const st = didSubMode === "mamka" ? t.status_hanka : t.status_kata;
+                  return `- [${st}] ${t.task} (${t.priority}${t.due_date ? `, ${t.due_date}` : ""})`;
+                }).join("\n");
+              }
+              const thr = threadsRes.data || [];
+              if (thr.length > 0) {
+                ctx += `\n\n[AUTO-PREP: Poslední rozhovory]\n` + thr.map((t: any) => {
+                  const msgs = ((t.messages as any[]) || []).slice(-3);
+                  const preview = msgs.map((m: any) => `${m.role === "user" ? "T" : "K"}: ${typeof m.content === "string" ? m.content.slice(0, 60) : ""}`).join(" | ");
+                  return `- ${t.part_name}: ${preview}`;
+                }).join("\n");
+              }
+              const p = profileRes.data;
+              if (p) ctx += `\n\n[AUTO-PREP: Profil ${tn}] Styl: ${p.preferred_style}, Streak: ${p.streak_current}/${p.streak_best}, Splněno/Nesplněno: ${p.tasks_completed}/${p.tasks_missed}`;
+              if (ctx) setDidInitialContext(prev => prev ? prev + ctx : ctx);
+            } catch (e) { console.warn("Auto-prep failed:", e); }
+            
             setDidFlowState("therapist-threads");
           }}
           onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
