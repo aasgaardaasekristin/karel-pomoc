@@ -149,9 +149,9 @@ serve(async (req) => {
     if (activePartNames.length > 0) {
       try {
         const token = await getAccessToken();
-        const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID");
+        const kartotekaId = await resolveKartotekaRoot(token);
         if (kartotekaId) {
-          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY");
+          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaId);
           if (aktivniId) {
             const partFiles = await listFilesInFolder(token, aktivniId);
             for (const partName of activePartNames.slice(0, 6)) {
