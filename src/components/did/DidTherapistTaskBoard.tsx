@@ -459,19 +459,84 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         <p className="text-[10px] text-muted-foreground text-center py-3">Zatím žádné úkoly.</p>
       )}
 
-      {/* DLOUHODOBÉ — passive list */}
+      {/* DLOUHODOBÉ — clean expandable list, no traffic lights */}
       {longtermList.length > 0 && (
         <div>
           <SectionHeader emoji="📋" label="Dlouhodobé" count={longtermList.length} max={MAX_LONGTERM} />
-          <div className="space-y-1">
-            {longtermList.slice(0, MAX_LONGTERM).map(task => (
-              <TaskCard key={task.id} task={task} {...sharedProps} extraActions={
-                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePromote(task.id, "today"); }} className="h-5 w-5 p-0" title="Povýšit na DNES">
-                  <ArrowUp className="w-2.5 h-2.5 text-primary" />
-                </Button>
-              } />
-            ))}
-            {longtermList.length > MAX_LONGTERM && <p className="text-[8px] text-muted-foreground text-center">+{longtermList.length - MAX_LONGTERM} dalších na Drive</p>}
+          <div className="space-y-0.5">
+            {longtermList.slice(0, MAX_LONGTERM).map(task => {
+              const isExp = expandedTask === task.id;
+              const driveLink = task.source_agreement?.startsWith("http")
+                ? task.source_agreement
+                : task.source_agreement
+                ? `https://drive.google.com/drive/search?q=${encodeURIComponent(task.source_agreement)}`
+                : null;
+              const priorityLabel = task.priority === "high" ? "⚡ Urgentní" : task.priority === "normal" ? "📌 Běžná" : "🕐 Nízká";
+              const assigneeLabel = task.assigned_to === "hanka" ? "👩 Hanka" : task.assigned_to === "kata" ? "👩‍🦰 Káťa" : "👩‍👩‍👧 Obě";
+
+              return (
+                <div key={task.id} className="group">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      className="flex-1 min-w-0 text-left py-1 px-1.5 rounded transition-colors hover:bg-accent/30"
+                      onClick={() => setExpandedTask(isExp ? null : task.id)}
+                    >
+                      <span className="text-[11px] text-foreground/80 leading-tight">{task.task}</span>
+                    </button>
+                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePromote(task.id, "today"); }} className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Povýšit na DNES">
+                      <ArrowUp className="w-2.5 h-2.5 text-primary" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive">
+                      <Trash2 className="w-2.5 h-2.5" />
+                    </Button>
+                  </div>
+
+                  {isExp && (
+                    <div className="ml-1.5 pl-2.5 border-l-2 border-primary/20 mb-2 mt-0.5 space-y-1 animate-in fade-in-0 slide-in-from-top-1 duration-150">
+                      {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{task.note}</p>}
+
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-muted-foreground">
+                        <span>{priorityLabel}</span>
+                        <span>{assigneeLabel}</span>
+                        {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
+                      </div>
+
+                      {task.source_agreement && (
+                        <div className="flex items-center gap-1 text-[9px]">
+                          <span className="text-muted-foreground truncate max-w-[220px]">📄 {task.source_agreement}</span>
+                          {driveLink && (
+                            <a href={driveLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline shrink-0">
+                              <ExternalLink className="w-2.5 h-2.5" /> Otevřít
+                            </a>
+                          )}
+                        </div>
+                      )}
+
+                      {task.completed_note && (
+                        <div className="text-[9px] text-muted-foreground bg-muted/30 rounded px-1.5 py-1 whitespace-pre-line">
+                          <MessageSquare className="w-2.5 h-2.5 inline mr-0.5 opacity-60" />
+                          {task.completed_note}
+                        </div>
+                      )}
+
+                      <div className="flex gap-1 pt-0.5">
+                        <Input
+                          value={noteInputs[task.id] || ""}
+                          onChange={(e) => setNoteInputs(prev => ({ ...prev, [task.id]: e.target.value }))}
+                          placeholder="Poznámka..."
+                          className="flex-1 h-6 text-[9px] bg-background"
+                          onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(task.id); }}
+                        />
+                        <Button size="sm" onClick={() => handleAddNote(task.id)} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim()}>
+                          <Send className="w-2.5 h-2.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {longtermList.length > MAX_LONGTERM && <p className="text-[8px] text-muted-foreground text-center pt-1">+{longtermList.length - MAX_LONGTERM} dalších na Drive</p>}
           </div>
         </div>
       )}
