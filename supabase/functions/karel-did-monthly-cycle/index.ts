@@ -184,14 +184,15 @@ serve(async (req) => {
     // ═══ GATHER DATA ═══
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+    // NO report_summary – only metadata. Drive is the single source of truth.
     const [dailyCyclesRes, weeklyCyclesRes, threadsRes, tasksRes] = await Promise.all([
       supabaseAdmin.from("did_update_cycles")
-        .select("report_summary, completed_at, cards_updated")
+        .select("completed_at, cards_updated")
         .eq("cycle_type", "daily").eq("status", "completed")
         .gte("completed_at", thirtyDaysAgo)
         .order("completed_at", { ascending: false }),
       supabaseAdmin.from("did_update_cycles")
-        .select("report_summary, completed_at")
+        .select("completed_at")
         .eq("cycle_type", "weekly").eq("status", "completed")
         .gte("completed_at", thirtyDaysAgo)
         .order("completed_at", { ascending: false }),
