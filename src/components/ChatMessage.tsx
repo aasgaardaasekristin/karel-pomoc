@@ -4,6 +4,7 @@ import { Copy, Check, Mail, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { parseTaskSuggestions, TaskSuggestInline } from "@/components/did/TaskSuggestButtons";
 
 interface Message {
   role: "user" | "assistant";
