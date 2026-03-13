@@ -116,8 +116,19 @@ serve(async (req) => {
       console.warn("Drive read failed:", e);
     }
 
-    // 2. Recent threads (last 7 days) – ALL sub_modes
+    // 2. Recent threads – split by timeframe
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    
+    // Last 24h threads (for daily focus)
+    const { data: last24hThreads } = await sb
+      .from("did_threads")
+      .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+      .gte("last_activity_at", twentyFourHoursAgo)
+      .order("last_activity_at", { ascending: false })
+      .limit(30);
+
+    // Last 7 days threads (for weekly context)
     const { data: recentThreads } = await sb
       .from("did_threads")
       .select("part_name, sub_mode, last_activity_at, messages, is_processed")
@@ -125,18 +136,36 @@ serve(async (req) => {
       .order("last_activity_at", { ascending: false })
       .limit(30);
 
-    // Build thread summaries separated by type
-    let threadSummary = "";
-    let therapistSummary = "";
-    if (recentThreads && recentThreads.length > 0) {
-      for (const t of recentThreads) {
-        const msgs = Array.isArray(t.messages) ? t.messages : [];
-        const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
-        const entry = `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+    // Build thread summaries separated by type AND timeframe
+    let threadSummary24h = "";
+    let therapistSummary24h = "";
+    let threadSummaryWeek = "";
+    let therapistSummaryWeek = "";
+    
+    const formatThreadEntry = (t: any) => {
+      const msgs = Array.isArray(t.messages) ? t.messages : [];
+      const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
+      return `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+    };
+
+    if (last24hThreads) {
+      for (const t of last24hThreads) {
+        const entry = formatThreadEntry(t);
         if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
-          therapistSummary += entry;
+          therapistSummary24h += entry;
         } else {
-          threadSummary += entry;
+          threadSummary24h += entry;
+        }
+      }
+    }
+    
+    if (recentThreads) {
+      for (const t of recentThreads) {
+        const entry = formatThreadEntry(t);
+        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
+          therapistSummaryWeek += entry;
+        } else {
+          threadSummaryWeek += entry;
         }
       }
     }
