@@ -1494,6 +1494,20 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
       );
     }
 
+    // Meeting view
+    if (didFlowState === "meeting") {
+      return (
+        <DidMeetingPanel
+          meetingId={meetingIdFromUrl}
+          therapist={meetingTherapist}
+          onBack={() => {
+            setDidFlowState("terapeut");
+            setMeetingIdFromUrl(null);
+          }}
+        />
+      );
+    }
+
     // PIN entry for therapists
     if (didFlowState === "pin-entry" && (didSubMode === "mamka" || didSubMode === "kata")) {
       const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
