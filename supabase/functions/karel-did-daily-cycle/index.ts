@@ -3113,6 +3113,80 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
     }
 
+    // ═══ FLUSH PENDING DRIVE WRITES ═══
+    try {
+      const { data: pendingWrites } = await sb.from("did_pending_drive_writes")
+        .select("*")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .limit(50);
+
+      if (pendingWrites && pendingWrites.length > 0 && folderId) {
+        console.log(`[daily-cycle] Flushing ${pendingWrites.length} pending Drive writes`);
+        const centrumId = await findFolder(token, "00_CENTRUM");
+        if (centrumId) {
+          const centerFiles = await listFilesInFolder(token, centrumId);
+          for (const pw of pendingWrites) {
+            try {
+              const targetFile = centerFiles.find(f =>
+                f.mimeType !== DRIVE_FOLDER_MIME &&
+                canonicalText(f.name).includes(canonicalText(pw.target_document))
+              );
+              if (targetFile) {
+                const existing = await readFileContent(token, targetFile.id);
+                if (!existing.includes(pw.content.slice(0, 60))) {
+                  const dateStr = new Date().toISOString().slice(0, 10);
+                  const updated = existing.trimEnd() + `\n\n[${dateStr}] Nový úkol z nástěnky:\n${pw.content}`;
+                  await updateFileById(token, targetFile.id, updated, targetFile.mimeType);
+                  console.log(`[pending-write] ✅ Flushed to ${pw.target_document}`);
+                }
+              }
+              await sb.from("did_pending_drive_writes").update({ status: "done", processed_at: new Date().toISOString() }).eq("id", pw.id);
+            } catch (pwErr) {
+              console.warn(`[pending-write] Failed for ${pw.id}:`, pwErr);
+              await sb.from("did_pending_drive_writes").update({ status: "failed" }).eq("id", pw.id);
+            }
+          }
+        }
+      }
+    } catch (flushErr) {
+      console.warn("[daily-cycle] Pending writes flush error (non-fatal):", flushErr);
+    }
+
+    // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks ═══
+    try {
+      const { data: allTasks } = await sb.from("did_therapist_tasks")
+        .select("id, task, assigned_to, status, status_hanka, status_kata, created_at, escalation_level, category")
+        .neq("status", "done");
+
+      if (allTasks && allTasks.length > 0) {
+        const now = Date.now();
+        for (const t of allTasks) {
+          const ageDays = (now - new Date(t.created_at).getTime()) / (24 * 60 * 60 * 1000);
+          const currentLevel = t.escalation_level || 0;
+          let newLevel = currentLevel;
+
+          // Level 1: gentle reminder after 3 days
+          if (ageDays >= 3 && currentLevel < 1) newLevel = 1;
+          // Level 2: direct question after 5 days
+          if (ageDays >= 5 && currentLevel < 2) newLevel = 2;
+          // Level 3: meeting proposal after 7 days
+          if (ageDays >= 7 && currentLevel < 3) newLevel = 3;
+
+          if (newLevel > currentLevel) {
+            await sb.from("did_therapist_tasks").update({
+              escalation_level: newLevel,
+              priority: newLevel >= 2 ? "high" : t.priority || "normal",
+              updated_at: new Date().toISOString(),
+            }).eq("id", t.id);
+            console.log(`[escalation] Task "${t.task.slice(0, 40)}" escalated to level ${newLevel}`);
+          }
+        }
+      }
+    } catch (escErr) {
+      console.warn("[daily-cycle] Escalation logic error (non-fatal):", escErr);
+    }
+
     // ═══ AUTO-CLEANUP: remove old duplicates and completed tasks from therapist task board ═══
     try {
       // 1. Remove tasks completed (both statuses "done") more than 14 days ago
@@ -3123,14 +3197,14 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
         .lt("completed_at", fourteenDaysAgo);
 
       // 2. Remove exact duplicate tasks (same task text, same assigned_to, same status, keep newest)
-      const { data: allTasks } = await sb.from("did_therapist_tasks")
+      const { data: allTasksCleanup } = await sb.from("did_therapist_tasks")
         .select("id, task, assigned_to, status, created_at")
         .order("created_at", { ascending: false });
 
-      if (allTasks && allTasks.length > 0) {
+      if (allTasksCleanup && allTasksCleanup.length > 0) {
         const seen = new Set<string>();
         const dupeIds: string[] = [];
-        for (const t of allTasks) {
+        for (const t of allTasksCleanup) {
           const key = `${t.task.trim().toLowerCase()}|${t.assigned_to}`;
           if (seen.has(key)) {
             dupeIds.push(t.id);
