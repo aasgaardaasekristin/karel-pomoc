@@ -512,12 +512,16 @@ ${driveContext || "(nedostupné)"}`;
       if (resendKey && kataEmail) {
         const resend = new Resend(resendKey);
         const month = new Date().toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
+        const cleanupSection = cleanupIssues.length > 0
+          ? `<h3>📋 Návrh na úklid kartotéky (${cleanupIssues.length} problémů)</h3><ul>${cleanupIssues.map(i => `<li>${i}</li>`).join("")}</ul><p><small>Karel nic nesmazal — pouze navrhuje. Zkontrolujte a případně smažte ručně.</small></p>`
+          : "";
         await resend.emails.send({
-          from: "Karel <karel@resend.dev>",
+          from: "Karel <karel@hana-chlebcova.cz>",
           to: [kataEmail],
           subject: `📊 Měsíční report DID systému — ${month}`,
           html: `<h2>Měsíční report DID systému</h2>
 <pre style="white-space: pre-wrap; font-family: sans-serif; font-size: 13px;">${reportText.slice(0, 8000)}</pre>
+${cleanupSection}
 <hr>
 <p><small>Aktualizováno dokumentů: ${cardsUpdated.length}</small></p>
 <p><small>Redistribuce: ${cardsUpdated.join(", ") || "žádné"}</small></p>`,
