@@ -699,7 +699,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                         <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
                           {isPendingForTask(task)
                             ? "🆕 Nový úkol — v Drive zatím není. Zapíše se po kliknutí na „Aktual. kartotéku“."
-                            : "⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku" se úkol zkusí zapsat znovu."}
+                            : "⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku“ se úkol zkusí zapsat znovu."}
                         </div>
                       )}
 
