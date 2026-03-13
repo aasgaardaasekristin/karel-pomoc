@@ -196,9 +196,7 @@ serve(async (req) => {
     const token = await getAccessToken();
 
     // Find kartoteka_DID folder
-    const rootFolderId = await findFolder(token, "kartoteka_DID") 
-      || await findFolder(token, "Kartoteka_DID")
-      || await findFolder(token, "Kartotéka_DID");
+    const rootFolderId = await resolveKartotekaRoot(token);
 
     if (!rootFolderId) {
       return new Response(JSON.stringify({ 
