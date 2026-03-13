@@ -537,6 +537,7 @@ ${cleanupSection}
       cardsUpdated,
       keyInsights: analysis.key_insights || [],
       statusChanges: analysis.status_changes || [],
+      cleanupIssues: cleanupIssues.length > 0 ? cleanupIssues : undefined,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
