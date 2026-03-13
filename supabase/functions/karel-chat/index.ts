@@ -31,7 +31,7 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 
-    // ═══ RUNTIME INJECTION: Pending therapist tasks for proactive follow-up ═══
+    // ═══ RUNTIME INJECTION: Pending therapist tasks + Karel's Insight for proactive follow-up ═══
     if (mode === "childcare" && (didSubMode === "mamka" || didSubMode === "kata")) {
       try {
         const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
@@ -39,22 +39,63 @@ serve(async (req) => {
           Deno.env.get("SUPABASE_URL")!,
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         );
+
+        // Load tasks
         const { data: tasks } = await sb.from("did_therapist_tasks")
-          .select("task, assigned_to, status_hanka, status_kata, priority, due_date, created_at")
+          .select("task, assigned_to, status_hanka, status_kata, priority, due_date, created_at, category, escalation_level")
           .neq("status", "done")
           .order("priority", { ascending: false });
 
+        // Load motivation profiles
+        const { data: profiles } = await sb.from("did_motivation_profiles").select("*");
+
+        const therapist = didSubMode === "mamka" ? "Hanka" : "Káťa";
+        const profile = profiles?.find((p: any) => p.therapist === therapist);
+
         if (tasks && tasks.length > 0) {
-          const therapist = didSubMode === "mamka" ? "Hanka" : "Káťa";
           const taskList = tasks.map((t: any) => {
             const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-            const escalation = age >= 3 ? " ⚠️ ESKALACE (3+ dní!)" : "";
-            return `- [${t.priority}${escalation}] ${t.task} (pro: ${t.assigned_to}, Hanka: ${t.status_hanka}, Káťa: ${t.status_kata}${t.due_date ? `, termín: ${t.due_date}` : ""}, stáří: ${age}d)`;
+            const esc = (t.escalation_level || 0) >= 1 ? ` ⚠️ ESKALACE L${t.escalation_level}` : "";
+            return `- [${t.priority}${esc}] ${t.task} (pro: ${t.assigned_to}, H: ${t.status_hanka}, K: ${t.status_kata}${t.due_date ? `, termín: ${t.due_date}` : ""}, ${age}d)`;
           }).join("\n");
-          systemPrompt += `\n\n═══ AKTUÁLNÍ NESPLNĚNÉ ÚKOLY ═══\nKarel, na začátku rozhovoru se ZEPTEJ ${therapist === "Hanka" ? "Haničky" : "Káti"} na stav těchto úkolů:\n${taskList}\n\nPokud je úkol starší 3 dní a nesplněný, Karel laskavě ale důsledně upozorní a navrhne řešení. Pokud více úkolů pokulhává, Karel navrhne "poradu" – strukturované sezení o strategii.`;
+
+          // Build insight context
+          let insightBlock = "";
+          if (profile) {
+            const ratio = profile.tasks_completed / Math.max(1, profile.tasks_completed + profile.tasks_missed);
+            const avgDays = Number(profile.avg_completion_days || 0);
+            insightBlock += `\n\n═══ KARLŮV POSTŘEH (proaktivní insight) ═══`;
+            insightBlock += `\nMotivační profil ${therapist}: splněno ${profile.tasks_completed}, nesplněno ${profile.tasks_missed} (${Math.round(ratio*100)}%), průměr ${avgDays.toFixed(1)}d, série ${profile.streak_current}`;
+            insightBlock += `\nPreferovaný styl: ${profile.preferred_style}`;
+
+            // Pattern analysis
+            const escalated = tasks.filter((t: any) => (t.escalation_level || 0) >= 2);
+            const oldTasks = tasks.filter((t: any) => {
+              const age = (Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24);
+              return age > 5;
+            });
+
+            if (escalated.length > 0) {
+              insightBlock += `\n⚠️ ${escalated.length} úkolů dosáhlo eskalace level 2+. Karel by měl laskavě ale důsledně upozornit.`;
+            }
+            if (oldTasks.length >= 3) {
+              insightBlock += `\n⚠️ ${oldTasks.length} úkolů je starších 5 dní. Karel navrhne "rychlou poradu" o prioritách.`;
+            }
+            if (profile.streak_current >= 3) {
+              insightBlock += `\n🌟 ${therapist} má sérii ${profile.streak_current} splněných úkolů! Karel pochválí a povzbudí.`;
+            }
+            if (avgDays > 4 && profile.preferred_style === "deadline") {
+              insightBlock += `\nKarel ví, že ${therapist} reaguje lépe na konkrétní termíny — zahrne je do doporučení.`;
+            }
+            if (profile.preferred_style === "praise") {
+              insightBlock += `\nKarel ví, že ${therapist} reaguje lépe na pochvaly — začne pozitivním hodnocením.`;
+            }
+          }
+
+          systemPrompt += `\n\n═══ AKTUÁLNÍ NESPLNĚNÉ ÚKOLY ═══\nKarel, na začátku rozhovoru se ZEPTEJ ${therapist === "Hanka" ? "Haničky" : "Káti"} na stav těchto úkolů:\n${taskList}\n\nPokud je úkol starší 4 dní a nesplněný, Karel laskavě ale důsledně upozorní a navrhne řešení. Pokud více úkolů pokulhává, Karel navrhne "poradu" – strukturované sezení o strategii.${insightBlock}`;
         }
       } catch (e) {
-        console.warn("Task injection error (non-fatal):", e);
+        console.warn("Task/insight injection error (non-fatal):", e);
       }
     }
 
