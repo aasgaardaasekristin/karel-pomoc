@@ -435,6 +435,66 @@ ${driveContext || "(nedostupné)"}`;
       }
     }
 
+    // ═══ DRIVE AUTO-CLEANUP AUDIT ═══
+    let cleanupIssues: string[] = [];
+    try {
+      const token = await getAccessToken();
+      const kartotekaId = await findFolder(token, "kartoteka_DID");
+      if (kartotekaId) {
+        const allFolders = await listFilesInFolder(token, kartotekaId);
+        
+        const TXT_MIME = "text/plain";
+        const FOLDER_MIME = "application/vnd.google-apps.folder";
+        const DOC_MIME = "application/vnd.google-apps.document";
+        
+        // Scan ALL subfolders for issues
+        for (const folder of allFolders) {
+          if (folder.mimeType !== FOLDER_MIME) continue;
+          
+          const files = await listFilesInFolder(token, folder.id);
+          const docNames = new Map<string, number>();
+          
+          for (const file of files) {
+            if (file.mimeType === FOLDER_MIME) continue;
+            
+            // Issue 1: .txt files that should be Google Docs
+            if (file.mimeType === TXT_MIME || file.name.endsWith(".txt") || file.name.endsWith(".md")) {
+              cleanupIssues.push(`📄 Nekonvertovaný soubor: "${file.name}" v ${folder.name} (měl by být Google Doc)`);
+            }
+            
+            // Issue 2: Duplicate card names (same canonical name)
+            const canonical = canonicalText(file.name);
+            const count = (docNames.get(canonical) || 0) + 1;
+            docNames.set(canonical, count);
+            if (count === 2) {
+              cleanupIssues.push(`🔄 Duplicitní karta: "${file.name}" v ${folder.name} (existuje ${count}x)`);
+            }
+            
+            // Issue 3: Empty documents (try to read and check)
+            if (file.mimeType === DOC_MIME && files.length < 30) { // Only check in small folders to avoid timeout
+              try {
+                const content = await readFileContent(token, file.id);
+                if (content.trim().length < 10) {
+                  cleanupIssues.push(`🗑️ Prázdný dokument: "${file.name}" v ${folder.name}`);
+                }
+              } catch { /* skip unreadable */ }
+            }
+          }
+        }
+        
+        // Cap at 20 issues to keep email manageable
+        if (cleanupIssues.length > 20) {
+          const total = cleanupIssues.length;
+          cleanupIssues = cleanupIssues.slice(0, 20);
+          cleanupIssues.push(`... a dalších ${total - 20} problémů`);
+        }
+        
+        console.log(`Drive cleanup audit found ${cleanupIssues.length} issues`);
+      }
+    } catch (e) {
+      console.warn("Drive cleanup audit error (non-fatal):", e);
+    }
+
     // ═══ UPDATE CYCLE RECORD ═══
     if (cycleId) {
       await supabaseAdmin.from("did_update_cycles").update({
