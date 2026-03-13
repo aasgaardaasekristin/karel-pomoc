@@ -164,7 +164,7 @@ const extractNotebookLMSection = (content: string): string | null => {
   return handoverMatch ? handoverMatch[0].trim() : null;
 };
 
-const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
+const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProps) => {
   const isUser = message.role === "user";
 
   if (isUser) {
