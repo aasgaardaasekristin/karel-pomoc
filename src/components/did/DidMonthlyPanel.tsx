@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, BarChart3, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, BarChart3, RefreshCw, Trash2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -21,6 +21,9 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [retroLoading, setRetroLoading] = useState(false);
+  const [retroText, setRetroText] = useState<string | null>(null);
+  const [showRetro, setShowRetro] = useState(false);
 
   const loadData = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -91,12 +94,48 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
           <BarChart3 className="w-3.5 h-3.5 text-primary" />
           Měsíční přehledy
         </h4>
-        <Button variant="outline" size="sm" onClick={handleRun} disabled={running || hasRunning} className="h-6 text-[10px] px-2">
-          {running ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</> :
-           hasRunning ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</> :
-           <><RefreshCw className="w-3 h-3 mr-1" /> Spustit měsíční analýzu</>}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={async () => {
+            if (retroText) { setShowRetro(!showRetro); return; }
+            setRetroLoading(true);
+            try {
+              const headers = await getAuthHeaders();
+              const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-monthly-retrospective`, { method: "POST", headers, body: JSON.stringify({}) });
+              if (!resp.ok) throw new Error("Chyba serveru");
+              const data = await resp.json();
+              setRetroText(data.retrospective || "Prázdná retrospektiva.");
+              setShowRetro(true);
+            } catch { toast.error("Nepodařilo se načíst retrospektivu"); }
+            finally { setRetroLoading(false); }
+          }} disabled={retroLoading} className="h-6 text-[10px] px-2">
+            {retroLoading ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Generuji...</> : <><FileText className="w-3 h-3 mr-1" /> Retrospektiva</>}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRun} disabled={running || hasRunning} className="h-6 text-[10px] px-2">
+            {running ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</> :
+             hasRunning ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</> :
+             <><RefreshCw className="w-3 h-3 mr-1" /> Měsíční analýza</>}
+          </Button>
+        </div>
       </div>
+
+      {showRetro && retroText && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div className="prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed">
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => <h1 className="text-sm font-bold text-foreground mt-2 mb-1 first:mt-0">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-xs font-semibold text-foreground mt-2 mb-1">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-[11px] font-medium text-foreground mt-1.5 mb-0.5">{children}</h3>,
+                p: ({ children }) => <p className="text-muted-foreground mb-1.5 leading-relaxed">{children}</p>,
+                strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
+                li: ({ children }) => <li className="text-muted-foreground ml-3 mb-0.5">{children}</li>,
+              }}
+            >
+              {retroText}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
 
       {cycles.length === 0 ? (
         <p className="text-xs text-muted-foreground text-center py-3">Zatím žádné měsíční reporty.</p>
