@@ -458,6 +458,18 @@ serve(async (req) => {
       try {
         // Build focused research query based on active fragments
         const activeFragments = cardNames.filter(n => n.includes("AKTIVNÍ")).map(n => n.replace(" [AKTIVNÍ]", "")).join(", ");
+        
+        // Extract talent keywords from card content for personalized research
+        const talentKeywords: string[] = [];
+        const talentRegex = /TALENT:\s*([^|]+)/gi;
+        let talentMatch;
+        while ((talentMatch = talentRegex.exec(allCardsContent)) !== null) {
+          talentKeywords.push(talentMatch[1].trim());
+        }
+        const talentContext = talentKeywords.length > 0
+          ? `\n8. Educational activities for DID alters with specific talents: ${talentKeywords.join(", ")} – age-appropriate exercises, games, and development plans`
+          : `\n8. Educational activities for DID alters with specific talents (music, physics, art, languages) – how to develop each alter's unique abilities as functional life skills`;
+
         const researchQuery = `DID (Dissociative Identity Disorder) therapeutic approaches 2024-2025:
 1. Novel methods for working with child alters and protectors in DID therapy
 2. Evidence-based techniques for inter-part communication and cooperation
@@ -465,7 +477,7 @@ serve(async (req) => {
 4. Strategies for safe awakening of dormant alters
 5. Crisis prevention and safety planning for DID systems
 6. Long-term integration strategies and functional daily living with DID
-7. School and social adaptation strategies for DID systems with child-age alters
+7. School and social adaptation strategies for DID systems with child-age alters${talentContext}
 Active parts in this system: ${activeFragments}`;
 
         const pRes = await withTimeout(fetch("https://api.perplexity.ai/chat/completions", {
