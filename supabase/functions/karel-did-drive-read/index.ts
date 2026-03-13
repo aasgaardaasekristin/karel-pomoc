@@ -230,6 +230,7 @@ serve(async (req) => {
     // Read requested documents — search recursively through all subfolders
     const result: Record<string, string> = {};
     const requestedDocs: string[] = documents || [];
+    const shouldUseGlobalSearch = allowGlobalSearch === true || !subFolder;
 
     for (const docName of requestedDocs) {
       // Search recursively from the target folder
