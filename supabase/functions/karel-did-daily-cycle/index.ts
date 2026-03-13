@@ -3135,7 +3135,51 @@ ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je s
       }
     }
 
-    // 6. ALWAYS mark threads and conversations as processed to prevent repeated emails
+    // ═══ AUTO-CREATE MEETING if Karel calls one in the reports ═══
+    try {
+      const combinedReportText = (hankaHtml || "") + " " + (kataHtml || "") + " " + aiReportText;
+      const meetingMatch = combinedReportText.match(/KAREL SVOL[ÁA]V[ÁA] PORADU/i);
+      if (meetingMatch && shouldSendEmails) {
+        // Extract topic from report
+        const topicMatch = combinedReportText.match(/KAREL SVOL[ÁA]V[ÁA] PORADU[\s\S]*?[Tt][ée]ma:\s*([^\n<]+)/i);
+        const whyMatch = combinedReportText.match(/KAREL SVOL[ÁA]V[ÁA] PORADU[\s\S]*?[Pp]ro[čc]:\s*([^\n<]+)/i);
+        const proposalMatch = combinedReportText.match(/KAREL SVOL[ÁA]V[ÁA] PORADU[\s\S]*?[Cc]o Karel navrhuje:\s*([^\n<]+)/i);
+        
+        const meetingTopic = topicMatch?.[1]?.trim() || "Porada svolaná Karlem";
+        const meetingAgenda = [
+          whyMatch?.[1]?.trim() ? `Proč: ${whyMatch[1].trim()}` : "",
+          proposalMatch?.[1]?.trim() ? `Návrh: ${proposalMatch[1].trim()}` : "",
+        ].filter(Boolean).join("\n");
+
+        // Create meeting via the meeting function
+        try {
+          const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+          const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
+          const meetingResp = await fetch(`${SUPABASE_URL}/functions/v1/karel-did-meeting`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+            },
+            body: JSON.stringify({
+              action: "create",
+              message: meetingTopic,
+              therapist: meetingAgenda,
+            }),
+          });
+          if (meetingResp.ok) {
+            console.log(`[daily-cycle] ✅ Auto-created meeting: "${meetingTopic}"`);
+          } else {
+            console.warn(`[daily-cycle] Meeting creation failed: ${meetingResp.status}`);
+          }
+        } catch (meetErr) {
+          console.warn("[daily-cycle] Meeting auto-create error:", meetErr);
+        }
+      }
+    } catch (meetingErr) {
+      console.warn("[daily-cycle] Meeting detection error (non-fatal):", meetingErr);
+    }
+
     // Card update failures are tracked separately in did_update_cycles
     const threadIds = threads.map(t => t.id);
     if (threadIds.length > 0) {
