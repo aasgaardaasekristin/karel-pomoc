@@ -37,6 +37,7 @@ import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
+import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
