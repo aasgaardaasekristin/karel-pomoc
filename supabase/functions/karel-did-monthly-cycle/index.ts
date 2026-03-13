@@ -52,6 +52,7 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   }
   return await res.text();
 }
+const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\.(txt|md|doc|docx|xls|xlsx)$/gi, "").replace(/[^a-z0-9]/g, "");
 
 async function appendToDoc(token: string, fileId: string, textToAppend: string): Promise<void> {
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, { headers: { Authorization: `Bearer ${token}` } });
