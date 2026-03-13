@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.karel-did-monthly-cycle]
 verify_jwt = false
+
+[functions.karel-did-kartoteka-health]
+verify_jwt = false

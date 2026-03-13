@@ -411,6 +411,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidColleagueView refreshTrigger={refreshTrigger} />
       </div>
 
+      {/* Kartotéka Health Check */}
+      <div className="mb-4">
+        <DidKartotekaHealth refreshTrigger={refreshTrigger} />
+      </div>
+
       {/* System Map */}
       <DidSystemMap
         parts={parts}

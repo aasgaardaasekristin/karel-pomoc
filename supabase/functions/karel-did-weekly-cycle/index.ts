@@ -558,11 +558,16 @@ E) STRATEGIE A SMĚŘOVÁNÍ
 ▸ Návrhy nových metod (čerpej z Perplexity výzkumu)
 ▸ Kreativní přístupy: neotřelé způsoby práce s konkrétními částmi
 
-F) TALENTY A POTENCIÁL ČÁSTÍ
-▸ Mapa schopností: která část v čem vyniká
-▸ Jak schopnosti využít prakticky (škola, práce, zájmy)
-▸ Návrhy konkrétních aktivit pro rozvoj talentů
-▸ Příprava na budoucnost (studium, kariéra)
+F) TALENTY A POTENCIÁL ČÁSTÍ – PERSONALIZOVANÝ EDUKAČNÍ PLÁN
+▸ Mapa schopností: která část v čem vyniká (fyzika, klavír, jazyky, sport, umění...)
+▸ Jak schopnosti využít prakticky (škola, práce, zájmy, budování identity)
+▸ Pro KAŽDOU část s identifikovaným talentem vygeneruj:
+  TALENT_PLAN: [jméno části] | [talent/schopnost] | [3 konkrétní aktivity na míru věku a schopnostem] | [zdroje/metodiky]
+▸ Příklady aktivit: „hry pro rozvoj fyzikálního myšlení u dítěte 10 let", „piano warm-up rutina pro začátečníka s trauma historií", „kreativní psaní pro introspektivní alter"
+▸ Příprava na budoucnost (studium, kariéra, specializace)
+▸ Tracking progressu: co se od posledního týdne zlepšilo v rozvoji talentů
+▸ Doporučené VNĚJŠÍ ZDROJE: kurzy, aplikace, knihy, weby – personalizované pro každou část
+▸ Cíl: každá část = "geniální funkční fragment" s uplatněním unikátních schopností
 
 G) KOORDINACE TERAPEUTŮ + HODNOCENÍ SPOLUPRÁCE
 ▸ Co probrat na společném hovoru Hanka+Káťa
