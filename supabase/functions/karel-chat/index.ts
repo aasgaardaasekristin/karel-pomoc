@@ -94,6 +94,60 @@ serve(async (req) => {
 
           systemPrompt += `\n\n═══ AKTUÁLNÍ NESPLNĚNÉ ÚKOLY ═══\nKarel, na začátku rozhovoru se ZEPTEJ ${therapist === "Hanka" ? "Haničky" : "Káti"} na stav těchto úkolů:\n${taskList}\n\nPokud je úkol starší 4 dní a nesplněný, Karel laskavě ale důsledně upozorní a navrhne řešení. Pokud více úkolů pokulhává, Karel navrhne "poradu" – strukturované sezení o strategii.${insightBlock}`;
         }
+        // ═══ SMART ACTIVITY RECOMMENDER — talent-based suggestions from didInitialContext ═══
+        try {
+          // Extract TALENT lines from didInitialContext (Section H data injected by Auto-Prep or enrichment)
+          const contextToScan = didInitialContext || "";
+          const talentRegex = /TALENT:\s*([^|]+)\|\s*ÚROVEŇ:\s*([^|]+)\|\s*AKTIVITA:\s*([^|]+)/gi;
+          const talents: Array<{ area: string; level: string; activity: string; partName?: string }> = [];
+          
+          // Also try simpler patterns
+          const talentMatches = [...contextToScan.matchAll(talentRegex)];
+          for (const m of talentMatches) {
+            talents.push({
+              area: m[1].trim(),
+              level: m[2].trim(),
+              activity: m[3].trim(),
+            });
+          }
+
+          // Extract part-talent associations from card context
+          const cardSectionH = contextToScan.match(/SEKCE H[^]*?(?=SEKCE [I-M]|$)/gi);
+          if (cardSectionH) {
+            for (const section of cardSectionH) {
+              const partMatch = contextToScan.match(new RegExp(`KARTA\\s+[ČC]ÁSTI:\\s*([^\\n]+)`, "i"));
+              const partName = partMatch?.[1]?.trim() || "";
+              const simpleTalents = section.match(/(?:talent|schopnost|zájem|nadání)[:\s]+([^\n,]+)/gi);
+              if (simpleTalents) {
+                for (const st of simpleTalents) {
+                  const area = st.replace(/^(?:talent|schopnost|zájem|nadání)[:\s]+/i, "").trim();
+                  if (area.length > 2 && !talents.some(t => t.area.toLowerCase() === area.toLowerCase())) {
+                    talents.push({ area, level: "nespecifikováno", activity: "doporučit", partName });
+                  }
+                }
+              }
+            }
+          }
+
+          if (talents.length > 0) {
+            const talentBlock = talents.slice(0, 8).map(t =>
+              `• ${t.partName ? `[${t.partName}] ` : ""}${t.area} (${t.level}) → doporučená aktivita: ${t.activity}`
+            ).join("\n");
+            
+            systemPrompt += `\n\n═══ PERSONALIZOVANÁ DOPORUČENÍ (Smart Activity Recommender) ═══
+Karel zná tyto talenty a zájmy částí:
+${talentBlock}
+
+INSTRUKCE: Když se rozhovor týká konkrétní části s identifikovaným talentem, Karel PROAKTIVNĚ navrhne rozvíjející aktivitu na míru. Například:
+- Část se zájmem o fyziku → navrhni experiment, hádanku, edukační hru
+- Část se zájmem o hudbu → navrhni rytmické cvičení, poslech, jednoduchou kompozici
+- Část se zájmem o kreslení → navrhni art-therapy aktivitu na míru tématu
+Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
+          }
+        } catch (e) {
+          console.warn("Smart Activity Recommender error (non-fatal):", e);
+        }
+
       } catch (e) {
         console.warn("Task/insight injection error (non-fatal):", e);
       }
