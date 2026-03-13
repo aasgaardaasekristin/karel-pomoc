@@ -352,14 +352,18 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         </div>
       )}
 
-      {/* ZÍTRA */}
-      {tomorrowTasks.length > 0 && (
+      {/* ZÍTRA — show section if there are any tomorrow tasks (active or done) */}
+      {(tomorrowTasks.length > 0 || allTomorrowTasks.length > 0) && (
         <div>
           <SectionHeader emoji="🟡" label="ZÍTRA" count={tomorrowTasks.length} max={MAX_TOMORROW} />
-          <div className="space-y-1">
-            {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
-            {tomorrowTasks.length > MAX_TOMORROW && <p className="text-[8px] text-muted-foreground text-center">+{tomorrowTasks.length - MAX_TOMORROW} skrytých</p>}
-          </div>
+          {tomorrowTasks.length > 0 ? (
+            <div className="space-y-1">
+              {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
+              {tomorrowTasks.length > MAX_TOMORROW && <p className="text-[8px] text-muted-foreground text-center">+{tomorrowTasks.length - MAX_TOMORROW} skrytých</p>}
+            </div>
+          ) : (
+            <p className="text-[9px] text-muted-foreground text-center py-1.5">Všechny úkoly na zítra splněny ✅</p>
+          )}
         </div>
       )}
 
