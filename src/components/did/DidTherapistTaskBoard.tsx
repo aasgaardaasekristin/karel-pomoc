@@ -588,7 +588,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
             ))}
           </div>
           <div className="flex flex-wrap gap-1">
-            {(["all", "both", "hanka", "kata"] as const).map(a => (
+            {(["all", "hanka", "kata", "both"] as const).map(a => (
               <Button
                 key={a}
                 variant={assigneeFilter === a ? "default" : "outline"}
@@ -596,7 +596,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 onClick={() => setAssigneeFilter(a)}
                 className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
               >
-                {a === "all" ? "Všichni" : assigneeFull(a)}
+                {a === "all" ? "Vše" : assigneeFull(a)}
               </Button>
             ))}
           </div>
