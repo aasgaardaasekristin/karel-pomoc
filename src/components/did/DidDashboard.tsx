@@ -399,6 +399,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidMonthlyPanel refreshTrigger={refreshTrigger} />
       </div>
 
+      {/* Pulse Check */}
+      <div className="mb-4">
+        <DidPulseCheck refreshTrigger={refreshTrigger} />
+      </div>
+
       {/* System Map */}
       <DidSystemMap
         parts={parts}
