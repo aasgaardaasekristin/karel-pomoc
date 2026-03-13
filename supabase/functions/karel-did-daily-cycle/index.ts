@@ -3153,7 +3153,7 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
       console.warn("[daily-cycle] Pending writes flush error (non-fatal):", flushErr);
     }
 
-    // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks ═══
+    // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks (4/5/7 days) ═══
     try {
       const { data: allTasks } = await sb.from("did_therapist_tasks")
         .select("id, task, assigned_to, status, status_hanka, status_kata, created_at, escalation_level, category")
@@ -3166,8 +3166,8 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
           const currentLevel = t.escalation_level || 0;
           let newLevel = currentLevel;
 
-          // Level 1: gentle reminder after 3 days
-          if (ageDays >= 3 && currentLevel < 1) newLevel = 1;
+          // Level 1: gentle reminder after 4 days
+          if (ageDays >= 4 && currentLevel < 1) newLevel = 1;
           // Level 2: direct question after 5 days
           if (ageDays >= 5 && currentLevel < 2) newLevel = 2;
           // Level 3: meeting proposal after 7 days
@@ -3180,6 +3180,30 @@ DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdíle
               updated_at: new Date().toISOString(),
             }).eq("id", t.id);
             console.log(`[escalation] Task "${t.task.slice(0, 40)}" escalated to level ${newLevel}`);
+          }
+        }
+
+        // Update motivation profiles for missed tasks (4+ days old, not done)
+        const staleTasks = allTasks.filter(t => {
+          const age = (now - new Date(t.created_at).getTime()) / (24 * 60 * 60 * 1000);
+          return age >= 4;
+        });
+        for (const st of staleTasks) {
+          const therapists: string[] = [];
+          if ((st.assigned_to === "hanka" || st.assigned_to === "both") && st.status_hanka !== "done") therapists.push("Hanka");
+          if ((st.assigned_to === "kata" || st.assigned_to === "both") && st.status_kata !== "done") therapists.push("Káťa");
+          for (const therapist of therapists) {
+            // Only mark missed once per escalation bump
+            if ((st.escalation_level || 0) < 1) {
+              const { data: profile } = await sb.from("did_motivation_profiles").select("*").eq("therapist", therapist).maybeSingle();
+              if (profile) {
+                await sb.from("did_motivation_profiles").update({
+                  tasks_missed: (profile.tasks_missed || 0) + 1,
+                  streak_current: 0,
+                  updated_at: new Date().toISOString(),
+                }).eq("id", profile.id);
+              }
+            }
           }
         }
       }
