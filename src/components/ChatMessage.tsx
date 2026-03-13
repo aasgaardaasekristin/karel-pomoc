@@ -278,6 +278,7 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
               </div>
             );
           })}
+          <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
         </div>
       </div>
     </div>

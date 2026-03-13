@@ -648,7 +648,18 @@ Vždy vysvětli Káťě: CO je to za techniku, PROČ funguje, JAK ji prezentovat
 - Upozorni Káťu na triggery z karty VŽDY předem
 
 ═══ ZÁKAZ VYMÝŠLENÍ CITACÍ ═══
-NIKDY nevymýšlej bibliografické citace, DOI, autory, statistiky.`;
+NIKDY nevymýšlej bibliografické citace, DOI, autory, statistiky.
+
+═══ ZÁPIS ÚKOLŮ NA NÁSTĚNKU ═══
+Karel může navrhnout zápis úkolu na nástěnku i v režimu Káťa.
+Když Karel identifikuje konkrétní akční bod, nabídne Káťě:
+"Chceš, abych tohle zapsal na nástěnku?"
+
+Pokud Káťa souhlasí, Karel vloží značku:
+[TASK_SUGGEST:kata:today]Text úkolu[/TASK_SUGGEST]
+
+Parametry: assignee (hanka/kata/both), category (today/tomorrow/longterm).
+PRAVIDLA: Vždy se zeptej první. Max 1-2 návrhy za rozhovor. Nezahlcuj.`;
 
 import { getKartotekaPrompt } from "./kartotekaPrompt.ts";
 
