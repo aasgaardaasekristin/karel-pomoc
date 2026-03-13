@@ -655,6 +655,18 @@ const Chat = () => {
     toast.info(`Navazuješ na rozhovor s ${partName}`);
   }, [setDidSubMode, setMessages, setDidInitialContext]);
 
+  // Handle ?meeting=<id> URL parameter
+  useEffect(() => {
+    const meetingParam = searchParams.get("meeting");
+    if (meetingParam && hubSection === "did") {
+      setMeetingIdFromUrl(meetingParam);
+      setMode("childcare");
+      setDidFlowState("meeting");
+      searchParams.delete("meeting");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, hubSection]);
+
   if (!authChecked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
