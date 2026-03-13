@@ -1726,7 +1726,7 @@ serve(async (req) => {
     const researchThreads = (researchThreadRows ?? []).filter((rt: any) => {
       // Filter to DID-relevant threads by checking topic and message content
       const topic = (rt.topic || "").toLowerCase();
-      const didKeywords = ["did", "disociat", "fragment", "část", "part", "alter", "system", "tundrupek", "arthur", "adam", "nikolas", "lincoln", "unhappy", "kluk", "kluci", "dítě", "deti", "trauma", "dissoci"];
+      const didKeywords = ["did", "disociat", "fragment", "část", "part", "alter", "system", "kluk", "kluci", "dítě", "deti", "trauma", "dissoci", "kartoteka", "kartotéka"];
       return didKeywords.some(kw => topic.includes(kw)) || 
         ((rt.messages as any[]) || []).some((m: any) => 
           typeof m.content === "string" && didKeywords.some(kw => m.content.toLowerCase().includes(kw))

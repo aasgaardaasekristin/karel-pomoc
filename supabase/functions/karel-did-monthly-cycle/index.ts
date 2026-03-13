@@ -253,14 +253,13 @@ serve(async (req) => {
       console.warn("Drive read error (non-fatal):", e);
     }
 
-    // Daily summaries
+    // Only metadata – cards_updated and dates. NO report_summary (stale data risk).
     const dailySummaries = dailyCycles.slice(0, 15).map((c: any) =>
-      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] ${truncate(c.report_summary || "", 300)}`
+      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] Aktualizované karty: ${JSON.stringify(c.cards_updated || [])}`
     ).join("\n---\n");
 
-    // Weekly summaries
     const weeklySummaries = weeklyCycles.slice(0, 4).map((c: any) =>
-      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] ${truncate(c.report_summary || "", 600)}`
+      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] Týdenní cyklus dokončen`
     ).join("\n---\n");
 
     // Part activity summary

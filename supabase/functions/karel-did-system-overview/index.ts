@@ -238,7 +238,7 @@ ${therapistSummary || "(žádné rozhovory terapeutek za poslední týden)"}
 KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky – sekce A-M):
 ${activePartCards || "(nepodařilo se načíst nebo žádné aktivní části)"}
 
-CYKLY AKTUALIZACE KARTOTÉKY:
+POSLEDNÍ AKTUALIZACE KARTOTÉKY (pouze metadata – kdy a co bylo aktualizováno):
 ${cycleInfo || "(žádné záznamy)"}
 
 TERAPEUTICKÉ TIPY Z ODBORNÝCH ZDROJŮ:
