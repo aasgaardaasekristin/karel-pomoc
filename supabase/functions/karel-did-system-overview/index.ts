@@ -96,11 +96,11 @@ serve(async (req) => {
     let centrumDocs = "";
     try {
       const token = await getAccessToken();
-      const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID");
-      if (kartotekaId) {
-        const centrumId = await findFolder(token, "00_CENTRUM");
-        if (centrumId) {
-          const files = await listFilesInFolder(token, centrumId);
+        const kartotekaId = await resolveKartotekaRoot(token);
+        if (kartotekaId) {
+          const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
+          if (centrumId) {
+            const files = await listFilesInFolder(token, centrumId);
           const importantFiles = files.filter(f =>
             /dashboard|instrukce|plan|mapa|geografie|index/i.test(f.name)
           ).slice(0, 8);
