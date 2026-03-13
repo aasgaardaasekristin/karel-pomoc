@@ -18,12 +18,46 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function findFolder(token: string, name: string): Promise<string | null> {
-  const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+async function findFolders(token: string, name: string, parentId?: string): Promise<Array<{ id: string }>> {
+  let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  if (parentId) q += ` and '${parentId}' in parents`;
+
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id)",
+    pageSize: "20",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const data = await res.json();
-  return data.files?.[0]?.id || null;
+  return data.files || [];
+}
+
+async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
+  const folders = await findFolders(token, name, parentId);
+  return folders[0]?.id || null;
+}
+
+async function resolveKartotekaRoot(token: string): Promise<string | null> {
+  const rootVariants = ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID", "KARTOTEKA_DID"];
+
+  for (const rootName of rootVariants) {
+    const candidates = await findFolders(token, rootName);
+
+    for (const candidate of candidates) {
+      const centrumId = await findFolder(token, "00_CENTRUM", candidate.id);
+      const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", candidate.id);
+      if (centrumId || aktivniId) return candidate.id;
+    }
+
+    if (candidates[0]?.id) return candidates[0].id;
+  }
+
+  return null;
 }
 
 async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string }>> {
