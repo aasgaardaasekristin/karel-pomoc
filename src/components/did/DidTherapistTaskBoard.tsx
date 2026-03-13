@@ -246,15 +246,39 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const [newTask, setNewTask] = useState("");
   const [newAssignee, setNewAssignee] = useState<"hanka" | "kata" | "both">("both");
   const [newCategory, setNewCategory] = useState<"today" | "tomorrow" | "longterm">("today");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
+  const [pendingTaskKeys, setPendingTaskKeys] = useState<Set<string>>(new Set());
+  const [failedTaskKeys, setFailedTaskKeys] = useState<Set<string>>(new Set());
 
   const loadTasks = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("did_therapist_tasks")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const [{ data, error }, { data: queueRows }] = await Promise.all([
+      supabase
+        .from("did_therapist_tasks")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("did_pending_drive_writes")
+        .select("content, target_document, status")
+        .in("status", ["pending", "failed"])
+        .order("created_at", { ascending: false })
+        .limit(250),
+    ]);
+
+    const pendingSet = new Set<string>();
+    const failedSet = new Set<string>();
+    for (const row of queueRows || []) {
+      const key = parsePendingWriteKey(row.content, row.target_document);
+      if (!key) continue;
+      if (row.status === "pending") pendingSet.add(key);
+      if (row.status === "failed") failedSet.add(key);
+    }
+    setPendingTaskKeys(pendingSet);
+    setFailedTaskKeys(failedSet);
+
     if (!error && data) {
       // Lifecycle: auto-archive completed tasks older than 3 days
       const now = Date.now();
@@ -292,30 +316,37 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const handleAddTask = async () => {
     if (!newTask.trim()) return;
     setAdding(true);
-    const taskText = newTask.trim();
+
+    const taskText = stripMarkdownNoise(newTask);
+    const targetDoc = targetDocumentForCategory(newCategory);
+    const sourceReference = `00_CENTRUM/${targetDoc} · sekce „Nové úkoly z nástěnky“`;
+
     const { error } = await supabase.from("did_therapist_tasks").insert({
       task: taskText,
       assigned_to: newAssignee,
       category: newCategory,
+      source_agreement: sourceReference,
       status_hanka: "not_started",
       status_kata: "not_started",
       priority: newCategory === "today" ? "high" : newCategory === "tomorrow" ? "normal" : "low",
     });
-    if (error) toast.error("Nepodařilo se přidat úkol");
-    else {
-      // Queue write-back to Drive
-      const targetDoc = newCategory === "longterm" ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
+
+    if (error) {
+      toast.error("Nepodařilo se přidat úkol");
+    } else {
       await supabase.from("did_pending_drive_writes").insert({
-        content: `► ${taskText} [${newAssignee === "hanka" ? "Hanka" : newAssignee === "kata" ? "Káťa" : "Obě"}]`,
+        content: `► ${taskText} [${assigneeLabel(newAssignee)}]`,
         target_document: targetDoc,
         write_type: "append",
         priority: newCategory === "today" ? "high" : "normal",
       }).then(({ error: writeErr }) => {
         if (writeErr) console.warn("Pending write queue error:", writeErr);
       });
+
       setNewTask("");
       loadTasks();
     }
+
     setAdding(false);
   };
 
