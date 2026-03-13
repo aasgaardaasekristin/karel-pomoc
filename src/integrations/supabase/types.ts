@@ -377,6 +377,63 @@ export type Database = {
           },
         ]
       }
+      did_motivation_profiles: {
+        Row: {
+          avg_completion_days: number | null
+          created_at: string
+          deadline_effectiveness: number
+          id: string
+          instruction_effectiveness: number
+          last_active_at: string | null
+          notes: string | null
+          praise_effectiveness: number
+          preferred_style: string
+          streak_best: number
+          streak_current: number
+          tasks_completed: number
+          tasks_missed: number
+          therapist: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avg_completion_days?: number | null
+          created_at?: string
+          deadline_effectiveness?: number
+          id?: string
+          instruction_effectiveness?: number
+          last_active_at?: string | null
+          notes?: string | null
+          praise_effectiveness?: number
+          preferred_style?: string
+          streak_best?: number
+          streak_current?: number
+          tasks_completed?: number
+          tasks_missed?: number
+          therapist: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          avg_completion_days?: number | null
+          created_at?: string
+          deadline_effectiveness?: number
+          id?: string
+          instruction_effectiveness?: number
+          last_active_at?: string | null
+          notes?: string | null
+          praise_effectiveness?: number
+          preferred_style?: string
+          streak_best?: number
+          streak_current?: number
+          tasks_completed?: number
+          tasks_missed?: number
+          therapist?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_pending_drive_writes: {
         Row: {
           content: string
