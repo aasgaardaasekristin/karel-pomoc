@@ -54,11 +54,20 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
+  const OVERVIEW_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours max
   const [overviewText, setOverviewText] = useState<string>(() => {
     try {
       const cached = localStorage.getItem(OVERVIEW_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
+        // Invalidate cache older than 6 hours
+        if (parsed.generatedAt) {
+          const age = Date.now() - new Date(parsed.generatedAt).getTime();
+          if (age > OVERVIEW_CACHE_MAX_AGE_MS) {
+            localStorage.removeItem(OVERVIEW_CACHE_KEY);
+            return "";
+          }
+        }
         return parsed.text || "";
       }
     } catch {}
