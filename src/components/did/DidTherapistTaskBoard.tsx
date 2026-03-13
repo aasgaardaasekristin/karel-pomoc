@@ -546,32 +546,6 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <span className="text-[8px] text-muted-foreground">Přidat jako:</span>
-          {(["today", "tomorrow", "longterm"] as const).map(c => (
-            <Button
-              key={c}
-              variant={newCategory === c ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setNewCategory(c)}
-              className="h-5 rounded-full text-[8px] px-2 min-w-0"
-            >
-              {c === "today" ? "Dnes" : c === "tomorrow" ? "Zítra" : "Dlouhodobé"}
-            </Button>
-          ))}
-          {(["both", "hanka", "kata"] as const).map(a => (
-            <Button
-              key={a}
-              variant={newAssignee === a ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setNewAssignee(a)}
-              className="h-5 rounded-full text-[8px] px-2 min-w-0"
-            >
-              {assigneeFull(a)}
-            </Button>
-          ))}
-        </div>
-
         <div className="rounded-md border border-border/60 bg-background/70 p-1.5 space-y-1.5">
           <div>
             <p className="text-[8px] text-muted-foreground mb-1">Kdo</p>
