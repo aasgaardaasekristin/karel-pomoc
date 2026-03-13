@@ -144,10 +144,27 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
                   {/* Status dot */}
                   <div className={`w-3 h-3 rounded-full ${cfg.dot} ${cfg.pulse}`} />
                   
-                  {/* Name */}
-                  <span className="text-xs font-medium text-foreground text-center leading-tight truncate w-full">
-                    {part.name}
-                  </span>
+                  {/* Name + delete */}
+                  <div className="flex items-center gap-0.5 w-full justify-center">
+                    <span className="text-xs font-medium text-foreground text-center leading-tight truncate">
+                      {part.name}
+                    </span>
+                    {onDeletePart && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Smazat všechna vlákna pro "${part.name}" z mapy?`)) {
+                            onDeletePart(part.name);
+                          }
+                        }}
+                        className="flex-shrink-0 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                        title={`Smazat ${part.name} z mapy`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                   
                   {/* Time + thread indicator */}
                   <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
