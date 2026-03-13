@@ -3068,7 +3068,7 @@ ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je s
           if (!hankaHtml) hankaHtml = `<pre style="font-family: sans-serif; white-space: pre-wrap;">${finalReportText}</pre>`;
 
           // KÁŤA's report (professional, relevant to her role only)
-          let kataHtml = "";
+          kataHtml = "";
           try {
             const kataRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
