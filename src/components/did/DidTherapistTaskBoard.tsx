@@ -70,6 +70,7 @@ const TaskCard = ({
   onToggleTraffic,
   onDelete,
   onAddNote,
+  extraActions,
 }: {
   task: TherapistTask;
   expandedTask: string | null;
@@ -79,6 +80,7 @@ const TaskCard = ({
   onToggleTraffic: (task: TherapistTask, who: "hanka" | "kata") => void;
   onDelete: (id: string) => void;
   onAddNote: (id: string) => void;
+  extraActions?: React.ReactNode;
 }) => {
   const isExpanded = expandedTask === task.id;
   const driveLink = task.source_agreement?.startsWith("http")
