@@ -49,6 +49,44 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
     }
   }, [initialMeetingId]);
 
+  // ── Realtime subscription for active meeting ──
+  useEffect(() => {
+    if (!activeMeeting?.id) return;
+
+    const channel = supabase
+      .channel(`meeting-${activeMeeting.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "did_meetings",
+          filter: `id=eq.${activeMeeting.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          setActiveMeeting(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              messages: Array.isArray(updated.messages) ? updated.messages : prev.messages,
+              status: updated.status || prev.status,
+              hanka_joined_at: updated.hanka_joined_at ?? prev.hanka_joined_at,
+              kata_joined_at: updated.kata_joined_at ?? prev.kata_joined_at,
+              finalized_at: updated.finalized_at ?? prev.finalized_at,
+              outcome_summary: updated.outcome_summary ?? prev.outcome_summary,
+              outcome_tasks: updated.outcome_tasks ?? prev.outcome_tasks,
+            };
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeMeeting?.id]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
