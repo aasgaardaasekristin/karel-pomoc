@@ -24,11 +24,13 @@ interface TherapistTask {
 }
 
 type TrafficStatus = "not_started" | "in_progress" | "done";
+type CategoryFilter = "all" | "today" | "tomorrow" | "longterm";
+type AssigneeFilter = "all" | "hanka" | "kata" | "both";
 
 const TRAFFIC_COLORS: Record<TrafficStatus, string> = {
-  not_started: "bg-destructive",
-  in_progress: "bg-orange-400",
-  done: "bg-green-500",
+  not_started: "bg-muted border border-border",
+  in_progress: "bg-accent",
+  done: "bg-primary",
 };
 
 const NEXT_STATUS: Record<TrafficStatus, TrafficStatus> = {
@@ -47,9 +49,70 @@ const MAX_TODAY = 5;
 const MAX_TOMORROW = 5;
 const MAX_LONGTERM = 10;
 
+const stripMarkdownNoise = (text?: string | null) => (text || "")
+  .replace(/^\s*[-*]\s+/gm, "")
+  .replace(/\*\*/g, "")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const normalizeTask = (text?: string | null) => stripMarkdownNoise(text).toLowerCase();
+
+const assigneeLabel = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
+
+const targetDocumentForCategory = (category?: string | null) =>
+  (category === "longterm" || category === "weekly") ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
+
+const buildTaskQueueKey = (task: { task: string; assigned_to: string; category?: string | null }) =>
+  `${normalizeTask(task.task)}|${task.assigned_to}|${targetDocumentForCategory(task.category)}`;
+
+const parsePendingWriteKey = (content?: string | null, targetDocument?: string | null) => {
+  if (!content || !targetDocument) return null;
+  const match = content.match(/^►\s*(.*?)\s*\[(Hanka|Káťa|Obě)\]/i);
+  if (!match) return null;
+
+  const assigned = match[2] === "Hanka" ? "hanka" : match[2] === "Káťa" ? "kata" : "both";
+  return `${normalizeTask(match[1])}|${assigned}|${targetDocument}`;
+};
+
+const isAssigneeVisible = (assignedTo: string, filter: AssigneeFilter) => {
+  if (filter === "all") return true;
+  if (filter === "both") return assignedTo === "both";
+  if (filter === "hanka") return assignedTo === "hanka" || assignedTo === "both";
+  return assignedTo === "kata" || assignedTo === "both";
+};
+
+const isSafeDocumentUrl = (value?: string | null) => {
+  if (!value || !/^https?:\/\//i.test(value)) return null;
+
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase();
+    if (!["docs.google.com", "drive.google.com"].includes(host)) return null;
+
+    const path = url.pathname.toLowerCase();
+    const isSearchLike = path.includes("/drive/search") || path.includes("/drive/recent") || path.includes("/drive/home");
+    if (isSearchLike) return null;
+
+    const hasDocId = /\/(document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]{20,}/.test(path)
+      || /\/file\/d\/[a-zA-Z0-9_-]{20,}/.test(path)
+      || /[?&]id=[a-zA-Z0-9_-]{20,}/.test(url.search);
+
+    if (!hasDocId) return null;
+
+    url.searchParams.delete("authuser");
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+const openExternalDocument = (url: string) => {
+  window.open(url, "_blank", "noopener,noreferrer");
+};
+
 const TrafficLight = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
   <button onClick={onClick} className="flex items-center gap-1 group cursor-pointer" title={`${label}: ${STATUS_LABEL[status]}`}>
-    <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-150 group-hover:shadow-md`} />
+    <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-110`} />
     <span className="text-[8px] font-medium text-muted-foreground opacity-70">{label}</span>
   </button>
 );
@@ -70,6 +133,8 @@ const TaskCard = ({
   onToggleTraffic,
   onDelete,
   onAddNote,
+  isPendingDriveWrite,
+  isFailedDriveWrite,
   extraActions,
 }: {
   task: TherapistTask;
@@ -80,12 +145,12 @@ const TaskCard = ({
   onToggleTraffic: (task: TherapistTask, who: "hanka" | "kata") => void;
   onDelete: (id: string) => void;
   onAddNote: (id: string) => void;
+  isPendingDriveWrite: boolean;
+  isFailedDriveWrite: boolean;
   extraActions?: React.ReactNode;
 }) => {
   const isExpanded = expandedTask === task.id;
-  const driveLink = task.source_agreement?.startsWith("http")
-    ? task.source_agreement
-    : null;
+  const safeDriveLink = isSafeDocumentUrl(task.source_agreement);
 
   return (
     <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
@@ -99,7 +164,7 @@ const TaskCard = ({
           )}
         </div>
         <button className="flex-1 min-w-0 text-left truncate" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
-          <span className="text-[11px] text-foreground leading-tight">{task.task}</span>
+          <span className="text-[11px] text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
         </button>
         <div className="flex items-center gap-0 shrink-0">
           {extraActions}
@@ -113,17 +178,35 @@ const TaskCard = ({
       </div>
       {isExpanded && (
         <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
-          {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{task.note}</p>}
+          {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{stripMarkdownNoise(task.note)}</p>}
+
+          {isPendingDriveWrite && (
+            <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+              🆕 Nový úkol — v Drive zatím není. Zapíše se po kliknutí na „Aktual. kartotéku“.
+            </div>
+          )}
+
+          {isFailedDriveWrite && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-1 text-[9px] text-destructive">
+              ⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku" se úkol zkusí zapsat znovu.
+            </div>
+          )}
+
           {task.source_agreement && (
             <div className="flex items-center gap-1">
-              <span className="text-[9px] text-muted-foreground truncate max-w-[200px]">📋 {task.source_agreement.slice(0, 50)}</span>
-              {driveLink && (
-                <a href={driveLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline shrink-0">
-                  <ExternalLink className="w-2.5 h-2.5" /> Drive
-                </a>
+              <span className="text-[9px] text-muted-foreground truncate max-w-[220px]">📋 {stripMarkdownNoise(task.source_agreement)}</span>
+              {safeDriveLink && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openExternalDocument(safeDriveLink); }}
+                  className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline shrink-0"
+                >
+                  <ExternalLink className="w-2.5 h-2.5" /> Otevřít
+                </button>
               )}
             </div>
           )}
+
           {task.completed_note && (
             <div className="text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 whitespace-pre-line">
               <MessageSquare className="w-2.5 h-2.5 inline mr-0.5 opacity-60" />
@@ -163,15 +246,39 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const [newTask, setNewTask] = useState("");
   const [newAssignee, setNewAssignee] = useState<"hanka" | "kata" | "both">("both");
   const [newCategory, setNewCategory] = useState<"today" | "tomorrow" | "longterm">("today");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
+  const [pendingTaskKeys, setPendingTaskKeys] = useState<Set<string>>(new Set());
+  const [failedTaskKeys, setFailedTaskKeys] = useState<Set<string>>(new Set());
 
   const loadTasks = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("did_therapist_tasks")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const [{ data, error }, { data: queueRows }] = await Promise.all([
+      supabase
+        .from("did_therapist_tasks")
+        .select("*")
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("did_pending_drive_writes")
+        .select("content, target_document, status")
+        .in("status", ["pending", "failed"])
+        .order("created_at", { ascending: false })
+        .limit(250),
+    ]);
+
+    const pendingSet = new Set<string>();
+    const failedSet = new Set<string>();
+    for (const row of queueRows || []) {
+      const key = parsePendingWriteKey(row.content, row.target_document);
+      if (!key) continue;
+      if (row.status === "pending") pendingSet.add(key);
+      if (row.status === "failed") failedSet.add(key);
+    }
+    setPendingTaskKeys(pendingSet);
+    setFailedTaskKeys(failedSet);
+
     if (!error && data) {
       // Lifecycle: auto-archive completed tasks older than 3 days
       const now = Date.now();
@@ -209,30 +316,37 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const handleAddTask = async () => {
     if (!newTask.trim()) return;
     setAdding(true);
-    const taskText = newTask.trim();
+
+    const taskText = stripMarkdownNoise(newTask);
+    const targetDoc = targetDocumentForCategory(newCategory);
+    const sourceReference = `00_CENTRUM/${targetDoc} · sekce „Nové úkoly z nástěnky“`;
+
     const { error } = await supabase.from("did_therapist_tasks").insert({
       task: taskText,
       assigned_to: newAssignee,
       category: newCategory,
+      source_agreement: sourceReference,
       status_hanka: "not_started",
       status_kata: "not_started",
       priority: newCategory === "today" ? "high" : newCategory === "tomorrow" ? "normal" : "low",
     });
-    if (error) toast.error("Nepodařilo se přidat úkol");
-    else {
-      // Queue write-back to Drive
-      const targetDoc = newCategory === "longterm" ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
+
+    if (error) {
+      toast.error("Nepodařilo se přidat úkol");
+    } else {
       await supabase.from("did_pending_drive_writes").insert({
-        content: `► ${taskText} [${newAssignee === "hanka" ? "Hanka" : newAssignee === "kata" ? "Káťa" : "Obě"}]`,
+        content: `► ${taskText} [${assigneeLabel(newAssignee)}]`,
         target_document: targetDoc,
         write_type: "append",
         priority: newCategory === "today" ? "high" : "normal",
       }).then(({ error: writeErr }) => {
         if (writeErr) console.warn("Pending write queue error:", writeErr);
       });
+
       setNewTask("");
       loadTasks();
     }
+
     setAdding(false);
   };
 
@@ -370,22 +484,47 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   };
 
   const assigneeFull = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
+  const isTodayCategory = (category?: string | null) => category === "today" || category === "daily";
+  const isTomorrowCategory = (category?: string | null) => category === "tomorrow";
+  const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
 
-  // Categorize tasks — use ALL tasks (not just active) for section visibility
+  const matchesCategoryFilter = (task: TherapistTask) => {
+    if (categoryFilter === "all") return true;
+    if (categoryFilter === "today") return isTodayCategory(task.category);
+    if (categoryFilter === "tomorrow") return isTomorrowCategory(task.category);
+    return isLongtermCategory(task.category);
+  };
+
+  const isPendingForTask = (task: TherapistTask) => pendingTaskKeys.has(buildTaskQueueKey(task));
+  const isFailedForTask = (task: TherapistTask) => failedTaskKeys.has(buildTaskQueueKey(task));
+
   const active = tasks.filter(t => !isAllDone(t));
   const done = tasks.filter(t => isAllDone(t));
 
-  const todayTasks = active.filter(t => t.category === "today" || t.category === "daily");
-  const tomorrowTasks = active.filter(t => t.category === "tomorrow");
-  // Also check if there are ANY tomorrow tasks (including done) so we can show the section
-  const allTomorrowTasks = tasks.filter(t => t.category === "tomorrow");
-  const longtermTasks = active.filter(t => t.category === "longterm" || t.category === "weekly" || (!["today", "tomorrow", "daily"].includes(t.category || "")));
+  const visibleActive = active.filter(t => matchesCategoryFilter(t) && isAssigneeVisible(t.assigned_to, assigneeFilter));
+  const visibleDone = done.filter(t => matchesCategoryFilter(t) && isAssigneeVisible(t.assigned_to, assigneeFilter));
 
-  // Separate longterm into actual longterm list items vs general/uncategorized with traffic lights
+  const todayTasks = visibleActive.filter(t => isTodayCategory(t.category));
+  const tomorrowTasks = visibleActive.filter(t => isTomorrowCategory(t.category));
+  const allTomorrowTasks = tasks.filter(t => isTomorrowCategory(t.category) && isAssigneeVisible(t.assigned_to, assigneeFilter));
+
+  const longtermTasks = visibleActive.filter(t => isLongtermCategory(t.category));
   const generalActive = longtermTasks.filter(t => t.category === "general" || !t.category);
   const longtermList = longtermTasks.filter(t => t.category === "longterm" || t.category === "weekly");
 
-  const sharedProps = { expandedTask, setExpandedTask, noteInputs, setNoteInputs, onToggleTraffic: handleToggleTraffic, onDelete: handleDelete, onAddNote: handleAddNote };
+  const showToday = categoryFilter === "all" || categoryFilter === "today";
+  const showTomorrow = categoryFilter === "all" || categoryFilter === "tomorrow";
+  const showLongterm = categoryFilter === "all" || categoryFilter === "longterm";
+
+  const sharedProps = {
+    expandedTask,
+    setExpandedTask,
+    noteInputs,
+    setNoteInputs,
+    onToggleTraffic: handleToggleTraffic,
+    onDelete: handleDelete,
+    onAddNote: handleAddNote,
+  };
 
   if (loading) {
     return <div className="flex items-center justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>;
@@ -393,47 +532,109 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
   return (
     <div className="space-y-3">
-      {/* Add new task */}
-      <div className="space-y-1">
+      <div className="space-y-1.5 rounded-md border border-border/60 bg-card/40 p-2">
         <div className="flex gap-1.5 items-center">
-          <Input value={newTask} onChange={(e) => setNewTask(e.target.value)} placeholder="Nový úkol..." className="flex-1 h-7 text-[11px] bg-background" onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }} />
+          <Input
+            value={newTask}
+            onChange={(e) => setNewTask(e.target.value)}
+            placeholder="Nový úkol..."
+            className="flex-1 h-7 text-[11px] bg-background"
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }}
+          />
           <Button size="sm" onClick={handleAddTask} disabled={!newTask.trim() || adding} className="h-7 w-7 p-0">
             {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
           </Button>
         </div>
-        <div className="flex gap-0.5 flex-wrap">
+
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-[8px] text-muted-foreground">Přidat jako:</span>
           {(["today", "tomorrow", "longterm"] as const).map(c => (
-            <Button key={c} variant={newCategory === c ? "default" : "ghost"} size="sm" onClick={() => setNewCategory(c)} className="h-5 text-[8px] px-1.5 min-w-0">
+            <Button
+              key={c}
+              variant={newCategory === c ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setNewCategory(c)}
+              className="h-5 rounded-full text-[8px] px-2 min-w-0"
+            >
               {c === "today" ? "Dnes" : c === "tomorrow" ? "Zítra" : "Dlouhodobé"}
             </Button>
           ))}
-          <span className="text-[8px] text-muted-foreground self-center mx-1">|</span>
           {(["both", "hanka", "kata"] as const).map(a => (
-            <Button key={a} variant={newAssignee === a ? "default" : "ghost"} size="sm" onClick={() => setNewAssignee(a)} className="h-5 text-[8px] px-1.5 min-w-0">
+            <Button
+              key={a}
+              variant={newAssignee === a ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setNewAssignee(a)}
+              className="h-5 rounded-full text-[8px] px-2 min-w-0"
+            >
               {assigneeFull(a)}
             </Button>
           ))}
         </div>
+
+        <div className="rounded-md border border-border/60 bg-background/70 p-1.5 space-y-1">
+          <p className="text-[8px] text-muted-foreground">Filtr zobrazení</p>
+          <div className="flex flex-wrap gap-1">
+            {(["all", "today", "tomorrow", "longterm"] as const).map(c => (
+              <Button
+                key={c}
+                variant={categoryFilter === c ? "default" : "outline"}
+                size="sm"
+                onClick={() => setCategoryFilter(c)}
+                className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
+              >
+                {c === "all" ? "Vše" : c === "today" ? "Dnes" : c === "tomorrow" ? "Zítra" : "Dlouhodobé"}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {(["all", "both", "hanka", "kata"] as const).map(a => (
+              <Button
+                key={a}
+                variant={assigneeFilter === a ? "default" : "outline"}
+                size="sm"
+                onClick={() => setAssigneeFilter(a)}
+                className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
+              >
+                {a === "all" ? "Všichni" : assigneeFull(a)}
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* DNES */}
-      {todayTasks.length > 0 && (
+      {showToday && todayTasks.length > 0 && (
         <div>
           <SectionHeader emoji="🔴" label="DNES" count={todayTasks.length} max={MAX_TODAY} />
           <div className="space-y-1">
-            {todayTasks.slice(0, MAX_TODAY).map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
+            {todayTasks.slice(0, MAX_TODAY).map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                {...sharedProps}
+                isPendingDriveWrite={isPendingForTask(task)}
+                isFailedDriveWrite={isFailedForTask(task)}
+              />
+            ))}
             {todayTasks.length > MAX_TODAY && <p className="text-[8px] text-muted-foreground text-center">+{todayTasks.length - MAX_TODAY} skrytých (Karel je přidá později)</p>}
           </div>
         </div>
       )}
 
-      {/* ZÍTRA — show section if there are any tomorrow tasks (active or done) */}
-      {(tomorrowTasks.length > 0 || allTomorrowTasks.length > 0) && (
+      {showTomorrow && (tomorrowTasks.length > 0 || allTomorrowTasks.length > 0) && (
         <div>
           <SectionHeader emoji="🟡" label="ZÍTRA" count={tomorrowTasks.length} max={MAX_TOMORROW} />
           {tomorrowTasks.length > 0 ? (
             <div className="space-y-1">
-              {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
+              {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => (
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  {...sharedProps}
+                  isPendingDriveWrite={isPendingForTask(task)}
+                  isFailedDriveWrite={isFailedForTask(task)}
+                />
+              ))}
               {tomorrowTasks.length > MAX_TOMORROW && <p className="text-[8px] text-muted-foreground text-center">+{tomorrowTasks.length - MAX_TOMORROW} skrytých</p>}
             </div>
           ) : (
@@ -442,33 +643,36 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         </div>
       )}
 
-      {/* General uncategorized active tasks with traffic lights */}
-      {generalActive.length > 0 && (
+      {showLongterm && generalActive.length > 0 && (
         <div>
           <SectionHeader emoji="📌" label="Aktivní úkoly" count={generalActive.length} />
           <div className="space-y-1">
-            {generalActive.map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
+            {generalActive.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                {...sharedProps}
+                isPendingDriveWrite={isPendingForTask(task)}
+                isFailedDriveWrite={isFailedForTask(task)}
+              />
+            ))}
           </div>
         </div>
       )}
 
-      {/* Empty state */}
       {active.length === 0 && done.length === 0 && (
         <p className="text-[10px] text-muted-foreground text-center py-3">Zatím žádné úkoly.</p>
       )}
 
-      {/* DLOUHODOBÉ — clean expandable list, no traffic lights */}
-      {longtermList.length > 0 && (
+      {showLongterm && longtermList.length > 0 && (
         <div>
           <SectionHeader emoji="📋" label="Dlouhodobé" count={longtermList.length} max={MAX_LONGTERM} />
           <div className="space-y-0.5">
             {longtermList.slice(0, MAX_LONGTERM).map(task => {
               const isExp = expandedTask === task.id;
-              const driveLink = task.source_agreement?.startsWith("http")
-                ? task.source_agreement
-                : null;
+              const safeDriveLink = isSafeDocumentUrl(task.source_agreement);
               const priorityLabel = task.priority === "high" ? "⚡ Urgentní" : task.priority === "normal" ? "📌 Běžná" : "🕐 Nízká";
-              const assigneeLabel = task.assigned_to === "hanka" ? "👩 Hanka" : task.assigned_to === "kata" ? "👩‍🦰 Káťa" : "👩‍👩‍👧 Obě";
+              const assigneeText = task.assigned_to === "hanka" ? "👩 Hanka" : task.assigned_to === "kata" ? "👩‍🦰 Káťa" : "👩‍👩‍👧 Obě";
 
               return (
                 <div key={task.id} className="group">
@@ -477,7 +681,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                       className="flex-1 min-w-0 text-left py-1 px-1.5 rounded transition-colors hover:bg-accent/30"
                       onClick={() => setExpandedTask(isExp ? null : task.id)}
                     >
-                      <span className="text-[11px] text-foreground/80 leading-tight">{task.task}</span>
+                      <span className="text-[11px] text-foreground/80 leading-tight">{stripMarkdownNoise(task.task)}</span>
                     </button>
                     <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePromote(task.id, "today"); }} className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Povýšit na DNES">
                       <ArrowUp className="w-2.5 h-2.5 text-primary" />
@@ -489,21 +693,33 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
                   {isExp && (
                     <div className="ml-1.5 pl-2.5 border-l-2 border-primary/20 mb-2 mt-0.5 space-y-1 animate-in fade-in-0 slide-in-from-top-1 duration-150">
-                      {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{task.note}</p>}
+                      {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{stripMarkdownNoise(task.note)}</p>}
+
+                      {(isPendingForTask(task) || isFailedForTask(task)) && (
+                        <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+                          {isPendingForTask(task)
+                            ? "🆕 Nový úkol — v Drive zatím není. Zapíše se po kliknutí na „Aktual. kartotéku“."
+                            : "⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku“ se úkol zkusí zapsat znovu."}
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-muted-foreground">
                         <span>{priorityLabel}</span>
-                        <span>{assigneeLabel}</span>
+                        <span>{assigneeText}</span>
                         {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
                       </div>
 
                       {task.source_agreement && (
                         <div className="flex items-center gap-1 text-[9px]">
-                          <span className="text-muted-foreground truncate max-w-[220px]">📄 {task.source_agreement}</span>
-                          {driveLink && (
-                            <a href={driveLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-primary hover:underline shrink-0">
+                          <span className="text-muted-foreground truncate max-w-[240px]">📄 {stripMarkdownNoise(task.source_agreement)}</span>
+                          {safeDriveLink && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openExternalDocument(safeDriveLink); }}
+                              className="inline-flex items-center gap-0.5 text-primary hover:underline shrink-0"
+                            >
                               <ExternalLink className="w-2.5 h-2.5" /> Otevřít
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
@@ -537,17 +753,16 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         </div>
       )}
 
-      {/* Splněné */}
-      {done.length > 0 && (
+      {visibleDone.length > 0 && (
         <details className="group/done">
           <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none">
-            ✅ Splněné ({done.length})
+            ✅ Splněné ({visibleDone.length})
           </summary>
           <div className="mt-1 space-y-0.5">
-            {done.slice(0, 10).map(task => (
+            {visibleDone.slice(0, 10).map(task => (
               <div key={task.id} className="rounded px-2 py-1 bg-muted/20 flex items-center gap-1.5 opacity-50">
-                <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                <span className="text-[10px] text-muted-foreground line-through flex-1 truncate">{task.task}</span>
+                <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                <span className="text-[10px] text-muted-foreground line-through flex-1 truncate">{stripMarkdownNoise(task.task)}</span>
                 <Button variant="ghost" size="sm" onClick={() => handleDelete(task.id)} className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/done:opacity-100">
                   <Trash2 className="w-2 h-2" />
                 </Button>
