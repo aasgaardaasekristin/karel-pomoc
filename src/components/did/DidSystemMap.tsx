@@ -18,6 +18,7 @@ interface Props {
   parts: PartActivity[];
   activeThreads?: ActiveThreadSummary[];
   onQuickThread?: (threadId: string, partName: string) => void;
+  onDeletePart?: (partName: string) => void;
 }
 
 const STATUS_CONFIG = {
