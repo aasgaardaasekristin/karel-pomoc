@@ -405,6 +405,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidPulseCheck refreshTrigger={refreshTrigger} />
       </div>
 
+      {/* Colleague View */}
+      <div className="mb-4">
+        <DidColleagueView refreshTrigger={refreshTrigger} />
+      </div>
+
       {/* System Map */}
       <DidSystemMap
         parts={parts}
