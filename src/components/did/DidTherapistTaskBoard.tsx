@@ -296,12 +296,14 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
   const assigneeFull = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
 
-  // Categorize tasks
+  // Categorize tasks — use ALL tasks (not just active) for section visibility
   const active = tasks.filter(t => !isAllDone(t));
   const done = tasks.filter(t => isAllDone(t));
 
   const todayTasks = active.filter(t => t.category === "today" || t.category === "daily");
   const tomorrowTasks = active.filter(t => t.category === "tomorrow");
+  // Also check if there are ANY tomorrow tasks (including done) so we can show the section
+  const allTomorrowTasks = tasks.filter(t => t.category === "tomorrow");
   const longtermTasks = active.filter(t => t.category === "longterm" || t.category === "weekly" || (!["today", "tomorrow", "daily"].includes(t.category || "")));
 
   // Separate longterm into actual longterm list items vs general/uncategorized with traffic lights
