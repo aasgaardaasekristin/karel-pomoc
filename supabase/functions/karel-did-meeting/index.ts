@@ -388,7 +388,4 @@ JSON pole
   }
 });
 
-// Helper to parse input flexibly
-function parseOrUse(fallback: any, primary: any) {
-  return primary.topic ? primary : fallback;
-}
+// (parseOrUse removed - no longer needed)
