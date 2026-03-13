@@ -6,7 +6,16 @@ import { supabase } from "@/integrations/supabase/client";
  * falls back to the anon key.
  */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { data: { session } } = await supabase.auth.getSession();
+  // Try refreshing session first to avoid expired tokens
+  let { data: { session } } = await supabase.auth.getSession();
+  if (session) {
+    const expiresAt = session.expires_at ?? 0;
+    const now = Math.floor(Date.now() / 1000);
+    if (expiresAt - now < 60) {
+      const { data } = await supabase.auth.refreshSession();
+      session = data.session;
+    }
+  }
   const token = session?.access_token || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
   return {
     "Content-Type": "application/json",
