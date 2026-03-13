@@ -400,8 +400,9 @@ serve(async (req) => {
       .select("part_name, sub_mode, started_at, last_activity_at, messages")
       .gte("started_at", monthAgo);
 
+    // Only fetch metadata from cycles – NO report_summary (may contain stale/deleted data)
     const { data: weekCycles } = await sb.from("did_update_cycles")
-      .select("cycle_type, completed_at, report_summary, cards_updated")
+      .select("cycle_type, completed_at, cards_updated")
       .eq("status", "completed").gte("completed_at", weekAgo)
       .order("completed_at", { ascending: true });
 
