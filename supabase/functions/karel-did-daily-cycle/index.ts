@@ -2694,14 +2694,17 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
-            // Handle old 06_Terapeuticke_Dohody folder for backward compatibility
+            // Handle old 06_Terapeuticke_Dohody → redirect to 05_Operativni_Plan (NEVER create standalone docs)
             if (!targetFile && docCanonical.includes("dohod")) {
-              const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
-              if (dohodaFolder) {
-                const dohodaFileName = `${dateStr}_aktualizace`;
-                await createFileInFolder(token, dohodaFileName, `[${dateStr}] Aktualizace z denního cyklu\n\n${newContent}`, dohodaFolder.id);
-                cardsUpdated.push(`CENTRUM: ${docName} (nová dohoda ${dateStr})`);
-                console.log(`[CENTRUM] ✅ Created new dohoda: ${dohodaFileName}`);
+              const opPlanFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
+              if (opPlanFile) {
+                const existingOp = await readFileContent(token, opPlanFile.id);
+                if (!existingOp.includes(newContent.slice(0, 80))) {
+                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus):\n${newContent}`;
+                  await updateFileById(token, opPlanFile.id, updatedOp, opPlanFile.mimeType);
+                  cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (z dohod)`);
+                  console.log(`[CENTRUM] ✅ Appended dohody content to 05_Operativni_Plan`);
+                }
                 continue;
               }
             }
