@@ -94,11 +94,28 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
           <BarChart3 className="w-3.5 h-3.5 text-primary" />
           Měsíční přehledy
         </h4>
-        <Button variant="outline" size="sm" onClick={handleRun} disabled={running || hasRunning} className="h-6 text-[10px] px-2">
-          {running ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</> :
-           hasRunning ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</> :
-           <><RefreshCw className="w-3 h-3 mr-1" /> Spustit měsíční analýzu</>}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={async () => {
+            if (retroText) { setShowRetro(!showRetro); return; }
+            setRetroLoading(true);
+            try {
+              const headers = await getAuthHeaders();
+              const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-monthly-retrospective`, { method: "POST", headers, body: JSON.stringify({}) });
+              if (!resp.ok) throw new Error("Chyba serveru");
+              const data = await resp.json();
+              setRetroText(data.retrospective || "Prázdná retrospektiva.");
+              setShowRetro(true);
+            } catch { toast.error("Nepodařilo se načíst retrospektivu"); }
+            finally { setRetroLoading(false); }
+          }} disabled={retroLoading} className="h-6 text-[10px] px-2">
+            {retroLoading ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Generuji...</> : <><FileText className="w-3 h-3 mr-1" /> Retrospektiva</>}
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleRun} disabled={running || hasRunning} className="h-6 text-[10px] px-2">
+            {running ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</> :
+             hasRunning ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</> :
+             <><RefreshCw className="w-3 h-3 mr-1" /> Měsíční analýza</>}
+          </Button>
+        </div>
       </div>
 
       {cycles.length === 0 ? (
