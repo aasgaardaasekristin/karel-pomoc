@@ -305,8 +305,8 @@ ${perplexityTips || "(nedostupné)"}
 
 FORMÁT VÝSTUPU:
 
-Začni neformálním, osobním pozdravem – MUSÍŠ použít přesné dnešní datum: "Krásnou ${dayName}, ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long" })}, Hani a Káťo!" (NIKDY "Vážené", NIKDY formální tón, NIKDY špatné datum).
-Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci.
+Začni PŘESNĚ tímto pozdravem (nepřepisuj, neupravuj, použij doslova): "${chosenGreeting}"
+Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci. NIKDY nepoužívej jiné datum než to v pozdravu.
 
 NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, jak funguje systém obecně, co je ANP/EP/Host. Piš POUZE o tom co se DĚJE TEĎ a co je relevantní.
 
