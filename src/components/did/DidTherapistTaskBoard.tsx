@@ -85,8 +85,6 @@ const TaskCard = ({
   const isExpanded = expandedTask === task.id;
   const driveLink = task.source_agreement?.startsWith("http")
     ? task.source_agreement
-    : task.source_agreement
-    ? `https://drive.google.com/drive/search?q=${encodeURIComponent(task.source_agreement)}`
     : null;
 
   return (
@@ -468,8 +466,6 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
               const isExp = expandedTask === task.id;
               const driveLink = task.source_agreement?.startsWith("http")
                 ? task.source_agreement
-                : task.source_agreement
-                ? `https://drive.google.com/drive/search?q=${encodeURIComponent(task.source_agreement)}`
                 : null;
               const priorityLabel = task.priority === "high" ? "⚡ Urgentní" : task.priority === "normal" ? "📌 Běžná" : "🕐 Nízká";
               const assigneeLabel = task.assigned_to === "hanka" ? "👩 Hanka" : task.assigned_to === "kata" ? "👩‍🦰 Káťa" : "👩‍👩‍👧 Obě";
