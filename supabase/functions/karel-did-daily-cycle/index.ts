@@ -3036,8 +3036,9 @@ Co Karel navrhuje: [řešení]
 
 Podpis: "Jsem tady. Tvůj Karel"
 
-Tón: intimní, partnerský, podporující, hluboký.` },
-                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}` },
+Tón: intimní, partnerský, podporující, hluboký.
+ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval a uznání. Pokud "deadline" → více konkrétních termínů. Pokud "instruction" → více detailních kroků.` },
+                  { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}\n\n═══ MOTIVAČNÍ PROFIL HANKY ═══\n${formatProfileContext(hankaProfile)}` },
                 ],
               }),
             });
