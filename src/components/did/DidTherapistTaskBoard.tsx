@@ -221,7 +221,12 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     setAdding(false);
   };
 
+  const [trafficLock, setTrafficLock] = useState(false);
+
   const handleToggleTraffic = async (task: TherapistTask, who: "hanka" | "kata") => {
+    if (trafficLock) return;
+    setTrafficLock(true);
+
     const field = who === "hanka" ? "status_hanka" : "status_kata";
     const current = (task[field] || "not_started") as TrafficStatus;
     const next = NEXT_STATUS[current];
@@ -238,9 +243,17 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       updates.completed_at = null as any;
     }
 
+    // Optimistic update: immediately reflect change in UI
+    setTasks(prev => prev.map(t =>
+      t.id === task.id ? { ...t, ...updates } as TherapistTask : t
+    ));
+
     const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
-    if (error) toast.error("Nepodařilo se změnit stav");
-    loadTasks();
+    if (error) {
+      toast.error("Nepodařilo se změnit stav");
+      await loadTasks(); // revert on error
+    }
+    setTrafficLock(false);
   };
 
   const handleDelete = async (taskId: string) => {

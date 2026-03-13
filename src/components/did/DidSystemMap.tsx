@@ -177,7 +177,7 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
                   <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-md px-2 py-1 text-[10px] text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                     {isClickable ? "Klikni pro navázání rozhovoru" : cfg.label} • {formatDate(part.lastSeen)}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
