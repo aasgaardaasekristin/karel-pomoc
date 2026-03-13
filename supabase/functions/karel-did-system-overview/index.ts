@@ -174,10 +174,11 @@ serve(async (req) => {
       }
     }
 
-    // 3. Last update cycles (last 3)
+    // 3. Last update cycles – ONLY metadata (completed_at, cards_updated), NO report_summary
+    // report_summary may contain stale/deleted data – we use Drive as single source of truth
     const { data: cycles } = await sb
       .from("did_update_cycles")
-      .select("completed_at, report_summary, cards_updated, cycle_type")
+      .select("completed_at, cards_updated, cycle_type")
       .eq("status", "completed")
       .order("completed_at", { ascending: false })
       .limit(3);
@@ -185,7 +186,7 @@ serve(async (req) => {
     let cycleInfo = "";
     if (cycles) {
       for (const c of cycles) {
-        cycleInfo += `\n[${c.cycle_type} – ${c.completed_at}] ${c.report_summary || "bez reportu"}\nAktualizované karty: ${JSON.stringify(c.cards_updated)}\n`;
+        cycleInfo += `\n[${c.cycle_type} – ${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}\n`;
       }
     }
 
