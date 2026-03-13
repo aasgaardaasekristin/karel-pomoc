@@ -13,6 +13,7 @@ import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidSessionPrep from "./DidSessionPrep";
 import DidMonthlyPanel from "./DidMonthlyPanel";
+import DidPulseCheck from "./DidPulseCheck";
 
 interface PartActivity {
   name: string;
