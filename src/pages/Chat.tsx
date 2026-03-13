@@ -1473,6 +1473,16 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                   <div className="text-xs text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
                 </div>
               </button>
+              <button
+                onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-amber-500"
+              >
+                <span className="text-lg">📋</span>
+                <div>
+                  <div className="font-medium text-foreground">Porady týmu</div>
+                  <div className="text-xs text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
+                </div>
+              </button>
             </div>
             <div className="flex justify-center mt-4">
               <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
