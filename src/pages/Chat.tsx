@@ -389,8 +389,9 @@ const Chat = () => {
             const response = await fetch(
               `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
               { method: "POST", headers, body: JSON.stringify({ 
-                documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Terapeuticky_Plan_Aktualni"],
-                subFolder: "00_CENTRUM"
+                documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+                subFolder: "00_CENTRUM",
+                allowGlobalSearch: false,
               }) }
             );
             if (response.ok) {
@@ -666,8 +667,9 @@ const Chat = () => {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
         { method: "POST", headers, body: JSON.stringify({ 
-          documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb"],
-          subFolder: "00_CENTRUM"
+          documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+          subFolder: "00_CENTRUM",
+          allowGlobalSearch: false,
         }) }
       );
       if (response.ok) {
@@ -1501,7 +1503,11 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                   const headers = await getAuthHeaders();
                   const response = await fetch(
                     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-                    { method: "POST", headers, body: JSON.stringify({ documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "05_Terapeuticky_Plan_Aktualni"], subFolder: "00_CENTRUM" }) }
+                    { method: "POST", headers, body: JSON.stringify({
+                      documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+                      subFolder: "00_CENTRUM",
+                      allowGlobalSearch: false,
+                    }) }
                   );
                   if (response.ok) {
                     const data = await response.json();

@@ -28,15 +28,47 @@ async function getAccessToken(): Promise<string> {
 }
 
 // ── Drive helpers ──
-async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
+async function findFolders(token: string, name: string, parentId?: string): Promise<Array<{ id: string }>> {
   let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
+
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id)",
+    pageSize: "20",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+
   const res = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`,
+    `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   const data = await res.json();
-  return data.files?.[0]?.id || null;
+  return data.files || [];
+}
+
+async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
+  const folders = await findFolders(token, name, parentId);
+  return folders[0]?.id || null;
+}
+
+async function resolveKartotekaRoot(token: string): Promise<string | null> {
+  const rootVariants = ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID", "KARTOTEKA_DID"];
+
+  for (const rootName of rootVariants) {
+    const candidates = await findFolders(token, rootName);
+
+    for (const candidate of candidates) {
+      const centrumId = await findFolder(token, "00_CENTRUM", candidate.id);
+      const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", candidate.id);
+      if (centrumId || aktivniId) return candidate.id;
+    }
+
+    if (candidates[0]?.id) return candidates[0].id;
+  }
+
+  return null;
 }
 
 async function listFilesInFolder(
@@ -160,13 +192,11 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { documents, listAll, subFolder } = await req.json();
+    const { documents, listAll, subFolder, allowGlobalSearch } = await req.json();
     const token = await getAccessToken();
 
     // Find kartoteka_DID folder
-    const rootFolderId = await findFolder(token, "kartoteka_DID") 
-      || await findFolder(token, "Kartoteka_DID")
-      || await findFolder(token, "Kartotéka_DID");
+    const rootFolderId = await resolveKartotekaRoot(token);
 
     if (!rootFolderId) {
       return new Response(JSON.stringify({ 
@@ -200,12 +230,13 @@ serve(async (req) => {
     // Read requested documents — search recursively through all subfolders
     const result: Record<string, string> = {};
     const requestedDocs: string[] = documents || [];
+    const shouldUseGlobalSearch = allowGlobalSearch === true || !subFolder;
 
     for (const docName of requestedDocs) {
       // Search recursively from the target folder
       let match = await findDocumentRecursive(token, targetFolderId, docName);
-      if (!match) {
-        // Fall back to global search
+      if (!match && shouldUseGlobalSearch) {
+        // Optional fallback to global search (disabled by default for subFolder lookups)
         match = await findDocumentGlobal(token, docName);
       }
 

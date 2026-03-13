@@ -18,12 +18,46 @@ async function getAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-async function findFolder(token: string, name: string): Promise<string | null> {
-  const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+async function findFolders(token: string, name: string, parentId?: string): Promise<Array<{ id: string }>> {
+  let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  if (parentId) q += ` and '${parentId}' in parents`;
+
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id)",
+    pageSize: "20",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   const data = await res.json();
-  return data.files?.[0]?.id || null;
+  return data.files || [];
+}
+
+async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
+  const folders = await findFolders(token, name, parentId);
+  return folders[0]?.id || null;
+}
+
+async function resolveKartotekaRoot(token: string): Promise<string | null> {
+  const rootVariants = ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID", "KARTOTEKA_DID"];
+
+  for (const rootName of rootVariants) {
+    const candidates = await findFolders(token, rootName);
+
+    for (const candidate of candidates) {
+      const centrumId = await findFolder(token, "00_CENTRUM", candidate.id);
+      const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", candidate.id);
+      if (centrumId || aktivniId) return candidate.id;
+    }
+
+    if (candidates[0]?.id) return candidates[0].id;
+  }
+
+  return null;
 }
 
 async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string }>> {
@@ -62,11 +96,11 @@ serve(async (req) => {
     let centrumDocs = "";
     try {
       const token = await getAccessToken();
-      const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID");
-      if (kartotekaId) {
-        const centrumId = await findFolder(token, "00_CENTRUM");
-        if (centrumId) {
-          const files = await listFilesInFolder(token, centrumId);
+        const kartotekaId = await resolveKartotekaRoot(token);
+        if (kartotekaId) {
+          const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
+          if (centrumId) {
+            const files = await listFilesInFolder(token, centrumId);
           const importantFiles = files.filter(f =>
             /dashboard|instrukce|plan|mapa|geografie|index/i.test(f.name)
           ).slice(0, 8);
@@ -115,9 +149,9 @@ serve(async (req) => {
     if (activePartNames.length > 0) {
       try {
         const token = await getAccessToken();
-        const kartotekaId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID");
+        const kartotekaId = await resolveKartotekaRoot(token);
         if (kartotekaId) {
-          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY");
+          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaId);
           if (aktivniId) {
             const partFiles = await listFilesInFolder(token, aktivniId);
             for (const partName of activePartNames.slice(0, 6)) {
