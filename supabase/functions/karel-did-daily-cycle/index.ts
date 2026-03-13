@@ -3153,26 +3153,52 @@ ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je s
           proposalMatch?.[1]?.trim() ? `Návrh: ${proposalMatch[1].trim()}` : "",
         ].filter(Boolean).join("\n");
 
-        // Create meeting via the meeting function
+        // Create meeting directly via service_role client (no auth needed)
         try {
-          const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-          const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || "";
-          const meetingResp = await fetch(`${SUPABASE_URL}/functions/v1/karel-did-meeting`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-            },
-            body: JSON.stringify({
-              action: "create",
-              message: meetingTopic,
-              therapist: meetingAgenda,
-            }),
-          });
-          if (meetingResp.ok) {
-            console.log(`[daily-cycle] ✅ Auto-created meeting: "${meetingTopic}"`);
+          const meetingPayload: any = {
+            topic: meetingTopic,
+            agenda: meetingAgenda,
+            triggered_by: "daily_cycle",
+            deadline_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+            messages: [{
+              role: "karel",
+              therapist: "karel",
+              content: `📋 **Karel svolává poradu**\n\n**Téma:** ${meetingTopic}\n\n${meetingAgenda ? `**Agenda:**\n${meetingAgenda}\n\n` : ""}Karel čeká na vyjádření obou terapeutek. Každá může odpovědět, až bude mít čas – Karel průběžně moderuje a shrnuje.`,
+              timestamp: new Date().toISOString(),
+            }],
+          };
+          if (resolvedUserId) meetingPayload.user_id = resolvedUserId;
+
+          const { data: newMeeting, error: meetInsertErr } = await sb.from("did_meetings").insert(meetingPayload).select().single();
+          if (meetInsertErr) {
+            console.warn(`[daily-cycle] Meeting insert error: ${meetInsertErr.message}`);
           } else {
-            console.warn(`[daily-cycle] Meeting creation failed: ${meetingResp.status}`);
+            console.log(`[daily-cycle] ✅ Auto-created meeting: "${meetingTopic}" (id: ${newMeeting.id})`);
+
+            // Send invitation emails
+            const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
+            if (RESEND_KEY) {
+              const resendClient = new Resend(RESEND_KEY);
+              const APP_URL = "https://karel-pomoc.lovable.app";
+              const meetingLink = `${APP_URL}/chat?meeting=${newMeeting.id}`;
+              const emailHtml = (name: string) => `
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h2>📋 Karel svolává poradu</h2>
+                  <p><strong>Téma:</strong> ${meetingTopic}</p>
+                  ${meetingAgenda ? `<p><strong>Agenda:</strong></p><p>${meetingAgenda.replace(/\n/g, "<br>")}</p>` : ""}
+                  <p>${name}, Karel tě zve k asynchronní poradě. Odpovědět můžeš kdykoliv v průběhu dne – Karel shrnuje průběžně.</p>
+                  <p style="margin: 24px 0;">
+                    <a href="${meetingLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                      Připojit se k poradě →
+                    </a>
+                  </p>
+                  <p style="color: #666; font-size: 13px;">Odkaz tě přesměruje do aplikace Karel. Pro přístup je nutné být přihlášena.</p>
+                  <p>Karel</p>
+                </div>
+              `;
+              try { await resendClient.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: MAMKA_EMAIL, subject: `Karel – porada: ${meetingTopic}`, html: emailHtml("Haničko") }); } catch (e) { console.warn("Meeting invite email (Hanka):", e); }
+              try { await resendClient.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: KATA_EMAIL, subject: `Karel – porada: ${meetingTopic}`, html: emailHtml("Káťo") }); } catch (e) { console.warn("Meeting invite email (Kata):", e); }
+            }
           }
         } catch (meetErr) {
           console.warn("[daily-cycle] Meeting auto-create error:", meetErr);
