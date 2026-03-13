@@ -145,6 +145,17 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
           generatedAt: new Date().toISOString(),
         }));
       } catch {}
+
+      // Auto-sync parsed tasks to therapist task board
+      try {
+        const inserted = await syncOverviewTasksToBoard(accumulated);
+        if (inserted > 0) {
+          toast.success(`${inserted} úkolů z přehledu přidáno do seznamu`);
+          setRefreshTrigger(prev => prev + 1);
+        }
+      } catch (e) {
+        console.error("Task sync error:", e);
+      }
     } catch (e) {
       console.error("System overview error:", e);
       toast.error("Chyba při načítání přehledu systému.");
