@@ -386,20 +386,13 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       {longtermList.length > 0 && (
         <div>
           <SectionHeader emoji="📋" label="Dlouhodobé" count={longtermList.length} max={MAX_LONGTERM} />
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {longtermList.slice(0, MAX_LONGTERM).map(task => (
-              <div key={task.id} className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/20 group/lt">
-                <span className="text-[10px] text-muted-foreground flex-1 truncate">• {task.task}</span>
-                <span className="text-[8px] text-muted-foreground shrink-0">
-                  {task.assigned_to === "hanka" ? "H" : task.assigned_to === "kata" ? "K" : "H+K"}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => handlePromote(task.id, "today")} className="h-4 w-4 p-0 opacity-0 group-hover/lt:opacity-100" title="Povýšit na DNES">
+              <TaskCard key={task.id} task={task} {...sharedProps} extraActions={
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePromote(task.id, "today"); }} className="h-5 w-5 p-0" title="Povýšit na DNES">
                   <ArrowUp className="w-2.5 h-2.5 text-primary" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(task.id)} className="h-4 w-4 p-0 opacity-0 group-hover/lt:opacity-100 text-muted-foreground hover:text-destructive">
-                  <Trash2 className="w-2 h-2" />
-                </Button>
-              </div>
+              } />
             ))}
             {longtermList.length > MAX_LONGTERM && <p className="text-[8px] text-muted-foreground text-center">+{longtermList.length - MAX_LONGTERM} dalších na Drive</p>}
           </div>
