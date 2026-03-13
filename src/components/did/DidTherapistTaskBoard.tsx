@@ -223,18 +223,26 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
   const [trafficLock, setTrafficLock] = useState(false);
 
-  const handleToggleTraffic = async (task: TherapistTask, who: "hanka" | "kata") => {
+  // Keep a ref to always read the latest tasks state (avoids stale closure)
+  const tasksRef = useRef(tasks);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+
+  const handleToggleTraffic = async (taskArg: TherapistTask, who: "hanka" | "kata") => {
     if (trafficLock) return;
     setTrafficLock(true);
 
+    // Read fresh state from ref, not from the render-time closure
+    const freshTask = tasksRef.current.find(t => t.id === taskArg.id);
+    if (!freshTask) { setTrafficLock(false); return; }
+
     const field = who === "hanka" ? "status_hanka" : "status_kata";
-    const current = (task[field] || "not_started") as TrafficStatus;
+    const current = (freshTask[field] || "not_started") as TrafficStatus;
     const next = NEXT_STATUS[current];
     const updates: Record<string, string> = { [field]: next, updated_at: new Date().toISOString() };
 
     const otherField = who === "hanka" ? "status_kata" : "status_hanka";
-    const otherStatus = (task[otherField] || "not_started") as TrafficStatus;
-    const bothDone = next === "done" && (task.assigned_to !== "both" || otherStatus === "done");
+    const otherStatus = (freshTask[otherField] || "not_started") as TrafficStatus;
+    const bothDone = next === "done" && (freshTask.assigned_to !== "both" || otherStatus === "done");
     if (bothDone) {
       updates.status = "done";
       updates.completed_at = new Date().toISOString();
@@ -245,10 +253,10 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
     // Optimistic update: immediately reflect change in UI
     setTasks(prev => prev.map(t =>
-      t.id === task.id ? { ...t, ...updates } as TherapistTask : t
+      t.id === freshTask.id ? { ...t, ...updates } as TherapistTask : t
     ));
 
-    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
+    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", freshTask.id);
     if (error) {
       toast.error("Nepodařilo se změnit stav");
       await loadTasks(); // revert on error
