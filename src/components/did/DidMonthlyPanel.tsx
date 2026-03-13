@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, BarChart3, RefreshCw, Trash2 } from "lucide-react";
+import { Loader2, BarChart3, RefreshCw, Trash2, FileText } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -21,6 +21,9 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [retroLoading, setRetroLoading] = useState(false);
+  const [retroText, setRetroText] = useState<string | null>(null);
+  const [showRetro, setShowRetro] = useState(false);
 
   const loadData = async (silent = false) => {
     if (!silent) setLoading(true);
