@@ -54,20 +54,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
-  const OVERVIEW_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 hours max
   const [overviewText, setOverviewText] = useState<string>(() => {
     try {
       const cached = localStorage.getItem(OVERVIEW_CACHE_KEY);
       if (cached) {
         const parsed = JSON.parse(cached);
-        // Invalidate cache older than 6 hours
-        if (parsed.generatedAt) {
-          const age = Date.now() - new Date(parsed.generatedAt).getTime();
-          if (age > OVERVIEW_CACHE_MAX_AGE_MS) {
-            localStorage.removeItem(OVERVIEW_CACHE_KEY);
-            return "";
-          }
-        }
         return parsed.text || "";
       }
     } catch {}
@@ -78,6 +69,30 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     try { return !!localStorage.getItem(OVERVIEW_CACHE_KEY); } catch { return false; }
   });
   const prevIsUpdatingRef = useRef(isUpdating);
+
+  // Invalidate overview cache if a newer cycle completed after cache was generated
+  const invalidateCacheIfStale = async () => {
+    try {
+      const cached = localStorage.getItem(OVERVIEW_CACHE_KEY);
+      if (!cached) return;
+      const parsed = JSON.parse(cached);
+      const cacheTime = parsed.generatedAt;
+      if (!cacheTime) { localStorage.removeItem(OVERVIEW_CACHE_KEY); setOverviewLoaded(false); setOverviewText(""); return; }
+
+      const { data: newerCycles } = await supabase
+        .from("did_update_cycles")
+        .select("completed_at")
+        .eq("status", "completed")
+        .gt("completed_at", cacheTime)
+        .limit(1);
+
+      if (newerCycles && newerCycles.length > 0) {
+        localStorage.removeItem(OVERVIEW_CACHE_KEY);
+        setOverviewLoaded(false);
+        setOverviewText("");
+      }
+    } catch {}
+  };
 
   // Known DID part names to extract from overview text
   const KNOWN_PARTS = ["Arthur", "Tundrupek", "Gustík", "Raketa", "Malá", "Strážce", "Pozorovatel", "Host"];
@@ -107,6 +122,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   useEffect(() => {
     loadDashboardData();
     loadPendingWriteCount();
+    invalidateCacheIfStale();
   }, []);
 
   // Auto-load overview only if no cached version exists
