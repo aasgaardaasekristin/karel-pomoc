@@ -2200,9 +2200,15 @@ SEKCE G – Deník sezení:
 - Záznamy: | Datum | Co se dělo | Stabilizace | Další krok |
 - ⚠️ POVINNÉ při KAŽDÉM rozhovoru: Přidej řádek do tabulky s datem, shrnutím co se dělo, jaká stabilizace byla použita, a co je další krok
 
-SEKCE H – Dlouhodobé cíle:
+SEKCE H – Dlouhodobé cíle + Talent & Growth Profile:
 - Směr vývoje části (integrace, stabilizace, budování důvěry)
 - Karlovy hypotézy o budoucím směru
+- ⚠️ TALENT PROFIL: Pokud z rozhovoru vyplyne nová schopnost, zájem nebo talent části, POVINNĚ zapiš ve formátu:
+  TALENT: [oblast (např. fyzika, klavír, kreslení, jazyky)] | ÚROVEŇ: [začátečník/pokročilý/expert] | AKTIVITA: [co dělat pro rozvoj] | ZDROJ: [odkud info]
+- Dlouhodobé cíle formuluj nejen terapeuticky, ale i EDUKAČNĚ – jak využít talent části pro její rozvoj, uplatnění v životě a budování identity
+- Pro každý identifikovaný talent navrhni minimálně 1 konkrétní rozvojovou aktivitu přiměřenou věku a schopnostem části
+- Příklady talentů: fyzika, matematika, hudba (klavír, zpěv), sport (lyže, plavání), kreslení, jazyky, programování, řemesla, psaní, tanec, vaření
+- Cíl: každá část se stává "geniálním funkčním fragmentem" s uplatněním svých unikátních schopností
 
 SEKCE I – Terapeutické metody a přístupy:
 - VŠECHNY konkrétní techniky a metody CELÉ (ne zkrácené!)

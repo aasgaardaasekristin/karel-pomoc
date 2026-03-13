@@ -15,6 +15,7 @@ import DidSessionPrep from "./DidSessionPrep";
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
+import DidKartotekaHealth from "./DidKartotekaHealth";
 
 interface PartActivity {
   name: string;
@@ -408,6 +409,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       {/* Colleague View */}
       <div className="mb-4">
         <DidColleagueView refreshTrigger={refreshTrigger} />
+      </div>
+
+      {/* Kartotéka Health Check */}
+      <div className="mb-4">
+        <DidKartotekaHealth refreshTrigger={refreshTrigger} />
       </div>
 
       {/* System Map */}

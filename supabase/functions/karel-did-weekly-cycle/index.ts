@@ -458,6 +458,18 @@ serve(async (req) => {
       try {
         // Build focused research query based on active fragments
         const activeFragments = cardNames.filter(n => n.includes("AKTIVNÍ")).map(n => n.replace(" [AKTIVNÍ]", "")).join(", ");
+        
+        // Extract talent keywords from card content for personalized research
+        const talentKeywords: string[] = [];
+        const talentRegex = /TALENT:\s*([^|]+)/gi;
+        let talentMatch;
+        while ((talentMatch = talentRegex.exec(allCardsContent)) !== null) {
+          talentKeywords.push(talentMatch[1].trim());
+        }
+        const talentContext = talentKeywords.length > 0
+          ? `\n8. Educational activities for DID alters with specific talents: ${talentKeywords.join(", ")} – age-appropriate exercises, games, and development plans`
+          : `\n8. Educational activities for DID alters with specific talents (music, physics, art, languages) – how to develop each alter's unique abilities as functional life skills`;
+
         const researchQuery = `DID (Dissociative Identity Disorder) therapeutic approaches 2024-2025:
 1. Novel methods for working with child alters and protectors in DID therapy
 2. Evidence-based techniques for inter-part communication and cooperation
@@ -465,7 +477,7 @@ serve(async (req) => {
 4. Strategies for safe awakening of dormant alters
 5. Crisis prevention and safety planning for DID systems
 6. Long-term integration strategies and functional daily living with DID
-7. School and social adaptation strategies for DID systems with child-age alters
+7. School and social adaptation strategies for DID systems with child-age alters${talentContext}
 Active parts in this system: ${activeFragments}`;
 
         const pRes = await withTimeout(fetch("https://api.perplexity.ai/chat/completions", {
@@ -558,11 +570,16 @@ E) STRATEGIE A SMĚŘOVÁNÍ
 ▸ Návrhy nových metod (čerpej z Perplexity výzkumu)
 ▸ Kreativní přístupy: neotřelé způsoby práce s konkrétními částmi
 
-F) TALENTY A POTENCIÁL ČÁSTÍ
-▸ Mapa schopností: která část v čem vyniká
-▸ Jak schopnosti využít prakticky (škola, práce, zájmy)
-▸ Návrhy konkrétních aktivit pro rozvoj talentů
-▸ Příprava na budoucnost (studium, kariéra)
+F) TALENTY A POTENCIÁL ČÁSTÍ – PERSONALIZOVANÝ EDUKAČNÍ PLÁN
+▸ Mapa schopností: která část v čem vyniká (fyzika, klavír, jazyky, sport, umění...)
+▸ Jak schopnosti využít prakticky (škola, práce, zájmy, budování identity)
+▸ Pro KAŽDOU část s identifikovaným talentem vygeneruj:
+  TALENT_PLAN: [jméno části] | [talent/schopnost] | [3 konkrétní aktivity na míru věku a schopnostem] | [zdroje/metodiky]
+▸ Příklady aktivit: „hry pro rozvoj fyzikálního myšlení u dítěte 10 let", „piano warm-up rutina pro začátečníka s trauma historií", „kreativní psaní pro introspektivní alter"
+▸ Příprava na budoucnost (studium, kariéra, specializace)
+▸ Tracking progressu: co se od posledního týdne zlepšilo v rozvoji talentů
+▸ Doporučené VNĚJŠÍ ZDROJE: kurzy, aplikace, knihy, weby – personalizované pro každou část
+▸ Cíl: každá část = "geniální funkční fragment" s uplatněním unikátních schopností
 
 G) KOORDINACE TERAPEUTŮ + HODNOCENÍ SPOLUPRÁCE
 ▸ Co probrat na společném hovoru Hanka+Káťa

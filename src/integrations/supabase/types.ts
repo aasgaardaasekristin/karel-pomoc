@@ -377,6 +377,51 @@ export type Database = {
           },
         ]
       }
+      did_kartoteka_health: {
+        Row: {
+          created_at: string
+          filled_sections: number
+          folder_label: string
+          health_score: number
+          id: string
+          last_checked: string
+          missing_sections: string[]
+          part_name: string
+          stale_sections: string[]
+          stub_sections: string[]
+          total_sections: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          filled_sections?: number
+          folder_label?: string
+          health_score?: number
+          id?: string
+          last_checked?: string
+          missing_sections?: string[]
+          part_name: string
+          stale_sections?: string[]
+          stub_sections?: string[]
+          total_sections?: number
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          filled_sections?: number
+          folder_label?: string
+          health_score?: number
+          id?: string
+          last_checked?: string
+          missing_sections?: string[]
+          part_name?: string
+          stale_sections?: string[]
+          stub_sections?: string[]
+          total_sections?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_motivation_profiles: {
         Row: {
           avg_completion_days: number | null
