@@ -197,7 +197,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     setPendingWriteCount(count || 0);
   };
 
-    setLoading(true);
+    const loadDashboardData = async () => {
     try {
       const { data: threads } = await supabase
         .from("did_threads")
