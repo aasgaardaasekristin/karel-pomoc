@@ -373,10 +373,18 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
       {/* Therapist Tasks */}
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-3">
-          <ListChecks className="w-3.5 h-3.5 text-primary" />
-          Úkoly pro terapeutky
-        </h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <ListChecks className="w-3.5 h-3.5 text-primary" />
+            Úkoly pro terapeutky
+          </h4>
+          {pendingWriteCount > 0 && (
+            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 flex items-center gap-1">
+              <Upload className="w-2.5 h-2.5" />
+              {pendingWriteCount} čeká na Drive
+            </Badge>
+          )}
+        </div>
         <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
       </div>
 
