@@ -13,6 +13,7 @@ import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidSessionPrep from "./DidSessionPrep";
 import DidMonthlyPanel from "./DidMonthlyPanel";
+import DidPulseCheck from "./DidPulseCheck";
 
 interface PartActivity {
   name: string;
@@ -396,6 +397,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       {/* Monthly Panel */}
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
         <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+      </div>
+
+      {/* Pulse Check */}
+      <div className="mb-4">
+        <DidPulseCheck refreshTrigger={refreshTrigger} />
       </div>
 
       {/* System Map */}
