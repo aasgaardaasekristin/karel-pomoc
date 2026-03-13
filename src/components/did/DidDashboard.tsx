@@ -65,6 +65,31 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   });
   const prevIsUpdatingRef = useRef(isUpdating);
 
+  // Known DID part names to extract from overview text
+  const KNOWN_PARTS = ["Arthur", "Tundrupek", "Gustík", "Raketa", "Malá", "Strážce", "Pozorovatel", "Host"];
+
+  // Enrich parts from overview text — merge with DB-sourced parts
+  useEffect(() => {
+    if (!overviewText) return;
+    const mentionedParts: string[] = [];
+    for (const name of KNOWN_PARTS) {
+      // Case-insensitive search in overview text
+      if (overviewText.toLowerCase().includes(name.toLowerCase())) {
+        mentionedParts.push(name);
+      }
+    }
+    if (mentionedParts.length === 0) return;
+
+    setParts(prev => {
+      const existingNames = new Set(prev.map(p => p.name.toLowerCase()));
+      const newParts: PartActivity[] = mentionedParts
+        .filter(name => !existingNames.has(name.toLowerCase()))
+        .map(name => ({ name, lastSeen: null, status: "sleeping" as const }));
+      if (newParts.length === 0) return prev;
+      return [...prev, ...newParts];
+    });
+  }, [overviewText]);
+
   useEffect(() => {
     loadDashboardData();
   }, []);

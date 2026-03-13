@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -223,18 +223,26 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
   const [trafficLock, setTrafficLock] = useState(false);
 
-  const handleToggleTraffic = async (task: TherapistTask, who: "hanka" | "kata") => {
+  // Keep a ref to always read the latest tasks state (avoids stale closure)
+  const tasksRef = useRef(tasks);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+
+  const handleToggleTraffic = async (taskArg: TherapistTask, who: "hanka" | "kata") => {
     if (trafficLock) return;
     setTrafficLock(true);
 
+    // Read fresh state from ref, not from the render-time closure
+    const freshTask = tasksRef.current.find(t => t.id === taskArg.id);
+    if (!freshTask) { setTrafficLock(false); return; }
+
     const field = who === "hanka" ? "status_hanka" : "status_kata";
-    const current = (task[field] || "not_started") as TrafficStatus;
+    const current = (freshTask[field] || "not_started") as TrafficStatus;
     const next = NEXT_STATUS[current];
     const updates: Record<string, string> = { [field]: next, updated_at: new Date().toISOString() };
 
     const otherField = who === "hanka" ? "status_kata" : "status_hanka";
-    const otherStatus = (task[otherField] || "not_started") as TrafficStatus;
-    const bothDone = next === "done" && (task.assigned_to !== "both" || otherStatus === "done");
+    const otherStatus = (freshTask[otherField] || "not_started") as TrafficStatus;
+    const bothDone = next === "done" && (freshTask.assigned_to !== "both" || otherStatus === "done");
     if (bothDone) {
       updates.status = "done";
       updates.completed_at = new Date().toISOString();
@@ -245,10 +253,10 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
     // Optimistic update: immediately reflect change in UI
     setTasks(prev => prev.map(t =>
-      t.id === task.id ? { ...t, ...updates } as TherapistTask : t
+      t.id === freshTask.id ? { ...t, ...updates } as TherapistTask : t
     ));
 
-    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", task.id);
+    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", freshTask.id);
     if (error) {
       toast.error("Nepodařilo se změnit stav");
       await loadTasks(); // revert on error
@@ -288,12 +296,14 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
   const assigneeFull = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
 
-  // Categorize tasks
+  // Categorize tasks — use ALL tasks (not just active) for section visibility
   const active = tasks.filter(t => !isAllDone(t));
   const done = tasks.filter(t => isAllDone(t));
 
   const todayTasks = active.filter(t => t.category === "today" || t.category === "daily");
   const tomorrowTasks = active.filter(t => t.category === "tomorrow");
+  // Also check if there are ANY tomorrow tasks (including done) so we can show the section
+  const allTomorrowTasks = tasks.filter(t => t.category === "tomorrow");
   const longtermTasks = active.filter(t => t.category === "longterm" || t.category === "weekly" || (!["today", "tomorrow", "daily"].includes(t.category || "")));
 
   // Separate longterm into actual longterm list items vs general/uncategorized with traffic lights
@@ -342,14 +352,18 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         </div>
       )}
 
-      {/* ZÍTRA */}
-      {tomorrowTasks.length > 0 && (
+      {/* ZÍTRA — show section if there are any tomorrow tasks (active or done) */}
+      {(tomorrowTasks.length > 0 || allTomorrowTasks.length > 0) && (
         <div>
           <SectionHeader emoji="🟡" label="ZÍTRA" count={tomorrowTasks.length} max={MAX_TOMORROW} />
-          <div className="space-y-1">
-            {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
-            {tomorrowTasks.length > MAX_TOMORROW && <p className="text-[8px] text-muted-foreground text-center">+{tomorrowTasks.length - MAX_TOMORROW} skrytých</p>}
-          </div>
+          {tomorrowTasks.length > 0 ? (
+            <div className="space-y-1">
+              {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => <TaskCard key={task.id} task={task} {...sharedProps} />)}
+              {tomorrowTasks.length > MAX_TOMORROW && <p className="text-[8px] text-muted-foreground text-center">+{tomorrowTasks.length - MAX_TOMORROW} skrytých</p>}
+            </div>
+          ) : (
+            <p className="text-[9px] text-muted-foreground text-center py-1.5">Všechny úkoly na zítra splněny ✅</p>
+          )}
         </div>
       )}
 
