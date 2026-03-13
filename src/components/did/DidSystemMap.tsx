@@ -126,10 +126,10 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
               const isClickable = !!thread && !!onQuickThread;
 
               return (
-                <button
+                <div
                   key={part.name}
-                  type="button"
-                  disabled={!isClickable}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     if (thread && onQuickThread) {
                       onQuickThread(thread.id, thread.partName);
