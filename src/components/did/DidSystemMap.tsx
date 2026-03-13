@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, ChevronDown, ChevronUp, Activity, MessageCircle } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, ChevronDown, ChevronUp, Activity, MessageCircle, Trash2 } from "lucide-react";
 
 interface PartActivity {
   name: string;
