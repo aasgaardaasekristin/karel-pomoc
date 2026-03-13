@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3 } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
 import { getAuthHeaders } from "@/lib/auth";
