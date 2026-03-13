@@ -192,7 +192,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     }
   };
 
-  const loadDashboardData = async () => {
+  const loadPendingWriteCount = async () => {
+    const { count } = await supabase.from("did_pending_drive_writes").select("*", { count: "exact", head: true }).eq("status", "pending");
+    setPendingWriteCount(count || 0);
+  };
+
     setLoading(true);
     try {
       const { data: threads } = await supabase
