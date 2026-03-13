@@ -377,6 +377,42 @@ export type Database = {
           },
         ]
       }
+      did_pending_drive_writes: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          priority: string | null
+          processed_at: string | null
+          status: string | null
+          target_document: string
+          user_id: string | null
+          write_type: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          priority?: string | null
+          processed_at?: string | null
+          status?: string | null
+          target_document: string
+          user_id?: string | null
+          write_type?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          priority?: string | null
+          processed_at?: string | null
+          status?: string | null
+          target_document?: string
+          user_id?: string | null
+          write_type?: string | null
+        }
+        Relationships: []
+      }
       did_therapist_tasks: {
         Row: {
           assigned_to: string
@@ -385,6 +421,7 @@ export type Database = {
           completed_note: string | null
           created_at: string
           due_date: string | null
+          escalation_level: number | null
           id: string
           note: string | null
           priority: string | null
@@ -403,6 +440,7 @@ export type Database = {
           completed_note?: string | null
           created_at?: string
           due_date?: string | null
+          escalation_level?: number | null
           id?: string
           note?: string | null
           priority?: string | null
@@ -421,6 +459,7 @@ export type Database = {
           completed_note?: string | null
           created_at?: string
           due_date?: string | null
+          escalation_level?: number | null
           id?: string
           note?: string | null
           priority?: string | null

@@ -70,6 +70,7 @@ const TaskCard = ({
   onToggleTraffic,
   onDelete,
   onAddNote,
+  extraActions,
 }: {
   task: TherapistTask;
   expandedTask: string | null;
@@ -79,6 +80,7 @@ const TaskCard = ({
   onToggleTraffic: (task: TherapistTask, who: "hanka" | "kata") => void;
   onDelete: (id: string) => void;
   onAddNote: (id: string) => void;
+  extraActions?: React.ReactNode;
 }) => {
   const isExpanded = expandedTask === task.id;
   const driveLink = task.source_agreement?.startsWith("http")
@@ -102,6 +104,7 @@ const TaskCard = ({
           <span className="text-[11px] text-foreground leading-tight">{task.task}</span>
         </button>
         <div className="flex items-center gap-0 shrink-0">
+          {extraActions}
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setExpandedTask(isExpanded ? null : task.id); }} className="h-5 w-5 p-0">
             {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
           </Button>
@@ -208,8 +211,9 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const handleAddTask = async () => {
     if (!newTask.trim()) return;
     setAdding(true);
+    const taskText = newTask.trim();
     const { error } = await supabase.from("did_therapist_tasks").insert({
-      task: newTask.trim(),
+      task: taskText,
       assigned_to: newAssignee,
       category: newCategory,
       status_hanka: "not_started",
@@ -217,7 +221,20 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       priority: newCategory === "today" ? "high" : newCategory === "tomorrow" ? "normal" : "low",
     });
     if (error) toast.error("Nepodařilo se přidat úkol");
-    else { setNewTask(""); loadTasks(); }
+    else {
+      // Queue write-back to Drive
+      const targetDoc = newCategory === "longterm" ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
+      await supabase.from("did_pending_drive_writes").insert({
+        content: `► ${taskText} [${newAssignee === "hanka" ? "Hanka" : newAssignee === "kata" ? "Káťa" : "Obě"}]`,
+        target_document: targetDoc,
+        write_type: "append",
+        priority: newCategory === "today" ? "high" : "normal",
+      }).then(({ error: writeErr }) => {
+        if (writeErr) console.warn("Pending write queue error:", writeErr);
+      });
+      setNewTask("");
+      loadTasks();
+    }
     setAdding(false);
   };
 
@@ -386,20 +403,13 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       {longtermList.length > 0 && (
         <div>
           <SectionHeader emoji="📋" label="Dlouhodobé" count={longtermList.length} max={MAX_LONGTERM} />
-          <div className="space-y-0.5">
+          <div className="space-y-1">
             {longtermList.slice(0, MAX_LONGTERM).map(task => (
-              <div key={task.id} className="flex items-center gap-1.5 px-2 py-1 rounded bg-muted/20 group/lt">
-                <span className="text-[10px] text-muted-foreground flex-1 truncate">• {task.task}</span>
-                <span className="text-[8px] text-muted-foreground shrink-0">
-                  {task.assigned_to === "hanka" ? "H" : task.assigned_to === "kata" ? "K" : "H+K"}
-                </span>
-                <Button variant="ghost" size="sm" onClick={() => handlePromote(task.id, "today")} className="h-4 w-4 p-0 opacity-0 group-hover/lt:opacity-100" title="Povýšit na DNES">
+              <TaskCard key={task.id} task={task} {...sharedProps} extraActions={
+                <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePromote(task.id, "today"); }} className="h-5 w-5 p-0" title="Povýšit na DNES">
                   <ArrowUp className="w-2.5 h-2.5 text-primary" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(task.id)} className="h-4 w-4 p-0 opacity-0 group-hover/lt:opacity-100 text-muted-foreground hover:text-destructive">
-                  <Trash2 className="w-2 h-2" />
-                </Button>
-              </div>
+              } />
             ))}
             {longtermList.length > MAX_LONGTERM && <p className="text-[8px] text-muted-foreground text-center">+{longtermList.length - MAX_LONGTERM} dalších na Drive</p>}
           </div>

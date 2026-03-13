@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3 } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import DidSystemMap from "./DidSystemMap";
 import { getAuthHeaders } from "@/lib/auth";
@@ -46,6 +47,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [lastCycleReport, setLastCycleReport] = useState<string | null>(null);
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [pendingWriteCount, setPendingWriteCount] = useState(0);
 
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
@@ -92,6 +94,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
   useEffect(() => {
     loadDashboardData();
+    loadPendingWriteCount();
   }, []);
 
   // Auto-load overview only if no cached version exists
@@ -189,8 +192,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     }
   };
 
-  const loadDashboardData = async () => {
-    setLoading(true);
+  const loadPendingWriteCount = async () => {
+    const { count } = await supabase.from("did_pending_drive_writes").select("*", { count: "exact", head: true }).eq("status", "pending");
+    setPendingWriteCount(count || 0);
+  };
+
+    const loadDashboardData = async () => {
     try {
       const { data: threads } = await supabase
         .from("did_threads")
@@ -366,10 +373,18 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
       {/* Therapist Tasks */}
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5 mb-3">
-          <ListChecks className="w-3.5 h-3.5 text-primary" />
-          Úkoly pro terapeutky
-        </h4>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <ListChecks className="w-3.5 h-3.5 text-primary" />
+            Úkoly pro terapeutky
+          </h4>
+          {pendingWriteCount > 0 && (
+            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 flex items-center gap-1">
+              <Upload className="w-2.5 h-2.5" />
+              {pendingWriteCount} čeká na Drive
+            </Badge>
+          )}
+        </div>
         <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
       </div>
 
