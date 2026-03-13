@@ -6,6 +6,7 @@ import DidSystemMap from "./DidSystemMap";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
