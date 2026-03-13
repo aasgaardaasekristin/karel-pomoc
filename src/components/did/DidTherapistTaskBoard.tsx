@@ -24,11 +24,13 @@ interface TherapistTask {
 }
 
 type TrafficStatus = "not_started" | "in_progress" | "done";
+type CategoryFilter = "all" | "today" | "tomorrow" | "longterm";
+type AssigneeFilter = "all" | "hanka" | "kata" | "both";
 
 const TRAFFIC_COLORS: Record<TrafficStatus, string> = {
-  not_started: "bg-destructive",
-  in_progress: "bg-orange-400",
-  done: "bg-green-500",
+  not_started: "bg-muted border border-border",
+  in_progress: "bg-accent",
+  done: "bg-primary",
 };
 
 const NEXT_STATUS: Record<TrafficStatus, TrafficStatus> = {
@@ -47,9 +49,70 @@ const MAX_TODAY = 5;
 const MAX_TOMORROW = 5;
 const MAX_LONGTERM = 10;
 
+const stripMarkdownNoise = (text?: string | null) => (text || "")
+  .replace(/^\s*[-*]\s+/gm, "")
+  .replace(/\*\*/g, "")
+  .replace(/\s+/g, " ")
+  .trim();
+
+const normalizeTask = (text?: string | null) => stripMarkdownNoise(text).toLowerCase();
+
+const assigneeLabel = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
+
+const targetDocumentForCategory = (category?: string | null) =>
+  (category === "longterm" || category === "weekly") ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
+
+const buildTaskQueueKey = (task: { task: string; assigned_to: string; category?: string | null }) =>
+  `${normalizeTask(task.task)}|${task.assigned_to}|${targetDocumentForCategory(task.category)}`;
+
+const parsePendingWriteKey = (content?: string | null, targetDocument?: string | null) => {
+  if (!content || !targetDocument) return null;
+  const match = content.match(/^►\s*(.*?)\s*\[(Hanka|Káťa|Obě)\]/i);
+  if (!match) return null;
+
+  const assigned = match[2] === "Hanka" ? "hanka" : match[2] === "Káťa" ? "kata" : "both";
+  return `${normalizeTask(match[1])}|${assigned}|${targetDocument}`;
+};
+
+const isAssigneeVisible = (assignedTo: string, filter: AssigneeFilter) => {
+  if (filter === "all") return true;
+  if (filter === "both") return assignedTo === "both";
+  if (filter === "hanka") return assignedTo === "hanka" || assignedTo === "both";
+  return assignedTo === "kata" || assignedTo === "both";
+};
+
+const isSafeDocumentUrl = (value?: string | null) => {
+  if (!value || !/^https?:\/\//i.test(value)) return null;
+
+  try {
+    const url = new URL(value.trim());
+    const host = url.hostname.toLowerCase();
+    if (!["docs.google.com", "drive.google.com"].includes(host)) return null;
+
+    const path = url.pathname.toLowerCase();
+    const isSearchLike = path.includes("/drive/search") || path.includes("/drive/recent") || path.includes("/drive/home");
+    if (isSearchLike) return null;
+
+    const hasDocId = /\/(document|spreadsheets|presentation)\/d\/[a-zA-Z0-9_-]{20,}/.test(path)
+      || /\/file\/d\/[a-zA-Z0-9_-]{20,}/.test(path)
+      || /[?&]id=[a-zA-Z0-9_-]{20,}/.test(url.search);
+
+    if (!hasDocId) return null;
+
+    url.searchParams.delete("authuser");
+    return url.toString();
+  } catch {
+    return null;
+  }
+};
+
+const openExternalDocument = (url: string) => {
+  window.open(url, "_blank", "noopener,noreferrer");
+};
+
 const TrafficLight = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
   <button onClick={onClick} className="flex items-center gap-1 group cursor-pointer" title={`${label}: ${STATUS_LABEL[status]}`}>
-    <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-150 group-hover:shadow-md`} />
+    <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-110`} />
     <span className="text-[8px] font-medium text-muted-foreground opacity-70">{label}</span>
   </button>
 );
