@@ -111,3 +111,26 @@
   - Terapeutky nekomunikovaly 5+ dní
   - Strategický nesoulad nebo stagnace cílů
 - **Aktualizované edge funkce**: karel-chat, karel-did-daily-cycle, karel-did-weekly-cycle, karel-did-monthly-cycle, karel-did-drive-write, karel-did-session-prep
+
+### ✅ 19. Karlův ranní brief (Fáze 9)
+- `karel-did-morning-brief` edge function
+- pg_cron schedule: `0 6 * * *` UTC (7:00 CET)
+- Načte: nesplněné úkoly, motivační profily, aktivitu za 24h, operativní plán z Drive
+- AI generuje personalizovaný brief pro Hanku i Káťu paralelně (Gemini Flash Lite)
+- Formát: Priorita dne, 3 top úkoly, personalizovaný tip, motivace
+- Email přes Resend oběma terapeutkám
+
+### ✅ 20. Smart Activity Recommender (Fáze 9)
+- Rozšíření `karel-chat` runtime injection
+- Parsuje TALENT záznamy ze sekce H karet v didInitialContext
+- Extrahuje talenty/zájmy z kontextu pomocí regex (formát TALENT|ÚROVEŇ|AKTIVITA)
+- Injektuje personalizovaná doporučení do system promptu
+- Karel proaktivně navrhuje rozvíjející aktivity na míru talentu každé části
+
+### ✅ 21. Drive Auto-Cleanup (Fáze 9)
+- Rozšíření `karel-did-monthly-cycle` o auditní krok
+- Skenuje VŠECHNY podsložky kartotéky na Drive
+- Detekuje: .txt/.md soubory (nekonvertované), duplicitní karty, prázdné dokumenty
+- Výsledky zahrnuty v měsíčním emailovém reportu jako "📋 Návrh na úklid"
+- Karel nic nesmaže — pouze navrhuje (bezpečnost)
+- API response obsahuje `cleanupIssues` pole
