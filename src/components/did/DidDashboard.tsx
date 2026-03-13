@@ -14,6 +14,7 @@ import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidSessionPrep from "./DidSessionPrep";
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
+import DidColleagueView from "./DidColleagueView";
 
 interface PartActivity {
   name: string;
