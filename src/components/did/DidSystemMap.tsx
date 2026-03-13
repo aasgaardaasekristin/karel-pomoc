@@ -72,7 +72,7 @@ const formatDate = (isoStr: string | null) => {
   return d.toLocaleDateString("cs-CZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 };
 
-const DidSystemMap = ({ parts, activeThreads, onQuickThread }: Props) => {
+const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Props) => {
   const [expanded, setExpanded] = useState(true);
 
   const sorted = useMemo(() => {
