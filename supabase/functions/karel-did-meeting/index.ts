@@ -94,6 +94,7 @@ serve(async (req) => {
 
     // ═══ ACTION: LIST MEETINGS ═══
     if (action === "list") {
+      // Use service_role client to bypass RLS (meetings may be created by cron with different user_id)
       const { data: meetings } = await sb.from("did_meetings")
         .select("*")
         .order("created_at", { ascending: false })
