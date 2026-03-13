@@ -4,6 +4,7 @@ import { Copy, Check, Mail, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { parseTaskSuggestions, TaskSuggestInline } from "@/components/did/TaskSuggestButtons";
 
 interface Message {
   role: "user" | "assistant";
@@ -13,6 +14,7 @@ interface Message {
 interface ChatMessageProps {
   message: Message;
   onNotebookCopied?: () => void;
+  onTaskAdded?: () => void;
 }
 
 // Section definitions with labels and target documents
@@ -162,7 +164,7 @@ const extractNotebookLMSection = (content: string): string | null => {
   return handoverMatch ? handoverMatch[0].trim() : null;
 };
 
-const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
+const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProps) => {
   const isUser = message.role === "user";
 
   if (isUser) {
@@ -203,11 +205,14 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
     );
   }
 
-  const { beforeSections, sections } = parseSections(message.content);
+  // Parse task suggestions from content
+  const { cleanContent: contentWithoutTasks, suggestions: taskSuggestions } = parseTaskSuggestions(message.content);
+
+  const { beforeSections, sections } = parseSections(contentWithoutTasks);
 
   // If no structured sections, use legacy rendering
   if (sections.length === 0) {
-    const notebookSection = extractNotebookLMSection(message.content);
+    const notebookSection = extractNotebookLMSection(contentWithoutTasks);
     return (
       <div className="flex justify-start">
         <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
@@ -218,8 +223,9 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
                   <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
                 ),
               }}
-            >{message.content}</ReactMarkdown>
+            >{contentWithoutTasks}</ReactMarkdown>
             {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" />}
+            <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
           </div>
         </div>
       </div>
@@ -272,6 +278,7 @@ const ChatMessage = ({ message, onNotebookCopied }: ChatMessageProps) => {
               </div>
             );
           })}
+          <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
         </div>
       </div>
     </div>
