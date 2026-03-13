@@ -252,9 +252,26 @@ serve(async (req) => {
     const now = new Date();
     const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
     const dayName = dayNames[now.getDay()];
-    const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}`;
+    const hour = now.getHours();
+    const minute = now.getMinutes().toString().padStart(2, "0");
+    const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
     
-    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum: ${formattedDate}.
+    // Rotating greeting variants
+    const greetingVariants = [
+      `Krásné ${dayName}ní ráno (${formattedDate}), Hani a Káťo!`,
+      `Zdravím vás v tento ${dayName} (${formattedDate}), milé kolegyně!`,
+      `Dobrý den, Hani a Káťo! Je ${formattedDate} a Karel má pro vás čerstvý přehled.`,
+      `Tak co, Hani a Káťo – pojďme se podívat, co se děje! Dnes je ${formattedDate}.`,
+      `Ahoj, Hani a Káťo! ${formattedDate} – čas na Karlův pohled na věc.`,
+      `Vítám vás, Hani a Káťo, v dnešním přehledu (${formattedDate})!`,
+      `Hani, Káťo – ${formattedDate}, Karel hlásí stav na palubě.`,
+    ];
+    // Pick variant based on day-of-year + hour so it rotates naturally
+    const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
+    const variantIndex = (dayOfYear + hour) % greetingVariants.length;
+    const chosenGreeting = greetingVariants[variantIndex];
+    
+    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum a čas: ${formattedDate}.
 
 VSTUPNÍ DATA:
 
