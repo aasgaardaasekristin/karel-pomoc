@@ -572,33 +572,38 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           ))}
         </div>
 
-        <div className="rounded-md border border-border/60 bg-background/70 p-1.5 space-y-1">
-          <p className="text-[8px] text-muted-foreground">Filtr zobrazení</p>
-          <div className="flex flex-wrap gap-1">
-            {(["all", "today", "tomorrow", "longterm"] as const).map(c => (
-              <Button
-                key={c}
-                variant={categoryFilter === c ? "default" : "outline"}
-                size="sm"
-                onClick={() => setCategoryFilter(c)}
-                className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
-              >
-                {c === "all" ? "Vše" : c === "today" ? "Dnes" : c === "tomorrow" ? "Zítra" : "Dlouhodobé"}
-              </Button>
-            ))}
+        <div className="rounded-md border border-border/60 bg-background/70 p-1.5 space-y-1.5">
+          <div>
+            <p className="text-[8px] text-muted-foreground mb-1">Kdo</p>
+            <div className="flex flex-wrap gap-1">
+              {(["hanka", "kata", "both"] as const).map(a => (
+                <Button
+                  key={a}
+                  variant={assigneeFilter === a ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setAssigneeFilter(assigneeFilter === a ? "all" : a)}
+                  className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
+                >
+                  {assigneeFull(a)}
+                </Button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {(["all", "hanka", "kata", "both"] as const).map(a => (
-              <Button
-                key={a}
-                variant={assigneeFilter === a ? "default" : "outline"}
-                size="sm"
-                onClick={() => setAssigneeFilter(a)}
-                className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
-              >
-                {a === "all" ? "Vše" : assigneeFull(a)}
-              </Button>
-            ))}
+          <div>
+            <p className="text-[8px] text-muted-foreground mb-1">Kdy</p>
+            <div className="flex flex-wrap gap-1">
+              {(["today", "tomorrow", "longterm"] as const).map(c => (
+                <Button
+                  key={c}
+                  variant={categoryFilter === c ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setCategoryFilter(categoryFilter === c ? "all" : c)}
+                  className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
+                >
+                  {c === "today" ? "Dnes" : c === "tomorrow" ? "Zítra" : "Dlouhodobé"}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
