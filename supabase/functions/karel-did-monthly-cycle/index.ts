@@ -184,14 +184,15 @@ serve(async (req) => {
     // ═══ GATHER DATA ═══
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+    // NO report_summary – only metadata. Drive is the single source of truth.
     const [dailyCyclesRes, weeklyCyclesRes, threadsRes, tasksRes] = await Promise.all([
       supabaseAdmin.from("did_update_cycles")
-        .select("report_summary, completed_at, cards_updated")
+        .select("completed_at, cards_updated")
         .eq("cycle_type", "daily").eq("status", "completed")
         .gte("completed_at", thirtyDaysAgo)
         .order("completed_at", { ascending: false }),
       supabaseAdmin.from("did_update_cycles")
-        .select("report_summary, completed_at")
+        .select("completed_at")
         .eq("cycle_type", "weekly").eq("status", "completed")
         .gte("completed_at", thirtyDaysAgo)
         .order("completed_at", { ascending: false }),
@@ -252,14 +253,13 @@ serve(async (req) => {
       console.warn("Drive read error (non-fatal):", e);
     }
 
-    // Daily summaries
+    // Only metadata – cards_updated and dates. NO report_summary (stale data risk).
     const dailySummaries = dailyCycles.slice(0, 15).map((c: any) =>
-      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] ${truncate(c.report_summary || "", 300)}`
+      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] Aktualizované karty: ${JSON.stringify(c.cards_updated || [])}`
     ).join("\n---\n");
 
-    // Weekly summaries
     const weeklySummaries = weeklyCycles.slice(0, 4).map((c: any) =>
-      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] ${truncate(c.report_summary || "", 600)}`
+      `[${new Date(c.completed_at).toLocaleDateString("cs-CZ")}] Týdenní cyklus dokončen`
     ).join("\n---\n");
 
     // Part activity summary

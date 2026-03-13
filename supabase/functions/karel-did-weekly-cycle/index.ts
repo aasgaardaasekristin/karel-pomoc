@@ -400,8 +400,9 @@ serve(async (req) => {
       .select("part_name, sub_mode, started_at, last_activity_at, messages")
       .gte("started_at", monthAgo);
 
+    // Only fetch metadata from cycles – NO report_summary (may contain stale/deleted data)
     const { data: weekCycles } = await sb.from("did_update_cycles")
-      .select("cycle_type, completed_at, report_summary, cards_updated")
+      .select("cycle_type, completed_at, cards_updated")
       .eq("status", "completed").gte("completed_at", weekAgo)
       .order("completed_at", { ascending: true });
 
@@ -432,9 +433,10 @@ serve(async (req) => {
       .map(([name, d]) => `- ${name}: Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Režimy: ${Array.from(d.modes).join(",")}, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`)
       .join("\n");
 
+    // Only use cards_updated metadata – NO report_summary to avoid stale data
     const dailyReportsSummary = (weekCycles || [])
       .filter(c => c.cycle_type === "daily")
-      .map(c => `[${c.completed_at}] Karty: ${JSON.stringify(c.cards_updated)}\n${(c.report_summary || "").slice(0, 500)}`)
+      .map(c => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`)
       .join("\n---\n");
 
     // Weekly thread conversations (truncated for context)
