@@ -107,6 +107,38 @@ serve(async (req) => {
       });
     }
 
+    // ═══ ACTION: SEND INVITES (for existing meeting) ═══
+    if (action === "send_invites") {
+      const { data: meeting } = await sb.from("did_meetings").select("*").eq("id", meetingId).single();
+      if (!meeting) throw new Error("Meeting not found");
+
+      if (RESEND_API_KEY) {
+        const resend = new Resend(RESEND_API_KEY);
+        const APP_URL = "https://karel-pomoc.lovable.app";
+        const meetingLink = `${APP_URL}/chat?meeting=${meeting.id}`;
+        const emailHtml = (name: string) => `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>📋 Karel svolává poradu</h2>
+            <p><strong>Téma:</strong> ${meeting.topic}</p>
+            ${meeting.agenda ? `<p><strong>Agenda:</strong></p><p>${meeting.agenda.replace(/\n/g, "<br>")}</p>` : ""}
+            <p>${name}, Karel tě zve k asynchronní poradě. Odpovědět můžeš kdykoliv – Karel shrnuje průběžně.</p>
+            <p style="margin: 24px 0;">
+              <a href="${meetingLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                Připojit se k poradě →
+              </a>
+            </p>
+            <p style="color: #666; font-size: 13px;">Pro přístup je nutné být přihlášena.</p>
+            <p>Karel</p>
+          </div>
+        `;
+        const results: string[] = [];
+        try { await resend.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: MAMKA_EMAIL, subject: `Karel – porada: ${meeting.topic}`, html: emailHtml("Haničko") }); results.push("hanka_ok"); } catch (e) { results.push("hanka_fail"); }
+        try { await resend.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: KATA_EMAIL, subject: `Karel – porada: ${meeting.topic}`, html: emailHtml("Káťo") }); results.push("kata_ok"); } catch (e) { results.push("kata_fail"); }
+        return new Response(JSON.stringify({ success: true, results }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ error: "No RESEND_API_KEY" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // ═══ ACTION: GET MEETING ═══
     if (action === "get") {
       const { data: meeting } = await sb.from("did_meetings")
