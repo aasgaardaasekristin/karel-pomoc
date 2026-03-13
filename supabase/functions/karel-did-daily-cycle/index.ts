@@ -1476,9 +1476,6 @@ serve(async (req) => {
   }
 
   // ═══ EMAIL GUARD: Only send report emails from scheduled cron calls ═══
-  let requestBody: any = {};
-  try { requestBody = await req.clone().json(); } catch {}
-  const isCronSource = requestBody?.source === "cron";
   const isTestEmail = requestBody?.testEmail === true;
   const shouldSendEmails = (isCronCall && isCronSource) || isTestEmail;
   if (!shouldSendEmails) {
