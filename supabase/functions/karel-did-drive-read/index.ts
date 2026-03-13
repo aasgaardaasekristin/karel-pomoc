@@ -192,7 +192,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { documents, listAll, subFolder } = await req.json();
+    const { documents, listAll, subFolder, allowGlobalSearch } = await req.json();
     const token = await getAccessToken();
 
     // Find kartoteka_DID folder
