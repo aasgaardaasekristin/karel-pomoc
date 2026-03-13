@@ -422,6 +422,63 @@ export type Database = {
         }
         Relationships: []
       }
+      did_meetings: {
+        Row: {
+          agenda: string
+          created_at: string
+          deadline_at: string | null
+          finalized_at: string | null
+          hanka_joined_at: string | null
+          id: string
+          kata_joined_at: string | null
+          messages: Json
+          outcome_summary: string | null
+          outcome_tasks: Json | null
+          reminder_sent: boolean
+          status: string
+          topic: string
+          triggered_by: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agenda?: string
+          created_at?: string
+          deadline_at?: string | null
+          finalized_at?: string | null
+          hanka_joined_at?: string | null
+          id?: string
+          kata_joined_at?: string | null
+          messages?: Json
+          outcome_summary?: string | null
+          outcome_tasks?: Json | null
+          reminder_sent?: boolean
+          status?: string
+          topic: string
+          triggered_by?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          agenda?: string
+          created_at?: string
+          deadline_at?: string | null
+          finalized_at?: string | null
+          hanka_joined_at?: string | null
+          id?: string
+          kata_joined_at?: string | null
+          messages?: Json
+          outcome_summary?: string | null
+          outcome_tasks?: Json | null
+          reminder_sent?: boolean
+          status?: string
+          topic?: string
+          triggered_by?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_motivation_profiles: {
         Row: {
           avg_completion_days: number | null

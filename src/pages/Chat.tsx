@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -37,6 +37,7 @@ import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
+import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
@@ -104,7 +105,7 @@ const handleApiError = (response: Response) => {
 };
 
 // DID flow states
-type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
+type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting";
 
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 
@@ -161,6 +162,9 @@ const Chat = () => {
   const didThreads = useDidThreads();
   const basicDocsRef = useRef<string>("");
   const [isEnrichingContext, setIsEnrichingContext] = useState(false);
+  const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
+  const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
 
@@ -650,6 +654,18 @@ const Chat = () => {
     
     toast.info(`Navazuješ na rozhovor s ${partName}`);
   }, [setDidSubMode, setMessages, setDidInitialContext]);
+
+  // Handle ?meeting=<id> URL parameter
+  useEffect(() => {
+    const meetingParam = searchParams.get("meeting");
+    if (meetingParam && hubSection === "did") {
+      setMeetingIdFromUrl(meetingParam);
+      setMode("childcare");
+      setDidFlowState("meeting");
+      searchParams.delete("meeting");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, hubSection]);
 
   if (!authChecked) {
     return (
@@ -1457,6 +1473,16 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                   <div className="text-xs text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
                 </div>
               </button>
+              <button
+                onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-amber-500"
+              >
+                <span className="text-lg">📋</span>
+                <div>
+                  <div className="font-medium text-foreground">Porady týmu</div>
+                  <div className="text-xs text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
+                </div>
+              </button>
             </div>
             <div className="flex justify-center mt-4">
               <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
@@ -1465,6 +1491,20 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             </div>
           </div>
         </ScrollArea>
+      );
+    }
+
+    // Meeting view
+    if (didFlowState === "meeting") {
+      return (
+        <DidMeetingPanel
+          meetingId={meetingIdFromUrl}
+          therapist={meetingTherapist}
+          onBack={() => {
+            setDidFlowState("terapeut");
+            setMeetingIdFromUrl(null);
+          }}
+        />
       );
     }
 
