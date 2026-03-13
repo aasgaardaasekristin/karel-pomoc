@@ -14,6 +14,7 @@ interface Message {
 interface ChatMessageProps {
   message: Message;
   onNotebookCopied?: () => void;
+  onTaskAdded?: () => void;
 }
 
 // Section definitions with labels and target documents
