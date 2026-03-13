@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.karel-did-kartoteka-health]
 verify_jwt = false
+
+[functions.karel-did-morning-brief]
+verify_jwt = false
