@@ -277,8 +277,68 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     if (error) {
       toast.error("Nepodařilo se změnit stav");
       await loadTasks(); // revert on error
+    } else if (bothDone) {
+      // Update motivation profile on task completion
+      updateMotivationProfile(who === "hanka" ? "Hanka" : "Káťa", "completed", freshTask.created_at);
+      if (freshTask.assigned_to === "both") {
+        updateMotivationProfile(who === "hanka" ? "Káťa" : "Hanka", "completed", freshTask.created_at);
+      }
     }
     setTrafficLock(false);
+  };
+
+  const updateMotivationProfile = async (therapist: string, event: "completed" | "missed", taskCreatedAt: string) => {
+    try {
+      const { data: existing } = await supabase
+        .from("did_motivation_profiles")
+        .select("*")
+        .eq("therapist", therapist)
+        .maybeSingle();
+
+      const daysTaken = Math.max(1, Math.round((Date.now() - new Date(taskCreatedAt).getTime()) / (24 * 60 * 60 * 1000)));
+
+      if (existing) {
+        const completed = (existing.tasks_completed || 0) + (event === "completed" ? 1 : 0);
+        const missed = (existing.tasks_missed || 0) + (event === "missed" ? 1 : 0);
+        const totalCompleted = completed;
+        const avgDays = totalCompleted > 0
+          ? ((Number(existing.avg_completion_days || 0) * (totalCompleted - 1) + daysTaken) / totalCompleted)
+          : 0;
+        const streak = event === "completed" ? (existing.streak_current || 0) + 1 : 0;
+        const bestStreak = Math.max(streak, existing.streak_best || 0);
+
+        // Adapt style based on patterns
+        let style = existing.preferred_style || "balanced";
+        if (completed > 5) {
+          const ratio = completed / Math.max(1, completed + missed);
+          if (ratio > 0.8) style = "praise"; // responds well to encouragement
+          else if (avgDays > 4) style = "deadline"; // needs deadline pressure
+          else style = "instruction"; // needs clear instructions
+        }
+
+        await supabase.from("did_motivation_profiles").update({
+          tasks_completed: completed,
+          tasks_missed: missed,
+          avg_completion_days: Math.round(avgDays * 100) / 100,
+          streak_current: streak,
+          streak_best: bestStreak,
+          preferred_style: style,
+          last_active_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("did_motivation_profiles").insert({
+          therapist,
+          tasks_completed: event === "completed" ? 1 : 0,
+          tasks_missed: event === "missed" ? 1 : 0,
+          avg_completion_days: event === "completed" ? daysTaken : 0,
+          streak_current: event === "completed" ? 1 : 0,
+          preferred_style: "balanced",
+        });
+      }
+    } catch (e) {
+      console.warn("Motivation profile update error:", e);
+    }
   };
 
   const handleDelete = async (taskId: string) => {
