@@ -347,7 +347,26 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       </div>
 
       {/* System Map */}
-      <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread} />
+      <DidSystemMap
+        parts={parts}
+        activeThreads={activeThreads}
+        onQuickThread={onQuickThread}
+        onDeletePart={async (partName) => {
+          // Delete all threads for this part from the database
+          const { error } = await supabase
+            .from("did_threads")
+            .delete()
+            .eq("part_name", partName)
+            .eq("sub_mode", "cast");
+          if (error) {
+            toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
+          } else {
+            toast.success(`Vlákna pro „${partName}" smazána z mapy`);
+            setParts(prev => prev.filter(p => p.name !== partName));
+            setActiveThreads(prev => prev.filter(t => t.partName !== partName));
+          }
+        }}
+      />
 
       {/* Warnings */}
       {parts.filter(p => p.status === "warning").length > 0 && (

@@ -116,8 +116,19 @@ serve(async (req) => {
       console.warn("Drive read failed:", e);
     }
 
-    // 2. Recent threads (last 7 days) – ALL sub_modes
+    // 2. Recent threads – split by timeframe
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    
+    // Last 24h threads (for daily focus)
+    const { data: last24hThreads } = await sb
+      .from("did_threads")
+      .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+      .gte("last_activity_at", twentyFourHoursAgo)
+      .order("last_activity_at", { ascending: false })
+      .limit(30);
+
+    // Last 7 days threads (for weekly context)
     const { data: recentThreads } = await sb
       .from("did_threads")
       .select("part_name, sub_mode, last_activity_at, messages, is_processed")
@@ -125,18 +136,36 @@ serve(async (req) => {
       .order("last_activity_at", { ascending: false })
       .limit(30);
 
-    // Build thread summaries separated by type
-    let threadSummary = "";
-    let therapistSummary = "";
-    if (recentThreads && recentThreads.length > 0) {
-      for (const t of recentThreads) {
-        const msgs = Array.isArray(t.messages) ? t.messages : [];
-        const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
-        const entry = `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+    // Build thread summaries separated by type AND timeframe
+    let threadSummary24h = "";
+    let therapistSummary24h = "";
+    let threadSummaryWeek = "";
+    let therapistSummaryWeek = "";
+    
+    const formatThreadEntry = (t: any) => {
+      const msgs = Array.isArray(t.messages) ? t.messages : [];
+      const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
+      return `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+    };
+
+    if (last24hThreads) {
+      for (const t of last24hThreads) {
+        const entry = formatThreadEntry(t);
         if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
-          therapistSummary += entry;
+          therapistSummary24h += entry;
         } else {
-          threadSummary += entry;
+          threadSummary24h += entry;
+        }
+      }
+    }
+    
+    if (recentThreads) {
+      for (const t of recentThreads) {
+        const entry = formatThreadEntry(t);
+        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
+          therapistSummaryWeek += entry;
+        } else {
+          threadSummaryWeek += entry;
         }
       }
     }
@@ -222,18 +251,32 @@ serve(async (req) => {
 
     // 6. Synthesize with Lovable AI (streaming)
     const now = new Date();
-    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum: ${now.toLocaleDateString("cs-CZ")}.
+    const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
+    const dayName = dayNames[now.getDay()];
+    const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}`;
+    
+    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum: ${formattedDate}.
 
 VSTUPNÍ DATA:
 
-DOKUMENTY Z KARTOTÉKY (00_CENTRUM):
+DOKUMENTY Z KARTOTÉKY (00_CENTRUM) – toto je PRIMÁRNÍ ZDROJ PRAVDY:
 ${centrumDocs || "(nepodařilo se načíst)"}
 
-VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ S KARLEM:
-${threadSummary || "(žádná vlákna za poslední týden)"}
+=== POSLEDNÍCH 24 HODIN ===
 
-VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK S KARLEM (Hanička=mamka, Káťa=kata):
-${therapistSummary || "(žádné rozhovory terapeutek za poslední týden)"}
+VLÁKNA ZA POSLEDNÍCH 24h – ROZHOVORY ČÁSTÍ S KARLEM:
+${threadSummary24h || "(žádná vlákna za posledních 24 hodin)"}
+
+VLÁKNA ZA POSLEDNÍCH 24h – ROZHOVORY TERAPEUTEK S KARLEM (Hanička=mamka, Káťa=kata):
+${therapistSummary24h || "(žádné rozhovory terapeutek za posledních 24 hodin)"}
+
+=== KONTEXT POSLEDNÍHO TÝDNE (pro širší přehled) ===
+
+VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ:
+${threadSummaryWeek || "(žádná vlákna za poslední týden)"}
+
+VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK:
+${therapistSummaryWeek || "(žádné rozhovory terapeutek za poslední týden)"}
 
 KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky – sekce A-M):
 ${activePartCards || "(nepodařilo se načíst nebo žádné aktivní části)"}
@@ -246,7 +289,7 @@ ${perplexityTips || "(nedostupné)"}
 
 FORMÁT VÝSTUPU:
 
-Začni neformálním, osobním pozdravem – např. "Krásného [den a datum], Hani a Káťo!" (NIKDY "Vážené", NIKDY formální tón).
+Začni neformálním, osobním pozdravem – MUSÍŠ použít přesné dnešní datum: "Krásnou ${dayName}, ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long" })}, Hani a Káťo!" (NIKDY "Vážené", NIKDY formální tón, NIKDY špatné datum).
 Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci.
 
 NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, jak funguje systém obecně, co je ANP/EP/Host. Piš POUZE o tom co se DĚJE TEĎ a co je relevantní.
@@ -255,19 +298,27 @@ Struktura (jako plynulý souvislý text, ne odrážky):
 
 1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný? Použij data z karet aktivních částí pro hlubší kontext.
 
-2. **Přehled posledního týdne** – Kdo s Karlem mluvil včera/předevčírem? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici. ZAHRŇ i co řešily terapeutky (Hanička a Káťa) s Karlem – jejich obavy, postřehy, otázky.
+2. **Co se dělo posledních 24 hodin** – Kdo s Karlem mluvil DNES/VČERA? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici. ZAHRŇ i co řešily terapeutky (Hanička a Káťa) s Karlem – jejich obavy, postřehy, otázky. Rozlišuj jasně 24h vs. starší data.
 
 3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání. Využij informace z karet částí (diagnózy, triggery, terapeutické poznámky).
 
-4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem. Navrhuj s ohledem na specifika konkrétních částí (věk, role, stav) z jejich karet.
+4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem. Navrhuj s ohledem na specifika konkrétních částí (věk, role, stav) z jejich karet. Pokud najdeš v kartotéce konkrétní problémy, dohledej a navrhni řešení.
 
 5. **Poslední aktualizace kartotéky** – Kdy proběhla, co se změnilo.
 
-6. **📋 Úkoly pro tento týden** – Na základě VŠECH dat (rozhovory částí, rozhovory terapeutek, karty, terapeutický plán) sestav KONKRÉTNÍ úkoly pro každou terapeutku zvlášť:
-   - **Hanička**: Co konkrétně má tento týden udělat? S kým promluvit? Jakou techniku vyzkoušet? Co sledovat?
-   - **Káťa**: Co konkrétně má tento týden udělat? Na co se zaměřit? Koho oslovit? Jak podpořit systém?
-   - **Společné**: Co mají řešit jako tandem? Je potřeba koordinace?
-   Úkoly formuluj jako jasné, akční body (ne obecné rady). Např. "Oslovit Lincolna – zkusit techniku bezpečného místa, je destabilizovaný od středy" nebo "Probrat s Káťou výsledky posledního rozhovoru s [část]".
+6. **📋 Úkoly pro DNES a ZÍTRA** – Na základě dat z posledních 24h + karet + kartotéky sestav KONKRÉTNÍ denní úkoly:
+   - **Hanička – DNES**: Co konkrétně má dnes udělat? S kým promluvit? Jakou techniku vyzkoušet?
+   - **Hanička – ZÍTRA**: Co připravit, koho oslovit?
+   - **Káťa – DNES**: Co konkrétně má dnes udělat? Na co se zaměřit?
+   - **Káťa – ZÍTRA**: Co připravit?
+   - **Společné**: Co mají řešit jako tandem?
+   Vysvětli každé z nich PROČ – jaká je její role v daném úkolu. Úkoly formuluj jako jasné, akční body (ne obecné rady).
+   ⚠️ Tyto úkoly se také automaticky zapíší do seznamu úkolů v aplikaci.
+
+7. **📋 Úkoly pro tento týden** – Širší týdenní úkoly pro každou terapeutku zvlášť:
+   - **Hanička**: Týdenní cíle a zaměření
+   - **Káťa**: Týdenní cíle a zaměření  
+   - **Společné**: Koordinace tandemu
 
 PRAVIDLA:
 - Piš česky, osobním tónem, jako by Karel mluvil k Hani a Kátě které zná a má rád
@@ -276,7 +327,8 @@ PRAVIDLA:
 - NIKDY nevymýšlej informace – piš jen co je v datech
 - NEPIŠ obecné poučky o DID které terapeutky znají
 - Pokud máš data z karet částí, VYUŽIJ JE pro konkrétní doporučení (ne obecná)
-- Pokud terapeutky s Karlem řešily něco důležitého, ZDŮRAZNI TO`;
+- Pokud terapeutky s Karlem řešily něco důležitého, ZDŮRAZNI TO
+- Pokud v kartotéce najdeš problémy nebo překážky, AKTIVNĚ navrhni řešení z odborných zdrojů`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

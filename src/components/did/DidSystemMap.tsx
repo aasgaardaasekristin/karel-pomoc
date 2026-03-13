@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Clock, AlertTriangle, CheckCircle, Moon, ChevronDown, ChevronUp, Activity, MessageCircle } from "lucide-react";
+import { Clock, AlertTriangle, CheckCircle, Moon, ChevronDown, ChevronUp, Activity, MessageCircle, Trash2 } from "lucide-react";
 
 interface PartActivity {
   name: string;
@@ -18,6 +18,7 @@ interface Props {
   parts: PartActivity[];
   activeThreads?: ActiveThreadSummary[];
   onQuickThread?: (threadId: string, partName: string) => void;
+  onDeletePart?: (partName: string) => void;
 }
 
 const STATUS_CONFIG = {
@@ -71,7 +72,7 @@ const formatDate = (isoStr: string | null) => {
   return d.toLocaleDateString("cs-CZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 };
 
-const DidSystemMap = ({ parts, activeThreads, onQuickThread }: Props) => {
+const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Props) => {
   const [expanded, setExpanded] = useState(true);
 
   const sorted = useMemo(() => {
@@ -143,10 +144,27 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread }: Props) => {
                   {/* Status dot */}
                   <div className={`w-3 h-3 rounded-full ${cfg.dot} ${cfg.pulse}`} />
                   
-                  {/* Name */}
-                  <span className="text-xs font-medium text-foreground text-center leading-tight truncate w-full">
-                    {part.name}
-                  </span>
+                  {/* Name + delete */}
+                  <div className="flex items-center gap-0.5 w-full justify-center">
+                    <span className="text-xs font-medium text-foreground text-center leading-tight truncate">
+                      {part.name}
+                    </span>
+                    {onDeletePart && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Smazat všechna vlákna pro "${part.name}" z mapy?`)) {
+                            onDeletePart(part.name);
+                          }
+                        }}
+                        className="flex-shrink-0 p-0.5 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-colors"
+                        title={`Smazat ${part.name} z mapy`}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                   
                   {/* Time + thread indicator */}
                   <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
