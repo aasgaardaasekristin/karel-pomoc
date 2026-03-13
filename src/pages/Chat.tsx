@@ -105,7 +105,7 @@ const handleApiError = (response: Response) => {
 };
 
 // DID flow states
-type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading";
+type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting";
 
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 
