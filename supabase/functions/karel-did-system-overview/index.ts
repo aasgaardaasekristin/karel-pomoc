@@ -251,15 +251,17 @@ serve(async (req) => {
     // 6. Synthesize with Lovable AI (streaming)
     const now = new Date();
     const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
+    const dayAdjs = ["nedělní", "pondělní", "úterní", "středeční", "čtvrteční", "páteční", "sobotní"];
     const dayName = dayNames[now.getDay()];
+    const dayAdj = dayAdjs[now.getDay()];
     const hour = now.getHours();
     const minute = now.getMinutes().toString().padStart(2, "0");
     const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
     
-    // Rotating greeting variants
+    // Rotating greeting variants with correct Czech adjective forms
     const greetingVariants = [
-      `Krásné ${dayName}ní ráno (${formattedDate}), Hani a Káťo!`,
-      `Zdravím vás v tento ${dayName} (${formattedDate}), milé kolegyně!`,
+      `Krásné ${dayAdj} ráno (${formattedDate}), Hani a Káťo!`,
+      `Zdravím vás v tento ${dayAdj} den (${formattedDate}), milé kolegyně!`,
       `Dobrý den, Hani a Káťo! Je ${formattedDate} a Karel má pro vás čerstvý přehled.`,
       `Tak co, Hani a Káťo – pojďme se podívat, co se děje! Dnes je ${formattedDate}.`,
       `Ahoj, Hani a Káťo! ${formattedDate} – čas na Karlův pohled na věc.`,
