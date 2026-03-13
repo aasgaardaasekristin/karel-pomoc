@@ -94,6 +94,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
 
   useEffect(() => {
     loadDashboardData();
+    loadPendingWriteCount();
   }, []);
 
   // Auto-load overview only if no cached version exists
