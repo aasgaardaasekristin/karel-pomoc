@@ -413,6 +413,39 @@ export type Database = {
         }
         Relationships: []
       }
+      did_pulse_checks: {
+        Row: {
+          created_at: string
+          id: string
+          karel_feedback: string | null
+          priority_clarity: number
+          respondent: string
+          team_feeling: number
+          user_id: string
+          week_start: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          karel_feedback?: string | null
+          priority_clarity: number
+          respondent: string
+          team_feeling: number
+          user_id?: string
+          week_start: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          karel_feedback?: string | null
+          priority_clarity?: number
+          respondent?: string
+          team_feeling?: number
+          user_id?: string
+          week_start?: string
+        }
+        Relationships: []
+      }
       did_therapist_tasks: {
         Row: {
           assigned_to: string
