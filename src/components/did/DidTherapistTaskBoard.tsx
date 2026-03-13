@@ -133,6 +133,8 @@ const TaskCard = ({
   onToggleTraffic,
   onDelete,
   onAddNote,
+  isPendingDriveWrite,
+  isFailedDriveWrite,
   extraActions,
 }: {
   task: TherapistTask;
@@ -143,12 +145,12 @@ const TaskCard = ({
   onToggleTraffic: (task: TherapistTask, who: "hanka" | "kata") => void;
   onDelete: (id: string) => void;
   onAddNote: (id: string) => void;
+  isPendingDriveWrite: boolean;
+  isFailedDriveWrite: boolean;
   extraActions?: React.ReactNode;
 }) => {
   const isExpanded = expandedTask === task.id;
-  const driveLink = task.source_agreement?.startsWith("http")
-    ? task.source_agreement
-    : null;
+  const safeDriveLink = isSafeDocumentUrl(task.source_agreement);
 
   return (
     <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
@@ -162,7 +164,7 @@ const TaskCard = ({
           )}
         </div>
         <button className="flex-1 min-w-0 text-left truncate" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
-          <span className="text-[11px] text-foreground leading-tight">{task.task}</span>
+          <span className="text-[11px] text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
         </button>
         <div className="flex items-center gap-0 shrink-0">
           {extraActions}
@@ -176,17 +178,35 @@ const TaskCard = ({
       </div>
       {isExpanded && (
         <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
-          {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{task.note}</p>}
+          {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{stripMarkdownNoise(task.note)}</p>}
+
+          {isPendingDriveWrite && (
+            <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+              🆕 Nový úkol — v Drive zatím není. Zapíše se po kliknutí na „Aktual. kartotéku“.
+            </div>
+          )}
+
+          {isFailedDriveWrite && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-1 text-[9px] text-destructive">
+              ⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku" se úkol zkusí zapsat znovu.
+            </div>
+          )}
+
           {task.source_agreement && (
             <div className="flex items-center gap-1">
-              <span className="text-[9px] text-muted-foreground truncate max-w-[200px]">📋 {task.source_agreement.slice(0, 50)}</span>
-              {driveLink && (
-                <a href={driveLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline shrink-0">
-                  <ExternalLink className="w-2.5 h-2.5" /> Drive
-                </a>
+              <span className="text-[9px] text-muted-foreground truncate max-w-[220px]">📋 {stripMarkdownNoise(task.source_agreement)}</span>
+              {safeDriveLink && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openExternalDocument(safeDriveLink); }}
+                  className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline shrink-0"
+                >
+                  <ExternalLink className="w-2.5 h-2.5" /> Otevřít
+                </button>
               )}
             </div>
           )}
+
           {task.completed_note && (
             <div className="text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 whitespace-pre-line">
               <MessageSquare className="w-2.5 h-2.5 inline mr-0.5 opacity-60" />
