@@ -104,6 +104,7 @@ const TaskCard = ({
           <span className="text-[11px] text-foreground leading-tight">{task.task}</span>
         </button>
         <div className="flex items-center gap-0 shrink-0">
+          {extraActions}
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setExpandedTask(isExpanded ? null : task.id); }} className="h-5 w-5 p-0">
             {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
           </Button>
