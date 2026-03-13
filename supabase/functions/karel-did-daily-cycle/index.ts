@@ -2910,9 +2910,15 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
 
                         if (targetFile) {
                           if (targetFile.mimeType === DRIVE_FOLDER_MIME) {
-                            // 06_Dohody is a folder – create file inside
-                            const dStr = new Date().toISOString().slice(0, 10);
-                            await createFileInFolder(token, `${dStr}_z_Knihovny`, `[${dStr}] Z profesních zdrojů (07_Knihovna)\n\n${newContent}`, targetFile.id);
+                            // Folder (e.g. old 06_Dohody) → redirect to 05_Operativni_Plan, NEVER create standalone doc
+                            const opFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
+                            if (opFile) {
+                              const existingOp = await readFileContent(token, opFile.id);
+                              if (!existingOp.includes(newContent.slice(0, 60))) {
+                                const updatedOp = existingOp.trimEnd() + `\n\n[${new Date().toISOString().slice(0, 10)}] Z 07_Knihovna:\n${newContent}`;
+                                await updateFileById(token, opFile.id, updatedOp, opFile.mimeType);
+                              }
+                            }
                           } else {
                             const existing = await readFileContent(token, targetFile.id);
                             if (!existing.includes(newContent.slice(0, 60))) {
