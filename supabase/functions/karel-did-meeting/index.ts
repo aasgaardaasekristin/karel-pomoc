@@ -25,7 +25,9 @@ serve(async (req) => {
 
     // ═══ ACTION: CREATE MEETING ═══
     if (action === "create") {
-      const { topic, agenda, triggeredBy } = await parseOrUse({ topic: message, agenda: therapist, triggeredBy: "manual" }, { topic: message, agenda: therapist || "", triggeredBy: triggeredBy || "daily_cycle" });
+      const topic = message || "Porada týmu";
+      const agenda = therapist || "";
+      const triggeredBy = "manual";
 
       const { data: meeting, error } = await sb.from("did_meetings").insert({
         topic: topic || "Porada týmu",
