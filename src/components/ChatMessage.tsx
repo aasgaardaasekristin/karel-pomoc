@@ -205,11 +205,14 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
     );
   }
 
-  const { beforeSections, sections } = parseSections(message.content);
+  // Parse task suggestions from content
+  const { cleanContent: contentWithoutTasks, suggestions: taskSuggestions } = parseTaskSuggestions(message.content);
+
+  const { beforeSections, sections } = parseSections(contentWithoutTasks);
 
   // If no structured sections, use legacy rendering
   if (sections.length === 0) {
-    const notebookSection = extractNotebookLMSection(message.content);
+    const notebookSection = extractNotebookLMSection(contentWithoutTasks);
     return (
       <div className="flex justify-start">
         <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
@@ -220,8 +223,9 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
                   <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
                 ),
               }}
-            >{message.content}</ReactMarkdown>
+            >{contentWithoutTasks}</ReactMarkdown>
             {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" />}
+            <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
           </div>
         </div>
       </div>
