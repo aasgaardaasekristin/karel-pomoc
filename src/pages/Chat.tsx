@@ -958,6 +958,19 @@ const Chat = () => {
     } finally { setIsFileAnalyzing(false); }
   };
 
+  // Handle ?meeting=<id> URL parameter
+  useEffect(() => {
+    const meetingParam = searchParams.get("meeting");
+    if (meetingParam && hubSection === "did") {
+      setMeetingIdFromUrl(meetingParam);
+      setMode("childcare");
+      setDidFlowState("meeting");
+      // Clean URL
+      searchParams.delete("meeting");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, hubSection]);
+
 
   // 📓 Zapsat do deníku — Karel připraví zápis, část ho odsouhlasí
   const handleWriteDiary = () => {
