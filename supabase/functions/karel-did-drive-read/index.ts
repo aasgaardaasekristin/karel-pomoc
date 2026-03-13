@@ -235,8 +235,8 @@ serve(async (req) => {
     for (const docName of requestedDocs) {
       // Search recursively from the target folder
       let match = await findDocumentRecursive(token, targetFolderId, docName);
-      if (!match) {
-        // Fall back to global search
+      if (!match && shouldUseGlobalSearch) {
+        // Optional fallback to global search (disabled by default for subFolder lookups)
         match = await findDocumentGlobal(token, docName);
       }
 
