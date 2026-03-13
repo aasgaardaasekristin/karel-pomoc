@@ -3009,7 +3009,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
           const blockedSummary = blockedCardUpdates.map(b => b.partName).join(", ");
 
           // HANKA's report (intimate, full detail, partner tone)
-          let hankaHtml = "";
+          hankaHtml = "";
           try {
             const hankaRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
               method: "POST",
