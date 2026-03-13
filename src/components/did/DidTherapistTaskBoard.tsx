@@ -211,8 +211,9 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const handleAddTask = async () => {
     if (!newTask.trim()) return;
     setAdding(true);
+    const taskText = newTask.trim();
     const { error } = await supabase.from("did_therapist_tasks").insert({
-      task: newTask.trim(),
+      task: taskText,
       assigned_to: newAssignee,
       category: newCategory,
       status_hanka: "not_started",
@@ -220,7 +221,20 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       priority: newCategory === "today" ? "high" : newCategory === "tomorrow" ? "normal" : "low",
     });
     if (error) toast.error("Nepodařilo se přidat úkol");
-    else { setNewTask(""); loadTasks(); }
+    else {
+      // Queue write-back to Drive
+      const targetDoc = newCategory === "longterm" ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
+      await supabase.from("did_pending_drive_writes").insert({
+        content: `► ${taskText} [${newAssignee === "hanka" ? "Hanka" : newAssignee === "kata" ? "Káťa" : "Obě"}]`,
+        target_document: targetDoc,
+        write_type: "append",
+        priority: newCategory === "today" ? "high" : "normal",
+      }).then(({ error: writeErr }) => {
+        if (writeErr) console.warn("Pending write queue error:", writeErr);
+      });
+      setNewTask("");
+      loadTasks();
+    }
     setAdding(false);
   };
 
