@@ -85,8 +85,6 @@ const TaskCard = ({
   const isExpanded = expandedTask === task.id;
   const driveLink = task.source_agreement?.startsWith("http")
     ? task.source_agreement
-    : task.source_agreement
-    ? `https://drive.google.com/drive/search?q=${encodeURIComponent(task.source_agreement)}`
     : null;
 
   return (
