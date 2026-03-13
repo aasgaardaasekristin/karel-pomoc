@@ -1,79 +1,113 @@
 
-Cílem je napravit důvěru: udělám znovu celý E2E test přesně podle tvé instrukce a tentokrát s auditní stopou (krok → důkaz → výsledek), bez tvrzení „hotovo“ bez dat.
+# Vylepšení DID režimu – Komplexní plán
 
-1) Co jsem si ověřil předem (aktuální stav)
-- Jsi přihlášený v preview a v DID terapeutickém dashboardu.
-- `did_therapist_tasks` je teď prázdná (proto jsi nic neviděl na nástěnce).
-- UI logika sekcí je v kódu správně:
-  - DNES max 5
-  - ZÍTRA max 5
-  - Dlouhodobé max 10 (pasivní list)
-- Chat inline návrhy `[TASK_SUGGEST:assignee:category]...` jsou zapojené a ukládají úkol do `did_therapist_tasks`.
-- Archivace „po 3 dnech“ je frontend lifecycle při načtení nástěnky (smazání dokončených úkolů starších než 3 dny).
+## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-8)
 
-2) Upřesnění testu (potvrzeno)
-- Archivaci ověřím simulací 3 dnů backdatem (`completed_at` posunu o 4 dny).
-- Po testu provedu kompletní cleanup testovacích dat.
+## Co bylo provedeno
 
-3) Přesný testovací scénář (co provedu krok za krokem)
-A. DID dashboard + Karlův přehled
-- Otevřu DID režim terapeut.
-- Kliknu „Obnovit“ u Karlova přehledu.
-- Zkontroluji, že případné nové úkoly jsou rozdělené do DNES/ZÍTRA/Dlouhodobé.
-- Důkaz: screenshot + DB snapshot `did_therapist_tasks` (category, assigned_to, statusy).
+### ✅ 1. Drive read/write funkce
+- `supabase/functions/karel-did-drive-read/index.ts` – čte dokumenty ze složky Kartoteka_DID
+- `supabase/functions/karel-did-drive-write/index.ts` – zapisuje/aktualizuje dokumenty
 
-B. Ruční test úkolu + splnění + archivace 3 dny
-- Přidám testovací úkol s unikátním markerem (např. `TEST_E2E_<timestamp>`).
-- Označím obě semafory na zelenou (H + K), ověřím `status=done` a `completed_at`.
-- Provedu backdate `completed_at` o 4 dny.
-- Obnovím nástěnku (trigger load) a ověřím automatické odstranění.
-- Důkaz: before/after DB + screenshot před/po.
+### ✅ 2. Odstranění Document Gate + automatické načítání
+- Smazána `DidDocumentGate.tsx`
+- Po výběru podrežimu Karel automaticky načte dokumenty z Drive
+- Loading indikátor během načítání
 
-C. Chat Káťa: inline návrh úkolu
-- Otevřu režim Káťa (PIN), zahájím vlákno.
-- Vynutím dohodu tak, aby Karel navrhl zápis úkolu (čekám na `[TASK_SUGGEST:...:today|tomorrow]`).
-- Kliknu inline „Zapsat“.
-- Ověřím, že úkol je v nástěnce v odpovídající sekci.
-- Důkaz: screenshot zprávy s tlačítkem + DB řádek + screenshot nástěnky.
+### ✅ 3. Nová tlačítka (deník, vzkaz, záloha)
+- `DidActionButtons.tsx` – Zapsat do deníku, Vzkaz mamce, Vzkaz Káti, Záloha na Drive, Ukončit rozhovor
+- Tlačítka se zobrazují kontextově (deník/vzkazy jen v cast režimu)
 
-D. Chat Hanička: dlouhodobý neaktivní list
-- Otevřu režim Hanička (PIN), zahájím vlákno.
-- Vynutím dohodu na dlouhodobém úkolu (`category=longterm`).
-- Kliknu inline „Zapsat“.
-- Ověřím, že úkol je v sekci Dlouhodobé jako pasivní list (ne traffic karta).
-- Důkaz: screenshot + DB.
+### ✅ 4. Automatické emaily po ukončení hovoru
+- `karel-email-report` rozšířen o typy: did_handover, did_message_mom, did_message_kata
+- Automatický email po ukončení rozhovoru s částí
 
-E. Zkušební aktualizace kartotéky
-- Spustím „Aktualizovat kartotéku“ (denní cyklus).
-- Ověřím výstup cyklu (`did_update_cycles.cards_updated`) a že úkolové informace byly promítnuty do správných existujících dokumentů.
-- Důkaz: `cards_updated` + obsahové diffy dokumentů (před/po).
+### ✅ 5. Podrežim Káťa
+- Přidán 4. podrežim "Káťa mluví s Karlem" (kata)
+- Vlastní system prompt (kataPrompt)
+- Typ přidán do ChatContext
 
-F. Kontrola „NIKDY samostatný dokument“
-- Udělám inventory souborů před/po v relevantních složkách kartotéky (ID+name).
-- Potvrdím, že nevznikl nový standalone dokument pro testovací úkoly.
-- Pokud by vznikl, nahlásím přesný název/ID a odstranění.
-- Důkaz: before/after seznam souborů + explicitní verdikt.
+### ✅ 6. Aktualizace system promptu
+- Kompletní přepis childcarePrompt – odstranění NotebookLM referencí
+- Nový kataPrompt pro Káťu
+- Zákaz vymýšlení citací
+- Instrukce pro automatické emaily a Drive integraci
 
-G. Cleanup
-- Smažu testovací úkoly z `did_therapist_tasks` (marker).
-- Odstraním testovací textové zápisy z dokumentů (jen test marker bloky).
-- Znovu ověřím čistý stav.
+### ✅ 7. Automatické přepnutí do supervize
+- Po ukončení hovoru s částí Karel automaticky přepne do režimu mamka
 
-4) Co ti pak předám (finální report)
-- Přesný seznam dokumentů a sekcí, kam se testovací úkoly propsaly.
-- Přesné řádky/odstavce s test markerem.
-- Seznam všeho, co bylo po testu smazáno (UI + dokumenty).
-- Jasné „PASS/FAIL“ pro:
-  1) rozdělení DNES/ZÍTRA/Dlouhodobé
-  2) archivace po 3 dnech (simulace)
-  3) inline task nabídka Káťa
-  4) inline longterm nabídka Hanička
-  5) žádné standalone dokumenty.
+### ✅ 8. Thread-per-part architektura (Fáze 1)
+- DB tabulky `did_threads` + `did_update_cycles` s RLS
+- Hook `useDidThreads` pro CRUD na vláknech
+- `DidDashboard` – přehled aktivity částí (aktivní/spí/varování)
+- `DidThreadList` – seznam aktivních vláken s 24h pamětí
+- `DidPartIdentifier` – "Kdo teď mluví?" s výběrem/zadáním jména
+- Nový DID flow: Dashboard → Submode → Thread List → Part ID → Chat
+- Auto-save vláken do DB každých 5s
 
-Technické detaily (důležité)
-- Archivace 3 dny je aktuálně implementovaná v UI komponentě nástěnky při `loadTasks()`; proto test potřebuje reload/refresh trigger po backdate.
-- Deduplikace je dvouvrstvá:
-  - z Karlova přehledu přes normalizovaný hash text+řešitel,
-  - z inline tlačítka přes podobnost textu (ilike).
-- Kontrola „žádný standalone dokument“ bude opřená o porovnání inventáře souborů před/po, ne jen o textové tvrzení.
-- Známá neblokující chyba v konzoli: `DidSystemMap` má vnořené `<button>` (DOM nesting warning) + ref warning; netýká se přímo task flow, ale doporučuji následně opravit.
+### ✅ 9. Denní cyklus (14:00 CET)
+- `karel-did-daily-cycle` edge function
+- pg_cron schedule: `0 13 * * *` UTC (14:00 CET)
+- 5 kroků: sběr → AI analýza → Drive update (sekce E/G/J/K/L) → email → uvolnění paměti
+- Manuální spuštění tlačítkem "Aktualizovat nyní"
+
+### ✅ 10. Týdenní cyklus (Fáze 2)
+- `karel-did-weekly-cycle` edge function
+- pg_cron schedule: `0 9 * * 0` UTC (neděle 10:00 CET)
+- Čte VŠECHNY karty z Drive, analyzuje aktivitu za celý týden
+- Aktualizuje 06_Strategicky_Vyhled (7 sekcí)
+- Detekce neaktivních částí (7+ dní)
+- Týdenní report na email (mamka + Káťa)
+
+### ✅ 11. Automatická 24h záloha (Fáze 3)
+- Při vstupu do DID režimu Dashboard kontroluje poslední denní cyklus z DB
+- Pokud > 24h od posledního, automaticky spouští `karel-did-daily-cycle`
+- Toast notifikace o průběhu a dokončení
+
+### ✅ 12. Perplexity integrace v DID režimu (Fáze 3)
+- Tlačítko "Hledat metody" dostupné ve VŠECH DID podrežimech
+- `karel-did-research` přijímá `partName` pro kontextově specifické vyhledávání
+- Perplexity sonar-pro hledá DID terapeutické metody
+
+### ✅ 13. Audio tandem režim (Fáze 4)
+- `karel-audio-analysis` rozšířen o DID-specifický tandem kontext
+
+### ✅ 14. Vizualizace systému (Fáze 5)
+- `DidSystemMap.tsx` – interaktivní mapa částí s barvami podle aktivity
+
+### ✅ 15. Automatická detekce vzorců (Fáze 5)
+- `karel-did-patterns` edge function – analyzuje 30 dní dat
+- `DidPatternPanel.tsx` – UI pro zobrazení vzorců, alertů a trendů
+
+### ✅ 16. PDF Export DID Reportu (Fáze 6)
+- `src/lib/didPdfExport.ts` – generování kompletního PDF reportu
+
+### ✅ 17. Nová architektura 00_CENTRUM (Fáze 7)
+- **05_Operativni_Plan** (6 sekcí) nahrazuje starý 05_Terapeuticky_Plan
+  - Sekce: Aktivní části, Plán sezení, Aktivní úkoly, Koordinace, Rizika, Karlovy poznámky
+  - Denní cyklus jej kompletně přepisuje
+- **06_Strategicky_Vyhled** (7 sekcí) nahrazuje složku 06_Terapeuticke_Dohody
+  - Sekce: Vize systému, Střednědobé cíle, Dlouhodobé cíle, Strategie práce s částmi, Odložená témata, Archiv splněných cílů, Karlova strategická reflexe
+  - Týdenní cyklus přepisuje, měsíční provádí hloubkovou revizi
+- Koncept individuálních souborů dohod v podsložkách zrušen
+- Zpětná kompatibilita se starými názvy dokumentů zachována
+
+### ✅ 18. Accountability Engine + Personalizované vedení (Fáze 8)
+- **Accountability Engine** v denním cyklu:
+  - Načtení nesplněných úkolů z `did_therapist_tasks`
+  - Povinný blok [ACCOUNTABILITY] s hodnocením 1-10
+  - Automatická eskalace priority u úkolů starších 3 dní
+  - Podmíněná "pozvánka na poradu" v emailech
+- **Proaktivní dotazování** v chat promptech:
+  - Runtime injection nesplněných úkolů do `karel-chat` při režimu mamka/kata
+  - Karel se aktivně ptá: "Hani/Káťo, jak dopadlo [úkol]?"
+- **Personalizované vedení terapeutů**:
+  - Profil Hanky (denní péče, Písek, emoční zázemí)
+  - Profil Káti (koordinace na dálku, Budějovice, škola Townshend, senzorická terapie)
+  - Adaptační algoritmus – Karel se učí silné/slabé stránky
+  - Karlovy vzpomínky z dětství pro budování důvěry
+- **Mechanismus porad** – Karel svolává strukturované sezení při:
+  - Úkol nesplněn 3+ dny
+  - Terapeutky nekomunikovaly 5+ dní
+  - Strategický nesoulad nebo stagnace cílů
+- **Aktualizované edge funkce**: karel-chat, karel-did-daily-cycle, karel-did-weekly-cycle, karel-did-monthly-cycle, karel-did-drive-write, karel-did-session-prep

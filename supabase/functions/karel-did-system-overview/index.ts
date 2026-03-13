@@ -252,9 +252,26 @@ serve(async (req) => {
     const now = new Date();
     const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
     const dayName = dayNames[now.getDay()];
-    const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}`;
+    const hour = now.getHours();
+    const minute = now.getMinutes().toString().padStart(2, "0");
+    const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
     
-    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum: ${formattedDate}.
+    // Rotating greeting variants
+    const greetingVariants = [
+      `Krásné ${dayName}ní ráno (${formattedDate}), Hani a Káťo!`,
+      `Zdravím vás v tento ${dayName} (${formattedDate}), milé kolegyně!`,
+      `Dobrý den, Hani a Káťo! Je ${formattedDate} a Karel má pro vás čerstvý přehled.`,
+      `Tak co, Hani a Káťo – pojďme se podívat, co se děje! Dnes je ${formattedDate}.`,
+      `Ahoj, Hani a Káťo! ${formattedDate} – čas na Karlův pohled na věc.`,
+      `Vítám vás, Hani a Káťo, v dnešním přehledu (${formattedDate})!`,
+      `Hani, Káťo – ${formattedDate}, Karel hlásí stav na palubě.`,
+    ];
+    // Pick variant based on day-of-year + hour so it rotates naturally
+    const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
+    const variantIndex = (dayOfYear + hour) % greetingVariants.length;
+    const chosenGreeting = greetingVariants[variantIndex];
+    
+    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum a čas: ${formattedDate}.
 
 VSTUPNÍ DATA:
 
@@ -288,8 +305,8 @@ ${perplexityTips || "(nedostupné)"}
 
 FORMÁT VÝSTUPU:
 
-Začni neformálním, osobním pozdravem – MUSÍŠ použít přesné dnešní datum: "Krásnou ${dayName}, ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long" })}, Hani a Káťo!" (NIKDY "Vážené", NIKDY formální tón, NIKDY špatné datum).
-Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci.
+Začni PŘESNĚ tímto pozdravem (nepřepisuj, neupravuj, použij doslova): "${chosenGreeting}"
+Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci. NIKDY nepoužívej jiné datum než to v pozdravu.
 
 NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, jak funguje systém obecně, co je ANP/EP/Host. Piš POUZE o tom co se DĚJE TEĎ a co je relevantní.
 
