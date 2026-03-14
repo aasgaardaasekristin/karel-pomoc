@@ -223,7 +223,7 @@ async function bootstrapConversations(sb: any, userId: string, apiKey: string, b
           summary_user: episode.summary_user || conv.label,
           summary_karel: episode.summary_karel || "",
           reasoning_notes: episode.reasoning_notes || "",
-          emotional_intensity: episode.emotional_intensity || 3,
+          emotional_intensity: Math.min(5, Math.max(1, episode.emotional_intensity || 3)),
           tags: [...(episode.tags || []), "bootstrap", conv.sub_mode],
           derived_facts: episode.derived_facts || [],
           actions_taken: episode.actions_taken || [],
