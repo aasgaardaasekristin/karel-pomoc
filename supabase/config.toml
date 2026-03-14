@@ -101,3 +101,15 @@ verify_jwt = false
 
 [functions.karel-client-summary]
 verify_jwt = false
+
+[functions.karel-session-finalize]
+verify_jwt = false
+
+[functions.karel-client-research]
+verify_jwt = false
+
+[functions.karel-supervision-discuss]
+verify_jwt = false
+
+[functions.karel-supervision-training]
+verify_jwt = false
