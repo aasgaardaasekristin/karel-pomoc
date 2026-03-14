@@ -171,6 +171,7 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
       createSession,
       removeSession,
       setActiveSession: setActiveSessionFn,
+      clearActiveSession,
       updateFormData,
       updateChatMessages,
       updateReportText,
