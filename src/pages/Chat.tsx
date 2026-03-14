@@ -1954,9 +1954,6 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             <>
               <CrisisBriefPanel />
               <HanaChat />
-                  </p>
-                </div>
-              </div>
             </>
           ) : (
             <>
