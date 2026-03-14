@@ -10,6 +10,7 @@ interface ClientSummaryCardProps {
   clientId: string;
   clientName: string;
   onStartLiveSession: () => void;
+  onCaseSummaryLoaded?: (summary: string | null) => void;
 }
 
 interface FormFieldStatus {
@@ -17,7 +18,7 @@ interface FormFieldStatus {
   filled: boolean;
 }
 
-const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession }: ClientSummaryCardProps) => {
+const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSummaryLoaded }: ClientSummaryCardProps) => {
   const [caseSummary, setCaseSummary] = useState<string | null>(null);
   const [lastSessionSummary, setLastSessionSummary] = useState<string | null>(null);
   const [formFields, setFormFields] = useState<FormFieldStatus[]>([]);
@@ -81,6 +82,7 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession }: ClientS
         const data = await res.json();
         setCaseSummary(data.caseSummary || null);
         setLastSessionSummary(data.lastSessionSummary || null);
+        onCaseSummaryLoaded?.(data.caseSummary || null);
       }
     } catch (e) {
       console.error("Client data load error:", e);

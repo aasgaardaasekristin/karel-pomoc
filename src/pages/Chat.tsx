@@ -37,6 +37,8 @@ import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
+import LiveSessionPanel from "@/components/report/LiveSessionPanel";
+import PostSessionTools from "@/components/report/PostSessionTools";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
@@ -120,10 +122,14 @@ const Chat = () => {
   } = useChatContext();
   const { activeSession, activeSessionId } = useActiveSessions();
   const [liveSessionStarted, setLiveSessionStarted] = useState(false);
+  const [sessionReport, setSessionReport] = useState<string | null>(null);
+  const [clientCaseSummary, setClientCaseSummary] = useState<string | null>(null);
 
   // Reset live session state when switching clients
   useEffect(() => {
     setLiveSessionStarted(false);
+    setSessionReport(null);
+    setClientCaseSummary(null);
   }, [activeSessionId]);
 
   // Determine hub section from sessionStorage
@@ -1970,19 +1976,38 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                       Vyber nebo vytvoř klienta v postranním panelu.
                     </p>
                   </div>
+                ) : sessionReport ? (
+                  <PostSessionTools
+                    clientId={activeSession.clientId}
+                    clientName={activeSession.clientName}
+                    sessionReport={sessionReport}
+                    onBack={() => {
+                      setSessionReport(null);
+                      setLiveSessionStarted(false);
+                    }}
+                  />
                 ) : !liveSessionStarted ? (
                   <ClientSummaryCard
                     clientId={activeSession.clientId}
                     clientName={activeSession.clientName}
                     onStartLiveSession={() => setLiveSessionStarted(true)}
+                    onCaseSummaryLoaded={(summary) => setClientCaseSummary(summary)}
                   />
                 ) : (
                   <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
                     <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
                       <SessionReportForm />
                     </div>
-                    <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
-                      <SupervisionChat />
+                    <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0 relative">
+                      <LiveSessionPanel
+                        clientId={activeSession.clientId}
+                        clientName={activeSession.clientName}
+                        caseSummary={clientCaseSummary}
+                        onEndSession={(report) => {
+                          setSessionReport(report);
+                          toast.success("Sezení zpracováno a uloženo do kartotéky");
+                        }}
+                      />
                     </div>
                   </div>
                 )}
