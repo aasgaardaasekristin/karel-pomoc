@@ -28,6 +28,32 @@ interface SessionFields {
 
 const EMPTY: SessionFields = { clientName: "", keyTheme: "", summary: "", risks: "", nextGoal: "" };
 
+type StepStatus = "pending" | "active" | "done";
+
+const StepIndicator = ({ 
+  step, label, status, hint 
+}: { step: number; label: string; status: StepStatus; hint?: string }) => (
+  <div className="flex items-center gap-2 min-w-0">
+    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${
+      status === "done" 
+        ? "bg-primary text-primary-foreground" 
+        : status === "active" 
+          ? "bg-primary/20 text-primary ring-2 ring-primary/40" 
+          : "bg-muted text-muted-foreground"
+    }`}>
+      {status === "done" ? <Check className="w-3 h-3" /> : step}
+    </div>
+    <div className="min-w-0">
+      <p className={`text-[11px] font-medium leading-tight truncate ${
+        status === "active" ? "text-foreground" : status === "done" ? "text-primary" : "text-muted-foreground"
+      }`}>{label}</p>
+      {hint && status === "active" && (
+        <p className="text-[9px] text-muted-foreground leading-tight truncate">{hint}</p>
+      )}
+    </div>
+  </div>
+);
+
 const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
   const [open, setOpen] = useState(false);
   const [fields, setFields] = useState<SessionFields>({ ...EMPTY });
