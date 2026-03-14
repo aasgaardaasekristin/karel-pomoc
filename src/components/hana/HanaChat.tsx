@@ -484,6 +484,17 @@ const HanaChat = () => {
             <Button
               variant="outline"
               size="sm"
+              onClick={handleMirrorToDrive}
+              disabled={isMirroring || isLoading}
+              className="h-7 px-2 text-xs gap-1"
+            >
+              {isMirroring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+              <span className="hidden sm:inline">Zrcadlit do Drive</span>
+              <span className="sm:hidden">📤</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleBootstrap}
               disabled={isBootstrapping || isLoading}
               className="h-7 px-2 text-xs gap-1"

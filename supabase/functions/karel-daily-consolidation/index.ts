@@ -64,8 +64,26 @@ serve(async (req) => {
           results.push({ user_id: uid, error: e instanceof Error ? e.message : String(e) });
         }
       }
+
+      // After consolidation, trigger memory mirror to Drive
+      let mirrorResult: any = null;
+      try {
+        const mirrorUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-memory-mirror`;
+        const mirrorRes = await fetch(mirrorUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+        });
+        mirrorResult = await mirrorRes.json();
+        console.log(`[consolidation] Mirror result:`, mirrorResult.status || mirrorResult.error);
+      } catch (mirrorErr) {
+        console.error("[consolidation] Mirror failed:", mirrorErr);
+        mirrorResult = { error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) };
+      }
       
-      return new Response(JSON.stringify({ results }), {
+      return new Response(JSON.stringify({ results, mirror: mirrorResult }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
