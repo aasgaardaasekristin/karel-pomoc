@@ -288,8 +288,7 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       status: "ok",
       folder_id: rootId,
-      root_docs: { entities: entityDocId, patterns: vzorceDocId, relations: vztahyDocId, strategies: strategieDocId },
-      subfolder_docs: subfolderResults,
+      docs: subfolderResults,
       counts: { entities: entities.length, patterns: patterns.length, relations: relations.length, strategies: strategies.length, episodes: episodes.length, logs: logs.length },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
