@@ -75,16 +75,20 @@ Další postřehy, hypotézy, otevřené otázky.
 
 Piš odborně ale prakticky. Používej konkrétní data z formuláře a chatu. NIKDY nevymýšlej údaje, které nejsou v podkladech.`;
 
+    const voiceSection = (voiceAnalyses && voiceAnalyses.length > 0)
+      ? `\n\n═══ HLASOVÉ ANALÝZY ZE SEZENÍ (${voiceAnalyses.length}x) ═══\n${voiceAnalyses.map((a: string, i: number) => `--- Analýza #${i + 1} ---\n${a}`).join("\n\n")}`
+      : "";
+
     const userContent = `═══ DATA Z FORMULÁŘE ═══
 ${formSnapshot || "(prázdný formulář)"}
 
 ═══ PŘEPIS SUPERVIZNÍHO CHATU ═══
-${chatTranscript || "(žádný chat)"}
+${chatTranscript || "(žádný chat)"}${voiceSection}
 
 Klient: ${clientName}
 Datum: ${new Date().toLocaleDateString("cs-CZ")}
 
-Vytvoř komplexní klinický report.`;
+Vytvoř komplexní klinický report. ${voiceAnalyses?.length ? "Zahrň poznatky z hlasových analýz do všech relevantních sekcí reportu." : ""}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
