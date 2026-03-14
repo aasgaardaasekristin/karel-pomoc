@@ -1989,45 +1989,45 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
               <HanaChat />
             </>
           ) : (
-            <>
-              <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {!activeSession ? (
                 <SessionSidebar />
-                {!activeSession ? (
-                  <div className="flex-1 flex items-center justify-center p-8">
-                    <p className="text-sm text-muted-foreground text-center">
-                      Vyber nebo vytvoř klienta v postranním panelu.
-                    </p>
+              ) : sessionReport ? (
+                <PostSessionTools
+                  clientId={activeSession.clientId}
+                  clientName={activeSession.clientName}
+                  sessionReport={sessionReport}
+                  onBack={() => {
+                    setSessionReport(null);
+                    setLiveSessionStarted(false);
+                  }}
+                />
+              ) : !liveSessionStarted ? (
+                <ClientSummaryCard
+                  clientId={activeSession.clientId}
+                  clientName={activeSession.clientName}
+                  onStartLiveSession={() => setLiveSessionStarted(true)}
+                  onCaseSummaryLoaded={(summary) => setClientCaseSummary(summary)}
+                />
+              ) : (
+                <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
+                    <SessionReportForm />
                   </div>
-                ) : sessionReport ? (
-                  <PostSessionTools
-                    clientId={activeSession.clientId}
-                    clientName={activeSession.clientName}
-                    sessionReport={sessionReport}
-                    onBack={() => {
-                      setSessionReport(null);
-                      setLiveSessionStarted(false);
-                    }}
-                  />
-                ) : !liveSessionStarted ? (
-                  <ClientSummaryCard
-                    clientId={activeSession.clientId}
-                    clientName={activeSession.clientName}
-                    onStartLiveSession={() => setLiveSessionStarted(true)}
-                    onCaseSummaryLoaded={(summary) => setClientCaseSummary(summary)}
-                  />
-                ) : (
-                  <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
-                    <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
-                      <SessionReportForm />
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0 relative">
-                      <LiveSessionPanel
-                        clientId={activeSession.clientId}
-                        clientName={activeSession.clientName}
-                        caseSummary={clientCaseSummary}
-                        onEndSession={(report) => {
-                          setSessionReport(report);
-                          toast.success("Sezení zpracováno a uloženo do kartotéky");
+                  <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0 relative">
+                    <LiveSessionPanel
+                      clientId={activeSession.clientId}
+                      clientName={activeSession.clientName}
+                      caseSummary={clientCaseSummary}
+                      onEndSession={(report) => {
+                        setSessionReport(report);
+                        toast.success("Sezení zpracováno a uloženo do kartotéky");
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
                         }}
                       />
                     </div>
