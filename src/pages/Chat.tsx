@@ -1766,6 +1766,19 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     );
   };
 
+  // Hierarchical back logic for Hana section
+  const getHanaBackAction = () => {
+    if (mainMode === "report") {
+      if (activeSession && (liveSessionStarted || sessionReport)) {
+        return { label: "← Zpět", action: () => { setLiveSessionStarted(false); setSessionReport(null); } };
+      }
+      if (activeSession) {
+        return { label: "← Klienti", action: () => clearActiveSession() };
+      }
+    }
+    return { label: "← Hub", action: () => navigate("/hub") };
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -1789,9 +1802,19 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 handleDidBack();
                 return;
               }
+              // Hana: hierarchical back
+              if (hubSection === "hana") {
+                const back = getHanaBackAction();
+                back.action();
+                return;
+              }
               navigate("/hub");
             }} className="h-8 px-2 shrink-0">
-              {(hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry") ? "← Zpět" : "← Hub"}
+              {hubSection === "hana"
+                ? getHanaBackAction().label
+                : (hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry")
+                  ? "← Zpět"
+                  : "← Hub"}
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
@@ -1820,9 +1843,8 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 </Button>
               </>
             ) : null}
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
-              <LogOut className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Odejít</span>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
