@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, User, Trash2, UserPlus, Loader2 } from "lucide-react";
+import { Plus, User, Trash2, UserPlus, Loader2, FolderOpen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveSessions, SessionWorkspace } from "@/contexts/ActiveSessionsContext";
+import { useNavigate } from "react-router-dom";
 
 type ClientOption = { id: string; name: string };
 
@@ -18,6 +19,7 @@ const SessionSidebar = () => {
     createSession,
     removeSession,
   } = useActiveSessions();
+  const navigate = useNavigate();
 
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
@@ -84,9 +86,23 @@ const SessionSidebar = () => {
   return (
     <div className="w-full sm:w-48 md:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-card/50 flex flex-col h-auto sm:h-full max-h-[45svh] sm:max-h-none">
       <div className="p-3 border-b border-border">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Sezení ({sessions.length}/5)
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Sezení s klientem
+          </h3>
+          <span className="text-[10px] text-muted-foreground">({sessions.length}/5)</span>
+        </div>
+
+        {/* Kartotéka button */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => navigate("/kartoteka")} 
+          className="w-full h-8 text-xs mb-2 gap-1"
+        >
+          <FolderOpen className="w-3.5 h-3.5" />
+          Kartotéka
+        </Button>
 
         {/* Quick add */}
         <div className="space-y-2">
