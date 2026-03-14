@@ -12,7 +12,22 @@ import { corsHeaders } from "../_shared/auth.ts";
  * - ZALOHA (klienti)
  * 
  * Zároveň aktualizuje DB paměťové tabulky.
+ * 
+ * DEDUP GUARDS:
+ * 1. Content hash markers [KHASH:xxxx] v Drive dokumentech – skip pokud hash existuje
+ * 2. Concurrency lock přes karel_memory_logs – jen 1 redistribute najednou
+ * 3. DB upsert s deduplikací entit/vzorců na základě ID/jména
  */
+
+// ── Content hash (FNV-1a 32bit) ──
+function contentHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
 
 // ── OAuth2 ──
 async function getAccessToken(): Promise<string> {
@@ -125,6 +140,32 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ═══ CONCURRENCY LOCK: prevent parallel redistributions ═══
+    const LOCK_MINUTES = 3;
+    const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
+    const { data: recentLocks } = await sb.from("karel_memory_logs")
+      .select("id, created_at")
+      .eq("user_id", userId)
+      .eq("log_type", "redistribute_lock")
+      .gte("created_at", lockCutoff)
+      .limit(1);
+    
+    if (recentLocks && recentLocks.length > 0) {
+      console.log("[redistribute] Skipping – another redistribute is running (lock from", recentLocks[0].created_at, ")");
+      return new Response(JSON.stringify({
+        status: "skipped",
+        reason: "Redistribuce již probíhá. Zkus to za chvíli.",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Acquire lock
+    const { data: lockRow } = await sb.from("karel_memory_logs").insert({
+      user_id: userId,
+      log_type: "redistribute_lock",
+      summary: "Lock acquired",
+    }).select("id").single();
+    const lockId = lockRow?.id;
+
     console.log("[redistribute] Starting for user:", userId);
     const startTime = Date.now();
 
@@ -404,13 +445,13 @@ Vrať POUZE validní JSON:
         await Promise.all(driveWrites);
       }
 
-      // KARTOTEKA_DID: append to part cards
+      // KARTOTEKA_DID: append to part cards (with hash dedup)
       if (extractedInfo.kartoteka_did?.part_updates && Object.keys(extractedInfo.kartoteka_did.part_updates).length > 0) {
         const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
         if (kartotekaId) {
           for (const [partName, content] of Object.entries(extractedInfo.kartoteka_did.part_updates)) {
             if (!content || typeof content !== "string") continue;
-            // Search recursively for part card
+            const hash = contentHash(content);
             const searchQ = `name contains '${partName}' and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
             const params = new URLSearchParams({ q: searchQ, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
             const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -418,7 +459,13 @@ Vrať POUZE validní JSON:
             const partDoc = data.files?.[0];
             if (partDoc) {
               const existing = await readDoc(token, partDoc.id);
-              const updated = `${existing}\n\n═══ Karel – automatická redistribuce (${new Date().toISOString().slice(0, 10)}) ═══\n${content}`;
+              // DEDUP: check if this hash already exists in the document
+              if (existing.includes(`[KHASH:${hash}]`)) {
+                console.log(`[redistribute] DEDUP: skipping ${partName} – hash ${hash} already present`);
+                driveUpdates.push(`KARTOTEKA/${partName} (dedup-skip)`);
+                continue;
+              }
+              const updated = `${existing}\n\n═══ Karel – automatická redistribuce (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`;
               await updateDoc(token, partDoc.id, updated);
               driveUpdates.push(`KARTOTEKA/${partName}`);
             }
@@ -426,16 +473,23 @@ Vrať POUZE validní JSON:
         }
       }
 
-      // ZALOHA: append to client files
+      // ZALOHA: append to client files (with hash dedup)
       if (extractedInfo.zaloha?.client_updates && Object.keys(extractedInfo.zaloha.client_updates).length > 0) {
         const zalohaId = await findFolderFuzzy(token, ["ZALOHA", "Zaloha"]);
         if (zalohaId) {
           for (const [clientName, content] of Object.entries(extractedInfo.zaloha.client_updates)) {
             if (!content || typeof content !== "string") continue;
+            const hash = contentHash(content);
             const clientDoc = await findDoc(token, clientName, zalohaId);
             if (clientDoc) {
               const existing = await readDoc(token, clientDoc.id);
-              const updated = `${existing}\n\n═══ Karel – redistribuce (${new Date().toISOString().slice(0, 10)}) ═══\n${content}`;
+              // DEDUP: check if this hash already exists in the document
+              if (existing.includes(`[KHASH:${hash}]`)) {
+                console.log(`[redistribute] DEDUP: skipping ${clientName} – hash ${hash} already present`);
+                driveUpdates.push(`ZALOHA/${clientName} (dedup-skip)`);
+                continue;
+              }
+              const updated = `${existing}\n\n═══ Karel – redistribuce (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`;
               await updateDoc(token, clientDoc.id, updated);
               driveUpdates.push(`ZALOHA/${clientName}`);
             }
@@ -447,12 +501,19 @@ Vrať POUZE validní JSON:
       driveUpdates.push(`ERROR: ${driveErr instanceof Error ? driveErr.message : "unknown"}`);
     }
 
-    // ═══ PHASE 5: Log ═══
+    // ═══ PHASE 5: Release lock & Log ═══
     const totalTime = Date.now() - startTime;
+    const dedupSkips = driveUpdates.filter(u => u.includes("dedup-skip")).length;
+
+    // Release concurrency lock
+    if (lockId) {
+      await sb.from("karel_memory_logs").update({ summary: `Lock released after ${totalTime}ms` }).eq("id", lockId);
+    }
+
     await sb.from("karel_memory_logs").insert({
       user_id: userId,
       log_type: "redistribute",
-      summary: extractedInfo.summary || `Redistribuce: ${dbUpdates.length} DB, ${driveUpdates.length} Drive`,
+      summary: extractedInfo.summary || `Redistribuce: ${dbUpdates.length} DB, ${driveUpdates.length} Drive, ${dedupSkips} dedup-skip`,
       episodes_created: 0,
       semantic_updates: dbUpdates.filter((u: string) => u.startsWith("entity") || u.startsWith("pattern") || u.startsWith("relation")).length,
       strategy_updates: dbUpdates.filter((u: string) => u.startsWith("strategy")).length,
@@ -461,10 +522,11 @@ Vrať POUZE validní JSON:
         threadsScanned: hanaConvs.length + didThreads.length + didConvs.length + researchThreads.length,
         dbUpdates,
         driveUpdates,
+        dedupSkips,
       },
     });
 
-    console.log(`[redistribute] Done in ${totalTime}ms. DB: ${dbUpdates.length}, Drive: ${driveUpdates.length}`);
+    console.log(`[redistribute] Done in ${totalTime}ms. DB: ${dbUpdates.length}, Drive: ${driveUpdates.length}, Dedup skips: ${dedupSkips}`);
 
     return new Response(JSON.stringify({
       status: "ok",
@@ -473,6 +535,7 @@ Vrať POUZE validní JSON:
         threadsScanned: hanaConvs.length + didThreads.length + didConvs.length + researchThreads.length,
         dbUpdates: dbUpdates.length,
         driveUpdates: driveUpdates.length,
+        dedupSkips,
         entities: (entitiesRes.data || []).length,
         patterns: (patternsRes.data || []).length,
       },
