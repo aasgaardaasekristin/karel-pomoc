@@ -238,25 +238,44 @@ Deno.serve(async (req) => {
       throw new Error(`Chybějící podsložky v PAMET_KAREL: ${missingFolders.join(", ")}. Vytvořte je prosím ručně.`);
     }
 
-    // 3. Find docs inside subfolders (NEVER create)
-    // SEMANTIC subfolder: 01_Entity, 02_Vzorce, 03_Vztahy
-    // PROCEDURAL subfolder: 04_Strategie
-    // EPISODES subfolder: first doc found
-    // LOGS subfolder: first doc found
-    const [entityDocId, vzorceDocId, vztahyDocId, strategieDocId, episodesDocId, logsDocId] = await Promise.all([
-      findDoc(token, "01_Entity", semanticFolderId!),
-      findDoc(token, "02_Vzorce", semanticFolderId!),
-      findDoc(token, "03_Vztahy", semanticFolderId!),
-      findDoc(token, "04_Strategie", proceduralFolderId!),
-      findFirstDoc(token, episodesFolderId!),
-      findFirstDoc(token, logsFolderId!),
+    // 3. List all docs in each subfolder to discover existing documents
+    const listAllDocs = async (folderId: string, folderName: string) => {
+      const q = `'${folderId}' in parents and trashed=false`;
+      const params = new URLSearchParams({
+        q, fields: "files(id,name,mimeType)", pageSize: "50",
+        supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+      });
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      console.log(`[mirror] Files in ${folderName}:`, JSON.stringify(data.files?.map((f: any) => f.name)));
+      return data.files || [];
+    };
+
+    const [semanticFiles, proceduralFiles, episodesFiles, logsFiles] = await Promise.all([
+      listAllDocs(semanticFolderId!, "SEMANTIC"),
+      listAllDocs(proceduralFolderId!, "PROCEDURAL"),
+      listAllDocs(episodesFolderId!, "EPISODES"),
+      listAllDocs(logsFolderId!, "LOGS"),
     ]);
 
+    // Match docs by name patterns (case-insensitive, contains)
+    const findByPattern = (files: any[], pattern: string) => 
+      files.find((f: any) => f.name.toLowerCase().includes(pattern.toLowerCase()));
+
+    const entityDoc = findByPattern(semanticFiles, "entit");
+    const vzorceDoc = findByPattern(semanticFiles, "vzor");
+    const vztahyDoc = findByPattern(semanticFiles, "vztah");
+    const strategieDoc = findByPattern(proceduralFiles, "strategi");
+    const episodesDoc = episodesFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
+    const logsDoc = logsFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
+
     const missingDocs: string[] = [];
-    if (!entityDocId) missingDocs.push("SEMANTIC/01_Entity");
-    if (!vzorceDocId) missingDocs.push("SEMANTIC/02_Vzorce");
-    if (!vztahyDocId) missingDocs.push("SEMANTIC/03_Vztahy");
-    if (!strategieDocId) missingDocs.push("PROCEDURAL/04_Strategie");
+    if (!entityDoc) missingDocs.push("SEMANTIC/*entity*");
+    if (!vzorceDoc) missingDocs.push("SEMANTIC/*vzorce*");
+    if (!vztahyDoc) missingDocs.push("SEMANTIC/*vztahy*");
+    if (!strategieDoc) missingDocs.push("PROCEDURAL/*strategie*");
     if (missingDocs.length) {
       throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
     }
