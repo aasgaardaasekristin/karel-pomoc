@@ -502,11 +502,17 @@ const HanaChat = () => {
       {/* Memory action bar */}
       <div className="border-b border-border bg-card/30">
         <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5">
               <Brain className="w-3.5 h-3.5" />
               Kognitivní agent
             </span>
+            {contextPrimeCache && (
+              <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                cache aktivní
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <HanaSessionReport messages={messages} disabled={isLoading} />
