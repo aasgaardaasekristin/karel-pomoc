@@ -482,6 +482,7 @@ const HanaChat = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <HanaSessionReport messages={messages} disabled={isLoading} />
             <Button
               variant="outline"
               size="sm"
