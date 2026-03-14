@@ -120,7 +120,7 @@ const Chat = () => {
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
-  const { activeSession, activeSessionId } = useActiveSessions();
+  const { activeSession, activeSessionId, clearActiveSession } = useActiveSessions();
   const [liveSessionStarted, setLiveSessionStarted] = useState(false);
   const [sessionReport, setSessionReport] = useState<string | null>(null);
   const [clientCaseSummary, setClientCaseSummary] = useState<string | null>(null);
