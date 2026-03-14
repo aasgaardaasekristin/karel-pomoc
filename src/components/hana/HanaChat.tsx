@@ -277,7 +277,9 @@ const HanaChat = () => {
     setMessages(threadMessages as Message[]);
     lastSavedRef.current = JSON.stringify(threadMessages);
     toast.success("Vlákno načteno");
-  }, [conversationId, messages]);
+    // Auto-refresh context prime for the new thread context
+    setTimeout(() => runContextPrime(true), 500);
+  }, [conversationId, messages, runContextPrime]);
 
   const handleRefreshMemory = useCallback(async () => {
     if (isRefreshingMemory) return;
