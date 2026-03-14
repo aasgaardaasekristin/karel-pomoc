@@ -275,6 +275,7 @@ Deno.serve(async (req) => {
     const missingDocs: string[] = [];
     if (!entityDoc) missingDocs.push("SEMANTIC/*osoby*");
     if (!vzorceDoc) missingDocs.push("SEMANTIC/*vzorce*");
+    if (!vztahyDoc) missingDocs.push("SEMANTIC/*vztahy*");
     if (!strategieDoc) missingDocs.push("PROCEDURAL/*strategie*");
     if (missingDocs.length) {
       throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
