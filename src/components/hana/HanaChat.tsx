@@ -320,6 +320,13 @@ const HanaChat = () => {
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
+      if (data.status === "skipped") {
+        // Remove the "redistribuuji" message and show skip info
+        setMessages(prev => prev.slice(0, -1));
+        toast.info(data.reason || "Redistribuce již probíhá.");
+        mirrorCooldownRef.current = 0; // Reset cooldown since nothing ran
+        return;
+      }
       const summary = [
         `✅ *Redistribuce dokončena*`,
         `📊 Vlákna analyzována: ${data.counts?.threadsScanned || 0}`,
