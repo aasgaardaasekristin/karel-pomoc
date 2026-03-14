@@ -79,6 +79,10 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
       toast.error("Nejdřív vyplň jméno klienta");
       return;
     }
+    if (recorder.state !== "recorded") {
+      toast.error("Nejdřív nahrávku zastav a pak ji odešli k analýze.");
+      return;
+    }
     setIsAnalyzing(true);
     try {
       const base64 = await recorder.getBase64();
