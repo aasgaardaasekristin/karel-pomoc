@@ -1254,17 +1254,37 @@ async function updateCardSections(
   }
 
   const updatedKeys: string[] = [];
+  let dedupSkips = 0;
   for (const [letter, newContent] of Object.entries(newSections)) {
     const ul = letter.toUpperCase();
     if (!SECTION_ORDER.includes(ul)) continue;
     const existing = existingSections[ul] || "";
-    const timestamped = `[${dateStr}] ${newContent}`;
+    
+    // KHASH dedup: compute hash of new content, skip if already present in existing section
+    const hash = contentHash(newContent.trim());
+    if (existing && hasKhash(existing, hash)) {
+      console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" – hash ${hash} already present`);
+      dedupSkips++;
+      continue;
+    }
+    
+    const timestamped = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
     if (existing && existing !== "(zatím prázdné)") {
       existingSections[ul] = existing + "\n\n" + timestamped;
     } else {
       existingSections[ul] = timestamped;
     }
     updatedKeys.push(ul);
+  }
+  
+  if (dedupSkips > 0) {
+    console.log(`[KHASH-dedup] ${dedupSkips} section(s) skipped for "${partName}" (duplicate content)`);
+  }
+  
+  if (updatedKeys.length === 0 && card) {
+    // All sections were duplicates – no write needed
+    console.log(`[KHASH-dedup] All sections for "${partName}" already present, skipping Drive write`);
+    return { fileName: card.fileName, sectionsUpdated: [], isNew: false };
   }
 
   const fullCard = buildCard(canonicalPartName, existingSections);
