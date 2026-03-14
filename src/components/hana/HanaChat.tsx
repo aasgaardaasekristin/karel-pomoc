@@ -34,6 +34,7 @@ const HanaChat = () => {
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [isMirroring, setIsMirroring] = useState(false);
   const [bootstrapProgress, setBootstrapProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
