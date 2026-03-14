@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ClipboardList, Loader2, Save, Sparkles, FileText, Mic } from "lucide-react";
+import { ClipboardList, Loader2, Save, Sparkles, FileText, Mic, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -27,6 +27,32 @@ interface SessionFields {
 }
 
 const EMPTY: SessionFields = { clientName: "", keyTheme: "", summary: "", risks: "", nextGoal: "" };
+
+type StepStatus = "pending" | "active" | "done";
+
+const StepIndicator = ({ 
+  step, label, status, hint 
+}: { step: number; label: string; status: StepStatus; hint?: string }) => (
+  <div className="flex items-center gap-2 min-w-0">
+    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${
+      status === "done" 
+        ? "bg-primary text-primary-foreground" 
+        : status === "active" 
+          ? "bg-primary/20 text-primary ring-2 ring-primary/40" 
+          : "bg-muted text-muted-foreground"
+    }`}>
+      {status === "done" ? <Check className="w-3 h-3" /> : step}
+    </div>
+    <div className="min-w-0">
+      <p className={`text-[11px] font-medium leading-tight truncate ${
+        status === "active" ? "text-foreground" : status === "done" ? "text-primary" : "text-muted-foreground"
+      }`}>{label}</p>
+      {hint && status === "active" && (
+        <p className="text-[9px] text-muted-foreground leading-tight truncate">{hint}</p>
+      )}
+    </div>
+  </div>
+);
 
 const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
   const [open, setOpen] = useState(false);
@@ -282,6 +308,25 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
         <SheetHeader>
           <SheetTitle className="text-base">Rychlý zápis sezení</SheetTitle>
         </SheetHeader>
+
+        {/* Step indicator */}
+        {(() => {
+          const hasFields = !!(fields.clientName.trim() && (fields.keyTheme.trim() || fields.summary.trim() || fields.risks.trim() || fields.nextGoal.trim()));
+          const hasAudio = voiceAnalyses.length > 0;
+          const step1: StepStatus = hasFields ? "done" : fields.clientName.trim() ? "active" : "active";
+          const step2: StepStatus = hasAudio ? "done" : hasFields ? "active" : "pending";
+          const step3: StepStatus = hasFields || hasAudio ? "active" : "pending";
+          return (
+            <div className="mt-3 flex items-center gap-1">
+              <StepIndicator step={1} label="Vyplnit" status={step1} hint="Jméno + pole nebo Předvyplnit" />
+              <div className="w-4 h-px bg-border shrink-0" />
+              <StepIndicator step={2} label="Audio" status={step2} hint="Volitelné – nahrát a analyzovat" />
+              <div className="w-4 h-px bg-border shrink-0" />
+              <StepIndicator step={3} label="Syntetizovat" status={step3} hint="AI report → Kartotéka" />
+            </div>
+          );
+        })()}
+
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Klient</Label>
