@@ -10,6 +10,7 @@ interface ClientSummaryCardProps {
   clientId: string;
   clientName: string;
   onStartLiveSession: () => void;
+  onCaseSummaryLoaded?: (summary: string | null) => void;
 }
 
 interface FormFieldStatus {
