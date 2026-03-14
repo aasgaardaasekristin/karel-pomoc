@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Send, Loader2, Brain, RotateCcw, Database } from "lucide-react";
+import { Send, Loader2, Brain, Database } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversal
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaSessionReport from "@/components/hana/HanaSessionReport";
+import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -214,6 +215,30 @@ const HanaChat = () => {
       setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
       toast.success("Nová konverzace zahájena");
     }
+  }, [conversationId, messages]);
+
+  const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string }[]) => {
+    // Save current conversation first
+    if (conversationId && messages.length > 1) {
+      await supabase
+        .from("karel_hana_conversations")
+        .update({ messages: messages as any, last_activity_at: new Date().toISOString() })
+        .eq("id", conversationId);
+    }
+    // Mark all as inactive, then activate the selected one
+    await supabase
+      .from("karel_hana_conversations")
+      .update({ is_active: false })
+      .neq("id", threadId);
+    await supabase
+      .from("karel_hana_conversations")
+      .update({ is_active: true })
+      .eq("id", threadId);
+    
+    setConversationId(threadId);
+    setMessages(threadMessages as Message[]);
+    lastSavedRef.current = JSON.stringify(threadMessages);
+    toast.success("Vlákno načteno");
   }, [conversationId, messages]);
 
   const handleRefreshMemory = useCallback(async () => {
@@ -522,16 +547,12 @@ const HanaChat = () => {
               <span className="hidden sm:inline">Osvěž paměť</span>
               <span className="sm:hidden">🧠</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNewConversation}
-              disabled={isLoading || messages.length <= 1}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span className="hidden sm:inline">Nová konverzace</span>
-            </Button>
+            <HanaThreadHistory
+              currentConversationId={conversationId}
+              onSwitchThread={handleSwitchThread}
+              onNewThread={handleNewConversation}
+              onMirrorToDrive={handleMirrorToDrive}
+            />
           </div>
         </div>
         {bootstrapProgress && (
