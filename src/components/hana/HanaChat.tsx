@@ -410,7 +410,7 @@ const HanaChat = () => {
         method: "POST", headers,
         body: JSON.stringify({ audioBase64: base64, mode: "debrief", chatContext }),
       });
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev,
