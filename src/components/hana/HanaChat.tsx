@@ -13,6 +13,7 @@ import AudioRecordButton from "@/components/AudioRecordButton";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
+import HanaSessionReport from "@/components/hana/HanaSessionReport";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -481,6 +482,7 @@ const HanaChat = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <HanaSessionReport messages={messages} disabled={isLoading} />
             <Button
               variant="outline"
               size="sm"
