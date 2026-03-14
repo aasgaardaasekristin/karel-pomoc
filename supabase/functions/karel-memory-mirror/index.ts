@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
@@ -36,15 +36,16 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
 }
 
 async function findDoc(token: string, name: string, parentId: string): Promise<string | null> {
-  const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
+  const q = `name contains '${name}' and '${parentId}' in parents and trashed=false`;
   const params = new URLSearchParams({
-    q, fields: "files(id)", pageSize: "5",
+    q, fields: "files(id,name)", pageSize: "10",
     supportsAllDrives: "true", includeItemsFromAllDrives: "true",
   });
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();
+  console.log(`[mirror] findDoc('${name}', parent=${parentId}): found ${JSON.stringify(data.files?.map((f: any) => f.name))}`);
   return data.files?.[0]?.id || null;
 }
 
@@ -167,17 +168,31 @@ function formatLogs(logs: any[]): string {
 //   PAMET_KAREL_EPISODES → contains episodes
 //   PAMET_KAREL_LOGS → contains logs
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authResult = await requireAuth(req);
-    if (authResult instanceof Response) return authResult;
-    const userId = authResult.user.id;
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
+
+    // Support both authenticated user and service-role (cron) calls
+    let userId: string;
+    const authHeader = req.headers.get("Authorization") || "";
+    if (authHeader.includes(serviceKey)) {
+      // Service role call (from cron/consolidation) – get first user with episodes
+      const { data: users } = await sb.from("karel_episodes").select("user_id").limit(1);
+      userId = users?.[0]?.user_id;
+      if (!userId) {
+        return new Response(JSON.stringify({ status: "no_users" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const authResult = await requireAuth(req);
+      if (authResult instanceof Response) return authResult;
+      userId = authResult.user.id;
+    }
 
     // Fetch all memory data in parallel
     const [entitiesRes, patternsRes, relationsRes, strategiesRes, episodesRes, logsRes] = await Promise.all([
@@ -223,57 +238,74 @@ serve(async (req) => {
       throw new Error(`Chybějící podsložky v PAMET_KAREL: ${missingFolders.join(", ")}. Vytvořte je prosím ručně.`);
     }
 
-    // 3. Find all existing docs (NEVER create)
-    const [entityDocId, vzorceDocId, vztahyDocId, strategieDocId] = await Promise.all([
-      findDoc(token, "01_Entity", rootId),
-      findDoc(token, "02_Vzorce", rootId),
-      findDoc(token, "03_Vztahy", rootId),
-      findDoc(token, "04_Strategie", rootId),
+    // 3. List all docs in each subfolder to discover existing documents
+    const listAllDocs = async (folderId: string, folderName: string) => {
+      const q = `'${folderId}' in parents and trashed=false`;
+      const params = new URLSearchParams({
+        q, fields: "files(id,name,mimeType)", pageSize: "50",
+        supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+      });
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      console.log(`[mirror] Files in ${folderName}:`, JSON.stringify(data.files?.map((f: any) => f.name)));
+      return data.files || [];
+    };
+
+    const [semanticFiles, proceduralFiles, episodesFiles, logsFiles] = await Promise.all([
+      listAllDocs(semanticFolderId!, "SEMANTIC"),
+      listAllDocs(proceduralFolderId!, "PROCEDURAL"),
+      listAllDocs(episodesFolderId!, "EPISODES"),
+      listAllDocs(logsFolderId!, "LOGS"),
     ]);
 
+    // Match docs by name patterns (case-insensitive, contains)
+    const findByPattern = (files: any[], pattern: string) => 
+      files.find((f: any) => f.name.toLowerCase().includes(pattern.toLowerCase()));
+
+    // Map actual file names to data types
+    const entityDoc = findByPattern(semanticFiles, "osoby");
+    const vzorceDoc = findByPattern(semanticFiles, "vzorce");
+    const strategieDoc = findByPattern(proceduralFiles, "strategi");
+    // Relations go into the README_SEMANTIC as there's no dedicated file
+    const semanticReadme = findByPattern(semanticFiles, "readme");
+    const episodesDoc = findByPattern(episodesFiles, "readme") || episodesFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
+    const logsDoc = findByPattern(logsFiles, "daily_job") || logsFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
+
     const missingDocs: string[] = [];
-    if (!entityDocId) missingDocs.push("01_Entity");
-    if (!vzorceDocId) missingDocs.push("02_Vzorce");
-    if (!vztahyDocId) missingDocs.push("03_Vztahy");
-    if (!strategieDocId) missingDocs.push("04_Strategie");
+    if (!entityDoc) missingDocs.push("SEMANTIC/*osoby*");
+    if (!vzorceDoc) missingDocs.push("SEMANTIC/*vzorce*");
+    if (!strategieDoc) missingDocs.push("PROCEDURAL/*strategie*");
     if (missingDocs.length) {
       throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
     }
 
-    // Also find docs in subfolders for detailed data
-    // Look for any existing doc in each subfolder to update
-    const [semanticDocId, proceduralDocId, episodesDocId, logsDocId] = await Promise.all([
-      findFirstDoc(token, semanticFolderId!),
-      findFirstDoc(token, proceduralFolderId!),
-      findFirstDoc(token, episodesFolderId!),
-      findFirstDoc(token, logsFolderId!),
-    ]);
-
     // 4. Update all existing docs in parallel
     const updates: Promise<void>[] = [
-      updateDoc(token, entityDocId!, formatEntities(entities)),
-      updateDoc(token, vzorceDocId!, formatPatterns(patterns)),
-      updateDoc(token, vztahyDocId!, formatRelations(relations)),
-      updateDoc(token, strategieDocId!, formatStrategies(strategies)),
+      updateDoc(token, entityDoc.id, formatEntities(entities)),
+      updateDoc(token, vzorceDoc.id, formatPatterns(patterns)),
+      updateDoc(token, strategieDoc.id, formatStrategies(strategies)),
     ];
 
-    // Update subfolder docs if they exist
-    const subfolderResults: Record<string, string> = {};
-    if (semanticDocId) {
-      updates.push(updateDoc(token, semanticDocId, [formatEntities(entities), "\n---\n", formatPatterns(patterns), "\n---\n", formatRelations(relations)].join("\n")));
-      subfolderResults.semantic = semanticDocId;
+    const docResults: Record<string, string> = {
+      entity: `${entityDoc.name} (${entityDoc.id})`,
+      patterns: `${vzorceDoc.name} (${vzorceDoc.id})`,
+      strategies: `${strategieDoc.name} (${strategieDoc.id})`,
+    };
+
+    // Relations → README_SEMANTIC
+    if (semanticReadme) {
+      updates.push(updateDoc(token, semanticReadme.id, formatRelations(relations)));
+      docResults.relations = `${semanticReadme.name} (${semanticReadme.id})`;
     }
-    if (proceduralDocId) {
-      updates.push(updateDoc(token, proceduralDocId, formatStrategies(strategies)));
-      subfolderResults.procedural = proceduralDocId;
+    if (episodesDoc) {
+      updates.push(updateDoc(token, episodesDoc.id, formatEpisodes(episodes)));
+      docResults.episodes = `${episodesDoc.name} (${episodesDoc.id})`;
     }
-    if (episodesDocId) {
-      updates.push(updateDoc(token, episodesDocId, formatEpisodes(episodes)));
-      subfolderResults.episodes = episodesDocId;
-    }
-    if (logsDocId) {
-      updates.push(updateDoc(token, logsDocId, formatLogs(logs)));
-      subfolderResults.logs = logsDocId;
+    if (logsDoc) {
+      updates.push(updateDoc(token, logsDoc.id, formatLogs(logs)));
+      docResults.logs = `${logsDoc.name} (${logsDoc.id})`;
     }
 
     await Promise.all(updates);
@@ -283,8 +315,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       status: "ok",
       folder_id: rootId,
-      root_docs: { entities: entityDocId, patterns: vzorceDocId, relations: vztahyDocId, strategies: strategieDocId },
-      subfolder_docs: subfolderResults,
+      docs: docResults,
       counts: { entities: entities.length, patterns: patterns.length, relations: relations.length, strategies: strategies.length, episodes: episodes.length, logs: logs.length },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {

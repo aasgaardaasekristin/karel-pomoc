@@ -34,6 +34,7 @@ const HanaChat = () => {
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [isMirroring, setIsMirroring] = useState(false);
   const [bootstrapProgress, setBootstrapProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -277,6 +278,28 @@ const HanaChat = () => {
     }
   }, [isRefreshingMemory, messages, conversationId]);
 
+  const handleMirrorToDrive = useCallback(async () => {
+    if (isMirroring) return;
+    setIsMirroring(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+        method: "POST", headers,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      toast.success(`Paměť zrcadlena do Drive (${data.counts?.entities || 0} entit, ${data.counts?.patterns || 0} vzorců)`);
+    } catch (error) {
+      console.error("Mirror error:", error);
+      toast.error(error instanceof Error ? error.message : "Chyba při zrcadlení do Drive");
+    } finally {
+      setIsMirroring(false);
+    }
+  }, [isMirroring]);
+
   const handleBootstrap = useCallback(async () => {
     if (isBootstrapping) return;
     setIsBootstrapping(true);
@@ -458,6 +481,17 @@ const HanaChat = () => {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleMirrorToDrive}
+              disabled={isMirroring || isLoading}
+              className="h-7 px-2 text-xs gap-1"
+            >
+              {isMirroring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+              <span className="hidden sm:inline">Zrcadlit do Drive</span>
+              <span className="sm:hidden">📤</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"
