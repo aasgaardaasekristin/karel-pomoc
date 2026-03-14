@@ -221,7 +221,7 @@ const HanaChat = () => {
     setIsRefreshingMemory(true);
     try {
       // Add a system-like message indicating memory refresh
-      setMessages(prev => [...prev, { role: "user", content: "🧠 *[Osvěžuji paměť – Karel přehodnocuje kontext]*" }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel přehodnocuje kontext]*" }]);
       
       const headers = await getAuthHeaders();
       const response = await fetch(
