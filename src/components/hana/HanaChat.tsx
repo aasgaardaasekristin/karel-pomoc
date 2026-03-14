@@ -299,17 +299,15 @@ const HanaChat = () => {
     }
   }, [isRefreshingMemory, runContextPrime, contextPrimeStats]);
 
-  const mirrorCooldownRef = useRef<number>(0);
+  const isMirroringRef = useRef(false);
 
   const handleMirrorToDrive = useCallback(async () => {
-    if (isMirroring) return;
-    // Client-side cooldown: 60s between mirror calls
-    const now = Date.now();
-    if (now - mirrorCooldownRef.current < 60_000) {
+    // Synchronous mutex — prevents any concurrent execution
+    if (isMirroringRef.current) {
       toast.info("Redistribuce byla spuštěna nedávno. Počkej chvíli.");
       return;
     }
-    mirrorCooldownRef.current = now;
+    isMirroringRef.current = true;
     setIsMirroring(true);
     try {
       setMessages(prev => [...prev, { role: "assistant", content: "📤 *[Redistribuuji informace – Karel analyzuje všechna vlákna a ukládá poznatky do Drive]*" }]);
@@ -323,10 +321,9 @@ const HanaChat = () => {
       }
       const data = await res.json();
       if (data.status === "skipped") {
-        // Remove the "redistribuuji" message and show skip info
         setMessages(prev => prev.slice(0, -1));
         toast.info(data.reason || "Redistribuce již probíhá.");
-        mirrorCooldownRef.current = 0; // Reset cooldown since nothing ran
+        isMirroringRef.current = false;
         return;
       }
       const summary = [
@@ -343,8 +340,10 @@ const HanaChat = () => {
       toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
     } finally {
       setIsMirroring(false);
+      // Keep mutex locked for 60s cooldown
+      setTimeout(() => { isMirroringRef.current = false; }, 60_000);
     }
-  }, [isMirroring]);
+  }, []);
 
   const handleBootstrap = useCallback(async () => {
     if (isBootstrapping) return;
