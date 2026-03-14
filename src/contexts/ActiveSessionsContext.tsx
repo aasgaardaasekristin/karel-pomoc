@@ -44,6 +44,7 @@ interface ActiveSessionsContextType {
   createSession: (clientId: string, clientName: string) => string;
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
+  clearActiveSession: () => void;
   updateFormData: (id: string, data: Partial<ReportFormData>) => void;
   updateChatMessages: (id: string, messages: Message[]) => void;
   updateReportText: (id: string, text: string) => void;
@@ -130,6 +131,11 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
     try { localStorage.setItem(ACTIVE_KEY, id); } catch {}
   }, []);
 
+  const clearActiveSession = useCallback(() => {
+    setActiveSessionId(null);
+    try { localStorage.removeItem(ACTIVE_KEY); } catch {}
+  }, []);
+
   const updateSession = useCallback((id: string, updater: (s: SessionWorkspace) => SessionWorkspace) => {
     const next = sessions.map(s => s.id === id ? updater(s) : s);
     persist(next);
@@ -165,6 +171,7 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
       createSession,
       removeSession,
       setActiveSession: setActiveSessionFn,
+      clearActiveSession,
       updateFormData,
       updateChatMessages,
       updateReportText,

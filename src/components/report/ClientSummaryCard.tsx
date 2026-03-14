@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Users, Play, FileText } from "lucide-react";
+import { Loader2, Users, Play, FileText, CheckCircle2, Circle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -28,7 +28,6 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
   const loadClientData = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Fetch client info and all sessions in parallel
       const [clientRes, sessionsRes] = await Promise.all([
         supabase.from("clients").select("*").eq("id", clientId).single(),
         supabase.from("client_sessions")
@@ -41,7 +40,6 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
       const sessions = sessionsRes.data || [];
       setSessionCount(sessions.length);
 
-      // Build form field status from client card
       if (client) {
         setFormFields([
           { label: "Věk", filled: !!client.age },
@@ -62,7 +60,6 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
         return;
       }
 
-      // Call AI to generate summary
       const headers = await getAuthHeaders();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-client-summary`, {
         method: "POST",
@@ -71,8 +68,6 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
       });
 
       if (!res.ok) {
-        console.error("Summary fetch failed:", res.status);
-        // Fallback to basic info
         setCaseSummary(`${clientName} – ${sessions.length} sezení v kartotéce.`);
         const last = sessions[0];
         if (last?.ai_analysis) {
@@ -99,74 +94,75 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
-        <div className="text-center space-y-3">
-          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-          <p className="text-sm text-muted-foreground">Karel analyzuje kartu klienta...</p>
+        <div className="text-center space-y-4">
+          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+          <div>
+            <p className="text-sm font-medium text-foreground">Karel analyzuje kartu klienta</p>
+            <p className="text-xs text-muted-foreground mt-1">Načítám historii sezení a připravuji shrnutí…</p>
+          </div>
         </div>
       </div>
     );
   }
 
+  const filledCount = formFields.filter(f => f.filled).length;
+  const fillPercent = formFields.length > 0 ? Math.round((filledCount / formFields.length) * 100) : 0;
+
   return (
     <ScrollArea className="flex-1">
-      <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <Users className="w-5 h-5 text-primary" />
+      <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
+        {/* Client header */}
+        <div className="text-center space-y-3">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+            <Users className="w-8 h-8 text-primary" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-foreground">{clientName}</h2>
-            <p className="text-xs text-muted-foreground">{sessionCount} sezení v kartotéce</p>
+            <h2 className="text-xl sm:text-2xl font-serif font-semibold text-foreground">{clientName}</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {sessionCount === 0 ? "Nový klient" : `${sessionCount} ${sessionCount === 1 ? "sezení" : sessionCount < 5 ? "sezení" : "sezení"} v kartotéce`}
+            </p>
           </div>
-        </div>
-
-        {/* Intro text */}
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-foreground leading-relaxed">
-            Hani, jsem tu s Tebou na tomto sezení pro: <strong>{clientName}</strong>
-          </p>
         </div>
 
         {/* Case summary */}
         {caseSummary && (
-          <div className="space-y-2">
+          <div className="bg-card border border-border rounded-xl p-5 space-y-2">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Shrnutí případu</h3>
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{caseSummary}</p>
-            </div>
+            <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{caseSummary}</p>
           </div>
         )}
 
         {/* Last session summary */}
         {lastSessionSummary && (
-          <div className="space-y-2">
+          <div className="bg-card border border-border rounded-xl p-5 space-y-2">
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Poslední sezení</h3>
-            <div className="bg-card border border-border rounded-lg p-4">
-              <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{lastSessionSummary}</p>
-            </div>
+            <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{lastSessionSummary}</p>
           </div>
         )}
 
-        {/* Form status (small text) */}
+        {/* Form status */}
         {formFields.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <FileText className="w-3 h-3" />
-              Stav karty klienta
-            </h3>
-            <div className="flex flex-wrap gap-1.5">
+          <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-3 h-3" />
+                Stav karty
+              </h3>
+              <span className="text-xs text-muted-foreground">{fillPercent}% vyplněno</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {formFields.map((f) => (
-                <span
+                <div
                   key={f.label}
-                  className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg ${
                     f.filled
-                      ? "bg-primary/10 border-primary/20 text-primary"
-                      : "bg-muted/50 border-border text-muted-foreground"
+                      ? "bg-primary/5 text-primary"
+                      : "bg-muted/30 text-muted-foreground"
                   }`}
                 >
-                  {f.filled ? "✓" : "○"} {f.label}
-                </span>
+                  {f.filled ? <CheckCircle2 className="w-3 h-3 shrink-0" /> : <Circle className="w-3 h-3 shrink-0" />}
+                  {f.label}
+                </div>
               ))}
             </div>
           </div>
@@ -177,11 +173,14 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
           <Button
             size="lg"
             onClick={onStartLiveSession}
-            className="w-full h-12 text-base gap-2"
+            className="w-full h-14 text-base gap-3 rounded-xl shadow-sm"
           >
             <Play className="w-5 h-5" />
             Zahájit sezení za přítomnosti Karla
           </Button>
+          <p className="text-xs text-muted-foreground text-center mt-3">
+            Karel bude v reálném čase radit během sezení s klientem.
+          </p>
         </div>
       </div>
     </ScrollArea>

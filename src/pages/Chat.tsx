@@ -120,7 +120,7 @@ const Chat = () => {
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
-  const { activeSession, activeSessionId } = useActiveSessions();
+  const { activeSession, activeSessionId, clearActiveSession } = useActiveSessions();
   const [liveSessionStarted, setLiveSessionStarted] = useState(false);
   const [sessionReport, setSessionReport] = useState<string | null>(null);
   const [clientCaseSummary, setClientCaseSummary] = useState<string | null>(null);
@@ -1766,6 +1766,19 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     );
   };
 
+  // Hierarchical back logic for Hana section
+  const getHanaBackAction = () => {
+    if (mainMode === "report") {
+      if (activeSession && (liveSessionStarted || sessionReport)) {
+        return { label: "← Zpět", action: () => { setLiveSessionStarted(false); setSessionReport(null); } };
+      }
+      if (activeSession) {
+        return { label: "← Klienti", action: () => clearActiveSession() };
+      }
+    }
+    return { label: "← Hub", action: () => navigate("/hub") };
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -1789,9 +1802,19 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 handleDidBack();
                 return;
               }
+              // Hana: hierarchical back
+              if (hubSection === "hana") {
+                const back = getHanaBackAction();
+                back.action();
+                return;
+              }
               navigate("/hub");
             }} className="h-8 px-2 shrink-0">
-              {(hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry") ? "← Zpět" : "← Hub"}
+              {hubSection === "hana"
+                ? getHanaBackAction().label
+                : (hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry")
+                  ? "← Zpět"
+                  : "← Hub"}
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
@@ -1820,9 +1843,8 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 </Button>
               </>
             ) : null}
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
-              <LogOut className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Odejít</span>
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
@@ -1967,52 +1989,45 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
               <HanaChat />
             </>
           ) : (
-            <>
-              <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {!activeSession ? (
                 <SessionSidebar />
-                {!activeSession ? (
-                  <div className="flex-1 flex items-center justify-center p-8">
-                    <p className="text-sm text-muted-foreground text-center">
-                      Vyber nebo vytvoř klienta v postranním panelu.
-                    </p>
+              ) : sessionReport ? (
+                <PostSessionTools
+                  clientId={activeSession.clientId}
+                  clientName={activeSession.clientName}
+                  sessionReport={sessionReport}
+                  onBack={() => {
+                    setSessionReport(null);
+                    setLiveSessionStarted(false);
+                  }}
+                />
+              ) : !liveSessionStarted ? (
+                <ClientSummaryCard
+                  clientId={activeSession.clientId}
+                  clientName={activeSession.clientName}
+                  onStartLiveSession={() => setLiveSessionStarted(true)}
+                  onCaseSummaryLoaded={(summary) => setClientCaseSummary(summary)}
+                />
+              ) : (
+                <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                  <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
+                    <SessionReportForm />
                   </div>
-                ) : sessionReport ? (
-                  <PostSessionTools
-                    clientId={activeSession.clientId}
-                    clientName={activeSession.clientName}
-                    sessionReport={sessionReport}
-                    onBack={() => {
-                      setSessionReport(null);
-                      setLiveSessionStarted(false);
-                    }}
-                  />
-                ) : !liveSessionStarted ? (
-                  <ClientSummaryCard
-                    clientId={activeSession.clientId}
-                    clientName={activeSession.clientName}
-                    onStartLiveSession={() => setLiveSessionStarted(true)}
-                    onCaseSummaryLoaded={(summary) => setClientCaseSummary(summary)}
-                  />
-                ) : (
-                  <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
-                    <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
-                      <SessionReportForm />
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0 relative">
-                      <LiveSessionPanel
-                        clientId={activeSession.clientId}
-                        clientName={activeSession.clientName}
-                        caseSummary={clientCaseSummary}
-                        onEndSession={(report) => {
-                          setSessionReport(report);
-                          toast.success("Sezení zpracováno a uloženo do kartotéky");
-                        }}
-                      />
-                    </div>
+                  <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0 relative">
+                    <LiveSessionPanel
+                      clientId={activeSession.clientId}
+                      clientName={activeSession.clientName}
+                      caseSummary={clientCaseSummary}
+                      onEndSession={(report) => {
+                        setSessionReport(report);
+                        toast.success("Sezení zpracováno a uloženo do kartotéky");
+                      }}
+                    />
                   </div>
-                )}
-              </div>
-            </>
+                </div>
+              )}
+            </div>
           )}
         </>
       )}
