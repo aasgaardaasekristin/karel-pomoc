@@ -10,7 +10,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { chatMessages, formData, clientName } = await req.json();
+    const { chatMessages, formData, clientName, voiceAnalyses } = await req.json();
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
@@ -75,16 +75,20 @@ Další postřehy, hypotézy, otevřené otázky.
 
 Piš odborně ale prakticky. Používej konkrétní data z formuláře a chatu. NIKDY nevymýšlej údaje, které nejsou v podkladech.`;
 
+    const voiceSection = (voiceAnalyses && voiceAnalyses.length > 0)
+      ? `\n\n═══ HLASOVÉ ANALÝZY ZE SEZENÍ (${voiceAnalyses.length}x) ═══\n${voiceAnalyses.map((a: string, i: number) => `--- Analýza #${i + 1} ---\n${a}`).join("\n\n")}`
+      : "";
+
     const userContent = `═══ DATA Z FORMULÁŘE ═══
 ${formSnapshot || "(prázdný formulář)"}
 
 ═══ PŘEPIS SUPERVIZNÍHO CHATU ═══
-${chatTranscript || "(žádný chat)"}
+${chatTranscript || "(žádný chat)"}${voiceSection}
 
 Klient: ${clientName}
 Datum: ${new Date().toLocaleDateString("cs-CZ")}
 
-Vytvoř komplexní klinický report.`;
+Vytvoř komplexní klinický report. ${voiceAnalyses?.length ? "Zahrň poznatky z hlasových analýz do všech relevantních sekcí reportu." : ""}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
