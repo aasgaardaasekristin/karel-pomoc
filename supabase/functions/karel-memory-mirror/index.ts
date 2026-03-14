@@ -184,7 +184,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { userId } = await requireAuth(req);
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+    const userId = authResult.user.id;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
