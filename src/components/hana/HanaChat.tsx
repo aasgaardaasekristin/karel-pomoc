@@ -13,7 +13,6 @@ import AudioRecordButton from "@/components/AudioRecordButton";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
-import HanaSessionReport from "@/components/hana/HanaSessionReport";
 import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -563,8 +562,6 @@ const HanaChat = () => {
             Kognitivní agent
           </div>
           <div className="flex items-center gap-2">
-            <HanaSessionReport messages={messages} disabled={isLoading} />
-
             {/* Správa popover */}
             <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
               <PopoverTrigger asChild>

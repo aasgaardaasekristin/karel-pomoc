@@ -17,6 +17,7 @@ import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
 import SessionSidebar from "@/components/report/SessionSidebar";
+import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import SessionReportForm from "@/components/report/SessionReportForm";
 import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
@@ -35,6 +36,7 @@ import { useConversationHistory } from "@/hooks/useConversationHistory";
 import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
+import ClientSummaryCard from "@/components/report/ClientSummaryCard";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
@@ -116,6 +118,13 @@ const Chat = () => {
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
+  const { activeSession, activeSessionId } = useActiveSessions();
+  const [liveSessionStarted, setLiveSessionStarted] = useState(false);
+
+  // Reset live session state when switching clients
+  useEffect(() => {
+    setLiveSessionStarted(false);
+  }, [activeSessionId]);
 
   // Determine hub section from sessionStorage
   const [hubSection] = useState<HubSection>(() => {
@@ -1955,14 +1964,28 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             <>
               <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
                 <SessionSidebar />
-                <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
-                  <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
-                    <SessionReportForm />
+                {!activeSession ? (
+                  <div className="flex-1 flex items-center justify-center p-8">
+                    <p className="text-sm text-muted-foreground text-center">
+                      Vyber nebo vytvoř klienta v postranním panelu.
+                    </p>
                   </div>
-                  <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
-                    <SupervisionChat />
+                ) : !liveSessionStarted ? (
+                  <ClientSummaryCard
+                    clientId={activeSession.clientId}
+                    clientName={activeSession.clientName}
+                    onStartLiveSession={() => setLiveSessionStarted(true)}
+                  />
+                ) : (
+                  <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
+                    <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
+                      <SessionReportForm />
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col min-h-[40vh] md:min-h-0">
+                      <SupervisionChat />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </>
           )}
