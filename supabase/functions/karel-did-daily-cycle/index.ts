@@ -2752,8 +2752,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               const opPlanFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
               if (opPlanFile) {
                 const existingOp = await readFileContent(token, opPlanFile.id);
-                if (!existingOp.includes(newContent.slice(0, 80))) {
-                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus):\n${newContent}`;
+                const hash = contentHash(newContent.trim());
+                if (hasKhash(existingOp, hash)) {
+                  console.log(`[CENTRUM] [KHASH-dedup] Skipping dohody→OpPlan – hash ${hash} already present`);
+                } else if (!existingOp.includes(newContent.slice(0, 80))) {
+                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus): [KHASH:${hash}]\n${newContent}`;
                   await updateFileById(token, opPlanFile.id, updatedOp, opPlanFile.mimeType);
                   cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (z dohod)`);
                   console.log(`[CENTRUM] ✅ Appended dohody content to 05_Operativni_Plan`);
