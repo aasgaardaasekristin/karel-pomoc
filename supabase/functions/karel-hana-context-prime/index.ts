@@ -300,6 +300,7 @@ serve(async (req) => {
     // ═══ PHASE 2: Build raw context for AI synthesis ═══
     const recentEpisodes = dbResults.recentEpisodes || [];
     const olderEpisodes = dbResults.olderEpisodes || [];
+    const archiveSummaries = dbResults.archiveSummaries || [];
     const entities = dbResults.entities || [];
     const patterns = dbResults.patterns || [];
     const relations = dbResults.relations || [];
