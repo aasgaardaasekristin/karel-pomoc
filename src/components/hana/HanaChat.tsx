@@ -627,7 +627,7 @@ const HanaChat = () => {
                   disabled={isLoading}
                 />
                 <Button
-                  onClick={wrappedSendMessage}
+                  onClick={sendMessage}
                   disabled={(!input.trim() && attachments.length === 0) || isLoading}
                   size="icon" className="h-[46px] w-[46px] sm:h-[56px] sm:w-[56px] shrink-0 rounded-xl"
                 >
