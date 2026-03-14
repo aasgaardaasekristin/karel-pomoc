@@ -82,6 +82,7 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
         const data = await res.json();
         setCaseSummary(data.caseSummary || null);
         setLastSessionSummary(data.lastSessionSummary || null);
+        onCaseSummaryLoaded?.(data.caseSummary || null);
       }
     } catch (e) {
       console.error("Client data load error:", e);
