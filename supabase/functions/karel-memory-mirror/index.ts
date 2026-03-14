@@ -168,7 +168,7 @@ function formatLogs(logs: any[]): string {
 //   PAMET_KAREL_EPISODES → contains episodes
 //   PAMET_KAREL_LOGS → contains logs
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
