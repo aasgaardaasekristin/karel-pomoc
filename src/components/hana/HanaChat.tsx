@@ -44,6 +44,8 @@ const HanaChat = () => {
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [isMirroring, setIsMirroring] = useState(false);
   const [bootstrapProgress, setBootstrapProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null);
+  const [contextPrimeCache, setContextPrimeCache] = useState<string | null>(null);
+  const [contextPrimeStats, setContextPrimeStats] = useState<any>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
