@@ -34,6 +34,7 @@ import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
 import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
+import HanaChat from "@/components/hana/HanaChat";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
@@ -1941,7 +1942,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           )}
         </>
       ) : (
-        /* Hana Section - mode toggle + mode selector (without DID and research) */
+        /* Hana Section - MainModeToggle (Chat uses new HanaChat, Report stays) */
         <>
           {/* Main Mode Toggle */}
           <div className="border-b border-border bg-card/30">
@@ -1953,77 +1954,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
-              <div className="border-b border-border bg-card/30">
-                <div className="max-w-4xl mx-auto px-4 py-3">
-                  <ModeSelector currentMode={mode} onModeChange={setMode} hideDid hideResearch />
-                </div>
-              </div>
-
-              {/* Non-DID Chat */}
-              <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
-                <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
-                  {messages.map((message, index) => (
-                    <ChatMessage key={index} message={message} />
-                  ))}
-                  {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
-                </div>
-              </ScrollArea>
-
-              <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-                <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  <div className="flex gap-2 sm:gap-3 items-end relative">
-                    <UniversalAttachmentBar
-                      attachments={attachments} onRemove={removeAttachment}
-                      onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-                      onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-                      disabled={isLoading || isSoapLoading}
-                      fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                      onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-                    />
-                    <Textarea
-                      ref={textareaRef} value={input}
-                      onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                      placeholder="Napiš svou zprávu..."
-                      className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
-                      disabled={isLoading || isSoapLoading}
-                    />
-                    <Button
-                      onClick={sendMessage}
-                      disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                      size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
-                    >
-                      {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap mt-2">
-                    <AudioRecordButton
-                      state={audioRecorder.state} duration={audioRecorder.duration}
-                      maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
-                      isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
-                      onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
-                      onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
-                    />
-                    {audioRecorder.state === "idle" && (
-                      <>
-                        {messages.length > 1 && (mode === "supervision" || mode === "research") ? (
-                          <Button variant="outline" size="sm" onClick={handleStudyMaterial} disabled={isLoading || isStudyLoading} className="h-9 px-3 gap-1.5">
-                            {isStudyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <GraduationCap className="w-4 h-4" />}
-                            <span className="hidden sm:inline">{mode === "research" ? "Pořídit zápis" : "Učební materiál"}</span>
-                          </Button>
-                        ) : messages.length > 1 ? (
-                          <Button variant="outline" size="sm" onClick={handleSoapHandoff} disabled={isLoading || isSoapLoading} className="h-9 px-3 gap-1.5">
-                            {isSoapLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                            <span className="hidden sm:inline">Pořídit zápis</span>
-                          </Button>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
-                    Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
-                  </p>
-                </div>
-              </div>
+              <HanaChat />
             </>
           ) : (
             <>
