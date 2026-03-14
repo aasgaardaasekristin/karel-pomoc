@@ -547,16 +547,12 @@ const HanaChat = () => {
               <span className="hidden sm:inline">Osvěž paměť</span>
               <span className="sm:hidden">🧠</span>
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNewConversation}
-              disabled={isLoading || messages.length <= 1}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span className="hidden sm:inline">Nová konverzace</span>
-            </Button>
+            <HanaThreadHistory
+              currentConversationId={conversationId}
+              onSwitchThread={handleSwitchThread}
+              onNewThread={handleNewConversation}
+              onMirrorToDrive={handleMirrorToDrive}
+            />
           </div>
         </div>
         {bootstrapProgress && (
