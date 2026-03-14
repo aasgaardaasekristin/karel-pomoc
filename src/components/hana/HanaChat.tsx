@@ -47,7 +47,10 @@ const HanaChat = () => {
   const [isMirroring, setIsMirroring] = useState(false);
   const [bootstrapProgress, setBootstrapProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null);
   const [contextPrimeCache, setContextPrimeCache] = useState<string | null>(null);
-  const [contextPrimeStats, setContextPrimeStats] = useState<any>(null);
+  const [archivedCount, setArchivedCount] = useState<number>(0);
+  const [archiveSummaries, setArchiveSummaries] = useState<{ id: string; summary: string; created_at: string }[]>([]);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [spravaOpen, setSpravaOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
