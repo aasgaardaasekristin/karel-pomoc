@@ -562,8 +562,6 @@ const HanaChat = () => {
             Kognitivní agent
           </div>
           <div className="flex items-center gap-2">
-            <HanaSessionReport messages={messages} disabled={isLoading} />
-
             {/* Správa popover */}
             <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
               <PopoverTrigger asChild>
