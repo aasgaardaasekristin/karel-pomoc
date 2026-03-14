@@ -206,6 +206,19 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
       toast.error("Zadej jméno klienta");
       return;
     }
+
+    const hasAnyContent =
+      !!fields.keyTheme.trim() ||
+      !!fields.summary.trim() ||
+      !!fields.risks.trim() ||
+      !!fields.nextGoal.trim() ||
+      voiceAnalyses.length > 0;
+
+    if (!hasAnyContent) {
+      toast.error("Vyplň aspoň jedno pole nebo nejdřív přidej audio analýzu.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const { data: existing } = await supabase
