@@ -97,6 +97,20 @@ const XLS_MIME_TYPES = new Set([
   "application/vnd.ms-excel",
 ]);
 
+// ── Content hash (FNV-1a 32bit) for dedup markers [KHASH:xxxxxxxx] ──
+function contentHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function hasKhash(existingContent: string, hash: string): boolean {
+  return existingContent.includes(`[KHASH:${hash}]`);
+}
+
 const stripDiacritics = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -1240,17 +1254,37 @@ async function updateCardSections(
   }
 
   const updatedKeys: string[] = [];
+  let dedupSkips = 0;
   for (const [letter, newContent] of Object.entries(newSections)) {
     const ul = letter.toUpperCase();
     if (!SECTION_ORDER.includes(ul)) continue;
     const existing = existingSections[ul] || "";
-    const timestamped = `[${dateStr}] ${newContent}`;
+    
+    // KHASH dedup: compute hash of new content, skip if already present in existing section
+    const hash = contentHash(newContent.trim());
+    if (existing && hasKhash(existing, hash)) {
+      console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" – hash ${hash} already present`);
+      dedupSkips++;
+      continue;
+    }
+    
+    const timestamped = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
     if (existing && existing !== "(zatím prázdné)") {
       existingSections[ul] = existing + "\n\n" + timestamped;
     } else {
       existingSections[ul] = timestamped;
     }
     updatedKeys.push(ul);
+  }
+  
+  if (dedupSkips > 0) {
+    console.log(`[KHASH-dedup] ${dedupSkips} section(s) skipped for "${partName}" (duplicate content)`);
+  }
+  
+  if (updatedKeys.length === 0 && card) {
+    // All sections were duplicates – no write needed
+    console.log(`[KHASH-dedup] All sections for "${partName}" already present, skipping Drive write`);
+    return { fileName: card.fileName, sectionsUpdated: [], isNew: false };
   }
 
   const fullCard = buildCard(canonicalPartName, existingSections);
@@ -2700,8 +2734,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               const stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
               if (stratFile) {
                 const existingContent = await readFileContent(token, stratFile.id);
-                if (!existingContent.includes(newContent.slice(0, 80))) {
-                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace:\n${newContent}`;
+                const hash = contentHash(newContent.trim());
+                if (hasKhash(existingContent, hash)) {
+                  console.log(`[CENTRUM] [KHASH-dedup] Skipping 06_Strategicky_Vyhled – hash ${hash} already present`);
+                } else if (!existingContent.includes(newContent.slice(0, 80))) {
+                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace: [KHASH:${hash}]\n${newContent}`;
                   await updateFileById(token, stratFile.id, updatedContent, stratFile.mimeType);
                   cardsUpdated.push(`CENTRUM: 06_Strategicky_Vyhled (append)`);
                   console.log(`[CENTRUM] ✅ Appended to 06_Strategicky_Vyhled`);
@@ -2715,8 +2752,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               const opPlanFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
               if (opPlanFile) {
                 const existingOp = await readFileContent(token, opPlanFile.id);
-                if (!existingOp.includes(newContent.slice(0, 80))) {
-                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus):\n${newContent}`;
+                const hash = contentHash(newContent.trim());
+                if (hasKhash(existingOp, hash)) {
+                  console.log(`[CENTRUM] [KHASH-dedup] Skipping dohody→OpPlan – hash ${hash} already present`);
+                } else if (!existingOp.includes(newContent.slice(0, 80))) {
+                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus): [KHASH:${hash}]\n${newContent}`;
                   await updateFileById(token, opPlanFile.id, updatedOp, opPlanFile.mimeType);
                   cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (z dohod)`);
                   console.log(`[CENTRUM] ✅ Appended dohody content to 05_Operativni_Plan`);
@@ -2730,16 +2770,22 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
-            // Read existing content for dedup
+            // Read existing content for dedup (KHASH + substring check)
             const existingContent = await readFileContent(token, targetFile.id);
+            const hash = contentHash(newContent.trim());
 
-            if (existingContent.includes(newContent.slice(0, 80))) {
-              console.log(`[CENTRUM] Skipping "${docName}" – content already present (dedup)`);
+            if (hasKhash(existingContent, hash)) {
+              console.log(`[CENTRUM] [KHASH-dedup] Skipping "${docName}" – hash ${hash} already present`);
               continue;
             }
 
-            // Append new content with date header
-            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu:\n${newContent}`;
+            if (existingContent.includes(newContent.slice(0, 80))) {
+              console.log(`[CENTRUM] Skipping "${docName}" – content already present (substring dedup)`);
+              continue;
+            }
+
+            // Append new content with date header and KHASH marker
+            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu: [KHASH:${hash}]\n${newContent}`;
             await updateFileById(token, targetFile.id, updatedContent, targetFile.mimeType);
             cardsUpdated.push(`CENTRUM: ${docName} (aktualizace)`);
             console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
