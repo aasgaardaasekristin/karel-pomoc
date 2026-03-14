@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 
 type Message = { role: "user" | "assistant"; content: string };
 
-const WELCOME_MESSAGE = "Hani, jsem tady. Mám přístup ke všemu, co o tobě vím – tvým příběhům, vzorcům i strategiím. Pojďme si popovídat. Jak se právě teď cítíš?";
+const WELCOME_MESSAGE = "Hani, jsem tady pro tebe. Pojďme si popovídat – co tě dneska trápí, těší, nebo co bys chtěla probrat? 💛";
 
 const handleApiError = async (response: Response) => {
   if (response.status === 429) throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
