@@ -444,7 +444,7 @@ const HanaChat = () => {
           mode: "debrief",
         }),
       });
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev, { role: "assistant", content: analysis }]);
