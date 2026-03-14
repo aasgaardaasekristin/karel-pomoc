@@ -118,8 +118,13 @@ const Chat = () => {
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
-  const { activeSession } = useActiveSessions();
+  const { activeSession, activeSessionId } = useActiveSessions();
   const [liveSessionStarted, setLiveSessionStarted] = useState(false);
+
+  // Reset live session state when switching clients
+  useEffect(() => {
+    setLiveSessionStarted(false);
+  }, [activeSessionId]);
 
   // Determine hub section from sessionStorage
   const [hubSection] = useState<HubSection>(() => {
