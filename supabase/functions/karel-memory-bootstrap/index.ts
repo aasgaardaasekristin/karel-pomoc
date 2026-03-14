@@ -128,7 +128,7 @@ async function bootstrapThreads(sb: any, userId: string, apiKey: string, batchSi
           summary_user: episode.summary_user || `Rozhovor s ${thread.part_name}`,
           summary_karel: episode.summary_karel || "",
           reasoning_notes: episode.reasoning_notes || "",
-          emotional_intensity: episode.emotional_intensity || 3,
+          emotional_intensity: Math.min(5, Math.max(1, episode.emotional_intensity || 3)),
           tags: [...(episode.tags || []), "bootstrap", `part:${thread.part_name}`, thread.sub_mode],
           derived_facts: episode.derived_facts || [],
           actions_taken: episode.actions_taken || [],
