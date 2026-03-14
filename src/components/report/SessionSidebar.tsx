@@ -19,6 +19,7 @@ const SessionSidebar = () => {
     createSession,
     removeSession,
   } = useActiveSessions();
+  const navigate = useNavigate();
 
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [selectedClientId, setSelectedClientId] = useState("");
