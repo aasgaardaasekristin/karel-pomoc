@@ -114,12 +114,12 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
   if (!isOpen) {
     return (
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setIsOpen(true)}
-        className="h-7 px-2 text-xs gap-1"
+        className="h-8 px-3 text-xs gap-1.5 rounded-xl"
       >
-        <History className="w-3 h-3" />
+        <History className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Vlákna</span>
       </Button>
     );
@@ -127,68 +127,70 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
 
   return (
     <>
-      <div className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-3">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-              <History className="w-4 h-4 text-primary" />
-              Vlákna konverzací
-            </h3>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => { onNewThread(); setIsOpen(false); }} className="h-7 text-xs gap-1">
-                <Plus className="w-3 h-3" />
-                Nové
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="h-7 text-xs">
-                Zavřít
-              </Button>
+      <div className="border-b border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3">
+          <div className="rounded-2xl border border-border bg-card/70 px-3 sm:px-4 py-3 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+                <History className="w-4 h-4 text-primary" />
+                Vlákna konverzací
+              </h3>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { onNewThread(); setIsOpen(false); }} className="h-8 text-xs gap-1.5 rounded-xl">
+                  <Plus className="w-3.5 h-3.5" />
+                  Nové
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setIsOpen(false)} className="h-8 text-xs rounded-xl">
+                  Zavřít
+                </Button>
+              </div>
             </div>
-          </div>
 
-          {threads.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-border bg-card/30 px-3 py-4 text-xs text-muted-foreground text-center">
-              Žádná uložená vlákna.
-            </div>
-          ) : (
-            <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
-              {threads.map(thread => {
-                const isCurrent = thread.id === currentConversationId;
-                return (
-                  <div
-                    key={thread.id}
-                    className={`flex items-center gap-2 sm:gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors group ${
-                      isCurrent
-                        ? "border-primary/40 bg-primary/5"
-                        : "border-border bg-card/50 hover:bg-card"
-                    }`}
-                    onClick={() => !isCurrent && handleSelectThread(thread)}
-                  >
-                    <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                      <MessageCircle className="w-3.5 h-3.5 text-primary" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs sm:text-sm text-foreground truncate">
-                        {getPreview(thread)}
-                        {isCurrent && <span className="text-[10px] text-primary ml-1.5">● aktivní</span>}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground flex items-center gap-2">
-                        <span>{formatTime(thread.lastActivityAt)}</span>
-                        <span>{thread.messages.length} zpráv</span>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
-                      onClick={(e) => handleDeleteClick(e, thread)}
+            {threads.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border bg-card/40 px-3 py-4 text-xs text-muted-foreground text-center">
+                Žádná uložená vlákna.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[320px] overflow-y-auto">
+                {threads.map(thread => {
+                  const isCurrent = thread.id === currentConversationId;
+                  return (
+                    <div
+                      key={thread.id}
+                      className={`flex items-center gap-2 sm:gap-3 p-3 rounded-xl border cursor-pointer transition-colors group ${
+                        isCurrent
+                          ? "border-primary/30 bg-primary/5"
+                          : "border-border bg-card/60 hover:bg-card"
+                      }`}
+                      onClick={() => !isCurrent && handleSelectThread(thread)}
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <MessageCircle className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs sm:text-sm text-foreground truncate">
+                          {getPreview(thread)}
+                          {isCurrent && <span className="text-[10px] text-primary ml-1.5">● aktivní</span>}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+                          <span>{formatTime(thread.lastActivityAt)}</span>
+                          <span>{thread.messages.length} zpráv</span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
+                        onClick={(e) => handleDeleteClick(e, thread)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

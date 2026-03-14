@@ -57,7 +57,7 @@ const HanaChat = () => {
   const audioRecorder = useAudioRecorder();
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
 
-  // Load or create active conversation
+  // Load or create active conversation (always start with clean canvas)
   useEffect(() => {
     const loadActiveConversation = async () => {
       try {
@@ -69,19 +69,39 @@ const HanaChat = () => {
           .limit(1)
           .maybeSingle();
 
-        if (data && Array.isArray(data.messages) && data.messages.length > 0) {
-          setConversationId(data.id);
-          setMessages(data.messages as Message[]);
-        } else if (data) {
-          setConversationId(data.id);
-        } else {
-          // Create new conversation
+        // If the last active thread already has content, archive it and start fresh UI
+        if (data && Array.isArray(data.messages) && data.messages.length > 1) {
+          await supabase
+            .from("karel_hana_conversations")
+            .update({ is_active: false })
+            .eq("id", data.id);
+
           const { data: newConv } = await supabase
             .from("karel_hana_conversations")
-            .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }] })
+            .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }], is_active: true })
             .select("id")
             .single();
-          if (newConv) setConversationId(newConv.id);
+
+          if (newConv) {
+            setConversationId(newConv.id);
+            setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+          }
+          return;
+        }
+
+        if (data) {
+          setConversationId(data.id);
+          setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+        } else {
+          const { data: newConv } = await supabase
+            .from("karel_hana_conversations")
+            .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }], is_active: true })
+            .select("id")
+            .single();
+          if (newConv) {
+            setConversationId(newConv.id);
+            setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+          }
         }
       } catch (e) {
         console.warn("Failed to load Hana conversation:", e);
@@ -323,11 +343,9 @@ const HanaChat = () => {
     if (isRefreshingMemory) return;
     setIsRefreshingMemory(true);
     try {
-      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel skenuje všechny zdroje a buduje kontextovou cache]*" }]);
       await runContextPrime(false);
-      // Add a summary message using the fresh cache
       if (contextPrimeStats) {
-        setMessages(prev => [...prev, { role: "assistant", content: `✅ *Kontextová cache aktualizována* – ${contextPrimeStats.episodes || 0} epizod, ${contextPrimeStats.entities || 0} entit, ${contextPrimeStats.driveFolders || 0} Drive složek, ${contextPrimeStats.newsAvailable ? "novinky načteny" : "bez novinek"} (${contextPrimeStats.totalMs || 0}ms)` }]);
+        toast.success(`Kontext aktualizován: ${contextPrimeStats.episodes || 0} epizod, ${contextPrimeStats.entities || 0} entit`);
       }
     } catch (error) {
       console.error("Memory refresh error:", error);
@@ -348,7 +366,6 @@ const HanaChat = () => {
     isMirroringRef.current = true;
     setIsMirroring(true);
     try {
-      setMessages(prev => [...prev, { role: "assistant", content: "📤 *[Redistribuuji informace – Karel analyzuje všechna vlákna a ukládá poznatky do Drive]*" }]);
       const headers = await getAuthHeaders();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
         method: "POST", headers,
@@ -359,19 +376,11 @@ const HanaChat = () => {
       }
       const data = await res.json();
       if (data.status === "skipped") {
-        setMessages(prev => prev.slice(0, -1));
         toast.info(data.reason || "Redistribuce již probíhá.");
         isMirroringRef.current = false;
         return;
       }
-      const summary = [
-        `✅ *Redistribuce dokončena*`,
-        `📊 Vlákna analyzována: ${data.counts?.threadsScanned || 0}`,
-        `🧠 DB aktualizací: ${data.counts?.dbUpdates || 0}`,
-        `📁 Drive aktualizací: ${data.counts?.driveUpdates || 0}`,
-        data.summary ? `\n${data.summary}` : "",
-      ].filter(Boolean).join("\n");
-      setMessages(prev => [...prev, { role: "assistant", content: summary }]);
+
       toast.success(`Redistribuce: ${data.counts?.dbUpdates || 0} DB, ${data.counts?.driveUpdates || 0} Drive`);
     } catch (error) {
       console.error("Mirror error:", error);
@@ -555,117 +564,123 @@ const HanaChat = () => {
   return (
     <>
       {/* Memory action bar */}
-      <div className="border-b border-border bg-card/30">
-        <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="text-sm text-muted-foreground flex items-center gap-1.5">
-            <Brain className="w-3.5 h-3.5" />
-            Kognitivní agent
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Správa popover */}
-            <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1">
-                  <Settings className="w-3 h-3" />
-                  <span>Správa</span>
-                  <ChevronDown className="w-3 h-3" />
-                  {(isMirroring || isBootstrapping || isRefreshingMemory) && (
-                    <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-3 space-y-3">
-                {/* Cache status */}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Kontextová cache</span>
-                  {contextPrimeCache ? (
-                    <span className="inline-flex items-center gap-1 text-primary font-medium">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                      aktivní
+      <div className="border-b border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3">
+          <div className="rounded-2xl border border-border bg-card/60 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm">
+            <div className="text-sm text-foreground/90 flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Brain className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <span className="truncate font-medium">Kognitivní agent</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Správa popover */}
+              <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 rounded-xl">
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Správa</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    {(isMirroring || isBootstrapping || isRefreshingMemory) && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-3 space-y-3 rounded-xl">
+                  {/* Cache status */}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Kontextová cache</span>
+                    {contextPrimeCache ? (
+                      <span className="inline-flex items-center gap-1 text-primary font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        aktivní
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/50">neaktivní</span>
+                    )}
+                  </div>
+
+                  {/* Archive stats */}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Archive className="w-3 h-3" />
+                      Archivované epizody
                     </span>
-                  ) : (
-                    <span className="text-muted-foreground/50">neaktivní</span>
-                  )}
-                </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1.5 text-xs text-primary hover:text-primary/80"
+                      onClick={() => {
+                        loadArchiveSummaries();
+                        setShowArchiveDialog(true);
+                        setSpravaOpen(false);
+                      }}
+                    >
+                      {archivedCount} →
+                    </Button>
+                  </div>
 
-                {/* Archive stats */}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground flex items-center gap-1">
-                    <Archive className="w-3 h-3" />
-                    Archivované epizody
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 px-1.5 text-xs text-primary hover:text-primary/80"
-                    onClick={() => {
-                      loadArchiveSummaries();
-                      setShowArchiveDialog(true);
-                      setSpravaOpen(false);
-                    }}
-                  >
-                    {archivedCount} →
-                  </Button>
-                </div>
+                  <div className="border-t border-border pt-2 space-y-1.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }}
+                      disabled={isMirroring || isLoading}
+                      className="w-full justify-start h-8 px-2 text-xs gap-2"
+                    >
+                      {isMirroring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                      Zrcadlit do Drive
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { handleBootstrap(); setSpravaOpen(false); }}
+                      disabled={isBootstrapping || isLoading}
+                      className="w-full justify-start h-8 px-2 text-xs gap-2"
+                    >
+                      {isBootstrapping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                      Bootstrap paměti
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }}
+                      disabled={isRefreshingMemory || isLoading}
+                      className="w-full justify-start h-8 px-2 text-xs gap-2"
+                    >
+                      {isRefreshingMemory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
+                      Osvěž paměť
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-                <div className="border-t border-border pt-2 space-y-1.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }}
-                    disabled={isMirroring || isLoading}
-                    className="w-full justify-start h-8 px-2 text-xs gap-2"
-                  >
-                    {isMirroring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                    Zrcadlit do Drive
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { handleBootstrap(); setSpravaOpen(false); }}
-                    disabled={isBootstrapping || isLoading}
-                    className="w-full justify-start h-8 px-2 text-xs gap-2"
-                  >
-                    {isBootstrapping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                    Bootstrap paměti
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }}
-                    disabled={isRefreshingMemory || isLoading}
-                    className="w-full justify-start h-8 px-2 text-xs gap-2"
-                  >
-                    {isRefreshingMemory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
-                    Osvěž paměť
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            <HanaThreadHistory
-              currentConversationId={conversationId}
-              onSwitchThread={handleSwitchThread}
-              onNewThread={handleNewConversation}
-              onMirrorToDrive={handleMirrorToDrive}
-            />
+              <HanaThreadHistory
+                currentConversationId={conversationId}
+                onSwitchThread={handleSwitchThread}
+                onNewThread={handleNewConversation}
+                onMirrorToDrive={handleMirrorToDrive}
+              />
+            </div>
           </div>
         </div>
         {bootstrapProgress && (
-          <div className="max-w-4xl mx-auto px-4 pb-2 space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{bootstrapProgress.phase}</span>
-              <span>{Math.round(bootstrapProgress.percent)}%</span>
+          <div className="max-w-5xl mx-auto px-3 sm:px-4 pb-3">
+            <div className="rounded-xl border border-border bg-card/50 px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{bootstrapProgress.phase}</span>
+                <span>{Math.round(bootstrapProgress.percent)}%</span>
+              </div>
+              <Progress value={bootstrapProgress.percent} className="h-1.5" />
+              <p className="text-xs text-muted-foreground/70">{bootstrapProgress.detail}</p>
             </div>
-            <Progress value={bootstrapProgress.percent} className="h-1.5" />
-            <p className="text-xs text-muted-foreground/70">{bootstrapProgress.detail}</p>
           </div>
         )}
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
-        <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+      <ScrollArea className="flex-1 px-2 sm:px-4">
+        <div ref={scrollRef} className="max-w-3xl mx-auto py-4 sm:py-7 space-y-3 sm:space-y-4">
           {messages.map((message, index) => (
             <ChatMessage key={index} message={message} />
           ))}
@@ -674,8 +689,8 @@ const HanaChat = () => {
       </ScrollArea>
 
       {/* Input */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
+      <div className="border-t border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 sm:py-4">
           <div className="flex gap-2 sm:gap-3 items-end relative">
             <UniversalAttachmentBar
               attachments={attachments} onRemove={removeAttachment}
@@ -689,13 +704,13 @@ const HanaChat = () => {
               ref={textareaRef} value={input}
               onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
               placeholder="Napiš svou zprávu..."
-              className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+              className="flex-1 min-w-0 min-h-[46px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base rounded-xl"
               disabled={isLoading}
             />
             <Button
               onClick={sendMessage}
               disabled={(!input.trim() && attachments.length === 0) || isLoading}
-              size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+              size="icon" className="h-[46px] w-[46px] sm:h-[56px] sm:w-[56px] shrink-0 rounded-xl"
             >
               {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
             </Button>
@@ -709,8 +724,8 @@ const HanaChat = () => {
               onSend={handleAudioAnalysis} disabled={isLoading}
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
-            Karel si pamatuje a učí se z každého rozhovoru.
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            Klidný prostor pro rozhovor. Vlákna zůstávají schovaná, dokud je sama neotevřeš.
           </p>
         </div>
       </div>
