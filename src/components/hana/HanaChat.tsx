@@ -230,7 +230,7 @@ const HanaChat = () => {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, attachments, isLoading, messages, conversationId, clearAttachments]);
+  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache]);
 
   const handleNewConversation = useCallback(async () => {
     // Archive current
