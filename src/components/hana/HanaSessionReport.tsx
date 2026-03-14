@@ -79,6 +79,10 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
       toast.error("Nejdřív vyplň jméno klienta");
       return;
     }
+    if (recorder.state !== "recorded") {
+      toast.error("Nejdřív nahrávku zastav a pak ji odešli k analýze.");
+      return;
+    }
     setIsAnalyzing(true);
     try {
       const base64 = await recorder.getBase64();
@@ -149,6 +153,8 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
 
       if (!res.ok) throw new Error("Synthesis error");
       const data = await res.json();
+      const synthesizedReport = typeof data.report === "string" ? data.report.trim() : "";
+      if (!synthesizedReport) throw new Error("Prázdný výstup syntézy");
 
       // Save to DB
       const { data: existing } = await supabase
@@ -171,16 +177,17 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
         clientId = newClient.id;
       }
 
-      await supabase.from("client_sessions").insert({
+      const { error: insertError } = await supabase.from("client_sessions").insert({
         client_id: clientId,
         report_key_theme: fields.keyTheme || null,
         report_context: fields.summary || null,
         report_risks: fields.risks ? [fields.risks] : null,
         report_next_session_goal: fields.nextGoal || null,
-        ai_analysis: data.report || null,
+        ai_analysis: synthesizedReport,
         voice_analysis: voiceAnalyses.join("\n\n---\n\n") || null,
         notes: `Syntetizovaný report – ${new Date().toLocaleDateString("cs-CZ")}`,
       });
+      if (insertError) throw insertError;
 
       toast.success("Report syntetizován a uložen na kartu klienta");
       setFields({ ...EMPTY });
@@ -199,6 +206,19 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
       toast.error("Zadej jméno klienta");
       return;
     }
+
+    const hasAnyContent =
+      !!fields.keyTheme.trim() ||
+      !!fields.summary.trim() ||
+      !!fields.risks.trim() ||
+      !!fields.nextGoal.trim() ||
+      voiceAnalyses.length > 0;
+
+    if (!hasAnyContent) {
+      toast.error("Vyplň aspoň jedno pole nebo nejdřív přidej audio analýzu.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       const { data: existing } = await supabase
@@ -335,6 +355,9 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
             {!fields.clientName.trim() && recorder.state === "idle" && (
               <p className="text-[10px] text-muted-foreground">Nejdřív vyplň jméno klienta</p>
             )}
+            <p className="text-[10px] text-muted-foreground">
+              Postup: Nahrát → Stop → Analyzovat. Potom můžeš report syntetizovat a uložit do Kartotéky.
+            </p>
           </div>
 
           {/* Voice analyses list */}
@@ -377,18 +400,24 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
                 Uložit
               </Button>
             </div>
-            {voiceAnalyses.length > 0 && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleSynthesize}
-                disabled={isSynthesizing || !fields.clientName.trim()}
-                className="text-xs h-8 gap-1 w-full"
-              >
-                {isSynthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                Syntetizovat report z analýz
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSynthesize}
+              disabled={
+                isSynthesizing ||
+                !fields.clientName.trim() ||
+                (voiceAnalyses.length === 0 &&
+                  !fields.summary.trim() &&
+                  !fields.keyTheme.trim() &&
+                  !fields.risks.trim() &&
+                  !fields.nextGoal.trim())
+              }
+              className="text-xs h-8 gap-1 w-full"
+            >
+              {isSynthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+              Syntetizovat report ({voiceAnalyses.length} audio)
+            </Button>
           </div>
         </div>
       </SheetContent>

@@ -19,10 +19,16 @@ type Message = { role: "user" | "assistant"; content: string };
 
 const WELCOME_MESSAGE = "Hani, jsem tady. Mám přístup ke všemu, co o tobě vím – tvým příběhům, vzorcům i strategiím. Pojďme si popovídat. Jak se právě teď cítíš?";
 
-const handleApiError = (response: Response) => {
+const handleApiError = async (response: Response) => {
   if (response.status === 429) throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
   if (response.status === 402) throw new Error("Karel je momentálně nedostupný – pravděpodobně došly AI kredity.");
-  throw new Error("Něco se pokazilo. Zkus to znovu.");
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("Přihlášení vypršelo. Přihlas se prosím znovu.");
+  }
+
+  const payload = await response.json().catch(() => null);
+  const backendError = payload && typeof payload.error === "string" ? payload.error : null;
+  throw new Error(backendError || "Něco se pokazilo. Zkus to znovu.");
 };
 
 const HanaChat = () => {
@@ -140,7 +146,7 @@ const HanaChat = () => {
         }
       );
 
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
 
       const reader = response.body.getReader();
@@ -231,7 +237,7 @@ const HanaChat = () => {
         }
       );
 
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
 
       const reader = response.body.getReader();
@@ -404,7 +410,7 @@ const HanaChat = () => {
         method: "POST", headers,
         body: JSON.stringify({ audioBase64: base64, mode: "debrief", chatContext }),
       });
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev,
@@ -438,7 +444,7 @@ const HanaChat = () => {
           mode: "debrief",
         }),
       });
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev, { role: "assistant", content: analysis }]);
