@@ -51,7 +51,7 @@ const HanaChat = () => {
   const [archivedCount, setArchivedCount] = useState<number>(0);
   const [archiveSummaries, setArchiveSummaries] = useState<{ id: string; summary: string; created_at: string }[]>([]);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
-  const [spravaOpen, setSpravaOpen] = useState(false);
+  
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
