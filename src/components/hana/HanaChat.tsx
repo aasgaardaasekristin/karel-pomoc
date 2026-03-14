@@ -178,6 +178,7 @@ const HanaChat = () => {
           body: JSON.stringify({
             messages: recentMessages,
             conversationId,
+            contextPrimeCache: contextPrimeCache || undefined,
           }),
         }
       );
