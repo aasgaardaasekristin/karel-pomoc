@@ -414,7 +414,7 @@ const HanaChat = () => {
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev,
-        { role: "user", content: "🎙️ *[Audio nahrávka odeslána k analýze]*" },
+        { role: "assistant", content: "🎙️ *[Audio nahrávka analyzována]*" },
         { role: "assistant", content: analysis },
       ]);
       audioRecorder.discardRecording();
