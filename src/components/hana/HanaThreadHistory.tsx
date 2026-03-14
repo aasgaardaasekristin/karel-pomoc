@@ -114,12 +114,12 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
   if (!isOpen) {
     return (
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={() => setIsOpen(true)}
-        className="h-7 px-2 text-xs gap-1"
+        className="h-8 px-3 text-xs gap-1.5 rounded-xl"
       >
-        <History className="w-3 h-3" />
+        <History className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Vlákna</span>
       </Button>
     );
