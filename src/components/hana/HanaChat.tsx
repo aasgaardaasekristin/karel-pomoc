@@ -34,7 +34,8 @@ const handleApiError = async (response: Response) => {
 };
 
 const HanaChat = () => {
-  const [messages, setMessages] = useState<Message[]>([{ role: "assistant", content: WELCOME_MESSAGE }]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
