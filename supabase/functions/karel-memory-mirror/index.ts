@@ -285,20 +285,16 @@ Deno.serve(async (req) => {
     const updates: Promise<void>[] = [
       updateDoc(token, entityDoc.id, formatEntities(entities)),
       updateDoc(token, vzorceDoc.id, formatPatterns(patterns)),
+      updateDoc(token, vztahyDoc.id, formatRelations(relations)),
       updateDoc(token, strategieDoc.id, formatStrategies(strategies)),
     ];
 
     const docResults: Record<string, string> = {
       entity: `${entityDoc.name} (${entityDoc.id})`,
       patterns: `${vzorceDoc.name} (${vzorceDoc.id})`,
+      relations: `${vztahyDoc.name} (${vztahyDoc.id})`,
       strategies: `${strategieDoc.name} (${strategieDoc.id})`,
     };
-
-    // Relations → README_SEMANTIC
-    if (semanticReadme) {
-      updates.push(updateDoc(token, semanticReadme.id, formatRelations(relations)));
-      docResults.relations = `${semanticReadme.name} (${semanticReadme.id})`;
-    }
     if (episodesDoc) {
       updates.push(updateDoc(token, episodesDoc.id, formatEpisodes(episodes)));
       docResults.episodes = `${episodesDoc.name} (${episodesDoc.id})`;
