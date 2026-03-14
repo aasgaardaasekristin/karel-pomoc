@@ -564,110 +564,116 @@ const HanaChat = () => {
   return (
     <>
       {/* Memory action bar */}
-      <div className="border-b border-border bg-card/30">
-        <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="text-sm text-muted-foreground flex items-center gap-1.5">
-            <Brain className="w-3.5 h-3.5" />
-            Kognitivní agent
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Správa popover */}
-            <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1">
-                  <Settings className="w-3 h-3" />
-                  <span>Správa</span>
-                  <ChevronDown className="w-3 h-3" />
-                  {(isMirroring || isBootstrapping || isRefreshingMemory) && (
-                    <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-72 p-3 space-y-3">
-                {/* Cache status */}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">Kontextová cache</span>
-                  {contextPrimeCache ? (
-                    <span className="inline-flex items-center gap-1 text-primary font-medium">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                      aktivní
+      <div className="border-b border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3">
+          <div className="rounded-2xl border border-border bg-card/60 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm">
+            <div className="text-sm text-foreground/90 flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <Brain className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <span className="truncate font-medium">Kognitivní agent</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Správa popover */}
+              <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 rounded-xl">
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Správa</span>
+                    <ChevronDown className="w-3.5 h-3.5" />
+                    {(isMirroring || isBootstrapping || isRefreshingMemory) && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 p-3 space-y-3 rounded-xl">
+                  {/* Cache status */}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Kontextová cache</span>
+                    {contextPrimeCache ? (
+                      <span className="inline-flex items-center gap-1 text-primary font-medium">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        aktivní
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/50">neaktivní</span>
+                    )}
+                  </div>
+
+                  {/* Archive stats */}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <Archive className="w-3 h-3" />
+                      Archivované epizody
                     </span>
-                  ) : (
-                    <span className="text-muted-foreground/50">neaktivní</span>
-                  )}
-                </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1.5 text-xs text-primary hover:text-primary/80"
+                      onClick={() => {
+                        loadArchiveSummaries();
+                        setShowArchiveDialog(true);
+                        setSpravaOpen(false);
+                      }}
+                    >
+                      {archivedCount} →
+                    </Button>
+                  </div>
 
-                {/* Archive stats */}
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground flex items-center gap-1">
-                    <Archive className="w-3 h-3" />
-                    Archivované epizody
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 px-1.5 text-xs text-primary hover:text-primary/80"
-                    onClick={() => {
-                      loadArchiveSummaries();
-                      setShowArchiveDialog(true);
-                      setSpravaOpen(false);
-                    }}
-                  >
-                    {archivedCount} →
-                  </Button>
-                </div>
+                  <div className="border-t border-border pt-2 space-y-1.5">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }}
+                      disabled={isMirroring || isLoading}
+                      className="w-full justify-start h-8 px-2 text-xs gap-2"
+                    >
+                      {isMirroring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                      Zrcadlit do Drive
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { handleBootstrap(); setSpravaOpen(false); }}
+                      disabled={isBootstrapping || isLoading}
+                      className="w-full justify-start h-8 px-2 text-xs gap-2"
+                    >
+                      {isBootstrapping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                      Bootstrap paměti
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }}
+                      disabled={isRefreshingMemory || isLoading}
+                      className="w-full justify-start h-8 px-2 text-xs gap-2"
+                    >
+                      {isRefreshingMemory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
+                      Osvěž paměť
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
 
-                <div className="border-t border-border pt-2 space-y-1.5">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }}
-                    disabled={isMirroring || isLoading}
-                    className="w-full justify-start h-8 px-2 text-xs gap-2"
-                  >
-                    {isMirroring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                    Zrcadlit do Drive
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { handleBootstrap(); setSpravaOpen(false); }}
-                    disabled={isBootstrapping || isLoading}
-                    className="w-full justify-start h-8 px-2 text-xs gap-2"
-                  >
-                    {isBootstrapping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                    Bootstrap paměti
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }}
-                    disabled={isRefreshingMemory || isLoading}
-                    className="w-full justify-start h-8 px-2 text-xs gap-2"
-                  >
-                    {isRefreshingMemory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
-                    Osvěž paměť
-                  </Button>
-                </div>
-              </PopoverContent>
-            </Popover>
-
-            <HanaThreadHistory
-              currentConversationId={conversationId}
-              onSwitchThread={handleSwitchThread}
-              onNewThread={handleNewConversation}
-              onMirrorToDrive={handleMirrorToDrive}
-            />
+              <HanaThreadHistory
+                currentConversationId={conversationId}
+                onSwitchThread={handleSwitchThread}
+                onNewThread={handleNewConversation}
+                onMirrorToDrive={handleMirrorToDrive}
+              />
+            </div>
           </div>
         </div>
         {bootstrapProgress && (
-          <div className="max-w-4xl mx-auto px-4 pb-2 space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>{bootstrapProgress.phase}</span>
-              <span>{Math.round(bootstrapProgress.percent)}%</span>
+          <div className="max-w-5xl mx-auto px-3 sm:px-4 pb-3">
+            <div className="rounded-xl border border-border bg-card/50 px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{bootstrapProgress.phase}</span>
+                <span>{Math.round(bootstrapProgress.percent)}%</span>
+              </div>
+              <Progress value={bootstrapProgress.percent} className="h-1.5" />
+              <p className="text-xs text-muted-foreground/70">{bootstrapProgress.detail}</p>
             </div>
-            <Progress value={bootstrapProgress.percent} className="h-1.5" />
-            <p className="text-xs text-muted-foreground/70">{bootstrapProgress.detail}</p>
           </div>
         )}
       </div>
