@@ -85,6 +85,39 @@ const HanaChat = () => {
     loadActiveConversation();
   }, []);
 
+  // ═══ Auto-trigger context prime on mount and new thread ═══
+  const runContextPrime = useCallback(async (silent = true) => {
+    try {
+      if (silent) console.log("[context-prime] Starting silently...");
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-hana-context-prime`, {
+        method: "POST", headers,
+      });
+      if (!res.ok) {
+        console.warn("[context-prime] Failed:", res.status);
+        return;
+      }
+      const data = await res.json();
+      if (data.contextBrief) {
+        setContextPrimeCache(data.contextBrief);
+        setContextPrimeStats(data.stats);
+        console.log(`[context-prime] Cache built: ${data.contextBrief.length} chars, ${data.stats?.totalMs}ms`);
+        if (!silent) {
+          toast.success(`Paměť osvěžena (${data.stats?.episodes || 0} epizod, ${data.stats?.entities || 0} entit, ${data.stats?.driveFolders || 0} Drive složek)`);
+        }
+      }
+    } catch (e) {
+      console.warn("[context-prime] Error:", e);
+      if (!silent) toast.error("Chyba při osvěžování paměti");
+    }
+  }, []);
+
+  // Auto-prime on mount (silently)
+  useEffect(() => {
+    const timer = setTimeout(() => runContextPrime(true), 1500);
+    return () => clearTimeout(timer);
+  }, [runContextPrime]);
+
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
