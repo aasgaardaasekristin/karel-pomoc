@@ -44,6 +44,8 @@ const HanaChat = () => {
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [isMirroring, setIsMirroring] = useState(false);
   const [bootstrapProgress, setBootstrapProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null);
+  const [contextPrimeCache, setContextPrimeCache] = useState<string | null>(null);
+  const [contextPrimeStats, setContextPrimeStats] = useState<any>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -82,6 +84,39 @@ const HanaChat = () => {
     };
     loadActiveConversation();
   }, []);
+
+  // ═══ Auto-trigger context prime on mount and new thread ═══
+  const runContextPrime = useCallback(async (silent = true) => {
+    try {
+      if (silent) console.log("[context-prime] Starting silently...");
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-hana-context-prime`, {
+        method: "POST", headers,
+      });
+      if (!res.ok) {
+        console.warn("[context-prime] Failed:", res.status);
+        return;
+      }
+      const data = await res.json();
+      if (data.contextBrief) {
+        setContextPrimeCache(data.contextBrief);
+        setContextPrimeStats(data.stats);
+        console.log(`[context-prime] Cache built: ${data.contextBrief.length} chars, ${data.stats?.totalMs}ms`);
+        if (!silent) {
+          toast.success(`Paměť osvěžena (${data.stats?.episodes || 0} epizod, ${data.stats?.entities || 0} entit, ${data.stats?.driveFolders || 0} Drive složek)`);
+        }
+      }
+    } catch (e) {
+      console.warn("[context-prime] Error:", e);
+      if (!silent) toast.error("Chyba při osvěžování paměti");
+    }
+  }, []);
+
+  // Auto-prime on mount (silently)
+  useEffect(() => {
+    const timer = setTimeout(() => runContextPrime(true), 1500);
+    return () => clearTimeout(timer);
+  }, [runContextPrime]);
 
   // Auto-scroll
   useEffect(() => {
@@ -143,6 +178,7 @@ const HanaChat = () => {
           body: JSON.stringify({
             messages: recentMessages,
             conversationId,
+            contextPrimeCache: contextPrimeCache || undefined,
           }),
         }
       );
@@ -194,7 +230,7 @@ const HanaChat = () => {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, attachments, isLoading, messages, conversationId, clearAttachments]);
+  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache]);
 
   const handleNewConversation = useCallback(async () => {
     // Archive current
@@ -214,8 +250,10 @@ const HanaChat = () => {
       setConversationId(newConv.id);
       setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
       toast.success("Nová konverzace zahájena");
+      // Re-prime context for new thread (silently)
+      setTimeout(() => runContextPrime(true), 500);
     }
-  }, [conversationId, messages]);
+  }, [conversationId, messages, runContextPrime]);
 
   const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string }[]) => {
     // Save current conversation first
@@ -245,75 +283,25 @@ const HanaChat = () => {
     if (isRefreshingMemory) return;
     setIsRefreshingMemory(true);
     try {
-      // Add a system-like message indicating memory refresh
-      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel přehodnocuje kontext]*" }]);
-      
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-hana-chat`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            messages: [...messages.slice(-20), { role: "user", content: "Osvěž si prosím svou paměť. Projdi si, co o mně víš, a řekni mi stručně: jaké hlavní vzorce u mě vidíš v poslední době?" }],
-            conversationId,
-            refreshMemory: true,
-          }),
-        }
-      );
-
-      if (!response.ok) await handleApiError(response);
-      if (!response.body) throw new Error("Žádná odpověď");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let assistantContent = "";
-      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantContent += content;
-              setMessages(prev => {
-                const n = [...prev];
-                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
-                return n;
-              });
-            }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
-        }
+      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel skenuje všechny zdroje a buduje kontextovou cache]*" }]);
+      await runContextPrime(false);
+      // Add a summary message using the fresh cache
+      if (contextPrimeStats) {
+        setMessages(prev => [...prev, { role: "assistant", content: `✅ *Kontextová cache aktualizována* – ${contextPrimeStats.episodes || 0} epizod, ${contextPrimeStats.entities || 0} entit, ${contextPrimeStats.driveFolders || 0} Drive složek, ${contextPrimeStats.newsAvailable ? "novinky načteny" : "bez novinek"} (${contextPrimeStats.totalMs || 0}ms)` }]);
       }
-      toast.success("Paměť osvěžena");
     } catch (error) {
       console.error("Memory refresh error:", error);
       toast.error("Chyba při osvěžování paměti");
     } finally {
       setIsRefreshingMemory(false);
     }
-  }, [isRefreshingMemory, messages, conversationId]);
+  }, [isRefreshingMemory, runContextPrime, contextPrimeStats]);
 
   const handleMirrorToDrive = useCallback(async () => {
     if (isMirroring) return;
     setIsMirroring(true);
     try {
+      setMessages(prev => [...prev, { role: "assistant", content: "📤 *[Redistribuuji informace – Karel analyzuje všechna vlákna a ukládá poznatky do Drive]*" }]);
       const headers = await getAuthHeaders();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
         method: "POST", headers,
@@ -323,10 +311,18 @@ const HanaChat = () => {
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      toast.success(`Paměť zrcadlena do Drive (${data.counts?.entities || 0} entit, ${data.counts?.patterns || 0} vzorců)`);
+      const summary = [
+        `✅ *Redistribuce dokončena*`,
+        `📊 Vlákna analyzována: ${data.counts?.threadsScanned || 0}`,
+        `🧠 DB aktualizací: ${data.counts?.dbUpdates || 0}`,
+        `📁 Drive aktualizací: ${data.counts?.driveUpdates || 0}`,
+        data.summary ? `\n${data.summary}` : "",
+      ].filter(Boolean).join("\n");
+      setMessages(prev => [...prev, { role: "assistant", content: summary }]);
+      toast.success(`Redistribuce: ${data.counts?.dbUpdates || 0} DB, ${data.counts?.driveUpdates || 0} Drive`);
     } catch (error) {
       console.error("Mirror error:", error);
-      toast.error(error instanceof Error ? error.message : "Chyba při zrcadlení do Drive");
+      toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
     } finally {
       setIsMirroring(false);
     }
@@ -506,11 +502,17 @@ const HanaChat = () => {
       {/* Memory action bar */}
       <div className="border-b border-border bg-card/30">
         <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5">
               <Brain className="w-3.5 h-3.5" />
               Kognitivní agent
             </span>
+            {contextPrimeCache && (
+              <span className="inline-flex items-center gap-1 text-xs text-primary">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                cache aktivní
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <HanaSessionReport messages={messages} disabled={isLoading} />
