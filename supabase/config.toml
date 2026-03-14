@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.karel-did-morning-brief]
 verify_jwt = false
+
+[functions.karel-client-summary]
+verify_jwt = false
