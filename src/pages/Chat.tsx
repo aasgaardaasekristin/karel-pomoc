@@ -2028,13 +2028,6 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 </div>
               )}
             </div>
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
           )}
         </>
       )}
