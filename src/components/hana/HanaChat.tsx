@@ -124,6 +124,39 @@ const HanaChat = () => {
     return () => clearTimeout(timer);
   }, [runContextPrime]);
 
+  // Fetch archived episodes count
+  useEffect(() => {
+    const fetchArchiveStats = async () => {
+      try {
+        const { count } = await supabase
+          .from("karel_episodes")
+          .select("id", { count: "exact", head: true })
+          .eq("is_archived", true);
+        setArchivedCount(count || 0);
+      } catch (e) {
+        console.warn("Failed to fetch archive stats:", e);
+      }
+    };
+    fetchArchiveStats();
+  }, []);
+
+  const loadArchiveSummaries = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from("karel_episodes")
+        .select("id, summary_karel, created_at")
+        .eq("domain", "ARCHIVE")
+        .eq("hana_state", "ARCHIVE_SUMMARY")
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (data) {
+        setArchiveSummaries(data.map(d => ({ id: d.id, summary: d.summary_karel, created_at: d.created_at })));
+      }
+    } catch (e) {
+      console.warn("Failed to load archive summaries:", e);
+    }
+  }, []);
+
   // Auto-scroll
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
