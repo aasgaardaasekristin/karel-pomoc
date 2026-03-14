@@ -2734,8 +2734,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               const stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
               if (stratFile) {
                 const existingContent = await readFileContent(token, stratFile.id);
-                if (!existingContent.includes(newContent.slice(0, 80))) {
-                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace:\n${newContent}`;
+                const hash = contentHash(newContent.trim());
+                if (hasKhash(existingContent, hash)) {
+                  console.log(`[CENTRUM] [KHASH-dedup] Skipping 06_Strategicky_Vyhled – hash ${hash} already present`);
+                } else if (!existingContent.includes(newContent.slice(0, 80))) {
+                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace: [KHASH:${hash}]\n${newContent}`;
                   await updateFileById(token, stratFile.id, updatedContent, stratFile.mimeType);
                   cardsUpdated.push(`CENTRUM: 06_Strategicky_Vyhled (append)`);
                   console.log(`[CENTRUM] ✅ Appended to 06_Strategicky_Vyhled`);
