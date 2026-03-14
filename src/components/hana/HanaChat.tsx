@@ -508,8 +508,8 @@ const HanaChat = () => {
               Kognitivní agent
             </span>
             {contextPrimeCache && (
-              <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <span className="inline-flex items-center gap-1 text-xs text-primary">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 cache aktivní
               </span>
             )}
