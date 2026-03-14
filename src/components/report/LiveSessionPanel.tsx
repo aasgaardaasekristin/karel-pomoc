@@ -224,72 +224,76 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Header with audio controls */}
-      <div className="p-2 md:p-3 border-b border-border bg-card/30">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h3 className="text-xs md:text-sm font-semibold text-foreground truncate">
-              🎯 Karel – live sezení
-            </h3>
-            <p className="text-[10px] md:text-xs text-muted-foreground truncate">{clientName}</p>
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-border bg-card/50">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <span className="text-sm">🎯</span>
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-foreground">Karel – live sezení</h3>
+              <p className="text-xs text-muted-foreground truncate">{clientName}</p>
+            </div>
           </div>
           <Button
             variant="destructive"
             size="sm"
             onClick={handleEndSession}
             disabled={isFinishing || messages.length < 2}
-            className="gap-1.5 text-xs h-8 shrink-0"
+            className="gap-1.5 text-xs h-9 shrink-0"
           >
             {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
-            Ukončit a zpracovat
+            <span className="hidden sm:inline">Ukončit a zpracovat</span>
+            <span className="sm:hidden">Ukončit</span>
           </Button>
         </div>
 
         {/* Audio recorder strip */}
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
           {recorder.state === "idle" && (
-            <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-7 text-xs">
+            <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
               <Mic className="w-3.5 h-3.5" /> Nahrávat
             </Button>
           )}
           {recorder.state === "recording" && (
-            <>
+            <div className="flex items-center gap-2 bg-destructive/5 rounded-lg px-3 py-1.5">
               <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
-              <span className="text-xs font-medium text-destructive">{formatDuration(recorder.duration)}</span>
-              <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-1.5 flex-1 max-w-[120px]" />
-              <Button variant="outline" size="sm" onClick={recorder.pauseRecording} className="h-7 w-7 p-0">
+              <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)}</span>
+              <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-1.5 w-20" />
+              <Button variant="ghost" size="sm" onClick={recorder.pauseRecording} className="h-7 w-7 p-0">
                 <Pause className="w-3.5 h-3.5" />
               </Button>
-              <Button variant="outline" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
+              <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
                 <Square className="w-3 h-3" />
               </Button>
-            </>
+            </div>
           )}
           {recorder.state === "paused" && (
-            <>
+            <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
               <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)}</span>
-              <Button variant="outline" size="sm" onClick={recorder.resumeRecording} className="h-7 w-7 p-0">
+              <Button variant="ghost" size="sm" onClick={recorder.resumeRecording} className="h-7 w-7 p-0">
                 <Play className="w-3.5 h-3.5" />
               </Button>
-              <Button variant="outline" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
+              <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
                 <Square className="w-3 h-3" />
               </Button>
-            </>
+            </div>
           )}
           {recorder.state === "recorded" && (
-            <>
-              {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-7 max-w-[150px]" />}
-              <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-7 text-xs gap-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[180px]" />}
+              <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-8 text-xs gap-1.5">
                 {isAudioAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                 Analyzovat
               </Button>
-              <Button variant="ghost" size="sm" onClick={recorder.discardRecording} className="h-7 text-xs">
+              <Button variant="ghost" size="sm" onClick={recorder.discardRecording} className="h-8 text-xs">
                 Zahodit
               </Button>
-            </>
+            </div>
           )}
           {isAudioAnalyzing && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
               <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje…
             </span>
           )}
@@ -297,8 +301,8 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
-        <div className="p-3 space-y-3">
+      <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
+        <div className="max-w-3xl mx-auto py-4 space-y-3">
           {messages.map((msg, i) => (
             <ChatMessage key={i} message={msg} />
           ))}
@@ -313,39 +317,43 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
       </ScrollArea>
 
       {/* Input */}
-      <div className="p-3 border-t border-border">
-        <div className="flex gap-2 items-end">
-          <Textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Co klient říká / dělá..."
-            className="flex-1 min-w-0 min-h-[40px] max-h-[100px] resize-none text-sm"
-            disabled={isLoading || isFinishing}
-          />
-          <Button
-            size="icon"
-            onClick={sendMessage}
-            disabled={!input.trim() || isLoading || isFinishing}
-            className="h-[40px] w-[40px] shrink-0"
-          >
-            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </Button>
+      <div className="border-t border-border bg-card/50 backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3">
+          <div className="flex gap-2 items-end">
+            <Textarea
+              ref={textareaRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Co klient říká / dělá..."
+              className="flex-1 min-w-0 min-h-[44px] max-h-[120px] resize-none text-sm"
+              disabled={isLoading || isFinishing}
+            />
+            <Button
+              size="icon"
+              onClick={sendMessage}
+              disabled={!input.trim() || isLoading || isFinishing}
+              className="h-[44px] w-[44px] shrink-0"
+            >
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            </Button>
+          </div>
         </div>
       </div>
 
       {isFinishing && (
-        <div className="absolute inset-0 bg-background/80 flex items-center justify-center z-50">
-          <div className="text-center space-y-3 p-6">
-            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-            <p className="text-sm font-medium">Karel zpracovává sezení…</p>
-            <p className="text-xs text-muted-foreground">Generuji profesionální zápis, návrh na příští sezení a doporučení.</p>
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="text-center space-y-4 p-8 max-w-sm">
+            <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+            <div>
+              <p className="text-sm font-semibold text-foreground">Karel zpracovává sezení…</p>
+              <p className="text-xs text-muted-foreground mt-1">Generuji profesionální zápis, návrh na příští sezení a doporučení.</p>
+            </div>
           </div>
         </div>
       )}

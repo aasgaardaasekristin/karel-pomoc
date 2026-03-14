@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, User, Trash2, UserPlus, Loader2, FolderOpen } from "lucide-react";
+import { Plus, User, Trash2, UserPlus, Loader2, FolderOpen, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveSessions, SessionWorkspace } from "@/contexts/ActiveSessionsContext";
@@ -84,31 +84,27 @@ const SessionSidebar = () => {
   };
 
   return (
-    <div className="w-full sm:w-48 md:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-card/50 flex flex-col h-auto sm:h-full max-h-[45svh] sm:max-h-none">
-      <div className="p-3 border-b border-border">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+    <ScrollArea className="flex-1">
+      <div className="max-w-xl mx-auto px-4 py-8 sm:py-12 space-y-8">
+        {/* Hero section */}
+        <div className="text-center space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+            <Sparkles className="w-7 h-7 text-primary" />
+          </div>
+          <h2 className="text-xl sm:text-2xl font-serif font-semibold text-foreground">
             Sezení s klientem
-          </h3>
-          <span className="text-[10px] text-muted-foreground">({sessions.length}/5)</span>
+          </h2>
+          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
+            Vyber existujícího klienta z kartotéky nebo zadej jméno nového klienta pro zahájení sezení.
+          </p>
         </div>
 
-        {/* Kartotéka button */}
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={() => navigate("/kartoteka")} 
-          className="w-full h-8 text-xs mb-2 gap-1"
-        >
-          <FolderOpen className="w-3.5 h-3.5" />
-          Kartotéka
-        </Button>
-
-        {/* Quick add */}
-        <div className="space-y-2">
+        {/* Client selection card */}
+        <div className="bg-card border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
+          <h3 className="text-sm font-medium text-foreground">Vybrat klienta</h3>
           <Select value={selectedClientId} onValueChange={setSelectedClientId}>
-            <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Klient..." />
+            <SelectTrigger className="h-10 text-sm">
+              <SelectValue placeholder="Vyberte klienta z kartotéky..." />
             </SelectTrigger>
             <SelectContent>
               {clients.map(c => (
@@ -116,60 +112,84 @@ const SessionSidebar = () => {
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" className="w-full h-8 text-xs" onClick={handleStartSession} disabled={!selectedClientId}>
-            <Plus className="w-3.5 h-3.5 mr-1" /> Zahájit
+          <Button className="w-full h-10 gap-2" onClick={handleStartSession} disabled={!selectedClientId}>
+            <Plus className="w-4 h-4" /> Zahájit sezení
           </Button>
-          <div className="flex gap-1">
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-3 text-muted-foreground">nebo nový klient</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
             <Input
-              placeholder="Nový..."
+              placeholder="Jméno nového klienta..."
               value={newClientName}
               onChange={e => setNewClientName(e.target.value)}
-              className="h-8 text-xs"
+              className="h-10 text-sm flex-1"
               onKeyDown={e => { if (e.key === "Enter") handleCreateAndStart(); }}
             />
-            <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" onClick={handleCreateAndStart} disabled={!newClientName.trim() || isCreating}>
-              {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+            <Button variant="outline" size="icon" className="h-10 w-10 shrink-0" onClick={handleCreateAndStart} disabled={!newClientName.trim() || isCreating}>
+              {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
             </Button>
           </div>
         </div>
-      </div>
 
-      {/* Session list */}
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1.5">
-          {sessions.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-4">
-              Žádná sezení.
-            </p>
-          ) : (
-            [...sessions]
-              .sort((a, b) => b.createdAt - a.createdAt)
-              .map(s => (
-                <div
-                  key={s.id}
-                  onClick={() => setActiveSession(s.id)}
-                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-all cursor-pointer group ${
-                    s.id === activeSessionId
-                      ? "bg-primary/10 border border-primary/30 text-foreground"
-                      : "hover:bg-secondary/50 text-muted-foreground"
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate flex-1 text-xs font-medium">{s.clientName}</span>
-                  <span className="text-[11px]">{statusLabel(s)}</span>
-                  <button
-                    onClick={(e) => handleDiscard(s, e)}
-                    className="shrink-0 p-0.5 rounded hover:bg-destructive/10 transition-colors"
-                    title="Zahodit sezení"
+        {/* Kartotéka shortcut */}
+        <Button 
+          variant="outline" 
+          onClick={() => navigate("/kartoteka")} 
+          className="w-full h-10 gap-2 text-sm"
+        >
+          <FolderOpen className="w-4 h-4" />
+          Otevřít kartotéku
+        </Button>
+
+        {/* Active sessions */}
+        {sessions.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Rozpracovaná sezení
+              </h3>
+              <span className="text-[10px] text-muted-foreground">{sessions.length}/5</span>
+            </div>
+            <div className="space-y-2">
+              {[...sessions]
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .map(s => (
+                  <div
+                    key={s.id}
+                    onClick={() => setActiveSession(s.id)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all cursor-pointer group ${
+                      s.id === activeSessionId
+                        ? "bg-primary/5 border-primary/30 text-foreground shadow-sm"
+                        : "bg-card border-border hover:border-primary/20 hover:bg-card/80 text-muted-foreground"
+                    }`}
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                  </button>
-                </div>
-              ))
-          )}
-        </div>
-      </ScrollArea>
-    </div>
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="truncate flex-1 text-sm font-medium">{s.clientName}</span>
+                    <span className="text-sm">{statusLabel(s)}</span>
+                    <button
+                      onClick={(e) => handleDiscard(s, e)}
+                      className="shrink-0 p-1.5 rounded-lg hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Zahodit sezení"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </ScrollArea>
   );
 };
 
