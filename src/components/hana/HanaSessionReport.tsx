@@ -400,18 +400,24 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
                 Uložit
               </Button>
             </div>
-            {voiceAnalyses.length > 0 && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleSynthesize}
-                disabled={isSynthesizing || !fields.clientName.trim()}
-                className="text-xs h-8 gap-1 w-full"
-              >
-                {isSynthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                Syntetizovat report z analýz
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleSynthesize}
+              disabled={
+                isSynthesizing ||
+                !fields.clientName.trim() ||
+                (voiceAnalyses.length === 0 &&
+                  !fields.summary.trim() &&
+                  !fields.keyTheme.trim() &&
+                  !fields.risks.trim() &&
+                  !fields.nextGoal.trim())
+              }
+              className="text-xs h-8 gap-1 w-full"
+            >
+              {isSynthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+              Syntetizovat report ({voiceAnalyses.length} audio)
+            </Button>
           </div>
         </div>
       </SheetContent>
