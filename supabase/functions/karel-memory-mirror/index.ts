@@ -36,15 +36,16 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
 }
 
 async function findDoc(token: string, name: string, parentId: string): Promise<string | null> {
-  const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
+  const q = `name contains '${name}' and '${parentId}' in parents and trashed=false`;
   const params = new URLSearchParams({
-    q, fields: "files(id)", pageSize: "5",
+    q, fields: "files(id,name)", pageSize: "10",
     supportsAllDrives: "true", includeItemsFromAllDrives: "true",
   });
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const data = await res.json();
+  console.log(`[mirror] findDoc('${name}', parent=${parentId}): found ${JSON.stringify(data.files?.map((f: any) => f.name))}`);
   return data.files?.[0]?.id || null;
 }
 
