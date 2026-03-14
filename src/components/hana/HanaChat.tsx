@@ -4,7 +4,7 @@ import hanaWelcomeImg from "@/assets/hana-welcome.png";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Send, Loader2, Brain, Database, Archive } from "lucide-react";
+import { Send, Loader2, Brain, Database, Archive, Settings, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
