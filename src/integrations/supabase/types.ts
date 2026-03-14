@@ -743,6 +743,306 @@ export type Database = {
         }
         Relationships: []
       }
+      karel_episodes: {
+        Row: {
+          actions_taken: string[]
+          created_at: string
+          derived_facts: string[]
+          domain: string
+          emotional_intensity: number
+          hana_state: string
+          id: string
+          is_archived: boolean
+          links_to_other_episodes: string[]
+          outcome: string
+          participants: string[]
+          reasoning_notes: string
+          source_conversation_id: string | null
+          summary_karel: string
+          summary_user: string
+          tags: string[]
+          timestamp_end: string | null
+          timestamp_start: string
+          user_id: string
+        }
+        Insert: {
+          actions_taken?: string[]
+          created_at?: string
+          derived_facts?: string[]
+          domain?: string
+          emotional_intensity?: number
+          hana_state?: string
+          id?: string
+          is_archived?: boolean
+          links_to_other_episodes?: string[]
+          outcome?: string
+          participants?: string[]
+          reasoning_notes?: string
+          source_conversation_id?: string | null
+          summary_karel?: string
+          summary_user?: string
+          tags?: string[]
+          timestamp_end?: string | null
+          timestamp_start?: string
+          user_id?: string
+        }
+        Update: {
+          actions_taken?: string[]
+          created_at?: string
+          derived_facts?: string[]
+          domain?: string
+          emotional_intensity?: number
+          hana_state?: string
+          id?: string
+          is_archived?: boolean
+          links_to_other_episodes?: string[]
+          outcome?: string
+          participants?: string[]
+          reasoning_notes?: string
+          source_conversation_id?: string | null
+          summary_karel?: string
+          summary_user?: string
+          tags?: string[]
+          timestamp_end?: string | null
+          timestamp_start?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      karel_hana_conversations: {
+        Row: {
+          created_at: string
+          current_domain: string
+          current_hana_state: string
+          id: string
+          is_active: boolean
+          last_activity_at: string
+          messages: Json
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_domain?: string
+          current_hana_state?: string
+          id?: string
+          is_active?: boolean
+          last_activity_at?: string
+          messages?: Json
+          started_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          current_domain?: string
+          current_hana_state?: string
+          id?: string
+          is_active?: boolean
+          last_activity_at?: string
+          messages?: Json
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      karel_memory_logs: {
+        Row: {
+          created_at: string
+          details: Json
+          episodes_created: number
+          errors: string[]
+          id: string
+          log_type: string
+          semantic_updates: number
+          strategy_updates: number
+          summary: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          episodes_created?: number
+          errors?: string[]
+          id?: string
+          log_type?: string
+          semantic_updates?: number
+          strategy_updates?: number
+          summary?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          episodes_created?: number
+          errors?: string[]
+          id?: string
+          log_type?: string
+          semantic_updates?: number
+          strategy_updates?: number
+          summary?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      karel_semantic_entities: {
+        Row: {
+          created_at: string
+          evidence_episodes: string[]
+          id: string
+          jmeno: string
+          notes: string
+          role_vuci_hance: string
+          stabilni_vlastnosti: string[]
+          typ: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          evidence_episodes?: string[]
+          id: string
+          jmeno: string
+          notes?: string
+          role_vuci_hance?: string
+          stabilni_vlastnosti?: string[]
+          typ?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          evidence_episodes?: string[]
+          id?: string
+          jmeno?: string
+          notes?: string
+          role_vuci_hance?: string
+          stabilni_vlastnosti?: string[]
+          typ?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      karel_semantic_patterns: {
+        Row: {
+          confidence: number
+          created_at: string
+          description: string
+          domain: string
+          evidence_episodes: string[]
+          id: string
+          tags: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          description: string
+          domain?: string
+          evidence_episodes?: string[]
+          id: string
+          tags?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          description?: string
+          domain?: string
+          evidence_episodes?: string[]
+          id?: string
+          tags?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      karel_semantic_relations: {
+        Row: {
+          confidence: number
+          created_at: string
+          description: string
+          evidence_episodes: string[]
+          id: string
+          object_id: string
+          relation: string
+          subject_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          description?: string
+          evidence_episodes?: string[]
+          id?: string
+          object_id: string
+          relation: string
+          subject_id: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          description?: string
+          evidence_episodes?: string[]
+          id?: string
+          object_id?: string
+          relation?: string
+          subject_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      karel_strategies: {
+        Row: {
+          created_at: string
+          description: string
+          domain: string
+          effectiveness_score: number
+          evidence_episodes: string[]
+          example_phrases: string[]
+          guidelines: string[]
+          hana_state: string
+          id: string
+          required_tags_any: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          domain?: string
+          effectiveness_score?: number
+          evidence_episodes?: string[]
+          example_phrases?: string[]
+          guidelines?: string[]
+          hana_state?: string
+          id: string
+          required_tags_any?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          domain?: string
+          effectiveness_score?: number
+          evidence_episodes?: string[]
+          example_phrases?: string[]
+          guidelines?: string[]
+          hana_state?: string
+          id?: string
+          required_tags_any?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       research_threads: {
         Row: {
           created_at: string
