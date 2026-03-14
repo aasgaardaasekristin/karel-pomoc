@@ -79,17 +79,21 @@ const HanaChat = () => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages]);
 
-  // Persist messages to DB periodically
+  // Persist messages to DB only when they actually change (debounced)
+  const lastSavedRef = useRef<string>("");
   useEffect(() => {
     if (!conversationId || messages.length < 1) return;
-    const interval = setInterval(() => {
+    const serialized = JSON.stringify(messages);
+    if (serialized === lastSavedRef.current) return;
+    const timeout = setTimeout(() => {
+      lastSavedRef.current = serialized;
       supabase
         .from("karel_hana_conversations")
         .update({ messages: messages as any, last_activity_at: new Date().toISOString() })
         .eq("id", conversationId)
         .then();
-    }, 5000);
-    return () => clearInterval(interval);
+    }, 2000);
+    return () => clearTimeout(timeout);
   }, [conversationId, messages]);
 
   // Save on visibility change
