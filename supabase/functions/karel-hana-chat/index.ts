@@ -537,7 +537,12 @@ serve(async (req) => {
 
     // ═══ STEP 2: Build situation cache + prompt ═══
     const situationCache = buildSituationCache(analysis, episodes, strategies, entities, patterns, relations);
-    const systemPrompt = buildHanaSystemPrompt(situationCache, analysis);
+    let systemPrompt = buildHanaSystemPrompt(situationCache, analysis);
+    
+    // Inject context-prime cache if available (dynamic 3D memory)
+    if (contextPrimeCache && typeof contextPrimeCache === "string" && contextPrimeCache.length > 50) {
+      systemPrompt += `\n\n═══ DYNAMICKÁ KONTEXTOVÁ CACHE (context-prime) ═══\nToto je tvá aktuální "předsunutá paměť" – plastická mezipaměť vystavěná ze VŠECH zdrojů (Drive, DB, všechna vlákna, internet). Využívej ji pro maximální přítomnost a adaptabilitu.\n\n${contextPrimeCache}`;
+    }
 
     // ═══ STEP 3: Stream response ═══
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
