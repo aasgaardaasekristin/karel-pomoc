@@ -171,13 +171,27 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authResult = await requireAuth(req);
-    if (authResult instanceof Response) return authResult;
-    const userId = authResult.user.id;
-
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, serviceKey);
+
+    // Support both authenticated user and service-role (cron) calls
+    let userId: string;
+    const authHeader = req.headers.get("Authorization") || "";
+    if (authHeader.includes(serviceKey)) {
+      // Service role call (from cron/consolidation) – get first user with episodes
+      const { data: users } = await sb.from("karel_episodes").select("user_id").limit(1);
+      userId = users?.[0]?.user_id;
+      if (!userId) {
+        return new Response(JSON.stringify({ status: "no_users" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const authResult = await requireAuth(req);
+      if (authResult instanceof Response) return authResult;
+      userId = authResult.user.id;
+    }
 
     // Fetch all memory data in parallel
     const [entitiesRes, patternsRes, relationsRes, strategiesRes, episodesRes, logsRes] = await Promise.all([
