@@ -14,6 +14,7 @@ import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversal
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaSessionReport from "@/components/hana/HanaSessionReport";
+import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
 
 type Message = { role: "user" | "assistant"; content: string };
 
