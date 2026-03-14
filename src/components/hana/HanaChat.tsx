@@ -432,7 +432,7 @@ const HanaChat = () => {
     setIsFileAnalyzing(true);
     try {
       const attSummary = attachments.map(a => `📎 ${a.name}`).join(", ");
-      setMessages(prev => [...prev, { role: "user", content: `🔍 *[Analýza příloh: ${attSummary}]*` }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `🔍 *[Analýza příloh: ${attSummary}]*` }]);
       const headers = await getAuthHeaders();
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`, {
         method: "POST", headers,
