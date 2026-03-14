@@ -238,45 +238,28 @@ Deno.serve(async (req) => {
       throw new Error(`Chybějící podsložky v PAMET_KAREL: ${missingFolders.join(", ")}. Vytvořte je prosím ručně.`);
     }
 
-    // 3. Find all existing docs (NEVER create)
-    // DEBUG: List all files in root folder
-    const listParams = new URLSearchParams({
-      q: `'${rootId}' in parents and trashed=false`,
-      fields: "files(id,name,mimeType)",
-      pageSize: "50",
-      supportsAllDrives: "true",
-      includeItemsFromAllDrives: "true",
-    });
-    const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?${listParams}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const listData = await listRes.json();
-    console.log(`[mirror] All files in PAMET_KAREL:`, JSON.stringify(listData.files));
-
-    const [entityDocId, vzorceDocId, vztahyDocId, strategieDocId] = await Promise.all([
-      findDoc(token, "01_Entity", rootId),
-      findDoc(token, "02_Vzorce", rootId),
-      findDoc(token, "03_Vztahy", rootId),
-      findDoc(token, "04_Strategie", rootId),
-    ]);
-
-    const missingDocs: string[] = [];
-    if (!entityDocId) missingDocs.push("01_Entity");
-    if (!vzorceDocId) missingDocs.push("02_Vzorce");
-    if (!vztahyDocId) missingDocs.push("03_Vztahy");
-    if (!strategieDocId) missingDocs.push("04_Strategie");
-    if (missingDocs.length) {
-      throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
-    }
-
-    // Also find docs in subfolders for detailed data
-    // Look for any existing doc in each subfolder to update
-    const [semanticDocId, proceduralDocId, episodesDocId, logsDocId] = await Promise.all([
-      findFirstDoc(token, semanticFolderId!),
-      findFirstDoc(token, proceduralFolderId!),
+    // 3. Find docs inside subfolders (NEVER create)
+    // SEMANTIC subfolder: 01_Entity, 02_Vzorce, 03_Vztahy
+    // PROCEDURAL subfolder: 04_Strategie
+    // EPISODES subfolder: first doc found
+    // LOGS subfolder: first doc found
+    const [entityDocId, vzorceDocId, vztahyDocId, strategieDocId, episodesDocId, logsDocId] = await Promise.all([
+      findDoc(token, "01_Entity", semanticFolderId!),
+      findDoc(token, "02_Vzorce", semanticFolderId!),
+      findDoc(token, "03_Vztahy", semanticFolderId!),
+      findDoc(token, "04_Strategie", proceduralFolderId!),
       findFirstDoc(token, episodesFolderId!),
       findFirstDoc(token, logsFolderId!),
     ]);
+
+    const missingDocs: string[] = [];
+    if (!entityDocId) missingDocs.push("SEMANTIC/01_Entity");
+    if (!vzorceDocId) missingDocs.push("SEMANTIC/02_Vzorce");
+    if (!vztahyDocId) missingDocs.push("SEMANTIC/03_Vztahy");
+    if (!strategieDocId) missingDocs.push("PROCEDURAL/04_Strategie");
+    if (missingDocs.length) {
+      throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
+    }
 
     // 4. Update all existing docs in parallel
     const updates: Promise<void>[] = [
@@ -286,16 +269,9 @@ Deno.serve(async (req) => {
       updateDoc(token, strategieDocId!, formatStrategies(strategies)),
     ];
 
-    // Update subfolder docs if they exist
-    const subfolderResults: Record<string, string> = {};
-    if (semanticDocId) {
-      updates.push(updateDoc(token, semanticDocId, [formatEntities(entities), "\n---\n", formatPatterns(patterns), "\n---\n", formatRelations(relations)].join("\n")));
-      subfolderResults.semantic = semanticDocId;
-    }
-    if (proceduralDocId) {
-      updates.push(updateDoc(token, proceduralDocId, formatStrategies(strategies)));
-      subfolderResults.procedural = proceduralDocId;
-    }
+    const subfolderResults: Record<string, string> = {
+      entity: entityDocId!, patterns: vzorceDocId!, relations: vztahyDocId!, strategies: strategieDocId!,
+    };
     if (episodesDocId) {
       updates.push(updateDoc(token, episodesDocId, formatEpisodes(episodes)));
       subfolderResults.episodes = episodesDocId;
