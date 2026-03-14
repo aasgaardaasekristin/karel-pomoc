@@ -501,12 +501,19 @@ Vrať POUZE validní JSON:
       driveUpdates.push(`ERROR: ${driveErr instanceof Error ? driveErr.message : "unknown"}`);
     }
 
-    // ═══ PHASE 5: Log ═══
+    // ═══ PHASE 5: Release lock & Log ═══
     const totalTime = Date.now() - startTime;
+    const dedupSkips = driveUpdates.filter(u => u.includes("dedup-skip")).length;
+
+    // Release concurrency lock
+    if (lockId) {
+      await sb.from("karel_memory_logs").update({ summary: `Lock released after ${totalTime}ms` }).eq("id", lockId);
+    }
+
     await sb.from("karel_memory_logs").insert({
       user_id: userId,
       log_type: "redistribute",
-      summary: extractedInfo.summary || `Redistribuce: ${dbUpdates.length} DB, ${driveUpdates.length} Drive`,
+      summary: extractedInfo.summary || `Redistribuce: ${dbUpdates.length} DB, ${driveUpdates.length} Drive, ${dedupSkips} dedup-skip`,
       episodes_created: 0,
       semantic_updates: dbUpdates.filter((u: string) => u.startsWith("entity") || u.startsWith("pattern") || u.startsWith("relation")).length,
       strategy_updates: dbUpdates.filter((u: string) => u.startsWith("strategy")).length,
@@ -515,10 +522,11 @@ Vrať POUZE validní JSON:
         threadsScanned: hanaConvs.length + didThreads.length + didConvs.length + researchThreads.length,
         dbUpdates,
         driveUpdates,
+        dedupSkips,
       },
     });
 
-    console.log(`[redistribute] Done in ${totalTime}ms. DB: ${dbUpdates.length}, Drive: ${driveUpdates.length}`);
+    console.log(`[redistribute] Done in ${totalTime}ms. DB: ${dbUpdates.length}, Drive: ${driveUpdates.length}, Dedup skips: ${dedupSkips}`);
 
     return new Response(JSON.stringify({
       status: "ok",
@@ -527,6 +535,7 @@ Vrať POUZE validní JSON:
         threadsScanned: hanaConvs.length + didThreads.length + didConvs.length + researchThreads.length,
         dbUpdates: dbUpdates.length,
         driveUpdates: driveUpdates.length,
+        dedupSkips,
         entities: (entitiesRes.data || []).length,
         patterns: (patternsRes.data || []).length,
       },
