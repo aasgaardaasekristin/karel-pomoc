@@ -25,6 +25,7 @@ import {
   HardDriveDownload,
 } from "lucide-react";
 import { toast } from "sonner";
+import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
 
 type Client = {
   id: string;
