@@ -445,13 +445,13 @@ Vrať POUZE validní JSON:
         await Promise.all(driveWrites);
       }
 
-      // KARTOTEKA_DID: append to part cards
+      // KARTOTEKA_DID: append to part cards (with hash dedup)
       if (extractedInfo.kartoteka_did?.part_updates && Object.keys(extractedInfo.kartoteka_did.part_updates).length > 0) {
         const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
         if (kartotekaId) {
           for (const [partName, content] of Object.entries(extractedInfo.kartoteka_did.part_updates)) {
             if (!content || typeof content !== "string") continue;
-            // Search recursively for part card
+            const hash = contentHash(content);
             const searchQ = `name contains '${partName}' and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
             const params = new URLSearchParams({ q: searchQ, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
             const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -459,7 +459,13 @@ Vrať POUZE validní JSON:
             const partDoc = data.files?.[0];
             if (partDoc) {
               const existing = await readDoc(token, partDoc.id);
-              const updated = `${existing}\n\n═══ Karel – automatická redistribuce (${new Date().toISOString().slice(0, 10)}) ═══\n${content}`;
+              // DEDUP: check if this hash already exists in the document
+              if (existing.includes(`[KHASH:${hash}]`)) {
+                console.log(`[redistribute] DEDUP: skipping ${partName} – hash ${hash} already present`);
+                driveUpdates.push(`KARTOTEKA/${partName} (dedup-skip)`);
+                continue;
+              }
+              const updated = `${existing}\n\n═══ Karel – automatická redistribuce (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`;
               await updateDoc(token, partDoc.id, updated);
               driveUpdates.push(`KARTOTEKA/${partName}`);
             }
@@ -467,16 +473,23 @@ Vrať POUZE validní JSON:
         }
       }
 
-      // ZALOHA: append to client files
+      // ZALOHA: append to client files (with hash dedup)
       if (extractedInfo.zaloha?.client_updates && Object.keys(extractedInfo.zaloha.client_updates).length > 0) {
         const zalohaId = await findFolderFuzzy(token, ["ZALOHA", "Zaloha"]);
         if (zalohaId) {
           for (const [clientName, content] of Object.entries(extractedInfo.zaloha.client_updates)) {
             if (!content || typeof content !== "string") continue;
+            const hash = contentHash(content);
             const clientDoc = await findDoc(token, clientName, zalohaId);
             if (clientDoc) {
               const existing = await readDoc(token, clientDoc.id);
-              const updated = `${existing}\n\n═══ Karel – redistribuce (${new Date().toISOString().slice(0, 10)}) ═══\n${content}`;
+              // DEDUP: check if this hash already exists in the document
+              if (existing.includes(`[KHASH:${hash}]`)) {
+                console.log(`[redistribute] DEDUP: skipping ${clientName} – hash ${hash} already present`);
+                driveUpdates.push(`ZALOHA/${clientName} (dedup-skip)`);
+                continue;
+              }
+              const updated = `${existing}\n\n═══ Karel – redistribuce (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`;
               await updateDoc(token, clientDoc.id, updated);
               driveUpdates.push(`ZALOHA/${clientName}`);
             }
