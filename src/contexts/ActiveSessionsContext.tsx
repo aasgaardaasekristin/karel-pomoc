@@ -44,6 +44,7 @@ interface ActiveSessionsContextType {
   createSession: (clientId: string, clientName: string) => string;
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
+  clearActiveSession: () => void;
   updateFormData: (id: string, data: Partial<ReportFormData>) => void;
   updateChatMessages: (id: string, messages: Message[]) => void;
   updateReportText: (id: string, text: string) => void;
