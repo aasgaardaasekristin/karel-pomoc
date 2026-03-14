@@ -33,6 +33,8 @@ const HanaChat = () => {
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapProgress, setBootstrapProgress] = useState<{ phase: string; percent: number; detail: string } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
