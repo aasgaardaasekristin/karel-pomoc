@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Send, Loader2, Brain, Database } from "lucide-react";
+import { Send, Loader2, Brain, Database, Settings, Archive, ChevronDown, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -15,6 +15,8 @@ import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaSessionReport from "@/components/hana/HanaSessionReport";
 import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 type Message = { role: "user" | "assistant"; content: string };
 
