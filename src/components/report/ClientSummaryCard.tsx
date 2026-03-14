@@ -18,7 +18,7 @@ interface FormFieldStatus {
   filled: boolean;
 }
 
-const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession }: ClientSummaryCardProps) => {
+const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSummaryLoaded }: ClientSummaryCardProps) => {
   const [caseSummary, setCaseSummary] = useState<string | null>(null);
   const [lastSessionSummary, setLastSessionSummary] = useState<string | null>(null);
   const [formFields, setFormFields] = useState<FormFieldStatus[]>([]);
