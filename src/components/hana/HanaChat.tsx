@@ -57,7 +57,7 @@ const HanaChat = () => {
   const audioRecorder = useAudioRecorder();
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
 
-  // Load or create active conversation
+  // Load or create active conversation (always start with clean canvas)
   useEffect(() => {
     const loadActiveConversation = async () => {
       try {
@@ -69,19 +69,39 @@ const HanaChat = () => {
           .limit(1)
           .maybeSingle();
 
-        if (data && Array.isArray(data.messages) && data.messages.length > 0) {
-          setConversationId(data.id);
-          setMessages(data.messages as Message[]);
-        } else if (data) {
-          setConversationId(data.id);
-        } else {
-          // Create new conversation
+        // If the last active thread already has content, archive it and start fresh UI
+        if (data && Array.isArray(data.messages) && data.messages.length > 1) {
+          await supabase
+            .from("karel_hana_conversations")
+            .update({ is_active: false })
+            .eq("id", data.id);
+
           const { data: newConv } = await supabase
             .from("karel_hana_conversations")
-            .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }] })
+            .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }], is_active: true })
             .select("id")
             .single();
-          if (newConv) setConversationId(newConv.id);
+
+          if (newConv) {
+            setConversationId(newConv.id);
+            setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+          }
+          return;
+        }
+
+        if (data) {
+          setConversationId(data.id);
+          setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+        } else {
+          const { data: newConv } = await supabase
+            .from("karel_hana_conversations")
+            .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }], is_active: true })
+            .select("id")
+            .single();
+          if (newConv) {
+            setConversationId(newConv.id);
+            setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+          }
         }
       } catch (e) {
         console.warn("Failed to load Hana conversation:", e);
