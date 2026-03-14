@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, User, Trash2, UserPlus, Loader2 } from "lucide-react";
+import { Plus, User, Trash2, UserPlus, Loader2, FolderOpen } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveSessions, SessionWorkspace } from "@/contexts/ActiveSessionsContext";
+import { useNavigate } from "react-router-dom";
 
 type ClientOption = { id: string; name: string };
 
