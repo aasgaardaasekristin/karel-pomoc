@@ -250,6 +250,8 @@ const HanaChat = () => {
       setConversationId(newConv.id);
       setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
       toast.success("Nová konverzace zahájena");
+      // Re-prime context for new thread (silently)
+      setTimeout(() => runContextPrime(true), 500);
     }
   }, [conversationId, messages]);
 
