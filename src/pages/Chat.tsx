@@ -17,6 +17,7 @@ import MainModeToggle from "@/components/MainModeToggle";
 import ChatMessage from "@/components/ChatMessage";
 import ReportForm from "@/components/ReportForm";
 import SessionSidebar from "@/components/report/SessionSidebar";
+import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import SessionReportForm from "@/components/report/SessionReportForm";
 import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
