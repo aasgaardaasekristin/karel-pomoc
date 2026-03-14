@@ -308,6 +308,25 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
         <SheetHeader>
           <SheetTitle className="text-base">Rychlý zápis sezení</SheetTitle>
         </SheetHeader>
+
+        {/* Step indicator */}
+        {(() => {
+          const hasFields = !!(fields.clientName.trim() && (fields.keyTheme.trim() || fields.summary.trim() || fields.risks.trim() || fields.nextGoal.trim()));
+          const hasAudio = voiceAnalyses.length > 0;
+          const step1: StepStatus = hasFields ? "done" : fields.clientName.trim() ? "active" : "active";
+          const step2: StepStatus = hasAudio ? "done" : hasFields ? "active" : "pending";
+          const step3: StepStatus = hasFields || hasAudio ? "active" : "pending";
+          return (
+            <div className="mt-3 flex items-center gap-1">
+              <StepIndicator step={1} label="Vyplnit" status={step1} hint="Jméno + pole nebo Předvyplnit" />
+              <div className="w-4 h-px bg-border shrink-0" />
+              <StepIndicator step={2} label="Audio" status={step2} hint="Volitelné – nahrát a analyzovat" />
+              <div className="w-4 h-px bg-border shrink-0" />
+              <StepIndicator step={3} label="Syntetizovat" status={step3} hint="AI report → Kartotéka" />
+            </div>
+          );
+        })()}
+
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Klient</Label>
