@@ -267,9 +267,8 @@ Deno.serve(async (req) => {
     // Map actual file names to data types
     const entityDoc = findByPattern(semanticFiles, "osoby");
     const vzorceDoc = findByPattern(semanticFiles, "vzorce");
+    const vztahyDoc = findByPattern(semanticFiles, "vztahy");
     const strategieDoc = findByPattern(proceduralFiles, "strategi");
-    // Relations go into the README_SEMANTIC as there's no dedicated file
-    const semanticReadme = findByPattern(semanticFiles, "readme");
     const episodesDoc = findByPattern(episodesFiles, "readme") || episodesFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
     const logsDoc = findByPattern(logsFiles, "daily_job") || logsFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
 
