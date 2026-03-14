@@ -140,6 +140,32 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ═══ CONCURRENCY LOCK: prevent parallel redistributions ═══
+    const LOCK_MINUTES = 3;
+    const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
+    const { data: recentLocks } = await sb.from("karel_memory_logs")
+      .select("id, created_at")
+      .eq("user_id", userId)
+      .eq("log_type", "redistribute_lock")
+      .gte("created_at", lockCutoff)
+      .limit(1);
+    
+    if (recentLocks && recentLocks.length > 0) {
+      console.log("[redistribute] Skipping – another redistribute is running (lock from", recentLocks[0].created_at, ")");
+      return new Response(JSON.stringify({
+        status: "skipped",
+        reason: "Redistribuce již probíhá. Zkus to za chvíli.",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Acquire lock
+    const { data: lockRow } = await sb.from("karel_memory_logs").insert({
+      user_id: userId,
+      log_type: "redistribute_lock",
+      summary: "Lock acquired",
+    }).select("id").single();
+    const lockId = lockRow?.id;
+
     console.log("[redistribute] Starting for user:", userId);
     const startTime = Date.now();
 
