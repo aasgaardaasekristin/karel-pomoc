@@ -411,6 +411,9 @@ ${recentEpisodesDigest || "(žádné)"}
 ═══ STARŠÍ EPIZODY (14-30 dní) ═══
 ${olderEpisodesDigest || "(žádné)"}
 
+═══ ARCHIVNÍ SHRNUTÍ (90+ dní, komprimovaná dlouhodobá paměť) ═══
+${archiveDigest || "(žádné archivní shrnutí)"}
+
 ═══ ENTITY (osoby, části) ═══
 ${entities.map((e: any) => `${e.jmeno} (${e.typ}): ${e.role_vuci_hance} | ${e.stabilni_vlastnosti?.join(", ")}`).join("\n") || "(žádné)"}
 
