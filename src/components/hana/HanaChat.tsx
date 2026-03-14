@@ -273,6 +273,95 @@ const HanaChat = () => {
     }
   }, [isRefreshingMemory, messages, conversationId]);
 
+  const handleBootstrap = useCallback(async () => {
+    if (isBootstrapping) return;
+    setIsBootstrapping(true);
+    const phases = [
+      { key: "threads", label: "DID vlákna", weight: 40 },
+      { key: "conversations", label: "DID konverzace", weight: 25 },
+      { key: "hana", label: "Hana konverzace", weight: 25 },
+      { key: "consolidate", label: "Sémantická konsolidace", weight: 10 },
+    ];
+
+    let totalEpisodes = 0;
+    let totalErrors: string[] = [];
+
+    try {
+      const headers = await getAuthHeaders();
+
+      for (let pi = 0; pi < phases.length; pi++) {
+        const phase = phases[pi];
+        const basePercent = phases.slice(0, pi).reduce((s, p) => s + p.weight, 0);
+        let offset = 0;
+        let hasMore = true;
+
+        if (phase.key === "consolidate") {
+          setBootstrapProgress({ phase: phase.label, percent: basePercent, detail: "Analyzuji vzorce..." });
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-bootstrap`,
+            { method: "POST", headers, body: JSON.stringify({ phase: phase.key }) }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            setBootstrapProgress({ phase: phase.label, percent: 100, detail: data.summary || "Hotovo" });
+          }
+          hasMore = false;
+          continue;
+        }
+
+        while (hasMore) {
+          setBootstrapProgress({
+            phase: phase.label,
+            percent: basePercent + Math.min(phase.weight - 2, (offset / Math.max(1, offset + 10)) * phase.weight),
+            detail: `Zpracovávám od záznamu ${offset}...`,
+          });
+
+          const res = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-bootstrap`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ phase: phase.key, batchSize: 10, offset }),
+            }
+          );
+
+          if (!res.ok) {
+            totalErrors.push(`${phase.key}: HTTP ${res.status}`);
+            break;
+          }
+
+          const data = await res.json();
+          totalEpisodes += data.episodes_created || 0;
+          if (data.errors?.length) totalErrors.push(...data.errors);
+
+          if (data.next_offset != null) {
+            offset = data.next_offset;
+          } else {
+            hasMore = false;
+          }
+
+          setBootstrapProgress({
+            phase: phase.label,
+            percent: basePercent + phase.weight,
+            detail: `${data.processed || 0} zpracováno, ${data.episodes_created || 0} epizod`,
+          });
+        }
+      }
+
+      toast.success(`Bootstrap dokončen: ${totalEpisodes} epizod vytvořeno`);
+      if (totalErrors.length > 0) {
+        console.warn("[bootstrap] Errors:", totalErrors);
+        toast.warning(`${totalErrors.length} chyb během bootstrapu (viz konzole)`);
+      }
+    } catch (error) {
+      console.error("Bootstrap error:", error);
+      toast.error("Chyba při bootstrapu paměti");
+    } finally {
+      setIsBootstrapping(false);
+      setBootstrapProgress(null);
+    }
+  }, [isBootstrapping]);
+
   const handleAudioAnalysis = useCallback(async () => {
     if (isAudioAnalyzing) return;
     setIsAudioAnalyzing(true);
