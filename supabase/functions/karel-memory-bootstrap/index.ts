@@ -437,7 +437,7 @@ async function extractEpisodeFromText(apiKey: string, context: string, excerpt: 
       model: "google/gemini-2.5-flash-lite",
       messages: [
         { role: "system", content: "Extrahuj strukturovanou epizodu z konverzace. Odpověz POUZE validním JSON." },
-        { role: "user", content: `Kontext: ${context}\n\nKonverzace:\n${excerpt}\n\nExtrahuj epizodu jako JSON s poli: domain (HANA|DID|PRACE), hana_state (EMO_KLIDNA|EMO_PRETIZENA|EMO_ROZCILENA|EMO_ANALYTICKA|EMO_DISOCIACE|EMO_RADOSTNA|EMO_SMUTNA|EMO_UZKOSTNA), participants (string[]), summary_user (1 věta), summary_karel (2-3 věty z pohledu terapeuta), reasoning_notes (string), emotional_intensity (1-10), tags (string[]), derived_facts (string[]), actions_taken (string[]), outcome (string).` },
+        { role: "user", content: `Kontext: ${context}\n\nKonverzace:\n${excerpt}\n\nExtrahuj epizodu jako JSON s poli: domain (HANA|DID|PRACE), hana_state (EMO_KLIDNA|EMO_PRETIZENA|EMO_ROZCILENA|EMO_ANALYTICKA|EMO_DISOCIACE|EMO_RADOSTNA|EMO_SMUTNA|EMO_UZKOSTNA), participants (string[]), summary_user (1 věta), summary_karel (2-3 věty z pohledu terapeuta), reasoning_notes (string), emotional_intensity (1-5), tags (string[]), derived_facts (string[]), actions_taken (string[]), outcome (string).` },
       ],
       response_format: { type: "json_object" },
     }),
