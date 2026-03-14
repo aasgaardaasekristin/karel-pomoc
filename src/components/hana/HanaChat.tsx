@@ -540,111 +540,54 @@ const HanaChat = () => {
     </div>
   );
 
+  // When user sends first message without a conversation, create one
+  const ensureConversation = useCallback(async () => {
+    if (conversationId) return conversationId;
+    const { data: newConv } = await supabase
+      .from("karel_hana_conversations")
+      .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }], is_active: true })
+      .select("id")
+      .single();
+    if (newConv) {
+      setConversationId(newConv.id);
+      setChatStarted(true);
+      return newConv.id;
+    }
+    return null;
+  }, [conversationId]);
+
+  // Override sendMessage to ensure conversation exists
+  const originalSendMessage = sendMessage;
+  const wrappedSendMessage = useCallback(async () => {
+    if (!chatStarted) {
+      // Auto-create conversation and show welcome
+      const id = await ensureConversation();
+      if (!id) return;
+      if (messages.length === 0) {
+        setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
+      }
+      setChatStarted(true);
+      // Small delay to let state settle, then send
+      setTimeout(() => originalSendMessage(), 50);
+      return;
+    }
+    originalSendMessage();
+  }, [chatStarted, ensureConversation, messages, originalSendMessage]);
+
   return (
     <>
-      {/* Memory action bar */}
-      <div className="border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3">
-          <div className="rounded-2xl border border-border bg-card/60 px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 shadow-sm">
-            <div className="text-sm text-foreground/90 flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                <Brain className="w-3.5 h-3.5 text-primary" />
-              </div>
-              <span className="truncate font-medium">Kognitivní agent</span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Správa popover */}
-              <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 px-3 text-xs gap-1.5 rounded-xl">
-                    <Settings className="w-3.5 h-3.5" />
-                    <span>Správa</span>
-                    <ChevronDown className="w-3.5 h-3.5" />
-                    {(isMirroring || isBootstrapping || isRefreshingMemory) && (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-3 space-y-3 rounded-xl">
-                  {/* Cache status */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Kontextová cache</span>
-                    {contextPrimeCache ? (
-                      <span className="inline-flex items-center gap-1 text-primary font-medium">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                        aktivní
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/50">neaktivní</span>
-                    )}
-                  </div>
-
-                  {/* Archive stats */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1">
-                      <Archive className="w-3 h-3" />
-                      Archivované epizody
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 px-1.5 text-xs text-primary hover:text-primary/80"
-                      onClick={() => {
-                        loadArchiveSummaries();
-                        setShowArchiveDialog(true);
-                        setSpravaOpen(false);
-                      }}
-                    >
-                      {archivedCount} →
-                    </Button>
-                  </div>
-
-                  <div className="border-t border-border pt-2 space-y-1.5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }}
-                      disabled={isMirroring || isLoading}
-                      className="w-full justify-start h-8 px-2 text-xs gap-2"
-                    >
-                      {isMirroring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                      Zrcadlit do Drive
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { handleBootstrap(); setSpravaOpen(false); }}
-                      disabled={isBootstrapping || isLoading}
-                      className="w-full justify-start h-8 px-2 text-xs gap-2"
-                    >
-                      {isBootstrapping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
-                      Bootstrap paměti
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }}
-                      disabled={isRefreshingMemory || isLoading}
-                      className="w-full justify-start h-8 px-2 text-xs gap-2"
-                    >
-                      {isRefreshingMemory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
-                      Osvěž paměť
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              <HanaThreadHistory
-                currentConversationId={conversationId}
-                onSwitchThread={handleSwitchThread}
-                onNewThread={handleNewConversation}
-                onMirrorToDrive={handleMirrorToDrive}
-              />
-            </div>
-          </div>
+      {/* Minimal toolbar - just thread history */}
+      <div className="border-b border-border bg-background/60 backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 flex items-center justify-end gap-2">
+          <HanaThreadHistory
+            currentConversationId={conversationId}
+            onSwitchThread={handleSwitchThread}
+            onNewThread={handleNewConversation}
+            onMirrorToDrive={handleMirrorToDrive}
+          />
         </div>
         {bootstrapProgress && (
-          <div className="max-w-5xl mx-auto px-3 sm:px-4 pb-3">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 pb-2">
             <div className="rounded-xl border border-border bg-card/50 px-3 py-2 space-y-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{bootstrapProgress.phase}</span>
@@ -657,63 +600,90 @@ const HanaChat = () => {
         )}
       </div>
 
-      {/* Messages */}
-      <ScrollArea className="flex-1 px-2 sm:px-4">
-        <div ref={scrollRef} className="max-w-3xl mx-auto py-4 sm:py-7 space-y-3 sm:space-y-4">
-          {messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
-          ))}
-          {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+      {!chatStarted ? (
+        /* Clean empty state - no chat history visible */
+        <div className="flex-1 flex flex-col items-center justify-center px-4">
+          <div className="text-center max-w-md space-y-6">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+              <Brain className="w-8 h-8 text-primary" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-serif font-semibold text-foreground">
+                Ahoj, Hani 💛
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Jsem tady pro tebe. Můžeš začít novou konverzaci nebo se vrátit k některému z předchozích vláken.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                onClick={handleNewConversation}
+                className="rounded-xl gap-2"
+              >
+                <Send className="w-4 h-4" />
+                Nová konverzace
+              </Button>
+            </div>
+          </div>
         </div>
-      </ScrollArea>
+      ) : (
+        <>
+          {/* Messages */}
+          <ScrollArea className="flex-1 px-2 sm:px-4">
+            <div ref={scrollRef} className="max-w-3xl mx-auto py-4 sm:py-7 space-y-3 sm:space-y-4">
+              {messages.map((message, index) => (
+                <ChatMessage key={index} message={message} />
+              ))}
+              {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
+            </div>
+          </ScrollArea>
 
-      {/* Input */}
-      <div className="border-t border-border bg-background/80 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 sm:py-4">
-          <div className="flex gap-2 sm:gap-3 items-end relative">
-            <UniversalAttachmentBar
-              attachments={attachments} onRemove={removeAttachment}
-              onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-              onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-              disabled={isLoading}
-              fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-              onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-            />
-            <Textarea
-              ref={textareaRef} value={input}
-              onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-              placeholder="Napiš svou zprávu..."
-              className="flex-1 min-w-0 min-h-[46px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base rounded-xl"
-              disabled={isLoading}
-            />
-            <Button
-              onClick={sendMessage}
-              disabled={(!input.trim() && attachments.length === 0) || isLoading}
-              size="icon" className="h-[46px] w-[46px] sm:h-[56px] sm:w-[56px] shrink-0 rounded-xl"
-            >
-              {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-            </Button>
+          {/* Input */}
+          <div className="border-t border-border bg-background/80 backdrop-blur-sm">
+            <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 sm:py-4">
+              <div className="flex gap-2 sm:gap-3 items-end relative">
+                <UniversalAttachmentBar
+                  attachments={attachments} onRemove={removeAttachment}
+                  onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
+                  onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
+                  disabled={isLoading}
+                  fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                  onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
+                />
+                <Textarea
+                  ref={textareaRef} value={input}
+                  onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
+                  placeholder="Napiš svou zprávu..."
+                  className="flex-1 min-w-0 min-h-[46px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base rounded-xl"
+                  disabled={isLoading}
+                />
+                <Button
+                  onClick={wrappedSendMessage}
+                  disabled={(!input.trim() && attachments.length === 0) || isLoading}
+                  size="icon" className="h-[46px] w-[46px] sm:h-[56px] sm:w-[56px] shrink-0 rounded-xl"
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
+                </Button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap mt-2">
+                <AudioRecordButton
+                  state={audioRecorder.state} duration={audioRecorder.duration}
+                  maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
+                  isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
+                  onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
+                  onSend={handleAudioAnalysis} disabled={isLoading}
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap mt-2">
-            <AudioRecordButton
-              state={audioRecorder.state} duration={audioRecorder.duration}
-              maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
-              isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
-              onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
-              onSend={handleAudioAnalysis} disabled={isLoading}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Klidný prostor pro rozhovor. Vlákna zůstávají schovaná, dokud je sama neotevřeš.
-          </p>
-        </div>
-      </div>
+        </>
+      )}
 
       <GoogleDrivePickerDialog open={drivePickerOpen} onClose={() => setDrivePickerOpen(false)} onFileSelected={addAttachment} />
 
       {/* Archive summaries dialog */}
       <Dialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogContent className="max-w-2xl max-h-[80vh] rounded-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Archive className="w-4 h-4" />
@@ -731,7 +701,7 @@ const HanaChat = () => {
             ) : (
               <div className="space-y-3">
                 {archiveSummaries.map((a) => (
-                  <div key={a.id} className="border border-border rounded-lg p-3 space-y-1.5">
+                  <div key={a.id} className="border border-border rounded-xl p-3 space-y-1.5">
                     <div className="text-xs text-muted-foreground">
                       {new Date(a.created_at).toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
                     </div>
