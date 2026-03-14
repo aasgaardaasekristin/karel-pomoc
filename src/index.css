@@ -131,7 +131,10 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 
   body {
     @apply bg-background text-foreground font-sans;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    font-size: 14px;
+    font-weight: 400;
+    letter-spacing: 0.01em;
   }
 
   h1, h2, h3, h4, h5, h6 {
