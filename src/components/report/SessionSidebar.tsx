@@ -93,6 +93,17 @@ const SessionSidebar = () => {
           <span className="text-[10px] text-muted-foreground">({sessions.length}/5)</span>
         </div>
 
+        {/* Kartotéka button */}
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => navigate("/kartoteka")} 
+          className="w-full h-8 text-xs mb-2 gap-1"
+        >
+          <FolderOpen className="w-3.5 h-3.5" />
+          Kartotéka
+        </Button>
+
         {/* Quick add */}
         <div className="space-y-2">
           <Select value={selectedClientId} onValueChange={setSelectedClientId}>
