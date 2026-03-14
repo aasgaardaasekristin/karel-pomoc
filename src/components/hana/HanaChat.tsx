@@ -13,6 +13,7 @@ import AudioRecordButton from "@/components/AudioRecordButton";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
+import HanaSessionReport from "@/components/hana/HanaSessionReport";
 
 type Message = { role: "user" | "assistant"; content: string };
 
