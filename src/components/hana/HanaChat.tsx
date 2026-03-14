@@ -457,6 +457,17 @@ const HanaChat = () => {
             <Button
               variant="outline"
               size="sm"
+              onClick={handleBootstrap}
+              disabled={isBootstrapping || isLoading}
+              className="h-7 px-2 text-xs gap-1"
+            >
+              {isBootstrapping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+              <span className="hidden sm:inline">Bootstrap paměti</span>
+              <span className="sm:hidden">💾</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleRefreshMemory}
               disabled={isRefreshingMemory || isLoading}
               className="h-7 px-2 text-xs gap-1"
@@ -477,6 +488,16 @@ const HanaChat = () => {
             </Button>
           </div>
         </div>
+        {bootstrapProgress && (
+          <div className="max-w-4xl mx-auto px-4 pb-2 space-y-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{bootstrapProgress.phase}</span>
+              <span>{Math.round(bootstrapProgress.percent)}%</span>
+            </div>
+            <Progress value={bootstrapProgress.percent} className="h-1.5" />
+            <p className="text-xs text-muted-foreground/70">{bootstrapProgress.detail}</p>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
