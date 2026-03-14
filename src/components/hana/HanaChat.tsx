@@ -679,8 +679,8 @@ const HanaChat = () => {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
-        <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+      <ScrollArea className="flex-1 px-2 sm:px-4">
+        <div ref={scrollRef} className="max-w-3xl mx-auto py-4 sm:py-7 space-y-3 sm:space-y-4">
           {messages.map((message, index) => (
             <ChatMessage key={index} message={message} />
           ))}
@@ -689,8 +689,8 @@ const HanaChat = () => {
       </ScrollArea>
 
       {/* Input */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
+      <div className="border-t border-border bg-background/80 backdrop-blur-sm">
+        <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 sm:py-4">
           <div className="flex gap-2 sm:gap-3 items-end relative">
             <UniversalAttachmentBar
               attachments={attachments} onRemove={removeAttachment}
@@ -704,13 +704,13 @@ const HanaChat = () => {
               ref={textareaRef} value={input}
               onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
               placeholder="Napiš svou zprávu..."
-              className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+              className="flex-1 min-w-0 min-h-[46px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base rounded-xl"
               disabled={isLoading}
             />
             <Button
               onClick={sendMessage}
               disabled={(!input.trim() && attachments.length === 0) || isLoading}
-              size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+              size="icon" className="h-[46px] w-[46px] sm:h-[56px] sm:w-[56px] shrink-0 rounded-xl"
             >
               {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
             </Button>
@@ -724,8 +724,8 @@ const HanaChat = () => {
               onSend={handleAudioAnalysis} disabled={isLoading}
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
-            Karel si pamatuje a učí se z každého rozhovoru.
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            Klidný prostor pro rozhovor. Vlákna zůstávají schovaná, dokud je sama neotevřeš.
           </p>
         </div>
       </div>
