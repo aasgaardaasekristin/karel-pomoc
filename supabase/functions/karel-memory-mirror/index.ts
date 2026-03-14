@@ -264,17 +264,18 @@ Deno.serve(async (req) => {
     const findByPattern = (files: any[], pattern: string) => 
       files.find((f: any) => f.name.toLowerCase().includes(pattern.toLowerCase()));
 
-    const entityDoc = findByPattern(semanticFiles, "entit");
-    const vzorceDoc = findByPattern(semanticFiles, "vzor");
-    const vztahyDoc = findByPattern(semanticFiles, "vztah");
+    // Map actual file names to data types
+    const entityDoc = findByPattern(semanticFiles, "osoby");
+    const vzorceDoc = findByPattern(semanticFiles, "vzorce");
     const strategieDoc = findByPattern(proceduralFiles, "strategi");
-    const episodesDoc = episodesFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
-    const logsDoc = logsFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
+    // Relations go into the README_SEMANTIC as there's no dedicated file
+    const semanticReadme = findByPattern(semanticFiles, "readme");
+    const episodesDoc = findByPattern(episodesFiles, "readme") || episodesFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
+    const logsDoc = findByPattern(logsFiles, "daily_job") || logsFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
 
     const missingDocs: string[] = [];
-    if (!entityDoc) missingDocs.push("SEMANTIC/*entity*");
+    if (!entityDoc) missingDocs.push("SEMANTIC/*osoby*");
     if (!vzorceDoc) missingDocs.push("SEMANTIC/*vzorce*");
-    if (!vztahyDoc) missingDocs.push("SEMANTIC/*vztahy*");
     if (!strategieDoc) missingDocs.push("PROCEDURAL/*strategie*");
     if (missingDocs.length) {
       throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
