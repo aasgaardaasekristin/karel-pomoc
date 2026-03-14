@@ -521,6 +521,8 @@ ${patterns.map((p: any) => `[${p.domain}] ${p.description}`).join("\n")}`;
       generatedAt: now.toISOString(),
       stats: {
         episodes: recentEpisodes.length + olderEpisodes.length,
+        archiveSummaries: archiveSummaries.length,
+        episodesArchived: archiveStats.archived,
         entities: entities.length,
         patterns: patterns.length,
         strategies: strategies.length,
