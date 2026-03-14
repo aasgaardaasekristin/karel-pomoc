@@ -283,70 +283,19 @@ const HanaChat = () => {
     if (isRefreshingMemory) return;
     setIsRefreshingMemory(true);
     try {
-      // Add a system-like message indicating memory refresh
-      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel přehodnocuje kontext]*" }]);
-      
-      const headers = await getAuthHeaders();
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-hana-chat`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            messages: [...messages.slice(-20), { role: "user", content: "Osvěž si prosím svou paměť. Projdi si, co o mně víš, a řekni mi stručně: jaké hlavní vzorce u mě vidíš v poslední době?" }],
-            conversationId,
-            refreshMemory: true,
-          }),
-        }
-      );
-
-      if (!response.ok) await handleApiError(response);
-      if (!response.body) throw new Error("Žádná odpověď");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let assistantContent = "";
-      setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantContent += content;
-              setMessages(prev => {
-                const n = [...prev];
-                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
-                return n;
-              });
-            }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
-        }
+      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel skenuje všechny zdroje a buduje kontextovou cache]*" }]);
+      await runContextPrime(false);
+      // Add a summary message using the fresh cache
+      if (contextPrimeStats) {
+        setMessages(prev => [...prev, { role: "assistant", content: `✅ *Kontextová cache aktualizována* – ${contextPrimeStats.episodes || 0} epizod, ${contextPrimeStats.entities || 0} entit, ${contextPrimeStats.driveFolders || 0} Drive složek, ${contextPrimeStats.newsAvailable ? "novinky načteny" : "bez novinek"} (${contextPrimeStats.totalMs || 0}ms)` }]);
       }
-      toast.success("Paměť osvěžena");
     } catch (error) {
       console.error("Memory refresh error:", error);
       toast.error("Chyba při osvěžování paměti");
     } finally {
       setIsRefreshingMemory(false);
     }
-  }, [isRefreshingMemory, messages, conversationId]);
+  }, [isRefreshingMemory, runContextPrime, contextPrimeStats]);
 
   const handleMirrorToDrive = useCallback(async () => {
     if (isMirroring) return;
