@@ -301,6 +301,7 @@ const HanaChat = () => {
     if (isMirroring) return;
     setIsMirroring(true);
     try {
+      setMessages(prev => [...prev, { role: "assistant", content: "📤 *[Redistribuuji informace – Karel analyzuje všechna vlákna a ukládá poznatky do Drive]*" }]);
       const headers = await getAuthHeaders();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
         method: "POST", headers,
@@ -310,10 +311,18 @@ const HanaChat = () => {
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
-      toast.success(`Paměť zrcadlena do Drive (${data.counts?.entities || 0} entit, ${data.counts?.patterns || 0} vzorců)`);
+      const summary = [
+        `✅ *Redistribuce dokončena*`,
+        `📊 Vlákna analyzována: ${data.counts?.threadsScanned || 0}`,
+        `🧠 DB aktualizací: ${data.counts?.dbUpdates || 0}`,
+        `📁 Drive aktualizací: ${data.counts?.driveUpdates || 0}`,
+        data.summary ? `\n${data.summary}` : "",
+      ].filter(Boolean).join("\n");
+      setMessages(prev => [...prev, { role: "assistant", content: summary }]);
+      toast.success(`Redistribuce: ${data.counts?.dbUpdates || 0} DB, ${data.counts?.driveUpdates || 0} Drive`);
     } catch (error) {
       console.error("Mirror error:", error);
-      toast.error(error instanceof Error ? error.message : "Chyba při zrcadlení do Drive");
+      toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
     } finally {
       setIsMirroring(false);
     }
