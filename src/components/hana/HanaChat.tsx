@@ -217,6 +217,30 @@ const HanaChat = () => {
     }
   }, [conversationId, messages]);
 
+  const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string }[]) => {
+    // Save current conversation first
+    if (conversationId && messages.length > 1) {
+      await supabase
+        .from("karel_hana_conversations")
+        .update({ messages: messages as any, last_activity_at: new Date().toISOString() })
+        .eq("id", conversationId);
+    }
+    // Mark all as inactive, then activate the selected one
+    await supabase
+      .from("karel_hana_conversations")
+      .update({ is_active: false })
+      .neq("id", threadId);
+    await supabase
+      .from("karel_hana_conversations")
+      .update({ is_active: true })
+      .eq("id", threadId);
+    
+    setConversationId(threadId);
+    setMessages(threadMessages as Message[]);
+    lastSavedRef.current = JSON.stringify(threadMessages);
+    toast.success("Vlákno načteno");
+  }, [conversationId, messages]);
+
   const handleRefreshMemory = useCallback(async () => {
     if (isRefreshingMemory) return;
     setIsRefreshingMemory(true);
