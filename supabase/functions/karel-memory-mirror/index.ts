@@ -282,22 +282,25 @@ Deno.serve(async (req) => {
 
     // 4. Update all existing docs in parallel
     const updates: Promise<void>[] = [
-      updateDoc(token, entityDocId!, formatEntities(entities)),
-      updateDoc(token, vzorceDocId!, formatPatterns(patterns)),
-      updateDoc(token, vztahyDocId!, formatRelations(relations)),
-      updateDoc(token, strategieDocId!, formatStrategies(strategies)),
+      updateDoc(token, entityDoc.id, formatEntities(entities)),
+      updateDoc(token, vzorceDoc.id, formatPatterns(patterns)),
+      updateDoc(token, vztahyDoc.id, formatRelations(relations)),
+      updateDoc(token, strategieDoc.id, formatStrategies(strategies)),
     ];
 
-    const subfolderResults: Record<string, string> = {
-      entity: entityDocId!, patterns: vzorceDocId!, relations: vztahyDocId!, strategies: strategieDocId!,
+    const docResults: Record<string, string> = {
+      entity: `${entityDoc.name} (${entityDoc.id})`,
+      patterns: `${vzorceDoc.name} (${vzorceDoc.id})`,
+      relations: `${vztahyDoc.name} (${vztahyDoc.id})`,
+      strategies: `${strategieDoc.name} (${strategieDoc.id})`,
     };
-    if (episodesDocId) {
-      updates.push(updateDoc(token, episodesDocId, formatEpisodes(episodes)));
-      subfolderResults.episodes = episodesDocId;
+    if (episodesDoc) {
+      updates.push(updateDoc(token, episodesDoc.id, formatEpisodes(episodes)));
+      docResults.episodes = `${episodesDoc.name} (${episodesDoc.id})`;
     }
-    if (logsDocId) {
-      updates.push(updateDoc(token, logsDocId, formatLogs(logs)));
-      subfolderResults.logs = logsDocId;
+    if (logsDoc) {
+      updates.push(updateDoc(token, logsDoc.id, formatLogs(logs)));
+      docResults.logs = `${logsDoc.name} (${logsDoc.id})`;
     }
 
     await Promise.all(updates);
