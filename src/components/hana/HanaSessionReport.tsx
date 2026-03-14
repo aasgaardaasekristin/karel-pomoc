@@ -355,6 +355,9 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
             {!fields.clientName.trim() && recorder.state === "idle" && (
               <p className="text-[10px] text-muted-foreground">Nejdřív vyplň jméno klienta</p>
             )}
+            <p className="text-[10px] text-muted-foreground">
+              Postup: Nahrát → Stop → Analyzovat. Potom můžeš report syntetizovat a uložit do Kartotéky.
+            </p>
           </div>
 
           {/* Voice analyses list */}
