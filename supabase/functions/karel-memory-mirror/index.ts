@@ -140,31 +140,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ═══ CONCURRENCY LOCK: prevent parallel redistributions ═══
+    // ═══ CONCURRENCY LOCK: insert-first-then-check (atomic) ═══
+    // Insert lock FIRST, then check if another lock already exists.
+    // This eliminates the race condition where two requests both see "no lock" simultaneously.
     const LOCK_MINUTES = 3;
+    const { data: lockRow } = await sb.from("karel_memory_logs").insert({
+      user_id: userId,
+      log_type: "redistribute_lock",
+      summary: "Lock acquired",
+    }).select("id, created_at").single();
+    const lockId = lockRow?.id;
+
+    // Now check: are there OTHER locks within the window?
     const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
-    const { data: recentLocks } = await sb.from("karel_memory_logs")
+    const { data: allLocks } = await sb.from("karel_memory_logs")
       .select("id, created_at")
       .eq("user_id", userId)
       .eq("log_type", "redistribute_lock")
       .gte("created_at", lockCutoff)
-      .limit(1);
-    
-    if (recentLocks && recentLocks.length > 0) {
-      console.log("[redistribute] Skipping – another redistribute is running (lock from", recentLocks[0].created_at, ")");
+      .order("created_at", { ascending: true });
+
+    // If there's an older lock that isn't ours, we're the duplicate – bail out
+    const olderLock = allLocks?.find(l => l.id !== lockId && l.created_at <= (lockRow?.created_at || ""));
+    if (olderLock) {
+      console.log("[redistribute] Skipping – another redistribute owns the lock (id:", olderLock.id, ")");
+      // Clean up our lock attempt
+      await sb.from("karel_memory_logs").delete().eq("id", lockId);
       return new Response(JSON.stringify({
         status: "skipped",
         reason: "Redistribuce již probíhá. Zkus to za chvíli.",
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    // Acquire lock
-    const { data: lockRow } = await sb.from("karel_memory_logs").insert({
-      user_id: userId,
-      log_type: "redistribute_lock",
-      summary: "Lock acquired",
-    }).select("id").single();
-    const lockId = lockRow?.id;
 
     console.log("[redistribute] Starting for user:", userId);
     const startTime = Date.now();

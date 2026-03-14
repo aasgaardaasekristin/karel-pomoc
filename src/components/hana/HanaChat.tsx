@@ -297,8 +297,17 @@ const HanaChat = () => {
     }
   }, [isRefreshingMemory, runContextPrime, contextPrimeStats]);
 
+  const mirrorCooldownRef = useRef<number>(0);
+
   const handleMirrorToDrive = useCallback(async () => {
     if (isMirroring) return;
+    // Client-side cooldown: 60s between mirror calls
+    const now = Date.now();
+    if (now - mirrorCooldownRef.current < 60_000) {
+      toast.info("Redistribuce byla spuštěna nedávno. Počkej chvíli.");
+      return;
+    }
+    mirrorCooldownRef.current = now;
     setIsMirroring(true);
     try {
       setMessages(prev => [...prev, { role: "assistant", content: "📤 *[Redistribuuji informace – Karel analyzuje všechna vlákna a ukládá poznatky do Drive]*" }]);
