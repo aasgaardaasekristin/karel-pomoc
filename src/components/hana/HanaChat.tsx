@@ -237,7 +237,7 @@ const HanaChat = () => {
         }
       );
 
-      if (!response.ok) handleApiError(response);
+      if (!response.ok) await handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
 
       const reader = response.body.getReader();
