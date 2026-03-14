@@ -1956,6 +1956,14 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             <>
               <div className="flex-1 flex flex-col sm:flex-row min-h-0 overflow-hidden">
                 <SessionSidebar />
+                {(() => {
+                  const { activeSession } = (() => {
+                    // Access active sessions context data from SessionSidebar's context
+                    // We need to check if there's an active session and if live mode is started
+                    return { activeSession: null as any };
+                  })();
+                  return null;
+                })()}
                 <div className="flex-1 min-w-0 flex flex-col md:flex-row min-h-0 overflow-hidden">
                   <div className="flex-1 min-w-0 border-b md:border-b-0 md:border-r border-border min-h-[40vh] md:min-h-0">
                     <SessionReportForm />
