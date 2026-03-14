@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import hanaWelcomeImg from "@/assets/hana-welcome.png";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
@@ -572,27 +573,24 @@ const HanaChat = () => {
       {!chatStarted ? (
         /* Clean empty state - no chat history visible */
         <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="text-center max-w-md space-y-6">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-              <Brain className="w-8 h-8 text-primary" />
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-xl font-serif font-semibold text-foreground">
+          <div className="text-center max-w-sm space-y-5">
+            <img src={hanaWelcomeImg} alt="" className="w-28 h-28 mx-auto object-contain" />
+            <div className="space-y-1.5">
+              <h2 className="text-lg font-serif font-semibold text-foreground">
                 Ahoj, Hani 💛
               </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Jsem tady pro tebe. Můžeš začít novou konverzaci nebo se vrátit k některému z předchozích vláken.
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                onClick={handleNewConversation}
-                className="rounded-xl gap-2"
-              >
-                <Send className="w-4 h-4" />
-                Nová konverzace
-              </Button>
-            </div>
+            <Button
+              onClick={handleNewConversation}
+              size="sm"
+              className="rounded-xl gap-1.5 text-xs"
+            >
+              <Send className="w-3.5 h-3.5" />
+              Nová konverzace
+            </Button>
           </div>
         </div>
       ) : (
