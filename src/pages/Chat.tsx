@@ -117,6 +117,8 @@ const Chat = () => {
     setReportDraft, pendingHandoffToChat, setPendingHandoffToChat, lastReportText,
     didSubMode, setDidSubMode, didInitialContext, setDidInitialContext,
   } = useChatContext();
+  const { activeSession } = useActiveSessions();
+  const [liveSessionStarted, setLiveSessionStarted] = useState(false);
 
   // Determine hub section from sessionStorage
   const [hubSection] = useState<HubSection>(() => {
