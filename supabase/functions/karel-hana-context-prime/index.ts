@@ -120,6 +120,76 @@ serve(async (req) => {
     console.log("[context-prime] Starting for user:", userId);
     const startTime = Date.now();
 
+    // ═══ PHASE 0: Gradual Forgetting – archive episodes > 90 days ═══
+    const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    let archiveStats = { archived: 0, summaryCreated: false };
+
+    const { data: staleEpisodes } = await sb
+      .from("karel_episodes")
+      .select("id, domain, hana_state, summary_user, summary_karel, tags, emotional_intensity, timestamp_start")
+      .eq("user_id", userId)
+      .eq("is_archived", false)
+      .lt("timestamp_start", ninetyDaysAgo)
+      .order("timestamp_start", { ascending: true })
+      .limit(100);
+
+    if (staleEpisodes && staleEpisodes.length > 0) {
+      console.log(`[context-prime] Archiving ${staleEpisodes.length} episodes older than 90 days`);
+
+      // Compress stale episodes into a summary via AI
+      const staleDigest = staleEpisodes.map((ep: any) =>
+        `[${ep.timestamp_start?.slice(0, 10)}] ${ep.domain}/${ep.hana_state} | ${ep.summary_user} | Karel: ${ep.summary_karel?.slice(0, 80)} | Tags: ${ep.tags?.join(",") || "-"} | EI: ${ep.emotional_intensity}`
+      ).join("\n");
+
+      const compressRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-lite",
+          messages: [
+            { role: "system", content: "Jsi archivační modul kognitivního agenta. Tvým úkolem je komprimovat staré epizody do stručného shrnutí, které zachová všechny klíčové informace – vzorce, významné události, emoční dynamiku, důležité osoby a rozhodnutí. Piš česky, strukturovaně. Max 800 slov." },
+            { role: "user", content: `Komprimuj těchto ${staleEpisodes.length} epizod z období ${staleEpisodes[0].timestamp_start?.slice(0, 10)} až ${staleEpisodes[staleEpisodes.length - 1].timestamp_start?.slice(0, 10)} do jednoho archivního shrnutí:\n\n${staleDigest}` },
+          ],
+          temperature: 0.1,
+        }),
+      });
+
+      if (compressRes.ok) {
+        const compressData = await compressRes.json();
+        const archiveSummary = compressData.choices?.[0]?.message?.content || "";
+
+        if (archiveSummary.length > 50) {
+          // Insert archive summary as a special episode
+          const periodStart = staleEpisodes[0].timestamp_start;
+          const periodEnd = staleEpisodes[staleEpisodes.length - 1].timestamp_start;
+
+          await sb.from("karel_episodes").insert({
+            user_id: userId,
+            domain: "ARCHIVE",
+            hana_state: "ARCHIVE_SUMMARY",
+            summary_user: `Archivní shrnutí ${staleEpisodes.length} epizod z ${periodStart?.slice(0, 10)} – ${periodEnd?.slice(0, 10)}`,
+            summary_karel: archiveSummary,
+            tags: ["archive", "compressed", `count:${staleEpisodes.length}`],
+            emotional_intensity: 0,
+            timestamp_start: periodStart,
+            timestamp_end: periodEnd,
+            is_archived: false, // Keep the summary visible
+            reasoning_notes: `Auto-archived by context-prime. Original episode IDs: ${staleEpisodes.map((e: any) => e.id).join(",")}`,
+          });
+          archiveStats.summaryCreated = true;
+
+          // Mark originals as archived
+          const staleIds = staleEpisodes.map((e: any) => e.id);
+          await sb.from("karel_episodes").update({ is_archived: true }).in("id", staleIds);
+          archiveStats.archived = staleIds.length;
+
+          console.log(`[context-prime] Archived ${staleIds.length} episodes, created summary (${archiveSummary.length} chars)`);
+        }
+      } else {
+        console.warn("[context-prime] Archive compression failed:", compressRes.status);
+      }
+    }
+
     // ═══ PHASE 1: Parallel data harvest ═══
     const now = new Date();
     const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
@@ -130,6 +200,7 @@ serve(async (req) => {
     const dbPromises = {
       recentEpisodes: sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).gte("timestamp_start", fourteenDaysAgo).order("timestamp_start", { ascending: false }).limit(50),
       olderEpisodes: sb.from("karel_episodes").select("domain, hana_state, summary_user, summary_karel, tags, emotional_intensity, timestamp_start").eq("user_id", userId).eq("is_archived", false).lt("timestamp_start", fourteenDaysAgo).gte("timestamp_start", thirtyDaysAgo).order("timestamp_start", { ascending: false }).limit(30),
+      archiveSummaries: sb.from("karel_episodes").select("summary_karel, timestamp_start, timestamp_end, tags").eq("user_id", userId).eq("domain", "ARCHIVE").eq("is_archived", false).order("timestamp_start", { ascending: false }).limit(5),
       entities: sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
       patterns: sb.from("karel_semantic_patterns").select("*").eq("user_id", userId).order("confidence", { ascending: false }).limit(20),
       relations: sb.from("karel_semantic_relations").select("*").eq("user_id", userId),
@@ -224,7 +295,7 @@ serve(async (req) => {
     await Promise.all([drivePromise, newsPromise]);
 
     const harvestTime = Date.now() - startTime;
-    console.log(`[context-prime] Harvest done in ${harvestTime}ms. DB keys: ${Object.keys(dbResults).length}, Drive folders: ${Object.keys(driveData).length}`);
+    console.log(`[context-prime] Harvest done in ${harvestTime}ms. DB keys: ${Object.keys(dbResults).length}, Drive folders: ${Object.keys(driveData).length}${archiveStats.archived > 0 ? `, archived: ${archiveStats.archived}` : ""}`);
 
     // ═══ PHASE 2: Build raw context for AI synthesis ═══
     const recentEpisodes = dbResults.recentEpisodes || [];
