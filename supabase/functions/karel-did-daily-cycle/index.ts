@@ -97,6 +97,20 @@ const XLS_MIME_TYPES = new Set([
   "application/vnd.ms-excel",
 ]);
 
+// ── Content hash (FNV-1a 32bit) for dedup markers [KHASH:xxxxxxxx] ──
+function contentHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function hasKhash(existingContent: string, hash: string): boolean {
+  return existingContent.includes(`[KHASH:${hash}]`);
+}
+
 const stripDiacritics = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
