@@ -4,7 +4,7 @@ import hanaWelcomeImg from "@/assets/hana-welcome.png";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Send, Loader2, Brain, Database, Archive } from "lucide-react";
+import { Send, Loader2, Brain, Database, Archive, Settings, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversal
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
-
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -52,7 +52,7 @@ const HanaChat = () => {
   const [archivedCount, setArchivedCount] = useState<number>(0);
   const [archiveSummaries, setArchiveSummaries] = useState<{ id: string; summary: string; created_at: string }[]>([]);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
-  
+  const [spravaOpen, setSpravaOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -546,9 +546,55 @@ const HanaChat = () => {
 
   return (
     <>
-      {/* Minimal toolbar - just thread history */}
+      {/* Toolbar with Správa + Vlákna */}
       <div className="border-b border-border bg-background/60 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 flex items-center justify-end gap-2">
+          <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 rounded-xl text-muted-foreground">
+                <Settings className="w-3 h-3" />
+                <span className="hidden sm:inline">Správa</span>
+                <ChevronDown className="w-3 h-3" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-2.5 space-y-2.5 rounded-xl">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Kontextová cache</span>
+                {contextPrimeCache ? (
+                  <span className="inline-flex items-center gap-1 text-primary font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    aktivní
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground/50">neaktivní</span>
+                )}
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground flex items-center gap-1">
+                  <Archive className="w-3 h-3" />
+                  Archivované epizody
+                </span>
+                <Button variant="ghost" size="sm" className="h-5 px-1.5 text-xs text-primary" onClick={() => { loadArchiveSummaries(); setShowArchiveDialog(true); setSpravaOpen(false); }}>
+                  {archivedCount} →
+                </Button>
+              </div>
+              <div className="border-t border-border pt-2 space-y-1">
+                <Button variant="ghost" size="sm" onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }} disabled={isMirroring || isLoading} className="w-full justify-start h-7 px-2 text-xs gap-1.5">
+                  {isMirroring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+                  Zrcadlit do Drive
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => { handleBootstrap(); setSpravaOpen(false); }} disabled={isBootstrapping || isLoading} className="w-full justify-start h-7 px-2 text-xs gap-1.5">
+                  {isBootstrapping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
+                  Bootstrap paměti
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }} disabled={isRefreshingMemory || isLoading} className="w-full justify-start h-7 px-2 text-xs gap-1.5">
+                  {isRefreshingMemory ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
+                  Osvěž paměť
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <HanaThreadHistory
             currentConversationId={conversationId}
             onSwitchThread={handleSwitchThread}
