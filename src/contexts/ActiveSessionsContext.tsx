@@ -131,6 +131,11 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
     try { localStorage.setItem(ACTIVE_KEY, id); } catch {}
   }, []);
 
+  const clearActiveSession = useCallback(() => {
+    setActiveSessionId(null);
+    try { localStorage.removeItem(ACTIVE_KEY); } catch {}
+  }, []);
+
   const updateSession = useCallback((id: string, updater: (s: SessionWorkspace) => SessionWorkspace) => {
     const next = sessions.map(s => s.id === id ? updater(s) : s);
     persist(next);
