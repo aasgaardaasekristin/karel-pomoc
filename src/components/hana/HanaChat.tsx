@@ -719,6 +719,39 @@ const HanaChat = () => {
       </div>
 
       <GoogleDrivePickerDialog open={drivePickerOpen} onClose={() => setDrivePickerOpen(false)} onFileSelected={addAttachment} />
+
+      {/* Archive summaries dialog */}
+      <Dialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Archive className="w-4 h-4" />
+              Archivní shrnutí ({archivedCount} epizod)
+            </DialogTitle>
+            <DialogDescription>
+              Komprimované shrnutí epizod starších 90 dní
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-2">
+            {archiveSummaries.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Žádná archivní shrnutí zatím neexistují.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {archiveSummaries.map((a) => (
+                  <div key={a.id} className="border border-border rounded-lg p-3 space-y-1.5">
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(a.created_at).toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap">{a.summary}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
