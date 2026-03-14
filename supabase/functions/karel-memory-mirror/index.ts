@@ -239,6 +239,20 @@ serve(async (req) => {
     }
 
     // 3. Find all existing docs (NEVER create)
+    // DEBUG: List all files in root folder
+    const listParams = new URLSearchParams({
+      q: `'${rootId}' in parents and trashed=false`,
+      fields: "files(id,name,mimeType)",
+      pageSize: "50",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?${listParams}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const listData = await listRes.json();
+    console.log(`[mirror] All files in PAMET_KAREL:`, JSON.stringify(listData.files));
+
     const [entityDocId, vzorceDocId, vztahyDocId, strategieDocId] = await Promise.all([
       findDoc(token, "01_Entity", rootId),
       findDoc(token, "02_Vzorce", rootId),
