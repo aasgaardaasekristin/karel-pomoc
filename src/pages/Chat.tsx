@@ -34,6 +34,7 @@ import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
 import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
+import HanaChat from "@/components/hana/HanaChat";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
