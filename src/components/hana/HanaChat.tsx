@@ -540,39 +540,8 @@ const HanaChat = () => {
     </div>
   );
 
-  // When user sends first message without a conversation, create one
-  const ensureConversation = useCallback(async () => {
-    if (conversationId) return conversationId;
-    const { data: newConv } = await supabase
-      .from("karel_hana_conversations")
-      .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }], is_active: true })
-      .select("id")
-      .single();
-    if (newConv) {
-      setConversationId(newConv.id);
-      setChatStarted(true);
-      return newConv.id;
-    }
-    return null;
-  }, [conversationId]);
 
-  // Override sendMessage to ensure conversation exists
-  const originalSendMessage = sendMessage;
-  const wrappedSendMessage = useCallback(async () => {
-    if (!chatStarted) {
-      // Auto-create conversation and show welcome
-      const id = await ensureConversation();
-      if (!id) return;
-      if (messages.length === 0) {
-        setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
-      }
-      setChatStarted(true);
-      // Small delay to let state settle, then send
-      setTimeout(() => originalSendMessage(), 50);
-      return;
-    }
-    originalSendMessage();
-  }, [chatStarted, ensureConversation, messages, originalSendMessage]);
+
 
   return (
     <>
