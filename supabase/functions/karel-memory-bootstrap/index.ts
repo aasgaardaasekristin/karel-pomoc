@@ -316,7 +316,7 @@ async function bootstrapHanaConversations(sb: any, userId: string, apiKey: strin
           summary_user: episode.summary_user || "Konverzace s Karlem",
           summary_karel: episode.summary_karel || "",
           reasoning_notes: episode.reasoning_notes || "",
-          emotional_intensity: episode.emotional_intensity || 3,
+          emotional_intensity: Math.min(5, Math.max(1, episode.emotional_intensity || 3)),
           tags: [...(episode.tags || []), "bootstrap", "hana_conv"],
           derived_facts: episode.derived_facts || [],
           actions_taken: episode.actions_taken || [],
