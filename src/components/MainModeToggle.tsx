@@ -20,8 +20,8 @@ const MainModeToggle = ({ currentMode, onModeChange }: MainModeToggleProps) => {
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          <span className="hidden sm:inline">Režim A – Chat</span>
-          <span className="sm:hidden">Chat</span>
+          <span className="hidden sm:inline">OSOBNÍ</span>
+          <span className="sm:hidden">Osobní</span>
         </button>
         <button
           onClick={() => onModeChange("report")}
