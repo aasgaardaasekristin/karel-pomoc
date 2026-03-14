@@ -253,7 +253,7 @@ const HanaChat = () => {
       // Re-prime context for new thread (silently)
       setTimeout(() => runContextPrime(true), 500);
     }
-  }, [conversationId, messages]);
+  }, [conversationId, messages, runContextPrime]);
 
   const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string }[]) => {
     // Save current conversation first
