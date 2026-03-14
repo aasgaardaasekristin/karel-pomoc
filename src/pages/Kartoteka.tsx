@@ -523,6 +523,23 @@ const Kartoteka = () => {
                             <p className="text-sm mt-1 whitespace-pre-wrap">{s.notes}</p>
                           </div>
                         )}
+                        {/* PDF export */}
+                        <div className="pt-3 border-t border-border">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs h-7"
+                            onClick={() => {
+                              if (!selectedClient) return;
+                              exportSessionReportPdf(selectedClient.name, s)
+                                .then(() => toast.success("PDF uloženo"))
+                                .catch(() => toast.error("Chyba při exportu PDF"));
+                            }}
+                          >
+                            <HardDriveDownload className="w-3 h-3" />
+                            Exportovat PDF
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
