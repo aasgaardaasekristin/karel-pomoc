@@ -32,8 +32,8 @@ const MainModeToggle = ({ currentMode, onModeChange }: MainModeToggleProps) => {
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span className="hidden sm:inline">Režim B – Report</span>
-          <span className="sm:hidden">Report</span>
+          <span className="hidden sm:inline">PRACOVNÍ</span>
+          <span className="sm:hidden">Pracovní</span>
         </button>
       </div>
     </div>
