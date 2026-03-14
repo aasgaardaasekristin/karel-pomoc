@@ -343,11 +343,9 @@ const HanaChat = () => {
     if (isRefreshingMemory) return;
     setIsRefreshingMemory(true);
     try {
-      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel skenuje všechny zdroje a buduje kontextovou cache]*" }]);
       await runContextPrime(false);
-      // Add a summary message using the fresh cache
       if (contextPrimeStats) {
-        setMessages(prev => [...prev, { role: "assistant", content: `✅ *Kontextová cache aktualizována* – ${contextPrimeStats.episodes || 0} epizod, ${contextPrimeStats.entities || 0} entit, ${contextPrimeStats.driveFolders || 0} Drive složek, ${contextPrimeStats.newsAvailable ? "novinky načteny" : "bez novinek"} (${contextPrimeStats.totalMs || 0}ms)` }]);
+        toast.success(`Kontext aktualizován: ${contextPrimeStats.episodes || 0} epizod, ${contextPrimeStats.entities || 0} entit`);
       }
     } catch (error) {
       console.error("Memory refresh error:", error);
