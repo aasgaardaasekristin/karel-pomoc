@@ -297,8 +297,17 @@ const HanaChat = () => {
     }
   }, [isRefreshingMemory, runContextPrime, contextPrimeStats]);
 
+  const mirrorCooldownRef = useRef<number>(0);
+
   const handleMirrorToDrive = useCallback(async () => {
     if (isMirroring) return;
+    // Client-side cooldown: 60s between mirror calls
+    const now = Date.now();
+    if (now - mirrorCooldownRef.current < 60_000) {
+      toast.info("Redistribuce byla spuštěna nedávno. Počkej chvíli.");
+      return;
+    }
+    mirrorCooldownRef.current = now;
     setIsMirroring(true);
     try {
       setMessages(prev => [...prev, { role: "assistant", content: "📤 *[Redistribuuji informace – Karel analyzuje všechna vlákna a ukládá poznatky do Drive]*" }]);
@@ -311,6 +320,13 @@ const HanaChat = () => {
         throw new Error(err.error || `HTTP ${res.status}`);
       }
       const data = await res.json();
+      if (data.status === "skipped") {
+        // Remove the "redistribuuji" message and show skip info
+        setMessages(prev => prev.slice(0, -1));
+        toast.info(data.reason || "Redistribuce již probíhá.");
+        mirrorCooldownRef.current = 0; // Reset cooldown since nothing ran
+        return;
+      }
       const summary = [
         `✅ *Redistribuce dokončena*`,
         `📊 Vlákna analyzována: ${data.counts?.threadsScanned || 0}`,
