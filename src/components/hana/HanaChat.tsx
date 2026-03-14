@@ -14,7 +14,7 @@ import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversal
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 type Message = { role: "user" | "assistant"; content: string };
