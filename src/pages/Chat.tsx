@@ -132,6 +132,16 @@ const Chat = () => {
     setClientCaseSummary(null);
   }, [activeSessionId]);
 
+  // When switching to PRACOVNÍ mode, always show client selection first
+  useEffect(() => {
+    if (mainMode === "report") {
+      clearActiveSession();
+      setLiveSessionStarted(false);
+      setSessionReport(null);
+      setClientCaseSummary(null);
+    }
+  }, [mainMode]);
+
   // Determine hub section from sessionStorage
   const [hubSection] = useState<HubSection>(() => {
     try {
