@@ -267,15 +267,15 @@ Deno.serve(async (req) => {
     // Map actual file names to data types
     const entityDoc = findByPattern(semanticFiles, "osoby");
     const vzorceDoc = findByPattern(semanticFiles, "vzorce");
+    const vztahyDoc = findByPattern(semanticFiles, "vztahy");
     const strategieDoc = findByPattern(proceduralFiles, "strategi");
-    // Relations go into the README_SEMANTIC as there's no dedicated file
-    const semanticReadme = findByPattern(semanticFiles, "readme");
     const episodesDoc = findByPattern(episodesFiles, "readme") || episodesFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
     const logsDoc = findByPattern(logsFiles, "daily_job") || logsFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.document");
 
     const missingDocs: string[] = [];
     if (!entityDoc) missingDocs.push("SEMANTIC/*osoby*");
     if (!vzorceDoc) missingDocs.push("SEMANTIC/*vzorce*");
+    if (!vztahyDoc) missingDocs.push("SEMANTIC/*vztahy*");
     if (!strategieDoc) missingDocs.push("PROCEDURAL/*strategie*");
     if (missingDocs.length) {
       throw new Error(`Chybějící dokumenty v PAMET_KAREL: ${missingDocs.join(", ")}. Vytvořte je prosím ručně.`);
@@ -285,20 +285,16 @@ Deno.serve(async (req) => {
     const updates: Promise<void>[] = [
       updateDoc(token, entityDoc.id, formatEntities(entities)),
       updateDoc(token, vzorceDoc.id, formatPatterns(patterns)),
+      updateDoc(token, vztahyDoc.id, formatRelations(relations)),
       updateDoc(token, strategieDoc.id, formatStrategies(strategies)),
     ];
 
     const docResults: Record<string, string> = {
       entity: `${entityDoc.name} (${entityDoc.id})`,
       patterns: `${vzorceDoc.name} (${vzorceDoc.id})`,
+      relations: `${vztahyDoc.name} (${vztahyDoc.id})`,
       strategies: `${strategieDoc.name} (${strategieDoc.id})`,
     };
-
-    // Relations → README_SEMANTIC
-    if (semanticReadme) {
-      updates.push(updateDoc(token, semanticReadme.id, formatRelations(relations)));
-      docResults.relations = `${semanticReadme.name} (${semanticReadme.id})`;
-    }
     if (episodesDoc) {
       updates.push(updateDoc(token, episodesDoc.id, formatEpisodes(episodes)));
       docResults.episodes = `${episodesDoc.name} (${episodesDoc.id})`;
