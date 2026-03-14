@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, ChevronRight, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,6 +9,7 @@ const CrisisBriefPanel = () => {
   const [briefs, setBriefs] = useState<DbCrisisBrief[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastIdsRef = useRef<string>("");
 
   useEffect(() => {
     const loadBriefs = async () => {
@@ -20,9 +21,13 @@ const CrisisBriefPanel = () => {
         .limit(10);
 
       if (!error && data) {
-        setBriefs(data as unknown as DbCrisisBrief[]);
+        const ids = data.map((d: any) => d.id).join(",");
+        if (ids !== lastIdsRef.current) {
+          lastIdsRef.current = ids;
+          setBriefs(data as unknown as DbCrisisBrief[]);
+        }
       }
-      setLoading(false);
+      if (loading) setLoading(false);
     };
 
     loadBriefs();
