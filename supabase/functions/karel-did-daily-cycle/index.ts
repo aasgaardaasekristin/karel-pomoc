@@ -2770,16 +2770,22 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
-            // Read existing content for dedup
+            // Read existing content for dedup (KHASH + substring check)
             const existingContent = await readFileContent(token, targetFile.id);
+            const hash = contentHash(newContent.trim());
 
-            if (existingContent.includes(newContent.slice(0, 80))) {
-              console.log(`[CENTRUM] Skipping "${docName}" – content already present (dedup)`);
+            if (hasKhash(existingContent, hash)) {
+              console.log(`[CENTRUM] [KHASH-dedup] Skipping "${docName}" – hash ${hash} already present`);
               continue;
             }
 
-            // Append new content with date header
-            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu:\n${newContent}`;
+            if (existingContent.includes(newContent.slice(0, 80))) {
+              console.log(`[CENTRUM] Skipping "${docName}" – content already present (substring dedup)`);
+              continue;
+            }
+
+            // Append new content with date header and KHASH marker
+            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu: [KHASH:${hash}]\n${newContent}`;
             await updateFileById(token, targetFile.id, updatedContent, targetFile.mimeType);
             cardsUpdated.push(`CENTRUM: ${docName} (aktualizace)`);
             console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
