@@ -153,6 +153,8 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
 
       if (!res.ok) throw new Error("Synthesis error");
       const data = await res.json();
+      const synthesizedReport = typeof data.report === "string" ? data.report.trim() : "";
+      if (!synthesizedReport) throw new Error("Prázdný výstup syntézy");
 
       // Save to DB
       const { data: existing } = await supabase
@@ -175,16 +177,17 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
         clientId = newClient.id;
       }
 
-      await supabase.from("client_sessions").insert({
+      const { error: insertError } = await supabase.from("client_sessions").insert({
         client_id: clientId,
         report_key_theme: fields.keyTheme || null,
         report_context: fields.summary || null,
         report_risks: fields.risks ? [fields.risks] : null,
         report_next_session_goal: fields.nextGoal || null,
-        ai_analysis: data.report || null,
+        ai_analysis: synthesizedReport,
         voice_analysis: voiceAnalyses.join("\n\n---\n\n") || null,
         notes: `Syntetizovaný report – ${new Date().toLocaleDateString("cs-CZ")}`,
       });
+      if (insertError) throw insertError;
 
       toast.success("Report syntetizován a uložen na kartu klienta");
       setFields({ ...EMPTY });
