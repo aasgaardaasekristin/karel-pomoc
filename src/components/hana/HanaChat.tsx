@@ -558,53 +558,94 @@ const HanaChat = () => {
       {/* Memory action bar */}
       <div className="border-b border-border bg-card/30">
         <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-          <div className="text-sm text-muted-foreground flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5">
-              <Brain className="w-3.5 h-3.5" />
-              Kognitivní agent
-            </span>
-            {contextPrimeCache && (
-              <span className="inline-flex items-center gap-1 text-xs text-primary">
-                <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                cache aktivní
-              </span>
-            )}
+          <div className="text-sm text-muted-foreground flex items-center gap-1.5">
+            <Brain className="w-3.5 h-3.5" />
+            Kognitivní agent
           </div>
           <div className="flex items-center gap-2">
             <HanaSessionReport messages={messages} disabled={isLoading} />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleMirrorToDrive}
-              disabled={isMirroring || isLoading}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              {isMirroring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
-              <span className="hidden sm:inline">Zrcadlit do Drive</span>
-              <span className="sm:hidden">📤</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleBootstrap}
-              disabled={isBootstrapping || isLoading}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              {isBootstrapping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
-              <span className="hidden sm:inline">Bootstrap paměti</span>
-              <span className="sm:hidden">💾</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRefreshMemory}
-              disabled={isRefreshingMemory || isLoading}
-              className="h-7 px-2 text-xs gap-1"
-            >
-              {isRefreshingMemory ? <Loader2 className="w-3 h-3 animate-spin" /> : <Brain className="w-3 h-3" />}
-              <span className="hidden sm:inline">Osvěž paměť</span>
-              <span className="sm:hidden">🧠</span>
-            </Button>
+
+            {/* Správa popover */}
+            <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1">
+                  <Settings className="w-3 h-3" />
+                  <span>Správa</span>
+                  <ChevronDown className="w-3 h-3" />
+                  {(isMirroring || isBootstrapping || isRefreshingMemory) && (
+                    <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-3 space-y-3">
+                {/* Cache status */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Kontextová cache</span>
+                  {contextPrimeCache ? (
+                    <span className="inline-flex items-center gap-1 text-primary font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      aktivní
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground/50">neaktivní</span>
+                  )}
+                </div>
+
+                {/* Archive stats */}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground flex items-center gap-1">
+                    <Archive className="w-3 h-3" />
+                    Archivované epizody
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1.5 text-xs text-primary hover:text-primary/80"
+                    onClick={() => {
+                      loadArchiveSummaries();
+                      setShowArchiveDialog(true);
+                      setSpravaOpen(false);
+                    }}
+                  >
+                    {archivedCount} →
+                  </Button>
+                </div>
+
+                <div className="border-t border-border pt-2 space-y-1.5">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }}
+                    disabled={isMirroring || isLoading}
+                    className="w-full justify-start h-8 px-2 text-xs gap-2"
+                  >
+                    {isMirroring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                    Zrcadlit do Drive
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { handleBootstrap(); setSpravaOpen(false); }}
+                    disabled={isBootstrapping || isLoading}
+                    className="w-full justify-start h-8 px-2 text-xs gap-2"
+                  >
+                    {isBootstrapping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                    Bootstrap paměti
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { handleRefreshMemory(); setSpravaOpen(false); }}
+                    disabled={isRefreshingMemory || isLoading}
+                    className="w-full justify-start h-8 px-2 text-xs gap-2"
+                  >
+                    {isRefreshingMemory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Brain className="w-3.5 h-3.5" />}
+                    Osvěž paměť
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <HanaThreadHistory
               currentConversationId={conversationId}
               onSwitchThread={handleSwitchThread}
