@@ -335,6 +335,11 @@ serve(async (req) => {
       `[${ep.timestamp_start?.slice(0, 10)}] ${ep.domain} | ${ep.summary_user?.slice(0, 80)}`
     ).join("\n");
 
+    // Archive summaries digest (compressed long-term memory)
+    const archiveDigest = archiveSummaries.map((a: any) =>
+      `[${a.timestamp_start?.slice(0, 10)} – ${a.timestamp_end?.slice(0, 10)}] ${a.tags?.join(", ")}\n${a.summary_karel?.slice(0, 1500)}`
+    ).join("\n---\n");
+
     // Drive digest
     const driveDigestParts: string[] = [];
     for (const [folder, docs] of Object.entries(driveData)) {
