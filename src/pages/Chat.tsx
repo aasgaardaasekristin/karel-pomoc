@@ -1983,7 +1983,7 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
                 )}
               </div>
             </>
-          )
+          )}
         </>
       )}
       {studyMaterial && <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />}
