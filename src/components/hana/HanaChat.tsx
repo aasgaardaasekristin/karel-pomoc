@@ -221,7 +221,7 @@ const HanaChat = () => {
     setIsRefreshingMemory(true);
     try {
       // Add a system-like message indicating memory refresh
-      setMessages(prev => [...prev, { role: "user", content: "🧠 *[Osvěžuji paměť – Karel přehodnocuje kontext]*" }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "🧠 *[Osvěžuji paměť – Karel přehodnocuje kontext]*" }]);
       
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -414,7 +414,7 @@ const HanaChat = () => {
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
       setMessages(prev => [...prev,
-        { role: "user", content: "🎙️ *[Audio nahrávka odeslána k analýze]*" },
+        { role: "assistant", content: "🎙️ *[Audio nahrávka analyzována]*" },
         { role: "assistant", content: analysis },
       ]);
       audioRecorder.discardRecording();
@@ -432,7 +432,7 @@ const HanaChat = () => {
     setIsFileAnalyzing(true);
     try {
       const attSummary = attachments.map(a => `📎 ${a.name}`).join(", ");
-      setMessages(prev => [...prev, { role: "user", content: `🔍 *[Analýza příloh: ${attSummary}]*` }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `🔍 *[Analýza příloh: ${attSummary}]*` }]);
       const headers = await getAuthHeaders();
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`, {
         method: "POST", headers,
