@@ -84,9 +84,12 @@ const SessionSidebar = () => {
   return (
     <div className="w-full sm:w-48 md:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border bg-card/50 flex flex-col h-auto sm:h-full max-h-[45svh] sm:max-h-none">
       <div className="p-3 border-b border-border">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Sezení ({sessions.length}/5)
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Sezení s klientem
+          </h3>
+          <span className="text-[10px] text-muted-foreground">({sessions.length}/5)</span>
+        </div>
 
         {/* Quick add */}
         <div className="space-y-2">
