@@ -37,6 +37,8 @@ import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
+import LiveSessionPanel from "@/components/report/LiveSessionPanel";
+import PostSessionTools from "@/components/report/PostSessionTools";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
