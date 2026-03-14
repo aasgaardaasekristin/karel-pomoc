@@ -12,7 +12,22 @@ import { corsHeaders } from "../_shared/auth.ts";
  * - ZALOHA (klienti)
  * 
  * Zároveň aktualizuje DB paměťové tabulky.
+ * 
+ * DEDUP GUARDS:
+ * 1. Content hash markers [KHASH:xxxx] v Drive dokumentech – skip pokud hash existuje
+ * 2. Concurrency lock přes karel_memory_logs – jen 1 redistribute najednou
+ * 3. DB upsert s deduplikací entit/vzorců na základě ID/jména
  */
+
+// ── Content hash (FNV-1a 32bit) ──
+function contentHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
 
 // ── OAuth2 ──
 async function getAccessToken(): Promise<string> {
