@@ -1,136 +1,46 @@
 
-# Vylepšení DID režimu – Komplexní plán
 
-## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-8)
+## Problem
 
-## Co bylo provedeno
+Clicking "Zrcadlit do Drive" twice rapidly results in **both calls executing fully**. The client-side cooldown (`mirrorCooldownRef`) and the `isMirroring` state guard both fail to prevent the second call because:
 
-### ✅ 1. Drive read/write funkce
-- `supabase/functions/karel-did-drive-read/index.ts` – čte dokumenty ze složky Kartoteka_DID
-- `supabase/functions/karel-did-drive-write/index.ts` – zapisuje/aktualizuje dokumenty
+1. **State guard (`isMirroring`)**: Two clicks in rapid succession both fire before React re-renders with `isMirroring = true`.
+2. **Ref cooldown**: Should work in theory (refs are synchronous), but the `useCallback` with `[isMirroring]` dependency may cause issues — when the callback is recreated on re-render, the ref check runs correctly, but both clicks use the **same callback closure** before any re-render happens.
 
-### ✅ 2. Odstranění Document Gate + automatické načítání
-- Smazána `DidDocumentGate.tsx`
-- Po výběru podrežimu Karel automaticky načte dokumenty z Drive
-- Loading indikátor během načítání
+The root cause is likely that both synchronous click handlers run in the same React batch, and both see `mirrorCooldownRef.current = 0` if they execute in the exact same tick.
 
-### ✅ 3. Nová tlačítka (deník, vzkaz, záloha)
-- `DidActionButtons.tsx` – Zapsat do deníku, Vzkaz mamce, Vzkaz Káti, Záloha na Drive, Ukončit rozhovor
-- Tlačítka se zobrazují kontextově (deník/vzkazy jen v cast režimu)
+## Fix — Two changes
 
-### ✅ 4. Automatické emaily po ukončení hovoru
-- `karel-email-report` rozšířen o typy: did_handover, did_message_mom, did_message_kata
-- Automatický email po ukončení rozhovoru s částí
+### 1. Add a dedicated `isMirroringRef` (synchronous mutex)
+Replace the `isMirroring` state check with a **ref-based mutex** that updates synchronously within the handler, before any async work:
 
-### ✅ 5. Podrežim Káťa
-- Přidán 4. podrežim "Káťa mluví s Karlem" (kata)
-- Vlastní system prompt (kataPrompt)
-- Typ přidán do ChatContext
+```typescript
+const isMirroringRef = useRef(false);
 
-### ✅ 6. Aktualizace system promptu
-- Kompletní přepis childcarePrompt – odstranění NotebookLM referencí
-- Nový kataPrompt pro Káťu
-- Zákaz vymýšlení citací
-- Instrukce pro automatické emaily a Drive integraci
+const handleMirrorToDrive = useCallback(async () => {
+  // Synchronous mutex — prevents any concurrent execution
+  if (isMirroringRef.current) {
+    toast.info("Redistribuce byla spuštěna nedávno. Počkej chvíli.");
+    return;
+  }
+  isMirroringRef.current = true;
+  setIsMirroring(true); // for UI (disabled state, spinner)
+  
+  try {
+    // ... existing logic ...
+  } finally {
+    setIsMirroring(false);
+    // Keep mutex locked for 60s cooldown
+    setTimeout(() => { isMirroringRef.current = false; }, 60_000);
+  }
+}, []); // No dependencies needed — ref-based
+```
 
-### ✅ 7. Automatické přepnutí do supervize
-- Po ukončení hovoru s částí Karel automaticky přepne do režimu mamka
+This eliminates the `mirrorCooldownRef` entirely and replaces it with a single ref that acts as both mutex and cooldown.
 
-### ✅ 8. Thread-per-part architektura (Fáze 1)
-- DB tabulky `did_threads` + `did_update_cycles` s RLS
-- Hook `useDidThreads` pro CRUD na vláknech
-- `DidDashboard` – přehled aktivity částí (aktivní/spí/varování)
-- `DidThreadList` – seznam aktivních vláken s 24h pamětí
-- `DidPartIdentifier` – "Kdo teď mluví?" s výběrem/zadáním jména
-- Nový DID flow: Dashboard → Submode → Thread List → Part ID → Chat
-- Auto-save vláken do DB každých 5s
+### 2. Remove `[isMirroring]` dependency from `useCallback`
+The current `[isMirroring]` dependency causes the callback to be recreated on every state change, which is unnecessary when using refs. The new callback will have **no dependencies** (`[]`), ensuring a single stable function reference.
 
-### ✅ 9. Denní cyklus (14:00 CET)
-- `karel-did-daily-cycle` edge function
-- pg_cron schedule: `0 13 * * *` UTC (14:00 CET)
-- 5 kroků: sběr → AI analýza → Drive update (sekce E/G/J/K/L) → email → uvolnění paměti
-- Manuální spuštění tlačítkem "Aktualizovat nyní"
+### Files to edit
+- `src/components/hana/HanaChat.tsx` — Replace `mirrorCooldownRef` + `isMirroring` check with `isMirroringRef` mutex pattern.
 
-### ✅ 10. Týdenní cyklus (Fáze 2)
-- `karel-did-weekly-cycle` edge function
-- pg_cron schedule: `0 9 * * 0` UTC (neděle 10:00 CET)
-- Čte VŠECHNY karty z Drive, analyzuje aktivitu za celý týden
-- Aktualizuje 06_Strategicky_Vyhled (7 sekcí)
-- Detekce neaktivních částí (7+ dní)
-- Týdenní report na email (mamka + Káťa)
-
-### ✅ 11. Automatická 24h záloha (Fáze 3)
-- Při vstupu do DID režimu Dashboard kontroluje poslední denní cyklus z DB
-- Pokud > 24h od posledního, automaticky spouští `karel-did-daily-cycle`
-- Toast notifikace o průběhu a dokončení
-
-### ✅ 12. Perplexity integrace v DID režimu (Fáze 3)
-- Tlačítko "Hledat metody" dostupné ve VŠECH DID podrežimech
-- `karel-did-research` přijímá `partName` pro kontextově specifické vyhledávání
-- Perplexity sonar-pro hledá DID terapeutické metody
-
-### ✅ 13. Audio tandem režim (Fáze 4)
-- `karel-audio-analysis` rozšířen o DID-specifický tandem kontext
-
-### ✅ 14. Vizualizace systému (Fáze 5)
-- `DidSystemMap.tsx` – interaktivní mapa částí s barvami podle aktivity
-
-### ✅ 15. Automatická detekce vzorců (Fáze 5)
-- `karel-did-patterns` edge function – analyzuje 30 dní dat
-- `DidPatternPanel.tsx` – UI pro zobrazení vzorců, alertů a trendů
-
-### ✅ 16. PDF Export DID Reportu (Fáze 6)
-- `src/lib/didPdfExport.ts` – generování kompletního PDF reportu
-
-### ✅ 17. Nová architektura 00_CENTRUM (Fáze 7)
-- **05_Operativni_Plan** (6 sekcí) nahrazuje starý 05_Terapeuticky_Plan
-  - Sekce: Aktivní části, Plán sezení, Aktivní úkoly, Koordinace, Rizika, Karlovy poznámky
-  - Denní cyklus jej kompletně přepisuje
-- **06_Strategicky_Vyhled** (7 sekcí) nahrazuje složku 06_Terapeuticke_Dohody
-  - Sekce: Vize systému, Střednědobé cíle, Dlouhodobé cíle, Strategie práce s částmi, Odložená témata, Archiv splněných cílů, Karlova strategická reflexe
-  - Týdenní cyklus přepisuje, měsíční provádí hloubkovou revizi
-- Koncept individuálních souborů dohod v podsložkách zrušen
-- Zpětná kompatibilita se starými názvy dokumentů zachována
-
-### ✅ 18. Accountability Engine + Personalizované vedení (Fáze 8)
-- **Accountability Engine** v denním cyklu:
-  - Načtení nesplněných úkolů z `did_therapist_tasks`
-  - Povinný blok [ACCOUNTABILITY] s hodnocením 1-10
-  - Automatická eskalace priority u úkolů starších 3 dní
-  - Podmíněná "pozvánka na poradu" v emailech
-- **Proaktivní dotazování** v chat promptech:
-  - Runtime injection nesplněných úkolů do `karel-chat` při režimu mamka/kata
-  - Karel se aktivně ptá: "Hani/Káťo, jak dopadlo [úkol]?"
-- **Personalizované vedení terapeutů**:
-  - Profil Hanky (denní péče, Písek, emoční zázemí)
-  - Profil Káti (koordinace na dálku, Budějovice, škola Townshend, senzorická terapie)
-  - Adaptační algoritmus – Karel se učí silné/slabé stránky
-  - Karlovy vzpomínky z dětství pro budování důvěry
-- **Mechanismus porad** – Karel svolává strukturované sezení při:
-  - Úkol nesplněn 3+ dny
-  - Terapeutky nekomunikovaly 5+ dní
-  - Strategický nesoulad nebo stagnace cílů
-- **Aktualizované edge funkce**: karel-chat, karel-did-daily-cycle, karel-did-weekly-cycle, karel-did-monthly-cycle, karel-did-drive-write, karel-did-session-prep
-
-### ✅ 19. Karlův ranní brief (Fáze 9)
-- `karel-did-morning-brief` edge function
-- pg_cron schedule: `0 6 * * *` UTC (7:00 CET)
-- Načte: nesplněné úkoly, motivační profily, aktivitu za 24h, operativní plán z Drive
-- AI generuje personalizovaný brief pro Hanku i Káťu paralelně (Gemini Flash Lite)
-- Formát: Priorita dne, 3 top úkoly, personalizovaný tip, motivace
-- Email přes Resend oběma terapeutkám
-
-### ✅ 20. Smart Activity Recommender (Fáze 9)
-- Rozšíření `karel-chat` runtime injection
-- Parsuje TALENT záznamy ze sekce H karet v didInitialContext
-- Extrahuje talenty/zájmy z kontextu pomocí regex (formát TALENT|ÚROVEŇ|AKTIVITA)
-- Injektuje personalizovaná doporučení do system promptu
-- Karel proaktivně navrhuje rozvíjející aktivity na míru talentu každé části
-
-### ✅ 21. Drive Auto-Cleanup (Fáze 9)
-- Rozšíření `karel-did-monthly-cycle` o auditní krok
-- Skenuje VŠECHNY podsložky kartotéky na Drive
-- Detekuje: .txt/.md soubory (nekonvertované), duplicitní karty, prázdné dokumenty
-- Výsledky zahrnuty v měsíčním emailovém reportu jako "📋 Návrh na úklid"
-- Karel nic nesmaže — pouze navrhuje (bezpečnost)
-- API response obsahuje `cleanupIssues` pole
