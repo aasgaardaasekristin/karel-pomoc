@@ -264,8 +264,27 @@ serve(async (req) => {
       return [...new Set(hits)];
     };
 
+    // ── Registry whitelist: ONLY parts that exist in did_part_registry ──
+    const registryPartKeys = new Set(
+      (registry || []).map((r: any) => normalizeKey(r.part_name || r.display_name || "")).filter(Boolean)
+    );
+    const activePartNames = (registry || [])
+      .filter((r: any) => r.status === "active" || r.status === "aktivní")
+      .map((r: any) => r.display_name || r.part_name)
+      .filter(Boolean);
+
+    // Filter threads to ONLY include parts that exist in registry
+    const filteredLast24hThreads = (last24hThreads || []).filter((t: any) => {
+      if (t?.sub_mode !== "cast") return true; // mamka/kata threads always pass
+      return registryPartKeys.has(normalizeKey(t.part_name || ""));
+    });
+    const filteredRecentThreads = (recentThreads || []).filter((t: any) => {
+      if (t?.sub_mode !== "cast") return true;
+      return registryPartKeys.has(normalizeKey(t.part_name || ""));
+    });
+
     const directThreadActivity = new Set(
-      (last24hThreads || [])
+      filteredLast24hThreads
         .filter((t: any) => t?.sub_mode === "cast")
         .map((t: any) => normalizeKey(t.part_name || ""))
         .filter(Boolean)
