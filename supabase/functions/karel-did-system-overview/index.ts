@@ -144,8 +144,13 @@ serve(async (req) => {
     
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
-      const lastMsgs = msgs.slice(-4).map((m: any) => `${m.role}: ${(m.content || "").slice(0, 200)}`).join("\n");
-      return `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${lastMsgs}\n`;
+      const userRole = t.sub_mode === "cast" ? "ČÁST" : "TERAPEUT";
+      const userMsgs = msgs
+        .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
+        .slice(-6)
+        .map((m: any) => `[${userRole}] ${(m.content || "").slice(0, 260)}`)
+        .join("\n");
+      return `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${userMsgs || "(bez user zpráv)"}\n`;
     };
 
     if (last24hThreads) {
