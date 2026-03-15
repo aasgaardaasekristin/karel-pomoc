@@ -1985,45 +1985,50 @@ Formát HTML emailu:
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
 
-    const threadSummaries = reportThreads.map(t => {
-      const msgs = ((t.messages as any[]) || []).slice(-20);
-      
-      // ═══ ROLE LABELING: Rozliš kdo mluví podle sub_mode ═══
+    const allowedRegistryNames = new Set(
+      (registryContext?.entries || []).map((entry) => canonicalText(entry.name)).filter(Boolean)
+    );
+
+    const threadSummaries = reportThreads.map((t) => {
+      const allMsgs = ((t.messages as any[]) || []).slice(-30);
+      const userMsgs = allMsgs.filter((m: any) => m?.role === "user" && typeof m?.content === "string");
+
       const isCastMode = (t.sub_mode || "cast") === "cast";
       const userLabel = isCastMode ? "ČÁST" : "TERAPEUT";
-      const modeNote = isCastMode 
-        ? "" 
-        : `\n⚠️ REŽIM "${t.sub_mode}": Uživatel je TERAPEUT (${t.sub_mode === "mamka" ? "Hanka" : t.sub_mode === "kata" ? "Káťa" : "terapeut"}), NE část! Jakékoli zmínky o částech v tomto rozhovoru jsou jen dotazy/konzultace – NEZNAMENÁ to, že se část probudila nebo je aktivní.`;
+      const modeNote = isCastMode
+        ? ""
+        : `\n⚠️ REŽIM "${t.sub_mode}": Uživatel je terapeut, zmínky o částech v tomto vlákně nejsou důkaz aktivace.`;
 
-      // ═══ SWITCH DETECTION: Detect if part changed mid-thread ═══
-      // Find last user message that looks like a self-identification
       let detectedSwitch = "";
       if (isCastMode) {
-        for (let i = msgs.length - 1; i >= 0; i--) {
-          const m = msgs[i];
-          if (m.role !== "user" || typeof m.content !== "string") continue;
-          const switchMatch = m.content.match(/(?:jsem|já jsem|tady|i am|i'm|my name is)\s+([A-ZÁ-Ž][a-zá-ž]{1,20})/i);
-          if (switchMatch) {
-            const detectedName = switchMatch[1].trim();
-            const originalName = (t.part_name || "").trim().toLowerCase();
-            if (detectedName.toLowerCase() !== originalName) {
-              detectedSwitch = detectedName;
-            }
-            break;
+        for (let i = userMsgs.length - 1; i >= 0; i--) {
+          const candidate = detectExplicitSelfIdentification(userMsgs[i].content || "");
+          if (!candidate) continue;
+          const candidateCanonical = canonicalText(candidate);
+          if (allowedRegistryNames.size > 0 && !allowedRegistryNames.has(candidateCanonical)) continue;
+          const originalCanonical = canonicalText(t.part_name || "");
+          if (candidateCanonical && candidateCanonical !== originalCanonical) {
+            detectedSwitch = candidate;
           }
+          break;
         }
       }
-      
-      const switchNote = detectedSwitch 
-        ? `\n⚠️ SWITCH DETEKOVÁN: Vlákno začalo jako "${t.part_name}" ale část se představila jako "${detectedSwitch}". Přiřaď konverzaci k POSLEDNÍ identifikované části (${detectedSwitch}), NE k původní (${t.part_name}).`
+
+      const switchNote = detectedSwitch
+        ? `\n⚠️ SWITCH DETEKOVÁN (ověřený): vlákno "${t.part_name}" se v průběhu představilo jako "${detectedSwitch}".`
         : "";
-      
-      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${modeNote}${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? userLabel : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
+
+      const userTranscript = userMsgs
+        .slice(-12)
+        .map((m: any) => `[${userLabel}]: ${clipText(m.content || "", 320)}`)
+        .join("\n");
+
+      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${modeNote}${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet USER zpráv: ${userMsgs.length}\n\nUSER KONVERZACE (jediný důkazní zdroj):\n${userTranscript || "(bez user zpráv)"}`;
     }).join("\n\n---\n\n");
 
-    const convSummaries = reportConversations.map(c => {
-      const msgs = ((c.messages as any[]) || []).slice(-20);
-      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
+    const convSummaries = reportConversations.map((c) => {
+      const userMsgs = (((c.messages as any[]) || []).filter((m: any) => m?.role === "user" && typeof m?.content === "string")).slice(-12);
+      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nUSER KONVERZACE:\n${userMsgs.map((m: any) => `[UŽIVATEL]: ${clipText(m.content || "", 320)}`).join("\n") || "(bez user zpráv)"}`;
     }).join("\n\n---\n\n");
 
     // Compile DID-relevant research thread summaries
