@@ -369,17 +369,32 @@ Pokud karta nezmiňuje žádné vztahy, vrať prázdné pole relations.`
               for (const rel of relations.slice(0, 10)) {
                 if (!rel.target_name || !rel.relation) continue;
                 const objectId = `did_cast_${rel.target_name.toLowerCase().replace(/\s+/g, "_")}`;
-                const { error: relErr } = await sb.from("karel_semantic_relations").upsert({
-                  user_id: user.id,
-                  subject_id: subjectId,
-                  relation: rel.relation,
-                  object_id: objectId,
-                  description: rel.description || "",
-                  confidence: Math.min(1, Math.max(0.1, rel.confidence || 0.5)),
-                  updated_at: new Date().toISOString(),
-                }, { onConflict: "subject_id,relation,object_id" });
-                if (relErr) console.error(`[bootstrap] Relation error ${card.partName}->${rel.target_name}:`, relErr);
-                else relOkCount++;
+                // Check for existing relation to avoid duplicates
+                const { data: existing } = await sb.from("karel_semantic_relations")
+                  .select("id")
+                  .eq("user_id", user.id)
+                  .eq("subject_id", subjectId)
+                  .eq("relation", rel.relation)
+                  .eq("object_id", objectId)
+                  .limit(1);
+                if (existing && existing.length > 0) {
+                  // Update existing
+                  const { error: relErr } = await sb.from("karel_semantic_relations")
+                    .update({ description: rel.description || "", confidence: Math.min(1, Math.max(0.1, rel.confidence || 0.5)), updated_at: new Date().toISOString() })
+                    .eq("id", existing[0].id);
+                  if (!relErr) relOkCount++;
+                } else {
+                  const { error: relErr } = await sb.from("karel_semantic_relations").insert({
+                    user_id: user.id,
+                    subject_id: subjectId,
+                    relation: rel.relation,
+                    object_id: objectId,
+                    description: rel.description || "",
+                    confidence: Math.min(1, Math.max(0.1, rel.confidence || 0.5)),
+                  });
+                  if (relErr) console.error(`[bootstrap] Relation error ${card.partName}->${rel.target_name}:`, relErr);
+                  else relOkCount++;
+                }
               }
               relationsCount = relOkCount;
               relationsOk = relOkCount > 0;
