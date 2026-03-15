@@ -1811,18 +1811,29 @@ serve(async (req) => {
     const recentHanaConversations = hanaConvRows ?? [];
     console.log(`[daily-cycle] Hana conversations (24h): ${recentHanaConversations.length}`);
 
-    // Load DID-relevant research threads for therapeutic plan context
-    const { data: researchThreadRows } = await sb.from("research_threads").select("*").eq("is_deleted", false);
-    const researchThreads = (researchThreadRows ?? []).filter((rt: any) => {
-      // Filter to DID-relevant threads by checking topic and message content
-      const topic = (rt.topic || "").toLowerCase();
-      const didKeywords = ["did", "disociat", "fragment", "část", "part", "alter", "system", "kluk", "kluci", "dítě", "deti", "trauma", "dissoci", "kartoteka", "kartotéka"];
-      return didKeywords.some(kw => topic.includes(kw)) || 
-        ((rt.messages as any[]) || []).some((m: any) => 
-          typeof m.content === "string" && didKeywords.some(kw => m.content.toLowerCase().includes(kw))
-        );
-    });
-    console.log(`[daily-cycle] Research threads loaded: ${researchThreadRows?.length || 0} total, ${researchThreads.length} DID-relevant`);
+    // ═══ ALL-MODE SCAN: Load client sessions, crisis briefs, client tasks from last 24h ═══
+    const { data: recentClientSessionRows } = await sb.from("client_sessions")
+      .select("id, client_id, session_date, notes, ai_analysis, ai_hypotheses, ai_recommended_methods, ai_risk_assessment, voice_analysis, report_key_theme, report_context, report_transference, report_risks, report_therapist_emotions, report_interventions_tried, report_next_session_goal")
+      .gte("updated_at", cutoff24h);
+    const recentClientSessions = recentClientSessionRows ?? [];
+    console.log(`[daily-cycle] Client sessions (24h): ${recentClientSessions.length}`);
+
+    const { data: recentCrisisBriefRows } = await sb.from("crisis_briefs")
+      .select("id, scenario, risk_score, risk_overview, recommended_contact, next_steps, raw_brief, created_at")
+      .gte("created_at", cutoff24h);
+    const recentCrisisBriefs = recentCrisisBriefRows ?? [];
+    console.log(`[daily-cycle] Crisis briefs (24h): ${recentCrisisBriefs.length}`);
+
+    const { data: recentClientTaskRows } = await sb.from("client_tasks")
+      .select("id, task, method, status, notes, result, due_date, updated_at")
+      .gte("updated_at", cutoff24h);
+    const recentClientTasks = recentClientTaskRows ?? [];
+    console.log(`[daily-cycle] Client tasks (24h): ${recentClientTasks.length}`);
+
+    // Load ALL research threads (not just DID-relevant – Karel must scan everything)
+    const { data: researchThreadRows } = await sb.from("research_threads").select("*").eq("is_deleted", false).gte("last_activity_at", cutoff24h);
+    const researchThreads = researchThreadRows ?? [];
+    console.log(`[daily-cycle] Research threads (24h): ${researchThreads.length}`);
 
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
