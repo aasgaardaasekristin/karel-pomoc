@@ -40,6 +40,8 @@ import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
 import LiveSessionPanel from "@/components/report/LiveSessionPanel";
 import DidLiveSessionPanel from "@/components/did/DidLiveSessionPanel";
+import DidPartSelector from "@/components/did/DidPartSelector";
+import DidPartCard from "@/components/did/DidPartCard";
 import PostSessionTools from "@/components/report/PostSessionTools";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
