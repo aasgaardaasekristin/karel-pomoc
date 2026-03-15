@@ -2159,6 +2159,8 @@ Datum: ${dateStr}` },
       clientSessionSummaries ? `\n\n=== KLIENTSKÁ SEZENÍ (posledních 24h) ===\n\n${clientSessionSummaries}` : "",
       crisisBriefSummaries ? `\n\n=== KRIZOVÉ BRIEFY (posledních 24h) ===\n\n${crisisBriefSummaries}` : "",
       clientTaskSummaries ? `\n\n=== ÚKOLY KLIENTŮ (posledních 24h) ===\n\n${clientTaskSummaries}` : "",
+      therapistProfileContext ? `\n\n=== PROFILACE TERAPEUTŮ (dlouhodobá) ===\n\n${therapistProfileContext}` : "",
+      pendingTasksSummary ? `\n\n=== NESPLNĚNÉ ÚKOLY TERAPEUTŮ ===\n\n${pendingTasksSummary}` : "",
     ].filter(Boolean).join("\n\n");
 
     const registryCanonicalParts = new Set(
