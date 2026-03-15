@@ -2187,6 +2187,23 @@ Datum: ${dateStr}` },
       return `- Úkol: ${ct.task} | Metoda: ${ct.method || "?"} | Stav: ${ct.status} | Poznámky: ${clip(ct.notes || "", 150)}${ct.result ? ` | Výsledek: ${clip(ct.result, 150)}` : ""}`;
     }).filter(Boolean).join("\n");
 
+    // ═══ ALL-MODE: DID meeting summaries ═══
+    const meetingSummaries = recentMeetings.map((m: any) => {
+      const msgs = ((m.messages as any[]) || []).slice(-10);
+      const msgText = msgs.map((msg: any) => `[${msg.therapist || msg.role}]: ${clipText(msg.content || "", 300)}`).join("\n");
+      return `=== DID Porada: ${m.topic} (status: ${m.status}, triggered: ${m.triggered_by}) ===\nVytvořeno: ${m.created_at}\nAgenda: ${m.agenda || "?"}\n${m.outcome_summary ? `Výsledek: ${m.outcome_summary}` : ""}\n\nZprávy:\n${msgText || "(prázdné)"}`;
+    }).filter(Boolean).join("\n\n---\n\n");
+
+    // ═══ ALL-MODE: Episode summaries ═══
+    const episodeSummaries = recentEpisodes.map((ep: any) => {
+      return `- Epizoda (${ep.domain}): ${clip(ep.summary_karel || ep.summary_user || "", 300)} | účastníci: ${(ep.participants || []).join(",")} | tagy: ${(ep.tags || []).join(",")} | intenzita: ${ep.emotional_intensity}/5 | stav: ${ep.hana_state}`;
+    }).filter(Boolean).join("\n");
+
+    // ═══ ALL-MODE: Pulse check summaries ═══
+    const pulseSummaries = recentPulseChecks.map((pc: any) => {
+      return `- Pulse (${pc.respondent}, ${pc.week_start}): tým=${pc.team_feeling}/5, priority=${pc.priority_clarity}/5${pc.karel_feedback ? ` | Karel: ${clip(pc.karel_feedback, 150)}` : ""}`;
+    }).filter(Boolean).join("\n");
+
     const allSummaries = [
       threadSummaries, 
       convSummaries, 
@@ -2195,6 +2212,9 @@ Datum: ${dateStr}` },
       clientSessionSummaries ? `\n\n=== KLIENTSKÁ SEZENÍ (posledních 24h) ===\n\n${clientSessionSummaries}` : "",
       crisisBriefSummaries ? `\n\n=== KRIZOVÉ BRIEFY (posledních 24h) ===\n\n${crisisBriefSummaries}` : "",
       clientTaskSummaries ? `\n\n=== ÚKOLY KLIENTŮ (posledních 24h) ===\n\n${clientTaskSummaries}` : "",
+      meetingSummaries ? `\n\n=== DID PORADY (posledních 24h) ===\n\n${meetingSummaries}` : "",
+      episodeSummaries ? `\n\n=== EPIZODICKÁ PAMĚŤ (posledních 24h) ===\n\n${episodeSummaries}` : "",
+      pulseSummaries ? `\n\n=== PULSE CHECKS TERAPEUTŮ (posledních 7 dní) ===\n\n${pulseSummaries}` : "",
       therapistProfileContext ? `\n\n=== PROFILACE TERAPEUTŮ (dlouhodobá) ===\n\n${therapistProfileContext}` : "",
       pendingTasksSummary ? `\n\n=== NESPLNĚNÉ ÚKOLY TERAPEUTŮ ===\n\n${pendingTasksSummary}` : "",
     ].filter(Boolean).join("\n\n");
