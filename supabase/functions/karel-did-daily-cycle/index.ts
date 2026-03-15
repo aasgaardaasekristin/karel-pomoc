@@ -1435,6 +1435,7 @@ async function updateCardSections(
 
   const updatedKeys: string[] = [];
   let dedupSkips = 0;
+  let semanticDedupSkips = 0;
   for (const [letter, newContent] of Object.entries(newSections)) {
     const ul = letter.toUpperCase();
     if (!SECTION_ORDER.includes(ul)) continue;
@@ -1446,6 +1447,16 @@ async function updateCardSections(
       console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" – hash ${hash} already present`);
       dedupSkips++;
       continue;
+    }
+
+    // SEMANTIC DEDUP: AI-powered similarity gate (after KHASH, before write)
+    if (existing && existing !== "(zatím prázdné)" && existing.length > 30) {
+      const dedupResult = await semanticDedupCheck(newContent, existing, ul, partName);
+      if (dedupResult.isDuplicate) {
+        console.log(`[SEMANTIC-DEDUP] ⛔ Blocked section ${ul} for "${partName}": "${dedupResult.reason}"`);
+        semanticDedupSkips++;
+        continue;
+      }
     }
     
     const timestamped = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
