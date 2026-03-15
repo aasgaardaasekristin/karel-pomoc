@@ -26,7 +26,7 @@ serve(async (req) => {
     if (!partName) throw new Error("Missing partName");
 
     // Parallel data fetch
-    const [regRes, threadsRes, sessionsRes, tasksRes, episodesRes] = await Promise.all([
+    const [regRes, threadsRes, sessionsRes, tasksRes, episodesRes, systemProfileRes] = await Promise.all([
       sb.from("did_part_registry").select("*").eq("part_name", partName).maybeSingle(),
       sb.from("did_threads").select("id, sub_mode, messages, last_activity_at, started_at")
         .eq("part_name", partName).order("last_activity_at", { ascending: false }).limit(20),
@@ -36,6 +36,7 @@ serve(async (req) => {
         .neq("status", "done").order("created_at", { ascending: false }).limit(30),
       sb.from("karel_episodes").select("summary_karel, domain, tags, actions_taken, outcome, participants, timestamp_start")
         .eq("domain", "DID").order("timestamp_start", { ascending: false }).limit(15),
+      sb.from("did_system_profile").select("system_identity, goals_short_term, goals_mid_term, goals_long_term, integration_strategy, inner_world_description, education_context, part_contributions, karel_master_analysis").maybeSingle(),
     ]);
 
     const registry = regRes.data;
