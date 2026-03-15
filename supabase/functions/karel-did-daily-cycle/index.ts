@@ -1865,31 +1865,45 @@ Poslední aktivita: ${p.last_active_at || "neznámo"}
 Poznámky Karla: ${p.notes || "(žádné)"}`;
     }).join("\n\n");
 
-    // ═══ COOLDOWN: Prevent duplicate cycles – MAX 1 per calendar day (Prague timezone) ═══
-    // Manual triggers from UI bypass this check (source !== "cron")
-    const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-    const todayStartUtc = new Date(`${todayPrague}T00:00:00+01:00`).toISOString(); // CET approximation
-    const { data: todayDailyCycles } = await sb.from("did_update_cycles")
-      .select("id, completed_at, status")
-      .eq("cycle_type", "daily")
-      .in("status", ["completed", "running"])
-      .gte("started_at", todayStartUtc)
-      .order("completed_at", { ascending: false })
-      .limit(5);
-
-    const completedToday = (todayDailyCycles || []).filter(c => c.status === "completed");
+    // ═══ SLOT-BASED COOLDOWN: Allow both 06:00 and 14:00 CET cycles ═══
+    // Each slot has its own 6-hour cooldown window, preventing duplicates within a slot
+    // but allowing both morning (06:00) and afternoon (14:00) cycles to run.
     const isManualTrigger = !isCronCall || requestBody?.source === "manual";
 
-    if (completedToday.length > 0 && !isManualTrigger) {
-      console.log(`[daily-cycle] Cooldown: ${completedToday.length} completed cycle(s) today (${todayPrague}), skipping cron run.`);
-      return new Response(JSON.stringify({
-        success: true,
-        skipped: true,
-        reason: "cooldown_same_day",
-        completedToday: completedToday.length,
-        lastCompletedAt: completedToday[0].completed_at,
-        cycleId: completedToday[0].id,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!isManualTrigger) {
+      const nowPrague = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
+      const pragueHour = nowPrague.getHours();
+      // Determine which slot this cron call belongs to:
+      // Morning slot: 04:00-12:59 CET  |  Afternoon slot: 13:00-23:59 CET
+      const currentSlot = pragueHour < 13 ? "morning" : "afternoon";
+      
+      // Check if THIS SLOT already has a completed cycle (6h cooldown per slot)
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data: recentSlotCycles } = await sb.from("did_update_cycles")
+        .select("id, completed_at, status, started_at")
+        .eq("cycle_type", "daily")
+        .eq("status", "completed")
+        .gte("started_at", sixHoursAgo)
+        .order("completed_at", { ascending: false })
+        .limit(1);
+
+      if (recentSlotCycles && recentSlotCycles.length > 0) {
+        const lastCycleTime = new Date(new Date(recentSlotCycles[0].started_at).toLocaleString("en-US", { timeZone: "Europe/Prague" }));
+        const lastCycleHour = lastCycleTime.getHours();
+        const lastCycleSlot = lastCycleHour < 13 ? "morning" : "afternoon";
+        
+        if (lastCycleSlot === currentSlot) {
+          console.log(`[daily-cycle] Slot cooldown: ${currentSlot} slot already completed (cycle ${recentSlotCycles[0].id}), skipping.`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: `cooldown_slot_${currentSlot}`,
+            lastCompletedAt: recentSlotCycles[0].completed_at,
+            cycleId: recentSlotCycles[0].id,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        console.log(`[daily-cycle] Different slot: last was ${lastCycleSlot}, now is ${currentSlot} – proceeding.`);
+      }
     }
 
     // ═══ CONCURRENCY: Prevent parallel runs ═══
