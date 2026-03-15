@@ -2834,9 +2834,44 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       return false;
     }
 
-    if (folderId && analysisText) {
+    // ═══ HARD VALIDATION: Filter out hallucinated part names from AI output ═══
+    const validatedAnalysisText = (() => {
+      if (!analysisText || !registryContext || registryContext.entries.length === 0) return analysisText;
+      
+      let filtered = analysisText;
+      const kartaBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
+      const blocksToRemove: string[] = [];
+      
+      for (const m of analysisText.matchAll(kartaBlockRegex)) {
+        const rawName = m[1].trim();
+        const normalizedName = normalizePartHint(rawName);
+        
+        // Check against registry
+        const entry = findBestRegistryEntry(normalizedName, registryContext.entries);
+        if (!entry && !isBlacklisted(normalizedName)) {
+          // Check if it's a known thread part (cast mode only, with 3+ user messages)
+          const isKnownThreadPart = knownThreadParts.has(canonicalText(normalizedName));
+          if (!isKnownThreadPart) {
+            console.warn(`[ANTI-HALLUCINATION] ⛔ Rejected [KARTA:${rawName}] – not in registry (${registryContext.entries.length} entries). AI hallucinated this part name.`);
+            blocksToRemove.push(m[0]);
+          }
+        }
+      }
+      
+      for (const block of blocksToRemove) {
+        filtered = filtered.replace(block, `<!-- REJECTED: hallucinated part -->`);
+      }
+      
+      if (blocksToRemove.length > 0) {
+        console.log(`[ANTI-HALLUCINATION] Removed ${blocksToRemove.length} hallucinated [KARTA:] blocks from AI output`);
+      }
+      
+      return filtered;
+    })();
+
+    if (folderId && validatedAnalysisText) {
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
-      for (const match of analysisText.matchAll(cardBlockRegex)) {
+      for (const match of validatedAnalysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
