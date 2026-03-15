@@ -907,7 +907,23 @@ ${partCardContent ? `═══ KARTA ČÁSTI: ${partName} ═══\n${partCardC
 ${didConversations.slice(0, 10).map((c: any) => `[${c.sub_mode}] ${c.label}: ${c.preview?.slice(0, 100)}`).join("\n") || "(žádné)"}
 
 ═══ NOVINKY ═══
-${newsDigest || "(nedostupné)"}`;
+${newsDigest || "(nedostupné)"}
+
+═══ MASTER PLAN (SYSTÉM JAKO CELEK) ═══
+${(() => {
+  const sp = dbResults.systemProfile;
+  if (!sp) return "(Master Plan ještě nebyl vygenerován)";
+  return `Identita: ${sp.system_identity?.slice(0, 400) || "?"}
+Vnitřní svět: ${sp.inner_world_description?.slice(0, 400) || "?"}
+Vzdělávání: ${sp.education_context?.slice(0, 300) || "?"}
+Krátkodobé cíle: ${(sp.goals_short_term || []).join("; ")}
+Střednědobé cíle: ${(sp.goals_mid_term || []).join("; ")}
+Dlouhodobé cíle: ${(sp.goals_long_term || []).join("; ")}
+Integrační strategie: ${sp.integration_strategy?.slice(0, 400) || "?"}
+Priority: ${(sp.current_priorities || []).join("; ")}
+Rizika: ${(sp.risk_factors || []).join("; ")}
+Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
+})()}`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
