@@ -228,21 +228,47 @@ serve(async (req) => {
     const newsPromise = (async () => {
       if (!perplexityKey) return;
       try {
-        const res = await fetch("https://api.perplexity.ai/chat/completions", {
+        // 1. DID-specific clinical news
+        const didNewsPromise = fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${perplexityKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "sonar",
             messages: [
-              { role: "system", content: "Shrň 3-5 nejdůležitějších novinek z oblasti DID (disociativní porucha identity), traumaterapie, práce s dětskými částmi, IFS, EMDR. Stručně, v češtině, max 300 slov." },
+              { role: "system", content: "Shrň 3-5 nejdůležitějších novinek z oblasti DID (disociativní porucha identity), traumaterapie, práce s dětskými částmi, IFS, EMDR. Stručně, v češtině, max 200 slov." },
               { role: "user", content: `Datum: ${now.toISOString().slice(0, 10)}. Novinky relevantní pro terapeutický tým pracující s DID systémem u dětí.` },
             ],
           }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          newsDigest = data.choices?.[0]?.message?.content || "";
-        }
+
+        // 2. World events + broader context (wars, disasters, social events)
+        const worldNewsPromise = fetch("https://api.perplexity.ai/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${perplexityKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "sonar",
+            messages: [
+              { role: "system", content: `Jsi analytik aktuálního dění. Shrň 5-8 nejdůležitějších událostí ve světě a v Česku za posledních 24 hodin. Zaměř se na:
+1. Geopolitické události (války, konflikty, napětí – Ukrajina/Rusko, Blízký východ, apod.)
+2. České zprávy (politika, společnost, počasí, události)
+3. Věda a technologie (průlomy, zajímavé články)
+4. Společenské události (kultura, sport, vzdělávání)
+Piš stručně, v češtině, max 300 slov. U každé události přidej jednu větu o možném vlivu na náladu citlivých osob (dětí, traumatizovaných).` },
+              { role: "user", content: `Datum: ${now.toISOString().slice(0, 10)}. Přehled světa pro situační povědomí.` },
+            ],
+          }),
+        });
+
+        const [didRes, worldRes] = await Promise.all([didNewsPromise, worldNewsPromise]);
+        
+        let didNews = "";
+        let worldNews = "";
+        if (didRes.ok) { const d = await didRes.json(); didNews = d.choices?.[0]?.message?.content || ""; }
+        if (worldRes.ok) { const d = await worldRes.json(); worldNews = d.choices?.[0]?.message?.content || ""; }
+        
+        newsDigest = "";
+        if (didNews) newsDigest += `═══ ODBORNÉ NOVINKY (DID/Trauma) ═══\n${didNews}\n\n`;
+        if (worldNews) newsDigest += `═══ SVĚT DNES ═══\n${worldNews}`;
       } catch (e) { console.warn("[did-context-prime] Perplexity error:", e); }
     })();
 

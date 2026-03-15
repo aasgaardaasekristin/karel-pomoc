@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload, Database } from "lucide-react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload, Database, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,6 +52,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
+  const [isRefreshingMemory, setIsRefreshingMemory] = useState(false);
 
   // Bootstrap state
   const [isBootstrapping, setIsBootstrapping] = useState(false);
@@ -290,6 +291,33 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     }
   }, []);
 
+  const handleRefreshMemory = useCallback(async () => {
+    setIsRefreshingMemory(true);
+    toast.info("Osvěžuji paměť – Karel skenuje Drive + internet...");
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-context-prime`,
+        { method: "POST", headers, body: JSON.stringify({ forceRefresh: true }) }
+      );
+      if (resp.ok) {
+        toast.success("Paměť osvěžena – Karel má aktuální situační vhled.");
+        // Invalidate overview cache
+        try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {}
+        setOverviewLoaded(false);
+        setOverviewText("");
+        loadSystemOverview();
+      } else {
+        toast.error("Nepodařilo se osvěžit paměť.");
+      }
+    } catch (e) {
+      console.error("Refresh memory error:", e);
+      toast.error("Chyba při osvěžování paměti.");
+    } finally {
+      setIsRefreshingMemory(false);
+    }
+  }, []);
+
     const loadDashboardData = async () => {
     try {
       const { data: threads } = await supabase
@@ -415,7 +443,22 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
             {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
           </p>
-          <DidSessionPrep />
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshMemory}
+              disabled={isRefreshingMemory}
+              className="h-6 text-[10px] px-2"
+            >
+              {isRefreshingMemory ? (
+                <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Osvěžuji...</>
+              ) : (
+                <><RefreshCw className="w-3 h-3 mr-1" /> Osvěž paměť</>
+              )}
+            </Button>
+            <DidSessionPrep />
+          </div>
         </div>
         {lastCardsUpdated.length > 0 && (
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
