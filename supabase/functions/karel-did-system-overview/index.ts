@@ -396,8 +396,8 @@ serve(async (req) => {
     let threadSummaryWeek = "";
     let therapistSummaryWeek = "";
 
-    if (last24hThreads) {
-      for (const t of last24hThreads) {
+    if (filteredLast24hThreads) {
+      for (const t of filteredLast24hThreads) {
         const entry = formatThreadEntry(t);
         if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
           therapistSummary24h += `${entry}\n`;
@@ -407,8 +407,8 @@ serve(async (req) => {
       }
     }
 
-    if (recentThreads) {
-      for (const t of recentThreads) {
+    if (filteredRecentThreads) {
+      for (const t of filteredRecentThreads) {
         const entry = formatThreadEntry(t);
         if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
           therapistSummaryWeek += `${entry}\n`;
