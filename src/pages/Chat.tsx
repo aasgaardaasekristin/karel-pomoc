@@ -1295,6 +1295,8 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             mode,
             ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
+            ...(mode === "childcare" && didContextPrime.primeCache ? { didContextPrimeCache: didContextPrime.primeCache } : {}),
+            ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName } : {}),
           };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
