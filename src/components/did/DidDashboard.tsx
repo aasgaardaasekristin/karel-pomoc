@@ -514,6 +514,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidColleagueView refreshTrigger={refreshTrigger} />
       </div>
 
+      {/* Registry Overview (Phase 5) */}
+      <div className="mb-4">
+        <DidRegistryOverview refreshTrigger={refreshTrigger} onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined} />
+      </div>
+
       {/* Kartotéka Health Check */}
       <div className="mb-4">
         <DidKartotekaHealth refreshTrigger={refreshTrigger} />
