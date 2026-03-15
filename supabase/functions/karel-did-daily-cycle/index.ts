@@ -2989,6 +2989,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
       let therapeuticPlanContent = ""; // Capture for email inclusion
+      let centrumDashboardUpdated = false;
+      let centrumOperativniUpdated = false;
       if (centrumFolderId) {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
