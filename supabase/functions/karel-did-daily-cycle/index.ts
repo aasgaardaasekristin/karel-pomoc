@@ -1806,6 +1806,11 @@ serve(async (req) => {
     const { data: allRecentConvRows } = await sb.from("did_conversations").select("*").gte("saved_at", cutoff24h);
     const allRecentConversations = allRecentConvRows ?? [];
 
+    // Cross-mode: Load Hana conversations from last 24h for DID-relevant mentions
+    const { data: hanaConvRows } = await sb.from("karel_hana_conversations").select("*").gte("last_activity_at", cutoff24h);
+    const recentHanaConversations = hanaConvRows ?? [];
+    console.log(`[daily-cycle] Hana conversations (24h): ${recentHanaConversations.length}`);
+
     // Load DID-relevant research threads for therapeutic plan context
     const { data: researchThreadRows } = await sb.from("research_threads").select("*").eq("is_deleted", false);
     const researchThreads = (researchThreadRows ?? []).filter((rt: any) => {
