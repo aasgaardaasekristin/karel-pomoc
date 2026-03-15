@@ -1887,18 +1887,45 @@ Poslední aktivita: ${p.last_active_at || "neznámo"}
 Poznámky Karla: ${p.notes || "(žádné)"}`;
     }).join("\n\n");
 
-    // ═══ SLOT-BASED COOLDOWN: Allow both 06:00 and 14:00 CET cycles ═══
-    // Each slot has its own 6-hour cooldown window, preventing duplicates within a slot
-    // but allowing both morning (06:00) and afternoon (14:00) cycles to run.
+    // ═══ SLOT-BASED COOLDOWN + CATCH-UP: Allow both 06:00 and 14:00 CET cycles ═══
+    // INVARIANT: Každý příjemce (hanka, kata) dostane MAXIMÁLNĚ 1 denní report za den.
+    // Toto je garantováno tabulkou did_daily_report_dispatches (recipient + report_date unikát).
+    // Catch-up crony (15:30, 17:00 CET) re-spouštějí cyklus pokud 14:00 selhal (503 apod.),
+    // ale reserveDispatchSlot VŽDY zkontroluje, zda mail pro daný den už nebyl odeslán.
     const isManualTrigger = !isCronCall || requestBody?.source === "manual";
 
     if (!isManualTrigger) {
       const nowPrague = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
       const pragueHour = nowPrague.getHours();
-      // Determine which slot this cron call belongs to:
       // Morning slot: 04:00-12:59 CET  |  Afternoon slot: 13:00-23:59 CET
       const currentSlot = pragueHour < 13 ? "morning" : "afternoon";
-      
+
+      // ═══ CATCH-UP FAST PATH: If this is an afternoon catch-up cron (15:30 / 17:00)
+      // and BOTH dispatches are already "sent" for today → skip entirely (no work needed)
+      if (currentSlot === "afternoon") {
+        const { data: todayDispatches } = await sb.from("did_daily_report_dispatches")
+          .select("recipient, status")
+          .eq("report_date", reportDatePrague);
+        const sentRecipients = new Set(
+          (todayDispatches || []).filter((d: any) => d.status === "sent").map((d: any) => d.recipient)
+        );
+        if (sentRecipients.has("hanka") && sentRecipients.has("kata")) {
+          console.log(`[daily-cycle] CATCH-UP: Both dispatches already sent for ${reportDatePrague}, nothing to do.`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: "all_dispatches_sent",
+            date: reportDatePrague,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        // If we get here, at least one dispatch is missing → proceed with full cycle
+        if (sentRecipients.size > 0) {
+          console.log(`[daily-cycle] CATCH-UP: Partial delivery detected (sent: ${[...sentRecipients].join(",")}). Re-running to complete missing.`);
+        } else {
+          console.log(`[daily-cycle] CATCH-UP: No dispatches found for ${reportDatePrague}. Running full cycle.`);
+        }
+      }
+
       // Check if THIS SLOT already has a completed cycle (6h cooldown per slot)
       const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
       const { data: recentSlotCycles } = await sb.from("did_update_cycles")
@@ -1915,14 +1942,38 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
         const lastCycleSlot = lastCycleHour < 13 ? "morning" : "afternoon";
         
         if (lastCycleSlot === currentSlot) {
-          console.log(`[daily-cycle] Slot cooldown: ${currentSlot} slot already completed (cycle ${recentSlotCycles[0].id}), skipping.`);
-          return new Response(JSON.stringify({
-            success: true,
-            skipped: true,
-            reason: `cooldown_slot_${currentSlot}`,
-            lastCompletedAt: recentSlotCycles[0].completed_at,
-            cycleId: recentSlotCycles[0].id,
-          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          // ═══ CATCH-UP OVERRIDE: Even if cycle completed, check if emails were actually delivered
+          // (cycle can "complete" with cards but email sending may have failed/503'd)
+          if (currentSlot === "afternoon") {
+            const { data: dispatchCheck } = await sb.from("did_daily_report_dispatches")
+              .select("recipient, status")
+              .eq("report_date", reportDatePrague);
+            const sentCheck = new Set(
+              (dispatchCheck || []).filter((d: any) => d.status === "sent").map((d: any) => d.recipient)
+            );
+            if (!sentCheck.has("hanka") || !sentCheck.has("kata")) {
+              console.log(`[daily-cycle] CATCH-UP OVERRIDE: Cycle completed but dispatches incomplete (sent: ${[...sentCheck].join(",") || "none"}). Allowing re-run for email delivery.`);
+              // Don't return – proceed with the cycle to attempt email delivery
+            } else {
+              console.log(`[daily-cycle] Slot cooldown: ${currentSlot} slot completed + all dispatches sent. Skipping.`);
+              return new Response(JSON.stringify({
+                success: true,
+                skipped: true,
+                reason: `cooldown_slot_${currentSlot}`,
+                lastCompletedAt: recentSlotCycles[0].completed_at,
+                cycleId: recentSlotCycles[0].id,
+              }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+          } else {
+            console.log(`[daily-cycle] Slot cooldown: ${currentSlot} slot already completed (cycle ${recentSlotCycles[0].id}), skipping.`);
+            return new Response(JSON.stringify({
+              success: true,
+              skipped: true,
+              reason: `cooldown_slot_${currentSlot}`,
+              lastCompletedAt: recentSlotCycles[0].completed_at,
+              cycleId: recentSlotCycles[0].id,
+            }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }
         }
         console.log(`[daily-cycle] Different slot: last was ${lastCycleSlot}, now is ${currentSlot} – proceeding.`);
       }
