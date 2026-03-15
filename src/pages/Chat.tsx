@@ -34,6 +34,7 @@ import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
 import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
+import { useDidContextPrime } from "@/hooks/useDidContextPrime";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
