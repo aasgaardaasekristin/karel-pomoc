@@ -2083,7 +2083,19 @@ Datum: ${dateStr}` },
       return `=== Profesní zdroj: ${rt.topic} (autor: ${rt.created_by}) ===\nVytvořeno: ${rt.created_at}\nPoslední aktivita: ${rt.last_activity_at}\n\nKlíčové body:\n${msgs.map((m: any) => `[${m.role === "user" ? "TERAPEUT" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content, 400) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
-    const allSummaries = [threadSummaries, convSummaries, researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
+    // Cross-mode: Compile Hana conversation summaries for DID-relevant mentions
+    const hanaSummaries = recentHanaConversations.map((hc: any) => {
+      const msgs = ((hc.messages as any[]) || []).filter((m: any) => m?.role === "user" && typeof m?.content === "string").slice(-10);
+      if (msgs.length === 0) return "";
+      return `=== Režim HANA: Konverzace (${hc.current_domain}, stav: ${hc.current_hana_state}) ===\nZačátek: ${hc.started_at}\nPoslední aktivita: ${hc.last_activity_at}\n\n${msgs.map((m: any) => `[HANA/TERAPEUT]: ${clipText(m.content || "", 300)}`).join("\n")}`;
+    }).filter(Boolean).join("\n\n---\n\n");
+
+    const allSummaries = [
+      threadSummaries, 
+      convSummaries, 
+      hanaSummaries ? `\n\n=== KONVERZACE Z REŽIMU HANA (cross-mode scan) ===\n\n${hanaSummaries}` : "",
+      researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""
+    ].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
 
     const registryCanonicalParts = new Set(
       (registryContext?.entries || []).map((entry) => canonicalText(entry.name)).filter(Boolean)
