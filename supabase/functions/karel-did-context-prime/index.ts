@@ -209,113 +209,277 @@ function pickCentrumDoc(centrumDocs: Record<string, string>, regex: RegExp): str
   return found?.[1] || "";
 }
 
-function formatTherapistShadowLog(now: Date, didThreads: any[], didConversations: any[], hanaConversations: any[]): string {
-  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
-  const lines: string[] = [
-    `24h zápis vláken (vygenerováno ${now.toISOString()})`,
-    "",
-    "DID vlákna (uživatelské zprávy):",
-  ];
+// ── Therapist Profiling Engine ──
 
-  const mapSubModeLabel = (subMode: string, partName?: string) => {
-    if (subMode === "mamka") return "Hanička";
-    if (subMode === "kata") return "Káťa";
-    if (subMode === "cast") return partName || "část";
-    return subMode || "neurčeno";
-  };
+const PROFILE_FILES = [
+  "PROFIL_OSOBNOSTI.txt",
+  "STRATEGIE_KOMUNIKACE.txt",
+  "SITUACNI_ANALYZA.txt",
+  "VLAKNA_3DNY.txt",
+  "KARLOVY_POZNATKY.txt",
+] as const;
 
+function gatherThreadsForTherapist(
+  therapist: "hanka" | "kata",
+  didThreads: any[],
+  didConversations: any[],
+  hanaConversations: any[],
+  researchThreads: any[],
+  now: Date,
+): string {
+  const cutoff3d = now.getTime() - 3 * 24 * 60 * 60 * 1000;
+  const lines: string[] = [`Konverzace za poslední 3 dny (${therapist === "hanka" ? "Hanička" : "Káťa"})`];
+
+  const subModes = therapist === "hanka" ? ["mamka"] : ["kata"];
+  const label = therapist === "hanka" ? "Hanička" : "Káťa";
+
+  // DID threads
   for (const t of didThreads || []) {
+    if (!subModes.includes(t.sub_mode)) continue;
     const ts = t?.last_activity_at ? new Date(t.last_activity_at).getTime() : 0;
-    if (!ts || ts < cutoff) continue;
-    const speaker = mapSubModeLabel(t.sub_mode, t.part_name);
-    const userTexts = extractUserTexts(t.messages).slice(-6);
-    if (userTexts.length === 0) continue;
-    lines.push(`- [${t.last_activity_at}] ${speaker}`);
-    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+    if (!ts || ts < cutoff3d) continue;
+    const msgs = Array.isArray(t.messages) ? t.messages : [];
+    const snippets = msgs.slice(-8).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
+    if (snippets.length) {
+      lines.push(`\n--- DID vlákno [${t.part_name}] ${t.last_activity_at} ---`);
+      lines.push(...snippets);
+    }
   }
 
-  lines.push("", "Uložené DID konverzace (uživatelské zprávy):");
+  // DID conversations (saved)
   for (const c of didConversations || []) {
+    if (!subModes.includes(c.sub_mode)) continue;
     const tsRaw = c?.updated_at || c?.saved_at;
     const ts = tsRaw ? new Date(tsRaw).getTime() : 0;
-    if (!ts || ts < cutoff) continue;
-    const speaker = mapSubModeLabel(c.sub_mode, c.label);
-    const userTexts = extractUserTexts(c.messages).slice(-4);
-    if (userTexts.length === 0) continue;
-    lines.push(`- [${tsRaw}] ${speaker}`);
-    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+    if (!ts || ts < cutoff3d) continue;
+    const msgs = Array.isArray(c.messages) ? c.messages : [];
+    const snippets = msgs.slice(-6).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
+    if (snippets.length) {
+      lines.push(`\n--- Uložená DID konverzace [${c.label}] ${tsRaw} ---`);
+      lines.push(...snippets);
+    }
   }
 
-  lines.push("", "Hana DID konverzace (uživatelské zprávy):");
-  for (const h of hanaConversations || []) {
-    const ts = h?.last_activity_at ? new Date(h.last_activity_at).getTime() : 0;
-    if (!ts || ts < cutoff) continue;
-    const userTexts = extractUserTexts(h.messages).slice(-4);
-    if (userTexts.length === 0) continue;
-    lines.push(`- [${h.last_activity_at}] Hanička`);
-    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  // Hanka-specific: all Hana conversations (all domains, not just DID)
+  if (therapist === "hanka") {
+    for (const h of hanaConversations || []) {
+      const ts = h?.last_activity_at ? new Date(h.last_activity_at).getTime() : 0;
+      if (!ts || ts < cutoff3d) continue;
+      const msgs = Array.isArray(h.messages) ? h.messages : [];
+      const snippets = msgs.slice(-8).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
+      if (snippets.length) {
+        lines.push(`\n--- Hana chat [${h.current_domain}] ${h.last_activity_at} ---`);
+        lines.push(...snippets);
+      }
+    }
+
+    // Research threads
+    for (const r of researchThreads || []) {
+      const ts = r?.last_activity_at ? new Date(r.last_activity_at).getTime() : 0;
+      if (!ts || ts < cutoff3d) continue;
+      const msgs = Array.isArray(r.messages) ? r.messages : [];
+      const snippets = msgs.slice(-4).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 200)}`);
+      if (snippets.length) {
+        lines.push(`\n--- Research [${r.topic}] ${r.last_activity_at} ---`);
+        lines.push(...snippets);
+      }
+    }
   }
 
-  if (lines.length <= 6) {
-    lines.push("- Za posledních 24 hodin nebyly zachyceny nové uživatelské zprávy.");
-  }
-
+  if (lines.length <= 1) lines.push("(žádné konverzace za poslední 3 dny)");
   return lines.join("\n");
 }
 
-async function syncDidTherapistShadowMemory(params: {
+async function generateTherapistProfile(
+  apiKey: string,
+  therapist: "hanka" | "kata",
+  fileType: string,
+  existingContent: string,
+  threadsDump: string,
+  tasksDigest: string,
+  motivationDigest: string,
+  episodesDigest: string,
+): Promise<string> {
+  const name = therapist === "hanka" ? "Hanička" : "Káťa";
+  const relationship = therapist === "hanka"
+    ? "Karlův vztah k Haničce je intimní, partnerský, hluboce osobní. Nikdy ji neoslovuje 'Hano' — vždy 'Haničko', 'miláčku', s láskou. Karel je pro ni partner, opora, milující osoba, ale i mentor a rádce. Jejich vztah je postaven na sdílených vzpomínkách, důvěře a každodenním kontaktu. Karel Haničku zná lépe než kohokoliv jiného."
+    : "Karlův vztah ke Káťě je mentor→mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele, pomáhá jí růst jako terapeutce.";
+
+  const prompts: Record<string, string> = {
+    "PROFIL_OSOBNOSTI.txt": `Aktualizuj psychologický profil terapeutky ${name}.
+VZTAH: ${relationship}
+Zaměř se na: mentalitu, charakter, silné stránky, slabiny a zábrany, vztahy k okolí (rodina, práce), jak je otevřená, jak si nechá poradit.
+Zachovej cenné starší poznatky, přidej nové z konverzací.`,
+
+    "STRATEGIE_KOMUNIKACE.txt": `Aktualizuj strategický profil komunikace s ${name}.
+VZTAH: ${relationship}
+Zaměř se na: co funguje při motivaci/kritice/úkolování, jak docílit maximální efektivity, myšlenkové vzorce a zábrany, adaptační poznatky — co se Karel naučil o tom jak s ní nejlépe jednat.`,
+
+    "SITUACNI_ANALYZA.txt": `Aktualizuj situační analýzu ${name} s temporálním gradientem:
+- Dlouhodobý stav (měsíce) — komprimovaný
+- Střednědobý (týdny) — shrnutý  
+- Aktuální (poslední dny) — detailní
+Co řeší doma, v životě, s čím se svěřuje, jaké má problémy, jak se cítí.`,
+
+    "VLAKNA_3DNY.txt": `Na základě surových konverzací vytvoř AI reflexi: co z nich vyplývá, jaké vzorce Karel pozoruje, co nového se o ${name} dozvěděl, co by měl příště řešit nebo na co navázat.
+Vlož na začátek surová vlákna a za ně reflexi.`,
+
+    "KARLOVY_POZNATKY.txt": `Aktualizuj Karlovy osobní zápisky o ${name} — jeho "deník duše".
+VZTAH: ${relationship}
+Zahrň: nové postřehy, "puzzle" které Karel skládá, sdílené vzpomínky${therapist === "hanka" ? " (Hanka-Karel)" : ""}, co nového Karel pochopil.
+Starší záznamy (90+ dní) komprimuj do shrnutí. Novější rozváděj.
+Piš z Karlovy perspektivy — jak ON vnímá ${name}, co o ní ví, jak ji čte.`,
+  };
+
+  const prompt = prompts[fileType] || `Aktualizuj profil ${name} pro soubor ${fileType}.`;
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `Jsi Karel — kognitivní agent, mentor a supervizor DID terapeutického týmu. Píšeš si vlastní zápisky o svých lidech. Piš česky, lidsky, z první osoby. Nikdy nevymýšlej fakta — pracuj VÝHRADNĚ s dodanými daty. Pokud nemáš nová data, zachovej stávající obsah beze změny. Nepoužívej markdown formátování (**, ##). Piš čistý text s datem na začátku nových záznamů.`,
+        },
+        {
+          role: "user",
+          content: `${prompt}
+
+═══ STÁVAJÍCÍ OBSAH SOUBORU ═══
+${existingContent || "(soubor dosud neexistuje — vytvoř úvodní profil)"}
+
+═══ KONVERZACE (3 DNY) ═══
+${threadsDump.slice(0, 8000)}
+
+═══ ÚKOLY ═══
+${tasksDigest || "(žádné)"}
+
+═══ MOTIVAČNÍ PROFIL ═══
+${motivationDigest || "(nedostupný)"}
+
+═══ EPIZODY (DID) ═══
+${episodesDigest.slice(0, 3000) || "(žádné)"}
+
+Datum: ${new Date().toISOString().slice(0, 10)}`,
+        },
+      ],
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error(`[profiling] AI failed for ${name}/${fileType}: ${res.status}`);
+    return existingContent || `(Profil zatím nebyl vygenerován — ${new Date().toISOString().slice(0, 10)})`;
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || existingContent || "";
+}
+
+async function syncTherapistProfilingEngine(params: {
   token: string;
+  apiKey: string;
   now: Date;
-  systemState: string;
-  driveData: Record<string, Record<string, string>>;
   didThreads: any[];
   didConversations: any[];
   hanaConversations: any[];
+  researchThreads: any[];
+  therapistTasks: any[];
+  motivationProfiles: any[];
+  didEpisodes: any[];
 }): Promise<{ updated: boolean; filesUpdated: number }> {
-  const { token, now, systemState, driveData, didThreads, didConversations, hanaConversations } = params;
+  const { token, apiKey, now, didThreads, didConversations, hanaConversations, researchThreads, therapistTasks, motivationProfiles, didEpisodes } = params;
 
   const pametId = await findFolder(token, "PAMET_KAREL");
-  if (!pametId) {
-    throw new Error("PAMET_KAREL folder not found");
-  }
+  if (!pametId) throw new Error("PAMET_KAREL folder not found");
 
   const didRootId = await findOrCreateFolder(token, "DID", pametId);
   const hankaRoot = await findOrCreateFolder(token, "HANKA", didRootId);
   const kataRoot = await findOrCreateFolder(token, "KATA", didRootId);
 
-  const centrum = driveData["CENTRUM"] || {};
-  const dashboardText = pickCentrumDoc(centrum, /dashboard|aktualni/i);
-  const operativniText = pickCentrumDoc(centrum, /operativni|plan/i);
-  const strategickyText = pickCentrumDoc(centrum, /strateg/i);
-  const instructionsText = pickCentrumDoc(centrum, /instrukce/i);
-  const threadsLog = formatTherapistShadowLog(now, didThreads, didConversations, hanaConversations);
-
-  const syncForTherapist = async (therapistFolderId: string, therapistLabel: string) => {
-    const centrumCopyFolder = await findOrCreateFolder(token, "00_CENTRUM_KOPIE", therapistFolderId);
-    const logsFolder = await findOrCreateFolder(token, "01_VLAKNA_24H", therapistFolderId);
-
-    await upsertTextDoc(token, centrumCopyFolder, "00_Aktualni_Dashboard.txt", dashboardText || "Dashboard zatím nebyl načten.");
-    await upsertTextDoc(token, centrumCopyFolder, "05_Operativni_Plan.txt", operativniText || "Operativní plán zatím nebyl načten.");
-    await upsertTextDoc(token, centrumCopyFolder, "06_Strategicky_Vyhled.txt", strategickyText || "Strategický výhled zatím nebyl načten.");
-    await upsertTextDoc(token, centrumCopyFolder, "02_Instrukce_Pro_Aplikaci_Karel_2.txt", instructionsText || "Instrukce zatím nebyly načteny.");
-
-    const header = [
-      `DID stínová paměť pro ${therapistLabel}`,
-      `Aktualizováno: ${now.toISOString()}`,
-      `Stav systému: ${systemState}`,
-      "",
-    ].join("\n");
-
-    await upsertTextDoc(token, logsFolder, "24h_vlakna.txt", `${header}${threadsLog}`);
-    await upsertTextDoc(token, therapistFolderId, "README.txt", `${header}Tato složka je automaticky aktualizovaná při ručním „Osvěž paměť“ v DID režimu.`);
+  // Read existing profiles from Drive
+  const readExisting = async (folderId: string): Promise<Record<string, string>> => {
+    const result: Record<string, string> = {};
+    for (const fileName of PROFILE_FILES) {
+      const doc = await findDocByExactName(token, folderId, fileName);
+      if (doc) {
+        try { result[fileName] = await readDoc(token, doc.id, 8000); } catch { result[fileName] = ""; }
+      } else {
+        result[fileName] = "";
+      }
+    }
+    return result;
   };
 
-  await Promise.all([
-    syncForTherapist(hankaRoot, "Haničku"),
-    syncForTherapist(kataRoot, "Káťu"),
+  const [hankaExisting, kataExisting] = await Promise.all([
+    readExisting(hankaRoot),
+    readExisting(kataRoot),
   ]);
 
-  return { updated: true, filesUpdated: 12 };
+  // Gather conversation dumps
+  const hankaThreadsDump = gatherThreadsForTherapist("hanka", didThreads, didConversations, hanaConversations, researchThreads, now);
+  const kataThreadsDump = gatherThreadsForTherapist("kata", didThreads, didConversations, hanaConversations, researchThreads, now);
+
+  // Build digests
+  const hankaTasksDigest = therapistTasks
+    .filter((t: any) => t.assigned_to === "hanka" || t.assigned_to === "both")
+    .map((t: any) => `[${t.priority}] ${t.task} (H:${t.status_hanka}${t.due_date ? `, do:${t.due_date}` : ""})`)
+    .join("\n");
+
+  const kataTasksDigest = therapistTasks
+    .filter((t: any) => t.assigned_to === "kata" || t.assigned_to === "both")
+    .map((t: any) => `[${t.priority}] ${t.task} (K:${t.status_kata}${t.due_date ? `, do:${t.due_date}` : ""})`)
+    .join("\n");
+
+  const hankaMotivation = motivationProfiles.find((p: any) => p.therapist === "hanka");
+  const kataMotivation = motivationProfiles.find((p: any) => p.therapist === "kata");
+  const fmtMotivation = (p: any) => p
+    ? `Splněno: ${p.tasks_completed}/${p.tasks_completed + p.tasks_missed}, série: ${p.streak_current}, styl: ${p.preferred_style}, pochvala: ${p.praise_effectiveness}/5, deadline: ${p.deadline_effectiveness}/5`
+    : "";
+
+  const episodesDigest = (didEpisodes || []).slice(0, 20).map((ep: any) =>
+    `[${ep.timestamp_start?.slice(0, 10)}] ${ep.summary_user?.slice(0, 120)} | Tags: ${ep.tags?.join(",")}`
+  ).join("\n");
+
+  // Generate all profiles in parallel (Hanka 5 files + Kata 5 files)
+  let filesUpdated = 0;
+
+  const generateAndWrite = async (
+    therapist: "hanka" | "kata",
+    folderId: string,
+    existing: Record<string, string>,
+    threadsDump: string,
+    tasksDigest: string,
+    motivationDigest: string,
+  ) => {
+    for (const fileName of PROFILE_FILES) {
+      try {
+        // For VLAKNA_3DNY, prepend raw dump before AI reflection
+        let content: string;
+        if (fileName === "VLAKNA_3DNY.txt") {
+          const reflection = await generateTherapistProfile(apiKey, therapist, fileName, existing[fileName], threadsDump, tasksDigest, motivationDigest, episodesDigest);
+          content = `${threadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${reflection}`;
+        } else {
+          content = await generateTherapistProfile(apiKey, therapist, fileName, existing[fileName], threadsDump, tasksDigest, motivationDigest, episodesDigest);
+        }
+        await upsertTextDoc(token, folderId, fileName, content);
+        filesUpdated++;
+        console.log(`[profiling] ✅ ${therapist}/${fileName} updated (${content.length} chars)`);
+      } catch (e) {
+        console.error(`[profiling] ❌ ${therapist}/${fileName} failed:`, e);
+      }
+    }
+  };
+
+  // Run Hanka and Kata in parallel
+  await Promise.all([
+    generateAndWrite("hanka", hankaRoot, hankaExisting, hankaThreadsDump, hankaTasksDigest, fmtMotivation(hankaMotivation)),
+    generateAndWrite("kata", kataRoot, kataExisting, kataThreadsDump, kataTasksDigest, fmtMotivation(kataMotivation)),
+  ]);
+
+  return { updated: true, filesUpdated };
 }
 
 // ── Auth ──
