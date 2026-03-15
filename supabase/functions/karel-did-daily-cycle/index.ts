@@ -3036,6 +3036,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${newContent}`;
               await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
               cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
+              centrumDashboardUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
               continue;
             }
