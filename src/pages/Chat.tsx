@@ -39,6 +39,7 @@ import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
 import LiveSessionPanel from "@/components/report/LiveSessionPanel";
+import DidLiveSessionPanel from "@/components/did/DidLiveSessionPanel";
 import PostSessionTools from "@/components/report/PostSessionTools";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
@@ -111,7 +112,7 @@ const handleApiError = (response: Response) => {
 };
 
 // DID flow states
-type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting";
+type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting" | "live-session";
 
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 
@@ -192,6 +193,7 @@ const Chat = () => {
   const [isEnrichingContext, setIsEnrichingContext] = useState(false);
   const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
   const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
+  const [didLiveSession, setDidLiveSession] = useState<{ partName: string; therapistName: string } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
@@ -1545,6 +1547,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   <div className="text-xs text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
                 </div>
               </button>
+              <button
+                onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-emerald-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-emerald-500"
+              >
+                <span className="text-lg">🧩</span>
+                <div>
+                  <div className="font-medium text-foreground">Live DID sezení</div>
+                  <div className="text-xs text-muted-foreground">Karel radí v reálném čase při práci s částí – audio + chat</div>
+                </div>
+              </button>
             </div>
             <div className="flex justify-center mt-4">
               <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
@@ -1570,7 +1582,73 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       );
     }
 
-    // PIN entry for therapists
+    // Live DID session — therapist selects part, then real-time coaching
+    if (didFlowState === "live-session") {
+      if (!didLiveSession) {
+        // Part selection screen for live session
+        const therapistName = didSubMode === "kata" ? "Káťa" : "Hanka";
+        return (
+          <ScrollArea className="flex-1">
+            <div className="max-w-lg mx-auto px-4 py-8">
+              <h3 className="text-sm font-medium text-foreground mb-2 text-center">Live DID sezení</h3>
+              <p className="text-xs text-muted-foreground mb-4 text-center">S jakou částí teď pracuješ?</p>
+              <div className="space-y-2">
+                {knownParts.length > 0 ? knownParts.map(part => (
+                  <button
+                    key={part}
+                    onClick={() => setDidLiveSession({ partName: part, therapistName })}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left"
+                  >
+                    <span className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium">{part[0]}</span>
+                    <span className="font-medium text-foreground">{part}</span>
+                  </button>
+                )) : (
+                  <p className="text-xs text-muted-foreground text-center py-4">Žádné známé části. Napiš jméno části ručně:</p>
+                )}
+                <div className="flex gap-2 mt-3">
+                  <input
+                    type="text"
+                    placeholder="Jméno části..."
+                    className="flex-1 px-3 py-2 border border-border rounded-lg text-sm bg-background"
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && (e.target as HTMLInputElement).value.trim()) {
+                        setDidLiveSession({ partName: (e.target as HTMLInputElement).value.trim(), therapistName });
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-center mt-4">
+                <Button variant="ghost" size="sm" onClick={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}>
+                  ← Zpět
+                </Button>
+              </div>
+            </div>
+          </ScrollArea>
+        );
+      }
+
+      // Render live session panel
+      return (
+        <DidLiveSessionPanel
+          partName={didLiveSession.partName}
+          therapistName={didLiveSession.therapistName}
+          contextBrief={didContextPrime.primeCache || didInitialContext || undefined}
+          onEnd={(summary) => {
+            toast.success("DID sezení zpracováno");
+            setDidLiveSession(null);
+            setDidSubMode("mamka");
+            setDidFlowState("chat");
+            setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
+          }}
+          onBack={() => {
+            setDidLiveSession(null);
+          }}
+        />
+      );
+    }
+
+
     if (didFlowState === "pin-entry" && (didSubMode === "mamka" || didSubMode === "kata")) {
       const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
       return (

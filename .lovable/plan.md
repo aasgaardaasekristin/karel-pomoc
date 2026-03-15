@@ -154,3 +154,17 @@
 - Integrace do denní konsolidace (`karel-daily-consolidation`)
 - Frontend: automatický trigger při ukončení hovoru (handleDidEndCall) i odchodu z vlákna (handleLeaveThread)
 - Fire-and-forget pattern — neblokuje UI
+
+### ✅ Nová Fáze 3: Part Registry + Live DID Session
+- **`did_part_registry` tabulka** — rychlý lookup stavu všech částí DID systému
+  - Sloupce: part_name, status, cluster, role, age_estimate, language, last_seen_at, emotional state, triggers, strengths
+  - RLS policies pro authenticated users
+  - Auto-populace z `karel-did-episode-generate` (upsert po každém vytvořeném epizodě)
+  - Sleduje total_episodes, total_threads, health_score
+- **Live DID Session panel** (`DidLiveSessionPanel.tsx`)
+  - Real-time coaching terapeutky při práci s konkrétní částí
+  - Audio segmentové nahrávání + analýza (přes karel-audio-analysis)
+  - DID-specifický kontext v system promptu (věk části, jazyk, triggers, switching detekce)
+  - Výběr části před zahájením sezení
+  - Automatický zápis po ukončení
+  - Přístup přes Dashboard → "Live DID sezení"

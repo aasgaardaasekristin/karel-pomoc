@@ -240,6 +240,43 @@ INSTRUKCE:
         await sb.from("did_threads")
           .update({ is_processed: true, processed_at: new Date().toISOString() })
           .eq("id", thread.id);
+        
+        // Auto-populate did_part_registry
+        try {
+          await sb.from("did_part_registry").upsert({
+            user_id: userId,
+            part_name: thread.part_name.toLowerCase(),
+            display_name: thread.part_name,
+            status: "active",
+            language: thread.part_language || "cs",
+            last_seen_at: thread.last_activity_at,
+            last_emotional_state: episode.hana_state || "STABILNI",
+            last_emotional_intensity: episode.emotional_intensity || 3,
+            total_threads: 1,
+            total_episodes: 1,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "user_id,part_name" });
+          
+          // Increment counters for existing parts
+          const { data: existing } = await sb.from("did_part_registry")
+            .select("total_threads, total_episodes")
+            .eq("user_id", userId)
+            .eq("part_name", thread.part_name.toLowerCase())
+            .single();
+          if (existing) {
+            await sb.from("did_part_registry").update({
+              total_threads: (existing.total_threads || 0) + 1,
+              total_episodes: (existing.total_episodes || 0) + 1,
+              last_seen_at: thread.last_activity_at,
+              last_emotional_state: episode.hana_state || "STABILNI",
+              last_emotional_intensity: episode.emotional_intensity || 3,
+              status: "active",
+              updated_at: new Date().toISOString(),
+            }).eq("user_id", userId).eq("part_name", thread.part_name.toLowerCase());
+          }
+        } catch (regErr) {
+          console.warn(`[did-episode-generate] Registry upsert error for ${thread.part_name}:`, regErr);
+        }
       }
     } catch (e) {
       errors.push(`thread ${thread.id}: ${e instanceof Error ? e.message : String(e)}`);
