@@ -3110,6 +3110,52 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
       }
 
+      // ═══ FORCED CENTRUM FALLBACK: If AI didn't generate Dashboard/Plan blocks, force update ═══
+      if (centrumFolderId && hasRecentActivity) {
+        const centerFiles = centrumFolderId ? await listFilesInFolder(token, centrumFolderId) : [];
+        
+        if (!centrumDashboardUpdated) {
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] block – forcing minimal update`);
+          const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
+          if (dashFile) {
+            try {
+              const dateStr = new Date().toISOString().slice(0, 10);
+              // Build minimal dashboard from deterministic data
+              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
+              const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
+              
+              const minimalDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (automatický fallback – AI blok chyběl)\n\nSEKCE 1 – STAV SYSTÉMU TEĎ\n${activePartsFromThreads.length > 0 ? activePartsFromThreads.map(p => `▸ ${p} – komunikoval/a s Karlem (posledních 24h)`).join("\n") : "Žádná přímá aktivita částí za posledních 24h."}\n\nSEKCE 3 – CO SE DĚLO POSLEDNÍCH 24H\n- DID vlákna: ${allRecentThreads.length}\n- DID konverzace: ${allRecentConversations.length}\n- Hana konverzace: ${recentHanaConversations.length}\n- Klientská sezení: ${recentClientSessions.length}\n- Research vlákna: ${researchThreads.length}\n- Porady: ${recentMeetings.length}\n- Terapeutická vlákna: ${therapistThreads.map(t => `${t.part_name} (${t.sub_mode})`).join(", ") || "žádná"}\n\nSEKCE 5 – TERAPEUTICKÝ FOKUS DNE 🎯\nViz 05_Operativni_Plan pro detaily.\n\nSEKCE 7 – KARLOVY POSTŘEHY 🔍\n⚠️ Tento dashboard byl vygenerován automatickým fallbackem – AI analýza nevygenerovala CENTRUM blok. Zkontroluj ručně.`;
+              
+              await updateFileById(token, dashFile.id, minimalDashboard, dashFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (FALLBACK – AI blok chyběl)`);
+              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard updated with deterministic fallback`);
+            } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
+          }
+        }
+
+        if (!centrumOperativniUpdated) {
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] block – forcing minimal update`);
+          const planFile = centerFiles.find(f => {
+            const fc = canonicalText(f.name);
+            return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
+          });
+          if (planFile) {
+            try {
+              const dateStr = new Date().toISOString().slice(0, 10);
+              const existingContent = await readFileContent(token, planFile.id);
+              // Append a timestamped note that AI didn't produce a full update
+              const fallbackNote = `\n\n[${dateStr}] ⚠️ AUTOMATICKÝ FALLBACK: AI analýza nevygenerovala kompletní [CENTRUM:05_Operativni_Plan] blok.\nNesplněné úkoly (${(pendingTasks || []).length}):\n${pendingTasksSummary || "Žádné"}\nAktivní vlákna (24h): ${allRecentThreads.length} | Konverzace: ${allRecentConversations.length}`;
+              
+              if (!existingContent.includes(dateStr + "] ⚠️ AUTOMATICKÝ FALLBACK")) {
+                await updateFileById(token, planFile.id, existingContent.trimEnd() + fallbackNote, planFile.mimeType);
+                cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FALLBACK append)`);
+                console.log(`[CENTRUM-FALLBACK] ✅ Operative plan updated with fallback note`);
+              }
+            } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan update failed:`, e); }
+          }
+        }
+      }
+
       // ═══ ACCOUNTABILITY: Parse [ACCOUNTABILITY] block and escalate stale tasks ═══
       let accountabilityBlock = "";
       const accountabilityMatch = analysisText.match(/\[ACCOUNTABILITY\]([\s\S]*?)\[\/ACCOUNTABILITY\]/);
