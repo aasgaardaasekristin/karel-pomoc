@@ -65,6 +65,25 @@ serve(async (req) => {
         }
       }
 
+      // Before consolidation, trigger DID episode generation for unprocessed threads
+      let didEpisodeResult: any = null;
+      try {
+        const didEpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-episode-generate`;
+        const didEpRes = await fetch(didEpUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({ crossModeScan: true, source: "consolidation" }),
+        });
+        didEpisodeResult = await didEpRes.json();
+        console.log(`[consolidation] DID episode generation:`, didEpisodeResult.status || didEpisodeResult);
+      } catch (e) {
+        console.error("[consolidation] DID episode generation failed:", e);
+        didEpisodeResult = { error: e instanceof Error ? e.message : String(e) };
+      }
+
       // After consolidation, trigger memory mirror to Drive
       let mirrorResult: any = null;
       try {
@@ -83,7 +102,7 @@ serve(async (req) => {
         mirrorResult = { error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) };
       }
       
-      return new Response(JSON.stringify({ results, mirror: mirrorResult }), {
+      return new Response(JSON.stringify({ results, mirror: mirrorResult, didEpisodes: didEpisodeResult }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
