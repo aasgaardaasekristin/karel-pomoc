@@ -1586,6 +1586,31 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       );
     }
 
+    // DID Kartotéka — full registry view
+    if (didFlowState === "did-kartoteka") {
+      const DidRegistryOverview = require("@/components/did/DidRegistryOverview").default;
+      return (
+        <ScrollArea className="flex-1">
+          <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-serif font-semibold text-foreground">Kartotéka částí</h2>
+              <Button variant="ghost" size="sm" onClick={() => setDidFlowState("live-session")}>← Zpět</Button>
+            </div>
+            <DidRegistryOverview
+              refreshTrigger={0}
+              onSelectPart={(partName: string) => {
+                const therapistName = didSubMode === "kata" ? "Káťa" : "Hanka";
+                setDidLiveSession({ partName, therapistName });
+                setDidLiveSessionReady(false);
+                setDidLivePartContext("");
+                setDidFlowState("live-session");
+              }}
+            />
+          </div>
+        </ScrollArea>
+      );
+    }
+
     // Live DID session — therapist selects part, then real-time coaching
     if (didFlowState === "live-session") {
       const therapistName = didSubMode === "kata" ? "Káťa" : "Hanka";
@@ -1602,6 +1627,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               setDidLivePartContext("");
             }}
             onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
+            onOpenKartoteka={() => setDidFlowState("did-kartoteka")}
           />
         );
       }
