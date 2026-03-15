@@ -1014,27 +1014,45 @@ const Chat = () => {
     }, 100);
   };
 
+  // ═══ DID Episode Generation — fire-and-forget after thread end ═══
+  const triggerEpisodeGeneration = useCallback(async (threadId: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-episode-generate`, {
+        method: "POST", headers,
+        body: JSON.stringify({ threadId, crossModeScan: true }),
+      }).then(res => {
+        if (res.ok) console.log("[DID] Episode generation triggered for thread", threadId);
+        else console.warn("[DID] Episode generation failed:", res.status);
+      }).catch(e => console.warn("[DID] Episode generation error:", e));
+    } catch {}
+  }, []);
+
   const handleDidEndCall = async () => {
+    const threadToProcess = activeThread;
     if (activeThread && messages.length >= 2) {
-      didThreads.updateThreadMessages(activeThread.id, messages);
+      await didThreads.updateThreadMessages(activeThread.id, messages);
     } else if (didSubMode && messages.length >= 2) {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
-    // Zápis do karet + email report běží dávkově v denním cyklu nebo po manuální aktualizaci
-    toast.info("Vlákno uloženo. Kartotéka i report se zpracují při denním cyklu nebo po kliknutí na Aktualizovat kartotéku.");
+    // Trigger episode generation in background
+    if (threadToProcess && messages.length >= 2) {
+      triggerEpisodeGeneration(threadToProcess.id);
+    }
+
+    toast.info("Vlákno uloženo. Epizoda se generuje na pozadí.");
 
     const endedPartName = activeThread?.partName || "";
     clearMessages(mode);
     setActiveThread(null);
-    // Generate a stable session ID for the post-call mamka conversation to prevent duplicate saves
     const postCallSessionId = `postcall-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setDidSubMode("mamka");
     setDidSessionId(postCallSessionId);
     setDidFlowState("chat");
     setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${endedPartName ? ` s částí ${endedPartName}` : ""}.
 
-Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
+Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
   };
 
   const handleDidResearch = async () => {
