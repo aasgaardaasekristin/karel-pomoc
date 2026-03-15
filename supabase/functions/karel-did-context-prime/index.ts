@@ -533,7 +533,8 @@ serve(async (req) => {
     const dbPromises = {
       didThreads: sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(20),
       didConversations: sb.from("did_conversations").select("id, label, preview, sub_mode, saved_at, updated_at, did_initial_context, messages").eq("user_id", userId).order("saved_at", { ascending: false }).limit(20),
-      hanaConversations: sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain").eq("user_id", userId).eq("current_domain", "DID").order("last_activity_at", { ascending: false }).limit(10),
+      hanaConversations: sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(20),
+      researchThreads: sb.from("research_threads").select("id, topic, messages, last_activity_at").eq("user_id", userId).eq("is_deleted", false).order("last_activity_at", { ascending: false }).limit(10),
       didEpisodes: sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).eq("domain", "DID").gte("timestamp_start", fourteenDaysAgo).order("timestamp_start", { ascending: false }).limit(30),
       olderEpisodes: sb.from("karel_episodes").select("domain, hana_state, summary_user, summary_karel, tags, timestamp_start").eq("user_id", userId).eq("is_archived", false).eq("domain", "DID").lt("timestamp_start", fourteenDaysAgo).gte("timestamp_start", thirtyDaysAgo).order("timestamp_start", { ascending: false }).limit(15),
       entities: sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
