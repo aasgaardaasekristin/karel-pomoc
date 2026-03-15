@@ -230,7 +230,6 @@ serve(async (req) => {
         const directFiles = items.filter(f => f.mimeType !== "application/vnd.google-apps.folder");
 
         // Strategy A: Subfolders per part (e.g., "028_ARTUR/Karta_Artur.doc")
-        console.log(`[bootstrap] ${folderName}: ${subfolders.length} subfolders, ${directFiles.length} direct files`);
         for (const subfolder of subfolders) {
           const files = await listFilesInFolder(token, subfolder.id);
           console.log(`[bootstrap] Subfolder ${subfolder.name} (mime: ${subfolder.mimeType}): ${files.length} files: ${files.map(f => f.name).join(', ')}`);
