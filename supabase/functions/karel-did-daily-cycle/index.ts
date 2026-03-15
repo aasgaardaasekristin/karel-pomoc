@@ -2996,7 +2996,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
         const dateStr = new Date().toISOString().slice(0, 10);
 
-        for (const match of analysisText.matchAll(centrumBlockRegex)) {
+        for (const match of validatedAnalysisText.matchAll(centrumBlockRegex)) {
           const docName = match[1].trim();
           const newContent = match[2].trim();
           if (!newContent || newContent.length < 10) continue;
