@@ -1031,19 +1031,7 @@ const Chat = () => {
     }, 100);
   };
 
-  // ═══ DID Episode Generation — fire-and-forget after thread end ═══
-  const triggerEpisodeGeneration = useCallback(async (threadId: string) => {
-    try {
-      const headers = await getAuthHeaders();
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-episode-generate`, {
-        method: "POST", headers,
-        body: JSON.stringify({ threadId, crossModeScan: true }),
-      }).then(res => {
-        if (res.ok) console.log("[DID] Episode generation triggered for thread", threadId);
-        else console.warn("[DID] Episode generation failed:", res.status);
-      }).catch(e => console.warn("[DID] Episode generation error:", e));
-    } catch {}
-  }, []);
+  // (triggerEpisodeGeneration defined above, near handleLeaveThread)
 
   const handleDidEndCall = async () => {
     const threadToProcess = activeThread;
