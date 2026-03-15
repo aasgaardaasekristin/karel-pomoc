@@ -1925,7 +1925,7 @@ serve(async (req) => {
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
-    const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0;
+    const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0;
 
     // ═══ CRITICAL FIX: Manual triggers ALWAYS run full analysis using allRecentThreads ═══
     // Previously, manual triggers with no unprocessed threads returned early, skipping CENTRUM updates entirely.
