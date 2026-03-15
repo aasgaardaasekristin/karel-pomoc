@@ -1589,7 +1589,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
     // DID Kartotéka — full registry view
     if (didFlowState === "did-kartoteka") {
-      const DidRegistryOverview = require("@/components/did/DidRegistryOverview").default;
       return (
         <ScrollArea className="flex-1">
           <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
