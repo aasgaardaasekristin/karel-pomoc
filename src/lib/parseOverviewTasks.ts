@@ -61,6 +61,30 @@ function extractSection(block: string, startRe: RegExp, endRe: RegExp): string {
   return rest.slice(0, endIdx).trim();
 }
 
+/**
+ * Truncate a raw title to a short actionable label (~60 chars max).
+ * Splits at common Czech explanation markers and returns [shortTitle, overflow].
+ */
+function truncateTitle(raw: string): [string, string] {
+  // Split at explanation markers
+  const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:|Oba si|Pokus se|Je to|Má to|Tento|Jedná se)\b/i;
+  const splitMatch = raw.match(splitRe);
+  let title = splitMatch ? raw.slice(0, splitMatch.index!).trim() : raw.trim();
+  let overflow = splitMatch ? raw.slice(splitMatch.index!).trim() : "";
+
+  // Hard cap at 80 chars, break at last space
+  if (title.length > 80) {
+    const cut = title.lastIndexOf(" ", 80);
+    overflow = title.slice(cut > 30 ? cut : 80).trim() + (overflow ? " " + overflow : "");
+    title = title.slice(0, cut > 30 ? cut : 80).trim();
+  }
+
+  // Strip trailing colon/dash
+  title = title.replace(/[:\-–—]\s*$/, "").trim();
+
+  return [title, overflow];
+}
+
 function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", category: "today" | "tomorrow" | "longterm"): ParsedTask[] {
   if (!section.trim()) return [];
   const tasks: ParsedTask[] = [];
@@ -77,7 +101,9 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
 
     if (boldMatch || plainMatch) {
       if (currentTitle) {
-        tasks.push({ task: currentTitle, assigned_to: assignee, category, note: currentNote.trim() });
+        const [shortTitle, overflow] = truncateTitle(currentTitle);
+        const fullNote = (overflow + " " + currentNote).trim();
+        tasks.push({ task: shortTitle, assigned_to: assignee, category, note: fullNote });
       }
       const match = boldMatch || plainMatch!;
       currentTitle = match[1].trim();
@@ -86,13 +112,16 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       currentNote += " " + trimmed;
     } else {
       if (trimmed.length > 10) {
-        tasks.push({ task: trimmed.slice(0, 80), assigned_to: assignee, category, note: trimmed.length > 80 ? trimmed : "" });
+        const [shortTitle, overflow] = truncateTitle(trimmed);
+        tasks.push({ task: shortTitle, assigned_to: assignee, category, note: overflow });
       }
     }
   }
 
   if (currentTitle) {
-    tasks.push({ task: currentTitle, assigned_to: assignee, category, note: currentNote.trim() });
+    const [shortTitle, overflow] = truncateTitle(currentTitle);
+    const fullNote = (overflow + " " + currentNote).trim();
+    tasks.push({ task: shortTitle, assigned_to: assignee, category, note: fullNote });
   }
 
   return tasks;
