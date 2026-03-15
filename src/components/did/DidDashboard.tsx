@@ -291,6 +291,33 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     }
   }, []);
 
+  const handleRefreshMemory = useCallback(async () => {
+    setIsRefreshingMemory(true);
+    toast.info("Osvěžuji paměť – Karel skenuje Drive + internet...");
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-context-prime`,
+        { method: "POST", headers, body: JSON.stringify({ forceRefresh: true }) }
+      );
+      if (resp.ok) {
+        toast.success("Paměť osvěžena – Karel má aktuální situační vhled.");
+        // Invalidate overview cache
+        try { localStorage.removeItem(OVERVIEW_CACHE_KEY); } catch {}
+        setOverviewLoaded(false);
+        setOverviewText("");
+        loadSystemOverview();
+      } else {
+        toast.error("Nepodařilo se osvěžit paměť.");
+      }
+    } catch (e) {
+      console.error("Refresh memory error:", e);
+      toast.error("Chyba při osvěžování paměti.");
+    } finally {
+      setIsRefreshingMemory(false);
+    }
+  }, []);
+
     const loadDashboardData = async () => {
     try {
       const { data: threads } = await supabase
