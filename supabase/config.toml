@@ -113,3 +113,30 @@ verify_jwt = false
 
 [functions.karel-supervision-training]
 verify_jwt = false
+
+[functions.karel-hana-context-prime]
+verify_jwt = false
+
+[functions.karel-hana-chat]
+verify_jwt = false
+
+[functions.karel-memory-bootstrap]
+verify_jwt = false
+
+[functions.karel-memory-mirror]
+verify_jwt = false
+
+[functions.karel-daily-consolidation]
+verify_jwt = false
+
+[functions.karel-did-morning-brief]
+verify_jwt = false
+
+[functions.karel-did-monthly-retrospective]
+verify_jwt = false
+
+[functions.karel-did-meeting]
+verify_jwt = false
+
+[functions.karel-kata-handbook]
+verify_jwt = false
