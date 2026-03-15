@@ -142,31 +142,8 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // ── 1. Read 00_CENTRUM docs from Google Drive ──
-    let centrumDocs = "";
-    try {
-      const token = await getAccessToken();
-      const kartotekaId = await resolveKartotekaRoot(token);
-      if (kartotekaId) {
-        const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
-        if (centrumId) {
-          const files = await listFilesInFolder(token, centrumId);
-          const importantFiles = files.filter((f) =>
-            /dashboard|instrukce|plan|mapa|geografie|index/i.test(f.name)
-          ).slice(0, 8);
-          for (const f of importantFiles) {
-            try {
-              const content = await readFileContent(token, f.id);
-              centrumDocs += `\n[${f.name}]\n${content.slice(0, 3000)}\n`;
-            } catch {
-              // skip unreadable
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Drive read failed:", e);
-    }
+    // ── 1. Skip Drive reads entirely — overview works only from DB data ──
+    // Reading Drive docs caused latency and fed hallucination with clinical card content.
 
     // ── 2. DB: registry + tasks + více zdrojů aktivit (parallel) ──
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
