@@ -128,6 +128,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
+    const userId = authResult.user.id;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
@@ -145,14 +146,16 @@ serve(async (req) => {
         const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
         if (centrumId) {
           const files = await listFilesInFolder(token, centrumId);
-          const importantFiles = files.filter(f =>
+          const importantFiles = files.filter((f) =>
             /dashboard|instrukce|plan|mapa|geografie|index/i.test(f.name)
           ).slice(0, 8);
           for (const f of importantFiles) {
             try {
               const content = await readFileContent(token, f.id);
               centrumDocs += `\n[${f.name}]\n${content.slice(0, 3000)}\n`;
-            } catch { /* skip unreadable */ }
+            } catch {
+              // skip unreadable
+            }
           }
         }
       }
@@ -177,46 +180,54 @@ serve(async (req) => {
       sb
         .from("did_part_registry")
         .select("part_name, display_name, status, role_in_system, cluster, age_estimate, last_seen_at, last_emotional_state, last_emotional_intensity, health_score, known_triggers, known_strengths, total_threads, total_episodes")
+        .eq("user_id", userId)
         .order("last_seen_at", { ascending: false }),
       sb
         .from("did_therapist_tasks")
         .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note")
+        .eq("user_id", userId)
         .in("status", ["pending", "active", "in_progress"])
         .order("created_at", { ascending: false })
         .limit(60),
       sb
         .from("did_threads")
         .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+        .eq("user_id", userId)
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
         .limit(60),
       sb
         .from("did_threads")
         .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+        .eq("user_id", userId)
         .gte("last_activity_at", sevenDaysAgo)
         .order("last_activity_at", { ascending: false })
         .limit(80),
       sb
         .from("did_update_cycles")
         .select("completed_at, cycle_type")
+        .eq("user_id", userId)
         .eq("status", "completed")
         .order("completed_at", { ascending: false })
         .limit(3),
       sb
         .from("did_conversations")
         .select("updated_at, sub_mode, label, preview, messages")
+        .eq("user_id", userId)
         .gte("updated_at", twentyFourHoursAgo)
         .order("updated_at", { ascending: false })
         .limit(60),
       sb
         .from("karel_hana_conversations")
         .select("last_activity_at, current_domain, messages")
+        .eq("user_id", userId)
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
         .limit(20),
       sb
         .from("research_threads")
         .select("last_activity_at, topic, messages")
+        .eq("user_id", userId)
         .eq("is_deleted", false)
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
