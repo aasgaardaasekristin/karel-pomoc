@@ -650,6 +650,10 @@ Kompletní přepis plánu – 6 sekcí:
 Nové poznatky o vztazích mezi částmi.
 [/CENTRUM]
 
+[CENTRUM:03_Geografie_Vnitrniho_Sveta]
+Nové poznatky o vnitřním světě systému – místa, prostory, krajiny, propojení. POUZE pokud z rozhovorů/karet vyplývají nové prostorové informace.
+[/CENTRUM]
+
 [CENTRUM:00_Aktualni_Dashboard]
 ⚠️ TENTO DOKUMENT SE PŘEPISUJE CELÝ – vygeneruj kompletní nový obsah.
 Dashboard je "kontrolní panel" – čitelný za 30 sekund.
