@@ -2650,13 +2650,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
-            // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
-            // Use fuzzy matching: check if resolved name is a substring of any thread part or vice versa
-            const isInThreads = [...knownThreadParts].some(tp => 
-              tp === resolvedCanonical || tp.includes(resolvedCanonical) || resolvedCanonical.includes(tp)
-            );
-            if (!target.registryEntry && !isInThreads) {
-              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName} (canonical: ${resolvedCanonical}, known: ${[...knownThreadParts].join(",")})`);
+            // Hard guard: bez registrace se karta nikdy nevytváří/neupravuje
+            if (!target.registryEntry) {
+              console.warn(`[registry-guard] Blokuji zápis mimo oficiální registr: ${rawPartName} (canonical: ${resolvedCanonical})`);
               continue;
             }
 
