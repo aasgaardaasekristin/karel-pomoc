@@ -110,6 +110,214 @@ async function listSubfolders(token: string, parentId: string): Promise<Array<{ 
   return data.files || [];
 }
 
+async function createFolder(token: string, name: string, parentId: string): Promise<string> {
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    }),
+  });
+  const data = await res.json();
+  if (!data?.id) throw new Error(`Failed to create folder ${name}: ${JSON.stringify(data)}`);
+  return data.id;
+}
+
+async function findOrCreateFolder(token: string, name: string, parentId: string): Promise<string> {
+  const existing = await findFolder(token, name, parentId);
+  if (existing) return existing;
+  return await createFolder(token, name, parentId);
+}
+
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function findDocByExactName(token: string, parentId: string, fileName: string): Promise<{ id: string; name: string } | null> {
+  const escapedName = escapeDriveQueryValue(fileName);
+  const q = `name='${escapedName}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id,name)",
+    pageSize: "5",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  return data.files?.[0] || null;
+}
+
+async function upsertTextDoc(token: string, parentId: string, fileName: string, content: string): Promise<void> {
+  const existing = await findDocByExactName(token, parentId, fileName);
+  const boundary = "----DidPrimeBoundary";
+  const metadata = existing
+    ? { name: fileName }
+    : { name: fileName, parents: [parentId], mimeType: "text/plain" };
+
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n` +
+    `--${boundary}--`;
+
+  const url = existing
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart&supportsAllDrives=true`
+    : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true";
+
+  const res = await fetch(url, {
+    method: existing ? "PATCH" : "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to upsert ${fileName}: ${await res.text()}`);
+  }
+}
+
+function extractUserTexts(messages: unknown): string[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m: any) => m?.role === "user")
+    .map((m: any) => {
+      if (typeof m?.content === "string") return m.content;
+      if (Array.isArray(m?.content)) {
+        return m.content
+          .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
+          .filter(Boolean)
+          .join(" ");
+      }
+      return "";
+    })
+    .map((text: string) => text.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function pickCentrumDoc(centrumDocs: Record<string, string>, regex: RegExp): string {
+  const found = Object.entries(centrumDocs).find(([name]) => regex.test(name));
+  return found?.[1] || "";
+}
+
+function formatTherapistShadowLog(now: Date, didThreads: any[], didConversations: any[], hanaConversations: any[]): string {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+  const lines: string[] = [
+    `24h zápis vláken (vygenerováno ${now.toISOString()})`,
+    "",
+    "DID vlákna (uživatelské zprávy):",
+  ];
+
+  const mapSubModeLabel = (subMode: string, partName?: string) => {
+    if (subMode === "mamka") return "Hanička";
+    if (subMode === "kata") return "Káťa";
+    if (subMode === "cast") return partName || "část";
+    return subMode || "neurčeno";
+  };
+
+  for (const t of didThreads || []) {
+    const ts = t?.last_activity_at ? new Date(t.last_activity_at).getTime() : 0;
+    if (!ts || ts < cutoff) continue;
+    const speaker = mapSubModeLabel(t.sub_mode, t.part_name);
+    const userTexts = extractUserTexts(t.messages).slice(-6);
+    if (userTexts.length === 0) continue;
+    lines.push(`- [${t.last_activity_at}] ${speaker}`);
+    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  }
+
+  lines.push("", "Uložené DID konverzace (uživatelské zprávy):");
+  for (const c of didConversations || []) {
+    const tsRaw = c?.updated_at || c?.saved_at;
+    const ts = tsRaw ? new Date(tsRaw).getTime() : 0;
+    if (!ts || ts < cutoff) continue;
+    const speaker = mapSubModeLabel(c.sub_mode, c.label);
+    const userTexts = extractUserTexts(c.messages).slice(-4);
+    if (userTexts.length === 0) continue;
+    lines.push(`- [${tsRaw}] ${speaker}`);
+    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  }
+
+  lines.push("", "Hana DID konverzace (uživatelské zprávy):");
+  for (const h of hanaConversations || []) {
+    const ts = h?.last_activity_at ? new Date(h.last_activity_at).getTime() : 0;
+    if (!ts || ts < cutoff) continue;
+    const userTexts = extractUserTexts(h.messages).slice(-4);
+    if (userTexts.length === 0) continue;
+    lines.push(`- [${h.last_activity_at}] Hanička`);
+    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  }
+
+  if (lines.length <= 6) {
+    lines.push("- Za posledních 24 hodin nebyly zachyceny nové uživatelské zprávy.");
+  }
+
+  return lines.join("\n");
+}
+
+async function syncDidTherapistShadowMemory(params: {
+  token: string;
+  now: Date;
+  systemState: string;
+  driveData: Record<string, Record<string, string>>;
+  didThreads: any[];
+  didConversations: any[];
+  hanaConversations: any[];
+}): Promise<{ updated: boolean; filesUpdated: number }> {
+  const { token, now, systemState, driveData, didThreads, didConversations, hanaConversations } = params;
+
+  const pametId = await findFolder(token, "PAMET_KAREL");
+  if (!pametId) {
+    throw new Error("PAMET_KAREL folder not found");
+  }
+
+  const didRootId = await findOrCreateFolder(token, "DID", pametId);
+  const hankaRoot = await findOrCreateFolder(token, "HANKA", didRootId);
+  const kataRoot = await findOrCreateFolder(token, "KATA", didRootId);
+
+  const centrum = driveData["CENTRUM"] || {};
+  const dashboardText = pickCentrumDoc(centrum, /dashboard|aktualni/i);
+  const operativniText = pickCentrumDoc(centrum, /operativni|plan/i);
+  const strategickyText = pickCentrumDoc(centrum, /strateg/i);
+  const instructionsText = pickCentrumDoc(centrum, /instrukce/i);
+  const threadsLog = formatTherapistShadowLog(now, didThreads, didConversations, hanaConversations);
+
+  const syncForTherapist = async (therapistFolderId: string, therapistLabel: string) => {
+    const centrumCopyFolder = await findOrCreateFolder(token, "00_CENTRUM_KOPIE", therapistFolderId);
+    const logsFolder = await findOrCreateFolder(token, "01_VLAKNA_24H", therapistFolderId);
+
+    await upsertTextDoc(token, centrumCopyFolder, "00_Aktualni_Dashboard.txt", dashboardText || "Dashboard zatím nebyl načten.");
+    await upsertTextDoc(token, centrumCopyFolder, "05_Operativni_Plan.txt", operativniText || "Operativní plán zatím nebyl načten.");
+    await upsertTextDoc(token, centrumCopyFolder, "06_Strategicky_Vyhled.txt", strategickyText || "Strategický výhled zatím nebyl načten.");
+    await upsertTextDoc(token, centrumCopyFolder, "02_Instrukce_Pro_Aplikaci_Karel_2.txt", instructionsText || "Instrukce zatím nebyly načteny.");
+
+    const header = [
+      `DID stínová paměť pro ${therapistLabel}`,
+      `Aktualizováno: ${now.toISOString()}`,
+      `Stav systému: ${systemState}`,
+      "",
+    ].join("\n");
+
+    await upsertTextDoc(token, logsFolder, "24h_vlakna.txt", `${header}${threadsLog}`);
+    await upsertTextDoc(token, therapistFolderId, "README.txt", `${header}Tato složka je automaticky aktualizovaná při ručním „Osvěž paměť“ v DID režimu.`);
+  };
+
+  await Promise.all([
+    syncForTherapist(hankaRoot, "Haničku"),
+    syncForTherapist(kataRoot, "Káťu"),
+  ]);
+
+  return { updated: true, filesUpdated: 12 };
+}
+
 // ── Auth ──
 function isCronOrService(req: Request): boolean {
   const authHeader = req.headers.get("Authorization") || "";
