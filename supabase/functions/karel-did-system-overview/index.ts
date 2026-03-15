@@ -495,7 +495,7 @@ serve(async (req) => {
     const hour = now.getHours();
     const minute = now.getMinutes().toString().padStart(2, "0");
     const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
-    const chosenGreeting = `Ahoj, Hani a Káťo! ${formattedDate}.`;
+    const chosenGreeting = `Ahoj, Haničko a Káťo! ${formattedDate}.`;
 
     // ── 5. Přehled: přirozený styl bez technických tagů ──
     const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Vytvoř přehled VÝHRADNĚ z dat níže.
@@ -508,6 +508,9 @@ TVRDÁ PRAVIDLA:
 5) Pokud je u části uvedeno, že za posledních 24 hodin je aktivita, NESMÍŠ psát, že pro ni nemáš data.
 6) Žádné dramatizace typu "kritický bod" nebo "dekompenzace", pokud to není doslova řečeno ve zprávách.
 7) Pokud nemáš terapeutické tipy, tuto oblast úplně vynech a nic o chybějících zdrojích nepiš.
+8) Nesmíš psát interní procesní věty o "redistribuci", "integraci poznatků", "cache" ani "synchronizačních mechanismech".
+9) Oslovení terapeutek: pouze "Haničko" a "Káťo".
+10) Z rozhovorů cituj jen uživatelské zprávy, nikdy Karelovy odpovědi.
 
 STYL VÝSTUPU:
 - Přirozená čeština, lidský tón, stručně a věcně.
@@ -522,7 +525,7 @@ POVINNÁ STRUKTURA:
 
 VSTUPNÍ DATA:
 
-=== SNAPSHOT ČÁSTÍ (registr + aktivita z celé aplikace 24h) ===
+=== SNAPSHOT ČÁSTÍ (aktivita 24h) ===
 ${partsSnapshotBlock || "(části nejsou v registru)"}
 
 === VLAKNA ČÁSTÍ 24H ===
@@ -531,7 +534,7 @@ ${threadSummary24h || "(bez vláken částí za 24h)"}
 === VLAKNA TERAPEUTEK 24H ===
 ${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
 
-=== ZMÍNKY V OSTATNÍCH REŽIMECH 24H ===
+=== ZMÍNKY V OSTATNÍCH REŽIMECH 24H (jen user vstupy) ===
 ${crossModeSummary24h || "(bez zachycených zmínek)"}
 
 === KONTEXT TÝDNE (části) ===
