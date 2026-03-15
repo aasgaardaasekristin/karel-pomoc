@@ -1830,6 +1830,62 @@ serve(async (req) => {
     }).join("\n");
     console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
 
+    // ═══ COOLDOWN: Prevent duplicate cycles within 5 hours ═══
+    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
+    const { data: recentDailyCycle } = await sb.from("did_update_cycles")
+      .select("id, completed_at, status")
+      .eq("cycle_type", "daily")
+      .eq("status", "completed")
+      .gte("completed_at", fiveHoursAgo)
+      .order("completed_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (recentDailyCycle) {
+      console.log(`[daily-cycle] Cooldown: completed cycle ${recentDailyCycle.id} at ${recentDailyCycle.completed_at}, skipping.`);
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "cooldown",
+        lastCompletedAt: recentDailyCycle.completed_at,
+        cycleId: recentDailyCycle.id,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ═══ CONCURRENCY: Prevent parallel runs ═══
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const { data: runningDailyCycle } = await sb.from("did_update_cycles")
+      .select("id, started_at")
+      .eq("cycle_type", "daily")
+      .eq("status", "running")
+      .gte("started_at", tenMinAgo)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (runningDailyCycle) {
+      console.log(`[daily-cycle] Already running: cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, skipping.`);
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "already_running",
+        cycleId: runningDailyCycle.id,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ═══ AUTO-CLEANUP: Mark stuck "running" daily cycles as "failed" ═══
+    const { data: stuckDailyCycles } = await sb.from("did_update_cycles")
+      .select("id")
+      .eq("cycle_type", "daily")
+      .eq("status", "running")
+      .lt("started_at", tenMinAgo);
+    if (stuckDailyCycles && stuckDailyCycles.length > 0) {
+      for (const stuck of stuckDailyCycles) {
+        await sb.from("did_update_cycles").update({ status: "failed", completed_at: new Date().toISOString() }).eq("id", stuck.id);
+      }
+      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed`);
+    }
+
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
     if (resolvedUserId) cycleInsertPayload.user_id = resolvedUserId;
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
@@ -2507,6 +2563,10 @@ SEKCE 7 – KARLOVY POSTŘEHY 🔍
 
 [CENTRUM:04_Mapa_Vztahu]
 Nové poznatky o vztazích mezi částmi, změny v dynamice.
+[/CENTRUM]
+
+[CENTRUM:03_Geografie_Vnitrniho_Sveta]
+Nové poznatky o vnitřním světě systému – místa, prostory, krajiny, které části popisují. Změny v topografii, nové lokace, propojení prostorů. POUZE pokud z rozhovorů vyplývají nová prostorová data.
 [/CENTRUM]
 
 PRAVIDLA PRO CENTRUM:
