@@ -555,6 +555,8 @@ const Chat = () => {
       setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
       setDidFlowState("chat");
       toast.info(`Pokračuješ ve vláknu s ${partName}`);
+      // Auto-prime with specific part context
+      didContextPrime.runPrime(partName, "cast");
       // Load fresh part docs in background
       (async () => {
         try {
