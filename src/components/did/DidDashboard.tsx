@@ -505,6 +505,46 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidKartotekaHealth refreshTrigger={refreshTrigger} />
       </div>
 
+      {/* DID Memory Bootstrap */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <Database className="w-3.5 h-3.5 text-primary" />
+            Bootstrap DID paměti
+          </h4>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runDidBootstrap}
+            disabled={isBootstrapping}
+            className="h-7 text-[10px] px-3"
+          >
+            {isBootstrapping ? (
+              <><Loader2 className="w-3 h-3 animate-spin mr-1" />Zpracovávám...</>
+            ) : (
+              "Spustit bootstrap"
+            )}
+          </Button>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Jednorázové nasátí všech karet z Drive do registru částí a sémantické paměti.
+        </p>
+        {bootstrapProgress && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+              <span>{bootstrapProgress.current}/{bootstrapProgress.total} — {bootstrapProgress.currentName}</span>
+              <span>{Math.round((bootstrapProgress.current / bootstrapProgress.total) * 100)}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300"
+                style={{ width: `${(bootstrapProgress.current / bootstrapProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* System Map */}
       <DidSystemMap
         parts={parts}
