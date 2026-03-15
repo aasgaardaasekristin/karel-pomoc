@@ -241,9 +241,11 @@ serve(async (req) => {
         .replace(/[\u0300-\u036f]/g, "")
         .trim();
 
-    const extractMessageTexts = (messages: unknown): string[] => {
+    const extractMessageTexts = (messages: unknown, allowedRoles: string[] = ["user"]): string[] => {
       if (!Array.isArray(messages)) return [];
+      const roleSet = new Set(allowedRoles.map((r) => String(r).toLowerCase()));
       return messages
+        .filter((m: any) => roleSet.has(String(m?.role || "").toLowerCase()))
         .map((m: any) => {
           const content = m?.content;
           if (typeof content === "string") return content;
@@ -282,6 +284,7 @@ serve(async (req) => {
 
     const directThreadActivity = new Set(
       (last24hThreads || [])
+        .filter((t: any) => t?.sub_mode === "cast")
         .map((t: any) => normalizeKey(t.part_name || ""))
         .filter(Boolean)
     );
@@ -289,9 +292,14 @@ serve(async (req) => {
     const crossModeActivity = new Set<string>();
     const crossModeMentions: string[] = [];
 
-    const pushMentionsFromSource = (sourceLabel: string, rows: any[] | null | undefined, messagesSelector: (row: any) => unknown) => {
+    const pushMentionsFromSource = (
+      sourceLabel: string,
+      rows: any[] | null | undefined,
+      messagesSelector: (row: any) => unknown,
+      speakerLabel: string
+    ) => {
       for (const row of rows || []) {
-        const texts = extractMessageTexts(messagesSelector(row)).slice(-8);
+        const texts = extractMessageTexts(messagesSelector(row), ["user"]).slice(-8);
         for (const text of texts) {
           const mentioned = detectMentionedPartKeys(text);
           if (mentioned.length === 0) continue;
@@ -299,41 +307,31 @@ serve(async (req) => {
           const partsLabel = mentioned
             .map((key) => partAliasMap.find((p) => p.key === key)?.display || key)
             .join(", ");
-          crossModeMentions.push(`[${sourceLabel}] ${partsLabel}: ${text.slice(0, 260)}`);
+          crossModeMentions.push(`${sourceLabel}/${speakerLabel} | ${partsLabel}: ${text.slice(0, 260)}`);
         }
       }
     };
 
-    pushMentionsFromSource("DID-HISTORIE", didConversations24h, (row) => row.messages);
-    pushMentionsFromSource("HANA", hanaConversations24h, (row) => row.messages);
-    pushMentionsFromSource("RESEARCH", researchThreads24h, (row) => row.messages);
+    pushMentionsFromSource("DID-HISTORIE", didConversations24h, (row) => row.messages, "uživatel");
+    pushMentionsFromSource("HANA", hanaConversations24h, (row) => row.messages, "Hanička");
+    pushMentionsFromSource("RESEARCH", researchThreads24h, (row) => row.messages, "uživatel");
 
     // ── 2a. Formát snapshotu částí bez technického balastu ──
-    const isDefaultRegistryEmotion = (state: string | null, intensity: number | null) => {
-      const normalizedState = (state || "").trim().toUpperCase();
-      return (!normalizedState || normalizedState === "STABILNI") && (intensity == null || intensity === 3);
-    };
-
     let partsSnapshotBlock = "";
     if (registry && registry.length > 0) {
       for (const r of registry) {
         const partName = r.display_name || r.part_name;
         const key = normalizeKey(r.part_name || r.display_name || "");
         const has24hActivity = directThreadActivity.has(key) || crossModeActivity.has(key);
-        const emotionIsDefault = isDefaultRegistryEmotion(r.last_emotional_state, r.last_emotional_intensity);
 
-        let line = `- ${partName}: status ${r.status || "neuveden"}`;
-        if (!emotionIsDefault && r.last_emotional_state) {
-          line += `, poslední zaznamenaná emoce ${r.last_emotional_state}`;
-          if (typeof r.last_emotional_intensity === "number") {
-            line += ` (${r.last_emotional_intensity}/10)`;
-          }
-        }
-        if (r.role_in_system) line += `, role ${r.role_in_system}`;
-        if (r.cluster) line += `, klastr ${r.cluster}`;
+        let line = `- ${partName}: `;
         line += has24hActivity
-          ? ", v posledních 24 hodinách je zaznamenaná aktivita v aplikaci."
-          : ", za posledních 24 hodin nemám novou interakci v aplikaci.";
+          ? "za posledních 24 hodin proběhla přímá komunikace v aplikaci."
+          : "za posledních 24 hodin bez nové přímé komunikace v aplikaci.";
+
+        if (r.last_seen_at) {
+          line += ` Poslední evidovaná aktivita: ${r.last_seen_at}.`;
+        }
 
         partsSnapshotBlock += `${line}\n`;
       }
