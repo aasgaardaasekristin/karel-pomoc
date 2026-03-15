@@ -832,41 +832,22 @@ ${perplexityContext}`,
           }
         }
 
-        // Save weekly report into a date subfolder if 06 folder exists
-        let dohodaFolderForReport = dohodaFolderId;
-        if (!dohodaFolderForReport) {
-          const centerFiles2 = await listFilesInFolder(token, centrumFolderId);
-          const existing = centerFiles2.find(f => f.mimeType === DRIVE_FOLDER_MIME && (canonicalText(f.name).includes("dohod") || canonicalText(f.name).includes("report")));
-          dohodaFolderForReport = existing?.id || null;
-        }
-
+        // ═══ Weekly report: append to 06_Strategicky_Vyhled (NO standalone files) ═══
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
-        if (reportContent && dohodaFolderForReport) {
-          const existingFiles = await listFilesInFolder(token, dohodaFolderForReport);
-          // Create date subfolder
-          let weeklySubfolderId: string | null = null;
-          const existingSub = existingFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && f.name === dateStr);
-          if (existingSub) {
-            weeklySubfolderId = existingSub.id;
+        if (reportContent) {
+          // Append weekly report summary to the strategic outlook document
+          const centerFiles2 = await listFilesInFolder(token, centrumFolderId);
+          const stratFileForReport = centerFiles2.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+          if (stratFileForReport) {
+            const existing = await readFileContent(token, stratFileForReport.id);
+            if (!existing.includes(reportContent.slice(0, 80))) {
+              const updated = existing.trimEnd() + `\n\n═══ TÝDENNÍ REPORT ${dateStr} ═══\n${reportContent}`;
+              await updateFileById(token, stratFileForReport.id, updated, stratFileForReport.mimeType);
+              cardsUpdated.push("06_Strategicky_Vyhled (týdenní report append)");
+              console.log(`[weekly] ✅ Weekly report appended to 06_Strategicky_Vyhled`);
+            }
           } else {
-            const createSubRes = await fetch(`https://www.googleapis.com/drive/v3/files?supportsAllDrives=true`, {
-              method: "POST",
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ name: dateStr, mimeType: DRIVE_FOLDER_MIME, parents: [dohodaFolderForReport] }),
-            });
-            if (createSubRes.ok) {
-              const sub = await createSubRes.json();
-              weeklySubfolderId = sub.id;
-            }
-          }
-          if (weeklySubfolderId) {
-            const subFiles = await listFilesInFolder(token, weeklySubfolderId);
-            const reportFileName = `Tydenni_Report_${dateStr}`;
-            if (!subFiles.some(f => f.name === reportFileName)) {
-              await createFileInFolder(token, reportFileName, `TÝDENNÍ STRATEGICKÁ ANALÝZA\nDatum: ${dateStr}\nSprávce: Karel\n\n${reportContent}`, weeklySubfolderId);
-              cardsUpdated.push("Tydenni_Report");
-              console.log(`[weekly] ✅ Weekly report saved`);
-            }
+            console.warn(`[weekly] 06_Strategicky_Vyhled not found for report append`);
           }
         }
       }

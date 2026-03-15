@@ -2565,6 +2565,10 @@ SEKCE 7 – KARLOVY POSTŘEHY 🔍
 Nové poznatky o vztazích mezi částmi, změny v dynamice.
 [/CENTRUM]
 
+[CENTRUM:03_Geografie_Vnitrniho_Sveta]
+Nové poznatky o vnitřním světě systému – místa, prostory, krajiny, které části popisují. Změny v topografii, nové lokace, propojení prostorů. POUZE pokud z rozhovorů vyplývají nová prostorová data.
+[/CENTRUM]
+
 PRAVIDLA PRO CENTRUM:
 - Piš POUZE nové informace, které ještě NEJSOU v existujícím dokumentu
 - Každý záznam začni datem [YYYY-MM-DD]
