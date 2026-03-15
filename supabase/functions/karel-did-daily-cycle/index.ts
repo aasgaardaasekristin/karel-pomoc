@@ -2033,11 +2033,28 @@ Formát HTML emailu:
     }).join("\n\n---\n\n");
 
     const allSummaries = [threadSummaries, convSummaries, researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
+
+    const registryCanonicalParts = new Set(
+      (registryContext?.entries || []).map((entry) => canonicalText(entry.name)).filter(Boolean)
+    );
+    const registryContextText = (registryContext?.entries || []).length > 0
+      ? registryContext!.entries
+          .slice(0, 120)
+          .map((entry) => `- ${entry.id || "???"} | ${entry.name} | status: ${entry.status || "neuvedeno"}`)
+          .join("\n")
+      : "(registr nedostupný)";
+
     const knownThreadParts = new Set(
       reportThreads
+        .filter((t) => (t.sub_mode || "cast") === "cast")
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
-        .filter(Boolean)
+        .filter((name) => {
+          if (!name) return false;
+          if (registryCanonicalParts.size === 0) return true;
+          return registryCanonicalParts.has(name);
+        })
     );
+
     let driveContext = "";
     let existingCards: Record<string, string> = {};
     let instructionContext = "";
