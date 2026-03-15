@@ -1922,24 +1922,23 @@ serve(async (req) => {
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
     const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0;
 
-    if (threads.length === 0 && conversations.length === 0) {
+    // ═══ CRITICAL FIX: Manual triggers ALWAYS run full analysis using allRecentThreads ═══
+    // Previously, manual triggers with no unprocessed threads returned early, skipping CENTRUM updates entirely.
+    if (threads.length === 0 && conversations.length === 0 && !hasRecentActivity) {
+      // Truly nothing to process — no activity at all in 24h
       if (cycle) {
         await sb.from("did_update_cycles").update({
           status: "completed",
           completed_at: new Date().toISOString(),
           report_summary: normalizedCardFiles.length > 0
             ? `Normalizováno ${normalizedCardFiles.length} karet na strukturu A–M.`
-            : "No new threads to process (already processed earlier)",
+            : "Žádná aktivita za posledních 24h",
           cards_updated: cardsUpdated,
         }).eq("id", cycle.id);
       }
 
-      // If there IS recent activity (already processed by manual trigger), generate a REAL report, not "quiet day"
-      if (shouldSendEmails && hasRecentActivity) {
-        console.log(`[report] No unprocessed data, but ${allRecentThreads.length} recent threads + ${allRecentConversations.length} recent convs found. Generating report from recent activity.`);
-        // Fall through to the main report generation below instead of returning early
-      } else if (shouldSendEmails && !hasRecentActivity) {
-        // Truly quiet day - no activity at all in 24h
+      if (shouldSendEmails) {
+        // Truly quiet day email
         try {
           const dateStr = reportDatePrague;
 
@@ -1958,17 +1957,16 @@ Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace
 - Pozdrav Haničku
 - Řekni, že dnes byl klidný den, žádné části se neozvaly
 - Krátké povzbuzení
-- Podpis: Karel` },
-                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.` },
+Datum: ${dateStr}` },
+                    { role: "user", content: "Vygeneruj klidný denní report." },
                   ],
                 }),
               });
               if (hankaRes.ok) {
-                const d = await hankaRes.json();
-                hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+                const hankaData = await hankaRes.json();
+                hankaHtml = hankaData.choices?.[0]?.message?.content || "";
               }
-            } catch {}
-            if (!hankaHtml) hankaHtml = `<p>Dnes klidný den – žádné části se neozvaly. Karel</p>`;
+            } catch (e) { console.warn("[quiet-day] Hanka email gen failed:", e); }
 
             let kataHtml = "";
             try {
@@ -1978,70 +1976,52 @@ Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel. Vygeneruj krátký denní report pro Káťu (druhý terapeut). PROFESIONÁLNÍ tón. Dnes nebyla žádná aktivita.
-Formát HTML emailu:
+                    { role: "system", content: `Jsi Karel – AI asistent. Vygeneruj krátký denní report pro Káťu (kolegyni terapeutku). Profesionální, vstřícný tón.
+Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
 - Pozdrav Káťu
-- Řekni, že dnes bez aktivity
-- Podpis: Karel` },
-                    { role: "user", content: `Datum: ${dateStr}\nDnes nebyla zaznamenána žádná aktivita částí.` },
+- Řekni, že dnes byl klidný den
+- Krátké povzbuzení
+Datum: ${dateStr}` },
+                    { role: "user", content: "Vygeneruj klidný denní report." },
                   ],
                 }),
               });
               if (kataRes.ok) {
-                const d = await kataRes.json();
-                kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+                const kataData = await kataRes.json();
+                kataHtml = kataData.choices?.[0]?.message?.content || "";
               }
-            } catch {}
-            if (!kataHtml) kataHtml = `<p>Dnes bez aktivity částí. Karel</p>`;
+            } catch (e) { console.warn("[quiet-day] Kata email gen failed:", e); }
 
-            emailSentToHanka = await sendEmailOnce(
-              "hanka",
-              MAMKA_EMAIL,
-              `Karel – denní report ${dateStr}`,
-              hankaHtml,
-            );
-
-            emailSentToKata = await sendEmailOnce(
-              "kata",
-              KATA_EMAIL,
-              `Karel – report pro Káťu ${dateStr}`,
-              kataHtml,
-            );
+            let emailSentToHanka = false;
+            let emailSentToKata = false;
+            if (hankaHtml) {
+              emailSentToHanka = await sendEmailOnce("hanka", HANKA_EMAIL, `Karel – Klidný den (${dateStr})`, hankaHtml);
+            }
+            if (kataHtml && KATA_EMAIL) {
+              emailSentToKata = await sendEmailOnce("kata", KATA_EMAIL, `Karel – Klidný den (${dateStr})`, kataHtml);
+            }
           }
-        } catch (e) {
-          console.error("Quiet-day email error:", e);
-        }
-
-        return new Response(JSON.stringify({
-          success: true,
-          message: "No activity in last 24h, quiet-day report sent",
-          threadsProcessed: 0,
-          conversationsProcessed: 0,
-          cardsUpdated,
-          reportSent: emailSentToHanka || emailSentToKata,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      } else {
-        // No emails needed and no data to process
-        return new Response(JSON.stringify({
-          success: true,
-          message: "No new threads to process",
-          threadsProcessed: 0,
-          conversationsProcessed: 0,
-          cardsUpdated,
-          reportSent: false,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        } catch (e) { console.error("[quiet-day] Email error:", e); }
       }
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: "Žádná aktivita za posledních 24h",
+        threadsProcessed: 0,
+        conversationsProcessed: 0,
+        cardsUpdated,
+        reportSent: false,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // When we reach here with no unprocessed data but hasRecentActivity=true,
-    // we need to use allRecentThreads/allRecentConversations for report generation
-    // Use allRecentThreads for summaries if threads is empty but recent activity exists
-    const reportThreads = threads.length > 0 ? threads : (shouldSendEmails && hasRecentActivity ? allRecentThreads : []);
-    const reportConversations = conversations.length > 0 ? conversations : (shouldSendEmails && hasRecentActivity ? allRecentConversations : []);
+    // ═══ ALWAYS use allRecentThreads for analysis when unprocessed ones are empty ═══
+    // This ensures manual triggers and cron triggers both get full CENTRUM document updates
+    const reportThreads = threads.length > 0 ? threads : allRecentThreads;
+    const reportConversations = conversations.length > 0 ? conversations : allRecentConversations;
+    
+    console.log(`[daily-cycle] Processing: ${reportThreads.length} threads (${threads.length} unprocessed), ${reportConversations.length} conversations (${conversations.length} unprocessed), hasRecentActivity=${hasRecentActivity}`);
 
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
