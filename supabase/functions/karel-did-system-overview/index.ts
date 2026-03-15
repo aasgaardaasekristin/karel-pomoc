@@ -70,6 +70,8 @@ function sanitizeOverviewText(text: string): string {
     .replace(/^(\s*)\*\s+/gm, "$1– ")
     .replace(/^(\s*)##+\s*/gm, "$1")
     .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
+    .replace(/\bHano\b/gi, "Haničko")
+    .replace(/\b(redistribuc(e|i|í)|integra(c|č)e poznatk(ů|u)|situační cache|stav systému podle registru)\b/gi, "")
     .replace(/\n{3,}/g, "\n\n");
 }
 
@@ -126,6 +128,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
+    const userId = authResult.user.id;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
@@ -143,14 +146,16 @@ serve(async (req) => {
         const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
         if (centrumId) {
           const files = await listFilesInFolder(token, centrumId);
-          const importantFiles = files.filter(f =>
+          const importantFiles = files.filter((f) =>
             /dashboard|instrukce|plan|mapa|geografie|index/i.test(f.name)
           ).slice(0, 8);
           for (const f of importantFiles) {
             try {
               const content = await readFileContent(token, f.id);
               centrumDocs += `\n[${f.name}]\n${content.slice(0, 3000)}\n`;
-            } catch { /* skip unreadable */ }
+            } catch {
+              // skip unreadable
+            }
           }
         }
       }
@@ -175,46 +180,54 @@ serve(async (req) => {
       sb
         .from("did_part_registry")
         .select("part_name, display_name, status, role_in_system, cluster, age_estimate, last_seen_at, last_emotional_state, last_emotional_intensity, health_score, known_triggers, known_strengths, total_threads, total_episodes")
+        .eq("user_id", userId)
         .order("last_seen_at", { ascending: false }),
       sb
         .from("did_therapist_tasks")
         .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note")
+        .eq("user_id", userId)
         .in("status", ["pending", "active", "in_progress"])
         .order("created_at", { ascending: false })
         .limit(60),
       sb
         .from("did_threads")
         .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+        .eq("user_id", userId)
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
         .limit(60),
       sb
         .from("did_threads")
         .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+        .eq("user_id", userId)
         .gte("last_activity_at", sevenDaysAgo)
         .order("last_activity_at", { ascending: false })
         .limit(80),
       sb
         .from("did_update_cycles")
         .select("completed_at, cycle_type")
+        .eq("user_id", userId)
         .eq("status", "completed")
         .order("completed_at", { ascending: false })
         .limit(3),
       sb
         .from("did_conversations")
         .select("updated_at, sub_mode, label, preview, messages")
+        .eq("user_id", userId)
         .gte("updated_at", twentyFourHoursAgo)
         .order("updated_at", { ascending: false })
         .limit(60),
       sb
         .from("karel_hana_conversations")
         .select("last_activity_at, current_domain, messages")
+        .eq("user_id", userId)
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
         .limit(20),
       sb
         .from("research_threads")
         .select("last_activity_at, topic, messages")
+        .eq("user_id", userId)
         .eq("is_deleted", false)
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
@@ -228,9 +241,11 @@ serve(async (req) => {
         .replace(/[\u0300-\u036f]/g, "")
         .trim();
 
-    const extractMessageTexts = (messages: unknown): string[] => {
+    const extractMessageTexts = (messages: unknown, allowedRoles: string[] = ["user"]): string[] => {
       if (!Array.isArray(messages)) return [];
+      const roleSet = new Set(allowedRoles.map((r) => String(r).toLowerCase()));
       return messages
+        .filter((m: any) => roleSet.has(String(m?.role || "").toLowerCase()))
         .map((m: any) => {
           const content = m?.content;
           if (typeof content === "string") return content;
@@ -269,6 +284,7 @@ serve(async (req) => {
 
     const directThreadActivity = new Set(
       (last24hThreads || [])
+        .filter((t: any) => t?.sub_mode === "cast")
         .map((t: any) => normalizeKey(t.part_name || ""))
         .filter(Boolean)
     );
@@ -276,9 +292,14 @@ serve(async (req) => {
     const crossModeActivity = new Set<string>();
     const crossModeMentions: string[] = [];
 
-    const pushMentionsFromSource = (sourceLabel: string, rows: any[] | null | undefined, messagesSelector: (row: any) => unknown) => {
+    const pushMentionsFromSource = (
+      sourceLabel: string,
+      rows: any[] | null | undefined,
+      messagesSelector: (row: any) => unknown,
+      speakerLabel: string
+    ) => {
       for (const row of rows || []) {
-        const texts = extractMessageTexts(messagesSelector(row)).slice(-8);
+        const texts = extractMessageTexts(messagesSelector(row), ["user"]).slice(-8);
         for (const text of texts) {
           const mentioned = detectMentionedPartKeys(text);
           if (mentioned.length === 0) continue;
@@ -286,41 +307,31 @@ serve(async (req) => {
           const partsLabel = mentioned
             .map((key) => partAliasMap.find((p) => p.key === key)?.display || key)
             .join(", ");
-          crossModeMentions.push(`[${sourceLabel}] ${partsLabel}: ${text.slice(0, 260)}`);
+          crossModeMentions.push(`${sourceLabel}/${speakerLabel} | ${partsLabel}: ${text.slice(0, 260)}`);
         }
       }
     };
 
-    pushMentionsFromSource("DID-HISTORIE", didConversations24h, (row) => row.messages);
-    pushMentionsFromSource("HANA", hanaConversations24h, (row) => row.messages);
-    pushMentionsFromSource("RESEARCH", researchThreads24h, (row) => row.messages);
+    pushMentionsFromSource("DID-HISTORIE", didConversations24h, (row) => row.messages, "uživatel");
+    pushMentionsFromSource("HANA", hanaConversations24h, (row) => row.messages, "Hanička");
+    pushMentionsFromSource("RESEARCH", researchThreads24h, (row) => row.messages, "uživatel");
 
     // ── 2a. Formát snapshotu částí bez technického balastu ──
-    const isDefaultRegistryEmotion = (state: string | null, intensity: number | null) => {
-      const normalizedState = (state || "").trim().toUpperCase();
-      return (!normalizedState || normalizedState === "STABILNI") && (intensity == null || intensity === 3);
-    };
-
     let partsSnapshotBlock = "";
     if (registry && registry.length > 0) {
       for (const r of registry) {
         const partName = r.display_name || r.part_name;
         const key = normalizeKey(r.part_name || r.display_name || "");
         const has24hActivity = directThreadActivity.has(key) || crossModeActivity.has(key);
-        const emotionIsDefault = isDefaultRegistryEmotion(r.last_emotional_state, r.last_emotional_intensity);
 
-        let line = `- ${partName}: status ${r.status || "neuveden"}`;
-        if (!emotionIsDefault && r.last_emotional_state) {
-          line += `, poslední zaznamenaná emoce ${r.last_emotional_state}`;
-          if (typeof r.last_emotional_intensity === "number") {
-            line += ` (${r.last_emotional_intensity}/10)`;
-          }
-        }
-        if (r.role_in_system) line += `, role ${r.role_in_system}`;
-        if (r.cluster) line += `, klastr ${r.cluster}`;
+        let line = `- ${partName}: `;
         line += has24hActivity
-          ? ", v posledních 24 hodinách je zaznamenaná aktivita v aplikaci."
-          : ", za posledních 24 hodin nemám novou interakci v aplikaci.";
+          ? "za posledních 24 hodin proběhla přímá komunikace v aplikaci."
+          : "za posledních 24 hodin bez nové přímé komunikace v aplikaci.";
+
+        if (r.last_seen_at) {
+          line += ` Poslední evidovaná aktivita: ${r.last_seen_at}.`;
+        }
 
         partsSnapshotBlock += `${line}\n`;
       }
@@ -364,13 +375,19 @@ serve(async (req) => {
     // ── 2c. Kontext vláken + cross-mode zmínek ──
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
-      const speaker = t.sub_mode === "cast" ? "část" : "terapeut";
+      const speaker = t.sub_mode === "cast"
+        ? "část"
+        : t.sub_mode === "mamka"
+          ? "Hanička"
+          : t.sub_mode === "kata"
+            ? "Káťa"
+            : "terapeut";
       const snippets = msgs
         .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
         .slice(-5)
-        .map((m: any) => `- ${String(m.content).slice(0, 240)}`)
+        .map((m: any) => `- ${String(m.content).replace(/\s+/g, " ").slice(0, 240)}`)
         .join("\n");
-      return `\n${t.part_name} (${speaker}, ${t.last_activity_at})\n${snippets || "- bez user zpráv"}`;
+      return `\n${t.part_name} (${speaker}, ${t.last_activity_at})\n${snippets || "- bez uživatelských zpráv"}`;
     };
 
     let threadSummary24h = "";
@@ -478,7 +495,7 @@ serve(async (req) => {
     const hour = now.getHours();
     const minute = now.getMinutes().toString().padStart(2, "0");
     const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
-    const chosenGreeting = `Ahoj, Hani a Káťo! ${formattedDate}.`;
+    const chosenGreeting = `Ahoj, Haničko a Káťo! ${formattedDate}.`;
 
     // ── 5. Přehled: přirozený styl bez technických tagů ──
     const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Vytvoř přehled VÝHRADNĚ z dat níže.
@@ -491,6 +508,9 @@ TVRDÁ PRAVIDLA:
 5) Pokud je u části uvedeno, že za posledních 24 hodin je aktivita, NESMÍŠ psát, že pro ni nemáš data.
 6) Žádné dramatizace typu "kritický bod" nebo "dekompenzace", pokud to není doslova řečeno ve zprávách.
 7) Pokud nemáš terapeutické tipy, tuto oblast úplně vynech a nic o chybějících zdrojích nepiš.
+8) Nesmíš psát interní procesní věty o "redistribuci", "integraci poznatků", "cache" ani "synchronizačních mechanismech".
+9) Oslovení terapeutek: pouze "Haničko" a "Káťo".
+10) Z rozhovorů cituj jen uživatelské zprávy, nikdy Karelovy odpovědi.
 
 STYL VÝSTUPU:
 - Přirozená čeština, lidský tón, stručně a věcně.
@@ -505,7 +525,7 @@ POVINNÁ STRUKTURA:
 
 VSTUPNÍ DATA:
 
-=== SNAPSHOT ČÁSTÍ (registr + aktivita z celé aplikace 24h) ===
+=== SNAPSHOT ČÁSTÍ (aktivita 24h) ===
 ${partsSnapshotBlock || "(části nejsou v registru)"}
 
 === VLAKNA ČÁSTÍ 24H ===
@@ -514,7 +534,7 @@ ${threadSummary24h || "(bez vláken částí za 24h)"}
 === VLAKNA TERAPEUTEK 24H ===
 ${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
 
-=== ZMÍNKY V OSTATNÍCH REŽIMECH 24H ===
+=== ZMÍNKY V OSTATNÍCH REŽIMECH 24H (jen user vstupy) ===
 ${crossModeSummary24h || "(bez zachycených zmínek)"}
 
 === KONTEXT TÝDNE (části) ===

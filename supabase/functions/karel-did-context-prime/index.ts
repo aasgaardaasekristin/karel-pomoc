@@ -110,6 +110,214 @@ async function listSubfolders(token: string, parentId: string): Promise<Array<{ 
   return data.files || [];
 }
 
+async function createFolder(token: string, name: string, parentId: string): Promise<string> {
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [parentId],
+    }),
+  });
+  const data = await res.json();
+  if (!data?.id) throw new Error(`Failed to create folder ${name}: ${JSON.stringify(data)}`);
+  return data.id;
+}
+
+async function findOrCreateFolder(token: string, name: string, parentId: string): Promise<string> {
+  const existing = await findFolder(token, name, parentId);
+  if (existing) return existing;
+  return await createFolder(token, name, parentId);
+}
+
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function findDocByExactName(token: string, parentId: string, fileName: string): Promise<{ id: string; name: string } | null> {
+  const escapedName = escapeDriveQueryValue(fileName);
+  const q = `name='${escapedName}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id,name)",
+    pageSize: "5",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  return data.files?.[0] || null;
+}
+
+async function upsertTextDoc(token: string, parentId: string, fileName: string, content: string): Promise<void> {
+  const existing = await findDocByExactName(token, parentId, fileName);
+  const boundary = "----DidPrimeBoundary";
+  const metadata = existing
+    ? { name: fileName }
+    : { name: fileName, parents: [parentId], mimeType: "text/plain" };
+
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n` +
+    `--${boundary}--`;
+
+  const url = existing
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existing.id}?uploadType=multipart&supportsAllDrives=true`
+    : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true";
+
+  const res = await fetch(url, {
+    method: existing ? "PATCH" : "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Failed to upsert ${fileName}: ${await res.text()}`);
+  }
+}
+
+function extractUserTexts(messages: unknown): string[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m: any) => m?.role === "user")
+    .map((m: any) => {
+      if (typeof m?.content === "string") return m.content;
+      if (Array.isArray(m?.content)) {
+        return m.content
+          .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
+          .filter(Boolean)
+          .join(" ");
+      }
+      return "";
+    })
+    .map((text: string) => text.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+function pickCentrumDoc(centrumDocs: Record<string, string>, regex: RegExp): string {
+  const found = Object.entries(centrumDocs).find(([name]) => regex.test(name));
+  return found?.[1] || "";
+}
+
+function formatTherapistShadowLog(now: Date, didThreads: any[], didConversations: any[], hanaConversations: any[]): string {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+  const lines: string[] = [
+    `24h zápis vláken (vygenerováno ${now.toISOString()})`,
+    "",
+    "DID vlákna (uživatelské zprávy):",
+  ];
+
+  const mapSubModeLabel = (subMode: string, partName?: string) => {
+    if (subMode === "mamka") return "Hanička";
+    if (subMode === "kata") return "Káťa";
+    if (subMode === "cast") return partName || "část";
+    return subMode || "neurčeno";
+  };
+
+  for (const t of didThreads || []) {
+    const ts = t?.last_activity_at ? new Date(t.last_activity_at).getTime() : 0;
+    if (!ts || ts < cutoff) continue;
+    const speaker = mapSubModeLabel(t.sub_mode, t.part_name);
+    const userTexts = extractUserTexts(t.messages).slice(-6);
+    if (userTexts.length === 0) continue;
+    lines.push(`- [${t.last_activity_at}] ${speaker}`);
+    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  }
+
+  lines.push("", "Uložené DID konverzace (uživatelské zprávy):");
+  for (const c of didConversations || []) {
+    const tsRaw = c?.updated_at || c?.saved_at;
+    const ts = tsRaw ? new Date(tsRaw).getTime() : 0;
+    if (!ts || ts < cutoff) continue;
+    const speaker = mapSubModeLabel(c.sub_mode, c.label);
+    const userTexts = extractUserTexts(c.messages).slice(-4);
+    if (userTexts.length === 0) continue;
+    lines.push(`- [${tsRaw}] ${speaker}`);
+    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  }
+
+  lines.push("", "Hana DID konverzace (uživatelské zprávy):");
+  for (const h of hanaConversations || []) {
+    const ts = h?.last_activity_at ? new Date(h.last_activity_at).getTime() : 0;
+    if (!ts || ts < cutoff) continue;
+    const userTexts = extractUserTexts(h.messages).slice(-4);
+    if (userTexts.length === 0) continue;
+    lines.push(`- [${h.last_activity_at}] Hanička`);
+    for (const text of userTexts) lines.push(`  • ${text.slice(0, 320)}`);
+  }
+
+  if (lines.length <= 6) {
+    lines.push("- Za posledních 24 hodin nebyly zachyceny nové uživatelské zprávy.");
+  }
+
+  return lines.join("\n");
+}
+
+async function syncDidTherapistShadowMemory(params: {
+  token: string;
+  now: Date;
+  systemState: string;
+  driveData: Record<string, Record<string, string>>;
+  didThreads: any[];
+  didConversations: any[];
+  hanaConversations: any[];
+}): Promise<{ updated: boolean; filesUpdated: number }> {
+  const { token, now, systemState, driveData, didThreads, didConversations, hanaConversations } = params;
+
+  const pametId = await findFolder(token, "PAMET_KAREL");
+  if (!pametId) {
+    throw new Error("PAMET_KAREL folder not found");
+  }
+
+  const didRootId = await findOrCreateFolder(token, "DID", pametId);
+  const hankaRoot = await findOrCreateFolder(token, "HANKA", didRootId);
+  const kataRoot = await findOrCreateFolder(token, "KATA", didRootId);
+
+  const centrum = driveData["CENTRUM"] || {};
+  const dashboardText = pickCentrumDoc(centrum, /dashboard|aktualni/i);
+  const operativniText = pickCentrumDoc(centrum, /operativni|plan/i);
+  const strategickyText = pickCentrumDoc(centrum, /strateg/i);
+  const instructionsText = pickCentrumDoc(centrum, /instrukce/i);
+  const threadsLog = formatTherapistShadowLog(now, didThreads, didConversations, hanaConversations);
+
+  const syncForTherapist = async (therapistFolderId: string, therapistLabel: string) => {
+    const centrumCopyFolder = await findOrCreateFolder(token, "00_CENTRUM_KOPIE", therapistFolderId);
+    const logsFolder = await findOrCreateFolder(token, "01_VLAKNA_24H", therapistFolderId);
+
+    await upsertTextDoc(token, centrumCopyFolder, "00_Aktualni_Dashboard.txt", dashboardText || "Dashboard zatím nebyl načten.");
+    await upsertTextDoc(token, centrumCopyFolder, "05_Operativni_Plan.txt", operativniText || "Operativní plán zatím nebyl načten.");
+    await upsertTextDoc(token, centrumCopyFolder, "06_Strategicky_Vyhled.txt", strategickyText || "Strategický výhled zatím nebyl načten.");
+    await upsertTextDoc(token, centrumCopyFolder, "02_Instrukce_Pro_Aplikaci_Karel_2.txt", instructionsText || "Instrukce zatím nebyly načteny.");
+
+    const header = [
+      `DID stínová paměť pro ${therapistLabel}`,
+      `Aktualizováno: ${now.toISOString()}`,
+      `Stav systému: ${systemState}`,
+      "",
+    ].join("\n");
+
+    await upsertTextDoc(token, logsFolder, "24h_vlakna.txt", `${header}${threadsLog}`);
+    await upsertTextDoc(token, therapistFolderId, "README.txt", `${header}Tato složka je automaticky aktualizovaná při ručním „Osvěž paměť“ v DID režimu.`);
+  };
+
+  await Promise.all([
+    syncForTherapist(hankaRoot, "Haničku"),
+    syncForTherapist(kataRoot, "Káťu"),
+  ]);
+
+  return { updated: true, filesUpdated: 12 };
+}
+
 // ── Auth ──
 function isCronOrService(req: Request): boolean {
   const authHeader = req.headers.get("Authorization") || "";
@@ -150,7 +358,7 @@ serve(async (req) => {
   }
 
   try {
-    const { partName, subMode } = requestBody;
+    const { partName, subMode, forceRefresh } = requestBody;
     console.log(`[did-context-prime] Starting for user: ${userId}, part: ${partName || "none"}, subMode: ${subMode || "none"}`);
     const startTime = Date.now();
     const now = new Date();
@@ -159,9 +367,9 @@ serve(async (req) => {
 
     // ═══ PHASE 1: Parallel data harvest ═══
     const dbPromises = {
-      didThreads: sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(15),
-      didConversations: sb.from("did_conversations").select("id, label, preview, sub_mode, saved_at, did_initial_context").eq("user_id", userId).order("saved_at", { ascending: false }).limit(15),
-      hanaConversations: sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain").eq("user_id", userId).eq("current_domain", "DID").order("last_activity_at", { ascending: false }).limit(5),
+      didThreads: sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(20),
+      didConversations: sb.from("did_conversations").select("id, label, preview, sub_mode, saved_at, updated_at, did_initial_context, messages").eq("user_id", userId).order("saved_at", { ascending: false }).limit(20),
+      hanaConversations: sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain").eq("user_id", userId).eq("current_domain", "DID").order("last_activity_at", { ascending: false }).limit(10),
       didEpisodes: sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).eq("domain", "DID").gte("timestamp_start", fourteenDaysAgo).order("timestamp_start", { ascending: false }).limit(30),
       olderEpisodes: sb.from("karel_episodes").select("domain, hana_state, summary_user, summary_karel, tags, timestamp_start").eq("user_id", userId).eq("is_archived", false).eq("domain", "DID").lt("timestamp_start", fourteenDaysAgo).gte("timestamp_start", thirtyDaysAgo).order("timestamp_start", { ascending: false }).limit(15),
       entities: sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
@@ -353,6 +561,35 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
       activePartsLast24h.size <= 2 ? "AKTIVNÍ" :
       activePartsLast24h.size <= 5 ? "ZVÝŠENÁ_AKTIVITA" : "VYSOKÁ_AKTIVITA";
 
+    let shadowSyncResult: { updated: boolean; filesUpdated: number; error: string | null } = {
+      updated: false,
+      filesUpdated: 0,
+      error: null,
+    };
+
+    if (forceRefresh === true) {
+      try {
+        const token = await getAccessToken();
+        const syncResult = await syncDidTherapistShadowMemory({
+          token,
+          now,
+          systemState,
+          driveData,
+          didThreads,
+          didConversations,
+          hanaConversations,
+        });
+        shadowSyncResult = { ...syncResult, error: null };
+      } catch (e) {
+        shadowSyncResult = {
+          updated: false,
+          filesUpdated: 0,
+          error: e instanceof Error ? e.message : "Shadow sync failed",
+        };
+        console.error("[did-context-prime] Shadow sync error:", shadowSyncResult.error);
+      }
+    }
+
     // ═══ PHASE 3: AI Synthesis ═══
     const synthesisPrompt = `Jsi analytický modul kognitivního agenta Karla pro DID režim. Vytvoř KONTEXTOVOU CACHE pro nadcházející interakci.
 
@@ -482,6 +719,7 @@ ${newsDigest || "(nedostupné)"}`;
         systemState,
         activePartsLast24h: [...activePartsLast24h],
         driveError,
+        shadowSync: shadowSyncResult,
       },
     });
 
@@ -491,6 +729,7 @@ ${newsDigest || "(nedostupné)"}`;
       systemState,
       activePartsLast24h: [...activePartsLast24h],
       generatedAt: now.toISOString(),
+      shadowSync: shadowSyncResult,
       stats: {
         didThreads: didThreads.length,
         didEpisodes: didEpisodes.length,
