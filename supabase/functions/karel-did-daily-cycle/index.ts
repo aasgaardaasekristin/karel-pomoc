@@ -1471,6 +1471,9 @@ async function updateCardSections(
   if (dedupSkips > 0) {
     console.log(`[KHASH-dedup] ${dedupSkips} section(s) skipped for "${partName}" (duplicate content)`);
   }
+  if (semanticDedupSkips > 0) {
+    console.log(`[SEMANTIC-DEDUP] ${semanticDedupSkips} section(s) blocked for "${partName}" (semantically duplicate)`);
+  }
   
   if (updatedKeys.length === 0 && card) {
     // All sections were duplicates – no write needed
