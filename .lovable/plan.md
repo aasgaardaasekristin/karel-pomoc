@@ -134,3 +134,23 @@
 - Výsledky zahrnuty v měsíčním emailovém reportu jako "📋 Návrh na úklid"
 - Karel nic nesmaže — pouze navrhuje (bezpečnost)
 - API response obsahuje `cleanupIssues` pole
+
+## NOVÁ ARCHITEKTURA — DID jako živoucí kognitivní systém
+
+### ✅ Nová Fáze 1: DID Context Prime + Online smyčka
+- `karel-did-context-prime` edge function — plastická situační cache
+- Paralelní harvest: Drive (00_CENTRUM, karty částí), DB (vlákna, epizody, sémantika, úkoly), Perplexity
+- AI syntéza kontextu přes Gemini 2.5 Flash
+- Injekce do `karel-chat` místo statického didInitialContext
+- Auto-prime z frontendu při otevření vlákna (cast/mamka/kata)
+- Detekce stavu systému: KLIDNÝ/AKTIVNÍ/ZVÝŠENÁ_AKTIVITA/VYSOKÁ_AKTIVITA
+
+### ✅ Nová Fáze 2: DID epizodická paměť + cross-mode sběr
+- `karel-did-episode-generate` edge function
+- Automatické generování strukturovaných epizod z DID vláken (domain: "DID")
+- DID-specifické tagy: part:Arthur, submode:cast, therapist:Hanka, topic:*, technique:*
+- Cross-mode sken: prohledávání `karel_hana_conversations` pro DID zmínky
+- AI klasifikace (YES/NO) zda Hana konverzace obsahuje klinicky relevantní DID info
+- Integrace do denní konsolidace (`karel-daily-consolidation`)
+- Frontend: automatický trigger při ukončení hovoru (handleDidEndCall) i odchodu z vlákna (handleLeaveThread)
+- Fire-and-forget pattern — neblokuje UI
