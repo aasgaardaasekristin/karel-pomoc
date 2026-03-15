@@ -419,37 +419,8 @@ serve(async (req) => {
 
     const crossModeSummary24h = crossModeMentions.slice(0, 24).map((m) => `- ${m}`).join("\n");
 
-    // ── 2d. Read cards of active parts from Drive ──
-    let activePartCards = "";
-    const activePartNames = recentThreads
-      ? [...new Set(recentThreads.filter((t: any) => t.sub_mode === "cast").map((t: any) => t.part_name))]
-      : [];
-
-    if (activePartNames.length > 0) {
-      try {
-        const token = await getAccessToken();
-        const kartotekaId = await resolveKartotekaRoot(token);
-        if (kartotekaId) {
-          const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaId);
-          if (aktivniId) {
-            const partFiles = await listFilesInFolder(token, aktivniId);
-            for (const partName of activePartNames.slice(0, 8)) {
-              const normalizedName = normalizeKey(partName);
-              const matchedFile = partFiles.find((f) => normalizeKey(f.name).includes(normalizedName));
-              if (!matchedFile) continue;
-              try {
-                const content = await readFileContent(token, matchedFile.id);
-                activePartCards += `\n[KARTA: ${matchedFile.name}]\n${content.slice(0, 4000)}\n`;
-              } catch {
-                // skip unreadable files
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("Active part cards read failed:", e);
-      }
-    }
+    // ── 2d. Skip reading full cards — they cause hallucination of clinical interpretations ──
+    // The overview should only work with actual conversation data from threads, not card content.
 
     // ── 2e. Cycles metadata ──
     let cycleInfo = "";
