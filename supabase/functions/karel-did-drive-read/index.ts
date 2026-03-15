@@ -265,7 +265,7 @@ serve(async (req) => {
 
       if (match) {
         try {
-          result[docName] = await readFileContent(token, match.id);
+          result[docName] = await readFileContent(token, match.id, match.mimeType);
         } catch (e) {
           console.error(`Failed to read ${docName} (${match.name}):`, e);
           result[docName] = `[Chyba při čtení: ${e.message}]`;
