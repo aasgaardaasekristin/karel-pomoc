@@ -1830,25 +1830,30 @@ serve(async (req) => {
     }).join("\n");
     console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
 
-    // ═══ COOLDOWN: Prevent duplicate cycles within 5 hours ═══
-    const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
-    const { data: recentDailyCycle } = await sb.from("did_update_cycles")
+    // ═══ COOLDOWN: Prevent duplicate cycles – MAX 1 per calendar day (Prague timezone) ═══
+    // Manual triggers from UI bypass this check (source !== "cron")
+    const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+    const todayStartUtc = new Date(`${todayPrague}T00:00:00+01:00`).toISOString(); // CET approximation
+    const { data: todayDailyCycles } = await sb.from("did_update_cycles")
       .select("id, completed_at, status")
       .eq("cycle_type", "daily")
-      .eq("status", "completed")
-      .gte("completed_at", fiveHoursAgo)
+      .in("status", ["completed", "running"])
+      .gte("started_at", todayStartUtc)
       .order("completed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(5);
 
-    if (recentDailyCycle) {
-      console.log(`[daily-cycle] Cooldown: completed cycle ${recentDailyCycle.id} at ${recentDailyCycle.completed_at}, skipping.`);
+    const completedToday = (todayDailyCycles || []).filter(c => c.status === "completed");
+    const isManualTrigger = !isCronCall || requestBody?.source === "manual";
+
+    if (completedToday.length > 0 && !isManualTrigger) {
+      console.log(`[daily-cycle] Cooldown: ${completedToday.length} completed cycle(s) today (${todayPrague}), skipping cron run.`);
       return new Response(JSON.stringify({
         success: true,
         skipped: true,
-        reason: "cooldown",
-        lastCompletedAt: recentDailyCycle.completed_at,
-        cycleId: recentDailyCycle.id,
+        reason: "cooldown_same_day",
+        completedToday: completedToday.length,
+        lastCompletedAt: completedToday[0].completed_at,
+        cycleId: completedToday[0].id,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
