@@ -2948,6 +2948,21 @@ PRAVIDLA PRO CENTRUM:
 - Informace z rozhovorů částí (cast) jsou SEKUNDÁRNÍ – zapiš pouze pokud mění celkový stav systému
 - NEVYTVÁŘEJ CENTRUM blok pokud nemáš nové relevantní informace pro daný dokument
 
+═══ POVINNÉ EVIDENCE TAGGING V CENTRUM BLOCÍCH ═══
+⚠️ KAŽDÉ klinické tvrzení (o stavu části, doporučení, riziku, aktivitě) v blocích [CENTRUM:...] MUSÍ obsahovat tag [SRC:režim|jméno|msgN]:
+- [SRC:cast|Arthur|msg3] = informace pochází z vlákna části Arthur, 3. user zpráva
+- [SRC:mamka|Hanka|msg5] = informace z režimu mamka, 5. user zpráva  
+- [SRC:kata|Kata|msg2] = informace z režimu kata
+- [SRC:hana|Hana|msg8] = informace z Hana konverzace
+- [SRC:episode|id] = informace z epizodické paměti
+- [SRC:registry|partName] = informace z did_part_registry
+
+Příklad správného použití:
+▸ Arthur [🟢 stabilní] – komunikoval s Karlem, vyjádřil potřebu bezpečí [SRC:cast|Arthur|msg5]
+
+BEZ [SRC:] tagu se tvrzení NEPOUŽIJE – bude automaticky odfiltrováno validátorem.
+Strukturální řádky (nadpisy, prázdné řádky, popisky sekcí) TAG NEPOTŘEBUJÍ.
+
 Po všech kartách a CENTRUM blocích:
 [REPORT]
 - ⚠️ TERMINOLOGIE: Rozlišuj přesně:
