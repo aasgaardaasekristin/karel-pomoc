@@ -489,7 +489,11 @@ Pamatuj: Výstup musí být čitelný, lidský a bez technických artefaktů.`;
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi Karel, supervizní terapeut. STRIKTNĚ dodržuj formát citací. NIKDY nevymýšlej data která nejsou ve vstupech. Odpovídej v češtině." },
+          {
+            role: "system",
+            content:
+              "Jsi Karel, supervizní terapeut. Odpovídej česky, přirozeně, věcně. Nikdy nevymýšlej data mimo vstupy a nikdy nepoužívej technické tagy ani markdown formát."
+          },
           { role: "user", content: synthesisPrompt },
         ],
         stream: true,
