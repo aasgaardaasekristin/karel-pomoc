@@ -3020,6 +3020,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               therapeuticPlanContent = newContent; // Store for email inclusion
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
               cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
+              centrumOperativniUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
               continue;
             }
