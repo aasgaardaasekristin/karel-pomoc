@@ -1835,6 +1835,28 @@ serve(async (req) => {
     const researchThreads = researchThreadRows ?? [];
     console.log(`[daily-cycle] Research threads (24h): ${researchThreads.length}`);
 
+    // ═══ ALL-MODE: DID meetings from last 24h ═══
+    const { data: recentMeetingRows } = await sb.from("did_meetings")
+      .select("id, topic, agenda, status, messages, outcome_summary, triggered_by, created_at, updated_at")
+      .gte("updated_at", cutoff24h);
+    const recentMeetings = recentMeetingRows ?? [];
+    console.log(`[daily-cycle] DID meetings (24h): ${recentMeetings.length}`);
+
+    // ═══ ALL-MODE: Recent episodes from last 24h ═══
+    const { data: recentEpisodeRows } = await sb.from("karel_episodes")
+      .select("id, domain, summary_karel, summary_user, tags, participants, emotional_intensity, hana_state, actions_taken, derived_facts, outcome, timestamp_start")
+      .gte("timestamp_start", cutoff24h);
+    const recentEpisodes = recentEpisodeRows ?? [];
+    console.log(`[daily-cycle] Episodes (24h): ${recentEpisodes.length}`);
+
+    // ═══ ALL-MODE: Pulse checks from last 7 days ═══
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentPulseRows } = await sb.from("did_pulse_checks")
+      .select("respondent, team_feeling, priority_clarity, karel_feedback, week_start, created_at")
+      .gte("created_at", weekAgo);
+    const recentPulseChecks = recentPulseRows ?? [];
+    console.log(`[daily-cycle] Pulse checks (7d): ${recentPulseChecks.length}`);
+
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
       .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
