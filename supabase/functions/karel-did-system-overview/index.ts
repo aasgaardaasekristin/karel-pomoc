@@ -21,18 +21,8 @@ async function getAccessToken(): Promise<string> {
 async function findFolders(token: string, name: string, parentId?: string): Promise<Array<{ id: string }>> {
   let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
-
-  const params = new URLSearchParams({
-    q,
-    fields: "files(id)",
-    pageSize: "20",
-    supportsAllDrives: "true",
-    includeItemsFromAllDrives: "true",
-  });
-
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "20", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
   return data.files || [];
 }
@@ -44,19 +34,15 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
 
 async function resolveKartotekaRoot(token: string): Promise<string | null> {
   const rootVariants = ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID", "KARTOTEKA_DID"];
-
   for (const rootName of rootVariants) {
     const candidates = await findFolders(token, rootName);
-
     for (const candidate of candidates) {
       const centrumId = await findFolder(token, "00_CENTRUM", candidate.id);
       const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", candidate.id);
       if (centrumId || aktivniId) return candidate.id;
     }
-
     if (candidates[0]?.id) return candidates[0].id;
   }
-
   return null;
 }
 
@@ -92,15 +78,15 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // 1. Read 00_CENTRUM docs from Google Drive
+    // ── 1. Read 00_CENTRUM docs from Google Drive ──
     let centrumDocs = "";
     try {
       const token = await getAccessToken();
-        const kartotekaId = await resolveKartotekaRoot(token);
-        if (kartotekaId) {
-          const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
-          if (centrumId) {
-            const files = await listFilesInFolder(token, centrumId);
+      const kartotekaId = await resolveKartotekaRoot(token);
+      if (kartotekaId) {
+        const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
+        if (centrumId) {
+          const files = await listFilesInFolder(token, centrumId);
           const importantFiles = files.filter(f =>
             /dashboard|instrukce|plan|mapa|geografie|index/i.test(f.name)
           ).slice(0, 8);
@@ -116,32 +102,54 @@ serve(async (req) => {
       console.warn("Drive read failed:", e);
     }
 
-    // 2. Recent threads – split by timeframe
+    // ── 2. DB: Registry, Tasks, Threads (parallel) ──
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    
-    // Last 24h threads (for daily focus)
-    const { data: last24hThreads } = await sb
-      .from("did_threads")
-      .select("part_name, sub_mode, last_activity_at, messages, is_processed")
-      .gte("last_activity_at", twentyFourHoursAgo)
-      .order("last_activity_at", { ascending: false })
-      .limit(30);
 
-    // Last 7 days threads (for weekly context)
-    const { data: recentThreads } = await sb
-      .from("did_threads")
-      .select("part_name, sub_mode, last_activity_at, messages, is_processed")
-      .gte("last_activity_at", sevenDaysAgo)
-      .order("last_activity_at", { ascending: false })
-      .limit(30);
+    const [
+      { data: registry },
+      { data: pendingTasks },
+      { data: last24hThreads },
+      { data: recentThreads },
+      { data: cycles },
+    ] = await Promise.all([
+      sb.from("did_part_registry").select("part_name, display_name, status, role_in_system, cluster, age_estimate, last_seen_at, last_emotional_state, last_emotional_intensity, health_score, known_triggers, known_strengths, total_threads, total_episodes").order("last_seen_at", { ascending: false }),
+      sb.from("did_therapist_tasks").select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note").in("status", ["pending", "active", "in_progress"]).order("created_at", { ascending: false }).limit(30),
+      sb.from("did_threads").select("part_name, sub_mode, last_activity_at, messages, is_processed").gte("last_activity_at", twentyFourHoursAgo).order("last_activity_at", { ascending: false }).limit(30),
+      sb.from("did_threads").select("part_name, sub_mode, last_activity_at, messages, is_processed").gte("last_activity_at", sevenDaysAgo).order("last_activity_at", { ascending: false }).limit(30),
+      sb.from("did_update_cycles").select("completed_at, cycle_type").eq("status", "completed").order("completed_at", { ascending: false }).limit(3),
+    ]);
 
-    // Build thread summaries separated by type AND timeframe
-    let threadSummary24h = "";
-    let therapistSummary24h = "";
-    let threadSummaryWeek = "";
-    let therapistSummaryWeek = "";
-    
+    // ── 2a. Format registry as structured data ──
+    let registryBlock = "";
+    if (registry && registry.length > 0) {
+      for (const r of registry) {
+        registryBlock += `\n[REGISTR: ${r.display_name || r.part_name}]`;
+        registryBlock += `\n  Status: ${r.status}`;
+        if (r.role_in_system) registryBlock += ` | Role: ${r.role_in_system}`;
+        if (r.cluster) registryBlock += ` | Klastr: ${r.cluster}`;
+        if (r.age_estimate) registryBlock += ` | Věk: ${r.age_estimate}`;
+        if (r.last_seen_at) registryBlock += `\n  Naposledy viděn: ${r.last_seen_at}`;
+        if (r.last_emotional_state) registryBlock += ` | Emoce: ${r.last_emotional_state} (${r.last_emotional_intensity ?? "?"}/ 10)`;
+        if (r.health_score != null) registryBlock += ` | Zdraví karty: ${r.health_score}%`;
+        if (r.known_triggers?.length) registryBlock += `\n  Triggery: ${r.known_triggers.join(", ")}`;
+        if (r.known_strengths?.length) registryBlock += `\n  Silné stránky: ${r.known_strengths.join(", ")}`;
+        registryBlock += `\n  Vlákna: ${r.total_threads ?? 0} | Epizody: ${r.total_episodes ?? 0}`;
+        registryBlock += "\n";
+      }
+    }
+
+    // ── 2b. Format tasks ──
+    let tasksBlock = "";
+    if (pendingTasks && pendingTasks.length > 0) {
+      for (const t of pendingTasks) {
+        tasksBlock += `\n- [${t.priority || "normal"}] ${t.task} → ${t.assigned_to} (H:${t.status_hanka}, K:${t.status_kata})`;
+        if (t.due_date) tasksBlock += ` do ${t.due_date}`;
+        if (t.note) tasksBlock += ` // ${t.note.slice(0, 100)}`;
+      }
+    }
+
+    // ── 2c. Format threads ──
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       const userRole = t.sub_mode === "cast" ? "ČÁST" : "TERAPEUT";
@@ -153,6 +161,11 @@ serve(async (req) => {
       return `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${userMsgs || "(bez user zpráv)"}\n`;
     };
 
+    let threadSummary24h = "";
+    let therapistSummary24h = "";
+    let threadSummaryWeek = "";
+    let therapistSummaryWeek = "";
+
     if (last24hThreads) {
       for (const t of last24hThreads) {
         const entry = formatThreadEntry(t);
@@ -163,7 +176,6 @@ serve(async (req) => {
         }
       }
     }
-    
     if (recentThreads) {
       for (const t of recentThreads) {
         const entry = formatThreadEntry(t);
@@ -175,7 +187,7 @@ serve(async (req) => {
       }
     }
 
-    // 2b. Read cards of active parts from Drive (01_AKTIVNI_FRAGMENTY)
+    // ── 2d. Read cards of active parts from Drive ──
     let activePartCards = "";
     const activePartNames = recentThreads
       ? [...new Set(recentThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))]
@@ -208,14 +220,7 @@ serve(async (req) => {
       }
     }
 
-    // 3. Last update cycles – ONLY timestamps, NO content (cards_updated/report_summary may contain stale data)
-    const { data: cycles } = await sb
-      .from("did_update_cycles")
-      .select("completed_at, cycle_type")
-      .eq("status", "completed")
-      .order("completed_at", { ascending: false })
-      .limit(3);
-
+    // ── 2e. Cycles metadata ──
     let cycleInfo = "";
     if (cycles) {
       for (const c of cycles) {
@@ -223,11 +228,11 @@ serve(async (req) => {
       }
     }
 
-    // 4. Get active part names for Perplexity search (already computed above)
+    // ── 3. Optional Perplexity tips ──
     let perplexityTips = "";
     if (PERPLEXITY_API_KEY && activePartNames.length > 0) {
       try {
-        const searchQuery = `terapeutické přístupy pro práci s dětskými částmi DID (disociativní porucha identity): ${activePartNames.slice(0, 5).join(", ")}. Stabilizační techniky, hrová terapie, senzomotorické přístupy, IFS, EMDR pro děti. Konkrétní aktivity a hry pro regulaci emocí u disociativních dětí.`;
+        const searchQuery = `terapeutické přístupy pro práci s dětskými částmi DID (disociativní porucha identity): ${activePartNames.slice(0, 5).join(", ")}. Stabilizační techniky, hrová terapie, senzomotorické přístupy, IFS, EMDR pro děti.`;
         const pxRes = await fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
@@ -253,7 +258,7 @@ serve(async (req) => {
       }
     }
 
-    // 6. Synthesize with Lovable AI (streaming)
+    // ── 4. Build greeting ──
     const now = new Date();
     const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
     const dayAdjs = ["nedělní", "pondělní", "úterní", "středeční", "čtvrteční", "páteční", "sobotní"];
@@ -262,8 +267,7 @@ serve(async (req) => {
     const hour = now.getHours();
     const minute = now.getMinutes().toString().padStart(2, "0");
     const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
-    
-    // Rotating greeting variants with correct Czech adjective forms
+
     const greetingVariants = [
       `Krásné ${dayAdj} ráno (${formattedDate}), Hani a Káťo!`,
       `Zdravím vás v tento ${dayAdj} den (${formattedDate}), milé kolegyně!`,
@@ -273,85 +277,92 @@ serve(async (req) => {
       `Vítám vás, Hani a Káťo, v dnešním přehledu (${formattedDate})!`,
       `Hani, Káťo – ${formattedDate}, Karel hlásí stav na palubě.`,
     ];
-    // Pick variant based on day-of-year + hour so it rotates naturally
     const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
     const variantIndex = (dayOfYear + hour) % greetingVariants.length;
     const chosenGreeting = greetingVariants[variantIndex];
-    
-    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled jako souvislý, osobní, čtivý text pro terapeutky (Hani a Káťu). Dnešní datum a čas: ${formattedDate}.
+
+    // ── 5. STRICT synthesis prompt ──
+    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled VÝHRADNĚ z přiložených dat.
+
+⚠️ ABSOLUTNÍ ZÁKAZY – PORUŠENÍ = SELHÁNÍ:
+1. NIKDY NEVYMÝŠLEJ informace, čísla, skóre, stavy ani hodnocení které NEJSOU DOSLOVA v datech.
+2. NIKDY nepiš "stabilita X/10" pokud toto číslo NENÍ v registru nebo v citovaném textu.
+3. NIKDY nepiš "akutní destabilizace", "kritický bod", "dekompenzace" pokud to DOSLOVA neřekla část nebo terapeutka v rozhovoru.
+4. NIKDY nepřidávej dramatizaci. Pokud data říkají "unavený", nepiš "akutní vyčerpání s rizikem kolapsu".
+5. Pokud pro nějakou část NEMÁŠ data z posledních 24h, napiš "nemám aktuální data" – NEVYMÝŠLEJ stav.
+6. NEPOUŽÍVEJ obecné poučky o DID – terapeutky to znají.
+
+FORMÁT CITACÍ:
+Ke každému tvrzení o stavu/emoci/události MUSÍŠ přidat odkaz na zdroj:
+- [REG] = z registru částí
+- [VLÁKNO:jméno] = z konverzačního vlákna
+- [KARTA:jméno] = z karty části
+- [DRIVE:název_souboru] = z dokumentu na Drive
+- [ÚKOL] = z úkolů terapeutek
+Tvrzení BEZ citace = halucinace = zakázáno.
 
 VSTUPNÍ DATA:
 
-DOKUMENTY Z KARTOTÉKY (00_CENTRUM) – toto je PRIMÁRNÍ ZDROJ PRAVDY:
+=== REGISTR ČÁSTÍ (databáze – autoritativní zdroj stavů) ===
+${registryBlock || "(registr je prázdný)"}
+
+=== AKTIVNÍ ÚKOLY TERAPEUTEK ===
+${tasksBlock || "(žádné aktivní úkoly)"}
+
+=== DOKUMENTY Z KARTOTÉKY (00_CENTRUM) ===
 ${centrumDocs || "(nepodařilo se načíst)"}
 
-=== POSLEDNÍCH 24 HODIN ===
-
-VLÁKNA ZA POSLEDNÍCH 24h – ROZHOVORY ČÁSTÍ S KARLEM:
+=== POSLEDNÍCH 24 HODIN – ROZHOVORY ČÁSTÍ ===
 ${threadSummary24h || "(žádná vlákna za posledních 24 hodin)"}
 
-VLÁKNA ZA POSLEDNÍCH 24h – ROZHOVORY TERAPEUTEK S KARLEM (Hanička=mamka, Káťa=kata):
+=== POSLEDNÍCH 24 HODIN – ROZHOVORY TERAPEUTEK ===
 ${therapistSummary24h || "(žádné rozhovory terapeutek za posledních 24 hodin)"}
 
-=== KONTEXT POSLEDNÍHO TÝDNE (pro širší přehled) ===
-
-VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ:
+=== KONTEXT POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ ===
 ${threadSummaryWeek || "(žádná vlákna za poslední týden)"}
 
-VLÁKNA Z POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK:
+=== KONTEXT POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK ===
 ${therapistSummaryWeek || "(žádné rozhovory terapeutek za poslední týden)"}
 
-KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky – sekce A-M):
+=== KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky) ===
 ${activePartCards || "(nepodařilo se načíst nebo žádné aktivní části)"}
 
-POSLEDNÍ AKTUALIZACE KARTOTÉKY (pouze metadata – kdy a co bylo aktualizováno):
+=== POSLEDNÍ AKTUALIZACE KARTOTÉKY ===
 ${cycleInfo || "(žádné záznamy)"}
 
-TERAPEUTICKÉ TIPY Z ODBORNÝCH ZDROJŮ:
+=== TERAPEUTICKÉ TIPY Z ODBORNÝCH ZDROJŮ ===
 ${perplexityTips || "(nedostupné)"}
 
 FORMÁT VÝSTUPU:
 
-Začni PŘESNĚ tímto pozdravem (nepřepisuj, neupravuj, použij doslova): "${chosenGreeting}"
-Pak rovnou napiš "Zde jsem připravil přehled, co se odehrává s klukama momentálně:" a přejdi k věci. NIKDY nepoužívej jiné datum než to v pozdravu.
+Začni PŘESNĚ tímto pozdravem (nepřepisuj): "${chosenGreeting}"
+Pak: "Zde je přehled založený na aktuálních datech:"
 
-NEPOPISUJ obecné základy o DID, terapeutky to ví. NEPOPISUJ co jsou části, jak funguje systém obecně, co je ANP/EP/Host. Piš POUZE o tom co se DĚJE TEĎ a co je relevantní.
+Struktura (jako plynulý text, nadpisy ## a ###):
 
-Struktura (jako plynulý souvislý text, ne odrážky):
+1. **Stav systému podle registru** – Pro KAŽDOU část v registru uveď: jméno, status, poslední emoce (pokud je), zdraví karty. Cituj [REG]. Pokud část nemá data z posledních 24h, řekni to explicitně. NEDOMÝŠLEJ co dělá nebo jak se cítí.
 
-1. **Systémové problémy a aktuální stav** – Začni tím co je kritické a systémové (spánek, medikace, sebepoškozování – jen pokud relevantní). Pak kdo je aktivní, kdo se střídá v těle, jaká je dynamika. Které části umlkly. Je někdo destabilizovaný? Použij data z karet aktivních částí pro hlubší kontext.
+2. **Co se dělo posledních 24 hodin** – POUZE pokud existují vlákna. Cituj DOSLOVA z rozhovorů. Uveď KDO mluvil, CO řekl (krátká citace). Cituj [VLÁKNO:jméno]. Pokud žádná vlákna nejsou, napiš "Za posledních 24 hodin neproběhly žádné rozhovory."
 
-2. **Co se dělo posledních 24 hodin** – Kdo s Karlem mluvil DNES/VČERA? Jaký byl jejich stav? Co řešili? Jak to Karel hodnotí? Piš konkrétně – cituj z rozhovorů pokud jsou k dispozici. ZAHRŇ i co řešily terapeutky (Hanička a Káťa) s Karlem – jejich obavy, postřehy, otázky. Rozlišuj jasně 24h vs. starší data.
+3. **Rozhovory terapeutek** – Co řešily Hanka a Káťa s Karlem? Cituj [VLÁKNO:mamka/kata]. Pokud nic, řekni to.
 
-3. **Kdo potřebuje pozornost** – Které části vyžadují péči? Je potřeba krizová intervence? Je to pro Káťu nebo Hani nebo tandem? Karel VYZVE konkrétní terapeutku ať se mu ozve v jejím podrežimu pro detailnější probrání. Využij informace z karet částí (diagnózy, triggery, terapeutické poznámky).
+4. **Kdo potřebuje pozornost** – POUZE na základě dat z registru + vláken. Pokud má část emoční intenzitu ≥7 [REG] nebo pokud v rozhovoru zaznělo něco alarmujícího [VLÁKNO], uveď to. NEVYMÝŠLEJ krizové stavy.
 
-4. **Terapeutická doporučení** – Konkrétní tipy na aktivity, hry, techniky s aktivními částmi. Použij zdroje z Perplexity pokud jsou dostupné, zakomponuj přirozeně s odkazem. Navrhuj s ohledem na specifika konkrétních částí (věk, role, stav) z jejich karet. Pokud najdeš v kartotéce konkrétní problémy, dohledej a navrhni řešení.
+5. **Aktivní úkoly** – Vypiš úkoly z databáze [ÚKOL]. Kdo má co udělat, jaký je stav.
 
-5. **Poslední aktualizace kartotéky** – Kdy proběhla, co se změnilo.
+6. **Terapeutická doporučení** – POUZE pokud máš tipy z Perplexity. Zakomponuj s citací zdroje. Pokud ne, vynech celou sekci.
 
-6. **📋 Úkoly pro DNES a ZÍTRA** – Na základě dat z posledních 24h + karet + kartotéky sestav KONKRÉTNÍ denní úkoly:
-   - **Hanička – DNES**: Co konkrétně má dnes udělat? S kým promluvit? Jakou techniku vyzkoušet?
-   - **Hanička – ZÍTRA**: Co připravit, koho oslovit?
-   - **Káťa – DNES**: Co konkrétně má dnes udělat? Na co se zaměřit?
-   - **Káťa – ZÍTRA**: Co připravit?
-   - **Společné**: Co mají řešit jako tandem?
-   Vysvětli každé z nich PROČ – jaká je její role v daném úkolu. Úkoly formuluj jako jasné, akční body (ne obecné rady).
-   ⚠️ Tyto úkoly se také automaticky zapíší do seznamu úkolů v aplikaci.
+7. **Poslední aktualizace kartotéky** – Kdy proběhla.
 
-7. **📋 Úkoly pro tento týden** – Širší týdenní úkoly pro každou terapeutku zvlášť:
-   - **Hanička**: Týdenní cíle a zaměření
-   - **Káťa**: Týdenní cíle a zaměření  
-   - **Společné**: Koordinace tandemu
+8. **📋 Návrhy úkolů** – Na základě DAT (ne domněnek) navrhni konkrétní akční body pro Hanu a Káťu. Každý úkol musí mít citaci zdroje PROČ ho navrhuješ.
 
 PRAVIDLA:
-- Piš česky, osobním tónem, jako by Karel mluvil k Hani a Kátě které zná a má rád
+- Piš česky, osobním tónem, ale STRIKTNĚ fakticky
 - Nepoužívej dekorativní oddělovače
 - Nadpisy jako markdown (## a ###)
-- NIKDY nevymýšlej informace – piš jen co je v datech
-- NEPIŠ obecné poučky o DID které terapeutky znají
-- Pokud máš data z karet částí, VYUŽIJ JE pro konkrétní doporučení (ne obecná)
-- Pokud terapeutky s Karlem řešily něco důležitého, ZDŮRAZNI TO
-- Pokud v kartotéce najdeš problémy nebo překážky, AKTIVNĚ navrhni řešení z odborných zdrojů`;
+- Každé tvrzení MUSÍ mít [REG], [VLÁKNO:x], [KARTA:x], [DRIVE:x] nebo [ÚKOL] citaci
+- Pokud nemáš data, řekni "nemám data" – NEVYMÝŠLEJ
+- ŽÁDNÉ vymyšlené skóre stability, ŽÁDNÉ dramatizace`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -362,7 +373,7 @@ PRAVIDLA:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi Karel, supervizní terapeut. Odpovídej v češtině." },
+          { role: "system", content: "Jsi Karel, supervizní terapeut. STRIKTNĚ dodržuj formát citací. NIKDY nevymýšlej data která nejsou ve vstupech. Odpovídej v češtině." },
           { role: "user", content: synthesisPrompt },
         ],
         stream: true,
