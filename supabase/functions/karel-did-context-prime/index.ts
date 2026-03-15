@@ -406,7 +406,7 @@ Datum: ${new Date().toISOString().slice(0, 10)}`,
 
   if (!res.ok) {
     console.error(`[profiling] AI failed for ${name}/${fileType}: ${res.status}`);
-    return existingContent || `(Profil zatím nebyl vygenerován — ${new Date().toISOString().slice(0, 10)})`;
+    return existingContent || `${baseline}\n\n(Profil zatím nebyl vygenerován — ${new Date().toISOString().slice(0, 10)})`;
   }
 
   const data = await res.json();
