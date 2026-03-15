@@ -196,6 +196,8 @@ const Chat = () => {
   const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
   const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
   const [didLiveSession, setDidLiveSession] = useState<{ partName: string; therapistName: string } | null>(null);
+  const [didLiveSessionReady, setDidLiveSessionReady] = useState(false);
+  const [didLivePartContext, setDidLivePartContext] = useState<string>("");
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
