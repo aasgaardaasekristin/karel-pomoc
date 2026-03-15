@@ -618,9 +618,12 @@ const Chat = () => {
     }
   }, [didInitialContext, setDidInitialContext, setMessages, isPartSelecting]);
 
-  const handleLeaveThread = useCallback(() => {
+  const handleLeaveThread = useCallback(async () => {
+    const threadToProcess = activeThread;
     if (activeThread && messages.length >= 2) {
-      didThreads.updateThreadMessages(activeThread.id, messages);
+      await didThreads.updateThreadMessages(activeThread.id, messages);
+      // Trigger episode generation in background
+      triggerEpisodeGeneration(activeThread.id);
     }
     setActiveThread(null);
     setMessages([]);
@@ -631,7 +634,7 @@ const Chat = () => {
       setDidFlowState("thread-list");
       didThreads.fetchActiveThreads("cast");
     }
-  }, [activeThread, messages, setMessages, didSubMode]);
+  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration]);
 
   // Quick thread entry from dashboard — load thread directly by ID
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
