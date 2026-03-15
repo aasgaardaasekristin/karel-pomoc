@@ -443,7 +443,22 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
             Poslední aktualizace kartoteka_DID: {lastCycleTime ? new Date(lastCycleTime).toLocaleString("cs-CZ", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "zatím neproběhla"}
             {lastCycleStatus === "running" ? " (probíhá)" : lastCycleStatus === "failed" ? " (selhalo)" : ""}
           </p>
-          <DidSessionPrep />
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefreshMemory}
+              disabled={isRefreshingMemory}
+              className="h-6 text-[10px] px-2"
+            >
+              {isRefreshingMemory ? (
+                <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Osvěžuji...</>
+              ) : (
+                <><RefreshCw className="w-3 h-3 mr-1" /> Osvěž paměť</>
+              )}
+            </Button>
+            <DidSessionPrep />
+          </div>
         </div>
         {lastCardsUpdated.length > 0 && (
           <p className="text-[10px] sm:text-xs text-muted-foreground mt-0.5">
