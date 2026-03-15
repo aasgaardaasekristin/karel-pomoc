@@ -99,14 +99,37 @@ async function listFilesInFolder(
   return allFiles;
 }
 
-async function readFileContent(token: string, fileId: string): Promise<string> {
-  // Try plain text export first, fall back to media download
+async function readFileContent(token: string, fileId: string, mimeType?: string): Promise<string> {
+  // Google Workspace files must be exported, not downloaded via alt=media
+  const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
+  const isGoogleSheet = mimeType === "application/vnd.google-apps.spreadsheet";
+  const isGoogleWorkspace = mimeType?.startsWith("application/vnd.google-apps.");
+
+  if (isGoogleSheet) {
+    const exportRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!exportRes.ok) throw new Error(`Cannot export sheet ${fileId}: ${exportRes.status}`);
+    return await exportRes.text();
+  }
+
+  if (isGoogleDoc || isGoogleWorkspace) {
+    const exportRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!exportRes.ok) throw new Error(`Cannot export doc ${fileId}: ${exportRes.status}`);
+    return await exportRes.text();
+  }
+
+  // Regular file – download via alt=media
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
-    // Maybe it's a Google Doc – try export
+    // Fallback: maybe mimeType wasn't passed, try export as text
     const exportRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`,
       { headers: { Authorization: `Bearer ${token}` } }
@@ -242,7 +265,7 @@ serve(async (req) => {
 
       if (match) {
         try {
-          result[docName] = await readFileContent(token, match.id);
+          result[docName] = await readFileContent(token, match.id, match.mimeType);
         } catch (e) {
           console.error(`Failed to read ${docName} (${match.name}):`, e);
           result[docName] = `[Chyba při čtení: ${e.message}]`;
