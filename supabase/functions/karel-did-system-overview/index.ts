@@ -66,7 +66,7 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
 
 function sanitizeOverviewText(text: string): string {
   return text
-    .replace(/\[(REG|ÚKOL|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
+    .replace(/\[(REG|ÚKOL|SRC|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
     .replace(/^(\s*)\*\s+/gm, "$1– ")
     .replace(/^(\s*)##+\s*/gm, "$1")
     .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
@@ -77,6 +77,11 @@ function sanitizeOverviewText(text: string): string {
     .replace(/\d+\s*\/\s*10/g, "")
     .replace(/emoční intenzit(a|y|u)\s*:?\s*\d+/gi, "")
     .replace(/zdraví karty\s*:?\s*\d+\s*%?/gi, "")
+    // Strip clinical jargon the model keeps injecting
+    .replace(/\b(akutn(í|ě|ího)\s+(distres|přetížen|stres))/gi, "")
+    .replace(/\b(dekompenzac(e|i|í))\b/gi, "")
+    .replace(/\b(somatiz(ace|uje|oval))\b/gi, "")
+    .replace(/\b(regres(e|i|í))\b/gi, "")
     .replace(/\n{3,}/g, "\n\n");
 }
 
