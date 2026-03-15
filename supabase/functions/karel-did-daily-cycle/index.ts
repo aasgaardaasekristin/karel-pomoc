@@ -3809,10 +3809,16 @@ ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je s
     }
 
     if (cycle) {
+      // Store VALIDATED deterministic report, not raw AI output (anti-hallucination)
+      const validatedReportSummary = finalReportText
+        ? finalReportText.slice(0, 2000)
+        : (cardsUpdated.length > 0
+          ? `Aktualizováno ${cardsUpdated.length} karet: ${cardsUpdated.join(", ").slice(0, 1800)}`
+          : "Žádné změny");
       await sb.from("did_update_cycles").update({
         status: hadCardUpdateErrors ? "failed" : "completed",
         completed_at: new Date().toISOString(),
-        report_summary: analysisText.slice(0, 2000),
+        report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
       }).eq("id", cycle.id);
     }
