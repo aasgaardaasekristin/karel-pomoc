@@ -1633,7 +1633,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         <DidLiveSessionPanel
           partName={didLiveSession.partName}
           therapistName={didLiveSession.therapistName}
-          contextBrief={didContextPrime.contextBrief || didInitialContext || undefined}
+          contextBrief={didContextPrime.primeCache || didInitialContext || undefined}
           onEnd={(summary) => {
             toast.success("DID sezení zpracováno");
             setDidLiveSession(null);
