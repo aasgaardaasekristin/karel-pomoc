@@ -111,6 +111,189 @@ function hasKhash(existingContent: string, hash: string): boolean {
   return existingContent.includes(`[KHASH:${hash}]`);
 }
 
+// ═══ EVIDENCE VALIDATOR: Validate [SRC:] tags in CENTRUM blocks ═══
+function validateCentrumEvidence(
+  centrumContent: string,
+  validSources: Set<string>, // e.g. "cast|Arthur", "mamka|Hanka", "kata|Kata"
+  docName: string,
+): { validated: string; rejectedCount: number; keptCount: number } {
+  // Parse paragraphs/lines and check each for [SRC:...] tags
+  const lines = centrumContent.split("\n");
+  const validatedLines: string[] = [];
+  let rejectedCount = 0;
+  let keptCount = 0;
+
+  // Lines that are structural (headers, empty, bullets without claims) pass through
+  const isStructuralLine = (line: string): boolean => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    if (/^(SEKCE\s+\d|OPERATIVNÍ|AKTUÁLNÍ|Dashboard|═|─|▸\s*$|🎯|⚠️|💤|💬|🔍|📋|✅\s*Žádná)/i.test(trimmed)) return true;
+    if (/^(Aktualizace:|Správce:|Správce:)/i.test(trimmed)) return true;
+    // Short lines (labels, headers) pass
+    if (trimmed.length < 30 && !trimmed.includes(":")) return true;
+    return false;
+  };
+
+  // Check if a line contains a clinical claim that NEEDS evidence
+  const isClinicalClaim = (line: string): boolean => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 20) return false;
+    // Skip structural/formatting lines
+    if (isStructuralLine(line)) return false;
+    // Lines with data references (dates, numbers, simple lists) can pass
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return false;
+    // Lines that are just status indicators
+    if (/^[▸\-*•]\s*(Žádné|Žádná|Viz |N\/A|–$)/i.test(trimmed)) return false;
+    // Clinical content: contains specific claims about parts, states, recommendations
+    return /(?:komunikoval|mluvil|cítí|potřebuje|doporučen|riziko|trigger|aktivní|spí|probuz|stabilní|nestabilní|regres|pokrok|metoda|technika|sezení)/i.test(trimmed);
+  };
+
+  for (const line of lines) {
+    if (isStructuralLine(line) || !isClinicalClaim(line)) {
+      validatedLines.push(line);
+      continue;
+    }
+
+    // This line contains a clinical claim – check for [SRC:] tag
+    const srcMatch = line.match(/\[SRC:([^\]]+)\]/);
+    if (!srcMatch) {
+      // No evidence tag – reject this line
+      console.warn(`[EVIDENCE-VALIDATOR] ⛔ Rejected (no [SRC:] tag) in ${docName}: "${line.trim().slice(0, 80)}..."`);
+      rejectedCount++;
+      continue;
+    }
+
+    // Validate the source reference
+    const srcRef = srcMatch[1].trim(); // e.g. "cast|Arthur|msg3"
+    const srcParts = srcRef.split("|");
+    const srcKey = srcParts.slice(0, 2).join("|").toLowerCase(); // "cast|arthur"
+
+    // Check if this source exists in our data
+    let sourceValid = false;
+    for (const vs of validSources) {
+      if (vs.toLowerCase() === srcKey || vs.toLowerCase().includes(srcParts[0]?.toLowerCase())) {
+        sourceValid = true;
+        break;
+      }
+    }
+
+    if (sourceValid) {
+      // Strip the [SRC:] tag from output (it was for validation only)
+      validatedLines.push(line.replace(/\s*\[SRC:[^\]]+\]\s*/g, " ").trim());
+      keptCount++;
+    } else {
+      console.warn(`[EVIDENCE-VALIDATOR] ⛔ Rejected (invalid source "${srcRef}") in ${docName}: "${line.trim().slice(0, 80)}..."`);
+      rejectedCount++;
+    }
+  }
+
+  console.log(`[EVIDENCE-VALIDATOR] ${docName}: kept=${keptCount}, rejected=${rejectedCount}, structural=${lines.length - keptCount - rejectedCount}`);
+  return { validated: validatedLines.join("\n"), rejectedCount, keptCount };
+}
+
+// ═══ SEMANTIC DEDUP CHECK: AI-powered similarity gate ═══
+async function semanticDedupCheck(
+  newContent: string,
+  existingContent: string,
+  sectionLabel: string,
+  partName: string,
+): Promise<{ isDuplicate: boolean; reason: string }> {
+  if (!existingContent || existingContent.length < 20 || existingContent === "(zatím prázdné)") {
+    return { isDuplicate: false, reason: "empty_section" };
+  }
+
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return { isDuplicate: false, reason: "no_api_key" };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        tools: [{
+          type: "function",
+          function: {
+            name: "dedup_result",
+            description: "Return whether new content is semantically duplicate of existing content",
+            parameters: {
+              type: "object",
+              properties: {
+                isDuplicate: { type: "boolean", description: "true if the core meaning is already present in existing content" },
+                reason: { type: "string", description: "Brief explanation (max 50 chars)" },
+              },
+              required: ["isDuplicate", "reason"],
+              additionalProperties: false,
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "dedup_result" } },
+        messages: [
+          {
+            role: "system",
+            content: `Porovnej NOSNOU MYŠLENKU nového záznamu s existujícím obsahem sekce. Odpověz isDuplicate=true POUZE pokud je JÁDRO VÝZNAMU (ne formulace) již přítomno. Různá slova pro stejný fakt = DUPLICITA. Nový detail k existujícímu faktu = NENÍ DUPLICITA.`,
+          },
+          {
+            role: "user",
+            content: `SEKCE ${sectionLabel} karty "${partName}":\n\nEXISTUJÍCÍ OBSAH:\n${existingContent.slice(0, 1500)}\n\nNOVÝ ZÁZNAM:\n${newContent.slice(0, 500)}`,
+          },
+        ],
+      }),
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.warn(`[SEMANTIC-DEDUP] AI call failed (${res.status}), falling back to KHASH-only`);
+      return { isDuplicate: false, reason: "api_error" };
+    }
+
+    const data = await res.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const args = JSON.parse(toolCall.function.arguments);
+      console.log(`[SEMANTIC-DEDUP] Section ${sectionLabel} for "${partName}": isDuplicate=${args.isDuplicate}, reason="${args.reason}"`);
+      return { isDuplicate: !!args.isDuplicate, reason: args.reason || "" };
+    }
+
+    return { isDuplicate: false, reason: "no_tool_response" };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      console.warn(`[SEMANTIC-DEDUP] Timeout (5s) for section ${sectionLabel} of "${partName}", falling back to KHASH-only`);
+    } else {
+      console.warn(`[SEMANTIC-DEDUP] Error for section ${sectionLabel} of "${partName}":`, e);
+    }
+    return { isDuplicate: false, reason: "timeout_or_error" };
+  }
+}
+
+// ═══ POST-WRITE VERIFICATION: Read back and verify CENTRUM doc ═══
+async function verifyCentrumWrite(
+  token: string,
+  fileId: string,
+  docName: string,
+  requiredKeywords: string[],
+): Promise<{ verified: boolean; length: number; missingKeywords: string[] }> {
+  try {
+    const content = await readFileContent(token, fileId);
+    const missing = requiredKeywords.filter(kw => !content.toLowerCase().includes(kw.toLowerCase()));
+    const verified = content.length > 200 && missing.length === 0;
+    if (!verified) {
+      console.warn(`[VERIFY-CENTRUM] ⚠️ ${docName}: length=${content.length}, missing=[${missing.join(",")}]`);
+    } else {
+      console.log(`[VERIFY-CENTRUM] ✅ ${docName}: length=${content.length}, all ${requiredKeywords.length} keywords present`);
+    }
+    return { verified, length: content.length, missingKeywords: missing };
+  } catch (e) {
+    console.error(`[VERIFY-CENTRUM] Failed to read back ${docName}:`, e);
+    return { verified: false, length: 0, missingKeywords: requiredKeywords };
+  }
+}
+
 const stripDiacritics = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
@@ -1252,6 +1435,7 @@ async function updateCardSections(
 
   const updatedKeys: string[] = [];
   let dedupSkips = 0;
+  let semanticDedupSkips = 0;
   for (const [letter, newContent] of Object.entries(newSections)) {
     const ul = letter.toUpperCase();
     if (!SECTION_ORDER.includes(ul)) continue;
@@ -1263,6 +1447,16 @@ async function updateCardSections(
       console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" – hash ${hash} already present`);
       dedupSkips++;
       continue;
+    }
+
+    // SEMANTIC DEDUP: AI-powered similarity gate (after KHASH, before write)
+    if (existing && existing !== "(zatím prázdné)" && existing.length > 30) {
+      const dedupResult = await semanticDedupCheck(newContent, existing, ul, partName);
+      if (dedupResult.isDuplicate) {
+        console.log(`[SEMANTIC-DEDUP] ⛔ Blocked section ${ul} for "${partName}": "${dedupResult.reason}"`);
+        semanticDedupSkips++;
+        continue;
+      }
     }
     
     const timestamped = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
@@ -1276,6 +1470,9 @@ async function updateCardSections(
   
   if (dedupSkips > 0) {
     console.log(`[KHASH-dedup] ${dedupSkips} section(s) skipped for "${partName}" (duplicate content)`);
+  }
+  if (semanticDedupSkips > 0) {
+    console.log(`[SEMANTIC-DEDUP] ${semanticDedupSkips} section(s) blocked for "${partName}" (semantically duplicate)`);
   }
   
   if (updatedKeys.length === 0 && card) {
@@ -2751,6 +2948,21 @@ PRAVIDLA PRO CENTRUM:
 - Informace z rozhovorů částí (cast) jsou SEKUNDÁRNÍ – zapiš pouze pokud mění celkový stav systému
 - NEVYTVÁŘEJ CENTRUM blok pokud nemáš nové relevantní informace pro daný dokument
 
+═══ POVINNÉ EVIDENCE TAGGING V CENTRUM BLOCÍCH ═══
+⚠️ KAŽDÉ klinické tvrzení (o stavu části, doporučení, riziku, aktivitě) v blocích [CENTRUM:...] MUSÍ obsahovat tag [SRC:režim|jméno|msgN]:
+- [SRC:cast|Arthur|msg3] = informace pochází z vlákna části Arthur, 3. user zpráva
+- [SRC:mamka|Hanka|msg5] = informace z režimu mamka, 5. user zpráva  
+- [SRC:kata|Kata|msg2] = informace z režimu kata
+- [SRC:hana|Hana|msg8] = informace z Hana konverzace
+- [SRC:episode|id] = informace z epizodické paměti
+- [SRC:registry|partName] = informace z did_part_registry
+
+Příklad správného použití:
+▸ Arthur [🟢 stabilní] – komunikoval s Karlem, vyjádřil potřebu bezpečí [SRC:cast|Arthur|msg5]
+
+BEZ [SRC:] tagu se tvrzení NEPOUŽIJE – bude automaticky odfiltrováno validátorem.
+Strukturální řádky (nadpisy, prázdné řádky, popisky sekcí) TAG NEPOTŘEBUJÍ.
+
 Po všech kartách a CENTRUM blocích:
 [REPORT]
 - ⚠️ TERMINOLOGIE: Rozlišuj přesně:
@@ -3039,6 +3251,23 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       }
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
+      // Build valid sources set for evidence validation
+      const validSources = new Set<string>();
+      for (const t of reportThreads) {
+        validSources.add(`${t.sub_mode}|${t.part_name}`);
+      }
+      for (const c of reportConversations) {
+        validSources.add(`${c.sub_mode}|${c.label}`);
+      }
+      for (const hc of recentHanaConversations) {
+        validSources.add(`hana|Hana`);
+      }
+      if (recentEpisodes.length > 0) validSources.add("episode|any");
+      if (registryContext?.entries) {
+        for (const e of registryContext.entries) validSources.add(`registry|${e.name}`);
+      }
+      console.log(`[EVIDENCE] Valid sources for CENTRUM validation: ${[...validSources].join(", ")}`);
+
       let therapeuticPlanContent = ""; // Capture for email inclusion
       let centrumDashboardUpdated = false;
       let centrumOperativniUpdated = false;
@@ -3049,11 +3278,25 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
         for (const match of validatedAnalysisText.matchAll(centrumBlockRegex)) {
           const docName = match[1].trim();
-          const newContent = match[2].trim();
+          let newContent = match[2].trim();
           if (!newContent || newContent.length < 10) continue;
 
+          // ═══ EVIDENCE VALIDATION: Filter claims without valid [SRC:] tags ═══
+          const docCanonical = canonicalText(docName);
+          const isDashboardOrPlan = docCanonical.includes("dashboard") || docCanonical.includes("operativn") || docCanonical.includes("terapeutick");
+          if (isDashboardOrPlan) {
+            const { validated, rejectedCount, keptCount } = validateCentrumEvidence(newContent, validSources, docName);
+            if (rejectedCount > 0) {
+              console.log(`[EVIDENCE] ${docName}: ${rejectedCount} claims rejected, ${keptCount} claims validated`);
+            }
+            newContent = validated;
+            if (newContent.trim().length < 10) {
+              console.warn(`[EVIDENCE] ${docName}: All content rejected by evidence validator, skipping write`);
+              continue;
+            }
+          }
+
           try {
-            const docCanonical = canonicalText(docName);
 
             // ═══ SPECIAL: 05_Operativni_Plan or 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
             if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
@@ -3073,6 +3316,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
               centrumOperativniUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
+
+              // Post-write verification
+              await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", ["SEKCE 1", "SEKCE 2", "SEKCE 3", "Aktualizace"]);
               continue;
             }
 
@@ -3089,6 +3335,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
               centrumDashboardUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
+
+              // Post-write verification
+              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", ["SEKCE 1", "DASHBOARD", "Aktualizace"]);
               continue;
             }
 
@@ -3161,31 +3410,101 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
       }
 
-      // ═══ FORCED CENTRUM FALLBACK: If AI didn't generate Dashboard/Plan blocks, force update ═══
+      // ═══ FORCED CENTRUM FALLBACK: Full deterministic content from DB ═══
       if (centrumFolderId && hasRecentActivity) {
         const centerFiles = centrumFolderId ? await listFilesInFolder(token, centrumFolderId) : [];
+
+        // Load registry data for deterministic dashboard
+        const registryParts = registryContext?.entries || [];
+        const activeParts = registryParts.filter(e => !isArchivedFromRegistry(e));
+        const sleepingParts = registryParts.filter(e => isArchivedFromRegistry(e));
         
         if (!centrumDashboardUpdated) {
-          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] block – forcing minimal update`);
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] block – generating FULL deterministic dashboard`);
           const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
           if (dashFile) {
             try {
               const dateStr = new Date().toISOString().slice(0, 10);
-              // Build minimal dashboard from deterministic data
               const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
               const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
-              
-              const minimalDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (automatický fallback – AI blok chyběl)\n\nSEKCE 1 – STAV SYSTÉMU TEĎ\n${activePartsFromThreads.length > 0 ? activePartsFromThreads.map(p => `▸ ${p} – komunikoval/a s Karlem (posledních 24h)`).join("\n") : "Žádná přímá aktivita částí za posledních 24h."}\n\nSEKCE 3 – CO SE DĚLO POSLEDNÍCH 24H\n- DID vlákna: ${allRecentThreads.length}\n- DID konverzace: ${allRecentConversations.length}\n- Hana konverzace: ${recentHanaConversations.length}\n- Klientská sezení: ${recentClientSessions.length}\n- Research vlákna: ${researchThreads.length}\n- Porady: ${recentMeetings.length}\n- Terapeutická vlákna: ${therapistThreads.map(t => `${t.part_name} (${t.sub_mode})`).join(", ") || "žádná"}\n\nSEKCE 5 – TERAPEUTICKÝ FOKUS DNE 🎯\nViz 05_Operativni_Plan pro detaily.\n\nSEKCE 7 – KARLOVY POSTŘEHY 🔍\n⚠️ Tento dashboard byl vygenerován automatickým fallbackem – AI analýza nevygenerovala CENTRUM blok. Zkontroluj ručně.`;
-              
-              await updateFileById(token, dashFile.id, minimalDashboard, dashFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 00_Dashboard (FALLBACK – AI blok chyběl)`);
-              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard updated with deterministic fallback`);
+
+              // Build registry-based part status
+              const partStatusLines = activeParts.map(p => {
+                const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
+                const status = hadActivity ? "🟢 komunikoval/a s Karlem" : "🟡 bez aktivity dnes";
+                return `▸ ${p.name} (ID ${p.id}) [${status}] – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}`;
+              });
+
+              // Critical alerts from tasks
+              const criticalTasks = (pendingTasks || []).filter((t: any) => {
+                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+                return age >= 3;
+              });
+              const criticalAlertsText = criticalTasks.length > 0
+                ? criticalTasks.map((t: any) => {
+                    const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+                    return `⚠️ ${t.task} – ${age} dní nesplněno (${t.assigned_to})`;
+                  }).join("\n")
+                : "✅ Žádná kritická upozornění";
+
+              // Sleeping parts watchlist
+              const sleepingWatchlist = sleepingParts.length > 0
+                ? sleepingParts.map(p => `▸ ${p.name} (ID ${p.id}) – status: ${p.status}, klastr: ${p.cluster || "?"}`).join("\n")
+                : "Žádné spící části v registru.";
+
+              // Priority from pending tasks
+              const priorityLines = (pendingTasks || []).slice(0, 5).map((t: any) => 
+                `▸ ${t.task} (${t.assigned_to}, priorita: ${t.priority || "normal"})`
+              ).join("\n") || "Žádné aktivní úkoly.";
+
+              const fullDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM
+Aktualizace: ${dateStr}
+Správce: Karel (deterministický fallback z DB)
+
+SEKCE 1 – STAV SYSTÉMU TEĎ
+Aktivních částí v registru: ${activeParts.length}
+Spících částí: ${sleepingParts.length}
+${partStatusLines.join("\n") || "Žádné části v registru."}
+
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️
+${criticalAlertsText}
+
+SEKCE 3 – CO SE DĚLO POSLEDNÍCH 24H
+- DID vlákna (cast): ${reportThreads.filter(t => t.sub_mode === "cast").length} (části: ${activePartsFromThreads.join(", ") || "žádné"})
+- DID vlákna (terapeutická): ${therapistThreads.length} (${therapistThreads.map(t => `${t.part_name}/${t.sub_mode}`).join(", ") || "žádná"})
+- DID konverzace: ${allRecentConversations.length}
+- Hana konverzace: ${recentHanaConversations.length}
+- Klientská sezení: ${recentClientSessions.length}
+- Research vlákna: ${researchThreads.length}
+- Porady: ${recentMeetings.length}
+- Epizody: ${recentEpisodes.length}
+
+SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤
+${sleepingWatchlist}
+
+SEKCE 5 – TERAPEUTICKÝ FOKUS DNE 🎯
+${priorityLines}
+
+SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬
+Žádné automatické vzkazy (deterministický fallback).
+
+SEKCE 7 – KARLOVY POSTŘEHY 🔍
+⚠️ Tento dashboard byl vygenerován deterministickým fallbackem z DB dat – AI analýza nevygenerovala CENTRUM blok.
+Všechna data pocházejí z databáze (did_part_registry, did_threads, did_therapist_tasks).`;
+
+              await updateFileById(token, dashFile.id, fullDashboard, dashFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (FULL DETERMINISTIC FALLBACK)`);
+              centrumDashboardUpdated = true;
+              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard: full deterministic content written`);
+
+              // Post-write verification
+              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", ["SEKCE 1", "SEKCE 3", "DASHBOARD"]);
             } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
           }
         }
 
         if (!centrumOperativniUpdated) {
-          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] block – forcing minimal update`);
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] block – generating FULL deterministic plan`);
           const planFile = centerFiles.find(f => {
             const fc = canonicalText(f.name);
             return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
@@ -3193,15 +3512,67 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           if (planFile) {
             try {
               const dateStr = new Date().toISOString().slice(0, 10);
-              const existingContent = await readFileContent(token, planFile.id);
-              // Append a timestamped note that AI didn't produce a full update
-              const fallbackNote = `\n\n[${dateStr}] ⚠️ AUTOMATICKÝ FALLBACK: AI analýza nevygenerovala kompletní [CENTRUM:05_Operativni_Plan] blok.\nNesplněné úkoly (${(pendingTasks || []).length}):\n${pendingTasksSummary || "Žádné"}\nAktivní vlákna (24h): ${allRecentThreads.length} | Konverzace: ${allRecentConversations.length}`;
+
+              // Build full plan from DB data
+              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
               
-              if (!existingContent.includes(dateStr + "] ⚠️ AUTOMATICKÝ FALLBACK")) {
-                await updateFileById(token, planFile.id, existingContent.trimEnd() + fallbackNote, planFile.mimeType);
-                cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FALLBACK append)`);
-                console.log(`[CENTRUM-FALLBACK] ✅ Operative plan updated with fallback note`);
-              }
+              // Section 1: Active parts status
+              const partStatusTable = activeParts.map(p => {
+                const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
+                return `| ${p.name} / ${p.id} | ${hadActivity ? "Aktivní" : "Ticho"} | ${p.cluster || "?"} | ${p.age || "?"} |`;
+              }).join("\n");
+
+              // Section 3: Pending tasks
+              const taskLines = (pendingTasks || []).map((t: any) => {
+                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+                const icon = age >= 3 ? "⚠️" : "☐";
+                return `${icon} ${t.assigned_to}: ${t.task} (${age}d, ${t.priority || "normal"})`;
+              }).join("\n") || "Žádné nesplněné úkoly.";
+
+              // Section 5: Risks
+              const riskTasks = (pendingTasks || []).filter((t: any) => {
+                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+                return age >= 3;
+              });
+              const riskLines = riskTasks.length > 0
+                ? riskTasks.map((t: any) => `⚠️ ESKALACE: "${t.task}" – nesplněno ${Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24))} dní`).join("\n")
+                : "Žádná akutní rizika.";
+
+              const fullPlan = `OPERATIVNÍ PLÁN – DID SYSTÉM
+Aktualizace: ${dateStr}
+Správce: Karel (deterministický fallback z DB)
+
+SEKCE 1 – AKTIVNÍ ČÁSTI A AKTUÁLNÍ STAV
+| Část / ID | Aktuální stav | Klastr | Věk |
+${partStatusTable || "| (žádné aktivní části) | | | |"}
+
+SEKCE 2 – PLÁN SEZENÍ NA TENTO TÝDEN
+⚠️ Automatický fallback – detailní plán sezení vyžaduje AI analýzu.
+Aktivní části pro sezení: ${activePartsFromThreads.join(", ") || "žádné dnešní aktivity"}
+
+SEKCE 3 – AKTIVNÍ ÚKOLY + HODNOCENÍ PLNĚNÍ
+${taskLines}
+
+SEKCE 4 – KOORDINACE TERAPEUTŮ + DNEŠNÍ MOST
+Aktivita Hanka režim: ${reportThreads.filter(t => t.sub_mode === "mamka").length} vlákna
+Aktivita Káťa režim: ${reportThreads.filter(t => t.sub_mode === "kata").length} vlákna
+Hana osobní konverzace: ${recentHanaConversations.length}
+
+SEKCE 5 – UPOZORNĚNÍ A RIZIKA
+${riskLines}
+
+SEKCE 6 – KARLOVY POZNÁMKY
+⚠️ Tento plán byl vygenerován deterministickým fallbackem – AI analýza nevytvořila CENTRUM blok.
+Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks (${(pendingTasks || []).length} nesplněných).`;
+
+              therapeuticPlanContent = fullPlan;
+              await updateFileById(token, planFile.id, fullPlan, planFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FULL DETERMINISTIC FALLBACK)`);
+              centrumOperativniUpdated = true;
+              console.log(`[CENTRUM-FALLBACK] ✅ Operative plan: full deterministic content written`);
+
+              // Post-write verification
+              await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan (fallback)", ["SEKCE 1", "SEKCE 3", "OPERATIVNÍ"]);
             } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan update failed:`, e); }
           }
         }
