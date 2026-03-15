@@ -590,7 +590,8 @@ const Chat = () => {
       setActiveThread(thread);
       setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
       setDidFlowState("chat");
-      
+      // Auto-prime with specific part context
+      didContextPrime.runPrime(partName, "cast");
       // Load part-specific docs in BACKGROUND — don't block conversation
       (async () => {
         try {
