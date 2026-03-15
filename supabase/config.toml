@@ -143,3 +143,6 @@ verify_jwt = false
 
 [functions.karel-did-episode-generate]
 verify_jwt = false
+
+[functions.karel-did-memory-bootstrap]
+verify_jwt = false

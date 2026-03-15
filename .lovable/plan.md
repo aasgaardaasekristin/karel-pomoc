@@ -168,3 +168,38 @@
   - Výběr části před zahájením sezení
   - Automatický zápis po ukončení
   - Přístup přes Dashboard → "Live DID sezení"
+
+### 🔄 Nová Fáze 4: DID Memory Bootstrap
+- **`karel-did-memory-bootstrap` edge function** — jednorázové nasátí kartotéky z Drive
+  - Fáze `scan`: Načte 01_AKTIVNI_FRAGMENTY, 02_SPICI, 03_ARCHIV z Drive
+  - Fáze `process_one`: Parsuje sekce karty (A-M), extrahuje metadata
+  - Upsert do `did_part_registry`: jméno, věk, status, cluster, role, jazyk, triggers, strengths
+  - Generování epizod z obsahu karet (domain: "DID", tags: bootstrap)
+  - Populace `karel_semantic_entities` pro DID části (typ: "did_cast")
+  - Live progress indikátor v dashboardu (např. "5/23 Arthur")
+  - Tlačítko "Bootstrap DID paměti" v DidDashboard
+  - Batch zpracování pro prevenci timeoutů
+
+### ⏳ Nová Fáze 5: Dashboard v2 z Registry
+- `DidDashboard` napojit na `did_part_registry` místo Drive
+- Rychlý přehled emočních stavů, zdraví karet, posledního kontaktu
+- Filtry: aktivní/spící/archivované části
+- Kliknutí na část → detail s historií epizod
+
+### ⏳ Nová Fáze 6: Cross-therapist koordinace
+- Automatické sdílení poznatků mezi Hankou a Káťou
+- Karel detekuje relevantní info z jedné konverzace a injektuje do druhé
+- Smart notifications: "Hanka dnes zjistila X o Arthurovi"
+- Integrace do ranního briefu
+
+### ⏳ Nová Fáze 7: Switching Detection
+- AI detekce přepínání částí v reálném čase během Live Session
+- Analýza jazykových vzorců, tónu, slovní zásoby
+- Alert terapeutce + automatický zápis do registry
+- Aktualizace `did_part_registry.last_seen_at` v reálném čase
+
+### ⏳ Nová Fáze 8: DID Supervision Report
+- Měsíční supervizní report z registry + epizod + vzorců
+- PDF generování s grafem aktivity částí
+- Email pro externího supervizora
+- Anonymizovaná verze pro sdílení

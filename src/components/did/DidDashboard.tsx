@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -51,6 +51,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
+
+  // Bootstrap state
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapProgress, setBootstrapProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
 
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
@@ -224,6 +228,66 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     const { count } = await supabase.from("did_pending_drive_writes").select("*", { count: "exact", head: true }).eq("status", "pending");
     setPendingWriteCount(count || 0);
   };
+
+  const runDidBootstrap = useCallback(async () => {
+    setIsBootstrapping(true);
+    setBootstrapProgress(null);
+    try {
+      const headers = await getAuthHeaders();
+      // Phase 1: Scan
+      toast.info("Skenuji kartotéku na Drive...");
+      const scanResp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`,
+        { method: "POST", headers, body: JSON.stringify({ phase: "scan" }) }
+      );
+      const scanData = await scanResp.json();
+      if (!scanResp.ok || !scanData.cards) {
+        toast.error(`Sken selhal: ${scanData.error || "neznámá chyba"}`);
+        return;
+      }
+
+      const cards = scanData.cards;
+      toast.info(`Nalezeno ${cards.length} karet. Zpracovávám...`);
+
+      // Phase 2: Process each card sequentially
+      let success = 0;
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const displayName = card.fileName.replace(/^\d+_?/, "");
+        setBootstrapProgress({ current: i + 1, total: cards.length, currentName: displayName });
+
+        try {
+          const resp = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                phase: "process_one",
+                fileId: card.fileId,
+                fileName: card.fileName,
+                folderLabel: card.folderLabel,
+                mimeType: card.mimeType,
+              }),
+            }
+          );
+          if (resp.ok) success++;
+        } catch (e) {
+          console.error(`Bootstrap error for ${displayName}:`, e);
+        }
+      }
+
+      toast.success(`Bootstrap dokončen: ${success}/${cards.length} karet zpracováno`);
+      setRefreshTrigger(prev => prev + 1);
+      loadDashboardData();
+    } catch (e) {
+      console.error("Bootstrap error:", e);
+      toast.error("Bootstrap selhal");
+    } finally {
+      setIsBootstrapping(false);
+      setBootstrapProgress(null);
+    }
+  }, []);
 
     const loadDashboardData = async () => {
     try {
@@ -439,6 +503,46 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       {/* Kartotéka Health Check */}
       <div className="mb-4">
         <DidKartotekaHealth refreshTrigger={refreshTrigger} />
+      </div>
+
+      {/* DID Memory Bootstrap */}
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <Database className="w-3.5 h-3.5 text-primary" />
+            Bootstrap DID paměti
+          </h4>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={runDidBootstrap}
+            disabled={isBootstrapping}
+            className="h-7 text-[10px] px-3"
+          >
+            {isBootstrapping ? (
+              <><Loader2 className="w-3 h-3 animate-spin mr-1" />Zpracovávám...</>
+            ) : (
+              "Spustit bootstrap"
+            )}
+          </Button>
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-1">
+          Jednorázové nasátí všech karet z Drive do registru částí a sémantické paměti.
+        </p>
+        {bootstrapProgress && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+              <span>{bootstrapProgress.current}/{bootstrapProgress.total} — {bootstrapProgress.currentName}</span>
+              <span>{Math.round((bootstrapProgress.current / bootstrapProgress.total) * 100)}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+              <div
+                className="h-full bg-primary rounded-full transition-all duration-300"
+                style={{ width: `${(bootstrapProgress.current / bootstrapProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* System Map */}
