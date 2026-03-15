@@ -375,13 +375,19 @@ serve(async (req) => {
     // ── 2c. Kontext vláken + cross-mode zmínek ──
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
-      const speaker = t.sub_mode === "cast" ? "část" : "terapeut";
+      const speaker = t.sub_mode === "cast"
+        ? "část"
+        : t.sub_mode === "mamka"
+          ? "Hanička"
+          : t.sub_mode === "kata"
+            ? "Káťa"
+            : "terapeut";
       const snippets = msgs
         .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
         .slice(-5)
-        .map((m: any) => `- ${String(m.content).slice(0, 240)}`)
+        .map((m: any) => `- ${String(m.content).replace(/\s+/g, " ").slice(0, 240)}`)
         .join("\n");
-      return `\n${t.part_name} (${speaker}, ${t.last_activity_at})\n${snippets || "- bez user zpráv"}`;
+      return `\n${t.part_name} (${speaker}, ${t.last_activity_at})\n${snippets || "- bez uživatelských zpráv"}`;
     };
 
     let threadSummary24h = "";
