@@ -1042,17 +1042,14 @@ async function resolveCardTarget(
     };
   }
 
-  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi
+  // Hard guard: bez zápisu mimo oficiální registr
   if (!entry) {
-    const newPartRoot = registryContext.activeFolderId || rootFolderId;
     return {
-      searchRootId: newPartRoot,
-      allowCreate: true,
-      pathLabel: registryContext.activeFolderId
-        ? "01_AKTIVNI_FRAGMENTY/(nová část mimo registr)"
-        : "fallback:root/(nová část mimo registr)",
+      searchRootId: registryContext.activeFolderId || rootFolderId,
+      allowCreate: false,
+      pathLabel: "blokováno: mimo oficiální registr",
       registryEntry: null,
-      actionType: "nova_karta",
+      actionType: "aktualizace",
     };
   }
 
