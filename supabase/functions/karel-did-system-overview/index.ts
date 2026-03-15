@@ -64,6 +64,62 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+function sanitizeOverviewText(text: string): string {
+  return text
+    .replace(/\[(REG|ÚKOL|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
+    .replace(/^(\s*)\*\s+/gm, "$1– ")
+    .replace(/^(\s*)##+\s*/gm, "$1")
+    .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
+  if (!stream) return null;
+
+  const reader = stream.getReader();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+
+      const flushLine = (line: string) => {
+        if (line.startsWith("data: ")) {
+          const payload = line.slice(6).trim();
+          if (payload && payload !== "[DONE]") {
+            try {
+              const parsed = JSON.parse(payload);
+              const content = parsed?.choices?.[0]?.delta?.content;
+              if (typeof content === "string") {
+                parsed.choices[0].delta.content = sanitizeOverviewText(content);
+              }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
+              return;
+            } catch {
+              // fall through and pass line as-is
+            }
+          }
+        }
+        controller.enqueue(encoder.encode(`${line}\n`));
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) flushLine(line);
+      }
+
+      if (buffer.length > 0) flushLine(buffer);
+      controller.close();
+    },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const authResult = await requireAuth(req);
