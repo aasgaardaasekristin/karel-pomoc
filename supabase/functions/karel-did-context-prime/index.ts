@@ -569,12 +569,20 @@ serve(async (req) => {
           reads.push(readFolderDocs(token, centrumId, 8, 3000).then(d => { driveData["CENTRUM"] = d; }));
         }
 
-        // PAMET_KAREL/DID/ if exists
+        // PAMET_KAREL/DID/ — therapist profiles
         const pametId = await findFolder(token, "PAMET_KAREL");
         if (pametId) {
           const didPametId = await findFolder(token, "DID", pametId);
           if (didPametId) {
-            reads.push(readFolderDocs(token, didPametId, 5, 4000).then(d => { driveData["PAMET_DID"] = d; }));
+            // Read HANKA and KATA profile folders
+            const hankaFolderId = await findFolder(token, "HANKA", didPametId);
+            const kataFolderId = await findFolder(token, "KATA", didPametId);
+            if (hankaFolderId) {
+              reads.push(readFolderDocs(token, hankaFolderId, 5, 6000).then(d => { driveData["PROFIL_HANKA"] = d; }));
+            }
+            if (kataFolderId) {
+              reads.push(readFolderDocs(token, kataFolderId, 5, 6000).then(d => { driveData["PROFIL_KATA"] = d; }));
+            }
           }
           // Also read semantic memory
           const semanticId = await findFolder(token, "PAMET_KAREL_SEMANTIC", pametId);
