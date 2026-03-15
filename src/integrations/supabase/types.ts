@@ -757,6 +757,72 @@ export type Database = {
         }
         Relationships: []
       }
+      did_system_profile: {
+        Row: {
+          created_at: string
+          current_priorities: string[]
+          drive_document_id: string | null
+          education_context: string
+          goals_long_term: string[]
+          goals_mid_term: string[]
+          goals_short_term: string[]
+          id: string
+          inner_world_description: string
+          inner_world_rules: string
+          integration_strategy: string
+          karel_master_analysis: string
+          last_drive_sync: string | null
+          part_contributions: Json
+          relationships_map: Json
+          risk_factors: string[]
+          system_identity: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_priorities?: string[]
+          drive_document_id?: string | null
+          education_context?: string
+          goals_long_term?: string[]
+          goals_mid_term?: string[]
+          goals_short_term?: string[]
+          id?: string
+          inner_world_description?: string
+          inner_world_rules?: string
+          integration_strategy?: string
+          karel_master_analysis?: string
+          last_drive_sync?: string | null
+          part_contributions?: Json
+          relationships_map?: Json
+          risk_factors?: string[]
+          system_identity?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          current_priorities?: string[]
+          drive_document_id?: string | null
+          education_context?: string
+          goals_long_term?: string[]
+          goals_mid_term?: string[]
+          goals_short_term?: string[]
+          id?: string
+          inner_world_description?: string
+          inner_world_rules?: string
+          integration_strategy?: string
+          karel_master_analysis?: string
+          last_drive_sync?: string | null
+          part_contributions?: Json
+          relationships_map?: Json
+          risk_factors?: string[]
+          system_identity?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_therapist_tasks: {
         Row: {
           assigned_to: string
