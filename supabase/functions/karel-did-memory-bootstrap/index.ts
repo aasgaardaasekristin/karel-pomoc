@@ -226,7 +226,6 @@ serve(async (req) => {
         if (!folderId) { console.log(`[bootstrap] Folder ${folderName} not found, skipping`); continue; }
 
         const items = await listFilesInFolder(token, folderId);
-        console.log(`[bootstrap] ${folderName}: ${items.length} items found, names: ${items.map(i => i.name).join(', ')}`);
         const subfolders = items.filter(f => f.mimeType === "application/vnd.google-apps.folder");
         const directFiles = items.filter(f => f.mimeType !== "application/vnd.google-apps.folder");
 
