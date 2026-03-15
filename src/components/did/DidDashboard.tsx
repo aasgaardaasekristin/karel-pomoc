@@ -224,10 +224,65 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
     }
   };
 
-  const loadPendingWriteCount = async () => {
-    const { count } = await supabase.from("did_pending_drive_writes").select("*", { count: "exact", head: true }).eq("status", "pending");
-    setPendingWriteCount(count || 0);
-  };
+  const runDidBootstrap = useCallback(async () => {
+    setIsBootstrapping(true);
+    setBootstrapProgress(null);
+    try {
+      const headers = await getAuthHeaders();
+      // Phase 1: Scan
+      toast.info("Skenuji kartotéku na Drive...");
+      const scanResp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`,
+        { method: "POST", headers, body: JSON.stringify({ phase: "scan" }) }
+      );
+      const scanData = await scanResp.json();
+      if (!scanResp.ok || !scanData.cards) {
+        toast.error(`Sken selhal: ${scanData.error || "neznámá chyba"}`);
+        return;
+      }
+
+      const cards = scanData.cards;
+      toast.info(`Nalezeno ${cards.length} karet. Zpracovávám...`);
+
+      // Phase 2: Process each card sequentially
+      let success = 0;
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const displayName = card.fileName.replace(/^\d+_?/, "");
+        setBootstrapProgress({ current: i + 1, total: cards.length, currentName: displayName });
+
+        try {
+          const resp = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                phase: "process_one",
+                fileId: card.fileId,
+                fileName: card.fileName,
+                folderLabel: card.folderLabel,
+                mimeType: card.mimeType,
+              }),
+            }
+          );
+          if (resp.ok) success++;
+        } catch (e) {
+          console.error(`Bootstrap error for ${displayName}:`, e);
+        }
+      }
+
+      toast.success(`Bootstrap dokončen: ${success}/${cards.length} karet zpracováno`);
+      setRefreshTrigger(prev => prev + 1);
+      loadDashboardData();
+    } catch (e) {
+      console.error("Bootstrap error:", e);
+      toast.error("Bootstrap selhal");
+    } finally {
+      setIsBootstrapping(false);
+      setBootstrapProgress(null);
+    }
+  }, []);
 
     const loadDashboardData = async () => {
     try {
