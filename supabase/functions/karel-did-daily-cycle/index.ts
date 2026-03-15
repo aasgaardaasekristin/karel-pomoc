@@ -1356,6 +1356,50 @@ function normalizePartHint(partHint: string): string {
   return partNameFromFileName(partHint || "");
 }
 
+function getUserMessages(messages: any[]): string[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
+    .map((m: any) => (m.content as string).trim())
+    .filter(Boolean);
+}
+
+function clipText(value: string, max = 220): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function detectExplicitSelfIdentification(text: string): string | null {
+  const normalized = text.trim();
+  if (!normalized) return null;
+
+  // "arthur"
+  const singleWord = normalized.match(/^[a-zA-Zá-žÁ-Ž][a-zA-Zá-žÁ-Ž'\-]{1,24}$/u);
+  if (singleWord) return singleWord[0];
+
+  // "jsem arthur" / "já jsem arthur" / "i am arthur" / "my name is arthur"
+  const explicit = normalized.match(/^(?:jsem|já\s+jsem|tady|i\s+am|i'm|my\s+name\s+is)\s+([a-zA-Zá-žÁ-Ž][a-zA-Zá-žÁ-Ž'\-]{1,24})$/iu);
+  if (explicit) return explicit[1];
+
+  return null;
+}
+
+function extractUnknownStructuredPartMentions(content: string, allowedCanonicalNames: Set<string>): string[] {
+  if (allowedCanonicalNames.size === 0) return [];
+
+  const candidates = new Set<string>();
+  const re = /(?:^|\n)\s*[▸\-*•]?\s*([a-zA-Zá-žÁ-Ž][a-zA-Zá-žÁ-Ž'\-]{1,30})\s*(?:\/\s*ID|\[ID:|-\s*Stav:)/giu;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    const canonical = canonicalText(name);
+    if (!canonical || allowedCanonicalNames.has(canonical)) continue;
+    candidates.add(name);
+  }
+
+  return [...candidates];
+}
+
 interface SuccessfulCardUpdate {
   partName: string;
   fileName: string;
