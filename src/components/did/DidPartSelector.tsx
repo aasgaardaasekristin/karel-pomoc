@@ -1,21 +1,17 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sparkles, UserPlus, Loader2, CheckCircle, Moon, AlertTriangle, Clock, Heart } from "lucide-react";
+import { Sparkles, UserPlus, Loader2, Plus, FolderOpen, CheckCircle, Moon, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface RegistryPart {
   id: string;
   part_name: string;
   display_name: string;
   status: string;
-  age_estimate: string | null;
-  last_seen_at: string | null;
-  last_emotional_state: string | null;
-  last_emotional_intensity: number | null;
-  health_score: number | null;
-  role_in_system: string | null;
 }
 
 interface Props {
@@ -23,54 +19,75 @@ interface Props {
   knownParts: string[];
   onSelectPart: (partName: string) => void;
   onBack: () => void;
+  onOpenKartoteka?: () => void;
 }
 
-const STATUS_CFG: Record<string, { icon: typeof CheckCircle; color: string; bg: string }> = {
-  active: { icon: CheckCircle, color: "text-green-500", bg: "bg-green-500/10" },
-  sleeping: { icon: Moon, color: "text-muted-foreground", bg: "bg-muted/30" },
-  warning: { icon: AlertTriangle, color: "text-yellow-500", bg: "bg-yellow-500/10" },
+const STATUS_INDICATOR: Record<string, string> = {
+  active: "🟢",
+  sleeping: "🌙",
+  warning: "⚠️",
 };
 
-const formatTimeAgo = (isoStr: string | null) => {
-  if (!isoStr) return "nikdy";
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "právě teď";
-  if (mins < 60) return `${mins} min`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} h`;
-  const days = Math.floor(hours / 24);
-  return `${days} d`;
-};
-
-const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack }: Props) => {
+const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOpenKartoteka }: Props) => {
   const [registryParts, setRegistryParts] = useState<RegistryPart[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPartName, setSelectedPartName] = useState("");
   const [newPartName, setNewPartName] = useState("");
-  const [search, setSearch] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const { data } = await supabase
         .from("did_part_registry")
-        .select("id, part_name, display_name, status, age_estimate, last_seen_at, last_emotional_state, last_emotional_intensity, health_score, role_in_system")
-        .order("last_seen_at", { ascending: false, nullsFirst: false });
+        .select("id, part_name, display_name, status")
+        .order("display_name");
       setRegistryParts((data as RegistryPart[]) || []);
       setLoading(false);
     };
     load();
   }, []);
 
-  const filtered = registryParts.filter(p => {
-    if (!search.trim()) return true;
-    const s = search.toLowerCase();
-    return p.display_name.toLowerCase().includes(s) || p.part_name.toLowerCase().includes(s);
-  });
+  const handleStartSession = () => {
+    if (!selectedPartName) return;
+    onSelectPart(selectedPartName);
+  };
 
-  // Merge knownParts not in registry
-  const registryNames = new Set(registryParts.map(p => p.part_name.toLowerCase()));
-  const extraParts = knownParts.filter(n => !registryNames.has(n.toLowerCase()));
+  const handleCreateAndStart = async () => {
+    const name = newPartName.trim();
+    if (!name) return;
+    setIsCreating(true);
+    try {
+      // Find smallest unused 3-digit prefix
+      const existingPrefixes = new Set(
+        registryParts
+          .map(p => {
+            const match = p.part_name.match(/^(\d{3})_/);
+            return match ? parseInt(match[1], 10) : null;
+          })
+          .filter((n): n is number => n !== null)
+      );
+      let nextId = 1;
+      while (existingPrefixes.has(nextId) && nextId < 1000) nextId++;
+      const partName = `${String(nextId).padStart(3, "0")}_${name.replace(/\s+/g, "_")}`;
+
+      const { data, error } = await supabase
+        .from("did_part_registry")
+        .insert({ part_name: partName, display_name: name, status: "active" })
+        .select("id, part_name, display_name, status")
+        .single();
+      if (error) throw error;
+      if (data) {
+        setRegistryParts(prev => [...prev, data as RegistryPart].sort((a, b) => a.display_name.localeCompare(b.display_name)));
+        toast.success(`Část „${name}" vytvořena (${partName})`);
+        onSelectPart(partName);
+      }
+    } catch (e: any) {
+      toast.error("Nepodařilo se vytvořit část: " + (e.message || ""));
+    } finally {
+      setIsCreating(false);
+    }
+  };
 
   return (
     <ScrollArea className="flex-1">
@@ -81,89 +98,38 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack }: Pr
             <Sparkles className="w-7 h-7 text-primary" />
           </div>
           <h2 className="text-xl sm:text-2xl font-serif font-semibold text-foreground">
-            Live DID sezení
+            Sezení s částí
           </h2>
           <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            {therapistName}, vyber část se kterou teď pracuješ. Karel ti bude radit v reálném čase.
+            {therapistName}, vyber část z kartotéky nebo zadej jméno nové části pro zahájení sezení.
           </p>
         </div>
 
-        {/* Search */}
-        {registryParts.length > 3 && (
-          <Input
-            placeholder="Hledat část..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="h-10 text-sm"
-          />
-        )}
+        {/* Selection card */}
+        <div className="bg-card border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
+          <h3 className="text-sm font-medium text-foreground">Vybrat část</h3>
+          {loading ? (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <Select value={selectedPartName} onValueChange={setSelectedPartName}>
+              <SelectTrigger className="h-10 text-sm">
+                <SelectValue placeholder="Vyberte část z kartotéky..." />
+              </SelectTrigger>
+              <SelectContent>
+                {registryParts.map(p => (
+                  <SelectItem key={p.id} value={p.part_name}>
+                    {STATUS_INDICATOR[p.status] || "🌙"} {p.display_name || p.part_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button className="w-full h-10 gap-2" onClick={handleStartSession} disabled={!selectedPartName}>
+            <Plus className="w-4 h-4" /> Zahájit sezení
+          </Button>
 
-        {/* Registry parts */}
-        {loading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map(part => {
-              const cfg = STATUS_CFG[part.status] || STATUS_CFG.sleeping;
-              const StatusIcon = cfg.icon;
-              return (
-                <button
-                  key={part.id}
-                  onClick={() => onSelectPart(part.part_name)}
-                  className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left group`}
-                >
-                  <div className={`w-10 h-10 rounded-full ${cfg.bg} flex items-center justify-center shrink-0`}>
-                    <StatusIcon className={`w-4 h-4 ${cfg.color}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">{part.display_name || part.part_name}</span>
-                      {part.age_estimate && (
-                        <span className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">{part.age_estimate}</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                      {part.role_in_system && <span className="truncate">{part.role_in_system}</span>}
-                      <span className="flex items-center gap-0.5 shrink-0">
-                        <Clock className="w-2.5 h-2.5" /> {formatTimeAgo(part.last_seen_at)}
-                      </span>
-                      {part.health_score != null && (
-                        <span className="shrink-0">
-                          {part.health_score}%
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {part.last_emotional_state && part.last_emotional_state !== "STABILNI" && (
-                    <Heart className="w-4 h-4 text-yellow-500 shrink-0" />
-                  )}
-                </button>
-              );
-            })}
-
-            {/* Extra known parts not in registry */}
-            {extraParts.filter(n => !search.trim() || n.toLowerCase().includes(search.toLowerCase())).map(name => (
-              <button
-                key={name}
-                onClick={() => onSelectPart(name)}
-                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-dashed border-border bg-card/50 hover:border-primary/50 hover:bg-card/80 transition-all text-left"
-              >
-                <div className="w-10 h-10 rounded-full bg-muted/30 flex items-center justify-center shrink-0">
-                  <span className="text-sm font-medium text-muted-foreground">{name[0]}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-foreground">{name}</span>
-                  <p className="text-xs text-muted-foreground">Není v registru</p>
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* New part input */}
-        <div className="bg-card border border-border rounded-xl p-5 space-y-3">
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border" />
@@ -172,30 +138,40 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack }: Pr
               <span className="bg-card px-3 text-muted-foreground">nebo nová část</span>
             </div>
           </div>
+
           <div className="flex gap-2">
             <Input
               placeholder="Jméno nové části..."
               value={newPartName}
               onChange={e => setNewPartName(e.target.value)}
               className="h-10 text-sm flex-1"
-              onKeyDown={e => {
-                if (e.key === "Enter" && newPartName.trim()) {
-                  onSelectPart(newPartName.trim());
-                }
-              }}
+              onKeyDown={e => { if (e.key === "Enter") handleCreateAndStart(); }}
             />
             <Button
               variant="outline"
               size="icon"
               className="h-10 w-10 shrink-0"
-              onClick={() => newPartName.trim() && onSelectPart(newPartName.trim())}
-              disabled={!newPartName.trim()}
+              onClick={handleCreateAndStart}
+              disabled={!newPartName.trim() || isCreating}
             >
-              <UserPlus className="w-4 h-4" />
+              {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
             </Button>
           </div>
         </div>
 
+        {/* Kartotéka shortcut */}
+        {onOpenKartoteka && (
+          <Button
+            variant="outline"
+            onClick={onOpenKartoteka}
+            className="w-full h-10 gap-2 text-sm"
+          >
+            <FolderOpen className="w-4 h-4" />
+            Otevřít kartotéku
+          </Button>
+        )}
+
+        {/* Back */}
         <Button variant="ghost" size="sm" onClick={onBack} className="w-full">
           ← Zpět
         </Button>
