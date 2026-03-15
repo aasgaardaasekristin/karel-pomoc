@@ -1042,17 +1042,14 @@ async function resolveCardTarget(
     };
   }
 
-  // Nová část mimo registr: povol vytvoření pouze v aktivní větvi
+  // Hard guard: bez zápisu mimo oficiální registr
   if (!entry) {
-    const newPartRoot = registryContext.activeFolderId || rootFolderId;
     return {
-      searchRootId: newPartRoot,
-      allowCreate: true,
-      pathLabel: registryContext.activeFolderId
-        ? "01_AKTIVNI_FRAGMENTY/(nová část mimo registr)"
-        : "fallback:root/(nová část mimo registr)",
+      searchRootId: registryContext.activeFolderId || rootFolderId,
+      allowCreate: false,
+      pathLabel: "blokováno: mimo oficiální registr",
       registryEntry: null,
-      actionType: "nova_karta",
+      actionType: "aktualizace",
     };
   }
 
@@ -1354,6 +1351,50 @@ function partNameFromFileName(fileName: string): string {
 
 function normalizePartHint(partHint: string): string {
   return partNameFromFileName(partHint || "");
+}
+
+function getUserMessages(messages: any[]): string[] {
+  if (!Array.isArray(messages)) return [];
+  return messages
+    .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
+    .map((m: any) => (m.content as string).trim())
+    .filter(Boolean);
+}
+
+function clipText(value: string, max = 220): string {
+  return value.length > max ? `${value.slice(0, max)}…` : value;
+}
+
+function detectExplicitSelfIdentification(text: string): string | null {
+  const normalized = text.trim();
+  if (!normalized) return null;
+
+  // "arthur"
+  const singleWord = normalized.match(/^[a-zA-Zá-žÁ-Ž][a-zA-Zá-žÁ-Ž'\-]{1,24}$/u);
+  if (singleWord) return singleWord[0];
+
+  // "jsem arthur" / "já jsem arthur" / "i am arthur" / "my name is arthur"
+  const explicit = normalized.match(/^(?:jsem|já\s+jsem|tady|i\s+am|i'm|my\s+name\s+is)\s+([a-zA-Zá-žÁ-Ž][a-zA-Zá-žÁ-Ž'\-]{1,24})$/iu);
+  if (explicit) return explicit[1];
+
+  return null;
+}
+
+function extractUnknownStructuredPartMentions(content: string, allowedCanonicalNames: Set<string>): string[] {
+  if (allowedCanonicalNames.size === 0) return [];
+
+  const candidates = new Set<string>();
+  const re = /(?:^|\n)\s*[▸\-*•]?\s*([a-zA-Zá-žÁ-Ž][a-zA-Zá-žÁ-Ž'\-]{1,30})\s*(?:\/\s*ID|\[ID:|-\s*Stav:)/giu;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content)) !== null) {
+    const name = match[1]?.trim();
+    if (!name) continue;
+    const canonical = canonicalText(name);
+    if (!canonical || allowedCanonicalNames.has(canonical)) continue;
+    candidates.add(name);
+  }
+
+  return [...candidates];
 }
 
 interface SuccessfulCardUpdate {
@@ -1944,45 +1985,50 @@ Formát HTML emailu:
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
 
-    const threadSummaries = reportThreads.map(t => {
-      const msgs = ((t.messages as any[]) || []).slice(-20);
-      
-      // ═══ ROLE LABELING: Rozliš kdo mluví podle sub_mode ═══
+    const allowedRegistryNames = new Set(
+      (registryContext?.entries || []).map((entry) => canonicalText(entry.name)).filter(Boolean)
+    );
+
+    const threadSummaries = reportThreads.map((t) => {
+      const allMsgs = ((t.messages as any[]) || []).slice(-30);
+      const userMsgs = allMsgs.filter((m: any) => m?.role === "user" && typeof m?.content === "string");
+
       const isCastMode = (t.sub_mode || "cast") === "cast";
       const userLabel = isCastMode ? "ČÁST" : "TERAPEUT";
-      const modeNote = isCastMode 
-        ? "" 
-        : `\n⚠️ REŽIM "${t.sub_mode}": Uživatel je TERAPEUT (${t.sub_mode === "mamka" ? "Hanka" : t.sub_mode === "kata" ? "Káťa" : "terapeut"}), NE část! Jakékoli zmínky o částech v tomto rozhovoru jsou jen dotazy/konzultace – NEZNAMENÁ to, že se část probudila nebo je aktivní.`;
+      const modeNote = isCastMode
+        ? ""
+        : `\n⚠️ REŽIM "${t.sub_mode}": Uživatel je terapeut, zmínky o částech v tomto vlákně nejsou důkaz aktivace.`;
 
-      // ═══ SWITCH DETECTION: Detect if part changed mid-thread ═══
-      // Find last user message that looks like a self-identification
       let detectedSwitch = "";
       if (isCastMode) {
-        for (let i = msgs.length - 1; i >= 0; i--) {
-          const m = msgs[i];
-          if (m.role !== "user" || typeof m.content !== "string") continue;
-          const switchMatch = m.content.match(/(?:jsem|já jsem|tady|i am|i'm|my name is)\s+([A-ZÁ-Ž][a-zá-ž]{1,20})/i);
-          if (switchMatch) {
-            const detectedName = switchMatch[1].trim();
-            const originalName = (t.part_name || "").trim().toLowerCase();
-            if (detectedName.toLowerCase() !== originalName) {
-              detectedSwitch = detectedName;
-            }
-            break;
+        for (let i = userMsgs.length - 1; i >= 0; i--) {
+          const candidate = detectExplicitSelfIdentification(userMsgs[i].content || "");
+          if (!candidate) continue;
+          const candidateCanonical = canonicalText(candidate);
+          if (allowedRegistryNames.size > 0 && !allowedRegistryNames.has(candidateCanonical)) continue;
+          const originalCanonical = canonicalText(t.part_name || "");
+          if (candidateCanonical && candidateCanonical !== originalCanonical) {
+            detectedSwitch = candidate;
           }
+          break;
         }
       }
-      
-      const switchNote = detectedSwitch 
-        ? `\n⚠️ SWITCH DETEKOVÁN: Vlákno začalo jako "${t.part_name}" ale část se představila jako "${detectedSwitch}". Přiřaď konverzaci k POSLEDNÍ identifikované části (${detectedSwitch}), NE k původní (${t.part_name}).`
+
+      const switchNote = detectedSwitch
+        ? `\n⚠️ SWITCH DETEKOVÁN (ověřený): vlákno "${t.part_name}" se v průběhu představilo jako "${detectedSwitch}".`
         : "";
-      
-      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${modeNote}${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet zpráv: ${msgs.length}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? userLabel : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
+
+      const userTranscript = userMsgs
+        .slice(-12)
+        .map((m: any) => `[${userLabel}]: ${clipText(m.content || "", 320)}`)
+        .join("\n");
+
+      return `=== Vlákno: ${t.part_name} (${t.sub_mode}) ===${modeNote}${switchNote}\nJazyk: ${t.part_language}\nZačátek: ${t.started_at}\nPoslední aktivita: ${t.last_activity_at}\nPočet USER zpráv: ${userMsgs.length}\n\nUSER KONVERZACE (jediný důkazní zdroj):\n${userTranscript || "(bez user zpráv)"}`;
     }).join("\n\n---\n\n");
 
-    const convSummaries = reportConversations.map(c => {
-      const msgs = ((c.messages as any[]) || []).slice(-20);
-      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nKonverzace:\n${msgs.map((m: any) => `[${m.role === "user" ? "UŽIVATEL" : "KAREL"}]: ${typeof m.content === "string" ? clip(m.content) : "(multimodal)"}`).join("\n")}`;
+    const convSummaries = reportConversations.map((c) => {
+      const userMsgs = (((c.messages as any[]) || []).filter((m: any) => m?.role === "user" && typeof m?.content === "string")).slice(-12);
+      return `=== Konverzace: ${c.sub_mode} (${c.label}) ===\nUloženo: ${c.saved_at}\n\nUSER KONVERZACE:\n${userMsgs.map((m: any) => `[UŽIVATEL]: ${clipText(m.content || "", 320)}`).join("\n") || "(bez user zpráv)"}`;
     }).join("\n\n---\n\n");
 
     // Compile DID-relevant research thread summaries
@@ -1992,11 +2038,28 @@ Formát HTML emailu:
     }).join("\n\n---\n\n");
 
     const allSummaries = [threadSummaries, convSummaries, researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
+
+    const registryCanonicalParts = new Set(
+      (registryContext?.entries || []).map((entry) => canonicalText(entry.name)).filter(Boolean)
+    );
+    const registryContextText = (registryContext?.entries || []).length > 0
+      ? registryContext!.entries
+          .slice(0, 120)
+          .map((entry) => `- ${entry.id || "???"} | ${entry.name} | status: ${entry.status || "neuvedeno"}`)
+          .join("\n")
+      : "(registr nedostupný)";
+
     const knownThreadParts = new Set(
       reportThreads
+        .filter((t) => (t.sub_mode || "cast") === "cast")
         .map((t) => canonicalText(normalizePartHint(t.part_name || "")))
-        .filter(Boolean)
+        .filter((name) => {
+          if (!name) return false;
+          if (registryCanonicalParts.size === 0) return true;
+          return registryCanonicalParts.has(name);
+        })
     );
+
     let driveContext = "";
     let existingCards: Record<string, string> = {};
     let instructionContext = "";
@@ -2587,13 +2650,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
-            // Nové karty mimo registr jen pro části, které skutečně existují ve vláknech dne
-            // Use fuzzy matching: check if resolved name is a substring of any thread part or vice versa
-            const isInThreads = [...knownThreadParts].some(tp => 
-              tp === resolvedCanonical || tp.includes(resolvedCanonical) || resolvedCanonical.includes(tp)
-            );
-            if (!target.registryEntry && !isInThreads) {
-              console.warn(`[guard] Skip hallucinated/new card candidate not present in threads: ${rawPartName} (canonical: ${resolvedCanonical}, known: ${[...knownThreadParts].join(",")})`);
+            // Hard guard: bez registrace se karta nikdy nevytváří/neupravuje
+            if (!target.registryEntry) {
+              console.warn(`[registry-guard] Blokuji zápis mimo oficiální registr: ${rawPartName} (canonical: ${resolvedCanonical})`);
               continue;
             }
 
