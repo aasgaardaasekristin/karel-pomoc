@@ -52,6 +52,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
 
+  // Bootstrap state
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapProgress, setBootstrapProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
+
   // System overview - cached between updates
   const OVERVIEW_CACHE_KEY = "karel_did_overview_cache";
   const [overviewText, setOverviewText] = useState<string>(() => {
