@@ -1846,6 +1846,25 @@ serve(async (req) => {
     }).join("\n");
     console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
 
+    // ═══ THERAPIST PROFILING: Silent load of motivation profiles for both therapists ═══
+    const { data: motivationProfileRows } = await sb.from("did_motivation_profiles")
+      .select("therapist, preferred_style, praise_effectiveness, deadline_effectiveness, instruction_effectiveness, streak_current, streak_best, tasks_completed, tasks_missed, avg_completion_days, last_active_at, notes");
+    const motivationProfiles = motivationProfileRows ?? [];
+    console.log(`[daily-cycle] Motivation profiles loaded: ${motivationProfiles.length}`);
+    const therapistProfileContext = motivationProfiles.map((p: any) => {
+      const completionRate = (p.tasks_completed + p.tasks_missed) > 0
+        ? Math.round((p.tasks_completed / (p.tasks_completed + p.tasks_missed)) * 100)
+        : 0;
+      return `═ Profil terapeuta: ${p.therapist} ═
+Preferovaný styl vedení: ${p.preferred_style}
+Efektivita motivace – pochvaly: ${p.praise_effectiveness}/5, termíny: ${p.deadline_effectiveness}/5, instrukce: ${p.instruction_effectiveness}/5
+Streak (aktuální/nejlepší): ${p.streak_current}/${p.streak_best}
+Splněno úkolů: ${p.tasks_completed}, nesplněno: ${p.tasks_missed} (úspěšnost: ${completionRate}%)
+Průměrná doba splnění: ${p.avg_completion_days || "?"} dní
+Poslední aktivita: ${p.last_active_at || "neznámo"}
+Poznámky Karla: ${p.notes || "(žádné)"}`;
+    }).join("\n\n");
+
     // ═══ COOLDOWN: Prevent duplicate cycles – MAX 1 per calendar day (Prague timezone) ═══
     // Manual triggers from UI bypass this check (source !== "cron")
     const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
