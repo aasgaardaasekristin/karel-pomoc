@@ -70,6 +70,8 @@ function sanitizeOverviewText(text: string): string {
     .replace(/^(\s*)\*\s+/gm, "$1– ")
     .replace(/^(\s*)##+\s*/gm, "$1")
     .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
+    .replace(/\bHano\b/gi, "Haničko")
+    .replace(/\b(redistribuc(e|i|í)|integra(c|č)e poznatk(ů|u)|situační cache|stav systému podle registru)\b/gi, "")
     .replace(/\n{3,}/g, "\n\n");
 }
 
