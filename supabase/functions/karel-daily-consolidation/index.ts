@@ -102,7 +102,7 @@ serve(async (req) => {
         mirrorResult = { error: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) };
       }
       
-      return new Response(JSON.stringify({ results, mirror: mirrorResult }), {
+      return new Response(JSON.stringify({ results, mirror: mirrorResult, didEpisodes: didEpisodeResult }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
