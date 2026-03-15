@@ -1835,6 +1835,28 @@ serve(async (req) => {
     const researchThreads = researchThreadRows ?? [];
     console.log(`[daily-cycle] Research threads (24h): ${researchThreads.length}`);
 
+    // ═══ ALL-MODE: DID meetings from last 24h ═══
+    const { data: recentMeetingRows } = await sb.from("did_meetings")
+      .select("id, topic, agenda, status, messages, outcome_summary, triggered_by, created_at, updated_at")
+      .gte("updated_at", cutoff24h);
+    const recentMeetings = recentMeetingRows ?? [];
+    console.log(`[daily-cycle] DID meetings (24h): ${recentMeetings.length}`);
+
+    // ═══ ALL-MODE: Recent episodes from last 24h ═══
+    const { data: recentEpisodeRows } = await sb.from("karel_episodes")
+      .select("id, domain, summary_karel, summary_user, tags, participants, emotional_intensity, hana_state, actions_taken, derived_facts, outcome, timestamp_start")
+      .gte("timestamp_start", cutoff24h);
+    const recentEpisodes = recentEpisodeRows ?? [];
+    console.log(`[daily-cycle] Episodes (24h): ${recentEpisodes.length}`);
+
+    // ═══ ALL-MODE: Pulse checks from last 7 days ═══
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentPulseRows } = await sb.from("did_pulse_checks")
+      .select("respondent, team_feeling, priority_clarity, karel_feedback, week_start, created_at")
+      .gte("created_at", weekAgo);
+    const recentPulseChecks = recentPulseRows ?? [];
+    console.log(`[daily-cycle] Pulse checks (7d): ${recentPulseChecks.length}`);
+
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
       .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
@@ -1865,31 +1887,45 @@ Poslední aktivita: ${p.last_active_at || "neznámo"}
 Poznámky Karla: ${p.notes || "(žádné)"}`;
     }).join("\n\n");
 
-    // ═══ COOLDOWN: Prevent duplicate cycles – MAX 1 per calendar day (Prague timezone) ═══
-    // Manual triggers from UI bypass this check (source !== "cron")
-    const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-    const todayStartUtc = new Date(`${todayPrague}T00:00:00+01:00`).toISOString(); // CET approximation
-    const { data: todayDailyCycles } = await sb.from("did_update_cycles")
-      .select("id, completed_at, status")
-      .eq("cycle_type", "daily")
-      .in("status", ["completed", "running"])
-      .gte("started_at", todayStartUtc)
-      .order("completed_at", { ascending: false })
-      .limit(5);
-
-    const completedToday = (todayDailyCycles || []).filter(c => c.status === "completed");
+    // ═══ SLOT-BASED COOLDOWN: Allow both 06:00 and 14:00 CET cycles ═══
+    // Each slot has its own 6-hour cooldown window, preventing duplicates within a slot
+    // but allowing both morning (06:00) and afternoon (14:00) cycles to run.
     const isManualTrigger = !isCronCall || requestBody?.source === "manual";
 
-    if (completedToday.length > 0 && !isManualTrigger) {
-      console.log(`[daily-cycle] Cooldown: ${completedToday.length} completed cycle(s) today (${todayPrague}), skipping cron run.`);
-      return new Response(JSON.stringify({
-        success: true,
-        skipped: true,
-        reason: "cooldown_same_day",
-        completedToday: completedToday.length,
-        lastCompletedAt: completedToday[0].completed_at,
-        cycleId: completedToday[0].id,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!isManualTrigger) {
+      const nowPrague = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
+      const pragueHour = nowPrague.getHours();
+      // Determine which slot this cron call belongs to:
+      // Morning slot: 04:00-12:59 CET  |  Afternoon slot: 13:00-23:59 CET
+      const currentSlot = pragueHour < 13 ? "morning" : "afternoon";
+      
+      // Check if THIS SLOT already has a completed cycle (6h cooldown per slot)
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      const { data: recentSlotCycles } = await sb.from("did_update_cycles")
+        .select("id, completed_at, status, started_at")
+        .eq("cycle_type", "daily")
+        .eq("status", "completed")
+        .gte("started_at", sixHoursAgo)
+        .order("completed_at", { ascending: false })
+        .limit(1);
+
+      if (recentSlotCycles && recentSlotCycles.length > 0) {
+        const lastCycleTime = new Date(new Date(recentSlotCycles[0].started_at).toLocaleString("en-US", { timeZone: "Europe/Prague" }));
+        const lastCycleHour = lastCycleTime.getHours();
+        const lastCycleSlot = lastCycleHour < 13 ? "morning" : "afternoon";
+        
+        if (lastCycleSlot === currentSlot) {
+          console.log(`[daily-cycle] Slot cooldown: ${currentSlot} slot already completed (cycle ${recentSlotCycles[0].id}), skipping.`);
+          return new Response(JSON.stringify({
+            success: true,
+            skipped: true,
+            reason: `cooldown_slot_${currentSlot}`,
+            lastCompletedAt: recentSlotCycles[0].completed_at,
+            cycleId: recentSlotCycles[0].id,
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        console.log(`[daily-cycle] Different slot: last was ${lastCycleSlot}, now is ${currentSlot} – proceeding.`);
+      }
     }
 
     // ═══ CONCURRENCY: Prevent parallel runs ═══
@@ -1955,7 +1991,7 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
-    const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0;
+    const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0 || recentMeetings.length > 0 || recentEpisodes.length > 0;
 
     // ═══ CRITICAL FIX: Manual triggers ALWAYS run full analysis using allRecentThreads ═══
     // Previously, manual triggers with no unprocessed threads returned early, skipping CENTRUM updates entirely.
@@ -2027,13 +2063,13 @@ Datum: ${dateStr}` },
               }
             } catch (e) { console.warn("[quiet-day] Kata email gen failed:", e); }
 
-            let emailSentToHanka = false;
-            let emailSentToKata = false;
+            let quietEmailSentToHanka = false;
+            let quietEmailSentToKata = false;
             if (hankaHtml) {
-              emailSentToHanka = await sendEmailOnce("hanka", HANKA_EMAIL, `Karel – Klidný den (${dateStr})`, hankaHtml);
+              quietEmailSentToHanka = await sendEmailOnce("hanka", MAMKA_EMAIL, `Karel – Klidný den (${dateStr})`, hankaHtml);
             }
             if (kataHtml && KATA_EMAIL) {
-              emailSentToKata = await sendEmailOnce("kata", KATA_EMAIL, `Karel – Klidný den (${dateStr})`, kataHtml);
+              quietEmailSentToKata = await sendEmailOnce("kata", KATA_EMAIL, `Karel – Klidný den (${dateStr})`, kataHtml);
             }
           }
         } catch (e) { console.error("[quiet-day] Email error:", e); }
@@ -2151,6 +2187,23 @@ Datum: ${dateStr}` },
       return `- Úkol: ${ct.task} | Metoda: ${ct.method || "?"} | Stav: ${ct.status} | Poznámky: ${clip(ct.notes || "", 150)}${ct.result ? ` | Výsledek: ${clip(ct.result, 150)}` : ""}`;
     }).filter(Boolean).join("\n");
 
+    // ═══ ALL-MODE: DID meeting summaries ═══
+    const meetingSummaries = recentMeetings.map((m: any) => {
+      const msgs = ((m.messages as any[]) || []).slice(-10);
+      const msgText = msgs.map((msg: any) => `[${msg.therapist || msg.role}]: ${clipText(msg.content || "", 300)}`).join("\n");
+      return `=== DID Porada: ${m.topic} (status: ${m.status}, triggered: ${m.triggered_by}) ===\nVytvořeno: ${m.created_at}\nAgenda: ${m.agenda || "?"}\n${m.outcome_summary ? `Výsledek: ${m.outcome_summary}` : ""}\n\nZprávy:\n${msgText || "(prázdné)"}`;
+    }).filter(Boolean).join("\n\n---\n\n");
+
+    // ═══ ALL-MODE: Episode summaries ═══
+    const episodeSummaries = recentEpisodes.map((ep: any) => {
+      return `- Epizoda (${ep.domain}): ${clip(ep.summary_karel || ep.summary_user || "", 300)} | účastníci: ${(ep.participants || []).join(",")} | tagy: ${(ep.tags || []).join(",")} | intenzita: ${ep.emotional_intensity}/5 | stav: ${ep.hana_state}`;
+    }).filter(Boolean).join("\n");
+
+    // ═══ ALL-MODE: Pulse check summaries ═══
+    const pulseSummaries = recentPulseChecks.map((pc: any) => {
+      return `- Pulse (${pc.respondent}, ${pc.week_start}): tým=${pc.team_feeling}/5, priority=${pc.priority_clarity}/5${pc.karel_feedback ? ` | Karel: ${clip(pc.karel_feedback, 150)}` : ""}`;
+    }).filter(Boolean).join("\n");
+
     const allSummaries = [
       threadSummaries, 
       convSummaries, 
@@ -2159,6 +2212,9 @@ Datum: ${dateStr}` },
       clientSessionSummaries ? `\n\n=== KLIENTSKÁ SEZENÍ (posledních 24h) ===\n\n${clientSessionSummaries}` : "",
       crisisBriefSummaries ? `\n\n=== KRIZOVÉ BRIEFY (posledních 24h) ===\n\n${crisisBriefSummaries}` : "",
       clientTaskSummaries ? `\n\n=== ÚKOLY KLIENTŮ (posledních 24h) ===\n\n${clientTaskSummaries}` : "",
+      meetingSummaries ? `\n\n=== DID PORADY (posledních 24h) ===\n\n${meetingSummaries}` : "",
+      episodeSummaries ? `\n\n=== EPIZODICKÁ PAMĚŤ (posledních 24h) ===\n\n${episodeSummaries}` : "",
+      pulseSummaries ? `\n\n=== PULSE CHECKS TERAPEUTŮ (posledních 7 dní) ===\n\n${pulseSummaries}` : "",
       therapistProfileContext ? `\n\n=== PROFILACE TERAPEUTŮ (dlouhodobá) ===\n\n${therapistProfileContext}` : "",
       pendingTasksSummary ? `\n\n=== NESPLNĚNÉ ÚKOLY TERAPEUTŮ ===\n\n${pendingTasksSummary}` : "",
     ].filter(Boolean).join("\n\n");
@@ -2778,9 +2834,44 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       return false;
     }
 
-    if (folderId && analysisText) {
+    // ═══ HARD VALIDATION: Filter out hallucinated part names from AI output ═══
+    const validatedAnalysisText = (() => {
+      if (!analysisText || !registryContext || registryContext.entries.length === 0) return analysisText;
+      
+      let filtered = analysisText;
+      const kartaBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
+      const blocksToRemove: string[] = [];
+      
+      for (const m of analysisText.matchAll(kartaBlockRegex)) {
+        const rawName = m[1].trim();
+        const normalizedName = normalizePartHint(rawName);
+        
+        // Check against registry
+        const entry = findBestRegistryEntry(normalizedName, registryContext.entries);
+        if (!entry && !isBlacklisted(normalizedName)) {
+          // Check if it's a known thread part (cast mode only, with 3+ user messages)
+          const isKnownThreadPart = knownThreadParts.has(canonicalText(normalizedName));
+          if (!isKnownThreadPart) {
+            console.warn(`[ANTI-HALLUCINATION] ⛔ Rejected [KARTA:${rawName}] – not in registry (${registryContext.entries.length} entries). AI hallucinated this part name.`);
+            blocksToRemove.push(m[0]);
+          }
+        }
+      }
+      
+      for (const block of blocksToRemove) {
+        filtered = filtered.replace(block, `<!-- REJECTED: hallucinated part -->`);
+      }
+      
+      if (blocksToRemove.length > 0) {
+        console.log(`[ANTI-HALLUCINATION] Removed ${blocksToRemove.length} hallucinated [KARTA:] blocks from AI output`);
+      }
+      
+      return filtered;
+    })();
+
+    if (folderId && validatedAnalysisText) {
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
-      for (const match of analysisText.matchAll(cardBlockRegex)) {
+      for (const match of validatedAnalysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
@@ -2898,12 +2989,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
       let therapeuticPlanContent = ""; // Capture for email inclusion
+      let centrumDashboardUpdated = false;
+      let centrumOperativniUpdated = false;
       if (centrumFolderId) {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
         const dateStr = new Date().toISOString().slice(0, 10);
 
-        for (const match of analysisText.matchAll(centrumBlockRegex)) {
+        for (const match of validatedAnalysisText.matchAll(centrumBlockRegex)) {
           const docName = match[1].trim();
           const newContent = match[2].trim();
           if (!newContent || newContent.length < 10) continue;
@@ -2927,6 +3020,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               therapeuticPlanContent = newContent; // Store for email inclusion
               await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
               cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
+              centrumOperativniUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
               continue;
             }
@@ -2942,6 +3036,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${newContent}`;
               await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
               cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
+              centrumDashboardUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
               continue;
             }
@@ -3011,6 +3106,52 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
           } catch (e) {
             console.error(`[CENTRUM] Failed to update "${docName}":`, e);
+          }
+        }
+      }
+
+      // ═══ FORCED CENTRUM FALLBACK: If AI didn't generate Dashboard/Plan blocks, force update ═══
+      if (centrumFolderId && hasRecentActivity) {
+        const centerFiles = centrumFolderId ? await listFilesInFolder(token, centrumFolderId) : [];
+        
+        if (!centrumDashboardUpdated) {
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] block – forcing minimal update`);
+          const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
+          if (dashFile) {
+            try {
+              const dateStr = new Date().toISOString().slice(0, 10);
+              // Build minimal dashboard from deterministic data
+              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
+              const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
+              
+              const minimalDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (automatický fallback – AI blok chyběl)\n\nSEKCE 1 – STAV SYSTÉMU TEĎ\n${activePartsFromThreads.length > 0 ? activePartsFromThreads.map(p => `▸ ${p} – komunikoval/a s Karlem (posledních 24h)`).join("\n") : "Žádná přímá aktivita částí za posledních 24h."}\n\nSEKCE 3 – CO SE DĚLO POSLEDNÍCH 24H\n- DID vlákna: ${allRecentThreads.length}\n- DID konverzace: ${allRecentConversations.length}\n- Hana konverzace: ${recentHanaConversations.length}\n- Klientská sezení: ${recentClientSessions.length}\n- Research vlákna: ${researchThreads.length}\n- Porady: ${recentMeetings.length}\n- Terapeutická vlákna: ${therapistThreads.map(t => `${t.part_name} (${t.sub_mode})`).join(", ") || "žádná"}\n\nSEKCE 5 – TERAPEUTICKÝ FOKUS DNE 🎯\nViz 05_Operativni_Plan pro detaily.\n\nSEKCE 7 – KARLOVY POSTŘEHY 🔍\n⚠️ Tento dashboard byl vygenerován automatickým fallbackem – AI analýza nevygenerovala CENTRUM blok. Zkontroluj ručně.`;
+              
+              await updateFileById(token, dashFile.id, minimalDashboard, dashFile.mimeType);
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (FALLBACK – AI blok chyběl)`);
+              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard updated with deterministic fallback`);
+            } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
+          }
+        }
+
+        if (!centrumOperativniUpdated) {
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] block – forcing minimal update`);
+          const planFile = centerFiles.find(f => {
+            const fc = canonicalText(f.name);
+            return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
+          });
+          if (planFile) {
+            try {
+              const dateStr = new Date().toISOString().slice(0, 10);
+              const existingContent = await readFileContent(token, planFile.id);
+              // Append a timestamped note that AI didn't produce a full update
+              const fallbackNote = `\n\n[${dateStr}] ⚠️ AUTOMATICKÝ FALLBACK: AI analýza nevygenerovala kompletní [CENTRUM:05_Operativni_Plan] blok.\nNesplněné úkoly (${(pendingTasks || []).length}):\n${pendingTasksSummary || "Žádné"}\nAktivní vlákna (24h): ${allRecentThreads.length} | Konverzace: ${allRecentConversations.length}`;
+              
+              if (!existingContent.includes(dateStr + "] ⚠️ AUTOMATICKÝ FALLBACK")) {
+                await updateFileById(token, planFile.id, existingContent.trimEnd() + fallbackNote, planFile.mimeType);
+                cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FALLBACK append)`);
+                console.log(`[CENTRUM-FALLBACK] ✅ Operative plan updated with fallback note`);
+              }
+            } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan update failed:`, e); }
           }
         }
       }
