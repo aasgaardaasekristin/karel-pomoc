@@ -384,7 +384,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
             className="gap-1.5 text-xs h-9 shrink-0"
           >
             {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Ukončit sezení</span>
+            <span className="hidden sm:inline">Ukončit a analyzovat</span>
             <span className="sm:hidden">Ukončit</span>
           </Button>
         </div>
