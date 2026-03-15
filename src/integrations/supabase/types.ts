@@ -536,6 +536,78 @@ export type Database = {
         }
         Relationships: []
       }
+      did_part_registry: {
+        Row: {
+          age_estimate: string | null
+          cluster: string | null
+          created_at: string
+          display_name: string
+          drive_folder_label: string | null
+          health_score: number | null
+          id: string
+          known_strengths: string[] | null
+          known_triggers: string[] | null
+          language: string | null
+          last_emotional_intensity: number | null
+          last_emotional_state: string | null
+          last_seen_at: string | null
+          notes: string | null
+          part_name: string
+          role_in_system: string | null
+          status: string
+          total_episodes: number | null
+          total_threads: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          age_estimate?: string | null
+          cluster?: string | null
+          created_at?: string
+          display_name?: string
+          drive_folder_label?: string | null
+          health_score?: number | null
+          id?: string
+          known_strengths?: string[] | null
+          known_triggers?: string[] | null
+          language?: string | null
+          last_emotional_intensity?: number | null
+          last_emotional_state?: string | null
+          last_seen_at?: string | null
+          notes?: string | null
+          part_name: string
+          role_in_system?: string | null
+          status?: string
+          total_episodes?: number | null
+          total_threads?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          age_estimate?: string | null
+          cluster?: string | null
+          created_at?: string
+          display_name?: string
+          drive_folder_label?: string | null
+          health_score?: number | null
+          id?: string
+          known_strengths?: string[] | null
+          known_triggers?: string[] | null
+          language?: string | null
+          last_emotional_intensity?: number | null
+          last_emotional_state?: string | null
+          last_seen_at?: string | null
+          notes?: string | null
+          part_name?: string
+          role_in_system?: string | null
+          status?: string
+          total_episodes?: number | null
+          total_threads?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_pending_drive_writes: {
         Row: {
           content: string
