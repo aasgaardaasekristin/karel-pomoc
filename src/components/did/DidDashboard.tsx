@@ -16,6 +16,7 @@ import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidKartotekaHealth from "./DidKartotekaHealth";
+import DidRegistryOverview from "./DidRegistryOverview";
 
 interface PartActivity {
   name: string;
@@ -314,7 +315,20 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         })));
       }
 
-      if (threads) {
+      // Load parts from registry first, fallback to threads
+      const { data: registryParts } = await supabase
+        .from("did_part_registry")
+        .select("part_name, display_name, status, last_seen_at")
+        .order("last_seen_at", { ascending: false, nullsFirst: false });
+
+      if (registryParts && registryParts.length > 0) {
+        const partList: PartActivity[] = registryParts.map(rp => ({
+          name: rp.display_name || rp.part_name,
+          lastSeen: rp.last_seen_at,
+          status: (rp.status === "active" ? "active" : rp.status === "warning" ? "warning" : "sleeping") as PartActivity["status"],
+        }));
+        setParts(partList);
+      } else if (threads) {
         const partMap = new Map<string, string>();
         for (const t of threads) {
           if (!partMap.has(t.part_name)) partMap.set(t.part_name, t.last_activity_at);
@@ -498,6 +512,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       {/* Colleague View */}
       <div className="mb-4">
         <DidColleagueView refreshTrigger={refreshTrigger} />
+      </div>
+
+      {/* Registry Overview (Phase 5) */}
+      <div className="mb-4">
+        <DidRegistryOverview refreshTrigger={refreshTrigger} onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined} />
       </div>
 
       {/* Kartotéka Health Check */}
