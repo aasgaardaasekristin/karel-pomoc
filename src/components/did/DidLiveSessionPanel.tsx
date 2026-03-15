@@ -491,8 +491,8 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           <div className="text-center space-y-4 p-8 max-w-sm">
             <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
             <div>
-              <p className="text-sm font-semibold text-foreground">Karel zpracovává DID sezení…</p>
-              <p className="text-xs text-muted-foreground mt-1">Generuji zápis, pozorování a doporučení pro další práci s {partName}.</p>
+              <p className="text-sm font-semibold text-foreground">Karel analyzuje sezení a ukládá do karty…</p>
+              <p className="text-xs text-muted-foreground mt-1">Generuji klinický zápis, hodnotím metody, zapisuji úkoly a zpětnou vazbu pro {therapistName}.</p>
             </div>
           </div>
         </div>
