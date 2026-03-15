@@ -4194,6 +4194,28 @@ ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je s
       }).eq("id", cycle.id);
     }
 
+    // ═══ PHASE FINAL: Trigger Therapist Profiling Engine ═══
+    try {
+      const primeUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-context-prime`;
+      const primeRes = await fetch(primeUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "User-Agent": "pg_net/daily-cycle",
+        },
+        body: JSON.stringify({ userId, forceRefresh: true, source: "daily_cycle" }),
+      });
+      if (primeRes.ok) {
+        const primeData = await primeRes.json();
+        console.log(`[daily-cycle] Profiling engine triggered: ${primeData.shadowSync?.filesUpdated || 0} files updated`);
+      } else {
+        console.warn(`[daily-cycle] Profiling engine failed: ${primeRes.status}`);
+      }
+    } catch (profilingErr) {
+      console.warn("[daily-cycle] Profiling engine error (non-fatal):", profilingErr);
+    }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,
