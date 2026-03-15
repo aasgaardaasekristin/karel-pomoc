@@ -52,6 +52,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
   const [lastCardsUpdated, setLastCardsUpdated] = useState<string[]>([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
+  const [isRefreshingMemory, setIsRefreshingMemory] = useState(false);
 
   // Bootstrap state
   const [isBootstrapping, setIsBootstrapping] = useState(false);
