@@ -133,6 +133,7 @@ function parseCardContent(content: string, fileName: string, folderLabel: string
   // Capitalize first letter
   if (partName.length > 0) {
     partName = partName.charAt(0).toUpperCase() + partName.slice(1);
+  }
 
   const card: ParsedCard = {
     partName,
