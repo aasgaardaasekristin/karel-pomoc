@@ -201,12 +201,13 @@ serve(async (req) => {
         const folderId = await findFolders(token, folderName, rootId).then(f => f[0]?.id);
         if (!folderId) { console.log(`[bootstrap] Folder ${folderName} not found, skipping`); continue; }
 
-        const subfolders = (await listFilesInFolder(token, folderId)).filter(f => f.mimeType === "application/vnd.google-apps.folder");
+        const items = await listFilesInFolder(token, folderId);
+        const subfolders = items.filter(f => f.mimeType === "application/vnd.google-apps.folder");
+        const directFiles = items.filter(f => f.mimeType !== "application/vnd.google-apps.folder");
 
+        // Strategy A: Subfolders per part (e.g., "028_ARTUR/Karta_Artur.doc")
         for (const subfolder of subfolders) {
-          // Each subfolder is a part (e.g., "028_ARTUR")
           const files = await listFilesInFolder(token, subfolder.id);
-          // Find the main card file (usually the one matching the folder name or "Karta_*")
           const cardFile = files.find(f =>
             f.mimeType !== "application/vnd.google-apps.folder" &&
             (f.name.toLowerCase().includes("karta") || f.name.toLowerCase().includes(subfolder.name.toLowerCase().replace(/^\d+_?/, "")))
@@ -215,9 +216,44 @@ serve(async (req) => {
           if (cardFile) {
             allCards.push({
               fileId: cardFile.id,
-              fileName: subfolder.name, // use folder name as part identifier
+              fileName: subfolder.name,
               folderLabel: folderName,
               mimeType: cardFile.mimeType,
+            });
+          }
+        }
+
+        // Strategy B: Flat files directly in folder (e.g., "DID_003_Karta_části_Tundrupek", "Karta - Johann Ryba")
+        for (const file of directFiles) {
+          const nameLower = file.name.toLowerCase();
+          // Skip templates and non-card files
+          if (nameLower.includes("sablon") || nameLower.includes("template")) continue;
+          // Match "Karta" or "DID_NNN_Karta" naming
+          if (nameLower.includes("karta")) {
+            allCards.push({
+              fileId: file.id,
+              fileName: file.name,
+              folderLabel: folderName,
+              mimeType: file.mimeType,
+            });
+          }
+        }
+      }
+
+      // Also scan root for direct card files (fallback for non-standard structures)
+      const rootItems = await listFilesInFolder(token, rootId);
+      for (const file of rootItems) {
+        if (file.mimeType === "application/vnd.google-apps.folder") continue;
+        const nameLower = file.name.toLowerCase();
+        if (nameLower.includes("sablon") || nameLower.includes("template")) continue;
+        if (nameLower.includes("karta") && nameLower.includes("did")) {
+          // Avoid duplicates
+          if (!allCards.some(c => c.fileId === file.id)) {
+            allCards.push({
+              fileId: file.id,
+              fileName: file.name,
+              folderLabel: "ROOT",
+              mimeType: file.mimeType,
             });
           }
         }
