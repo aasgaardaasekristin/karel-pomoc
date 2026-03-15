@@ -1458,11 +1458,17 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     if (didFlowState === "entry" && !didSubMode) {
       return (
         <ScrollArea className="flex-1">
-          <DidEntryScreen
-            onSelectTerapeut={() => setDidFlowState("terapeut")}
+           <DidEntryScreen
+            onSelectTerapeut={() => {
+              setDidFlowState("terapeut");
+              // Auto-prime DID context in background
+              didContextPrime.runPrime(undefined, "mamka");
+            }}
             onSelectKluci={() => {
               setDidSubMode("cast");
               setDidFlowState("loading");
+              // Auto-prime DID context in background
+              didContextPrime.runPrime(undefined, "cast");
               (async () => {
                 await didThreads.fetchActiveThreads("cast");
                 if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
