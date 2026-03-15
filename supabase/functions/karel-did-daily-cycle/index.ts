@@ -2176,7 +2176,7 @@ Formát HTML emailu:
         const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
         if (centerFolder) {
           centrumFolderId = centerFolder.id;
-          const centrumDocNames = ["05_Operativni_Plan", "05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu", "06_Strategicky_Vyhled"];
+          const centrumDocNames = ["05_Operativni_Plan", "05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu", "06_Strategicky_Vyhled", "03_Geografie_Vnitrniho_Sveta"];
           const centerFiles = await listFilesInFolder(token, centerFolder.id);
           for (const docName of centrumDocNames) {
             const canonical = canonicalText(docName);
