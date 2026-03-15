@@ -572,7 +572,7 @@ Pamatuj: Výstup musí být čitelný, lidský a bez technických artefaktů.`;
       throw new Error("AI gateway error");
     }
 
-    return new Response(aiResponse.body, {
+    return new Response(sanitizeSseBody(aiResponse.body), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
