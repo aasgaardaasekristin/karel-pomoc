@@ -594,6 +594,7 @@ serve(async (req) => {
       therapistTasks: sb.from("did_therapist_tasks").select("task, status, priority, assigned_to, due_date, category, escalation_level, status_hanka, status_kata").eq("user_id", userId).neq("status", "done").order("created_at", { ascending: false }).limit(20),
       motivationProfiles: sb.from("did_motivation_profiles").select("*").eq("user_id", userId),
       kartotekaHealth: sb.from("did_kartoteka_health").select("part_name, health_score, missing_sections, stale_sections, last_checked").eq("user_id", userId).order("last_checked", { ascending: false }).limit(30),
+      systemProfile: sb.from("did_system_profile").select("system_identity, inner_world_description, goals_short_term, goals_mid_term, goals_long_term, integration_strategy, karel_master_analysis, relationships_map, education_context, current_priorities, risk_factors").eq("user_id", userId).maybeSingle(),
     };
 
     // Drive reads (parallel with DB)
