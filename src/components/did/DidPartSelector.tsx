@@ -22,12 +22,6 @@ interface Props {
   onOpenKartoteka?: () => void;
 }
 
-const STATUS_INDICATOR: Record<string, string> = {
-  active: "🟢",
-  sleeping: "🌙",
-  warning: "⚠️",
-};
-
 const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOpenKartoteka }: Props) => {
   const [registryParts, setRegistryParts] = useState<RegistryPart[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +36,14 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
         .from("did_part_registry")
         .select("id, part_name, display_name, status")
         .order("display_name");
-      setRegistryParts((data as RegistryPart[]) || []);
+      // Sort: active first, then warning, then sleeping
+      const sorted = ((data as RegistryPart[]) || []).sort((a, b) => {
+        const order: Record<string, number> = { active: 0, warning: 1, sleeping: 2 };
+        const diff = (order[a.status] ?? 2) - (order[b.status] ?? 2);
+        if (diff !== 0) return diff;
+        return a.display_name.localeCompare(b.display_name);
+      });
+      setRegistryParts(sorted);
       setLoading(false);
     };
     load();
@@ -58,7 +59,6 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
     if (!name) return;
     setIsCreating(true);
     try {
-      // Find smallest unused 3-digit prefix
       const existingPrefixes = new Set(
         registryParts
           .map(p => {
@@ -89,53 +89,65 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
     }
   };
 
+  const statusDot = (status: string) => {
+    if (status === "active") return "bg-emerald-400";
+    if (status === "warning") return "bg-amber-400";
+    return "bg-muted-foreground/40";
+  };
+
   return (
     <ScrollArea className="flex-1">
-      <div className="max-w-xl mx-auto px-4 py-8 sm:py-12 space-y-8">
+      <div className="max-w-md mx-auto px-5 py-10 sm:py-14 space-y-7">
         {/* Hero */}
-        <div className="text-center space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-            <Sparkles className="w-7 h-7 text-primary" />
+        <div className="text-center space-y-2">
+          <div className="w-11 h-11 rounded-xl bg-primary/8 flex items-center justify-center mx-auto">
+            <Sparkles className="w-5 h-5 text-primary/70" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-serif font-semibold text-foreground">
+          <h2 className="text-lg font-serif font-medium text-foreground tracking-tight">
             Sezení s částí
           </h2>
-          <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-            {therapistName}, vyber část z kartotéky nebo zadej jméno nové části pro zahájení sezení.
+          <p className="text-[13px] text-muted-foreground/80 max-w-xs mx-auto leading-relaxed">
+            {therapistName}, vyber část z kartotéky nebo zadej jméno nové.
           </p>
         </div>
 
         {/* Selection card */}
-        <div className="bg-card border border-border rounded-xl p-5 sm:p-6 space-y-4 shadow-sm">
-          <h3 className="text-sm font-medium text-foreground">Vybrat část</h3>
+        <div className="bg-card border border-border/60 rounded-xl p-5 space-y-4 shadow-[0_1px_3px_hsl(var(--foreground)/0.04)]">
+          <h3 className="text-[13px] font-medium text-foreground/90">Vybrat část</h3>
           {loading ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <div className="flex justify-center py-3">
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/60" />
             </div>
           ) : (
             <Select value={selectedPartName} onValueChange={setSelectedPartName}>
-              <SelectTrigger className="h-10 text-sm">
+              <SelectTrigger className="h-9 text-[13px]">
                 <SelectValue placeholder="Vyberte část z kartotéky..." />
               </SelectTrigger>
               <SelectContent>
                 {registryParts.map(p => (
-                  <SelectItem key={p.id} value={p.part_name}>
-                    {STATUS_INDICATOR[p.status] || "🌙"} {p.display_name || p.part_name}
+                  <SelectItem key={p.id} value={p.part_name} className="text-[13px]">
+                    <span className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${statusDot(p.status)} shrink-0`} />
+                      <span className="text-muted-foreground/60 font-mono text-[11px]">{p.part_name.match(/^\d{3}/)?.[0] || ""}</span>
+                      <span>{p.display_name || p.part_name}</span>
+                      {p.status === "sleeping" && <Moon className="w-3 h-3 text-muted-foreground/40 ml-auto" />}
+                      {p.status === "warning" && <AlertTriangle className="w-3 h-3 text-amber-400/70 ml-auto" />}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           )}
-          <Button className="w-full h-10 gap-2" onClick={handleStartSession} disabled={!selectedPartName}>
-            <Plus className="w-4 h-4" /> Zahájit sezení
+          <Button className="w-full h-9 gap-2 text-[13px]" onClick={handleStartSession} disabled={!selectedPartName}>
+            <Plus className="w-3.5 h-3.5" /> Zahájit sezení
           </Button>
 
-          <div className="relative">
+          <div className="relative my-1">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border" />
+              <span className="w-full border-t border-border/40" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-3 text-muted-foreground">nebo nová část</span>
+            <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
+              <span className="bg-card px-3 text-muted-foreground/60">nebo nová část</span>
             </div>
           </div>
 
@@ -144,17 +156,17 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
               placeholder="Jméno nové části..."
               value={newPartName}
               onChange={e => setNewPartName(e.target.value)}
-              className="h-10 text-sm flex-1"
+              className="h-9 text-[13px] flex-1"
               onKeyDown={e => { if (e.key === "Enter") handleCreateAndStart(); }}
             />
             <Button
               variant="outline"
               size="icon"
-              className="h-10 w-10 shrink-0"
+              className="h-9 w-9 shrink-0"
               onClick={handleCreateAndStart}
               disabled={!newPartName.trim() || isCreating}
             >
-              {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+              {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
             </Button>
           </div>
         </div>
@@ -164,15 +176,15 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
           <Button
             variant="outline"
             onClick={onOpenKartoteka}
-            className="w-full h-10 gap-2 text-sm"
+            className="w-full h-9 gap-2 text-[13px] border-border/50 text-muted-foreground hover:text-foreground"
           >
-            <FolderOpen className="w-4 h-4" />
+            <FolderOpen className="w-3.5 h-3.5" />
             Otevřít kartotéku
           </Button>
         )}
 
         {/* Back */}
-        <Button variant="ghost" size="sm" onClick={onBack} className="w-full">
+        <Button variant="ghost" size="sm" onClick={onBack} className="w-full text-[12px] text-muted-foreground/70 hover:text-foreground">
           ← Zpět
         </Button>
       </div>
