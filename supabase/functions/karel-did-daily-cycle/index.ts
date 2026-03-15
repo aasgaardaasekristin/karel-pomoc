@@ -2101,12 +2101,46 @@ Datum: ${dateStr}` },
       return `=== Režim HANA: Konverzace (${hc.current_domain}, stav: ${hc.current_hana_state}) ===\nZačátek: ${hc.started_at}\nPoslední aktivita: ${hc.last_activity_at}\n\n${msgs.map((m: any) => `[HANA/TERAPEUT]: ${clipText(m.content || "", 300)}`).join("\n")}`;
     }).filter(Boolean).join("\n\n---\n\n");
 
+    // ═══ ALL-MODE: Client sessions summaries ═══
+    const clientSessionSummaries = recentClientSessions.map((cs: any) => {
+      const parts = [
+        cs.report_key_theme ? `Klíčové téma: ${cs.report_key_theme}` : "",
+        cs.report_context ? `Kontext: ${clip(cs.report_context, 300)}` : "",
+        cs.notes ? `Poznámky: ${clip(cs.notes, 400)}` : "",
+        cs.ai_analysis ? `AI analýza: ${clip(cs.ai_analysis, 400)}` : "",
+        cs.ai_hypotheses ? `Hypotézy: ${clip(cs.ai_hypotheses, 300)}` : "",
+        cs.ai_recommended_methods ? `Doporučené metody: ${clip(cs.ai_recommended_methods, 300)}` : "",
+        cs.ai_risk_assessment ? `Rizika: ${clip(cs.ai_risk_assessment, 200)}` : "",
+        cs.voice_analysis ? `Hlasová analýza: ${clip(cs.voice_analysis, 200)}` : "",
+        cs.report_transference ? `Přenos: ${clip(cs.report_transference, 200)}` : "",
+        cs.report_interventions_tried ? `Intervence: ${clip(cs.report_interventions_tried, 200)}` : "",
+        cs.report_next_session_goal ? `Cíl příštího sezení: ${cs.report_next_session_goal}` : "",
+        (cs.report_risks || []).length > 0 ? `Rizika: ${cs.report_risks.join(", ")}` : "",
+        (cs.report_therapist_emotions || []).length > 0 ? `Emoce terapeuta: ${cs.report_therapist_emotions.join(", ")}` : "",
+      ].filter(Boolean);
+      if (parts.length === 0) return "";
+      return `=== Klientské sezení (${cs.session_date}) ===\n${parts.join("\n")}`;
+    }).filter(Boolean).join("\n\n---\n\n");
+
+    // ═══ ALL-MODE: Crisis briefs summaries ═══
+    const crisisBriefSummaries = recentCrisisBriefs.map((cb: any) => {
+      return `=== Krizový brief (${cb.created_at}) ===\nScénář: ${cb.scenario}\nRiziko: ${cb.risk_score}/10\nPřehled rizik: ${clip(cb.risk_overview || "", 300)}\nDoporučený kontakt: ${cb.recommended_contact}\nDalší kroky: ${(cb.next_steps || []).join("; ")}\n${cb.raw_brief ? `Detail: ${clip(cb.raw_brief, 400)}` : ""}`;
+    }).filter(Boolean).join("\n\n---\n\n");
+
+    // ═══ ALL-MODE: Client tasks summaries ═══
+    const clientTaskSummaries = recentClientTasks.map((ct: any) => {
+      return `- Úkol: ${ct.task} | Metoda: ${ct.method || "?"} | Stav: ${ct.status} | Poznámky: ${clip(ct.notes || "", 150)}${ct.result ? ` | Výsledek: ${clip(ct.result, 150)}` : ""}`;
+    }).filter(Boolean).join("\n");
+
     const allSummaries = [
       threadSummaries, 
       convSummaries, 
       hanaSummaries ? `\n\n=== KONVERZACE Z REŽIMU HANA (cross-mode scan) ===\n\n${hanaSummaries}` : "",
-      researchSummaries ? `\n\n=== RELEVANTNÍ PROFESNÍ ZDROJE (Research vlákna týkající se DID) ===\n\n${researchSummaries}` : ""
-    ].filter(Boolean).join("\n\n=== KONVERZACE Z JINÝCH PODREŽIMŮ ===\n\n");
+      researchSummaries ? `\n\n=== PROFESNÍ ZDROJE (Research vlákna – posledních 24h) ===\n\n${researchSummaries}` : "",
+      clientSessionSummaries ? `\n\n=== KLIENTSKÁ SEZENÍ (posledních 24h) ===\n\n${clientSessionSummaries}` : "",
+      crisisBriefSummaries ? `\n\n=== KRIZOVÉ BRIEFY (posledních 24h) ===\n\n${crisisBriefSummaries}` : "",
+      clientTaskSummaries ? `\n\n=== ÚKOLY KLIENTŮ (posledních 24h) ===\n\n${clientTaskSummaries}` : "",
+    ].filter(Boolean).join("\n\n");
 
     const registryCanonicalParts = new Set(
       (registryContext?.entries || []).map((entry) => canonicalText(entry.name)).filter(Boolean)
