@@ -719,6 +719,7 @@ ${newsDigest || "(nedostupné)"}`;
         systemState,
         activePartsLast24h: [...activePartsLast24h],
         driveError,
+        shadowSync: shadowSyncResult,
       },
     });
 
@@ -728,6 +729,7 @@ ${newsDigest || "(nedostupné)"}`;
       systemState,
       activePartsLast24h: [...activePartsLast24h],
       generatedAt: now.toISOString(),
+      shadowSync: shadowSyncResult,
       stats: {
         didThreads: didThreads.length,
         didEpisodes: didEpisodes.length,
