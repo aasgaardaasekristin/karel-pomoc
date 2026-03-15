@@ -250,13 +250,15 @@ serve(async (req) => {
           }
         }
 
-        // Strategy B: Flat files directly in folder (e.g., "DID_003_Karta_části_Tundrupek", "Karta - Johann Ryba")
+        // Strategy B: Flat files directly in folder
         for (const file of directFiles) {
           const nameLower = file.name.toLowerCase();
-          // Skip templates and non-card files
+          // Skip templates
           if (nameLower.includes("sablon") || nameLower.includes("template")) continue;
-          // Match "Karta" or "DID_NNN_Karta" naming
-          if (nameLower.includes("karta")) {
+          // Match "Karta" naming, OR numbered part files like "004_ARTHUR", "003_TUNDRUPEK"
+          const isCardByName = nameLower.includes("karta");
+          const isNumberedPart = /^\d+[_\-]/.test(file.name);
+          if (isCardByName || isNumberedPart) {
             allCards.push({
               fileId: file.id,
               fileName: file.name,
