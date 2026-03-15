@@ -2041,13 +2041,13 @@ Datum: ${dateStr}` },
               }
             } catch (e) { console.warn("[quiet-day] Kata email gen failed:", e); }
 
-            let emailSentToHanka = false;
-            let emailSentToKata = false;
+            let quietEmailSentToHanka = false;
+            let quietEmailSentToKata = false;
             if (hankaHtml) {
-              emailSentToHanka = await sendEmailOnce("hanka", HANKA_EMAIL, `Karel – Klidný den (${dateStr})`, hankaHtml);
+              quietEmailSentToHanka = await sendEmailOnce("hanka", MAMKA_EMAIL, `Karel – Klidný den (${dateStr})`, hankaHtml);
             }
             if (kataHtml && KATA_EMAIL) {
-              emailSentToKata = await sendEmailOnce("kata", KATA_EMAIL, `Karel – Klidný den (${dateStr})`, kataHtml);
+              quietEmailSentToKata = await sendEmailOnce("kata", KATA_EMAIL, `Karel – Klidný den (${dateStr})`, kataHtml);
             }
           }
         } catch (e) { console.error("[quiet-day] Email error:", e); }
