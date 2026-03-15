@@ -64,6 +64,62 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+function sanitizeOverviewText(text: string): string {
+  return text
+    .replace(/\[(REG|ÚKOL|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
+    .replace(/^(\s*)\*\s+/gm, "$1– ")
+    .replace(/^(\s*)##+\s*/gm, "$1")
+    .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
+  if (!stream) return null;
+
+  const reader = stream.getReader();
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+
+      const flushLine = (line: string) => {
+        if (line.startsWith("data: ")) {
+          const payload = line.slice(6).trim();
+          if (payload && payload !== "[DONE]") {
+            try {
+              const parsed = JSON.parse(payload);
+              const content = parsed?.choices?.[0]?.delta?.content;
+              if (typeof content === "string") {
+                parsed.choices[0].delta.content = sanitizeOverviewText(content);
+              }
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
+              return;
+            } catch {
+              // fall through and pass line as-is
+            }
+          }
+        }
+        controller.enqueue(encoder.encode(`${line}\n`));
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) flushLine(line);
+      }
+
+      if (buffer.length > 0) flushLine(buffer);
+      controller.close();
+    },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const authResult = await requireAuth(req);
@@ -102,7 +158,7 @@ serve(async (req) => {
       console.warn("Drive read failed:", e);
     }
 
-    // ── 2. DB: Registry, Tasks, Threads (parallel) ──
+    // ── 2. DB: registry + tasks + více zdrojů aktivit (parallel) ──
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -112,53 +168,209 @@ serve(async (req) => {
       { data: last24hThreads },
       { data: recentThreads },
       { data: cycles },
+      { data: didConversations24h },
+      { data: hanaConversations24h },
+      { data: researchThreads24h },
     ] = await Promise.all([
-      sb.from("did_part_registry").select("part_name, display_name, status, role_in_system, cluster, age_estimate, last_seen_at, last_emotional_state, last_emotional_intensity, health_score, known_triggers, known_strengths, total_threads, total_episodes").order("last_seen_at", { ascending: false }),
-      sb.from("did_therapist_tasks").select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note").in("status", ["pending", "active", "in_progress"]).order("created_at", { ascending: false }).limit(30),
-      sb.from("did_threads").select("part_name, sub_mode, last_activity_at, messages, is_processed").gte("last_activity_at", twentyFourHoursAgo).order("last_activity_at", { ascending: false }).limit(30),
-      sb.from("did_threads").select("part_name, sub_mode, last_activity_at, messages, is_processed").gte("last_activity_at", sevenDaysAgo).order("last_activity_at", { ascending: false }).limit(30),
-      sb.from("did_update_cycles").select("completed_at, cycle_type").eq("status", "completed").order("completed_at", { ascending: false }).limit(3),
+      sb
+        .from("did_part_registry")
+        .select("part_name, display_name, status, role_in_system, cluster, age_estimate, last_seen_at, last_emotional_state, last_emotional_intensity, health_score, known_triggers, known_strengths, total_threads, total_episodes")
+        .order("last_seen_at", { ascending: false }),
+      sb
+        .from("did_therapist_tasks")
+        .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note")
+        .in("status", ["pending", "active", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(60),
+      sb
+        .from("did_threads")
+        .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+        .gte("last_activity_at", twentyFourHoursAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(60),
+      sb
+        .from("did_threads")
+        .select("part_name, sub_mode, last_activity_at, messages, is_processed")
+        .gte("last_activity_at", sevenDaysAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(80),
+      sb
+        .from("did_update_cycles")
+        .select("completed_at, cycle_type")
+        .eq("status", "completed")
+        .order("completed_at", { ascending: false })
+        .limit(3),
+      sb
+        .from("did_conversations")
+        .select("updated_at, sub_mode, label, preview, messages")
+        .gte("updated_at", twentyFourHoursAgo)
+        .order("updated_at", { ascending: false })
+        .limit(60),
+      sb
+        .from("karel_hana_conversations")
+        .select("last_activity_at, current_domain, messages")
+        .gte("last_activity_at", twentyFourHoursAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(20),
+      sb
+        .from("research_threads")
+        .select("last_activity_at, topic, messages")
+        .eq("is_deleted", false)
+        .gte("last_activity_at", twentyFourHoursAgo)
+        .order("last_activity_at", { ascending: false })
+        .limit(20),
     ]);
 
-    // ── 2a. Format registry as structured data ──
-    let registryBlock = "";
+    const normalizeKey = (value: string) =>
+      (value || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
+
+    const extractMessageTexts = (messages: unknown): string[] => {
+      if (!Array.isArray(messages)) return [];
+      return messages
+        .map((m: any) => {
+          const content = m?.content;
+          if (typeof content === "string") return content;
+          if (Array.isArray(content)) {
+            return content
+              .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+              .filter(Boolean)
+              .join(" ");
+          }
+          return "";
+        })
+        .filter((v: string) => typeof v === "string" && v.trim().length > 0);
+    };
+
+    const partAliasMap = (registry || []).map((r: any) => {
+      const key = normalizeKey(r.part_name || r.display_name || "");
+      const aliases = [...new Set([r.part_name, r.display_name].filter(Boolean).map((v: string) => normalizeKey(v)))];
+      return {
+        key,
+        display: r.display_name || r.part_name || "část",
+        aliases,
+      };
+    });
+
+    const detectMentionedPartKeys = (text: string) => {
+      const normalizedText = normalizeKey(text);
+      if (!normalizedText) return [] as string[];
+      const hits: string[] = [];
+      for (const p of partAliasMap) {
+        if (p.aliases.some((alias) => alias && normalizedText.includes(alias))) {
+          hits.push(p.key);
+        }
+      }
+      return [...new Set(hits)];
+    };
+
+    const directThreadActivity = new Set(
+      (last24hThreads || [])
+        .map((t: any) => normalizeKey(t.part_name || ""))
+        .filter(Boolean)
+    );
+
+    const crossModeActivity = new Set<string>();
+    const crossModeMentions: string[] = [];
+
+    const pushMentionsFromSource = (sourceLabel: string, rows: any[] | null | undefined, messagesSelector: (row: any) => unknown) => {
+      for (const row of rows || []) {
+        const texts = extractMessageTexts(messagesSelector(row)).slice(-8);
+        for (const text of texts) {
+          const mentioned = detectMentionedPartKeys(text);
+          if (mentioned.length === 0) continue;
+          for (const key of mentioned) crossModeActivity.add(key);
+          const partsLabel = mentioned
+            .map((key) => partAliasMap.find((p) => p.key === key)?.display || key)
+            .join(", ");
+          crossModeMentions.push(`[${sourceLabel}] ${partsLabel}: ${text.slice(0, 260)}`);
+        }
+      }
+    };
+
+    pushMentionsFromSource("DID-HISTORIE", didConversations24h, (row) => row.messages);
+    pushMentionsFromSource("HANA", hanaConversations24h, (row) => row.messages);
+    pushMentionsFromSource("RESEARCH", researchThreads24h, (row) => row.messages);
+
+    // ── 2a. Formát snapshotu částí bez technického balastu ──
+    const isDefaultRegistryEmotion = (state: string | null, intensity: number | null) => {
+      const normalizedState = (state || "").trim().toUpperCase();
+      return (!normalizedState || normalizedState === "STABILNI") && (intensity == null || intensity === 3);
+    };
+
+    let partsSnapshotBlock = "";
     if (registry && registry.length > 0) {
       for (const r of registry) {
-        registryBlock += `\n[REGISTR: ${r.display_name || r.part_name}]`;
-        registryBlock += `\n  Status: ${r.status}`;
-        if (r.role_in_system) registryBlock += ` | Role: ${r.role_in_system}`;
-        if (r.cluster) registryBlock += ` | Klastr: ${r.cluster}`;
-        if (r.age_estimate) registryBlock += ` | Věk: ${r.age_estimate}`;
-        if (r.last_seen_at) registryBlock += `\n  Naposledy viděn: ${r.last_seen_at}`;
-        if (r.last_emotional_state) registryBlock += ` | Emoce: ${r.last_emotional_state} (${r.last_emotional_intensity ?? "?"}/ 10)`;
-        if (r.health_score != null) registryBlock += ` | Zdraví karty: ${r.health_score}%`;
-        if (r.known_triggers?.length) registryBlock += `\n  Triggery: ${r.known_triggers.join(", ")}`;
-        if (r.known_strengths?.length) registryBlock += `\n  Silné stránky: ${r.known_strengths.join(", ")}`;
-        registryBlock += `\n  Vlákna: ${r.total_threads ?? 0} | Epizody: ${r.total_episodes ?? 0}`;
-        registryBlock += "\n";
+        const partName = r.display_name || r.part_name;
+        const key = normalizeKey(r.part_name || r.display_name || "");
+        const has24hActivity = directThreadActivity.has(key) || crossModeActivity.has(key);
+        const emotionIsDefault = isDefaultRegistryEmotion(r.last_emotional_state, r.last_emotional_intensity);
+
+        let line = `- ${partName}: status ${r.status || "neuveden"}`;
+        if (!emotionIsDefault && r.last_emotional_state) {
+          line += `, poslední zaznamenaná emoce ${r.last_emotional_state}`;
+          if (typeof r.last_emotional_intensity === "number") {
+            line += ` (${r.last_emotional_intensity}/10)`;
+          }
+        }
+        if (r.role_in_system) line += `, role ${r.role_in_system}`;
+        if (r.cluster) line += `, klastr ${r.cluster}`;
+        line += has24hActivity
+          ? ", v posledních 24 hodinách je zaznamenaná aktivita v aplikaci."
+          : ", za posledních 24 hodin nemám novou interakci v aplikaci.";
+
+        partsSnapshotBlock += `${line}\n`;
       }
     }
 
-    // ── 2b. Format tasks ──
+    // ── 2b. Úkoly: deduplikace + zkrácení ──
+    const priorityWeight = (priority: string | null) => {
+      const p = (priority || "normal").toLowerCase();
+      if (p === "urgent") return 4;
+      if (p === "high") return 3;
+      if (p === "medium") return 2;
+      if (p === "normal") return 1;
+      return 0;
+    };
+
+    const sortedTasks = [...(pendingTasks || [])].sort((a: any, b: any) => {
+      const byPriority = priorityWeight(b.priority) - priorityWeight(a.priority);
+      if (byPriority !== 0) return byPriority;
+      return String(a.due_date || "").localeCompare(String(b.due_date || ""));
+    });
+
+    const seenTaskKeys = new Set<string>();
+    const uniqueTasks: any[] = [];
+    for (const t of sortedTasks) {
+      const taskText = typeof t.task === "string" ? t.task.trim() : "";
+      if (!taskText) continue;
+      const key = normalizeKey(`${taskText}|${t.assigned_to || "both"}`);
+      if (seenTaskKeys.has(key)) continue;
+      seenTaskKeys.add(key);
+      uniqueTasks.push(t);
+      if (uniqueTasks.length >= 10) break;
+    }
+
     let tasksBlock = "";
-    if (pendingTasks && pendingTasks.length > 0) {
-      for (const t of pendingTasks) {
-        tasksBlock += `\n- [${t.priority || "normal"}] ${t.task} → ${t.assigned_to} (H:${t.status_hanka}, K:${t.status_kata})`;
-        if (t.due_date) tasksBlock += ` do ${t.due_date}`;
-        if (t.note) tasksBlock += ` // ${t.note.slice(0, 100)}`;
-      }
+    for (const t of uniqueTasks) {
+      const due = t.due_date ? `, termín ${t.due_date}` : "";
+      const note = t.note ? ` — ${String(t.note).slice(0, 90)}` : "";
+      tasksBlock += `\n- ${String(t.task).slice(0, 180)} (pro ${t.assigned_to || "both"}${due})${note}`;
     }
 
-    // ── 2c. Format threads ──
+    // ── 2c. Kontext vláken + cross-mode zmínek ──
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
-      const userRole = t.sub_mode === "cast" ? "ČÁST" : "TERAPEUT";
-      const userMsgs = msgs
+      const speaker = t.sub_mode === "cast" ? "část" : "terapeut";
+      const snippets = msgs
         .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
-        .slice(-6)
-        .map((m: any) => `[${userRole}] ${(m.content || "").slice(0, 260)}`)
+        .slice(-5)
+        .map((m: any) => `- ${String(m.content).slice(0, 240)}`)
         .join("\n");
-      return `\n--- ${t.part_name} [${t.sub_mode}] (${t.last_activity_at}, ${t.is_processed ? "zpracováno" : "nezpracováno"}) ---\n${userMsgs || "(bez user zpráv)"}\n`;
+      return `\n${t.part_name} (${speaker}, ${t.last_activity_at})\n${snippets || "- bez user zpráv"}`;
     };
 
     let threadSummary24h = "";
@@ -170,28 +382,32 @@ serve(async (req) => {
       for (const t of last24hThreads) {
         const entry = formatThreadEntry(t);
         if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
-          therapistSummary24h += entry;
+          therapistSummary24h += `${entry}\n`;
         } else {
-          threadSummary24h += entry;
-        }
-      }
-    }
-    if (recentThreads) {
-      for (const t of recentThreads) {
-        const entry = formatThreadEntry(t);
-        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
-          therapistSummaryWeek += entry;
-        } else {
-          threadSummaryWeek += entry;
+          threadSummary24h += `${entry}\n`;
         }
       }
     }
 
+    if (recentThreads) {
+      for (const t of recentThreads) {
+        const entry = formatThreadEntry(t);
+        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
+          therapistSummaryWeek += `${entry}\n`;
+        } else {
+          threadSummaryWeek += `${entry}\n`;
+        }
+      }
+    }
+
+    const crossModeSummary24h = crossModeMentions.slice(0, 24).map((m) => `- ${m}`).join("\n");
+
     // ── 2d. Read cards of active parts from Drive ──
     let activePartCards = "";
     const activePartNames = recentThreads
-      ? [...new Set(recentThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))]
+      ? [...new Set(recentThreads.filter((t: any) => t.sub_mode === "cast").map((t: any) => t.part_name))]
       : [];
+
     if (activePartNames.length > 0) {
       try {
         const token = await getAccessToken();
@@ -200,17 +416,15 @@ serve(async (req) => {
           const aktivniId = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaId);
           if (aktivniId) {
             const partFiles = await listFilesInFolder(token, aktivniId);
-            for (const partName of activePartNames.slice(0, 6)) {
-              const normalizedName = partName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-              const matchedFile = partFiles.find(f => {
-                const fn = f.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                return fn.includes(normalizedName);
-              });
-              if (matchedFile) {
-                try {
-                  const content = await readFileContent(token, matchedFile.id);
-                  activePartCards += `\n[KARTA: ${matchedFile.name}]\n${content.slice(0, 4000)}\n`;
-                } catch { /* skip */ }
+            for (const partName of activePartNames.slice(0, 8)) {
+              const normalizedName = normalizeKey(partName);
+              const matchedFile = partFiles.find((f) => normalizeKey(f.name).includes(normalizedName));
+              if (!matchedFile) continue;
+              try {
+                const content = await readFileContent(token, matchedFile.id);
+                activePartCards += `\n[KARTA: ${matchedFile.name}]\n${content.slice(0, 4000)}\n`;
+              } catch {
+                // skip unreadable files
               }
             }
           }
@@ -224,22 +438,25 @@ serve(async (req) => {
     let cycleInfo = "";
     if (cycles) {
       for (const c of cycles) {
-        cycleInfo += `\n[${c.cycle_type} cyklus – dokončen ${c.completed_at}]\n`;
+        cycleInfo += `\n- ${c.cycle_type} cyklus dokončen ${c.completed_at}`;
       }
     }
 
-    // ── 3. Optional Perplexity tips ──
+    // ── 3. Optional Perplexity tips (jen pokud opravdu existují) ──
     let perplexityTips = "";
     if (PERPLEXITY_API_KEY && activePartNames.length > 0) {
       try {
-        const searchQuery = `terapeutické přístupy pro práci s dětskými částmi DID (disociativní porucha identity): ${activePartNames.slice(0, 5).join(", ")}. Stabilizační techniky, hrová terapie, senzomotorické přístupy, IFS, EMDR pro děti.`;
+        const searchQuery = `terapeutické přístupy pro práci s dětskými částmi DID: ${activePartNames.slice(0, 5).join(", ")}`;
         const pxRes = await fetch("https://api.perplexity.ai/chat/completions", {
           method: "POST",
           headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "sonar-pro",
             messages: [
-              { role: "system", content: "Jsi odborný výzkumník. Vrať 3-5 konkrétních terapeutických tipů/technik s krátkým popisem a zdrojem. Odpověz v češtině. Max 500 slov." },
+              {
+                role: "system",
+                content: "Vrať 2-3 stručné, praktické terapeutické tipy v češtině. Bez omáčky, bez disclaimerů.",
+              },
               { role: "user", content: searchQuery },
             ],
             search_recency_filter: "year",
@@ -247,11 +464,7 @@ serve(async (req) => {
         });
         if (pxRes.ok) {
           const pxData = await pxRes.json();
-          perplexityTips = pxData.choices?.[0]?.message?.content || "";
-          const citations = pxData.citations || [];
-          if (citations.length > 0) {
-            perplexityTips += "\n\nZdroje:\n" + citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n");
-          }
+          perplexityTips = (pxData.choices?.[0]?.message?.content || "").trim();
         }
       } catch (e) {
         console.warn("Perplexity search failed:", e);
@@ -261,108 +474,67 @@ serve(async (req) => {
     // ── 4. Build greeting ──
     const now = new Date();
     const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
-    const dayAdjs = ["nedělní", "pondělní", "úterní", "středeční", "čtvrteční", "páteční", "sobotní"];
     const dayName = dayNames[now.getDay()];
-    const dayAdj = dayAdjs[now.getDay()];
     const hour = now.getHours();
     const minute = now.getMinutes().toString().padStart(2, "0");
     const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
+    const chosenGreeting = `Ahoj, Hani a Káťo! ${formattedDate}.`;
 
-    const greetingVariants = [
-      `Krásné ${dayAdj} ráno (${formattedDate}), Hani a Káťo!`,
-      `Zdravím vás v tento ${dayAdj} den (${formattedDate}), milé kolegyně!`,
-      `Dobrý den, Hani a Káťo! Je ${formattedDate} a Karel má pro vás čerstvý přehled.`,
-      `Tak co, Hani a Káťo – pojďme se podívat, co se děje! Dnes je ${formattedDate}.`,
-      `Ahoj, Hani a Káťo! ${formattedDate} – čas na Karlův pohled na věc.`,
-      `Vítám vás, Hani a Káťo, v dnešním přehledu (${formattedDate})!`,
-      `Hani, Káťo – ${formattedDate}, Karel hlásí stav na palubě.`,
-    ];
-    const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
-    const variantIndex = (dayOfYear + hour) % greetingVariants.length;
-    const chosenGreeting = greetingVariants[variantIndex];
+    // ── 5. Přehled: přirozený styl bez technických tagů ──
+    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Vytvoř přehled VÝHRADNĚ z dat níže.
 
-    // ── 5. STRICT synthesis prompt ──
-    const synthesisPrompt = `Jsi Karel – supervizní partner a tandem-terapeut. Sestav přehled VÝHRADNĚ z přiložených dat.
+TVRDÁ PRAVIDLA:
+1) Nikdy nevymýšlej fakta, čísla ani závěry, které nejsou podložené vstupem.
+2) Nepoužívej technické značky [REG], [VLÁKNO], [KARTA], [ÚKOL], [DRIVE] ani markdown nadpisy.
+3) Nepiš sekci ani větu "Stav systému podle registru".
+4) Nepoužívej formulace "STABILNI (3/10)", "zdraví karty" ani procenta zdraví.
+5) Pokud je u části uvedeno, že za posledních 24 hodin je aktivita, NESMÍŠ psát, že pro ni nemáš data.
+6) Žádné dramatizace typu "kritický bod" nebo "dekompenzace", pokud to není doslova řečeno ve zprávách.
+7) Pokud nemáš terapeutické tipy, tuto oblast úplně vynech a nic o chybějících zdrojích nepiš.
 
-⚠️ ABSOLUTNÍ ZÁKAZY – PORUŠENÍ = SELHÁNÍ:
-1. NIKDY NEVYMÝŠLEJ informace, čísla, skóre, stavy ani hodnocení které NEJSOU DOSLOVA v datech.
-2. NIKDY nepiš "stabilita X/10" pokud toto číslo NENÍ v registru nebo v citovaném textu.
-3. NIKDY nepiš "akutní destabilizace", "kritický bod", "dekompenzace" pokud to DOSLOVA neřekla část nebo terapeutka v rozhovoru.
-4. NIKDY nepřidávej dramatizaci. Pokud data říkají "unavený", nepiš "akutní vyčerpání s rizikem kolapsu".
-5. Pokud pro nějakou část NEMÁŠ data z posledních 24h, napiš "nemám aktuální data" – NEVYMÝŠLEJ stav.
-6. NEPOUŽÍVEJ obecné poučky o DID – terapeutky to znají.
+STYL VÝSTUPU:
+- Přirozená čeština, lidský tón, stručně a věcně.
+- Krátké odstavce.
+- Žádné technické závorky, žádné interní značky, žádné markdown seznamy s hvězdičkami.
 
-FORMÁT CITACÍ:
-Ke každému tvrzení o stavu/emoci/události MUSÍŠ přidat odkaz na zdroj:
-- [REG] = z registru částí
-- [VLÁKNO:jméno] = z konverzačního vlákna
-- [KARTA:jméno] = z karty části
-- [DRIVE:název_souboru] = z dokumentu na Drive
-- [ÚKOL] = z úkolů terapeutek
-Tvrzení BEZ citace = halucinace = zakázáno.
+POVINNÁ STRUKTURA:
+- 1 úvodní pozdrav (použij přesně tento text): "${chosenGreeting}"
+- 1 odstavec: co se reálně odehrálo za posledních 24 hodin (max 3 krátké citace v uvozovkách).
+- 1 odstavec: co to prakticky znamená pro dnešní péči.
+- 1 krátký blok "Dnes doporučuji:" a pod tím 4-6 konkrétních akčních bodů (komu, co, proč), bez duplicit a bez dlouhého seznamu.
 
 VSTUPNÍ DATA:
 
-=== REGISTR ČÁSTÍ (databáze – autoritativní zdroj stavů) ===
-${registryBlock || "(registr je prázdný)"}
+=== SNAPSHOT ČÁSTÍ (registr + aktivita z celé aplikace 24h) ===
+${partsSnapshotBlock || "(části nejsou v registru)"}
 
-=== AKTIVNÍ ÚKOLY TERAPEUTEK ===
-${tasksBlock || "(žádné aktivní úkoly)"}
+=== VLAKNA ČÁSTÍ 24H ===
+${threadSummary24h || "(bez vláken částí za 24h)"}
 
-=== DOKUMENTY Z KARTOTÉKY (00_CENTRUM) ===
-${centrumDocs || "(nepodařilo se načíst)"}
+=== VLAKNA TERAPEUTEK 24H ===
+${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
 
-=== POSLEDNÍCH 24 HODIN – ROZHOVORY ČÁSTÍ ===
-${threadSummary24h || "(žádná vlákna za posledních 24 hodin)"}
+=== ZMÍNKY V OSTATNÍCH REŽIMECH 24H ===
+${crossModeSummary24h || "(bez zachycených zmínek)"}
 
-=== POSLEDNÍCH 24 HODIN – ROZHOVORY TERAPEUTEK ===
-${therapistSummary24h || "(žádné rozhovory terapeutek za posledních 24 hodin)"}
+=== KONTEXT TÝDNE (části) ===
+${threadSummaryWeek || "(bez týdenního kontextu)"}
 
-=== KONTEXT POSLEDNÍHO TÝDNE – ROZHOVORY ČÁSTÍ ===
-${threadSummaryWeek || "(žádná vlákna za poslední týden)"}
+=== KONTEXT TÝDNE (terapeutky) ===
+${therapistSummaryWeek || "(bez týdenního kontextu)"}
 
-=== KONTEXT POSLEDNÍHO TÝDNE – ROZHOVORY TERAPEUTEK ===
-${therapistSummaryWeek || "(žádné rozhovory terapeutek za poslední týden)"}
+=== KARTY AKTIVNÍCH ČÁSTÍ (Drive) ===
+${activePartCards || "(karty nedostupné)"}
 
-=== KARTY AKTIVNÍCH ČÁSTÍ (detaily z kartotéky) ===
-${activePartCards || "(nepodařilo se načíst nebo žádné aktivní části)"}
+=== AKTIVNÍ ÚKOLY (deduplikované) ===
+${tasksBlock || "(bez aktivních úkolů)"}
 
 === POSLEDNÍ AKTUALIZACE KARTOTÉKY ===
-${cycleInfo || "(žádné záznamy)"}
+${cycleInfo || "(bez záznamu)"}
 
-=== TERAPEUTICKÉ TIPY Z ODBORNÝCH ZDROJŮ ===
-${perplexityTips || "(nedostupné)"}
+${perplexityTips ? `=== KRÁTKÉ TERAPEUTICKÉ TIPY ===\n${perplexityTips}\n` : ""}
 
-FORMÁT VÝSTUPU:
-
-Začni PŘESNĚ tímto pozdravem (nepřepisuj): "${chosenGreeting}"
-Pak: "Zde je přehled založený na aktuálních datech:"
-
-Struktura (jako plynulý text, nadpisy ## a ###):
-
-1. **Stav systému podle registru** – Pro KAŽDOU část v registru uveď: jméno, status, poslední emoce (pokud je), zdraví karty. Cituj [REG]. Pokud část nemá data z posledních 24h, řekni to explicitně. NEDOMÝŠLEJ co dělá nebo jak se cítí.
-
-2. **Co se dělo posledních 24 hodin** – POUZE pokud existují vlákna. Cituj DOSLOVA z rozhovorů. Uveď KDO mluvil, CO řekl (krátká citace). Cituj [VLÁKNO:jméno]. Pokud žádná vlákna nejsou, napiš "Za posledních 24 hodin neproběhly žádné rozhovory."
-
-3. **Rozhovory terapeutek** – Co řešily Hanka a Káťa s Karlem? Cituj [VLÁKNO:mamka/kata]. Pokud nic, řekni to.
-
-4. **Kdo potřebuje pozornost** – POUZE na základě dat z registru + vláken. Pokud má část emoční intenzitu ≥7 [REG] nebo pokud v rozhovoru zaznělo něco alarmujícího [VLÁKNO], uveď to. NEVYMÝŠLEJ krizové stavy.
-
-5. **Aktivní úkoly** – Vypiš úkoly z databáze [ÚKOL]. Kdo má co udělat, jaký je stav.
-
-6. **Terapeutická doporučení** – POUZE pokud máš tipy z Perplexity. Zakomponuj s citací zdroje. Pokud ne, vynech celou sekci.
-
-7. **Poslední aktualizace kartotéky** – Kdy proběhla.
-
-8. **📋 Návrhy úkolů** – Na základě DAT (ne domněnek) navrhni konkrétní akční body pro Hanu a Káťu. Každý úkol musí mít citaci zdroje PROČ ho navrhuješ.
-
-PRAVIDLA:
-- Piš česky, osobním tónem, ale STRIKTNĚ fakticky
-- Nepoužívej dekorativní oddělovače
-- Nadpisy jako markdown (## a ###)
-- Každé tvrzení MUSÍ mít [REG], [VLÁKNO:x], [KARTA:x], [DRIVE:x] nebo [ÚKOL] citaci
-- Pokud nemáš data, řekni "nemám data" – NEVYMÝŠLEJ
-- ŽÁDNÉ vymyšlené skóre stability, ŽÁDNÉ dramatizace`;
+Pamatuj: Výstup musí být čitelný, lidský a bez technických artefaktů.`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -373,7 +545,11 @@ PRAVIDLA:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi Karel, supervizní terapeut. STRIKTNĚ dodržuj formát citací. NIKDY nevymýšlej data která nejsou ve vstupech. Odpovídej v češtině." },
+          {
+            role: "system",
+            content:
+              "Jsi Karel, supervizní terapeut. Odpovídej česky, přirozeně, věcně. Nikdy nevymýšlej data mimo vstupy a nikdy nepoužívej technické tagy ani markdown formát."
+          },
           { role: "user", content: synthesisPrompt },
         ],
         stream: true,
@@ -396,7 +572,7 @@ PRAVIDLA:
       throw new Error("AI gateway error");
     }
 
-    return new Response(aiResponse.body, {
+    return new Response(sanitizeSseBody(aiResponse.body), {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
