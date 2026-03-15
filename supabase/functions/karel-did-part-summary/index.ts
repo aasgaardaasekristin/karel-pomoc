@@ -44,6 +44,7 @@ serve(async (req) => {
     const sessions = sessionsRes.data || [];
     const allTasks = tasksRes.data || [];
     const episodes = episodesRes.data || [];
+    const systemProfile = systemProfileRes.data;
 
     // Filter tasks relevant to this part
     const partLower = partName.toLowerCase();
