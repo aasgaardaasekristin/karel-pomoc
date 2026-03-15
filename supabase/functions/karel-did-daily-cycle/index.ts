@@ -111,6 +111,189 @@ function hasKhash(existingContent: string, hash: string): boolean {
   return existingContent.includes(`[KHASH:${hash}]`);
 }
 
+// ═══ EVIDENCE VALIDATOR: Validate [SRC:] tags in CENTRUM blocks ═══
+function validateCentrumEvidence(
+  centrumContent: string,
+  validSources: Set<string>, // e.g. "cast|Arthur", "mamka|Hanka", "kata|Kata"
+  docName: string,
+): { validated: string; rejectedCount: number; keptCount: number } {
+  // Parse paragraphs/lines and check each for [SRC:...] tags
+  const lines = centrumContent.split("\n");
+  const validatedLines: string[] = [];
+  let rejectedCount = 0;
+  let keptCount = 0;
+
+  // Lines that are structural (headers, empty, bullets without claims) pass through
+  const isStructuralLine = (line: string): boolean => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    if (/^(SEKCE\s+\d|OPERATIVNÍ|AKTUÁLNÍ|Dashboard|═|─|▸\s*$|🎯|⚠️|💤|💬|🔍|📋|✅\s*Žádná)/i.test(trimmed)) return true;
+    if (/^(Aktualizace:|Správce:|Správce:)/i.test(trimmed)) return true;
+    // Short lines (labels, headers) pass
+    if (trimmed.length < 30 && !trimmed.includes(":")) return true;
+    return false;
+  };
+
+  // Check if a line contains a clinical claim that NEEDS evidence
+  const isClinicalClaim = (line: string): boolean => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.length < 20) return false;
+    // Skip structural/formatting lines
+    if (isStructuralLine(line)) return false;
+    // Lines with data references (dates, numbers, simple lists) can pass
+    if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return false;
+    // Lines that are just status indicators
+    if (/^[▸\-*•]\s*(Žádné|Žádná|Viz |N\/A|–$)/i.test(trimmed)) return false;
+    // Clinical content: contains specific claims about parts, states, recommendations
+    return /(?:komunikoval|mluvil|cítí|potřebuje|doporučen|riziko|trigger|aktivní|spí|probuz|stabilní|nestabilní|regres|pokrok|metoda|technika|sezení)/i.test(trimmed);
+  };
+
+  for (const line of lines) {
+    if (isStructuralLine(line) || !isClinicalClaim(line)) {
+      validatedLines.push(line);
+      continue;
+    }
+
+    // This line contains a clinical claim – check for [SRC:] tag
+    const srcMatch = line.match(/\[SRC:([^\]]+)\]/);
+    if (!srcMatch) {
+      // No evidence tag – reject this line
+      console.warn(`[EVIDENCE-VALIDATOR] ⛔ Rejected (no [SRC:] tag) in ${docName}: "${line.trim().slice(0, 80)}..."`);
+      rejectedCount++;
+      continue;
+    }
+
+    // Validate the source reference
+    const srcRef = srcMatch[1].trim(); // e.g. "cast|Arthur|msg3"
+    const srcParts = srcRef.split("|");
+    const srcKey = srcParts.slice(0, 2).join("|").toLowerCase(); // "cast|arthur"
+
+    // Check if this source exists in our data
+    let sourceValid = false;
+    for (const vs of validSources) {
+      if (vs.toLowerCase() === srcKey || vs.toLowerCase().includes(srcParts[0]?.toLowerCase())) {
+        sourceValid = true;
+        break;
+      }
+    }
+
+    if (sourceValid) {
+      // Strip the [SRC:] tag from output (it was for validation only)
+      validatedLines.push(line.replace(/\s*\[SRC:[^\]]+\]\s*/g, " ").trim());
+      keptCount++;
+    } else {
+      console.warn(`[EVIDENCE-VALIDATOR] ⛔ Rejected (invalid source "${srcRef}") in ${docName}: "${line.trim().slice(0, 80)}..."`);
+      rejectedCount++;
+    }
+  }
+
+  console.log(`[EVIDENCE-VALIDATOR] ${docName}: kept=${keptCount}, rejected=${rejectedCount}, structural=${lines.length - keptCount - rejectedCount}`);
+  return { validated: validatedLines.join("\n"), rejectedCount, keptCount };
+}
+
+// ═══ SEMANTIC DEDUP CHECK: AI-powered similarity gate ═══
+async function semanticDedupCheck(
+  newContent: string,
+  existingContent: string,
+  sectionLabel: string,
+  partName: string,
+): Promise<{ isDuplicate: boolean; reason: string }> {
+  if (!existingContent || existingContent.length < 20 || existingContent === "(zatím prázdné)") {
+    return { isDuplicate: false, reason: "empty_section" };
+  }
+
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) return { isDuplicate: false, reason: "no_api_key" };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        tools: [{
+          type: "function",
+          function: {
+            name: "dedup_result",
+            description: "Return whether new content is semantically duplicate of existing content",
+            parameters: {
+              type: "object",
+              properties: {
+                isDuplicate: { type: "boolean", description: "true if the core meaning is already present in existing content" },
+                reason: { type: "string", description: "Brief explanation (max 50 chars)" },
+              },
+              required: ["isDuplicate", "reason"],
+              additionalProperties: false,
+            },
+          },
+        }],
+        tool_choice: { type: "function", function: { name: "dedup_result" } },
+        messages: [
+          {
+            role: "system",
+            content: `Porovnej NOSNOU MYŠLENKU nového záznamu s existujícím obsahem sekce. Odpověz isDuplicate=true POUZE pokud je JÁDRO VÝZNAMU (ne formulace) již přítomno. Různá slova pro stejný fakt = DUPLICITA. Nový detail k existujícímu faktu = NENÍ DUPLICITA.`,
+          },
+          {
+            role: "user",
+            content: `SEKCE ${sectionLabel} karty "${partName}":\n\nEXISTUJÍCÍ OBSAH:\n${existingContent.slice(0, 1500)}\n\nNOVÝ ZÁZNAM:\n${newContent.slice(0, 500)}`,
+          },
+        ],
+      }),
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.warn(`[SEMANTIC-DEDUP] AI call failed (${res.status}), falling back to KHASH-only`);
+      return { isDuplicate: false, reason: "api_error" };
+    }
+
+    const data = await res.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (toolCall?.function?.arguments) {
+      const args = JSON.parse(toolCall.function.arguments);
+      console.log(`[SEMANTIC-DEDUP] Section ${sectionLabel} for "${partName}": isDuplicate=${args.isDuplicate}, reason="${args.reason}"`);
+      return { isDuplicate: !!args.isDuplicate, reason: args.reason || "" };
+    }
+
+    return { isDuplicate: false, reason: "no_tool_response" };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      console.warn(`[SEMANTIC-DEDUP] Timeout (5s) for section ${sectionLabel} of "${partName}", falling back to KHASH-only`);
+    } else {
+      console.warn(`[SEMANTIC-DEDUP] Error for section ${sectionLabel} of "${partName}":`, e);
+    }
+    return { isDuplicate: false, reason: "timeout_or_error" };
+  }
+}
+
+// ═══ POST-WRITE VERIFICATION: Read back and verify CENTRUM doc ═══
+async function verifyCentrumWrite(
+  token: string,
+  fileId: string,
+  docName: string,
+  requiredKeywords: string[],
+): Promise<{ verified: boolean; length: number; missingKeywords: string[] }> {
+  try {
+    const content = await readFileContent(token, fileId);
+    const missing = requiredKeywords.filter(kw => !content.toLowerCase().includes(kw.toLowerCase()));
+    const verified = content.length > 200 && missing.length === 0;
+    if (!verified) {
+      console.warn(`[VERIFY-CENTRUM] ⚠️ ${docName}: length=${content.length}, missing=[${missing.join(",")}]`);
+    } else {
+      console.log(`[VERIFY-CENTRUM] ✅ ${docName}: length=${content.length}, all ${requiredKeywords.length} keywords present`);
+    }
+    return { verified, length: content.length, missingKeywords: missing };
+  } catch (e) {
+    console.error(`[VERIFY-CENTRUM] Failed to read back ${docName}:`, e);
+    return { verified: false, length: 0, missingKeywords: requiredKeywords };
+  }
+}
+
 const stripDiacritics = (value: string) =>
   value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
