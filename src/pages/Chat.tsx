@@ -34,6 +34,7 @@ import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
 import { useDidThreads, type DidThread } from "@/hooks/useDidThreads";
+import { useDidContextPrime } from "@/hooks/useDidContextPrime";
 import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
@@ -124,6 +125,7 @@ const Chat = () => {
   const [liveSessionStarted, setLiveSessionStarted] = useState(false);
   const [sessionReport, setSessionReport] = useState<string | null>(null);
   const [clientCaseSummary, setClientCaseSummary] = useState<string | null>(null);
+  const didContextPrime = useDidContextPrime();
 
   // Reset live session state when switching clients
   useEffect(() => {
@@ -553,6 +555,8 @@ const Chat = () => {
       setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
       setDidFlowState("chat");
       toast.info(`Pokračuješ ve vláknu s ${partName}`);
+      // Auto-prime with specific part context
+      didContextPrime.runPrime(partName, "cast");
       // Load fresh part docs in background
       (async () => {
         try {
@@ -586,7 +590,8 @@ const Chat = () => {
       setActiveThread(thread);
       setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
       setDidFlowState("chat");
-      
+      // Auto-prime with specific part context
+      didContextPrime.runPrime(partName, "cast");
       // Load part-specific docs in BACKGROUND — don't block conversation
       (async () => {
         try {
@@ -1293,6 +1298,8 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
             mode,
             ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
+            ...(mode === "childcare" && didContextPrime.primeCache ? { didContextPrimeCache: didContextPrime.primeCache } : {}),
+            ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName } : {}),
           };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
@@ -1454,11 +1461,17 @@ Vlákno je uložené. Karty i souhrnný report se zpracují při nejbližší au
     if (didFlowState === "entry" && !didSubMode) {
       return (
         <ScrollArea className="flex-1">
-          <DidEntryScreen
-            onSelectTerapeut={() => setDidFlowState("terapeut")}
+           <DidEntryScreen
+            onSelectTerapeut={() => {
+              setDidFlowState("terapeut");
+              // Auto-prime DID context in background
+              didContextPrime.runPrime(undefined, "mamka");
+            }}
             onSelectKluci={() => {
               setDidSubMode("cast");
               setDidFlowState("loading");
+              // Auto-prime DID context in background
+              didContextPrime.runPrime(undefined, "cast");
               (async () => {
                 await didThreads.fetchActiveThreads("cast");
                 if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);

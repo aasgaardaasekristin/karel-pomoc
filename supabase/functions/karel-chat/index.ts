@@ -11,7 +11,7 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { messages, mode, didInitialContext, didSubMode, notebookProject } = await req.json();
+    const { messages, mode, didInitialContext, didSubMode, notebookProject, didPartName, didContextPrimeCache } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       throw new Error("LOVABLE_API_KEY is not configured");
@@ -21,7 +21,14 @@ serve(async (req) => {
     const effectiveMode = (mode === "childcare" && didSubMode === "kata") ? "kata" : mode;
     let systemPrompt = getSystemPrompt(effectiveMode as ConversationMode);
 
-    // Runtime context from UI (form snapshot, live supervision instructions, etc.)
+    // ═══ DID DYNAMIC CONTEXT PRIME ═══
+    // If DID mode and we have a context-prime cache from frontend, inject it
+    // This replaces the static didInitialContext with a rich, AI-synthesized situational cache
+    if (mode === "childcare" && didContextPrimeCache && typeof didContextPrimeCache === "string" && didContextPrimeCache.length > 50) {
+      systemPrompt += `\n\n═══ DYNAMICKÁ SITUAČNÍ CACHE (DID Context Prime) ═══\nToto je tvá aktuální předsunutá paměť – plastická mezipaměť vystavěná ze VŠECH zdrojů (Drive kartotéka, DB vlákna a epizody, sémantická paměť, úkoly terapeutek, internet). Využívej ji pro maximální přítomnost, adaptabilitu a informovanost.\n\n${didContextPrimeCache}`;
+    }
+    
+    // Runtime context from UI (form snapshot, live supervision instructions, etc.) — fallback
     if (typeof didInitialContext === "string" && didInitialContext.trim().length > 0) {
       systemPrompt += `\n\n═══ RUNTIME KONTEXT Z APLIKACE (DOKUMENTY Z KARTOTÉKY DID) ═══\n\n${didInitialContext}`;
     }
