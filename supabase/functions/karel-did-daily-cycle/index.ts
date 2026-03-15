@@ -3251,6 +3251,23 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       }
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
+      // Build valid sources set for evidence validation
+      const validSources = new Set<string>();
+      for (const t of reportThreads) {
+        validSources.add(`${t.sub_mode}|${t.part_name}`);
+      }
+      for (const c of reportConversations) {
+        validSources.add(`${c.sub_mode}|${c.label}`);
+      }
+      for (const hc of recentHanaConversations) {
+        validSources.add(`hana|Hana`);
+      }
+      if (recentEpisodes.length > 0) validSources.add("episode|any");
+      if (registryContext?.entries) {
+        for (const e of registryContext.entries) validSources.add(`registry|${e.name}`);
+      }
+      console.log(`[EVIDENCE] Valid sources for CENTRUM validation: ${[...validSources].join(", ")}`);
+
       let therapeuticPlanContent = ""; // Capture for email inclusion
       let centrumDashboardUpdated = false;
       let centrumOperativniUpdated = false;
@@ -3261,11 +3278,25 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
         for (const match of validatedAnalysisText.matchAll(centrumBlockRegex)) {
           const docName = match[1].trim();
-          const newContent = match[2].trim();
+          let newContent = match[2].trim();
           if (!newContent || newContent.length < 10) continue;
 
+          // ═══ EVIDENCE VALIDATION: Filter claims without valid [SRC:] tags ═══
+          const docCanonical = canonicalText(docName);
+          const isDashboardOrPlan = docCanonical.includes("dashboard") || docCanonical.includes("operativn") || docCanonical.includes("terapeutick");
+          if (isDashboardOrPlan) {
+            const { validated, rejectedCount, keptCount } = validateCentrumEvidence(newContent, validSources, docName);
+            if (rejectedCount > 0) {
+              console.log(`[EVIDENCE] ${docName}: ${rejectedCount} claims rejected, ${keptCount} claims validated`);
+            }
+            newContent = validated;
+            if (newContent.trim().length < 10) {
+              console.warn(`[EVIDENCE] ${docName}: All content rejected by evidence validator, skipping write`);
+              continue;
+            }
+          }
+
           try {
-            const docCanonical = canonicalText(docName);
 
             // ═══ SPECIAL: 05_Operativni_Plan or 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
             if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
@@ -3285,6 +3316,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
               centrumOperativniUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
+
+              // Post-write verification
+              await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", ["SEKCE 1", "SEKCE 2", "SEKCE 3", "Aktualizace"]);
               continue;
             }
 
@@ -3301,6 +3335,9 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
               centrumDashboardUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
+
+              // Post-write verification
+              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", ["SEKCE 1", "DASHBOARD", "Aktualizace"]);
               continue;
             }
 
