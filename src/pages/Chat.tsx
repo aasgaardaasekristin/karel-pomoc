@@ -1547,6 +1547,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   <div className="text-xs text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
                 </div>
               </button>
+              <button
+                onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-emerald-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-emerald-500"
+              >
+                <span className="text-lg">🧩</span>
+                <div>
+                  <div className="font-medium text-foreground">Live DID sezení</div>
+                  <div className="text-xs text-muted-foreground">Karel radí v reálném čase při práci s částí – audio + chat</div>
+                </div>
+              </button>
             </div>
             <div className="flex justify-center mt-4">
               <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
