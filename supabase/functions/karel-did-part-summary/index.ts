@@ -194,7 +194,7 @@ DŮLEŽITÉ: Piš jako Karel který má vše pevně v ruce, je angažovaný, oso
 
     // Parse sections
     const sections: Record<string, string> = {};
-    const sectionNames = ["KARLOVO_SHRNUTÍ", "TERAPEUTICKÝ_PROFIL", "CÍLE", "METODY_A_PRISTUPY", "NAVRZENE_METODY", "KARLOVY_POZNATKY"];
+    const sectionNames = ["KARLOVO_SHRNUTÍ", "POSLEDNI_KONTAKT", "TERAPEUTICKÝ_PROFIL", "CÍLE", "METODY_A_PRISTUPY", "NAVRZENE_METODY", "KARLOVY_POZNATKY"];
     for (let i = 0; i < sectionNames.length; i++) {
       const start = summary.indexOf(`## ${sectionNames[i]}`);
       if (start === -1) continue;
