@@ -282,11 +282,80 @@ serve(async (req) => {
 
       if (entErr) console.error(`[bootstrap] Entity upsert error for ${card.partName}:`, entErr);
 
+      // Generate episode from card content using AI
+      let episodeOk = false;
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      if (LOVABLE_API_KEY && card.rawContent.length > 50) {
+        try {
+          const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                {
+                  role: "system",
+                  content: `Jsi Karel, supervizní AI pro DID systém. Z obsahu karty části vygeneruj strukturovanou epizodu.
+Odpověz POUZE jako JSON objekt (bez markdown):
+{
+  "summary_karel": "stručné shrnutí klíčových informací o části (2-3 věty)",
+  "summary_user": "co je důležité vědět pro terapeuty (2-3 věty)",
+  "derived_facts": ["fakt1", "fakt2", ...max 5],
+  "tags": ["tag1", "tag2", ...max 5],
+  "emotional_intensity": číslo 1-5,
+  "participants": ["jméno části"],
+  "hana_state": "EMO_KLIDNA nebo EMO_AKTIVNI nebo EMO_KRIZE"
+}`
+                },
+                {
+                  role: "user",
+                  content: `Karta části "${card.partName}" (status: ${card.status}, klastr: ${card.cluster || "neuvedeno"}):\n\n${card.rawContent.slice(0, 8000)}`
+                }
+              ],
+            }),
+          });
+
+          if (aiResp.ok) {
+            const aiData = await aiResp.json();
+            let rawContent = aiData.choices?.[0]?.message?.content || "";
+            // Strip markdown code fences if present
+            rawContent = rawContent.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
+            
+            const episode = JSON.parse(rawContent);
+            const { error: epErr } = await sb.from("karel_episodes").insert({
+              user_id: user.id,
+              domain: "DID",
+              participants: episode.participants || [card.partName],
+              hana_state: episode.hana_state || "EMO_KLIDNA",
+              summary_karel: episode.summary_karel || `Bootstrap karta: ${card.partName}`,
+              summary_user: episode.summary_user || "",
+              derived_facts: episode.derived_facts || [],
+              tags: [...(episode.tags || []), "bootstrap", "karta"],
+              emotional_intensity: episode.emotional_intensity || 3,
+              outcome: `Bootstrap import z kartotéky (${card.status})`,
+              reasoning_notes: `Automaticky generováno z karty ${card.partName} při bootstrapu.`,
+              source_conversation_id: `bootstrap_${card.partName.toLowerCase()}`,
+              actions_taken: ["bootstrap_card_import"],
+            });
+            if (epErr) console.error(`[bootstrap] Episode insert error for ${card.partName}:`, epErr);
+            else episodeOk = true;
+          } else {
+            console.error(`[bootstrap] AI error for ${card.partName}: ${aiResp.status}`);
+          }
+        } catch (aiErr) {
+          console.error(`[bootstrap] Episode generation error for ${card.partName}:`, aiErr);
+        }
+      }
+
       return new Response(JSON.stringify({
         partName: card.partName,
         status: card.status,
         registryOk: !regErr,
         entityOk: !entErr,
+        episodeOk,
         metadata: {
           age: card.age,
           cluster: card.cluster,
