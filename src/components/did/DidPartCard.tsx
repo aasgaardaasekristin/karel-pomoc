@@ -176,6 +176,18 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
           </div>
         )}
 
+        {/* Last contact / session state */}
+        {summary["POSLEDNI_KONTAKT"] && (
+          <div className="bg-card border border-border/60 rounded-xl p-4 space-y-2 shadow-[0_1px_3px_hsl(var(--foreground)/0.04)]">
+            <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3 h-3 text-primary/70" /> Poslední kontakt
+            </h3>
+            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
+              <ReactMarkdown>{summary["POSLEDNI_KONTAKT"]}</ReactMarkdown>
+            </div>
+          </div>
+        )}
+
         {/* Therapeutic profile */}
         {summary["TERAPEUTICKÝ_PROFIL"] && (
           <div className="bg-card border border-border/60 rounded-xl p-4 space-y-2 shadow-[0_1px_3px_hsl(var(--foreground)/0.04)]">
