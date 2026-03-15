@@ -125,6 +125,7 @@ const Chat = () => {
   const [liveSessionStarted, setLiveSessionStarted] = useState(false);
   const [sessionReport, setSessionReport] = useState<string | null>(null);
   const [clientCaseSummary, setClientCaseSummary] = useState<string | null>(null);
+  const didContextPrime = useDidContextPrime();
 
   // Reset live session state when switching clients
   useEffect(() => {
