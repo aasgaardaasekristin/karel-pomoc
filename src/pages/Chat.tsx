@@ -193,6 +193,7 @@ const Chat = () => {
   const [isEnrichingContext, setIsEnrichingContext] = useState(false);
   const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
   const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
+  const [didLiveSession, setDidLiveSession] = useState<{ partName: string; therapistName: string } | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
