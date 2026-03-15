@@ -282,8 +282,10 @@ serve(async (req) => {
 
       if (entErr) console.error(`[bootstrap] Entity upsert error for ${card.partName}:`, entErr);
 
-      // Generate episode from card content using AI
+      // Generate episode + relations from card content using AI
       let episodeOk = false;
+      let relationsOk = false;
+      let relationsCount = 0;
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
       if (LOVABLE_API_KEY && card.rawContent.length > 50) {
         try {
@@ -298,17 +300,31 @@ serve(async (req) => {
               messages: [
                 {
                   role: "system",
-                  content: `Jsi Karel, supervizní AI pro DID systém. Z obsahu karty části vygeneruj strukturovanou epizodu.
+                  content: `Jsi Karel, supervizní AI pro DID systém. Z obsahu karty části vygeneruj:
+1) Strukturovanou epizodu
+2) Sémantické vztahy k jiným částem/osobám zmíněným v kartě
+
 Odpověz POUZE jako JSON objekt (bez markdown):
 {
-  "summary_karel": "stručné shrnutí klíčových informací o části (2-3 věty)",
-  "summary_user": "co je důležité vědět pro terapeuty (2-3 věty)",
-  "derived_facts": ["fakt1", "fakt2", ...max 5],
-  "tags": ["tag1", "tag2", ...max 5],
-  "emotional_intensity": číslo 1-5,
-  "participants": ["jméno části"],
-  "hana_state": "EMO_KLIDNA nebo EMO_AKTIVNI nebo EMO_KRIZE"
-}`
+  "episode": {
+    "summary_karel": "stručné shrnutí klíčových informací o části (2-3 věty)",
+    "summary_user": "co je důležité vědět pro terapeuty (2-3 věty)",
+    "derived_facts": ["fakt1", "fakt2", ...max 5],
+    "tags": ["tag1", "tag2", ...max 5],
+    "emotional_intensity": číslo 1-5,
+    "participants": ["jméno části"],
+    "hana_state": "EMO_KLIDNA nebo EMO_AKTIVNI nebo EMO_KRIZE"
+  },
+  "relations": [
+    {
+      "target_name": "jméno druhé části/osoby",
+      "relation": "typ vztahu (chrání, bojí_se, spolupracuje_s, konflikt_s, ochranitel, trigger, sourozenci, sdílí_klastr, ...)",
+      "description": "krátký popis vztahu (1 věta)",
+      "confidence": číslo 0.3-1.0
+    }
+  ]
+}
+Pokud karta nezmiňuje žádné vztahy, vrať prázdné pole relations.`
                 },
                 {
                   role: "user",
@@ -321,10 +337,13 @@ Odpověz POUZE jako JSON objekt (bez markdown):
           if (aiResp.ok) {
             const aiData = await aiResp.json();
             let rawContent = aiData.choices?.[0]?.message?.content || "";
-            // Strip markdown code fences if present
             rawContent = rawContent.replace(/^```json?\s*/i, "").replace(/\s*```$/i, "").trim();
             
-            const episode = JSON.parse(rawContent);
+            const parsed = JSON.parse(rawContent);
+            const episode = parsed.episode || parsed;
+            const relations = parsed.relations || [];
+
+            // Insert episode
             const { error: epErr } = await sb.from("karel_episodes").insert({
               user_id: user.id,
               domain: "DID",
@@ -342,11 +361,35 @@ Odpověz POUZE jako JSON objekt (bez markdown):
             });
             if (epErr) console.error(`[bootstrap] Episode insert error for ${card.partName}:`, epErr);
             else episodeOk = true;
+
+            // Insert relations
+            if (Array.isArray(relations) && relations.length > 0) {
+              const subjectId = `did_cast_${card.partName.toLowerCase().replace(/\s+/g, "_")}`;
+              let relOkCount = 0;
+              for (const rel of relations.slice(0, 10)) {
+                if (!rel.target_name || !rel.relation) continue;
+                const objectId = `did_cast_${rel.target_name.toLowerCase().replace(/\s+/g, "_")}`;
+                const { error: relErr } = await sb.from("karel_semantic_relations").upsert({
+                  user_id: user.id,
+                  subject_id: subjectId,
+                  relation: rel.relation,
+                  object_id: objectId,
+                  description: rel.description || "",
+                  confidence: Math.min(1, Math.max(0.1, rel.confidence || 0.5)),
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: "subject_id,relation,object_id" });
+                if (relErr) console.error(`[bootstrap] Relation error ${card.partName}->${rel.target_name}:`, relErr);
+                else relOkCount++;
+              }
+              relationsCount = relOkCount;
+              relationsOk = relOkCount > 0;
+              console.log(`[bootstrap] ${card.partName}: ${relOkCount} relations created`);
+            }
           } else {
             console.error(`[bootstrap] AI error for ${card.partName}: ${aiResp.status}`);
           }
         } catch (aiErr) {
-          console.error(`[bootstrap] Episode generation error for ${card.partName}:`, aiErr);
+          console.error(`[bootstrap] AI generation error for ${card.partName}:`, aiErr);
         }
       }
 
@@ -356,6 +399,8 @@ Odpověz POUZE jako JSON objekt (bez markdown):
         registryOk: !regErr,
         entityOk: !entErr,
         episodeOk,
+        relationsOk,
+        relationsCount,
         metadata: {
           age: card.age,
           cluster: card.cluster,
