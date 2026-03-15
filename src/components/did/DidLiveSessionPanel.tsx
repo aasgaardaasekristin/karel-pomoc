@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
@@ -198,7 +199,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     }
   };
 
-  // End session
+  // End session — generate analysis + save to did_part_sessions
   const handleEndSession = async () => {
     if (messages.length < 2) {
       toast.error("Sezení je prázdné.");
@@ -207,6 +208,48 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     setIsFinishing(true);
     try {
       const headers = await getAuthHeaders();
+
+      // Collect all audio analysis messages
+      const audioAnalyses = messages
+        .filter(m => m.role === "assistant" && messages[messages.indexOf(m) - 1]?.content?.includes("🎙️"))
+        .map(m => m.content);
+
+      // Build finalization prompt
+      const finalizationPrompt = `Sezení s částí "${partName}" (terapeutka: ${therapistName}) právě skončilo. 
+
+CELÝ PRŮBĚH SEZENÍ:
+${messages.map(m => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`).join("\n")}
+
+${audioAnalyses.length > 0 ? `AUDIO ANALÝZY ZE SEZENÍ:\n${audioAnalyses.join("\n---\n")}` : ""}
+
+VYGENERUJ STRUKTUROVANOU ANALÝZU v tomto formátu:
+
+## ZÁPIS_SEZENÍ
+Profesionální klinický zápis (co se dělo, jak část reagovala, klíčové momenty).
+
+## STAV_ČÁSTI
+Jak na tom část byla — emoční stav, ochota spolupracovat, případná regrese nebo posun.
+
+## POUŽITÉ_METODY
+Seznam metod/technik které se během sezení použily (každá na řádek).
+
+## EFEKTIVITA_METOD
+Pro každou metodu: fungovala (✅), částečně (⚠️), nefungovala (❌) + krátké vysvětlení.
+
+## FEEDBACK_TERAPEUT
+Karlovo hodnocení práce ${therapistName} — co udělala dobře, co příště zlepšit, konkrétní rady.
+
+## ÚKOLY
+Konkrétní úkoly pro tým (kdo, co, kdy):
+- Pro ${therapistName}: ...
+- Pro druhou terapeutku: ...
+- Pro Karla: ...
+
+## DOPORUČENÍ_PŘÍŠTĚ
+Co dělat na příštím sezení, jaké metody zkusit, na co si dát pozor.
+
+Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
         {
@@ -215,7 +258,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
           body: JSON.stringify({
             messages: [
               ...messages,
-              { role: "user", content: `Sezení s ${partName} skončilo. Shrň prosím: co se povedlo, co pozorovat příště, a jaký je tvůj dojem ze stavu ${partName}. Formát: stručný profesionální zápis.` },
+              { role: "user", content: finalizationPrompt },
             ],
             mode: "supervision",
             didInitialContext: buildContext(),
@@ -252,6 +295,61 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
         }
       }
 
+      // Parse methods from report
+      const methodsMatch = report.match(/## POUŽITÉ_METODY\n([\s\S]*?)(?=\n## |$)/);
+      const methodsUsed = methodsMatch
+        ? methodsMatch[1].split("\n").map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean)
+        : [];
+
+      // Parse effectiveness
+      const effMatch = report.match(/## EFEKTIVITA_METOD\n([\s\S]*?)(?=\n## |$)/);
+      const effectiveness: Record<string, string> = {};
+      if (effMatch) {
+        effMatch[1].split("\n").filter(l => l.trim()).forEach(l => {
+          const clean = l.replace(/^[-•*]\s*/, "").trim();
+          if (clean.includes("✅")) effectiveness[clean.split("✅")[0].trim()] = "effective";
+          else if (clean.includes("⚠️")) effectiveness[clean.split("⚠️")[0].trim()] = "partial";
+          else if (clean.includes("❌")) effectiveness[clean.split("❌")[0].trim()] = "ineffective";
+        });
+      }
+
+      // Parse therapist feedback
+      const feedbackMatch = report.match(/## FEEDBACK_TERAPEUT\n([\s\S]*?)(?=\n## |$)/);
+      const therapistFeedback = feedbackMatch ? feedbackMatch[1].trim() : "";
+
+      // Parse tasks
+      const tasksMatch = report.match(/## ÚKOLY\n([\s\S]*?)(?=\n## |$)/);
+      const tasksText = tasksMatch ? tasksMatch[1].trim() : "";
+      const tasksList = tasksText.split("\n").map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
+
+      // Save to did_part_sessions
+      try {
+        await supabase.from("did_part_sessions").insert({
+          part_name: partName,
+          therapist: therapistName,
+          session_type: "live",
+          ai_analysis: report,
+          methods_used: methodsUsed,
+          methods_effectiveness: effectiveness,
+          tasks_assigned: tasksList,
+          audio_analysis: audioAnalyses.join("\n---\n") || "",
+          karel_notes: report,
+          karel_therapist_feedback: therapistFeedback,
+        });
+        console.log("Session saved to did_part_sessions");
+      } catch (saveErr) {
+        console.error("Failed to save session:", saveErr);
+      }
+
+      // Update part registry with latest contact
+      try {
+        await supabase.from("did_part_registry").update({
+          last_seen_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }).eq("part_name", partName);
+      } catch {}
+
+      toast.success("Sezení uloženo a analyzováno");
       onEnd(report || "Zápis nebyl vygenerován.");
     } catch (error) {
       console.error("DID Live session finalize error:", error);
@@ -286,7 +384,7 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
             className="gap-1.5 text-xs h-9 shrink-0"
           >
             {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Ukončit sezení</span>
+            <span className="hidden sm:inline">Ukončit a analyzovat</span>
             <span className="sm:hidden">Ukončit</span>
           </Button>
         </div>
@@ -393,8 +491,8 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
           <div className="text-center space-y-4 p-8 max-w-sm">
             <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
             <div>
-              <p className="text-sm font-semibold text-foreground">Karel zpracovává DID sezení…</p>
-              <p className="text-xs text-muted-foreground mt-1">Generuji zápis, pozorování a doporučení pro další práci s {partName}.</p>
+              <p className="text-sm font-semibold text-foreground">Karel analyzuje sezení a ukládá do karty…</p>
+              <p className="text-xs text-muted-foreground mt-1">Generuji klinický zápis, hodnotím metody, zapisuji úkoly a zpětnou vazbu pro {therapistName}.</p>
             </div>
           </div>
         </div>
