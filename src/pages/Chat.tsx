@@ -1640,6 +1640,10 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             therapistName={didLiveSession.therapistName}
             onStartLiveSession={() => setDidLiveSessionReady(true)}
             onContextLoaded={(ctx) => setDidLivePartContext(ctx)}
+            onBack={() => {
+              setDidLiveSession(null);
+              setDidLiveSessionReady(false);
+            }}
           />
         );
       }
