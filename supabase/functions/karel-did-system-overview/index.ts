@@ -72,6 +72,11 @@ function sanitizeOverviewText(text: string): string {
     .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
     .replace(/\bHano\b/gi, "Haničko")
     .replace(/\b(redistribuc(e|i|í)|integra(c|č)e poznatk(ů|u)|situační cache|stav systému podle registru)\b/gi, "")
+    // Strip hallucinated stability/health scores
+    .replace(/stabilit(a|y|u|ou)\s*:?\s*\d+\s*\/\s*\d+/gi, "")
+    .replace(/\d+\s*\/\s*10/g, "")
+    .replace(/emoční intenzit(a|y|u)\s*:?\s*\d+/gi, "")
+    .replace(/zdraví karty\s*:?\s*\d+\s*%?/gi, "")
     .replace(/\n{3,}/g, "\n\n");
 }
 
