@@ -1,0 +1,1 @@
+DELETE FROM did_therapist_tasks WHERE status != 'done';
