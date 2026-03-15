@@ -123,6 +123,16 @@ ${episodeSummaries || "(žádné)"}
 AKTIVNÍ ÚKOLY:
 ${taskList || "(žádné)"}
 
+MASTER PLAN SYSTÉMU (celkové cíle a kontext):
+${systemProfile ? `Identita systému: ${(systemProfile.system_identity || "").slice(0, 300)}
+Vnitřní svět: ${(systemProfile.inner_world_description || "").slice(0, 300)}
+Vzdělávání: ${(systemProfile.education_context || "").slice(0, 200)}
+Celkové cíle (krátké): ${(systemProfile.goals_short_term || []).join("; ")}
+Celkové cíle (střední): ${(systemProfile.goals_mid_term || []).join("; ")}
+Celkové cíle (dlouhodobé): ${(systemProfile.goals_long_term || []).join("; ")}
+Příspěvek této části: ${JSON.stringify((systemProfile.part_contributions || {})[partName] || "(nedefinováno)")}
+Integrační strategie: ${(systemProfile.integration_strategy || "").slice(0, 300)}` : "(Master Plan zatím nebyl vygenerován)"}
+
 GENERUJ PŘESNĚ TENTO FORMÁT (v češtině, osobně, angažovaně, jako manažer a terapeut):
 
 ## KARLOVO_SHRNUTÍ
