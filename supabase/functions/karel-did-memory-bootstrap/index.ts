@@ -107,9 +107,32 @@ interface ParsedCard {
 }
 
 function parseCardContent(content: string, fileName: string, folderLabel: string): ParsedCard {
-  // Extract part name from filename (e.g., "028_ARTUR" → "Artur")
-  const nameMatch = fileName.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d+_?/, "");
-  const partName = nameMatch.charAt(0).toUpperCase() + nameMatch.slice(1).toLowerCase();
+  // Extract part name from various naming patterns:
+  // "028_ARTUR" → "Artur"
+  // "Karta - Johann Ryba" → "Johann Ryba"
+  // "DID_003_Karta_části_Tundrupek" → "Tundrupek"
+  let partName = fileName;
+  
+  // Remove file extension
+  partName = partName.replace(/\.(txt|md|doc|docx)$/i, "");
+  
+  // Pattern: "Karta - Name" or "Karta -Name"
+  const kartaDashMatch = partName.match(/[Kk]arta\s*[-–—]\s*(.+)/);
+  if (kartaDashMatch) {
+    partName = kartaDashMatch[1].trim();
+  }
+  // Pattern: "DID_NNN_Karta_části_Name"
+  else if (/DID_\d+_Karta/i.test(partName)) {
+    partName = partName.replace(/^DID_\d+_Karta_[čc]ásti_?/i, "").replace(/_/g, " ").trim();
+  }
+  // Pattern: "028_ARTUR" (numbered folder)
+  else {
+    partName = partName.replace(/^\d+_?/, "");
+  }
+  
+  // Capitalize first letter
+  if (partName.length > 0) {
+    partName = partName.charAt(0).toUpperCase() + partName.slice(1);
 
   const card: ParsedCard = {
     partName,
