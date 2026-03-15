@@ -608,6 +608,86 @@ export type Database = {
         }
         Relationships: []
       }
+      did_part_sessions: {
+        Row: {
+          ai_analysis: string | null
+          audio_analysis: string | null
+          created_at: string
+          id: string
+          image_analysis: string | null
+          karel_notes: string | null
+          karel_therapist_feedback: string | null
+          long_term_goals: string[] | null
+          methods_effectiveness: Json | null
+          methods_used: string[] | null
+          mid_term_goals: string[] | null
+          part_name: string
+          session_date: string
+          session_type: string
+          short_term_goals: string[] | null
+          tasks_assigned: Json | null
+          tasks_outcomes: Json | null
+          therapist: string
+          thread_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: string | null
+          audio_analysis?: string | null
+          created_at?: string
+          id?: string
+          image_analysis?: string | null
+          karel_notes?: string | null
+          karel_therapist_feedback?: string | null
+          long_term_goals?: string[] | null
+          methods_effectiveness?: Json | null
+          methods_used?: string[] | null
+          mid_term_goals?: string[] | null
+          part_name: string
+          session_date?: string
+          session_type?: string
+          short_term_goals?: string[] | null
+          tasks_assigned?: Json | null
+          tasks_outcomes?: Json | null
+          therapist?: string
+          thread_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          ai_analysis?: string | null
+          audio_analysis?: string | null
+          created_at?: string
+          id?: string
+          image_analysis?: string | null
+          karel_notes?: string | null
+          karel_therapist_feedback?: string | null
+          long_term_goals?: string[] | null
+          methods_effectiveness?: Json | null
+          methods_used?: string[] | null
+          mid_term_goals?: string[] | null
+          part_name?: string
+          session_date?: string
+          session_type?: string
+          short_term_goals?: string[] | null
+          tasks_assigned?: Json | null
+          tasks_outcomes?: Json | null
+          therapist?: string
+          thread_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_part_sessions_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "did_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_pending_drive_writes: {
         Row: {
           content: string
