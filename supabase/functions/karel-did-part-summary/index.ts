@@ -126,6 +126,14 @@ GENERUJ PŘESNĚ TENTO FORMÁT (v češtině, osobně, angažovaně, jako manaž
 ## KARLOVO_SHRNUTÍ
 Dvě věty: 1) Kdo to je (fragment/část čeho, koho, jak starý, spí/nespí). 2) Aktuální stav, s čím se potýká, co vím z posledních sezení.
 
+## POSLEDNI_KONTAKT
+Stručně popiš:
+- Kdy naposledy s touto částí někdo mluvil (datum, kdo — Hanka/Káťa/Karel)
+- V jakém stavu tehdy byl/a (emoce, nálada, ochota spolupracovat, téma rozhovoru)
+- Jak se sezení vyvíjelo (otevřel/a se? stáhl/a se? byl/a agresivní? klidný/á?)
+- Co z toho vyplynulo (posun, stagnace, nový poznatek)
+Pokud nemáš data, napiš upřímně: „Zatím nemám záznam o přímém kontaktu."
+
 ## TERAPEUTICKÝ_PROFIL
 - Jak se s ním/ní musí jednat
 - Komu důvěřuje (Hanka/Káťa/Karel/nikdo)
