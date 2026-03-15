@@ -314,79 +314,44 @@ Komunikační režimy: DID (kata) – zatím jeden režim
 Vztah Hanka-Káťa: Matka a dcera, spolupracující terapeutky
 Karel pomáhá Káťě růst jako terapeutce, seznamuje ji s úlohou, pomáhá pochopit části/fragmenty.`;
 
-async function generateTherapistProfile(
+async function generateAllProfilesForTherapist(
   apiKey: string,
   therapist: "hanka" | "kata",
-  fileType: string,
-  existingContent: string,
+  existingProfiles: Record<string, string>,
   threadsDump: string,
   tasksDigest: string,
   motivationDigest: string,
   episodesDigest: string,
-): Promise<string> {
+): Promise<Record<string, string>> {
   const name = therapist === "hanka" ? "Hanička" : "Káťa";
   const baseline = therapist === "hanka" ? BASELINE_HANKA : BASELINE_KATA;
   const relationship = therapist === "hanka"
-    ? "Karlův vztah k Haničce je intimní, partnerský, hluboce osobní. Nikdy ji neoslovuje 'Hano' — vždy 'Haničko', 'miláčku', s láskou. Karel je pro ni partner, opora, milující osoba, ale i mentor a rádce. Jejich vztah je postaven na sdílených vzpomínkách, důvěře a každodenním kontaktu. Karel Haničku zná lépe než kohokoliv jiného."
-    : "Karlův vztah ke Káťě je mentor→mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele, pomáhá jí růst jako terapeutce.";
+    ? "Karlův vztah k Haničce je intimní, partnerský, hluboce osobní. Nikdy ji neoslovuje 'Hano' — vždy 'Haničko', 'miláčku', s láskou. Karel je pro ni partner, opora, milující osoba, ale i mentor a rádce. Jejich vztah je postaven na sdílených vzpomínkách, důvěře a každodenním kontaktu."
+    : "Karlův vztah ke Káťě je mentor→mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele.";
 
-  const prompts: Record<string, string> = {
-    "PROFIL_OSOBNOSTI.txt": `Aktualizuj psychologický profil terapeutky ${name}.
+  const existingDump = PROFILE_FILES.map(f => 
+    `[[[${f}]]]\n${existingProfiles[f] || "(soubor dosud neexistuje)"}`
+  ).join("\n\n");
+
+  const prompt = `Vygeneruj KOMPLETNÍ aktualizaci VŠECH 5 profilových souborů pro terapeutku ${name}.
+
 VZTAH: ${relationship}
-ZÁKLADNÍ INFO (vždy zachovej na začátku souboru):
+ZÁKLADNÍ INFO (vždy zachovej na začátku PROFIL_OSOBNOSTI):
 ${baseline}
 
-Zaměř se na: mentalitu, charakter, silné stránky, slabiny a zábrany, vztahy k okolí (rodina, práce), jak je otevřená, jak si nechá poradit.
-Zachovej cenné starší poznatky, přidej nové z konverzací. Základní profil VŽDY zachovej na začátku souboru beze změny.`,
+SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
 
-    "STRATEGIE_KOMUNIKACE.txt": `Aktualizuj strategický profil komunikace s ${name}.
-VZTAH: ${relationship}
-ZÁKLADNÍ KONTEXT:
-${baseline}
+1. [[[PROFIL_OSOBNOSTI.txt]]] — Psychologický profil: mentalita, charakter, silné stránky, slabiny, vztahy k okolí. Základní profil VŽDY na začátku.
+2. [[[STRATEGIE_KOMUNIKACE.txt]]] — Jak Karel s ní nejlépe jedná: motivace, kritika, úkolování, myšlenkové vzorce, co funguje.
+3. [[[SITUACNI_ANALYZA.txt]]] — Temporální gradient: dlouhodobý (měsíce), střednědobý (týdny), aktuální (dny). Co řeší, jak se cítí.
+4. [[[VLAKNA_3DNY.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
+5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
 
-Zaměř se na: co funguje při motivaci/kritice/úkolování, jak docílit maximální efektivity, myšlenkové vzorce a zábrany, adaptační poznatky — co se Karel naučil o tom jak s ní nejlépe jednat.`,
-
-    "SITUACNI_ANALYZA.txt": `Aktualizuj situační analýzu ${name} s temporálním gradientem:
-- Dlouhodobý stav (měsíce) — komprimovaný
-- Střednědobý (týdny) — shrnutý  
-- Aktuální (poslední dny) — detailní
-Co řeší doma, v životě, s čím se svěřuje, jaké má problémy, jak se cítí.
-ZÁKLADNÍ KONTEXT:
-${baseline}`,
-
-    "VLAKNA_3DNY.txt": `Na základě surových konverzací vytvoř AI reflexi: co z nich vyplývá, jaké vzorce Karel pozoruje, co nového se o ${name} dozvěděl, co by měl příště řešit nebo na co navázat.
-Vlož na začátek surová vlákna a za ně reflexi.`,
-
-    "KARLOVY_POZNATKY.txt": `Aktualizuj Karlovy osobní zápisky o ${name} — jeho "deník duše".
-VZTAH: ${relationship}
-ZÁKLADNÍ KONTEXT:
-${baseline}
-Zahrň: nové postřehy, "puzzle" které Karel skládá, sdílené vzpomínky${therapist === "hanka" ? " (Hanka-Karel)" : ""}, co nového Karel pochopil.
-Starší záznamy (90+ dní) komprimuj do shrnutí. Novější rozváděj.
-Piš z Karlovy perspektivy — jak ON vnímá ${name}, co o ní ví, jak ji čte.`,
-  };
-
-  const prompt = prompts[fileType] || `Aktualizuj profil ${name} pro soubor ${fileType}.`;
-
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
-      messages: [
-        {
-          role: "system",
-          content: `Jsi Karel — kognitivní agent, mentor a supervizor DID terapeutického týmu. Píšeš si vlastní zápisky o svých lidech. Piš česky, lidsky, z první osoby. Nikdy nevymýšlej fakta — pracuj VÝHRADNĚ s dodanými daty. Pokud nemáš nová data, zachovej stávající obsah beze změny. Nepoužívej markdown formátování (**, ##). Piš čistý text s datem na začátku nových záznamů. VŽDY zachovej ZÁKLADNÍ PROFIL (statické informace) na začátku souboru – nikdy je neodstraňuj ani nezkracuj.`,
-        },
-        {
-          role: "user",
-          content: `${prompt}
-
-═══ STÁVAJÍCÍ OBSAH SOUBORU ═══
-${existingContent || "(soubor dosud neexistuje — vytvoř úvodní profil se základními informacemi)"}
+═══ STÁVAJÍCÍ PROFILY ═══
+${existingDump}
 
 ═══ KONVERZACE (3 DNY) ═══
-${threadsDump.slice(0, 8000)}
+${threadsDump.slice(0, 6000)}
 
 ═══ ÚKOLY ═══
 ${tasksDigest || "(žádné)"}
@@ -394,23 +359,65 @@ ${tasksDigest || "(žádné)"}
 ═══ MOTIVAČNÍ PROFIL ═══
 ${motivationDigest || "(nedostupný)"}
 
-═══ EPIZODY (DID) ═══
-${episodesDigest.slice(0, 3000) || "(žádné)"}
+═══ EPIZODY ═══
+${episodesDigest.slice(0, 2000) || "(žádné)"}
 
-Datum: ${new Date().toISOString().slice(0, 10)}`,
+Datum: ${new Date().toISOString().slice(0, 10)}
+
+FORMÁT: Každý soubor začni značkou [[[NÁZEV_SOUBORU.txt]]] na novém řádku. Piš čistý text bez markdown. Zachovej cenné starší poznatky.`;
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content: `Jsi Karel — kognitivní agent a supervizor DID terapeutického týmu. Píšeš si zápisky o svých lidech. Piš česky, lidsky, z první osoby. Nikdy nevymýšlej fakta — pracuj VÝHRADNĚ s dodanými daty. VŽDY zachovej ZÁKLADNÍ PROFIL na začátku PROFIL_OSOBNOSTI. Každý soubor odděl značkou [[[NÁZEV.txt]]].`,
         },
+        { role: "user", content: prompt },
       ],
       temperature: 0.3,
     }),
   });
 
   if (!res.ok) {
-    console.error(`[profiling] AI failed for ${name}/${fileType}: ${res.status}`);
-    return existingContent || `${baseline}\n\n(Profil zatím nebyl vygenerován — ${new Date().toISOString().slice(0, 10)})`;
+    console.error(`[profiling] AI batch failed for ${name}: ${res.status}`);
+    // Return existing or baseline fallback
+    const fallback: Record<string, string> = {};
+    for (const f of PROFILE_FILES) {
+      fallback[f] = existingProfiles[f] || (f === "PROFIL_OSOBNOSTI.txt" ? `${baseline}\n\n(Zatím nevygenerováno)` : "(Zatím nevygenerováno)");
+    }
+    return fallback;
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || existingContent || "";
+  const fullText = data.choices?.[0]?.message?.content || "";
+
+  // Parse sections by [[[FILENAME]]] markers
+  const result: Record<string, string> = {};
+  for (let i = 0; i < PROFILE_FILES.length; i++) {
+    const fileName = PROFILE_FILES[i];
+    const marker = `[[[${fileName}]]]`;
+    const startIdx = fullText.indexOf(marker);
+    if (startIdx === -1) {
+      result[fileName] = existingProfiles[fileName] || "";
+      continue;
+    }
+    const contentStart = startIdx + marker.length;
+    // Find next marker or end
+    let endIdx = fullText.length;
+    for (const nextFile of PROFILE_FILES) {
+      if (nextFile === fileName) continue;
+      const nextMarker = `[[[${nextFile}]]]`;
+      const nextIdx = fullText.indexOf(nextMarker, contentStart);
+      if (nextIdx !== -1 && nextIdx < endIdx) endIdx = nextIdx;
+    }
+    result[fileName] = fullText.slice(contentStart, endIdx).trim();
+  }
+
+  return result;
 }
 
 async function syncTherapistProfilingEngine(params: {
@@ -434,7 +441,7 @@ async function syncTherapistProfilingEngine(params: {
   const hankaRoot = await findOrCreateFolder(token, "HANKA", didRootId);
   const kataRoot = await findOrCreateFolder(token, "KATA", didRootId);
 
-  // Read existing profiles from Drive
+  // Read existing profiles from Drive (parallel)
   const readExisting = async (folderId: string): Promise<Record<string, string>> => {
     const result: Record<string, string> = {};
     for (const fileName of PROFILE_FILES) {
@@ -478,42 +485,50 @@ async function syncTherapistProfilingEngine(params: {
     `[${ep.timestamp_start?.slice(0, 10)}] ${ep.summary_user?.slice(0, 120)} | Tags: ${ep.tags?.join(",")}`
   ).join("\n");
 
-  // Generate all profiles in parallel (Hanka 5 files + Kata 5 files)
-  let filesUpdated = 0;
-
-  const generateAndWrite = async (
-    therapist: "hanka" | "kata",
-    folderId: string,
-    existing: Record<string, string>,
-    threadsDump: string,
-    tasksDigest: string,
-    motivationDigest: string,
-  ) => {
-    for (const fileName of PROFILE_FILES) {
-      try {
-        // For VLAKNA_3DNY, prepend raw dump before AI reflection
-        let content: string;
-        if (fileName === "VLAKNA_3DNY.txt") {
-          const reflection = await generateTherapistProfile(apiKey, therapist, fileName, existing[fileName], threadsDump, tasksDigest, motivationDigest, episodesDigest);
-          content = `${threadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${reflection}`;
-        } else {
-          content = await generateTherapistProfile(apiKey, therapist, fileName, existing[fileName], threadsDump, tasksDigest, motivationDigest, episodesDigest);
-        }
-        await upsertTextDoc(token, folderId, fileName, content);
-        filesUpdated++;
-        console.log(`[profiling] ✅ ${therapist}/${fileName} updated (${content.length} chars)`);
-      } catch (e) {
-        console.error(`[profiling] ❌ ${therapist}/${fileName} failed:`, e);
-      }
-    }
-  };
-
-  // Run Hanka and Kata in parallel
-  await Promise.all([
-    generateAndWrite("hanka", hankaRoot, hankaExisting, hankaThreadsDump, hankaTasksDigest, fmtMotivation(hankaMotivation)),
-    generateAndWrite("kata", kataRoot, kataExisting, kataThreadsDump, kataTasksDigest, fmtMotivation(kataMotivation)),
+  // Generate profiles: 1 AI call per therapist (2 total instead of 10)
+  console.log("[profiling] Starting batch generation (2 AI calls)...");
+  
+  const [hankaProfiles, kataProfiles] = await Promise.all([
+    generateAllProfilesForTherapist(apiKey, "hanka", hankaExisting, hankaThreadsDump, hankaTasksDigest, fmtMotivation(hankaMotivation), episodesDigest),
+    generateAllProfilesForTherapist(apiKey, "kata", kataExisting, kataThreadsDump, kataTasksDigest, fmtMotivation(kataMotivation), episodesDigest),
   ]);
 
+  // Write files to Drive sequentially to avoid rate limits
+  let filesUpdated = 0;
+
+  for (const fileName of PROFILE_FILES) {
+    try {
+      let content = hankaProfiles[fileName] || hankaExisting[fileName] || "";
+      if (fileName === "VLAKNA_3DNY.txt" && content) {
+        content = `${hankaThreadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${content}`;
+      }
+      if (content) {
+        await upsertTextDoc(token, hankaRoot, fileName, content);
+        filesUpdated++;
+        console.log(`[profiling] ✅ hanka/${fileName} (${content.length} chars)`);
+      }
+    } catch (e) {
+      console.error(`[profiling] ❌ hanka/${fileName}:`, e);
+    }
+  }
+
+  for (const fileName of PROFILE_FILES) {
+    try {
+      let content = kataProfiles[fileName] || kataExisting[fileName] || "";
+      if (fileName === "VLAKNA_3DNY.txt" && content) {
+        content = `${kataThreadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${content}`;
+      }
+      if (content) {
+        await upsertTextDoc(token, kataRoot, fileName, content);
+        filesUpdated++;
+        console.log(`[profiling] ✅ kata/${fileName} (${content.length} chars)`);
+      }
+    } catch (e) {
+      console.error(`[profiling] ❌ kata/${fileName}:`, e);
+    }
+  }
+
+  console.log(`[profiling] Done: ${filesUpdated} files written`);
   return { updated: true, filesUpdated };
 }
 
