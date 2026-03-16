@@ -348,21 +348,29 @@ const HanaChat = () => {
 
     const releaseMirrorLock = () => {
       setIsMirroring(false);
-      isMirroringRef.current = false;
+      // 60s cooldown before allowing another run
+      setTimeout(() => { isMirroringRef.current = false; }, 60_000);
     };
 
     const callMirror = async (body: Record<string, any>) => {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-        method: "POST",
-        headers: {
-          ...(await getAuthHeaders()),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
-      return payload;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 55_000);
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+          method: "POST",
+          headers: {
+            ...(await getAuthHeaders()),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        return payload;
+      } finally {
+        clearTimeout(timeout);
+      }
     };
 
     try {
@@ -376,7 +384,7 @@ const HanaChat = () => {
       }
 
       if (!initData.jobId) {
-        toast.error("Nepodařilo se vytvořit job.");
+        toast.error(initData.error || "Nepodařilo se vytvořit job.");
         releaseMirrorLock();
         return;
       }
@@ -385,6 +393,7 @@ const HanaChat = () => {
       toast.success("Job vytvořen, spouštím analýzu...");
 
       // Step 2: Drive all phases via "continue" calls
+      let consecutiveErrors = 0;
       for (let i = 0; i < 120; i++) {
         if (i > 0) {
           await new Promise((r) => setTimeout(r, 2000));
@@ -392,6 +401,7 @@ const HanaChat = () => {
 
         try {
           const step = await callMirror({ mode: "continue", jobId });
+          consecutiveErrors = 0; // reset on success
 
           if (step.status === "done") {
             toast.success(`Zrcadlení dokončeno: ${step.summary?.slice(0, 100) || "OK"}`);
@@ -415,9 +425,20 @@ const HanaChat = () => {
           if (step.phase && i % 3 === 0) {
             console.log(`[mirror] Phase: ${step.phase} | ${step.summary || ""}`);
           }
-        } catch (stepError) {
-          console.error("Mirror step error:", stepError);
-          // On transient error, wait and retry
+        } catch (stepError: any) {
+          consecutiveErrors++;
+          console.error(`Mirror step error (${consecutiveErrors}/5):`, stepError);
+
+          if (stepError?.name === "AbortError") {
+            console.warn("[mirror] Request timed out, retrying...");
+          }
+
+          if (consecutiveErrors >= 5) {
+            toast.error("Příliš mnoho chyb při zrcadlení. Zkus to později.");
+            releaseMirrorLock();
+            return;
+          }
+
           await new Promise((r) => setTimeout(r, 3000));
         }
       }
@@ -425,10 +446,11 @@ const HanaChat = () => {
       // Timeout after 120 iterations (~4 min)
       toast.info("Zrcadlení stále běží na pozadí, spinner uvolňuji.");
       releaseMirrorLock();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Mirror error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
-      releaseMirrorLock();
+      setIsMirroring(false);
+      setTimeout(() => { isMirroringRef.current = false; }, 60_000);
     }
   }, []);
 
