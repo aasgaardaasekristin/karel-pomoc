@@ -156,11 +156,36 @@ Deno.serve(async (req) => {
 
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+  // ── Parse body once ──
+  let reqBody: any = {};
+  try { reqBody = await req.json(); } catch {}
+
+  // ── STATUS CHECK MODE ──
+  if (reqBody.mode === "status") {
+    const uid = reqBody.userId;
+    if (!uid) return new Response(JSON.stringify({ error: "userId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    
+    // Check for most recent mirror job
+    const { data: jobs } = await sb.from("karel_memory_logs")
+      .select("id, log_type, summary, created_at, details")
+      .eq("user_id", uid)
+      .in("log_type", ["mirror_job", "redistribute"])
+      .order("created_at", { ascending: false }).limit(1);
+    
+    const job = jobs?.[0];
+    if (!job) return new Response(JSON.stringify({ status: "idle" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    
+    if (job.log_type === "mirror_job") {
+      // Still processing
+      return new Response(JSON.stringify({ status: "processing", phase: job.summary, startedAt: job.created_at }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    // Completed
+    return new Response(JSON.stringify({ status: "done", summary: job.summary, details: job.details, completedAt: job.created_at }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   let userId: string;
   if (isCronOrService(req)) {
-    let body: any = {};
-    try { body = await req.json(); } catch {}
-    if (body.userId) { userId = body.userId; }
+    if (reqBody.userId) { userId = reqBody.userId; }
     else {
       const { data } = await sb.from("karel_episodes").select("user_id").limit(1);
       userId = data?.[0]?.user_id;
