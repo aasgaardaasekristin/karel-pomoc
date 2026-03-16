@@ -890,11 +890,10 @@ Deno.serve(async (req) => {
     const registry = registryRes.data || [];
     const knownPartNames = registry.map((p: any) => p.part_name || p.display_name);
 
-    // Build thread digests — smart truncation to stay within AI context limits
-    // Edge functions have ~60s timeout, so we cap total data to ~40K chars
-    const MAX_PER_MSG = 800;
-    const MAX_PER_THREAD = 6000;
-    const MAX_TOTAL_THREADS = 40000;
+    // Build thread digests — aggressive truncation to stay under Edge limits
+    const MAX_PER_MSG = 500;
+    const MAX_PER_THREAD = 3000;
+    const MAX_TOTAL_THREADS = 22000;
 
     function buildFullDigest(msgs: any[]): string {
       if (!Array.isArray(msgs) || msgs.length < 1) return "";
@@ -953,15 +952,14 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ status: "ok", summary: "Žádná nová data od posledního zrcadlení." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ═══ PHASE 2: Deep Drive read — ALL documents from ALL folders ═══
-    console.log("[mirror] Phase 2: Reading ALL Drive documents...");
+    // ═══ PHASE 2: Focused Drive read ═══
+    console.log("[mirror] Phase 2: Reading focused Drive documents...");
     const driveContents: Record<string, string> = {};
     let driveDocsRead = 0;
 
     try {
       const token = await getAccessToken();
 
-      // Read all three root folders recursively
       const folderSearches = await Promise.all([
         findFolderFuzzy(token, ["PAMET_KAREL"]),
         findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]),
@@ -969,17 +967,15 @@ Deno.serve(async (req) => {
       ]);
       const [pametId, kartotekaId, zalohaId] = folderSearches;
 
-      const readFolderDocs = async (folderId: string | null, label: string) => {
+      const readFolderDocs = async (folderId: string | null, label: string, limit: number) => {
         if (!folderId) return;
         const allFiles = await listAllFilesRecursive(token, folderId, label);
-        const docFiles = allFiles.filter(f => !f.isFolder);
-        // Read up to 30 docs to stay within time limits
-        const toRead = docFiles.slice(0, 30);
-        for (const doc of toRead) {
+        const docFiles = allFiles.filter((f) => !f.isFolder).slice(0, limit);
+        for (const doc of docFiles) {
           try {
             const content = await readDoc(token, doc.id);
             if (content && content.length > 10) {
-              driveContents[doc.path] = content.slice(0, 4000); // cap per doc
+              driveContents[doc.path] = content.slice(0, 1800);
               driveDocsRead++;
             }
           } catch (e) {
@@ -988,19 +984,17 @@ Deno.serve(async (req) => {
         }
       };
 
-      // Read all 3 folders in sequence (to avoid rate limits)
-      await readFolderDocs(pametId, "PAMET_KAREL");
-      await readFolderDocs(kartotekaId, "KARTOTEKA_DID");
-      await readFolderDocs(zalohaId, "ZALOHA");
+      await readFolderDocs(pametId, "PAMET_KAREL", 8);
+      await readFolderDocs(kartotekaId, "KARTOTEKA_DID", 8);
+      await readFolderDocs(zalohaId, "ZALOHA", 6);
 
       console.log(`[mirror] Phase 2: Read ${driveDocsRead} Drive documents`);
     } catch (driveReadErr) {
       console.error("[mirror] Drive read error (continuing with DB data):", driveReadErr);
     }
 
-    // Build Drive digest for AI (compact)
     const driveDigest = Object.entries(driveContents)
-      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 2000)}`)
+      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 1200)}`)
       .join("\n═══════\n");
 
     // ═══ PHASE 3: AI Pass 1 — Deep extraction of raw facts ═══
@@ -1054,18 +1048,16 @@ Analyzuj HLOUBKOVĚ a vrať JSON:
 
     const pass2System = `Jsi Karel – strategický analytik DID systému. Máš k dispozici:
 1. Surové fakty extrahované z dnešních konverzací
-2. KOMPLETNÍ obsah všech dokumentů na Google Drive
+2. RELEVANTNÍ obsah dokumentů na Google Drive
 
-Tvým úkolem je SYNTÉZA: spojit nové poznatky s existujícími záznamy, najít hlubší vzorce, inferovat skryté souvislosti a navrhnout konkrétní akce.
+Tvým úkolem je rychlá, ale přesná SYNTÉZA: spojit nové poznatky s existujícími záznamy, najít hlubší vzorce, inferovat skryté souvislosti a navrhnout konkrétní akce.
 
 PRAVIDLA:
-- Čti CELÝ obsah Drive dokumentů – ne jen nadpisy, ale i malé poznámky a detaily
+- Upřednostni konkrétní a zapisovatelné výstupy
 - Pokud nový fakt doplňuje existující záznam na Drive, navrhni kam přesně ho zapsat
 - Pokud detekuješ rozpor (něco nového vs. starý záznam), upozorni
 - Pro KAŽDOU novou část vytvoř kompletní kartu s 13 sekcemi (A-M)
-- Navrhuj KONKRÉTNÍ úkoly pro Hanku a/nebo Káťu – ne abstraktní, ale akční
-- Pokud část vykazuje strach/stud/úzkost (i skrytě), navrhni specifickou terapeutickou intervenci
-- Aktualizuj motivační profily terapeutek na základě pozorování`;
+- Navrhuj KONKRÉTNÍ úkoly pro Hanku a/nebo Káťu`;
 
     const pass2Prompt = `═══ SUROVÉ FAKTY Z DNEŠNÍCH KONVERZACÍ ═══
 ${JSON.stringify(pass1Data, null, 1)}
@@ -1076,7 +1068,7 @@ Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ}): ${e.stabilni_vlastnost
 Vzorce: ${patterns.map((p: any) => `${p.id}: ${p.description?.slice(0,60)}`).join("; ")}
 
 ═══ OBSAH DRIVE DOKUMENTŮ (${driveDocsRead} souborů) ═══
-${driveDigest.slice(0, 40000)}
+${driveDigest.slice(0, 16000)}
 
 Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
 {
@@ -1117,7 +1109,7 @@ Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
   "synthesis_summary": "Karlova celková reflexe – co dnes systém prožil, jaké jsou trendy, co ho znepokojuje, co ho těší"
 }`;
 
-    const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt);
+    const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
     const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, zaloha: {}, new_tasks: [], centrum_updates: {}, motivation_updates: {} };
 
     const newParts = extractedInfo.kartoteka_did?.new_parts || [];
