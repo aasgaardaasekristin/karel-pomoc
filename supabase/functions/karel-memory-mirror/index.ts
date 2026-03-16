@@ -235,9 +235,11 @@ Deno.serve(async (req) => {
     const registry = registryRes.data || [];
     const knownPartNames = registry.map((p: any) => p.part_name || p.display_name);
 
-    // Build FULL thread digests — no truncation on message count
-    const MAX_PER_MSG = 1500;
-    const MAX_PER_THREAD = 15000;
+    // Build thread digests — smart truncation to stay within AI context limits
+    // Edge functions have ~60s timeout, so we cap total data to ~40K chars
+    const MAX_PER_MSG = 800;
+    const MAX_PER_THREAD = 6000;
+    const MAX_TOTAL_THREADS = 40000;
 
     function buildFullDigest(msgs: any[]): string {
       if (!Array.isArray(msgs) || msgs.length < 1) return "";
@@ -254,29 +256,41 @@ Deno.serve(async (req) => {
     }
 
     const threadDigests: string[] = [];
+    let totalThreadChars = 0;
 
     for (const conv of hanaConvs) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[HANA | ${conv.last_activity_at?.slice(0, 16)} | ${conv.current_domain} | stav:${conv.current_hana_state} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[HANA | ${conv.last_activity_at?.slice(0, 16)} | ${conv.current_domain} | stav:${conv.current_hana_state} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
     for (const t of didThreads) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[DID_VLÁKNO | část:${t.part_name} | mód:${t.sub_mode} | jazyk:${t.part_language} | ${t.last_activity_at?.slice(0, 16)} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[DID_VLÁKNO | část:${t.part_name} | mód:${t.sub_mode} | jazyk:${t.part_language} | ${t.last_activity_at?.slice(0, 16)} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
     for (const c of didConvs) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(c.messages) ? c.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[DID_KONV | ${c.label} | mód:${c.sub_mode} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[DID_KONV | ${c.label} | mód:${c.sub_mode} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
     for (const r of researchThreads) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(r.messages) ? r.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
 
-    const totalThreadChars = threadDigests.reduce((a, b) => a + b.length, 0);
     console.log(`[mirror] Phase 1: ${threadDigests.length} threads, ${totalThreadChars} chars`);
 
     if (threadDigests.length === 0) {
