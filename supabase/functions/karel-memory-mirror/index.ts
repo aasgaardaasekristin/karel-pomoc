@@ -318,13 +318,13 @@ Deno.serve(async (req) => {
         if (!folderId) return;
         const allFiles = await listAllFilesRecursive(token, folderId, label);
         const docFiles = allFiles.filter(f => !f.isFolder);
-        // Read up to 80 docs to stay within time limits
-        const toRead = docFiles.slice(0, 80);
+        // Read up to 30 docs to stay within time limits
+        const toRead = docFiles.slice(0, 30);
         for (const doc of toRead) {
           try {
             const content = await readDoc(token, doc.id);
             if (content && content.length > 10) {
-              driveContents[doc.path] = content.slice(0, 8000); // cap per doc
+              driveContents[doc.path] = content.slice(0, 4000); // cap per doc
               driveDocsRead++;
             }
           } catch (e) {
