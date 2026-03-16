@@ -338,83 +338,109 @@ const HanaChat = () => {
   const isMirroringRef = useRef(false);
 
   const handleMirrorToDrive = useCallback(async () => {
-    // Synchronous mutex — prevents any concurrent execution
     if (isMirroringRef.current) {
       toast.info("Redistribuce byla spuštěna nedávno. Počkej chvíli.");
       return;
     }
+
     isMirroringRef.current = true;
     setIsMirroring(true);
+    let pollingOwnsState = false;
+
+    const releaseMirrorLock = () => {
+      setIsMirroring(false);
+      isMirroringRef.current = false;
+    };
+
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-        method: "POST", headers,
+        method: "POST",
+        headers,
       });
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
+
       const data = await res.json();
+
       if (data.status === "skipped") {
         toast.info(data.reason || "Redistribuce již probíhá.");
-        isMirroringRef.current = false;
+        releaseMirrorLock();
         return;
       }
 
-      if (data.status === "processing") {
-        // Analysis done, writes running in background — poll for completion
-        toast.success(`${data.summary}`);
-        
-        // Poll every 8s for up to 5 minutes
+      if (data.status === "processing" && data.jobId) {
+        pollingOwnsState = true;
+        toast.success(data.summary || "Analýza hotová, pokračuji v zápisu.");
+
+        void fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+          method: "POST",
+          headers: {
+            ...(await getAuthHeaders()),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ mode: "continue", jobId: data.jobId }),
+        }).catch((error) => {
+          console.error("Mirror continue error:", error);
+        });
+
         const pollForCompletion = async () => {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) return;
-          
-          for (let i = 0; i < 35; i++) {
-            await new Promise(r => setTimeout(r, 8000));
+          for (let i = 0; i < 48; i++) {
+            if (i > 0) {
+              await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+
             try {
               const statusRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
                 method: "POST",
-                headers: await getAuthHeaders(),
-                body: JSON.stringify({ mode: "status", userId: user.id }),
+                headers: {
+                  ...(await getAuthHeaders()),
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ mode: "status", jobId: data.jobId }),
               });
+
               if (!statusRes.ok) continue;
+
               const statusData = await statusRes.json();
+
               if (statusData.status === "done") {
                 toast.success(`Zrcadlení dokončeno: ${statusData.summary?.slice(0, 100) || "OK"}`);
-                setIsMirroring(false);
-                isMirroringRef.current = false;
+                releaseMirrorLock();
                 return;
               }
-              if (statusData.status !== "processing") {
-                // Unexpected state — stop polling
-                setIsMirroring(false);
-                isMirroringRef.current = false;
+
+              if (statusData.status === "idle" || statusData.status === "error") {
+                toast.info(statusData.summary || "Zrcadlení už neběží.");
+                releaseMirrorLock();
                 return;
               }
-            } catch {
-              // Network error during poll — continue trying
+            } catch (error) {
+              console.error("Mirror status poll error:", error);
             }
           }
-          // Timeout after ~5 min
-          toast.info("Zápis na Drive stále probíhá na pozadí.");
-          setIsMirroring(false);
-          isMirroringRef.current = false;
+
+          toast.info("Zrcadlení stále běží na pozadí, ale spinner už uvolňuji.");
+          releaseMirrorLock();
         };
-        
-        pollForCompletion(); // fire-and-forget
-        return; // don't release mutex yet — poll will do it
+
+        void pollForCompletion();
+        return;
       }
 
-      // Legacy: direct "ok" response (shouldn't happen anymore)
       toast.success(`Redistribuce: ${data.counts?.dbUpdates || 0} DB, ${data.counts?.driveUpdates || 0} Drive`);
+      releaseMirrorLock();
     } catch (error) {
       console.error("Mirror error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
+      releaseMirrorLock();
     } finally {
-      setIsMirroring(false);
-      // Keep mutex locked for 60s cooldown
-      setTimeout(() => { isMirroringRef.current = false; }, 60_000);
+      if (!pollingOwnsState) {
+        setIsMirroring(false);
+      }
     }
   }, []);
 
