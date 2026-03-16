@@ -361,6 +361,52 @@ const HanaChat = () => {
         return;
       }
 
+      if (data.status === "processing") {
+        // Analysis done, writes running in background — poll for completion
+        toast.success(`${data.summary}`);
+        
+        // Poll every 8s for up to 5 minutes
+        const pollForCompletion = async () => {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+          
+          for (let i = 0; i < 35; i++) {
+            await new Promise(r => setTimeout(r, 8000));
+            try {
+              const statusRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+                method: "POST",
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({ mode: "status", userId: user.id }),
+              });
+              if (!statusRes.ok) continue;
+              const statusData = await statusRes.json();
+              if (statusData.status === "done") {
+                toast.success(`Zrcadlení dokončeno: ${statusData.summary?.slice(0, 100) || "OK"}`);
+                setIsMirroring(false);
+                isMirroringRef.current = false;
+                return;
+              }
+              if (statusData.status !== "processing") {
+                // Unexpected state — stop polling
+                setIsMirroring(false);
+                isMirroringRef.current = false;
+                return;
+              }
+            } catch {
+              // Network error during poll — continue trying
+            }
+          }
+          // Timeout after ~5 min
+          toast.info("Zápis na Drive stále probíhá na pozadí.");
+          setIsMirroring(false);
+          isMirroringRef.current = false;
+        };
+        
+        pollForCompletion(); // fire-and-forget
+        return; // don't release mutex yet — poll will do it
+      }
+
+      // Legacy: direct "ok" response (shouldn't happen anymore)
       toast.success(`Redistribuce: ${data.counts?.dbUpdates || 0} DB, ${data.counts?.driveUpdates || 0} Drive`);
     } catch (error) {
       console.error("Mirror error:", error);
