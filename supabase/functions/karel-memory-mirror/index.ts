@@ -200,36 +200,56 @@ Deno.serve(async (req) => {
     const relations = relationsRes.data || [];
     const strategies = strategiesRes.data || [];
 
-    // Build thread digest for AI analysis
+    // Build thread digest for AI analysis — FULL conversation content
+    // We send ALL messages (not just last N) with generous char limits
+    // to ensure the AI sees every mention of parts, names, events
     const allThreadsDigest: string[] = [];
+    const MAX_CHARS_PER_THREAD = 6000; // generous per-thread limit
+    const MAX_CHARS_PER_MSG = 800; // per message
+
+    function buildExcerpt(msgs: any[], maxPerMsg: number, maxTotal: number): string {
+      if (!Array.isArray(msgs) || msgs.length < 1) return "";
+      let total = 0;
+      const lines: string[] = [];
+      for (const m of msgs) {
+        if (total >= maxTotal) break;
+        const content = typeof m.content === "string" ? m.content.slice(0, maxPerMsg) : "[media]";
+        const line = `${m.role}: ${content}`;
+        lines.push(line);
+        total += line.length;
+      }
+      return lines.join("\n");
+    }
 
     for (const conv of hanaConvs) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-10).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 300) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[HANA | ${conv.last_activity_at?.slice(0, 10)} | ${conv.current_domain}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
+      allThreadsDigest.push(`[HANA | ${conv.last_activity_at?.slice(0, 10)} | ${conv.current_domain} | ${msgs.length} zpráv]\n${excerpt}`);
     }
 
     for (const t of didThreads) {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-8).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 250) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[DID | ${t.part_name} | ${t.sub_mode} | ${t.last_activity_at?.slice(0, 10)}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
+      allThreadsDigest.push(`[DID | ${t.part_name} | ${t.sub_mode} | ${t.last_activity_at?.slice(0, 10)} | ${msgs.length} zpráv]\n${excerpt}`);
     }
 
     for (const c of didConvs) {
       const msgs = Array.isArray(c.messages) ? c.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-6).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 200) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[DID_CONV | ${c.label} | ${c.sub_mode}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
+      allThreadsDigest.push(`[DID_CONV | ${c.label} | ${c.sub_mode} | ${msgs.length} zpráv]\n${excerpt}`);
     }
 
     for (const r of researchThreads) {
       const msgs = Array.isArray(r.messages) ? r.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-4).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 200) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[RESEARCH | ${r.topic}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, 4000);
+      allThreadsDigest.push(`[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${excerpt}`);
     }
+
+    console.log(`[redistribute] Built ${allThreadsDigest.length} thread digests, total chars: ${allThreadsDigest.reduce((a, b) => a + b.length, 0)}`);
 
     if (allThreadsDigest.length === 0) {
       // Nothing to redistribute — still update PAMET_KAREL with current DB state
@@ -244,14 +264,22 @@ Deno.serve(async (req) => {
     const knownPartNames = (registryParts || []).map((p: any) => p.part_name || p.display_name);
 
     if (allThreadsDigest.length > 0) {
-      const extractionPrompt = `Jsi analytický modul Karla. Analyzuj VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
+      const extractionPrompt = `Jsi analytický modul Karla. Analyzuj KOMPLETNĚ VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
+
+KRITICKÝ POŽADAVEK – ČTENÍ JMEN:
+- Projdi KAŽDOU zprávu v KAŽDÉM vlákně od začátku do konce
+- Zaznamenej KAŽDÉ jméno, přezdívku nebo pojmenování části/fragmentu, které se ve vláknech vyskytne
+- Pokud Hana mluví o někom jako o části systému (fragment, alter, část, chlapec, holka, bytost...), zaznamenej to
+- Pokud někdo popisuje příběh/historii/osud jiné osoby/části, zaznamenej to jako novou část
+- Neignoruj žádné jméno! Lepší je extrahovat o jednu část navíc než jednu vynechat
+- Zejména dávej pozor na pasáže kde Hana VYPRÁVÍ nebo POPISUJE části – tam bývá nejvíc jmen
 
 PRAVIDLA:
 - Extrahuj POUZE skutečně nosné, nové informace (ne small-talk, ne opakování známého)
 - Klasifikuj každou informaci do správné cílové složky
 - Identifikuj nové entity, vzorce a strategie
-- NIKDY nevymýšlej informace
-- KRITICKÉ: Pokud Hana/uživatelka žádá o zapsání NOVÝCH částí/fragmentů, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
+- NIKDY nevymýšlej informace – ale NIKDY nepřehlížej zmíněná jména
+- KRITICKÉ: Pokud Hana/uživatelka zmiňuje JAKÉKOLIV nové části/fragmenty, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
 
 CÍLOVÉ SLOŽKY:
 1. PAMET_KAREL → osobní paměť Karla (entity, vztahy, vzorce, strategie interakce s Hankou)
@@ -262,7 +290,7 @@ STÁVAJÍCÍ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ")
 STÁVAJÍCÍ VZORCE: ${patterns.map((p: any) => p.id).join(", ") || "žádné"}
 EXISTUJÍCÍ ČÁSTI V KARTOTÉCE: ${knownPartNames.join(", ") || "žádné"}
 
-VLÁKNA K ANALÝZE:
+VLÁKNA K ANALÝZE (čti CELÁ, ne jen konec!):
 ${allThreadsDigest.join("\n═══════\n")}
 
 Vrať POUZE validní JSON:
@@ -295,6 +323,7 @@ Vrať POUZE validní JSON:
   "zaloha": {
     "client_updates": {"client_name_or_id": "text to append"}
   },
+  "all_names_found": ["seznam VŠECH jmen/přezdívek zmíněných ve vláknech pro kontrolu"],
   "summary": "jednověté shrnutí co bylo nalezeno a redistribuováno"
 }
 
@@ -304,15 +333,17 @@ DŮLEŽITÉ PRO new_parts:
 - Pokud uživatelka zmínila historii části, vlož ji do sekce E
 - Pokud zmínila charakter/vlastnosti, vlož do sekce B
 - Pokud zmínila potřeby/strachy, vlož do sekce C
-- Vyplň co nejvíce sekcí na základě dostupných informací`;
+- Vyplň co nejvíce sekcí na základě dostupných informací
+- RADĚJI PŘIDEJ VÍCE ČÁSTÍ NEŽ MÉNĚ – vynechat část je horší než přidat jednu navíc`;
 
+      // Use stronger model for better extraction from long conversations
       const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-pro",
           messages: [
-            { role: "system", content: "Jsi analytický engine. Extrahuj a klasifikuj informace. Vrať pouze validní JSON." },
+            { role: "system", content: "Jsi analytický engine. Extrahuj a klasifikuj informace z konverzací. Vrať pouze validní JSON. Tvá hlavní úloha: najít VŠECHNA jména částí/fragmentů zmíněných v rozhovorech a zajistit, že žádné nebude vynecháno." },
             { role: "user", content: extractionPrompt },
           ],
           temperature: 0.1,
@@ -324,8 +355,21 @@ DŮLEŽITÉ PRO new_parts:
         const content = aiData.choices?.[0]?.message?.content || "";
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          try { extractedInfo = JSON.parse(jsonMatch[0]); } catch (e) { console.error("[redistribute] JSON parse error:", e); }
+          try {
+            extractedInfo = JSON.parse(jsonMatch[0]);
+            // Log what AI found for debugging
+            const newParts = extractedInfo.kartoteka_did?.new_parts || [];
+            const allNames = extractedInfo.all_names_found || [];
+            const partUpdates = Object.keys(extractedInfo.kartoteka_did?.part_updates || {});
+            console.log(`[redistribute] AI found: ${allNames.length} names total, ${newParts.length} new parts, ${partUpdates.length} part updates`);
+            console.log(`[redistribute] All names: ${allNames.join(", ")}`);
+            console.log(`[redistribute] New parts: ${newParts.map((p: any) => p.name).join(", ")}`);
+          } catch (e) { console.error("[redistribute] JSON parse error:", e); }
+        } else {
+          console.error("[redistribute] No JSON found in AI response, content length:", content.length);
         }
+      } else {
+        console.error("[redistribute] AI error:", aiRes.status, await aiRes.text().catch(() => ""));
       }
     }
 
