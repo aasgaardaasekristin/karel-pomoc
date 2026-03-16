@@ -345,7 +345,7 @@ Deno.serve(async (req) => {
 
     // Build Drive digest for AI (compact)
     const driveDigest = Object.entries(driveContents)
-      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 3000)}`)
+      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 2000)}`)
       .join("\n═══════\n");
 
     // ═══ PHASE 3: AI Pass 1 — Deep extraction of raw facts ═══
