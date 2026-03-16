@@ -389,7 +389,7 @@ Analyzuj HLOUBKOVĚ a vrať JSON:
   "summary": "celkové shrnutí dne"
 }`;
 
-    const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt);
+    const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
     const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, cross_references: [], urgent_signals: [] };
     
     console.log(`[mirror] Pass 1: ${pass1Data.raw_facts?.length || 0} facts, ${pass1Data.all_names_mentioned?.length || 0} names, ${pass1Data.new_parts_detected?.length || 0} new parts, ${pass1Data.urgent_signals?.length || 0} urgent`);
