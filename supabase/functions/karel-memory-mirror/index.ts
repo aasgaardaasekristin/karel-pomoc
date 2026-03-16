@@ -239,6 +239,10 @@ Deno.serve(async (req) => {
     // ═══ PHASE 2: AI Extraction & Classification ═══
     let extractedInfo: any = { pamet_karel: {}, kartoteka_did: {}, zaloha: {}, new_entities: [], new_patterns: [], new_strategies: [] };
 
+    // Load DID part registry for cross-referencing
+    const { data: registryParts } = await sb.from("did_part_registry").select("part_name, display_name, status").eq("user_id", userId);
+    const knownPartNames = (registryParts || []).map((p: any) => p.part_name || p.display_name);
+
     if (allThreadsDigest.length > 0) {
       const extractionPrompt = `Jsi analytický modul Karla. Analyzuj VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
 
@@ -247,6 +251,7 @@ PRAVIDLA:
 - Klasifikuj každou informaci do správné cílové složky
 - Identifikuj nové entity, vzorce a strategie
 - NIKDY nevymýšlej informace
+- KRITICKÉ: Pokud Hana/uživatelka žádá o zapsání NOVÝCH částí/fragmentů, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
 
 CÍLOVÉ SLOŽKY:
 1. PAMET_KAREL → osobní paměť Karla (entity, vztahy, vzorce, strategie interakce s Hankou)
@@ -255,6 +260,7 @@ CÍLOVÉ SLOŽKY:
 
 STÁVAJÍCÍ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
 STÁVAJÍCÍ VZORCE: ${patterns.map((p: any) => p.id).join(", ") || "žádné"}
+EXISTUJÍCÍ ČÁSTI V KARTOTÉCE: ${knownPartNames.join(", ") || "žádné"}
 
 VLÁKNA K ANALÝZE:
 ${allThreadsDigest.join("\n═══════\n")}
@@ -268,13 +274,37 @@ Vrať POUZE validní JSON:
     "strategy_updates": [{"id": "existing_or_new_id", "description": "...", "domain": "...", "hana_state": "...", "effectiveness_delta": 0.1, "new_guidelines": ["..."]}]
   },
   "kartoteka_did": {
-    "part_updates": {"part_name": "text to append to their card"}
+    "part_updates": {"existing_part_name": "text to append to their card"},
+    "new_parts": [
+      {
+        "name": "jméno nové části/fragmentu",
+        "sections": {
+          "A": "Kdo jsem – popis identity, věk, role v systému",
+          "B": "Charakter a psychologický profil",
+          "C": "Potřeby, strachy, konflikty",
+          "D": "Terapeutická doporučení",
+          "E": "Chronologický log – co je známo z historie",
+          "F": "Poznámky pro Karla",
+          "H": "Dlouhodobé cíle"
+        },
+        "status": "Spící|Aktivní",
+        "cluster": "název klastru pokud znám"
+      }
+    ]
   },
   "zaloha": {
     "client_updates": {"client_name_or_id": "text to append"}
   },
   "summary": "jednověté shrnutí co bylo nalezeno a redistribuováno"
-}`;
+}
+
+DŮLEŽITÉ PRO new_parts:
+- Zahrň POUZE části, které NEJSOU v seznamu "EXISTUJÍCÍ ČÁSTI V KARTOTÉCE"
+- Pro každou novou část extrahuj VŠECHNY dostupné informace z vláken do příslušných sekcí A-M
+- Pokud uživatelka zmínila historii části, vlož ji do sekce E
+- Pokud zmínila charakter/vlastnosti, vlož do sekce B
+- Pokud zmínila potřeby/strachy, vlož do sekce C
+- Vyplň co nejvíce sekcí na základě dostupných informací`;
 
       const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -451,7 +481,7 @@ Vrať POUZE validní JSON:
         await Promise.all(driveWrites);
       }
 
-      // KARTOTEKA_DID: append to part cards (with hash dedup)
+      // KARTOTEKA_DID: append to existing part cards (with hash dedup)
       if (extractedInfo.kartoteka_did?.part_updates && Object.keys(extractedInfo.kartoteka_did.part_updates).length > 0) {
         const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
         if (kartotekaId) {
@@ -475,6 +505,63 @@ Vrať POUZE validní JSON:
               await updateDoc(token, partDoc.id, updated);
               driveUpdates.push(`KARTOTEKA/${partName}`);
             }
+          }
+        }
+      }
+
+      // KARTOTEKA_DID: CREATE NEW PARTS via karel-did-drive-write
+      const newParts = extractedInfo.kartoteka_did?.new_parts;
+      if (Array.isArray(newParts) && newParts.length > 0) {
+        console.log(`[redistribute] Creating ${newParts.length} new parts via karel-did-drive-write`);
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        
+        for (const part of newParts) {
+          if (!part.name || !part.sections) {
+            console.warn(`[redistribute] Skipping invalid new_part:`, part);
+            continue;
+          }
+          
+          try {
+            // Call karel-did-drive-write to create the card with proper architecture
+            const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${serviceRoleKey}`,
+              },
+              body: JSON.stringify({
+                mode: "update-card-sections",
+                partName: part.name,
+                sections: part.sections,
+              }),
+            });
+            
+            const writeResult = await writeRes.json();
+            
+            if (writeRes.ok && writeResult.success) {
+              console.log(`[redistribute] ✅ Created new part: ${part.name} → ${writeResult.cardFileName}`);
+              driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
+              
+              // Also add to did_part_registry DB table
+              await sb.from("did_part_registry").upsert({
+                user_id: userId,
+                part_name: part.name,
+                display_name: part.name,
+                status: part.status === "Aktivní" ? "active" : "sleeping",
+                cluster: part.cluster || null,
+                notes: `Automaticky vytvořeno redistribucí ${new Date().toISOString().slice(0, 10)}`,
+                role_in_system: part.sections?.A?.slice(0, 200) || null,
+              }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
+              
+              dbUpdates.push(`registry_new:${part.name}`);
+            } else {
+              console.error(`[redistribute] ❌ Failed to create part ${part.name}:`, writeResult.error);
+              driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERROR: ${writeResult.error})`);
+            }
+          } catch (partErr) {
+            console.error(`[redistribute] Error creating part ${part.name}:`, partErr);
+            driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERROR: ${partErr instanceof Error ? partErr.message : 'unknown'})`);
           }
         }
       }

@@ -497,8 +497,15 @@ function resolveCardTarget(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  const authResult = await requireAuth(req);
-  if (authResult instanceof Response) return authResult;
+  // Support both user auth and service-role calls (from redistribute engine)
+  const authHeader = req.headers.get("Authorization") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "__never__";
+  const isServiceRole = authHeader === `Bearer ${serviceRoleKey}`;
+  
+  if (!isServiceRole) {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+  }
 
   try {
     const body = await req.json();
