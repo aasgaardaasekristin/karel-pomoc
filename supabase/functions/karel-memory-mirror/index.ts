@@ -809,25 +809,321 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const payload = job.details?.payload;
-    if (!payload) {
+    const currentPhase = job.details?.phase || "created";
+
+    try {
+      // ═══ PHASE: HARVEST — collect DB data ═══
+      if (currentPhase === "created" || currentPhase === "harvest") {
+        console.log(`[mirror] Phase HARVEST for job ${jobId}`);
+
+        const { data: lastMirror } = await sb.from("karel_memory_logs")
+          .select("created_at")
+          .eq("user_id", userId).eq("log_type", "redistribute")
+          .order("created_at", { ascending: false }).limit(1);
+        const lastMirrorTime = lastMirror?.[0]?.created_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        const [hanaRes, didThreadsRes, didConvsRes, researchRes, episodesRes, entitiesRes, patternsRes, relationsRes, strategiesRes, tasksRes, registryRes] = await Promise.all([
+          sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain, current_hana_state").eq("user_id", userId).gte("last_activity_at", lastMirrorTime).order("last_activity_at", { ascending: false }).limit(30),
+          sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode, part_language").eq("user_id", userId).gte("last_activity_at", lastMirrorTime).order("last_activity_at", { ascending: false }).limit(30),
+          sb.from("did_conversations").select("id, label, messages, sub_mode, preview, did_initial_context, saved_at").eq("user_id", userId).gte("saved_at", lastMirrorTime).order("saved_at", { ascending: false }).limit(30),
+          sb.from("research_threads").select("id, topic, messages, last_activity_at").eq("user_id", userId).eq("is_deleted", false).gte("last_activity_at", lastMirrorTime).limit(10),
+          sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).order("timestamp_start", { ascending: false }).limit(200),
+          sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
+          sb.from("karel_semantic_patterns").select("*").eq("user_id", userId),
+          sb.from("karel_semantic_relations").select("*").eq("user_id", userId),
+          sb.from("karel_strategies").select("*").eq("user_id", userId),
+          sb.from("did_therapist_tasks").select("*").eq("user_id", userId).in("status", ["pending", "in_progress"]),
+          sb.from("did_part_registry").select("*").eq("user_id", userId),
+        ]);
+
+        const MAX_PER_MSG = 400;
+        const MAX_PER_THREAD = 2500;
+        const MAX_TOTAL = 18000;
+
+        function buildDigest(msgs: any[]): string {
+          if (!Array.isArray(msgs) || msgs.length < 1) return "";
+          let total = 0;
+          const lines: string[] = [];
+          for (const m of msgs) {
+            if (total >= MAX_PER_THREAD) break;
+            const content = typeof m.content === "string" ? m.content.slice(0, MAX_PER_MSG) : "[media]";
+            const line = `${m.role}: ${content}`;
+            lines.push(line);
+            total += line.length;
+          }
+          return lines.join("\n");
+        }
+
+        const threadDigests: string[] = [];
+        let totalChars = 0;
+        for (const conv of (hanaRes.data || [])) {
+          if (totalChars >= MAX_TOTAL) break;
+          const msgs = Array.isArray(conv.messages) ? conv.messages : [];
+          if (msgs.length < 1) continue;
+          const d = `[HANA|${conv.last_activity_at?.slice(0,16)}|${conv.current_domain}|${conv.current_hana_state}]\n${buildDigest(msgs)}`;
+          threadDigests.push(d); totalChars += d.length;
+        }
+        for (const t of (didThreadsRes.data || [])) {
+          if (totalChars >= MAX_TOTAL) break;
+          const msgs = Array.isArray(t.messages) ? t.messages : [];
+          if (msgs.length < 1) continue;
+          const d = `[DID|${t.part_name}|${t.sub_mode}|${t.last_activity_at?.slice(0,16)}]\n${buildDigest(msgs)}`;
+          threadDigests.push(d); totalChars += d.length;
+        }
+        for (const c of (didConvsRes.data || [])) {
+          if (totalChars >= MAX_TOTAL) break;
+          const msgs = Array.isArray(c.messages) ? c.messages : [];
+          if (msgs.length < 1) continue;
+          const d = `[DID_KONV|${c.label}|${c.sub_mode}]\n${buildDigest(msgs)}`;
+          threadDigests.push(d); totalChars += d.length;
+        }
+        for (const r of (researchRes.data || [])) {
+          if (totalChars >= MAX_TOTAL) break;
+          const msgs = Array.isArray(r.messages) ? r.messages : [];
+          if (msgs.length < 1) continue;
+          const d = `[RESEARCH|${r.topic}]\n${buildDigest(msgs)}`;
+          threadDigests.push(d); totalChars += d.length;
+        }
+
+        console.log(`[mirror] Harvest: ${threadDigests.length} threads, ${totalChars} chars`);
+
+        if (threadDigests.length === 0) {
+          await sb.from("karel_memory_logs").update({
+            log_type: "redistribute", summary: "Žádná nová data od posledního zrcadlení.",
+            details: { phase: "done", progress: { completed: 1, total: 1, percent: 100 } },
+          }).eq("id", jobId);
+          return new Response(JSON.stringify({ status: "done", summary: "Žádná nová data od posledního zrcadlení." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+        const knownPartNames = (registryRes.data || []).map((p: any) => p.part_name || p.display_name);
+
+        await sb.from("karel_memory_logs").update({
+          summary: `Harvest: ${threadDigests.length} vláken, ${totalChars} znaků`,
+          details: {
+            phase: "harvest_done",
+            state: createInitialMirrorState(),
+            harvest: {
+              lastMirrorTime,
+              threadDigests,
+              totalChars,
+              entities: entitiesRes.data || [],
+              patterns: patternsRes.data || [],
+              relations: relationsRes.data || [],
+              strategies: strategiesRes.data || [],
+              activeTasks: tasksRes.data || [],
+              registry: registryRes.data || [],
+              episodes: episodesRes.data || [],
+              knownPartNames,
+              startTime: Date.now(),
+            },
+          },
+        }).eq("id", jobId);
+
+        return new Response(JSON.stringify({
+          status: "processing", phase: "harvest_done",
+          summary: `Sběr dat: ${threadDigests.length} vláken. Pokračuji čtením Drive...`,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // ═══ PHASE: DRIVE READ ═══
+      if (currentPhase === "harvest_done" || currentPhase === "drive_read") {
+        console.log(`[mirror] Phase DRIVE_READ for job ${jobId}`);
+        const harvest = job.details?.harvest;
+        if (!harvest) throw new Error("Missing harvest data");
+
+        const driveContents: Record<string, string> = {};
+        let driveDocsRead = 0;
+
+        try {
+          const token = await getAccessToken();
+          const [pametId, kartotekaId, zalohaId] = await Promise.all([
+            findFolderFuzzy(token, ["PAMET_KAREL"]),
+            findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]),
+            findFolderFuzzy(token, ["ZALOHA", "Zaloha"]),
+          ]);
+
+          const readFolderDocs = async (folderId: string | null, label: string, limit: number) => {
+            if (!folderId) return;
+            const allFiles = await listAllFilesRecursive(token, folderId, label);
+            const docFiles = allFiles.filter((f) => !f.isFolder).slice(0, limit);
+            for (const doc of docFiles) {
+              try {
+                const content = await readDoc(token, doc.id);
+                if (content && content.length > 10) {
+                  driveContents[doc.path] = content.slice(0, 1500);
+                  driveDocsRead++;
+                }
+              } catch (e) { console.warn(`[mirror] Could not read ${doc.path}: ${e}`); }
+            }
+          };
+
+          await readFolderDocs(pametId, "PAMET_KAREL", 6);
+          await readFolderDocs(kartotekaId, "KARTOTEKA_DID", 6);
+          await readFolderDocs(zalohaId, "ZALOHA", 4);
+          console.log(`[mirror] Drive read: ${driveDocsRead} docs`);
+        } catch (driveErr) {
+          console.error("[mirror] Drive read error (continuing):", driveErr);
+        }
+
+        await sb.from("karel_memory_logs").update({
+          summary: `Drive: ${driveDocsRead} dokumentů přečteno`,
+          details: {
+            ...job.details,
+            phase: "drive_done",
+            harvest: { ...harvest, driveContents, driveDocsRead },
+          },
+        }).eq("id", jobId);
+
+        return new Response(JSON.stringify({
+          status: "processing", phase: "drive_done",
+          summary: `Drive: ${driveDocsRead} dokumentů. Spouštím AI analýzu...`,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // ═══ PHASE: AI PASS 1 — extraction ═══
+      if (currentPhase === "drive_done" || currentPhase === "ai_pass1") {
+        console.log(`[mirror] Phase AI_PASS1 for job ${jobId}`);
+        const harvest = job.details?.harvest;
+        if (!harvest) throw new Error("Missing harvest data");
+
+        const threadDigests = harvest.threadDigests || [];
+        const knownPartNames = harvest.knownPartNames || [];
+        const entities = harvest.entities || [];
+        const activeTasks = harvest.activeTasks || [];
+        const lastMirrorTime = harvest.lastMirrorTime || "";
+
+        const pass1System = `Jsi Karel – hloubkový analytický engine. Extrahuj VEŠKERÉ informace z konverzací, i skryté "mezi řádky". Hledej jména, emoce, triggery, souvislosti.`;
+
+        const pass1Prompt = `REGISTR ČÁSTÍ: ${knownPartNames.join(", ") || "prázdný"}
+ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
+ÚKOLY: ${activeTasks.map((t: any) => `[${t.assigned_to}] ${t.task}`).join("; ") || "žádné"}
+
+═══ VLÁKNA (od ${lastMirrorTime.slice(0, 16)}) ═══
+${threadDigests.join("\n═══\n")}
+
+Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"..."}],"therapist_observations":{"hanka":{"mood":"...","stress_level":"..."},"kata":{"mood":"...","stress_level":"..."}},"urgent_signals":["..."],"summary":"..."}`;
+
+        const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
+        const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, urgent_signals: [] };
+
+        console.log(`[mirror] Pass1: ${pass1Data.raw_facts?.length || 0} facts, ${pass1Data.all_names_mentioned?.length || 0} names`);
+
+        await sb.from("karel_memory_logs").update({
+          summary: `AI Pass 1: ${pass1Data.raw_facts?.length || 0} faktů, ${pass1Data.all_names_mentioned?.length || 0} jmen`,
+          details: {
+            ...job.details,
+            phase: "pass1_done",
+            harvest: { ...harvest, pass1Data },
+          },
+        }).eq("id", jobId);
+
+        return new Response(JSON.stringify({
+          status: "processing", phase: "pass1_done",
+          summary: `Extrakce: ${pass1Data.raw_facts?.length || 0} faktů. Spouštím syntézu...`,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // ═══ PHASE: AI PASS 2 — synthesis ═══
+      if (currentPhase === "pass1_done" || currentPhase === "ai_pass2") {
+        console.log(`[mirror] Phase AI_PASS2 for job ${jobId}`);
+        const harvest = job.details?.harvest;
+        if (!harvest) throw new Error("Missing harvest data");
+
+        const pass1Data = harvest.pass1Data || {};
+        const registry = harvest.registry || [];
+        const entities = harvest.entities || [];
+        const patterns = harvest.patterns || [];
+        const driveContents = harvest.driveContents || {};
+        const driveDocsRead = harvest.driveDocsRead || 0;
+
+        const driveDigest = Object.entries(driveContents)
+          .map(([path, content]) => `[DRIVE:${path}]\n${(content as string).slice(0, 1000)}`)
+          .join("\n═══\n");
+
+        const pass2System = `Jsi Karel – strategický analytik DID systému. Spoj nové poznatky s Drive dokumenty, najdi vzorce, navrhni akce.`;
+
+        const pass2Prompt = `═══ FAKTA ═══
+${JSON.stringify(pass1Data, null, 1).slice(0, 8000)}
+
+═══ REGISTRY ═══
+Části: ${registry.map((p: any) => `${p.part_name}(${p.status})`).join(", ")}
+Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
+
+═══ DRIVE (${driveDocsRead}) ═══
+${driveDigest.slice(0, 12000)}
+
+Vrať JSON:
+{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"...","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"...","description":"...","domain":"...","tags":["..."],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"...","description":"...","domain":"...","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}]},"kartoteka_did":{"part_updates":{"name":"text"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"...","cluster":"..."}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_notes":"...","geography_notes":"...","relationships_notes":"...","operative_plan_notes":"..."},"synthesis_summary":"..."}`;
+
+        const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
+        const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, new_tasks: [] };
+
+        console.log(`[mirror] Pass2: ${(extractedInfo.kartoteka_did?.new_parts || []).length} new parts, ${(extractedInfo.new_tasks || []).length} tasks`);
+
+        // Build final payload for batch writes
+        const payload = {
+          startTime: harvest.startTime || Date.now(),
+          lastMirrorTime: harvest.lastMirrorTime,
+          threadCount: (harvest.threadDigests || []).length,
+          driveDocsRead: harvest.driveDocsRead || 0,
+          pass1Data: harvest.pass1Data,
+          extractedInfo,
+          entities: harvest.entities || [],
+          patterns: harvest.patterns || [],
+          relations: harvest.relations || [],
+          strategies: harvest.strategies || [],
+          activeTasks: harvest.activeTasks || [],
+          registry: harvest.registry || [],
+          episodes: harvest.episodes || [],
+        };
+
+        await sb.from("karel_memory_logs").update({
+          summary: `Syntéza hotová. ${(extractedInfo.new_tasks || []).length} úkolů, ${(extractedInfo.kartoteka_did?.new_parts || []).length} nových částí.`,
+          details: {
+            phase: "queued",
+            payload,
+            state: createInitialMirrorState(),
+            progress: getMirrorProgress(payload, createInitialMirrorState()),
+          },
+        }).eq("id", jobId);
+
+        return new Response(JSON.stringify({
+          status: "processing", phase: "queued",
+          summary: `Syntéza hotová. Zahajuji dávkové zápisy...`,
+          progress: getMirrorProgress(payload, createInitialMirrorState()),
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // ═══ BATCH WRITE PHASES (existing logic) ═══
+      const payload = job.details?.payload;
+      if (!payload) {
+        await sb.from("karel_memory_logs").update({
+          log_type: "redistribute",
+          summary: "Chyba: chybí payload jobu",
+          details: { error: true, phase: "error" },
+        }).eq("id", jobId);
+        return new Response(JSON.stringify({ status: "error", phase: "error", summary: "Chyba: chybí payload" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const result = await runMirrorBatchStep({
+        sb,
+        userId,
+        jobId,
+        payload,
+        state: job.details?.state,
+      });
+
+      return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    } catch (continueError) {
+      console.error("[mirror] Continue error:", continueError);
       await sb.from("karel_memory_logs").update({
         log_type: "redistribute",
-        summary: "Chyba při zápisu: chybí payload jobu",
+        summary: `Chyba: ${continueError instanceof Error ? continueError.message : "unknown"}`,
         details: { error: true, phase: "error" },
       }).eq("id", jobId);
-      return new Response(JSON.stringify({ status: "error", phase: "error", summary: "Chyba při zápisu: chybí payload jobu" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "error", phase: "error", summary: continueError instanceof Error ? continueError.message : "Neznámá chyba" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-
-    const result = await runMirrorBatchStep({
-      sb,
-      userId,
-      jobId,
-      payload,
-      state: job.details?.state,
-    });
-
-    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   try {
