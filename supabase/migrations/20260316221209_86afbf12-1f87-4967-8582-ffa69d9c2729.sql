@@ -1,0 +1,2 @@
+ALTER TABLE public.karel_memory_logs DROP CONSTRAINT karel_memory_logs_log_type_check;
+ALTER TABLE public.karel_memory_logs ADD CONSTRAINT karel_memory_logs_log_type_check CHECK (log_type = ANY (ARRAY['daily_job'::text, 'episode_selection'::text, 'consolidation'::text, 'boot'::text, 'manual_refresh'::text, 'mirror_job'::text, 'redistribute'::text]));
