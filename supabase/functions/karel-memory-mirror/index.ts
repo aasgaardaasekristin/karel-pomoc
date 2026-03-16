@@ -1128,26 +1128,30 @@ Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
     const jobId = lockId;
 
     if (jobId) {
+      const payload = {
+        startTime,
+        lastMirrorTime,
+        threadCount: threadDigests.length,
+        driveDocsRead,
+        pass1Data,
+        extractedInfo,
+        entities,
+        patterns,
+        relations,
+        strategies,
+        activeTasks,
+        registry,
+        episodes,
+      };
+
       await sb.from("karel_memory_logs").update({
         log_type: "mirror_job",
-        summary: `Analýza hotová. ${pass1Data.raw_facts?.length || 0} faktů, ${newParts.length} nových částí. Připravuji zápis...`,
+        summary: `Analýza hotová. ${pass1Data.raw_facts?.length || 0} faktů, ${newParts.length} nových částí. Připravuji dávky...`,
         details: {
           phase: "queued",
-          payload: {
-            startTime,
-            lastMirrorTime,
-            threadCount: threadDigests.length,
-            driveDocsRead,
-            pass1Data,
-            extractedInfo,
-            entities,
-            patterns,
-            relations,
-            strategies,
-            activeTasks,
-            registry,
-            episodes,
-          },
+          payload,
+          state: createInitialMirrorState(),
+          progress: getMirrorProgress(payload, createInitialMirrorState()),
         },
       }).eq("id", jobId);
     }
