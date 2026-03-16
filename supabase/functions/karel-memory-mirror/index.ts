@@ -264,14 +264,22 @@ Deno.serve(async (req) => {
     const knownPartNames = (registryParts || []).map((p: any) => p.part_name || p.display_name);
 
     if (allThreadsDigest.length > 0) {
-      const extractionPrompt = `Jsi analytický modul Karla. Analyzuj VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
+      const extractionPrompt = `Jsi analytický modul Karla. Analyzuj KOMPLETNĚ VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
+
+KRITICKÝ POŽADAVEK – ČTENÍ JMEN:
+- Projdi KAŽDOU zprávu v KAŽDÉM vlákně od začátku do konce
+- Zaznamenej KAŽDÉ jméno, přezdívku nebo pojmenování části/fragmentu, které se ve vláknech vyskytne
+- Pokud Hana mluví o někom jako o části systému (fragment, alter, část, chlapec, holka, bytost...), zaznamenej to
+- Pokud někdo popisuje příběh/historii/osud jiné osoby/části, zaznamenej to jako novou část
+- Neignoruj žádné jméno! Lepší je extrahovat o jednu část navíc než jednu vynechat
+- Zejména dávej pozor na pasáže kde Hana VYPRÁVÍ nebo POPISUJE části – tam bývá nejvíc jmen
 
 PRAVIDLA:
 - Extrahuj POUZE skutečně nosné, nové informace (ne small-talk, ne opakování známého)
 - Klasifikuj každou informaci do správné cílové složky
 - Identifikuj nové entity, vzorce a strategie
-- NIKDY nevymýšlej informace
-- KRITICKÉ: Pokud Hana/uživatelka žádá o zapsání NOVÝCH částí/fragmentů, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
+- NIKDY nevymýšlej informace – ale NIKDY nepřehlížej zmíněná jména
+- KRITICKÉ: Pokud Hana/uživatelka zmiňuje JAKÉKOLIV nové části/fragmenty, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
 
 CÍLOVÉ SLOŽKY:
 1. PAMET_KAREL → osobní paměť Karla (entity, vztahy, vzorce, strategie interakce s Hankou)
@@ -282,7 +290,7 @@ STÁVAJÍCÍ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ")
 STÁVAJÍCÍ VZORCE: ${patterns.map((p: any) => p.id).join(", ") || "žádné"}
 EXISTUJÍCÍ ČÁSTI V KARTOTÉCE: ${knownPartNames.join(", ") || "žádné"}
 
-VLÁKNA K ANALÝZE:
+VLÁKNA K ANALÝZE (čti CELÁ, ne jen konec!):
 ${allThreadsDigest.join("\n═══════\n")}
 
 Vrať POUZE validní JSON:
@@ -315,6 +323,7 @@ Vrať POUZE validní JSON:
   "zaloha": {
     "client_updates": {"client_name_or_id": "text to append"}
   },
+  "all_names_found": ["seznam VŠECH jmen/přezdívek zmíněných ve vláknech pro kontrolu"],
   "summary": "jednověté shrnutí co bylo nalezeno a redistribuováno"
 }
 
@@ -324,15 +333,17 @@ DŮLEŽITÉ PRO new_parts:
 - Pokud uživatelka zmínila historii části, vlož ji do sekce E
 - Pokud zmínila charakter/vlastnosti, vlož do sekce B
 - Pokud zmínila potřeby/strachy, vlož do sekce C
-- Vyplň co nejvíce sekcí na základě dostupných informací`;
+- Vyplň co nejvíce sekcí na základě dostupných informací
+- RADĚJI PŘIDEJ VÍCE ČÁSTÍ NEŽ MÉNĚ – vynechat část je horší než přidat jednu navíc`;
 
+      // Use stronger model for better extraction from long conversations
       const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-2.5-pro",
           messages: [
-            { role: "system", content: "Jsi analytický engine. Extrahuj a klasifikuj informace. Vrať pouze validní JSON." },
+            { role: "system", content: "Jsi analytický engine. Extrahuj a klasifikuj informace z konverzací. Vrať pouze validní JSON. Tvá hlavní úloha: najít VŠECHNA jména částí/fragmentů zmíněných v rozhovorech a zajistit, že žádné nebude vynecháno." },
             { role: "user", content: extractionPrompt },
           ],
           temperature: 0.1,
