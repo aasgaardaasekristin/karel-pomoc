@@ -355,8 +355,21 @@ DŮLEŽITÉ PRO new_parts:
         const content = aiData.choices?.[0]?.message?.content || "";
         const jsonMatch = content.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          try { extractedInfo = JSON.parse(jsonMatch[0]); } catch (e) { console.error("[redistribute] JSON parse error:", e); }
+          try {
+            extractedInfo = JSON.parse(jsonMatch[0]);
+            // Log what AI found for debugging
+            const newParts = extractedInfo.kartoteka_did?.new_parts || [];
+            const allNames = extractedInfo.all_names_found || [];
+            const partUpdates = Object.keys(extractedInfo.kartoteka_did?.part_updates || {});
+            console.log(`[redistribute] AI found: ${allNames.length} names total, ${newParts.length} new parts, ${partUpdates.length} part updates`);
+            console.log(`[redistribute] All names: ${allNames.join(", ")}`);
+            console.log(`[redistribute] New parts: ${newParts.map((p: any) => p.name).join(", ")}`);
+          } catch (e) { console.error("[redistribute] JSON parse error:", e); }
+        } else {
+          console.error("[redistribute] No JSON found in AI response, content length:", content.length);
         }
+      } else {
+        console.error("[redistribute] AI error:", aiRes.status, await aiRes.text().catch(() => ""));
       }
     }
 
