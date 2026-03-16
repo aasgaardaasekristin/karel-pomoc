@@ -1129,11 +1129,17 @@ Vrať JSON:
   try {
     // ═══ CONCURRENCY LOCK ═══
     const LOCK_MINUTES = 5;
-    const { data: lockRow } = await sb.from("karel_memory_logs").insert({
+    const { data: lockRow, error: insertError } = await sb.from("karel_memory_logs").insert({
       user_id: userId, log_type: "mirror_job", summary: "Job vytvořen, čekám na fázi harvest...",
       details: { phase: "created", state: createInitialMirrorState() },
     }).select("id, created_at").single();
-    const jobId = lockRow?.id;
+
+    if (insertError) {
+      console.error("[mirror] Insert error:", insertError);
+      return new Response(JSON.stringify({ error: `Insert failed: ${insertError.message}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const jobId = lockRow!.id;
 
     const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
     const { data: allLocks } = await sb.from("karel_memory_logs")
@@ -1141,9 +1147,9 @@ Vrať JSON:
       .eq("user_id", userId).eq("log_type", "mirror_job")
       .gte("created_at", lockCutoff).order("created_at", { ascending: true });
 
-    const olderLock = allLocks?.find((l: any) => l.id !== jobId && l.created_at <= (lockRow?.created_at || ""));
+    const olderLock = allLocks?.find((l: any) => l.id !== jobId && l.created_at <= (lockRow!.created_at || ""));
     if (olderLock) {
-      if (jobId) await sb.from("karel_memory_logs").delete().eq("id", jobId);
+      await sb.from("karel_memory_logs").delete().eq("id", jobId);
       return new Response(JSON.stringify({ status: "skipped", reason: "Redistribuce již probíhá." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
