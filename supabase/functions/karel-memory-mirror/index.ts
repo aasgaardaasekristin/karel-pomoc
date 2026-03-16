@@ -200,36 +200,56 @@ Deno.serve(async (req) => {
     const relations = relationsRes.data || [];
     const strategies = strategiesRes.data || [];
 
-    // Build thread digest for AI analysis
+    // Build thread digest for AI analysis — FULL conversation content
+    // We send ALL messages (not just last N) with generous char limits
+    // to ensure the AI sees every mention of parts, names, events
     const allThreadsDigest: string[] = [];
+    const MAX_CHARS_PER_THREAD = 6000; // generous per-thread limit
+    const MAX_CHARS_PER_MSG = 800; // per message
+
+    function buildExcerpt(msgs: any[], maxPerMsg: number, maxTotal: number): string {
+      if (!Array.isArray(msgs) || msgs.length < 1) return "";
+      let total = 0;
+      const lines: string[] = [];
+      for (const m of msgs) {
+        if (total >= maxTotal) break;
+        const content = typeof m.content === "string" ? m.content.slice(0, maxPerMsg) : "[media]";
+        const line = `${m.role}: ${content}`;
+        lines.push(line);
+        total += line.length;
+      }
+      return lines.join("\n");
+    }
 
     for (const conv of hanaConvs) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-10).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 300) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[HANA | ${conv.last_activity_at?.slice(0, 10)} | ${conv.current_domain}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
+      allThreadsDigest.push(`[HANA | ${conv.last_activity_at?.slice(0, 10)} | ${conv.current_domain} | ${msgs.length} zpráv]\n${excerpt}`);
     }
 
     for (const t of didThreads) {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-8).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 250) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[DID | ${t.part_name} | ${t.sub_mode} | ${t.last_activity_at?.slice(0, 10)}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
+      allThreadsDigest.push(`[DID | ${t.part_name} | ${t.sub_mode} | ${t.last_activity_at?.slice(0, 10)} | ${msgs.length} zpráv]\n${excerpt}`);
     }
 
     for (const c of didConvs) {
       const msgs = Array.isArray(c.messages) ? c.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-6).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 200) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[DID_CONV | ${c.label} | ${c.sub_mode}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
+      allThreadsDigest.push(`[DID_CONV | ${c.label} | ${c.sub_mode} | ${msgs.length} zpráv]\n${excerpt}`);
     }
 
     for (const r of researchThreads) {
       const msgs = Array.isArray(r.messages) ? r.messages : [];
       if (msgs.length < 2) continue;
-      const excerpt = msgs.slice(-4).map((m: any) => `${m.role}: ${typeof m.content === 'string' ? m.content.slice(0, 200) : '[media]'}`).join("\n");
-      allThreadsDigest.push(`[RESEARCH | ${r.topic}]\n${excerpt}`);
+      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, 4000);
+      allThreadsDigest.push(`[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${excerpt}`);
     }
+
+    console.log(`[redistribute] Built ${allThreadsDigest.length} thread digests, total chars: ${allThreadsDigest.reduce((a, b) => a + b.length, 0)}`);
 
     if (allThreadsDigest.length === 0) {
       // Nothing to redistribute — still update PAMET_KAREL with current DB state
