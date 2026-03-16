@@ -235,9 +235,11 @@ Deno.serve(async (req) => {
     const registry = registryRes.data || [];
     const knownPartNames = registry.map((p: any) => p.part_name || p.display_name);
 
-    // Build FULL thread digests — no truncation on message count
-    const MAX_PER_MSG = 1500;
-    const MAX_PER_THREAD = 15000;
+    // Build thread digests — smart truncation to stay within AI context limits
+    // Edge functions have ~60s timeout, so we cap total data to ~40K chars
+    const MAX_PER_MSG = 800;
+    const MAX_PER_THREAD = 6000;
+    const MAX_TOTAL_THREADS = 40000;
 
     function buildFullDigest(msgs: any[]): string {
       if (!Array.isArray(msgs) || msgs.length < 1) return "";
@@ -254,29 +256,41 @@ Deno.serve(async (req) => {
     }
 
     const threadDigests: string[] = [];
+    let totalThreadChars = 0;
 
     for (const conv of hanaConvs) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[HANA | ${conv.last_activity_at?.slice(0, 16)} | ${conv.current_domain} | stav:${conv.current_hana_state} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[HANA | ${conv.last_activity_at?.slice(0, 16)} | ${conv.current_domain} | stav:${conv.current_hana_state} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
     for (const t of didThreads) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[DID_VLÁKNO | část:${t.part_name} | mód:${t.sub_mode} | jazyk:${t.part_language} | ${t.last_activity_at?.slice(0, 16)} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[DID_VLÁKNO | část:${t.part_name} | mód:${t.sub_mode} | jazyk:${t.part_language} | ${t.last_activity_at?.slice(0, 16)} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
     for (const c of didConvs) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(c.messages) ? c.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[DID_KONV | ${c.label} | mód:${c.sub_mode} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[DID_KONV | ${c.label} | mód:${c.sub_mode} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
     for (const r of researchThreads) {
+      if (totalThreadChars >= MAX_TOTAL_THREADS) break;
       const msgs = Array.isArray(r.messages) ? r.messages : [];
       if (msgs.length < 1) continue;
-      threadDigests.push(`[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
+      const digest = `[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`;
+      threadDigests.push(digest);
+      totalThreadChars += digest.length;
     }
 
-    const totalThreadChars = threadDigests.reduce((a, b) => a + b.length, 0);
     console.log(`[mirror] Phase 1: ${threadDigests.length} threads, ${totalThreadChars} chars`);
 
     if (threadDigests.length === 0) {
@@ -304,13 +318,13 @@ Deno.serve(async (req) => {
         if (!folderId) return;
         const allFiles = await listAllFilesRecursive(token, folderId, label);
         const docFiles = allFiles.filter(f => !f.isFolder);
-        // Read up to 80 docs to stay within time limits
-        const toRead = docFiles.slice(0, 80);
+        // Read up to 30 docs to stay within time limits
+        const toRead = docFiles.slice(0, 30);
         for (const doc of toRead) {
           try {
             const content = await readDoc(token, doc.id);
             if (content && content.length > 10) {
-              driveContents[doc.path] = content.slice(0, 8000); // cap per doc
+              driveContents[doc.path] = content.slice(0, 4000); // cap per doc
               driveDocsRead++;
             }
           } catch (e) {
@@ -331,7 +345,7 @@ Deno.serve(async (req) => {
 
     // Build Drive digest for AI (compact)
     const driveDigest = Object.entries(driveContents)
-      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 3000)}`)
+      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 2000)}`)
       .join("\n═══════\n");
 
     // ═══ PHASE 3: AI Pass 1 — Deep extraction of raw facts ═══
@@ -375,7 +389,7 @@ Analyzuj HLOUBKOVĚ a vrať JSON:
   "summary": "celkové shrnutí dne"
 }`;
 
-    const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt);
+    const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
     const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, cross_references: [], urgent_signals: [] };
     
     console.log(`[mirror] Pass 1: ${pass1Data.raw_facts?.length || 0} facts, ${pass1Data.all_names_mentioned?.length || 0} names, ${pass1Data.new_parts_detected?.length || 0} new parts, ${pass1Data.urgent_signals?.length || 0} urgent`);
@@ -407,7 +421,7 @@ Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ}): ${e.stabilni_vlastnost
 Vzorce: ${patterns.map((p: any) => `${p.id}: ${p.description?.slice(0,60)}`).join("; ")}
 
 ═══ OBSAH DRIVE DOKUMENTŮ (${driveDocsRead} souborů) ═══
-${driveDigest.slice(0, 80000)}
+${driveDigest.slice(0, 40000)}
 
 Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
 {
