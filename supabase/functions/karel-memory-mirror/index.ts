@@ -239,6 +239,10 @@ Deno.serve(async (req) => {
     // ═══ PHASE 2: AI Extraction & Classification ═══
     let extractedInfo: any = { pamet_karel: {}, kartoteka_did: {}, zaloha: {}, new_entities: [], new_patterns: [], new_strategies: [] };
 
+    // Load DID part registry for cross-referencing
+    const { data: registryParts } = await sb.from("did_part_registry").select("part_name, display_name, status").eq("user_id", userId);
+    const knownPartNames = (registryParts || []).map((p: any) => p.part_name || p.display_name);
+
     if (allThreadsDigest.length > 0) {
       const extractionPrompt = `Jsi analytický modul Karla. Analyzuj VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
 
@@ -247,6 +251,7 @@ PRAVIDLA:
 - Klasifikuj každou informaci do správné cílové složky
 - Identifikuj nové entity, vzorce a strategie
 - NIKDY nevymýšlej informace
+- KRITICKÉ: Pokud Hana/uživatelka žádá o zapsání NOVÝCH částí/fragmentů, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
 
 CÍLOVÉ SLOŽKY:
 1. PAMET_KAREL → osobní paměť Karla (entity, vztahy, vzorce, strategie interakce s Hankou)
@@ -255,6 +260,7 @@ CÍLOVÉ SLOŽKY:
 
 STÁVAJÍCÍ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
 STÁVAJÍCÍ VZORCE: ${patterns.map((p: any) => p.id).join(", ") || "žádné"}
+EXISTUJÍCÍ ČÁSTI V KARTOTÉCE: ${knownPartNames.join(", ") || "žádné"}
 
 VLÁKNA K ANALÝZE:
 ${allThreadsDigest.join("\n═══════\n")}
@@ -268,13 +274,37 @@ Vrať POUZE validní JSON:
     "strategy_updates": [{"id": "existing_or_new_id", "description": "...", "domain": "...", "hana_state": "...", "effectiveness_delta": 0.1, "new_guidelines": ["..."]}]
   },
   "kartoteka_did": {
-    "part_updates": {"part_name": "text to append to their card"}
+    "part_updates": {"existing_part_name": "text to append to their card"},
+    "new_parts": [
+      {
+        "name": "jméno nové části/fragmentu",
+        "sections": {
+          "A": "Kdo jsem – popis identity, věk, role v systému",
+          "B": "Charakter a psychologický profil",
+          "C": "Potřeby, strachy, konflikty",
+          "D": "Terapeutická doporučení",
+          "E": "Chronologický log – co je známo z historie",
+          "F": "Poznámky pro Karla",
+          "H": "Dlouhodobé cíle"
+        },
+        "status": "Spící|Aktivní",
+        "cluster": "název klastru pokud znám"
+      }
+    ]
   },
   "zaloha": {
     "client_updates": {"client_name_or_id": "text to append"}
   },
   "summary": "jednověté shrnutí co bylo nalezeno a redistribuováno"
-}`;
+}
+
+DŮLEŽITÉ PRO new_parts:
+- Zahrň POUZE části, které NEJSOU v seznamu "EXISTUJÍCÍ ČÁSTI V KARTOTÉCE"
+- Pro každou novou část extrahuj VŠECHNY dostupné informace z vláken do příslušných sekcí A-M
+- Pokud uživatelka zmínila historii části, vlož ji do sekce E
+- Pokud zmínila charakter/vlastnosti, vlož do sekce B
+- Pokud zmínila potřeby/strachy, vlož do sekce C
+- Vyplň co nejvíce sekcí na základě dostupných informací`;
 
       const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
