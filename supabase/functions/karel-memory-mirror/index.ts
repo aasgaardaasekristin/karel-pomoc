@@ -3,20 +3,19 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 
 /**
- * Karel Memory Redistribute – Inteligentní zrcadlení do Drive
+ * Karel Memory Mirror – Masivní analytický engine
  * 
- * Skenuje VŠECHNA vlákna ze všech režimů, extrahuje nosné informace
- * a redistribuuje je do správných složek na Drive:
- * - PAMET_KAREL (entity, vzorce, strategie)
- * - KARTOTEKA_DID (karty částí)
- * - ZALOHA (klienti)
- * 
- * Zároveň aktualizuje DB paměťové tabulky.
- * 
- * DEDUP GUARDS:
- * 1. Content hash markers [KHASH:xxxx] v Drive dokumentech – skip pokud hash existuje
- * 2. Concurrency lock přes karel_memory_logs – jen 1 redistribute najednou
- * 3. DB upsert s deduplikací entit/vzorců na základě ID/jména
+ * Při spuštění:
+ * 1) Zjistí čas posledního zrcadlení → scope = vše od té doby
+ * 2) Naskenuje VŠECHNA vlákna/konverzace ze VŠECH režimů v tom rozsahu
+ * 3) Načte VŠECHNY dokumenty ze VŠECH 3 Drive složek (PAMET_KAREL, KARTOTEKA_DID, ZALOHA)
+ * 4) AI Pass 1 (Gemini 2.5 Pro): Extrakce surových faktů, jmen, událostí, emocí
+ * 5) AI Pass 2 (Gemini 2.5 Pro): Hloubková syntéza – cross-reference s Drive, inferování
+ *    skrytých emocí, navrhování úkolů, doporučení sezení
+ * 6) Zápis do DB (entity, vzorce, strategie, úkoly)
+ * 7) Zápis na Drive (PAMET_KAREL, KARTOTEKA_DID, ZALOHA)
+ *
+ * DEDUP: KHASH, concurrency lock, DB upsert
  */
 
 // ── Content hash (FNV-1a 32bit) ──
@@ -94,12 +93,24 @@ async function updateDoc(token: string, docId: string, content: string): Promise
   if (!res.ok) throw new Error(`Failed to update doc ${docId}: ${await res.text()}`);
 }
 
-async function listDocsInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string }>> {
-  const q = `'${folderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
-  const params = new URLSearchParams({ q, fields: "files(id,name)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+async function listAllFilesRecursive(token: string, folderId: string, prefix = ""): Promise<Array<{ id: string; name: string; path: string; isFolder: boolean }>> {
+  const q = `'${folderId}' in parents and trashed=false`;
+  const params = new URLSearchParams({ q, fields: "files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
-  return data.files || [];
+  const files = data.files || [];
+  const result: Array<{ id: string; name: string; path: string; isFolder: boolean }> = [];
+  
+  for (const f of files) {
+    const isFolder = f.mimeType === "application/vnd.google-apps.folder";
+    const path = prefix ? `${prefix}/${f.name}` : f.name;
+    result.push({ id: f.id, name: f.name, path, isFolder });
+    if (isFolder) {
+      const children = await listAllFilesRecursive(token, f.id, path);
+      result.push(...children);
+    }
+  }
+  return result;
 }
 
 // ── Auth ──
@@ -109,6 +120,31 @@ function isCronOrService(req: Request): boolean {
   if (authHeader.includes(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "__never__")) return true;
   if (ua.startsWith("pg_net/") || ua.startsWith("Supabase Edge Functions")) return true;
   return false;
+}
+
+// ── AI call helper ──
+async function callAI(apiKey: string, systemPrompt: string, userPrompt: string, model = "google/gemini-2.5-pro"): Promise<string> {
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.15,
+    }),
+  });
+  if (!res.ok) throw new Error(`AI error ${res.status}: ${await res.text().catch(() => "")}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
+
+function extractJSON(text: string): any {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try { return JSON.parse(match[0]); } catch { return null; }
 }
 
 // ── Main ──
@@ -140,54 +176,50 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // ═══ CONCURRENCY LOCK: insert-first-then-check (atomic) ═══
-    // Insert lock FIRST, then check if another lock already exists.
-    // This eliminates the race condition where two requests both see "no lock" simultaneously.
-    const LOCK_MINUTES = 3;
+    // ═══ CONCURRENCY LOCK ═══
+    const LOCK_MINUTES = 5;
     const { data: lockRow } = await sb.from("karel_memory_logs").insert({
-      user_id: userId,
-      log_type: "redistribute_lock",
-      summary: "Lock acquired",
+      user_id: userId, log_type: "redistribute_lock", summary: "Lock acquired",
     }).select("id, created_at").single();
     const lockId = lockRow?.id;
 
-    // Now check: are there OTHER locks within the window?
     const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
     const { data: allLocks } = await sb.from("karel_memory_logs")
       .select("id, created_at")
-      .eq("user_id", userId)
-      .eq("log_type", "redistribute_lock")
-      .gte("created_at", lockCutoff)
-      .order("created_at", { ascending: true });
+      .eq("user_id", userId).eq("log_type", "redistribute_lock")
+      .gte("created_at", lockCutoff).order("created_at", { ascending: true });
 
-    // If there's an older lock that isn't ours, we're the duplicate – bail out
     const olderLock = allLocks?.find(l => l.id !== lockId && l.created_at <= (lockRow?.created_at || ""));
     if (olderLock) {
-      console.log("[redistribute] Skipping – another redistribute owns the lock (id:", olderLock.id, ")");
-      // Clean up our lock attempt
       await sb.from("karel_memory_logs").delete().eq("id", lockId);
-      return new Response(JSON.stringify({
-        status: "skipped",
-        reason: "Redistribuce již probíhá. Zkus to za chvíli.",
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "skipped", reason: "Redistribuce již probíhá." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log("[redistribute] Starting for user:", userId);
+    console.log("[mirror] ═══ START for user:", userId);
     const startTime = Date.now();
 
-    // ═══ PHASE 1: Load ALL threads from ALL modes ═══
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // ═══ PHASE 0: Determine time scope — since last successful mirror ═══
+    const { data: lastMirror } = await sb.from("karel_memory_logs")
+      .select("created_at")
+      .eq("user_id", userId).eq("log_type", "redistribute")
+      .order("created_at", { ascending: false }).limit(1);
+    
+    const lastMirrorTime = lastMirror?.[0]?.created_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    console.log(`[mirror] Scope: since ${lastMirrorTime}`);
 
-    const [hanaRes, didThreadsRes, didConvsRes, researchRes, episodesRes, entitiesRes, patternsRes, relationsRes, strategiesRes] = await Promise.all([
-      sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain").eq("user_id", userId).gte("last_activity_at", sevenDaysAgo).order("last_activity_at", { ascending: false }).limit(20),
-      sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode").eq("user_id", userId).gte("last_activity_at", sevenDaysAgo).order("last_activity_at", { ascending: false }).limit(20),
-      sb.from("did_conversations").select("id, label, messages, sub_mode, preview").eq("user_id", userId).gte("saved_at", sevenDaysAgo).order("saved_at", { ascending: false }).limit(20),
-      sb.from("research_threads").select("id, topic, messages, last_activity_at").eq("user_id", userId).eq("is_deleted", false).gte("last_activity_at", sevenDaysAgo).limit(10),
-      sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).order("timestamp_start", { ascending: false }).limit(200),
+    // ═══ PHASE 1: Massive data collection from ALL modes ═══
+    const [hanaRes, didThreadsRes, didConvsRes, researchRes, episodesRes, entitiesRes, patternsRes, relationsRes, strategiesRes, tasksRes, registryRes] = await Promise.all([
+      sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain, current_hana_state").eq("user_id", userId).gte("last_activity_at", lastMirrorTime).order("last_activity_at", { ascending: false }).limit(50),
+      sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode, part_language").eq("user_id", userId).gte("last_activity_at", lastMirrorTime).order("last_activity_at", { ascending: false }).limit(50),
+      sb.from("did_conversations").select("id, label, messages, sub_mode, preview, did_initial_context, saved_at").eq("user_id", userId).gte("saved_at", lastMirrorTime).order("saved_at", { ascending: false }).limit(50),
+      sb.from("research_threads").select("id, topic, messages, last_activity_at").eq("user_id", userId).eq("is_deleted", false).gte("last_activity_at", lastMirrorTime).limit(20),
+      sb.from("karel_episodes").select("*").eq("user_id", userId).eq("is_archived", false).order("timestamp_start", { ascending: false }).limit(300),
       sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
       sb.from("karel_semantic_patterns").select("*").eq("user_id", userId),
       sb.from("karel_semantic_relations").select("*").eq("user_id", userId),
       sb.from("karel_strategies").select("*").eq("user_id", userId),
+      sb.from("did_therapist_tasks").select("*").eq("user_id", userId).in("status", ["pending", "in_progress"]),
+      sb.from("did_part_registry").select("*").eq("user_id", userId),
     ]);
 
     const hanaConvs = hanaRes.data || [];
@@ -199,21 +231,21 @@ Deno.serve(async (req) => {
     const patterns = patternsRes.data || [];
     const relations = relationsRes.data || [];
     const strategies = strategiesRes.data || [];
+    const activeTasks = tasksRes.data || [];
+    const registry = registryRes.data || [];
+    const knownPartNames = registry.map((p: any) => p.part_name || p.display_name);
 
-    // Build thread digest for AI analysis — FULL conversation content
-    // We send ALL messages (not just last N) with generous char limits
-    // to ensure the AI sees every mention of parts, names, events
-    const allThreadsDigest: string[] = [];
-    const MAX_CHARS_PER_THREAD = 6000; // generous per-thread limit
-    const MAX_CHARS_PER_MSG = 800; // per message
+    // Build FULL thread digests — no truncation on message count
+    const MAX_PER_MSG = 1500;
+    const MAX_PER_THREAD = 15000;
 
-    function buildExcerpt(msgs: any[], maxPerMsg: number, maxTotal: number): string {
+    function buildFullDigest(msgs: any[]): string {
       if (!Array.isArray(msgs) || msgs.length < 1) return "";
       let total = 0;
       const lines: string[] = [];
       for (const m of msgs) {
-        if (total >= maxTotal) break;
-        const content = typeof m.content === "string" ? m.content.slice(0, maxPerMsg) : "[media]";
+        if (total >= MAX_PER_THREAD) break;
+        const content = typeof m.content === "string" ? m.content.slice(0, MAX_PER_MSG) : "[media]";
         const line = `${m.role}: ${content}`;
         lines.push(line);
         total += line.length;
@@ -221,159 +253,210 @@ Deno.serve(async (req) => {
       return lines.join("\n");
     }
 
+    const threadDigests: string[] = [];
+
     for (const conv of hanaConvs) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
-      if (msgs.length < 2) continue;
-      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
-      allThreadsDigest.push(`[HANA | ${conv.last_activity_at?.slice(0, 10)} | ${conv.current_domain} | ${msgs.length} zpráv]\n${excerpt}`);
+      if (msgs.length < 1) continue;
+      threadDigests.push(`[HANA | ${conv.last_activity_at?.slice(0, 16)} | ${conv.current_domain} | stav:${conv.current_hana_state} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
     }
-
     for (const t of didThreads) {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
-      if (msgs.length < 2) continue;
-      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
-      allThreadsDigest.push(`[DID | ${t.part_name} | ${t.sub_mode} | ${t.last_activity_at?.slice(0, 10)} | ${msgs.length} zpráv]\n${excerpt}`);
+      if (msgs.length < 1) continue;
+      threadDigests.push(`[DID_VLÁKNO | část:${t.part_name} | mód:${t.sub_mode} | jazyk:${t.part_language} | ${t.last_activity_at?.slice(0, 16)} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
     }
-
     for (const c of didConvs) {
       const msgs = Array.isArray(c.messages) ? c.messages : [];
-      if (msgs.length < 2) continue;
-      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, MAX_CHARS_PER_THREAD);
-      allThreadsDigest.push(`[DID_CONV | ${c.label} | ${c.sub_mode} | ${msgs.length} zpráv]\n${excerpt}`);
+      if (msgs.length < 1) continue;
+      threadDigests.push(`[DID_KONV | ${c.label} | mód:${c.sub_mode} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
     }
-
     for (const r of researchThreads) {
       const msgs = Array.isArray(r.messages) ? r.messages : [];
-      if (msgs.length < 2) continue;
-      const excerpt = buildExcerpt(msgs, MAX_CHARS_PER_MSG, 4000);
-      allThreadsDigest.push(`[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${excerpt}`);
+      if (msgs.length < 1) continue;
+      threadDigests.push(`[RESEARCH | ${r.topic} | ${msgs.length} zpráv]\n${buildFullDigest(msgs)}`);
     }
 
-    console.log(`[redistribute] Built ${allThreadsDigest.length} thread digests, total chars: ${allThreadsDigest.reduce((a, b) => a + b.length, 0)}`);
+    const totalThreadChars = threadDigests.reduce((a, b) => a + b.length, 0);
+    console.log(`[mirror] Phase 1: ${threadDigests.length} threads, ${totalThreadChars} chars`);
 
-    if (allThreadsDigest.length === 0) {
-      // Nothing to redistribute — still update PAMET_KAREL with current DB state
-      console.log("[redistribute] No recent threads, updating PAMET_KAREL with current DB state");
+    if (threadDigests.length === 0) {
+      if (lockId) await sb.from("karel_memory_logs").update({ summary: "No new data" }).eq("id", lockId);
+      return new Response(JSON.stringify({ status: "ok", summary: "Žádná nová data od posledního zrcadlení." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ═══ PHASE 2: AI Extraction & Classification ═══
-    let extractedInfo: any = { pamet_karel: {}, kartoteka_did: {}, zaloha: {}, new_entities: [], new_patterns: [], new_strategies: [] };
+    // ═══ PHASE 2: Deep Drive read — ALL documents from ALL folders ═══
+    console.log("[mirror] Phase 2: Reading ALL Drive documents...");
+    const driveContents: Record<string, string> = {};
+    let driveDocsRead = 0;
 
-    // Load DID part registry for cross-referencing
-    const { data: registryParts } = await sb.from("did_part_registry").select("part_name, display_name, status").eq("user_id", userId);
-    const knownPartNames = (registryParts || []).map((p: any) => p.part_name || p.display_name);
+    try {
+      const token = await getAccessToken();
 
-    if (allThreadsDigest.length > 0) {
-      const extractionPrompt = `Jsi analytický modul Karla. Analyzuj KOMPLETNĚ VŠECHNA vlákna konverzací a extrahuj nosné informace pro redistribuci do perzistentních složek.
+      // Read all three root folders recursively
+      const folderSearches = await Promise.all([
+        findFolderFuzzy(token, ["PAMET_KAREL"]),
+        findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]),
+        findFolderFuzzy(token, ["ZALOHA", "Zaloha"]),
+      ]);
+      const [pametId, kartotekaId, zalohaId] = folderSearches;
 
-KRITICKÝ POŽADAVEK – ČTENÍ JMEN:
-- Projdi KAŽDOU zprávu v KAŽDÉM vlákně od začátku do konce
-- Zaznamenej KAŽDÉ jméno, přezdívku nebo pojmenování části/fragmentu, které se ve vláknech vyskytne
-- Pokud Hana mluví o někom jako o části systému (fragment, alter, část, chlapec, holka, bytost...), zaznamenej to
-- Pokud někdo popisuje příběh/historii/osud jiné osoby/části, zaznamenej to jako novou část
-- Neignoruj žádné jméno! Lepší je extrahovat o jednu část navíc než jednu vynechat
-- Zejména dávej pozor na pasáže kde Hana VYPRÁVÍ nebo POPISUJE části – tam bývá nejvíc jmen
+      const readFolderDocs = async (folderId: string | null, label: string) => {
+        if (!folderId) return;
+        const allFiles = await listAllFilesRecursive(token, folderId, label);
+        const docFiles = allFiles.filter(f => !f.isFolder);
+        // Read up to 80 docs to stay within time limits
+        const toRead = docFiles.slice(0, 80);
+        for (const doc of toRead) {
+          try {
+            const content = await readDoc(token, doc.id);
+            if (content && content.length > 10) {
+              driveContents[doc.path] = content.slice(0, 8000); // cap per doc
+              driveDocsRead++;
+            }
+          } catch (e) {
+            console.warn(`[mirror] Could not read ${doc.path}: ${e}`);
+          }
+        }
+      };
+
+      // Read all 3 folders in sequence (to avoid rate limits)
+      await readFolderDocs(pametId, "PAMET_KAREL");
+      await readFolderDocs(kartotekaId, "KARTOTEKA_DID");
+      await readFolderDocs(zalohaId, "ZALOHA");
+
+      console.log(`[mirror] Phase 2: Read ${driveDocsRead} Drive documents`);
+    } catch (driveReadErr) {
+      console.error("[mirror] Drive read error (continuing with DB data):", driveReadErr);
+    }
+
+    // Build Drive digest for AI (compact)
+    const driveDigest = Object.entries(driveContents)
+      .map(([path, content]) => `[DRIVE:${path}]\n${content.slice(0, 3000)}`)
+      .join("\n═══════\n");
+
+    // ═══ PHASE 3: AI Pass 1 — Deep extraction of raw facts ═══
+    console.log("[mirror] Phase 3: AI Pass 1 — extraction...");
+
+    const pass1System = `Jsi Karel – hloubkový analytický engine. Tvým úkolem je přečíst KOMPLETNĚ VŠECHNA vlákna konverzací a extrahovat VEŠKERÉ informace, i ty skryté "mezi řádky".
+
+PRAVIDLA HLOUBKOVÉ ANALÝZY:
+1. Nečti povrchně. Každá věta může obsahovat klíčovou informaci.
+2. Pokud někdo říká "vypadal divně" nebo "nechtěl mluvit", analyzuj CO to znamená (strach? stud? únava? odpor?)
+3. Pokud terapeutka (Hana/Káťa) popisuje chování části, extrahuj emoční stav, triggery, potřeby
+4. Pokud část mluví přímo (cast mode), analyzuj jazyk, tón, skryté obavy
+5. Hledej SOUVISLOSTI: zmínka o jedné části v jednom vlákně může vysvětlit chování jiné části v jiném vlákně
+6. NIKDY nepřehlížej jména – každé jméno/přezdívka je potenciální nová část DID systému
+7. Extrahuj informace o Haně a Káťe samotných – jejich nálada, stres, potřeby, úspěchy`;
+
+    const pass1Prompt = `STÁVAJÍCÍ REGISTR ČÁSTÍ: ${knownPartNames.join(", ") || "prázdný"}
+STÁVAJÍCÍ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}(${e.typ})`).join(", ") || "žádné"}
+AKTIVNÍ ÚKOLY: ${activeTasks.map((t: any) => `[${t.assigned_to}] ${t.task} (${t.status})`).join("; ") || "žádné"}
+
+═══ VLÁKNA K ANALÝZE (od ${lastMirrorTime.slice(0, 16)}) ═══
+${threadDigests.join("\n═══════════════\n")}
+
+Analyzuj HLOUBKOVĚ a vrať JSON:
+{
+  "raw_facts": [
+    {"subject": "jméno osoby/části", "fact": "co jsme se dozvěděli", "source_type": "HANA|DID|RESEARCH", "confidence": 0.9, "hidden": false, "inferred_emotion": "strach|radost|stud|...|null"}
+  ],
+  "all_names_mentioned": ["KAŽDÉ jméno zmíněné kdekoliv"],
+  "new_parts_detected": [
+    {"name": "jméno", "evidence": "odkud víme že existuje", "status_guess": "Aktivní|Spící"}
+  ],
+  "therapist_observations": {
+    "hanka": {"mood": "...", "stress_level": "low|medium|high", "needs": ["..."], "achievements": ["..."]},
+    "kata": {"mood": "...", "stress_level": "low|medium|high", "needs": ["..."], "achievements": ["..."]}
+  },
+  "cross_references": [
+    {"parts_involved": ["A", "B"], "pattern": "popis souvislosti mezi nimi"}
+  ],
+  "urgent_signals": ["cokoliv co vyžaduje okamžitou pozornost"],
+  "summary": "celkové shrnutí dne"
+}`;
+
+    const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt);
+    const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, cross_references: [], urgent_signals: [] };
+    
+    console.log(`[mirror] Pass 1: ${pass1Data.raw_facts?.length || 0} facts, ${pass1Data.all_names_mentioned?.length || 0} names, ${pass1Data.new_parts_detected?.length || 0} new parts, ${pass1Data.urgent_signals?.length || 0} urgent`);
+
+    // ═══ PHASE 4: AI Pass 2 — Deep synthesis with Drive context ═══
+    console.log("[mirror] Phase 4: AI Pass 2 — synthesis with Drive docs...");
+
+    const pass2System = `Jsi Karel – strategický analytik DID systému. Máš k dispozici:
+1. Surové fakty extrahované z dnešních konverzací
+2. KOMPLETNÍ obsah všech dokumentů na Google Drive
+
+Tvým úkolem je SYNTÉZA: spojit nové poznatky s existujícími záznamy, najít hlubší vzorce, inferovat skryté souvislosti a navrhnout konkrétní akce.
 
 PRAVIDLA:
-- Extrahuj POUZE skutečně nosné, nové informace (ne small-talk, ne opakování známého)
-- Klasifikuj každou informaci do správné cílové složky
-- Identifikuj nové entity, vzorce a strategie
-- NIKDY nevymýšlej informace – ale NIKDY nepřehlížej zmíněná jména
-- KRITICKÉ: Pokud Hana/uživatelka zmiňuje JAKÉKOLIV nové části/fragmenty, které ještě nemají kartu, MUSÍŠ je extrahovat do "new_parts"!
+- Čti CELÝ obsah Drive dokumentů – ne jen nadpisy, ale i malé poznámky a detaily
+- Pokud nový fakt doplňuje existující záznam na Drive, navrhni kam přesně ho zapsat
+- Pokud detekuješ rozpor (něco nového vs. starý záznam), upozorni
+- Pro KAŽDOU novou část vytvoř kompletní kartu s 13 sekcemi (A-M)
+- Navrhuj KONKRÉTNÍ úkoly pro Hanku a/nebo Káťu – ne abstraktní, ale akční
+- Pokud část vykazuje strach/stud/úzkost (i skrytě), navrhni specifickou terapeutickou intervenci
+- Aktualizuj motivační profily terapeutek na základě pozorování`;
 
-CÍLOVÉ SLOŽKY:
-1. PAMET_KAREL → osobní paměť Karla (entity, vztahy, vzorce, strategie interakce s Hankou)
-2. KARTOTEKA_DID → karty částí DID systému (nové poznatky o konkrétních částech)
-3. ZALOHA → pracovní klienti (nové poznatky z klinické práce)
+    const pass2Prompt = `═══ SUROVÉ FAKTY Z DNEŠNÍCH KONVERZACÍ ═══
+${JSON.stringify(pass1Data, null, 1)}
 
-STÁVAJÍCÍ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
-STÁVAJÍCÍ VZORCE: ${patterns.map((p: any) => p.id).join(", ") || "žádné"}
-EXISTUJÍCÍ ČÁSTI V KARTOTÉCE: ${knownPartNames.join(", ") || "žádné"}
+═══ EXISTUJÍCÍ REGISTRY A DB ═══
+Části: ${registry.map((p: any) => `${p.part_name}(${p.status}, cluster:${p.cluster||'?'}, last:${p.last_seen_at?.slice(0,10)||'?'})`).join(", ")}
+Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ}): ${e.stabilni_vlastnosti?.join(',')}`).join("; ")}
+Vzorce: ${patterns.map((p: any) => `${p.id}: ${p.description?.slice(0,60)}`).join("; ")}
 
-VLÁKNA K ANALÝZE (čti CELÁ, ne jen konec!):
-${allThreadsDigest.join("\n═══════\n")}
+═══ OBSAH DRIVE DOKUMENTŮ (${driveDocsRead} souborů) ═══
+${driveDigest.slice(0, 80000)}
 
-Vrať POUZE validní JSON:
+Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
 {
   "pamet_karel": {
-    "entity_updates": [{"id": "existing_or_new_id", "jmeno": "...", "typ": "clovek|cast_did|klient", "role_vuci_hance": "...", "new_properties": ["..."], "new_notes": "..."}],
-    "pattern_updates": [{"id": "existing_or_new_id", "description": "...", "domain": "HANA|DID|PRACE", "tags": ["..."], "confidence_delta": 0.1}],
+    "entity_updates": [{"id": "...", "jmeno": "...", "typ": "clovek|cast_did|klient", "role_vuci_hance": "...", "new_properties": ["..."], "new_notes": "..."}],
+    "pattern_updates": [{"id": "...", "description": "...", "domain": "HANA|DID|PRACE", "tags": ["..."], "confidence_delta": 0.1}],
     "relation_updates": [{"subject_id": "...", "relation": "...", "object_id": "...", "description": "..."}],
-    "strategy_updates": [{"id": "existing_or_new_id", "description": "...", "domain": "...", "hana_state": "...", "effectiveness_delta": 0.1, "new_guidelines": ["..."]}]
+    "strategy_updates": [{"id": "...", "description": "...", "domain": "...", "hana_state": "...", "effectiveness_delta": 0.1, "new_guidelines": ["..."]}]
   },
   "kartoteka_did": {
-    "part_updates": {"existing_part_name": "text to append to their card"},
+    "part_updates": {"existing_part_name": "text k doplnění do karty – Karel musí specifikovat DO KTERÉ SEKCE (A-M)"},
     "new_parts": [
       {
-        "name": "jméno nové části/fragmentu",
-        "sections": {
-          "A": "Kdo jsem – popis identity, věk, role v systému",
-          "B": "Charakter a psychologický profil",
-          "C": "Potřeby, strachy, konflikty",
-          "D": "Terapeutická doporučení",
-          "E": "Chronologický log – co je známo z historie",
-          "F": "Poznámky pro Karla",
-          "H": "Dlouhodobé cíle"
-        },
+        "name": "jméno",
+        "sections": {"A": "...", "B": "...", "C": "...", "D": "...", "E": "...", "F": "...", "G": "...", "H": "...", "I": "...", "J": "...", "K": "...", "L": "...", "M": "..."},
         "status": "Spící|Aktivní",
-        "cluster": "název klastru pokud znám"
+        "cluster": "...",
+        "inferred_data": "co Karel vyčetl mezi řádky – strachy, stud, skryté potřeby"
       }
     ]
   },
   "zaloha": {
-    "client_updates": {"client_name_or_id": "text to append"}
+    "client_updates": {"client_name": "nové poznatky"}
   },
-  "all_names_found": ["seznam VŠECH jmen/přezdívek zmíněných ve vláknech pro kontrolu"],
-  "summary": "jednověté shrnutí co bylo nalezeno a redistribuováno"
-}
+  "new_tasks": [
+    {"task": "konkrétní úkol", "assigned_to": "hanka|kata|both", "priority": "high|normal|low", "category": "session|observation|coordination|intervention", "reasoning": "proč tento úkol"}
+  ],
+  "centrum_updates": {
+    "dashboard_notes": "nové poznatky pro 00_Dashboard",
+    "geography_notes": "nové poznatky pro 03_Geografie vnitřního světa",
+    "relationships_notes": "nové poznatky pro 04_Mapa_Vztahu",
+    "operative_plan_notes": "nové poznatky pro 05_Operativni_Plan"
+  },
+  "motivation_updates": {
+    "hanka": {"praise": "co pochválit", "concern": "na co upozornit", "tip": "personalizovaný tip"},
+    "kata": {"praise": "co pochválit", "concern": "na co upozornit", "tip": "personalizovaný tip"}
+  },
+  "synthesis_summary": "Karlova celková reflexe – co dnes systém prožil, jaké jsou trendy, co ho znepokojuje, co ho těší"
+}`;
 
-DŮLEŽITÉ PRO new_parts:
-- Zahrň POUZE části, které NEJSOU v seznamu "EXISTUJÍCÍ ČÁSTI V KARTOTÉCE"
-- Pro každou novou část extrahuj VŠECHNY dostupné informace z vláken do příslušných sekcí A-M
-- Pokud uživatelka zmínila historii části, vlož ji do sekce E
-- Pokud zmínila charakter/vlastnosti, vlož do sekce B
-- Pokud zmínila potřeby/strachy, vlož do sekce C
-- Vyplň co nejvíce sekcí na základě dostupných informací
-- RADĚJI PŘIDEJ VÍCE ČÁSTÍ NEŽ MÉNĚ – vynechat část je horší než přidat jednu navíc`;
+    const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt);
+    const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, zaloha: {}, new_tasks: [], centrum_updates: {}, motivation_updates: {} };
 
-      // Use stronger model for better extraction from long conversations
-      const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-pro",
-          messages: [
-            { role: "system", content: "Jsi analytický engine. Extrahuj a klasifikuj informace z konverzací. Vrať pouze validní JSON. Tvá hlavní úloha: najít VŠECHNA jména částí/fragmentů zmíněných v rozhovorech a zajistit, že žádné nebude vynecháno." },
-            { role: "user", content: extractionPrompt },
-          ],
-          temperature: 0.1,
-        }),
-      });
+    const newParts = extractedInfo.kartoteka_did?.new_parts || [];
+    const partUpdates = Object.keys(extractedInfo.kartoteka_did?.part_updates || {});
+    const newTasks = extractedInfo.new_tasks || [];
+    console.log(`[mirror] Pass 2: ${newParts.length} new parts, ${partUpdates.length} part updates, ${newTasks.length} new tasks`);
 
-      if (aiRes.ok) {
-        const aiData = await aiRes.json();
-        const content = aiData.choices?.[0]?.message?.content || "";
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            extractedInfo = JSON.parse(jsonMatch[0]);
-            // Log what AI found for debugging
-            const newParts = extractedInfo.kartoteka_did?.new_parts || [];
-            const allNames = extractedInfo.all_names_found || [];
-            const partUpdates = Object.keys(extractedInfo.kartoteka_did?.part_updates || {});
-            console.log(`[redistribute] AI found: ${allNames.length} names total, ${newParts.length} new parts, ${partUpdates.length} part updates`);
-            console.log(`[redistribute] All names: ${allNames.join(", ")}`);
-            console.log(`[redistribute] New parts: ${newParts.map((p: any) => p.name).join(", ")}`);
-          } catch (e) { console.error("[redistribute] JSON parse error:", e); }
-        } else {
-          console.error("[redistribute] No JSON found in AI response, content length:", content.length);
-        }
-      } else {
-        console.error("[redistribute] AI error:", aiRes.status, await aiRes.text().catch(() => ""));
-      }
-    }
-
-    // ═══ PHASE 3: Apply DB updates ═══
+    // ═══ PHASE 5: Apply DB updates ═══
     const dbUpdates: string[] = [];
 
     // Entity updates
@@ -384,8 +467,7 @@ DŮLEŽITÉ PRO new_parts:
           const newProps = [...new Set([...(existing.stabilni_vlastnosti || []), ...(eu.new_properties || [])])];
           const newNotes = existing.notes ? `${existing.notes}\n${eu.new_notes || ""}` : (eu.new_notes || "");
           await sb.from("karel_semantic_entities").update({
-            stabilni_vlastnosti: newProps,
-            notes: newNotes.slice(0, 5000),
+            stabilni_vlastnosti: newProps, notes: newNotes.slice(0, 5000),
             role_vuci_hance: eu.role_vuci_hance || existing.role_vuci_hance,
             updated_at: new Date().toISOString(),
           }).eq("id", existing.id).eq("user_id", userId);
@@ -393,9 +475,7 @@ DŮLEŽITÉ PRO new_parts:
         } else if (eu.jmeno) {
           await sb.from("karel_semantic_entities").insert({
             id: eu.id || eu.jmeno.toLowerCase().replace(/\s/g, "_"),
-            user_id: userId,
-            jmeno: eu.jmeno,
-            typ: eu.typ || "clovek",
+            user_id: userId, jmeno: eu.jmeno, typ: eu.typ || "clovek",
             role_vuci_hance: eu.role_vuci_hance || "",
             stabilni_vlastnosti: eu.new_properties || [],
             notes: eu.new_notes || "",
@@ -406,87 +486,93 @@ DŮLEŽITÉ PRO new_parts:
     }
 
     // Pattern updates
-    if (extractedInfo.pamet_karel?.pattern_updates?.length) {
-      for (const pu of extractedInfo.pamet_karel.pattern_updates) {
-        const existing = patterns.find((p: any) => p.id === pu.id);
-        if (existing) {
-          await sb.from("karel_semantic_patterns").update({
-            description: pu.description || existing.description,
-            confidence: Math.min(1, Math.max(0, (existing.confidence || 0.5) + (pu.confidence_delta || 0))),
-            tags: [...new Set([...(existing.tags || []), ...(pu.tags || [])])],
-            updated_at: new Date().toISOString(),
-          }).eq("id", existing.id).eq("user_id", userId);
-          dbUpdates.push(`pattern_update:${pu.id}`);
-        } else if (pu.description) {
-          await sb.from("karel_semantic_patterns").insert({
-            id: pu.id || `pat_${Date.now()}`,
-            user_id: userId,
-            description: pu.description,
-            domain: pu.domain || "HANA",
-            tags: pu.tags || [],
-            confidence: 0.5,
-          });
-          dbUpdates.push(`pattern_new:${pu.id}`);
-        }
+    for (const pu of (extractedInfo.pamet_karel?.pattern_updates || [])) {
+      const existing = patterns.find((p: any) => p.id === pu.id);
+      if (existing) {
+        await sb.from("karel_semantic_patterns").update({
+          description: pu.description || existing.description,
+          confidence: Math.min(1, Math.max(0, (existing.confidence || 0.5) + (pu.confidence_delta || 0))),
+          tags: [...new Set([...(existing.tags || []), ...(pu.tags || [])])],
+          updated_at: new Date().toISOString(),
+        }).eq("id", existing.id).eq("user_id", userId);
+        dbUpdates.push(`pattern_update:${pu.id}`);
+      } else if (pu.description) {
+        await sb.from("karel_semantic_patterns").insert({
+          id: pu.id || `pat_${Date.now()}`, user_id: userId,
+          description: pu.description, domain: pu.domain || "HANA",
+          tags: pu.tags || [], confidence: 0.5,
+        });
+        dbUpdates.push(`pattern_new:${pu.id}`);
       }
     }
 
-    // Strategy updates
-    if (extractedInfo.pamet_karel?.strategy_updates?.length) {
-      for (const su of extractedInfo.pamet_karel.strategy_updates) {
-        const existing = strategies.find((s: any) => s.id === su.id);
-        if (existing) {
-          await sb.from("karel_strategies").update({
-            effectiveness_score: Math.min(1, Math.max(0, (existing.effectiveness_score || 0.5) + (su.effectiveness_delta || 0))),
-            guidelines: [...new Set([...(existing.guidelines || []), ...(su.new_guidelines || [])])],
-            updated_at: new Date().toISOString(),
-          }).eq("id", existing.id).eq("user_id", userId);
-          dbUpdates.push(`strategy_update:${su.id}`);
-        } else if (su.description) {
-          await sb.from("karel_strategies").insert({
-            id: su.id || `str_${Date.now()}`,
-            user_id: userId,
-            description: su.description,
-            domain: su.domain || "HANA",
-            hana_state: su.hana_state || "",
-            guidelines: su.new_guidelines || [],
-            effectiveness_score: 0.5,
-          });
-          dbUpdates.push(`strategy_new:${su.id}`);
-        }
+    // Strategy & relation updates
+    for (const su of (extractedInfo.pamet_karel?.strategy_updates || [])) {
+      const existing = strategies.find((s: any) => s.id === su.id);
+      if (existing) {
+        await sb.from("karel_strategies").update({
+          effectiveness_score: Math.min(1, Math.max(0, (existing.effectiveness_score || 0.5) + (su.effectiveness_delta || 0))),
+          guidelines: [...new Set([...(existing.guidelines || []), ...(su.new_guidelines || [])])],
+          updated_at: new Date().toISOString(),
+        }).eq("id", existing.id).eq("user_id", userId);
+        dbUpdates.push(`strategy_update:${su.id}`);
+      } else if (su.description) {
+        await sb.from("karel_strategies").insert({
+          id: su.id || `str_${Date.now()}`, user_id: userId,
+          description: su.description, domain: su.domain || "HANA",
+          hana_state: su.hana_state || "", guidelines: su.new_guidelines || [],
+          effectiveness_score: 0.5,
+        });
+        dbUpdates.push(`strategy_new:${su.id}`);
       }
     }
 
-    // Relation updates
-    if (extractedInfo.pamet_karel?.relation_updates?.length) {
-      for (const ru of extractedInfo.pamet_karel.relation_updates) {
-        const existing = relations.find((r: any) => r.subject_id === ru.subject_id && r.object_id === ru.object_id && r.relation === ru.relation);
-        if (!existing && ru.subject_id && ru.object_id) {
-          await sb.from("karel_semantic_relations").insert({
-            user_id: userId,
-            subject_id: ru.subject_id,
-            relation: ru.relation,
-            object_id: ru.object_id,
-            description: ru.description || "",
-          });
-          dbUpdates.push(`relation_new:${ru.subject_id}->${ru.object_id}`);
-        }
+    for (const ru of (extractedInfo.pamet_karel?.relation_updates || [])) {
+      const existing = relations.find((r: any) => r.subject_id === ru.subject_id && r.object_id === ru.object_id && r.relation === ru.relation);
+      if (!existing && ru.subject_id && ru.object_id) {
+        await sb.from("karel_semantic_relations").insert({
+          user_id: userId, subject_id: ru.subject_id, relation: ru.relation,
+          object_id: ru.object_id, description: ru.description || "",
+        });
+        dbUpdates.push(`relation_new:${ru.subject_id}->${ru.object_id}`);
       }
     }
 
-    // ═══ PHASE 4: Drive redistribution ═══
+    // NEW: Create therapist tasks from AI recommendations
+    if (newTasks.length > 0) {
+      for (const task of newTasks) {
+        if (!task.task) continue;
+        // Dedup: check if similar task already exists
+        const existingTask = activeTasks.find((t: any) => t.task.toLowerCase().includes(task.task.toLowerCase().slice(0, 30)));
+        if (existingTask) {
+          dbUpdates.push(`task_dedup:${task.task.slice(0, 40)}`);
+          continue;
+        }
+        await sb.from("did_therapist_tasks").insert({
+          user_id: userId,
+          task: task.task,
+          assigned_to: task.assigned_to || "both",
+          priority: task.priority || "normal",
+          category: task.category || "general",
+          note: task.reasoning || "",
+          source_agreement: "mirror_auto",
+        });
+        dbUpdates.push(`task_new:${task.task.slice(0, 40)}`);
+      }
+    }
+
+    // ═══ PHASE 6: Drive redistribution ═══
     const driveUpdates: string[] = [];
     try {
       const token = await getAccessToken();
 
-      // PAMET_KAREL: update semantic files with fresh DB data
-      const pametId = await findFolder(token, "PAMET_KAREL");
+      // PAMET_KAREL: update semantic files
+      const pametId = await findFolderFuzzy(token, ["PAMET_KAREL"]);
       if (pametId) {
         const semanticId = await findFolder(token, "PAMET_KAREL_SEMANTIC", pametId);
         const proceduralId = await findFolder(token, "PAMET_KAREL_PROCEDURAL", pametId);
         const episodesId = await findFolder(token, "PAMET_KAREL_EPISODES", pametId);
 
-        // Re-read updated entities/patterns/etc
         const [freshEntities, freshPatterns, freshRelations, freshStrategies] = await Promise.all([
           sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
           sb.from("karel_semantic_patterns").select("*").eq("user_id", userId),
@@ -495,11 +581,10 @@ DŮLEŽITÉ PRO new_parts:
         ]);
 
         const driveWrites: Promise<void>[] = [];
-
         if (semanticId) {
-          const entityDoc = await findDoc(token, "osoby", semanticId);
-          const vzorceDoc = await findDoc(token, "vzorce", semanticId);
-          const vztahyDoc = await findDoc(token, "vztahy", semanticId);
+          const [entityDoc, vzorceDoc, vztahyDoc] = await Promise.all([
+            findDoc(token, "osoby", semanticId), findDoc(token, "vzorce", semanticId), findDoc(token, "vztahy", semanticId),
+          ]);
           if (entityDoc) { driveWrites.push(updateDoc(token, entityDoc.id, formatEntities(freshEntities.data || []))); driveUpdates.push("SEMANTIC/osoby"); }
           if (vzorceDoc) { driveWrites.push(updateDoc(token, vzorceDoc.id, formatPatterns(freshPatterns.data || []))); driveUpdates.push("SEMANTIC/vzorce"); }
           if (vztahyDoc) { driveWrites.push(updateDoc(token, vztahyDoc.id, formatRelations(freshRelations.data || []))); driveUpdates.push("SEMANTIC/vztahy"); }
@@ -509,24 +594,15 @@ DŮLEŽITÉ PRO new_parts:
           if (stratDoc) { driveWrites.push(updateDoc(token, stratDoc.id, formatStrategies(freshStrategies.data || []))); driveUpdates.push("PROCEDURAL/strategie"); }
         }
         if (episodesId) {
-          const epDoc = await findDoc(token, "", episodesId); // any doc
-          if (!epDoc) {
-            const files = await listDocsInFolder(token, episodesId);
-            if (files[0]) {
-              driveWrites.push(updateDoc(token, files[0].id, formatEpisodes(episodes.slice(0, 100))));
-              driveUpdates.push("EPISODES/index");
-            }
-          } else {
-            driveWrites.push(updateDoc(token, epDoc.id, formatEpisodes(episodes.slice(0, 100))));
-            driveUpdates.push("EPISODES/index");
-          }
+          const files = await listAllFilesRecursive(token, episodesId, "");
+          const epDoc = files.find(f => !f.isFolder);
+          if (epDoc) { driveWrites.push(updateDoc(token, epDoc.id, formatEpisodes(episodes.slice(0, 100)))); driveUpdates.push("EPISODES/index"); }
         }
-
         await Promise.all(driveWrites);
       }
 
-      // KARTOTEKA_DID: append to existing part cards (with hash dedup)
-      if (extractedInfo.kartoteka_did?.part_updates && Object.keys(extractedInfo.kartoteka_did.part_updates).length > 0) {
+      // KARTOTEKA_DID: append to existing cards (KHASH dedup)
+      if (partUpdates.length > 0) {
         const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
         if (kartotekaId) {
           for (const [partName, content] of Object.entries(extractedInfo.kartoteka_did.part_updates)) {
@@ -539,79 +615,80 @@ DŮLEŽITÉ PRO new_parts:
             const partDoc = data.files?.[0];
             if (partDoc) {
               const existing = await readDoc(token, partDoc.id);
-              // DEDUP: check if this hash already exists in the document
               if (existing.includes(`[KHASH:${hash}]`)) {
-                console.log(`[redistribute] DEDUP: skipping ${partName} – hash ${hash} already present`);
-                driveUpdates.push(`KARTOTEKA/${partName} (dedup-skip)`);
+                driveUpdates.push(`KARTOTEKA/${partName} (dedup)`);
                 continue;
               }
-              const updated = `${existing}\n\n═══ Karel – automatická redistribuce (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`;
-              await updateDoc(token, partDoc.id, updated);
+              await updateDoc(token, partDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
               driveUpdates.push(`KARTOTEKA/${partName}`);
             }
           }
         }
       }
 
-      // KARTOTEKA_DID: CREATE NEW PARTS via karel-did-drive-write
-      const newParts = extractedInfo.kartoteka_did?.new_parts;
-      if (Array.isArray(newParts) && newParts.length > 0) {
-        console.log(`[redistribute] Creating ${newParts.length} new parts via karel-did-drive-write`);
+      // KARTOTEKA_DID: Create NEW parts via drive-write
+      if (newParts.length > 0) {
+        console.log(`[mirror] Creating ${newParts.length} new parts`);
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        
         for (const part of newParts) {
-          if (!part.name || !part.sections) {
-            console.warn(`[redistribute] Skipping invalid new_part:`, part);
-            continue;
-          }
-          
+          if (!part.name || !part.sections) continue;
           try {
-            // Call karel-did-drive-write to create the card with proper architecture
             const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${serviceRoleKey}`,
-              },
-              body: JSON.stringify({
-                mode: "update-card-sections",
-                partName: part.name,
-                sections: part.sections,
-              }),
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+              body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections }),
             });
-            
             const writeResult = await writeRes.json();
-            
             if (writeRes.ok && writeResult.success) {
-              console.log(`[redistribute] ✅ Created new part: ${part.name} → ${writeResult.cardFileName}`);
               driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
-              
-              // Also add to did_part_registry DB table
               await sb.from("did_part_registry").upsert({
-                user_id: userId,
-                part_name: part.name,
-                display_name: part.name,
+                user_id: userId, part_name: part.name, display_name: part.name,
                 status: part.status === "Aktivní" ? "active" : "sleeping",
                 cluster: part.cluster || null,
-                notes: `Automaticky vytvořeno redistribucí ${new Date().toISOString().slice(0, 10)}`,
+                notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. ${part.inferred_data || ""}`.slice(0, 500),
                 role_in_system: part.sections?.A?.slice(0, 200) || null,
               }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
-              
               dbUpdates.push(`registry_new:${part.name}`);
             } else {
-              console.error(`[redistribute] ❌ Failed to create part ${part.name}:`, writeResult.error);
-              driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERROR: ${writeResult.error})`);
+              driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${writeResult.error})`);
             }
-          } catch (partErr) {
-            console.error(`[redistribute] Error creating part ${part.name}:`, partErr);
-            driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERROR: ${partErr instanceof Error ? partErr.message : 'unknown'})`);
+          } catch (e) {
+            driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${e instanceof Error ? e.message : 'unknown'})`);
           }
         }
       }
 
-      // ZALOHA: append to client files (with hash dedup)
-      if (extractedInfo.zaloha?.client_updates && Object.keys(extractedInfo.zaloha.client_updates).length > 0) {
+      // KARTOTEKA_DID/00_CENTRUM: Update Dashboard, Geography, Relationships
+      if (extractedInfo.centrum_updates) {
+        const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
+        if (kartotekaId) {
+          const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
+          if (centrumId) {
+            const cu = extractedInfo.centrum_updates;
+            const centrumWrites: Array<{ pattern: string; content: string; label: string }> = [];
+            if (cu.dashboard_notes) centrumWrites.push({ pattern: "Dashboard", content: cu.dashboard_notes, label: "Dashboard" });
+            if (cu.geography_notes) centrumWrites.push({ pattern: "Geografie", content: cu.geography_notes, label: "Geografie" });
+            if (cu.relationships_notes) centrumWrites.push({ pattern: "Vztah", content: cu.relationships_notes, label: "Mapa_Vztahu" });
+            if (cu.operative_plan_notes) centrumWrites.push({ pattern: "Operativn", content: cu.operative_plan_notes, label: "Operativni_Plan" });
+
+            for (const { pattern, content, label } of centrumWrites) {
+              const hash = contentHash(content);
+              const doc = await findDoc(token, pattern, centrumId);
+              if (doc) {
+                const existing = await readDoc(token, doc.id);
+                if (!existing.includes(`[KHASH:${hash}]`)) {
+                  await updateDoc(token, doc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
+                  driveUpdates.push(`CENTRUM/${label}`);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // ZALOHA: append to client files
+      if (extractedInfo.zaloha?.client_updates) {
         const zalohaId = await findFolderFuzzy(token, ["ZALOHA", "Zaloha"]);
         if (zalohaId) {
           for (const [clientName, content] of Object.entries(extractedInfo.zaloha.client_updates)) {
@@ -620,69 +697,67 @@ DŮLEŽITÉ PRO new_parts:
             const clientDoc = await findDoc(token, clientName, zalohaId);
             if (clientDoc) {
               const existing = await readDoc(token, clientDoc.id);
-              // DEDUP: check if this hash already exists in the document
-              if (existing.includes(`[KHASH:${hash}]`)) {
-                console.log(`[redistribute] DEDUP: skipping ${clientName} – hash ${hash} already present`);
-                driveUpdates.push(`ZALOHA/${clientName} (dedup-skip)`);
-                continue;
+              if (!existing.includes(`[KHASH:${hash}]`)) {
+                await updateDoc(token, clientDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
+                driveUpdates.push(`ZALOHA/${clientName}`);
               }
-              const updated = `${existing}\n\n═══ Karel – redistribuce (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`;
-              await updateDoc(token, clientDoc.id, updated);
-              driveUpdates.push(`ZALOHA/${clientName}`);
             }
           }
         }
       }
     } catch (driveErr) {
-      console.error("[redistribute] Drive error:", driveErr);
+      console.error("[mirror] Drive write error:", driveErr);
       driveUpdates.push(`ERROR: ${driveErr instanceof Error ? driveErr.message : "unknown"}`);
     }
 
-    // ═══ PHASE 5: Release lock & Log ═══
+    // ═══ PHASE 7: Release lock & Log ═══
     const totalTime = Date.now() - startTime;
-    const dedupSkips = driveUpdates.filter(u => u.includes("dedup-skip")).length;
+    if (lockId) await sb.from("karel_memory_logs").update({ summary: `Lock released ${totalTime}ms` }).eq("id", lockId);
 
-    // Release concurrency lock
-    if (lockId) {
-      await sb.from("karel_memory_logs").update({ summary: `Lock released after ${totalTime}ms` }).eq("id", lockId);
-    }
+    const synthesisSum = extractedInfo.synthesis_summary || extractedInfo.summary || `Mirror: ${dbUpdates.length} DB, ${driveUpdates.length} Drive`;
 
     await sb.from("karel_memory_logs").insert({
-      user_id: userId,
-      log_type: "redistribute",
-      summary: extractedInfo.summary || `Redistribuce: ${dbUpdates.length} DB, ${driveUpdates.length} Drive, ${dedupSkips} dedup-skip`,
+      user_id: userId, log_type: "redistribute",
+      summary: synthesisSum,
       episodes_created: 0,
       semantic_updates: dbUpdates.filter((u: string) => u.startsWith("entity") || u.startsWith("pattern") || u.startsWith("relation")).length,
       strategy_updates: dbUpdates.filter((u: string) => u.startsWith("strategy")).length,
       details: {
-        totalMs: totalTime,
-        threadsScanned: hanaConvs.length + didThreads.length + didConvs.length + researchThreads.length,
-        dbUpdates,
-        driveUpdates,
-        dedupSkips,
+        totalMs: totalTime, scope: lastMirrorTime,
+        threadsScanned: threadDigests.length, driveDocsRead,
+        pass1_facts: pass1Data.raw_facts?.length || 0,
+        pass1_names: pass1Data.all_names_mentioned?.length || 0,
+        pass1_urgent: pass1Data.urgent_signals || [],
+        newPartsCreated: newParts.length,
+        newTasksCreated: newTasks.length,
+        dbUpdates, driveUpdates,
       },
     });
 
-    console.log(`[redistribute] Done in ${totalTime}ms. DB: ${dbUpdates.length}, Drive: ${driveUpdates.length}, Dedup skips: ${dedupSkips}`);
+    console.log(`[mirror] ═══ DONE in ${totalTime}ms. Threads:${threadDigests.length} DriveDocs:${driveDocsRead} DB:${dbUpdates.length} Drive:${driveUpdates.length} Tasks:${newTasks.length}`);
 
     return new Response(JSON.stringify({
       status: "ok",
-      summary: extractedInfo.summary || "Redistribuce dokončena",
+      summary: synthesisSum,
       counts: {
-        threadsScanned: hanaConvs.length + didThreads.length + didConvs.length + researchThreads.length,
+        threadsScanned: threadDigests.length,
+        driveDocsRead,
         dbUpdates: dbUpdates.length,
         driveUpdates: driveUpdates.length,
-        dedupSkips,
-        entities: (entitiesRes.data || []).length,
-        patterns: (patternsRes.data || []).length,
+        newParts: newParts.length,
+        newTasks: newTasks.length,
+        factsExtracted: pass1Data.raw_facts?.length || 0,
+        urgentSignals: pass1Data.urgent_signals?.length || 0,
       },
-      dbUpdates,
-      driveUpdates,
+      urgentSignals: pass1Data.urgent_signals || [],
+      therapistObservations: pass1Data.therapist_observations || {},
+      motivationUpdates: extractedInfo.motivation_updates || {},
+      dbUpdates, driveUpdates,
       totalMs: totalTime,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("[redistribute] Error:", error);
+    console.error("[mirror] Error:", error);
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
