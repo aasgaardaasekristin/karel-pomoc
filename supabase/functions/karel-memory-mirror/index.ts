@@ -147,13 +147,149 @@ function extractJSON(text: string): any {
   try { return JSON.parse(match[0]); } catch { return null; }
 }
 
-async function runMirrorWritePhases(params: {
+type MirrorState = {
+  entityIndex: number;
+  patternIndex: number;
+  strategyIndex: number;
+  relationIndex: number;
+  taskIndex: number;
+  semanticDriveDone: boolean;
+  proceduralDriveDone: boolean;
+  episodesDriveDone: boolean;
+  partUpdateIndex: number;
+  newPartIndex: number;
+  centrumIndex: number;
+  clientUpdateIndex: number;
+  dbUpdates: string[];
+  driveUpdates: string[];
+};
+
+const MIRROR_BATCH = {
+  entities: 5,
+  patterns: 5,
+  strategies: 5,
+  relations: 10,
+  tasks: 5,
+  partUpdates: 2,
+  newParts: 1,
+  centrum: 1,
+  clients: 2,
+};
+
+function createInitialMirrorState(): MirrorState {
+  return {
+    entityIndex: 0,
+    patternIndex: 0,
+    strategyIndex: 0,
+    relationIndex: 0,
+    taskIndex: 0,
+    semanticDriveDone: false,
+    proceduralDriveDone: false,
+    episodesDriveDone: false,
+    partUpdateIndex: 0,
+    newPartIndex: 0,
+    centrumIndex: 0,
+    clientUpdateIndex: 0,
+    dbUpdates: [],
+    driveUpdates: [],
+  };
+}
+
+function buildCentrumWrites(extractedInfo: any): Array<{ pattern: string; content: string; label: string }> {
+  const cu = extractedInfo?.centrum_updates;
+  if (!cu) return [];
+
+  const writes: Array<{ pattern: string; content: string; label: string }> = [];
+  if (cu.dashboard_notes) writes.push({ pattern: "Dashboard", content: cu.dashboard_notes, label: "Dashboard" });
+  if (cu.geography_notes) writes.push({ pattern: "Geografie", content: cu.geography_notes, label: "Geografie" });
+  if (cu.relationships_notes) writes.push({ pattern: "Vztah", content: cu.relationships_notes, label: "Mapa_Vztahu" });
+  if (cu.operative_plan_notes) writes.push({ pattern: "Operativn", content: cu.operative_plan_notes, label: "Operativni_Plan" });
+  return writes;
+}
+
+function buildClientUpdates(extractedInfo: any): Array<[string, string]> {
+  return Object.entries(extractedInfo?.zaloha?.client_updates || {}).filter(
+    ([, content]) => typeof content === "string" && content.length > 0,
+  ) as Array<[string, string]>;
+}
+
+function getMirrorProgress(payload: any, rawState?: Partial<MirrorState>) {
+  const state = { ...createInitialMirrorState(), ...(rawState || {}) } as MirrorState;
+  const extractedInfo = payload?.extractedInfo || {};
+  const entityUpdates = extractedInfo?.pamet_karel?.entity_updates || [];
+  const patternUpdates = extractedInfo?.pamet_karel?.pattern_updates || [];
+  const strategyUpdates = extractedInfo?.pamet_karel?.strategy_updates || [];
+  const relationUpdates = extractedInfo?.pamet_karel?.relation_updates || [];
+  const taskUpdates = extractedInfo?.new_tasks || [];
+  const partUpdates = Object.entries(extractedInfo?.kartoteka_did?.part_updates || {}).filter(
+    ([, content]) => typeof content === "string" && content.length > 0,
+  );
+  const newParts = extractedInfo?.kartoteka_did?.new_parts || [];
+  const centrumWrites = buildCentrumWrites(extractedInfo);
+  const clientUpdates = buildClientUpdates(extractedInfo);
+
+  const total =
+    entityUpdates.length +
+    patternUpdates.length +
+    strategyUpdates.length +
+    relationUpdates.length +
+    taskUpdates.length +
+    3 +
+    partUpdates.length +
+    newParts.length +
+    centrumWrites.length +
+    clientUpdates.length;
+
+  const completed =
+    state.entityIndex +
+    state.patternIndex +
+    state.strategyIndex +
+    state.relationIndex +
+    state.taskIndex +
+    (state.semanticDriveDone ? 1 : 0) +
+    (state.proceduralDriveDone ? 1 : 0) +
+    (state.episodesDriveDone ? 1 : 0) +
+    state.partUpdateIndex +
+    state.newPartIndex +
+    state.centrumIndex +
+    state.clientUpdateIndex;
+
+  return {
+    completed,
+    total,
+    percent: total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 100,
+  };
+}
+
+async function persistMirrorJob(params: {
   sb: any;
-  userId: string;
   jobId: string;
   payload: any;
+  state: MirrorState;
+  phase: string;
+  summary: string;
+  extra?: Record<string, any>;
 }) {
-  const { sb, userId, jobId, payload } = params;
+  const { sb, jobId, payload, state, phase, summary, extra = {} } = params;
+  await sb.from("karel_memory_logs").update({
+    summary,
+    details: {
+      payload,
+      state,
+      phase,
+      progress: getMirrorProgress(payload, state),
+      ...extra,
+    },
+  }).eq("id", jobId);
+}
+
+async function finalizeMirrorJob(params: {
+  sb: any;
+  jobId: string;
+  payload: any;
+  state: MirrorState;
+}) {
+  const { sb, jobId, payload, state } = params;
   const {
     startTime,
     lastMirrorTime,
@@ -161,38 +297,78 @@ async function runMirrorWritePhases(params: {
     driveDocsRead,
     pass1Data,
     extractedInfo,
-    entities,
-    patterns,
-    relations,
-    strategies,
-    activeTasks,
-    registry,
-    episodes,
   } = payload;
 
-  const newParts = extractedInfo?.kartoteka_did?.new_parts || [];
-  const partUpdates = Object.keys(extractedInfo?.kartoteka_did?.part_updates || {});
-  const newTasks = extractedInfo?.new_tasks || [];
-  const dbUpdates: string[] = [];
-  const driveUpdates: string[] = [];
+  const totalTime = Date.now() - startTime;
+  const synthesisSum = extractedInfo?.synthesis_summary || `Mirror: ${state.dbUpdates.length} DB, ${state.driveUpdates.length} Drive`;
 
-  const updateJob = async (summary: string, phase: string, extra: Record<string, any> = {}) => {
-    await sb.from("karel_memory_logs").update({
-      summary,
-      details: {
-        ...(payload.jobMeta || {}),
-        phase,
-        ...extra,
-      },
-    }).eq("id", jobId);
+  await sb.from("karel_memory_logs").update({
+    log_type: "redistribute",
+    summary: synthesisSum,
+    details: {
+      totalMs: totalTime,
+      scope: lastMirrorTime,
+      phase: "done",
+      progress: getMirrorProgress(payload, {
+        ...state,
+        semanticDriveDone: true,
+        proceduralDriveDone: true,
+        episodesDriveDone: true,
+      }),
+      threadsScanned: threadCount,
+      driveDocsRead,
+      pass1_facts: pass1Data?.raw_facts?.length || 0,
+      pass1_names: pass1Data?.all_names_mentioned?.length || 0,
+      pass1_urgent: pass1Data?.urgent_signals || [],
+      newPartsCreated: extractedInfo?.kartoteka_did?.new_parts?.length || 0,
+      newTasksCreated: extractedInfo?.new_tasks?.length || 0,
+      dbUpdates: state.dbUpdates,
+      driveUpdates: state.driveUpdates,
+    },
+  }).eq("id", jobId);
+
+  console.log(`[mirror-batch] DONE in ${totalTime}ms. DB:${state.dbUpdates.length} Drive:${state.driveUpdates.length}`);
+}
+
+async function runMirrorBatchStep(params: {
+  sb: any;
+  userId: string;
+  jobId: string;
+  payload: any;
+  state?: Partial<MirrorState>;
+}) {
+  const { sb, userId, jobId, payload } = params;
+  const extractedInfo = payload?.extractedInfo || {};
+  const entities = payload?.entities || [];
+  const patterns = payload?.patterns || [];
+  const relations = payload?.relations || [];
+  const strategies = payload?.strategies || [];
+  const activeTasks = payload?.activeTasks || [];
+  const episodes = payload?.episodes || [];
+
+  const state: MirrorState = {
+    ...createInitialMirrorState(),
+    ...(params.state || {}),
+    dbUpdates: [...(params.state?.dbUpdates || [])],
+    driveUpdates: [...(params.state?.driveUpdates || [])],
   };
 
-  try {
-    console.log("[mirror-bg] Phase 5: DB updates...");
-    await updateJob(`Zapisuji do DB...`, "db", { dbUpdates, driveUpdates });
+  const entityUpdates = extractedInfo?.pamet_karel?.entity_updates || [];
+  const patternUpdates = extractedInfo?.pamet_karel?.pattern_updates || [];
+  const strategyUpdates = extractedInfo?.pamet_karel?.strategy_updates || [];
+  const relationUpdates = extractedInfo?.pamet_karel?.relation_updates || [];
+  const taskUpdates = extractedInfo?.new_tasks || [];
+  const partUpdates = Object.entries(extractedInfo?.kartoteka_did?.part_updates || {}).filter(
+    ([, content]) => typeof content === "string" && content.length > 0,
+  ) as Array<[string, string]>;
+  const newParts = extractedInfo?.kartoteka_did?.new_parts || [];
+  const centrumWrites = buildCentrumWrites(extractedInfo);
+  const clientUpdates = buildClientUpdates(extractedInfo);
 
-    if (extractedInfo?.pamet_karel?.entity_updates?.length) {
-      for (const eu of extractedInfo.pamet_karel.entity_updates) {
+  try {
+    if (state.entityIndex < entityUpdates.length) {
+      const batch = entityUpdates.slice(state.entityIndex, state.entityIndex + MIRROR_BATCH.entities);
+      for (const eu of batch) {
         const existing = entities.find((e: any) => e.id === eu.id || e.jmeno === eu.jmeno);
         if (existing) {
           const newProps = [...new Set([...(existing.stabilni_vlastnosti || []), ...(eu.new_properties || [])])];
@@ -203,7 +379,7 @@ async function runMirrorWritePhases(params: {
             role_vuci_hance: eu.role_vuci_hance || existing.role_vuci_hance,
             updated_at: new Date().toISOString(),
           }).eq("id", existing.id).eq("user_id", userId);
-          dbUpdates.push(`entity_update:${existing.jmeno}`);
+          state.dbUpdates.push(`entity_update:${existing.jmeno}`);
         } else if (eu.jmeno) {
           await sb.from("karel_semantic_entities").insert({
             id: eu.id || eu.jmeno.toLowerCase().replace(/\s/g, "_"),
@@ -214,77 +390,103 @@ async function runMirrorWritePhases(params: {
             stabilni_vlastnosti: eu.new_properties || [],
             notes: eu.new_notes || "",
           });
-          dbUpdates.push(`entity_new:${eu.jmeno}`);
+          state.dbUpdates.push(`entity_new:${eu.jmeno}`);
         }
       }
+
+      state.entityIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "db_entities", summary: `DB entity batch ${state.entityIndex}/${entityUpdates.length}` });
+      return { status: "processing", phase: "db_entities", summary: `DB entity batch ${state.entityIndex}/${entityUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    for (const pu of (extractedInfo?.pamet_karel?.pattern_updates || [])) {
-      const existing = patterns.find((p: any) => p.id === pu.id);
-      if (existing) {
-        await sb.from("karel_semantic_patterns").update({
-          description: pu.description || existing.description,
-          confidence: Math.min(1, Math.max(0, (existing.confidence || 0.5) + (pu.confidence_delta || 0))),
-          tags: [...new Set([...(existing.tags || []), ...(pu.tags || [])])],
-          updated_at: new Date().toISOString(),
-        }).eq("id", existing.id).eq("user_id", userId);
-        dbUpdates.push(`pattern_update:${pu.id}`);
-      } else if (pu.description) {
-        await sb.from("karel_semantic_patterns").insert({
-          id: pu.id || `pat_${Date.now()}`,
-          user_id: userId,
-          description: pu.description,
-          domain: pu.domain || "HANA",
-          tags: pu.tags || [],
-          confidence: 0.5,
-        });
-        dbUpdates.push(`pattern_new:${pu.id}`);
+    if (state.patternIndex < patternUpdates.length) {
+      const batch = patternUpdates.slice(state.patternIndex, state.patternIndex + MIRROR_BATCH.patterns);
+      for (const pu of batch) {
+        const existing = patterns.find((p: any) => p.id === pu.id);
+        if (existing) {
+          await sb.from("karel_semantic_patterns").update({
+            description: pu.description || existing.description,
+            confidence: Math.min(1, Math.max(0, (existing.confidence || 0.5) + (pu.confidence_delta || 0))),
+            tags: [...new Set([...(existing.tags || []), ...(pu.tags || [])])],
+            updated_at: new Date().toISOString(),
+          }).eq("id", existing.id).eq("user_id", userId);
+          state.dbUpdates.push(`pattern_update:${pu.id}`);
+        } else if (pu.description) {
+          await sb.from("karel_semantic_patterns").insert({
+            id: pu.id || `pat_${Date.now()}`,
+            user_id: userId,
+            description: pu.description,
+            domain: pu.domain || "HANA",
+            tags: pu.tags || [],
+            confidence: 0.5,
+          });
+          state.dbUpdates.push(`pattern_new:${pu.id || "new"}`);
+        }
       }
+
+      state.patternIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "db_patterns", summary: `DB patterns ${state.patternIndex}/${patternUpdates.length}` });
+      return { status: "processing", phase: "db_patterns", summary: `DB patterns ${state.patternIndex}/${patternUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    for (const su of (extractedInfo?.pamet_karel?.strategy_updates || [])) {
-      const existing = strategies.find((s: any) => s.id === su.id);
-      if (existing) {
-        await sb.from("karel_strategies").update({
-          effectiveness_score: Math.min(1, Math.max(0, (existing.effectiveness_score || 0.5) + (su.effectiveness_delta || 0))),
-          guidelines: [...new Set([...(existing.guidelines || []), ...(su.new_guidelines || [])])],
-          updated_at: new Date().toISOString(),
-        }).eq("id", existing.id).eq("user_id", userId);
-        dbUpdates.push(`strategy_update:${su.id}`);
-      } else if (su.description) {
-        await sb.from("karel_strategies").insert({
-          id: su.id || `str_${Date.now()}`,
-          user_id: userId,
-          description: su.description,
-          domain: su.domain || "HANA",
-          hana_state: su.hana_state || "",
-          guidelines: su.new_guidelines || [],
-          effectiveness_score: 0.5,
-        });
-        dbUpdates.push(`strategy_new:${su.id}`);
+    if (state.strategyIndex < strategyUpdates.length) {
+      const batch = strategyUpdates.slice(state.strategyIndex, state.strategyIndex + MIRROR_BATCH.strategies);
+      for (const su of batch) {
+        const existing = strategies.find((s: any) => s.id === su.id);
+        if (existing) {
+          await sb.from("karel_strategies").update({
+            effectiveness_score: Math.min(1, Math.max(0, (existing.effectiveness_score || 0.5) + (su.effectiveness_delta || 0))),
+            guidelines: [...new Set([...(existing.guidelines || []), ...(su.new_guidelines || [])])],
+            updated_at: new Date().toISOString(),
+          }).eq("id", existing.id).eq("user_id", userId);
+          state.dbUpdates.push(`strategy_update:${su.id}`);
+        } else if (su.description) {
+          await sb.from("karel_strategies").insert({
+            id: su.id || `str_${Date.now()}`,
+            user_id: userId,
+            description: su.description,
+            domain: su.domain || "HANA",
+            hana_state: su.hana_state || "",
+            guidelines: su.new_guidelines || [],
+            effectiveness_score: 0.5,
+          });
+          state.dbUpdates.push(`strategy_new:${su.id || "new"}`);
+        }
       }
+
+      state.strategyIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "db_strategies", summary: `DB strategie ${state.strategyIndex}/${strategyUpdates.length}` });
+      return { status: "processing", phase: "db_strategies", summary: `DB strategie ${state.strategyIndex}/${strategyUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    for (const ru of (extractedInfo?.pamet_karel?.relation_updates || [])) {
-      const existing = relations.find((r: any) => r.subject_id === ru.subject_id && r.object_id === ru.object_id && r.relation === ru.relation);
-      if (!existing && ru.subject_id && ru.object_id) {
-        await sb.from("karel_semantic_relations").insert({
-          user_id: userId,
-          subject_id: ru.subject_id,
-          relation: ru.relation,
-          object_id: ru.object_id,
-          description: ru.description || "",
-        });
-        dbUpdates.push(`relation_new:${ru.subject_id}->${ru.object_id}`);
+    if (state.relationIndex < relationUpdates.length) {
+      const batch = relationUpdates.slice(state.relationIndex, state.relationIndex + MIRROR_BATCH.relations);
+      for (const ru of batch) {
+        const existing = relations.find((r: any) => r.subject_id === ru.subject_id && r.object_id === ru.object_id && r.relation === ru.relation);
+        if (!existing && ru.subject_id && ru.object_id) {
+          await sb.from("karel_semantic_relations").insert({
+            user_id: userId,
+            subject_id: ru.subject_id,
+            relation: ru.relation,
+            object_id: ru.object_id,
+            description: ru.description || "",
+          });
+          state.dbUpdates.push(`relation_new:${ru.subject_id}->${ru.object_id}`);
+        }
       }
+
+      state.relationIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "db_relations", summary: `DB vztahy ${state.relationIndex}/${relationUpdates.length}` });
+      return { status: "processing", phase: "db_relations", summary: `DB vztahy ${state.relationIndex}/${relationUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    if (newTasks.length > 0) {
-      for (const task of newTasks) {
+    if (state.taskIndex < taskUpdates.length) {
+      const batch = taskUpdates.slice(state.taskIndex, state.taskIndex + MIRROR_BATCH.tasks);
+      for (const task of batch) {
         if (!task.task) continue;
         const existingTask = activeTasks.find((t: any) => t.task.toLowerCase().includes(task.task.toLowerCase().slice(0, 30)));
         if (existingTask) {
-          dbUpdates.push(`task_dedup:${task.task.slice(0, 40)}`);
+          state.dbUpdates.push(`task_dedup:${task.task.slice(0, 40)}`);
           continue;
         }
         await sb.from("did_therapist_tasks").insert({
@@ -296,189 +498,230 @@ async function runMirrorWritePhases(params: {
           note: task.reasoning || "",
           source_agreement: "mirror_auto",
         });
-        dbUpdates.push(`task_new:${task.task.slice(0, 40)}`);
+        state.dbUpdates.push(`task_new:${task.task.slice(0, 40)}`);
       }
+
+      state.taskIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "db_tasks", summary: `DB úkoly ${state.taskIndex}/${taskUpdates.length}` });
+      return { status: "processing", phase: "db_tasks", summary: `DB úkoly ${state.taskIndex}/${taskUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    console.log(`[mirror-bg] Phase 5 done: ${dbUpdates.length} DB updates`);
-    await updateJob(`DB hotovo (${dbUpdates.length}). Zapisuji na Drive...`, "drive", { dbUpdates, driveUpdates });
-
-    try {
+    if (!state.semanticDriveDone) {
       const token = await getAccessToken();
       const pametId = await findFolderFuzzy(token, ["PAMET_KAREL"]);
       if (pametId) {
         const semanticId = await findFolder(token, "PAMET_KAREL_SEMANTIC", pametId);
-        const proceduralId = await findFolder(token, "PAMET_KAREL_PROCEDURAL", pametId);
-        const episodesId = await findFolder(token, "PAMET_KAREL_EPISODES", pametId);
-
-        const [freshEntities, freshPatterns, freshRelations, freshStrategies] = await Promise.all([
-          sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
-          sb.from("karel_semantic_patterns").select("*").eq("user_id", userId),
-          sb.from("karel_semantic_relations").select("*").eq("user_id", userId),
-          sb.from("karel_strategies").select("*").eq("user_id", userId),
-        ]);
-
-        const driveWrites: Promise<void>[] = [];
         if (semanticId) {
+          const [freshEntities, freshPatterns, freshRelations] = await Promise.all([
+            sb.from("karel_semantic_entities").select("*").eq("user_id", userId),
+            sb.from("karel_semantic_patterns").select("*").eq("user_id", userId),
+            sb.from("karel_semantic_relations").select("*").eq("user_id", userId),
+          ]);
+
           const [entityDoc, vzorceDoc, vztahyDoc] = await Promise.all([
             findDoc(token, "osoby", semanticId),
             findDoc(token, "vzorce", semanticId),
             findDoc(token, "vztahy", semanticId),
           ]);
-          if (entityDoc) { driveWrites.push(updateDoc(token, entityDoc.id, formatEntities(freshEntities.data || []))); driveUpdates.push("SEMANTIC/osoby"); }
-          if (vzorceDoc) { driveWrites.push(updateDoc(token, vzorceDoc.id, formatPatterns(freshPatterns.data || []))); driveUpdates.push("SEMANTIC/vzorce"); }
-          if (vztahyDoc) { driveWrites.push(updateDoc(token, vztahyDoc.id, formatRelations(freshRelations.data || []))); driveUpdates.push("SEMANTIC/vztahy"); }
+
+          const writes: Promise<void>[] = [];
+          if (entityDoc) {
+            writes.push(updateDoc(token, entityDoc.id, formatEntities(freshEntities.data || [])));
+            state.driveUpdates.push("SEMANTIC/osoby");
+          }
+          if (vzorceDoc) {
+            writes.push(updateDoc(token, vzorceDoc.id, formatPatterns(freshPatterns.data || [])));
+            state.driveUpdates.push("SEMANTIC/vzorce");
+          }
+          if (vztahyDoc) {
+            writes.push(updateDoc(token, vztahyDoc.id, formatRelations(freshRelations.data || [])));
+            state.driveUpdates.push("SEMANTIC/vztahy");
+          }
+          await Promise.all(writes);
         }
+      }
+
+      state.semanticDriveDone = true;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_semantic", summary: "Drive semantic hotovo" });
+      return { status: "processing", phase: "drive_semantic", summary: "Drive semantic hotovo", progress: getMirrorProgress(payload, state) };
+    }
+
+    if (!state.proceduralDriveDone) {
+      const token = await getAccessToken();
+      const pametId = await findFolderFuzzy(token, ["PAMET_KAREL"]);
+      if (pametId) {
+        const proceduralId = await findFolder(token, "PAMET_KAREL_PROCEDURAL", pametId);
         if (proceduralId) {
+          const freshStrategies = await sb.from("karel_strategies").select("*").eq("user_id", userId);
           const stratDoc = await findDoc(token, "strategi", proceduralId);
-          if (stratDoc) { driveWrites.push(updateDoc(token, stratDoc.id, formatStrategies(freshStrategies.data || []))); driveUpdates.push("PROCEDURAL/strategie"); }
+          if (stratDoc) {
+            await updateDoc(token, stratDoc.id, formatStrategies(freshStrategies.data || []));
+            state.driveUpdates.push("PROCEDURAL/strategie");
+          }
         }
+      }
+
+      state.proceduralDriveDone = true;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_procedural", summary: "Drive procedural hotovo" });
+      return { status: "processing", phase: "drive_procedural", summary: "Drive procedural hotovo", progress: getMirrorProgress(payload, state) };
+    }
+
+    if (!state.episodesDriveDone) {
+      const token = await getAccessToken();
+      const pametId = await findFolderFuzzy(token, ["PAMET_KAREL"]);
+      if (pametId) {
+        const episodesId = await findFolder(token, "PAMET_KAREL_EPISODES", pametId);
         if (episodesId) {
           const files = await listAllFilesRecursive(token, episodesId, "");
           const epDoc = files.find((f) => !f.isFolder);
-          if (epDoc) { driveWrites.push(updateDoc(token, epDoc.id, formatEpisodes(episodes.slice(0, 100)))); driveUpdates.push("EPISODES/index"); }
-        }
-        await Promise.all(driveWrites);
-      }
-
-      if (partUpdates.length > 0) {
-        const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
-        if (kartotekaId) {
-          for (const [partName, content] of Object.entries(extractedInfo.kartoteka_did.part_updates)) {
-            if (!content || typeof content !== "string") continue;
-            const hash = contentHash(content);
-            const searchQ = `name contains '${partName}' and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
-            const params = new URLSearchParams({ q: searchQ, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-            const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-            const data = await res.json();
-            const partDoc = data.files?.[0];
-            if (partDoc) {
-              const existing = await readDoc(token, partDoc.id);
-              if (existing.includes(`[KHASH:${hash}]`)) { driveUpdates.push(`KARTOTEKA/${partName} (dedup)`); continue; }
-              await updateDoc(token, partDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
-              driveUpdates.push(`KARTOTEKA/${partName}`);
-            }
+          if (epDoc) {
+            await updateDoc(token, epDoc.id, formatEpisodes(episodes.slice(0, 100)));
+            state.driveUpdates.push("EPISODES/index");
           }
         }
       }
 
-      if (newParts.length > 0) {
-        await updateJob(`Vytvářím ${newParts.length} nových částí na Drive...`, "drive_new_parts", { dbUpdates, driveUpdates });
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        for (const part of newParts) {
-          if (!part.name || !part.sections) continue;
-          try {
-            const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
-              body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections }),
-            });
-            const writeResult = await writeRes.json();
-            if (writeRes.ok && writeResult.success) {
-              driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
-              await sb.from("did_part_registry").upsert({
-                user_id: userId,
-                part_name: part.name,
-                display_name: part.name,
-                status: part.status === "Aktivní" ? "active" : "sleeping",
-                cluster: part.cluster || null,
-                notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. ${part.inferred_data || ""}`.slice(0, 500),
-                role_in_system: part.sections?.A?.slice(0, 200) || null,
-              }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
-              dbUpdates.push(`registry_new:${part.name}`);
-            } else {
-              driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${writeResult.error})`);
-            }
-          } catch (e) {
-            driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${e instanceof Error ? e.message : "unknown"})`);
-          }
-        }
-      }
-
-      if (extractedInfo?.centrum_updates) {
-        const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
-        if (kartotekaId) {
-          const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
-          if (centrumId) {
-            const cu = extractedInfo.centrum_updates;
-            const centrumWrites: Array<{ pattern: string; content: string; label: string }> = [];
-            if (cu.dashboard_notes) centrumWrites.push({ pattern: "Dashboard", content: cu.dashboard_notes, label: "Dashboard" });
-            if (cu.geography_notes) centrumWrites.push({ pattern: "Geografie", content: cu.geography_notes, label: "Geografie" });
-            if (cu.relationships_notes) centrumWrites.push({ pattern: "Vztah", content: cu.relationships_notes, label: "Mapa_Vztahu" });
-            if (cu.operative_plan_notes) centrumWrites.push({ pattern: "Operativn", content: cu.operative_plan_notes, label: "Operativni_Plan" });
-            for (const { pattern, content, label } of centrumWrites) {
-              const hash = contentHash(content);
-              const doc = await findDoc(token, pattern, centrumId);
-              if (doc) {
-                const existing = await readDoc(token, doc.id);
-                if (!existing.includes(`[KHASH:${hash}]`)) {
-                  await updateDoc(token, doc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
-                  driveUpdates.push(`CENTRUM/${label}`);
-                }
-              }
-            }
-          }
-        }
-      }
-
-      if (extractedInfo?.zaloha?.client_updates) {
-        const zalohaId = await findFolderFuzzy(token, ["ZALOHA", "Zaloha"]);
-        if (zalohaId) {
-          for (const [clientName, content] of Object.entries(extractedInfo.zaloha.client_updates)) {
-            if (!content || typeof content !== "string") continue;
-            const hash = contentHash(content);
-            const clientDoc = await findDoc(token, clientName, zalohaId);
-            if (clientDoc) {
-              const existing = await readDoc(token, clientDoc.id);
-              if (!existing.includes(`[KHASH:${hash}]`)) {
-                await updateDoc(token, clientDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
-                driveUpdates.push(`ZALOHA/${clientName}`);
-              }
-            }
-          }
-        }
-      }
-    } catch (driveErr) {
-      console.error("[mirror-bg] Drive write error:", driveErr);
-      driveUpdates.push(`ERROR: ${driveErr instanceof Error ? driveErr.message : "unknown"}`);
+      state.episodesDriveDone = true;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_episodes", summary: "Drive episodes hotovo" });
+      return { status: "processing", phase: "drive_episodes", summary: "Drive episodes hotovo", progress: getMirrorProgress(payload, state) };
     }
 
-    const totalTime = Date.now() - startTime;
-    const synthesisSum = extractedInfo?.synthesis_summary || `Mirror: ${dbUpdates.length} DB, ${driveUpdates.length} Drive`;
+    if (state.partUpdateIndex < partUpdates.length) {
+      const token = await getAccessToken();
+      const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
+      const batch = partUpdates.slice(state.partUpdateIndex, state.partUpdateIndex + MIRROR_BATCH.partUpdates);
 
-    await sb.from("karel_memory_logs").update({
-      log_type: "redistribute",
-      summary: synthesisSum,
-      details: {
-        totalMs: totalTime,
-        scope: lastMirrorTime,
-        phase: "done",
-        threadsScanned: threadCount,
-        driveDocsRead,
-        pass1_facts: pass1Data?.raw_facts?.length || 0,
-        pass1_names: pass1Data?.all_names_mentioned?.length || 0,
-        pass1_urgent: pass1Data?.urgent_signals || [],
-        newPartsCreated: newParts.length,
-        newTasksCreated: newTasks.length,
-        dbUpdates,
-        driveUpdates,
-      },
-    }).eq("id", jobId);
+      if (kartotekaId) {
+        for (const [partName, content] of batch) {
+          const hash = contentHash(content);
+          const searchQ = `name contains '${partName}' and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+          const params = new URLSearchParams({ q: searchQ, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+          const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+          const data = await res.json();
+          const partDoc = data.files?.[0];
+          if (partDoc) {
+            const existing = await readDoc(token, partDoc.id);
+            if (existing.includes(`[KHASH:${hash}]`)) {
+              state.driveUpdates.push(`KARTOTEKA/${partName} (dedup)`);
+              continue;
+            }
+            await updateDoc(token, partDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
+            state.driveUpdates.push(`KARTOTEKA/${partName}`);
+          }
+        }
+      }
 
-    console.log(`[mirror-bg] ═══ DONE in ${totalTime}ms. DB:${dbUpdates.length} Drive:${driveUpdates.length} Tasks:${newTasks.length}`);
+      state.partUpdateIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_parts", summary: `Drive karty ${state.partUpdateIndex}/${partUpdates.length}` });
+      return { status: "processing", phase: "drive_parts", summary: `Drive karty ${state.partUpdateIndex}/${partUpdates.length}`, progress: getMirrorProgress(payload, state) };
+    }
+
+    if (state.newPartIndex < newParts.length) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const batch = newParts.slice(state.newPartIndex, state.newPartIndex + MIRROR_BATCH.newParts);
+
+      for (const part of batch) {
+        if (!part.name || !part.sections) continue;
+        try {
+          const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+            body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections }),
+          });
+          const writeResult = await writeRes.json();
+          if (writeRes.ok && writeResult.success) {
+            state.driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
+            await sb.from("did_part_registry").upsert({
+              user_id: userId,
+              part_name: part.name,
+              display_name: part.name,
+              status: part.status === "Aktivní" ? "active" : "sleeping",
+              cluster: part.cluster || null,
+              notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. ${part.inferred_data || ""}`.slice(0, 500),
+              role_in_system: part.sections?.A?.slice(0, 200) || null,
+            }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
+            state.dbUpdates.push(`registry_new:${part.name}`);
+          } else {
+            state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${writeResult.error})`);
+          }
+        } catch (e) {
+          state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${e instanceof Error ? e.message : "unknown"})`);
+        }
+      }
+
+      state.newPartIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_new_parts", summary: `Nové části ${state.newPartIndex}/${newParts.length}` });
+      return { status: "processing", phase: "drive_new_parts", summary: `Nové části ${state.newPartIndex}/${newParts.length}`, progress: getMirrorProgress(payload, state) };
+    }
+
+    if (state.centrumIndex < centrumWrites.length) {
+      const token = await getAccessToken();
+      const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
+      const batch = centrumWrites.slice(state.centrumIndex, state.centrumIndex + MIRROR_BATCH.centrum);
+
+      if (kartotekaId) {
+        const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
+        if (centrumId) {
+          for (const { pattern, content, label } of batch) {
+            const hash = contentHash(content);
+            const doc = await findDoc(token, pattern, centrumId);
+            if (doc) {
+              const existing = await readDoc(token, doc.id);
+              if (!existing.includes(`[KHASH:${hash}]`)) {
+                await updateDoc(token, doc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
+                state.driveUpdates.push(`CENTRUM/${label}`);
+              }
+            }
+          }
+        }
+      }
+
+      state.centrumIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_centrum", summary: `Centrum ${state.centrumIndex}/${centrumWrites.length}` });
+      return { status: "processing", phase: "drive_centrum", summary: `Centrum ${state.centrumIndex}/${centrumWrites.length}`, progress: getMirrorProgress(payload, state) };
+    }
+
+    if (state.clientUpdateIndex < clientUpdates.length) {
+      const token = await getAccessToken();
+      const zalohaId = await findFolderFuzzy(token, ["ZALOHA", "Zaloha"]);
+      const batch = clientUpdates.slice(state.clientUpdateIndex, state.clientUpdateIndex + MIRROR_BATCH.clients);
+
+      if (zalohaId) {
+        for (const [clientName, content] of batch) {
+          const hash = contentHash(content);
+          const clientDoc = await findDoc(token, clientName, zalohaId);
+          if (clientDoc) {
+            const existing = await readDoc(token, clientDoc.id);
+            if (!existing.includes(`[KHASH:${hash}]`)) {
+              await updateDoc(token, clientDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
+              state.driveUpdates.push(`ZALOHA/${clientName}`);
+            }
+          }
+        }
+      }
+
+      state.clientUpdateIndex += batch.length;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_clients", summary: `Záloha klientů ${state.clientUpdateIndex}/${clientUpdates.length}` });
+      return { status: "processing", phase: "drive_clients", summary: `Záloha klientů ${state.clientUpdateIndex}/${clientUpdates.length}`, progress: getMirrorProgress(payload, state) };
+    }
+
+    await finalizeMirrorJob({ sb, jobId, payload, state });
+    return { status: "done", phase: "done", summary: extractedInfo?.synthesis_summary || "Zrcadlení dokončeno", progress: getMirrorProgress(payload, state) };
   } catch (bgError) {
-    console.error("[mirror-bg] Background error:", bgError);
+    console.error("[mirror-batch] Error:", bgError);
     await sb.from("karel_memory_logs").update({
       log_type: "redistribute",
       summary: `Chyba při zápisu: ${bgError instanceof Error ? bgError.message : "unknown"}`,
       details: {
         error: true,
         phase: "error",
-        dbUpdates,
-        driveUpdates,
+        progress: getMirrorProgress(payload, state),
+        dbUpdates: state.dbUpdates,
+        driveUpdates: state.driveUpdates,
       },
     }).eq("id", jobId);
+    return { status: "error", phase: "error", summary: `Chyba při zápisu: ${bgError instanceof Error ? bgError.message : "unknown"}` };
   }
 }
 
