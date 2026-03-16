@@ -481,7 +481,7 @@ DŮLEŽITÉ PRO new_parts:
         await Promise.all(driveWrites);
       }
 
-      // KARTOTEKA_DID: append to part cards (with hash dedup)
+      // KARTOTEKA_DID: append to existing part cards (with hash dedup)
       if (extractedInfo.kartoteka_did?.part_updates && Object.keys(extractedInfo.kartoteka_did.part_updates).length > 0) {
         const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
         if (kartotekaId) {
@@ -505,6 +505,63 @@ DŮLEŽITÉ PRO new_parts:
               await updateDoc(token, partDoc.id, updated);
               driveUpdates.push(`KARTOTEKA/${partName}`);
             }
+          }
+        }
+      }
+
+      // KARTOTEKA_DID: CREATE NEW PARTS via karel-did-drive-write
+      const newParts = extractedInfo.kartoteka_did?.new_parts;
+      if (Array.isArray(newParts) && newParts.length > 0) {
+        console.log(`[redistribute] Creating ${newParts.length} new parts via karel-did-drive-write`);
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        
+        for (const part of newParts) {
+          if (!part.name || !part.sections) {
+            console.warn(`[redistribute] Skipping invalid new_part:`, part);
+            continue;
+          }
+          
+          try {
+            // Call karel-did-drive-write to create the card with proper architecture
+            const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${serviceRoleKey}`,
+              },
+              body: JSON.stringify({
+                mode: "update-card-sections",
+                partName: part.name,
+                sections: part.sections,
+              }),
+            });
+            
+            const writeResult = await writeRes.json();
+            
+            if (writeRes.ok && writeResult.success) {
+              console.log(`[redistribute] ✅ Created new part: ${part.name} → ${writeResult.cardFileName}`);
+              driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
+              
+              // Also add to did_part_registry DB table
+              await sb.from("did_part_registry").upsert({
+                user_id: userId,
+                part_name: part.name,
+                display_name: part.name,
+                status: part.status === "Aktivní" ? "active" : "sleeping",
+                cluster: part.cluster || null,
+                notes: `Automaticky vytvořeno redistribucí ${new Date().toISOString().slice(0, 10)}`,
+                role_in_system: part.sections?.A?.slice(0, 200) || null,
+              }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
+              
+              dbUpdates.push(`registry_new:${part.name}`);
+            } else {
+              console.error(`[redistribute] ❌ Failed to create part ${part.name}:`, writeResult.error);
+              driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERROR: ${writeResult.error})`);
+            }
+          } catch (partErr) {
+            console.error(`[redistribute] Error creating part ${part.name}:`, partErr);
+            driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERROR: ${partErr instanceof Error ? partErr.message : 'unknown'})`);
           }
         }
       }
