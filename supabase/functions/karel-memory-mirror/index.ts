@@ -421,7 +421,7 @@ Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ}): ${e.stabilni_vlastnost
 Vzorce: ${patterns.map((p: any) => `${p.id}: ${p.description?.slice(0,60)}`).join("; ")}
 
 ═══ OBSAH DRIVE DOKUMENTŮ (${driveDocsRead} souborů) ═══
-${driveDigest.slice(0, 80000)}
+${driveDigest.slice(0, 40000)}
 
 Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
 {
