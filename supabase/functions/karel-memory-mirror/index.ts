@@ -753,8 +753,9 @@ Deno.serve(async (req) => {
     if (job.log_type === "mirror_job") {
       return new Response(JSON.stringify({
         status: "processing",
-        phase: job.details?.phase || "processing",
+        phase: job.details?.phase || "queued",
         summary: job.summary,
+        progress: job.details?.progress || null,
         startedAt: job.created_at,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
@@ -763,6 +764,7 @@ Deno.serve(async (req) => {
       status: job.details?.error ? "error" : "done",
       summary: job.summary,
       details: job.details,
+      progress: job.details?.progress || null,
       completedAt: job.created_at,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
@@ -789,18 +791,22 @@ Deno.serve(async (req) => {
     if (!jobId) return new Response(JSON.stringify({ error: "jobId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const { data: job } = await sb.from("karel_memory_logs")
-      .select("id, user_id, log_type, details")
+      .select("id, user_id, log_type, summary, details")
       .eq("id", jobId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    if (!job || job.log_type !== "mirror_job") {
+    if (!job) {
       return new Response(JSON.stringify({ status: "idle" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const phase = job.details?.phase;
-    if (phase === "running" || phase === "db" || phase === "drive" || phase === "drive_new_parts") {
-      return new Response(JSON.stringify({ status: "processing", phase }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (job.log_type !== "mirror_job") {
+      return new Response(JSON.stringify({
+        status: job.details?.error ? "error" : "done",
+        phase: job.details?.phase || (job.details?.error ? "error" : "done"),
+        summary: job.summary,
+        progress: job.details?.progress || null,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const payload = job.details?.payload;
@@ -810,17 +816,18 @@ Deno.serve(async (req) => {
         summary: "Chyba při zápisu: chybí payload jobu",
         details: { error: true, phase: "error" },
       }).eq("id", jobId);
-      return new Response(JSON.stringify({ status: "error" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "error", phase: "error", summary: "Chyba při zápisu: chybí payload jobu" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    await sb.from("karel_memory_logs").update({
-      summary: "Spouštím zápis...",
-      details: { ...job.details, phase: "running" },
-    }).eq("id", jobId);
+    const result = await runMirrorBatchStep({
+      sb,
+      userId,
+      jobId,
+      payload,
+      state: job.details?.state,
+    });
 
-    await runMirrorWritePhases({ sb, userId, jobId, payload });
-
-    return new Response(JSON.stringify({ status: "accepted" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify(result), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 
   try {
