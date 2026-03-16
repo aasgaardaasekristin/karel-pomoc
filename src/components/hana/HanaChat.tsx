@@ -352,6 +352,24 @@ const HanaChat = () => {
       isMirroringRef.current = false;
     };
 
+    const fetchMirrorStep = async (jobId: string, mode: "continue" | "status") => {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+        method: "POST",
+        headers: {
+          ...(await getAuthHeaders()),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ mode, jobId }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+
+      return payload;
+    };
+
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
@@ -376,54 +394,72 @@ const HanaChat = () => {
         pollingOwnsState = true;
         toast.success(data.summary || "Analýza hotová, pokračuji v zápisu.");
 
-        void fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-          method: "POST",
-          headers: {
-            ...(await getAuthHeaders()),
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ mode: "continue", jobId: data.jobId }),
-        }).catch((error) => {
-          console.error("Mirror continue error:", error);
-        });
-
         const pollForCompletion = async () => {
-          for (let i = 0; i < 48; i++) {
+          let lastKnownPhase = data.phase || "queued";
+
+          for (let i = 0; i < 60; i++) {
             if (i > 0) {
-              await new Promise((resolve) => setTimeout(resolve, 5000));
+              await new Promise((resolve) => setTimeout(resolve, 2500));
             }
 
             try {
-              const statusRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-                method: "POST",
-                headers: {
-                  ...(await getAuthHeaders()),
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ mode: "status", jobId: data.jobId }),
-              });
+              const stepData = await fetchMirrorStep(data.jobId, "continue");
 
-              if (!statusRes.ok) continue;
+              if (stepData.phase) {
+                lastKnownPhase = stepData.phase;
+              }
 
-              const statusData = await statusRes.json();
-
-              if (statusData.status === "done") {
-                toast.success(`Zrcadlení dokončeno: ${statusData.summary?.slice(0, 100) || "OK"}`);
+              if (stepData.status === "done") {
+                toast.success(`Zrcadlení dokončeno: ${stepData.summary?.slice(0, 100) || "OK"}`);
                 releaseMirrorLock();
                 return;
               }
 
-              if (statusData.status === "idle" || statusData.status === "error") {
-                toast.info(statusData.summary || "Zrcadlení už neběží.");
+              if (stepData.status === "error") {
+                toast.error(stepData.summary || "Zrcadlení skončilo chybou.");
                 releaseMirrorLock();
                 return;
               }
-            } catch (error) {
-              console.error("Mirror status poll error:", error);
+
+              if (stepData.status === "idle") {
+                toast.info(stepData.summary || "Zrcadlení už neběží.");
+                releaseMirrorLock();
+                return;
+              }
+            } catch (continueError) {
+              console.error("Mirror continue error:", continueError);
+
+              try {
+                const statusData = await fetchMirrorStep(data.jobId, "status");
+
+                if (statusData.phase) {
+                  lastKnownPhase = statusData.phase;
+                }
+
+                if (statusData.status === "done") {
+                  toast.success(`Zrcadlení dokončeno: ${statusData.summary?.slice(0, 100) || "OK"}`);
+                  releaseMirrorLock();
+                  return;
+                }
+
+                if (statusData.status === "error") {
+                  toast.error(statusData.summary || "Zrcadlení skončilo chybou.");
+                  releaseMirrorLock();
+                  return;
+                }
+
+                if (statusData.status === "idle") {
+                  toast.info(statusData.summary || "Zrcadlení už neběží.");
+                  releaseMirrorLock();
+                  return;
+                }
+              } catch (statusError) {
+                console.error("Mirror status poll error:", statusError);
+              }
             }
           }
 
-          toast.info("Zrcadlení stále běží na pozadí, ale spinner už uvolňuji.");
+          toast.info(`Zrcadlení stále běží (${lastKnownPhase}), spinner teď uvolňuji.`);
           releaseMirrorLock();
         };
 
