@@ -820,7 +820,6 @@ Proveď HLOUBKOVOU SYNTÉZU a vrať JSON:
       therapistObservations: pass1Data.therapist_observations || {},
       motivationUpdates: extractedInfo.motivation_updates || {},
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("[mirror] Error:", error);
