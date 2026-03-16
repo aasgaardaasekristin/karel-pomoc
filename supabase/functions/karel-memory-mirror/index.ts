@@ -541,6 +541,45 @@ Deno.serve(async (req) => {
     userId = user.id;
   }
 
+  if (reqBody.mode === "continue") {
+    const jobId = reqBody.jobId;
+    if (!jobId) return new Response(JSON.stringify({ error: "jobId required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    const { data: job } = await sb.from("karel_memory_logs")
+      .select("id, user_id, log_type, details")
+      .eq("id", jobId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!job || job.log_type !== "mirror_job") {
+      return new Response(JSON.stringify({ status: "idle" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const phase = job.details?.phase;
+    if (phase === "running" || phase === "db" || phase === "drive" || phase === "drive_new_parts") {
+      return new Response(JSON.stringify({ status: "processing", phase }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const payload = job.details?.payload;
+    if (!payload) {
+      await sb.from("karel_memory_logs").update({
+        log_type: "redistribute",
+        summary: "Chyba při zápisu: chybí payload jobu",
+        details: { error: true, phase: "error" },
+      }).eq("id", jobId);
+      return new Response(JSON.stringify({ status: "error" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    await sb.from("karel_memory_logs").update({
+      summary: "Spouštím zápis...",
+      details: { ...job.details, phase: "running" },
+    }).eq("id", jobId);
+
+    await runMirrorWritePhases({ sb, userId, jobId, payload });
+
+    return new Response(JSON.stringify({ status: "accepted" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   try {
     // ═══ CONCURRENCY LOCK ═══
     const LOCK_MINUTES = 5;
