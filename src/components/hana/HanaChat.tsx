@@ -372,10 +372,13 @@ const HanaChat = () => {
 
     try {
       const headers = await getAuthHeaders();
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 95000);
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
         method: "POST",
         headers,
-      });
+        signal: controller.signal,
+      }).finally(() => window.clearTimeout(timeoutId));
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -471,7 +474,11 @@ const HanaChat = () => {
       releaseMirrorLock();
     } catch (error) {
       console.error("Mirror error:", error);
-      toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
+      if (error instanceof DOMException && error.name === "AbortError") {
+        toast.error("Zrcadlení se spouštělo příliš dlouho. Spinner jsem zastavil — zkus to znovu.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Chyba při redistribuci");
+      }
       releaseMirrorLock();
     } finally {
       if (!pollingOwnsState) {
