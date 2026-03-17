@@ -197,15 +197,19 @@ function createInitialMirrorState(): MirrorState {
   };
 }
 
-function buildCentrumWrites(extractedInfo: any): Array<{ pattern: string; content: string; label: string }> {
+function buildCentrumWrites(extractedInfo: any): Array<{ pattern: string; content: string; label: string; rewrite: boolean }> {
   const cu = extractedInfo?.centrum_updates;
   if (!cu) return [];
 
-  const writes: Array<{ pattern: string; content: string; label: string }> = [];
-  if (cu.dashboard_notes) writes.push({ pattern: "Dashboard", content: cu.dashboard_notes, label: "Dashboard" });
-  if (cu.geography_notes) writes.push({ pattern: "Geografie", content: cu.geography_notes, label: "Geografie" });
-  if (cu.relationships_notes) writes.push({ pattern: "Vztah", content: cu.relationships_notes, label: "Mapa_Vztahu" });
-  if (cu.operative_plan_notes) writes.push({ pattern: "Operativn", content: cu.operative_plan_notes, label: "Operativni_Plan" });
+  const writes: Array<{ pattern: string; content: string; label: string; rewrite: boolean }> = [];
+  // Dashboard and Operativni Plan are FULL REWRITE (same as daily cycle)
+  if (cu.dashboard_full) writes.push({ pattern: "Dashboard", content: cu.dashboard_full, label: "Dashboard", rewrite: true });
+  else if (cu.dashboard_notes) writes.push({ pattern: "Dashboard", content: cu.dashboard_notes, label: "Dashboard", rewrite: true });
+  if (cu.operative_plan_full) writes.push({ pattern: "Operativn", content: cu.operative_plan_full, label: "Operativni_Plan", rewrite: true });
+  else if (cu.operative_plan_notes) writes.push({ pattern: "Operativn", content: cu.operative_plan_notes, label: "Operativni_Plan", rewrite: true });
+  // Geography and Relationships are APPEND
+  if (cu.geography_notes) writes.push({ pattern: "Geografie", content: cu.geography_notes, label: "Geografie", rewrite: false });
+  if (cu.relationships_notes) writes.push({ pattern: "Vztah", content: cu.relationships_notes, label: "Mapa_Vztahu", rewrite: false });
   return writes;
 }
 
