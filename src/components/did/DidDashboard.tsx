@@ -558,6 +558,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
         <DidColleagueView refreshTrigger={refreshTrigger} />
       </div>
 
+      {/* Countertransference Map */}
+      <div className="mb-4">
+        <DidCountertransferenceMap refreshTrigger={refreshTrigger} />
+      </div>
+
       {/* Registry Overview (Phase 5) */}
       <div className="mb-4">
         <DidRegistryOverview refreshTrigger={refreshTrigger} onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined} />
