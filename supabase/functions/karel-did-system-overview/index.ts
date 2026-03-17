@@ -544,11 +544,14 @@ STRUKTURA:
 
 VSTUPNÍ DATA (použij JEN pro zjištění KDO byl aktivní a NA JAKÉ TÉMA – NECITUJ obsah):
 
-=== ČÁSTI V REGISTRU ===
+=== ČÁSTI V REGISTRU (PŘÍMÁ vs ZMÍNĚNÁ aktivita) ===
 ${partsSnapshotBlock || "(žádné části)"}
 
-=== AKTIVITA ČÁSTÍ 24H (jen témata, NECITUJ) ===
-${threadSummary24h || "(bez vláken za 24h)"}
+=== PŘÍMÁ KOMUNIKACE ČÁSTÍ 24H (část SAMA mluvila s Karlem) ===
+${threadSummary24h || "(žádná přímá komunikace částí za 24h)"}
+
+=== TERAPEUTKY MLUVILY O ČÁSTECH 24H (cross-mode zmínky – ČÁST SAMA NEKOMUNIKOVALA) ===
+${crossModeSummary24h || "(žádné zmínky z jiných režimů)"}
 
 === AKTIVITA TERAPEUTEK 24H ===
 ${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
