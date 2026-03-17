@@ -318,6 +318,7 @@ async function finalizeMirrorJob(params: {
         semanticDriveDone: true,
         proceduralDriveDone: true,
         episodesDriveDone: true,
+        therapistProfileDriveDone: true,
       }),
       threadsScanned: threadCount,
       driveDocsRead,
