@@ -549,7 +549,7 @@ ${perplexityTips ? `=== TERAPEUTICKÉ TIPY ===\n${perplexityTips}\n` : ""}`;
           {
             role: "system",
             content:
-              `Jsi Karel, supervizní terapeut. Odpovídej česky, přirozeně, věcně, STRUČNĚ. Nikdy nevymýšlej data mimo vstupy. Nikdy nepoužívej technické tagy. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ.`
+              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ.`
           },
           { role: "user", content: synthesisPrompt },
         ],
