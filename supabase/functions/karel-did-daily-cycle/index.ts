@@ -3900,7 +3900,15 @@ Co Karel navrhuje: [řešení]
 Podpis: "Jsem tady. Tvůj Karel"
 
 Tón: intimní, partnerský, podporující, hluboký.
-ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval a uznání. Pokud "deadline" → více konkrétních termínů. Pokud "instruction" → více detailních kroků.` },
+ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval a uznání. Pokud "deadline" → více konkrétních termínů. Pokud "instruction" → více detailních kroků.
+
+PRAVIDLA SOUKROMÍ (KRITICKÉ):
+- NIKDY necituj doslovně výroky z konverzací (např. "deťátko které potřebuje mou ochranu")
+- NIKDY nepřepisuj surové citáty ani parafráze přímých výroků klientky nebo terapeutek
+- Místo citátů piš OPERATIVNÍ INSTRUKCE: "Monitorovat silnou mateřskou vazbu k Tundrupkovi" (NE "Hanka řekla, že Tundrupek je deťátko")
+- Citové vazby terapeutek k částem popisuj analyticky: "mateřský countertransference vzorec", "nostalgická vazba", NE přímé citáty
+- Piš POUZE: co dělat, na co si dát pozor, jaké kroky podniknout
+- E-mail je OPERATIVNÍ DOKUMENT, ne přepis konverzace` },
                   { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}\n\n═══ MOTIVAČNÍ PROFIL HANKY ═══\n${formatProfileContext(hankaProfile)}` },
                 ],
               }),
@@ -3947,7 +3955,13 @@ Shrň 4-6 bodů relevantních pro Kátinu roli:
 Podpis: "Karel"
 
 DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.
-ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval. Pokud "deadline" → více termínů. Pokud "instruction" → detailní kroky.` },
+ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval. Pokud "deadline" → více termínů. Pokud "instruction" → detailní kroky.
+
+PRAVIDLA SOUKROMÍ (KRITICKÉ):
+- NIKDY necituj doslovně výroky z konverzací ani parafráze přímých výroků
+- Místo citátů piš OPERATIVNÍ INSTRUKCE: "Sledovat vazbu k [část]", "Ověřit pokrok v [oblast]"
+- Citové vazby popisuj analyticky: "pozitivní terapeutický vztah", "empatie k [část]", NE přímé citáty
+- E-mail je OPERATIVNÍ DOKUMENT, ne přepis konverzace` },
                   { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}\n\n═══ MOTIVAČNÍ PROFIL KÁTI ═══\n${formatProfileContext(kataProfile)}` },
                 ],
               }),
