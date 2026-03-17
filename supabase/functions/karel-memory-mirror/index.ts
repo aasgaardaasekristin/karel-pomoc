@@ -187,6 +187,7 @@ function createInitialMirrorState(): MirrorState {
     semanticDriveDone: false,
     proceduralDriveDone: false,
     episodesDriveDone: false,
+    therapistProfileDriveDone: false,
     partUpdateIndex: 0,
     newPartIndex: 0,
     centrumIndex: 0,
