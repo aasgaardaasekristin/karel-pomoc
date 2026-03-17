@@ -38,7 +38,7 @@ serve(async (req) => {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
     }
 
-    // ═══ RUNTIME INJECTION: Pending therapist tasks + Karel's Insight for proactive follow-up ═══
+    // ═══ RUNTIME INJECTION: Pending therapist tasks + Karel's Insight + Dashboard deductions ═══
     if (mode === "childcare" && (didSubMode === "mamka" || didSubMode === "kata")) {
       try {
         const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
@@ -46,6 +46,86 @@ serve(async (req) => {
           Deno.env.get("SUPABASE_URL")!,
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         );
+
+        // ═══ DASHBOARD DEDUCTIONS INJECTION ═══
+        // Read last Dashboard and Operative Plan from Drive to inject Karel's own deductions
+        try {
+          const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+          const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+          const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+          if (clientId && clientSecret && refreshToken) {
+            const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+            });
+            const tokenData = await tokenRes.json();
+            if (tokenData.access_token) {
+              const driveToken = tokenData.access_token;
+              // Find kartoteka_DID > 00_CENTRUM > Dashboard + Operative Plan
+              const findFolder = async (name: string) => {
+                const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "10", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+                const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${driveToken}` } });
+                const data = await res.json();
+                return data.files?.[0]?.id || null;
+              };
+              const kartotekaId = await findFolder("kartoteka_DID") || await findFolder("Kartoteka_DID");
+              if (kartotekaId) {
+                const q2 = `'${kartotekaId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+                const p2 = new URLSearchParams({ q: q2, fields: "files(id,name)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+                const r2 = await fetch(`https://www.googleapis.com/drive/v3/files?${p2}`, { headers: { Authorization: `Bearer ${driveToken}` } });
+                const d2 = await r2.json();
+                const centrumFolder = (d2.files || []).find((f: any) => /^00/.test(f.name.trim()) || f.name.toLowerCase().includes("centrum"));
+                if (centrumFolder) {
+                  const q3 = `'${centrumFolder.id}' in parents and trashed=false`;
+                  const p3 = new URLSearchParams({ q: q3, fields: "files(id,name,mimeType)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+                  const r3 = await fetch(`https://www.googleapis.com/drive/v3/files?${p3}`, { headers: { Authorization: `Bearer ${driveToken}` } });
+                  const d3 = await r3.json();
+                  const centrumFiles = d3.files || [];
+                  
+                  let dashboardContent = "";
+                  let planContent = "";
+                  
+                  for (const cf of centrumFiles) {
+                    const cn = cf.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                    const isDashboard = cn.includes("dashboard");
+                    const isPlan = (cn.includes("operativn") && cn.includes("plan")) || (cn.includes("terapeutick") && cn.includes("plan"));
+                    if (!isDashboard && !isPlan) continue;
+                    
+                    try {
+                      let content = "";
+                      const mediaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${cf.id}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${driveToken}` } });
+                      if (mediaRes.ok) {
+                        content = await mediaRes.text();
+                      } else {
+                        const expRes = await fetch(`https://www.googleapis.com/drive/v3/files/${cf.id}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${driveToken}` } });
+                        if (expRes.ok) content = await expRes.text();
+                      }
+                      if (content.length > 100) {
+                        if (isDashboard) dashboardContent = content.slice(0, 4000);
+                        if (isPlan) planContent = content.slice(0, 3000);
+                      }
+                    } catch {}
+                  }
+                  
+                  if (dashboardContent || planContent) {
+                    systemPrompt += `\n\n═══ KARLOVY VLASTNÍ DEDUKCE A ZÁVĚRY (z posledního Dashboardu + Operativního plánu) ═══
+⚠️ Toto jsou TVÉ VLASTNÍ analytické závěry, predikce a instrukce které jsi zapsal při posledním cyklu.
+AKTIVNĚ s nimi pracuj: připomínej úkoly, ptej se na stav predikcí, ověřuj hypotézy, kontroluj plnění.
+Neříkej "můj Dashboard říká" – prostě to VÍŠ a jednáš podle toho.
+
+${dashboardContent ? `── DASHBOARD (tvůj radar) ──\n${dashboardContent}\n` : ""}
+${planContent ? `── OPERATIVNÍ PLÁN (tvé instrukce) ──\n${planContent}` : ""}`;
+                    console.log(`[karel-chat] Dashboard injected: ${dashboardContent.length}ch, Plan: ${planContent.length}ch`);
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[karel-chat] Dashboard injection error (non-fatal):", e);
+        }
 
         // Load tasks
         const { data: tasks } = await sb.from("did_therapist_tasks")
