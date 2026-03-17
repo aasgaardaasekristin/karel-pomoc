@@ -815,6 +815,88 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
         });
         shadowSyncResult = { ...syncResult, error: null };
         console.log(`[did-context-prime] Profiling engine done: ${syncResult.filesUpdated} files updated`);
+
+        // ═══ BOND EXTRACTION: Extract countertransference bonds from generated profiles ═══
+        try {
+          // Read the just-written profiles back from Drive for bond extraction
+          const bondToken = await getAccessToken();
+          const pametBondId = await findFolder(bondToken, "PAMET_KAREL");
+          if (pametBondId) {
+            const didBondRoot = await findFolder(bondToken, "DID", pametBondId);
+            if (didBondRoot) {
+              const hankaBondFolder = await findFolder(bondToken, "HANKA", didBondRoot);
+              const kataBondFolder = await findFolder(bondToken, "KATA", didBondRoot);
+              
+              const readProfileForBonds = async (folderId: string | null): Promise<string> => {
+                if (!folderId) return "";
+                const texts: string[] = [];
+                for (const fn of ["SITUACNI_ANALYZA.txt", "KARLOVY_POZNATKY.txt"]) {
+                  const doc = await findDocByExactName(bondToken, folderId, fn);
+                  if (doc) { try { texts.push(await readDoc(bondToken, doc.id, 4000)); } catch {} }
+                }
+                return texts.join("\n\n");
+              };
+
+              const [hankaProfileText, kataProfileText] = await Promise.all([
+                readProfileForBonds(hankaBondFolder),
+                readProfileForBonds(kataBondFolder),
+              ]);
+
+              const combinedForBonds = [
+                hankaProfileText ? `[Hanka]\n${hankaProfileText}` : "",
+                kataProfileText ? `[Káťa]\n${kataProfileText}` : "",
+              ].filter(Boolean).join("\n\n").slice(0, 6000);
+
+              if (combinedForBonds.length > 100) {
+                const bondRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash-lite",
+                    messages: [
+                      { role: "system", content: `Extrahuj citové vazby (countertransference) terapeutek k DID částem z textu. Výstup POUZE jako JSON pole (žádný jiný text):
+[{"therapist":"Hanka","part_name":"Tundrupek","bond_type":"mateřský","bond_description":"silná ochranitelská vazba","therapeutic_implication":"monitorovat hranice","intensity":5}]
+bond_type MUSÍ být jedno z: mateřský, nostalgický, protektivní, empatický, ochranitelský, úzkostný, obdivný, mentorský, neutrální
+intensity: 1-5 (1=slabá, 5=silná)
+Pouze fakta z textu, nevymýšlej. Piš česky.` },
+                      { role: "user", content: combinedForBonds },
+                    ],
+                    temperature: 0.1,
+                  }),
+                });
+
+                if (bondRes.ok) {
+                  const bondData = await bondRes.json();
+                  const bondText = bondData.choices?.[0]?.message?.content || "";
+                  const jsonMatch = bondText.match(/\[[\s\S]*?\]/);
+                  if (jsonMatch) {
+                    const parsed = JSON.parse(jsonMatch[0]);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                      for (const bond of parsed) {
+                        if (!bond.therapist || !bond.part_name || !bond.bond_type) continue;
+                        await sb.from("did_countertransference_bonds").upsert({
+                          therapist: bond.therapist,
+                          part_name: bond.part_name,
+                          bond_type: bond.bond_type,
+                          bond_description: (bond.bond_description || "").slice(0, 300) || null,
+                          therapeutic_implication: (bond.therapeutic_implication || "").slice(0, 300) || null,
+                          intensity: Math.min(5, Math.max(1, bond.intensity || 3)),
+                          last_observed_at: new Date().toISOString(),
+                          updated_at: new Date().toISOString(),
+                          user_id: userId,
+                        }, { onConflict: "therapist,part_name" });
+                      }
+                      console.log(`[bond-extract] Upserted ${parsed.length} countertransference bonds`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (bondErr) {
+          console.warn("[bond-extract] Bond extraction error (non-fatal):", bondErr);
+        }
+
       } catch (e) {
         shadowSyncResult = {
           updated: false,
