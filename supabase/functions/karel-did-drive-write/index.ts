@@ -476,9 +476,11 @@ function resolveCardTarget(
   const entry = findBestRegistryEntry(partName, registry.entries);
 
   if (!entry) {
-    // New parts go to archive (sleeping) by default — terapeutka must manually promote
-    const root = registry.archiveFolderId || registry.activeFolderId || rootFolderId;
-    return { searchRootId: root, allowCreate: true, pathLabel: "03_ARCHIV_SPICICH/(nová část)", registryEntry: null };
+    // New parts: placement depends on source
+    // If body contains targetFolder override, use it; otherwise default to active (for auto-detected)
+    // Therapist-requested parts should pass targetFolder explicitly
+    const root = registry.activeFolderId || registry.archiveFolderId || rootFolderId;
+    return { searchRootId: root, allowCreate: true, pathLabel: "01_AKTIVNI_FRAGMENTY/(nová část)", registryEntry: null };
   }
 
   const stateFolderId = isArchived ? registry.archiveFolderId : registry.activeFolderId;
