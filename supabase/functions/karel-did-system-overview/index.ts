@@ -388,12 +388,9 @@ serve(async (req) => {
           : t.sub_mode === "kata"
             ? "Káťa"
             : "terapeut";
-      const snippets = msgs
-        .filter((m: any) => m?.role === "user" && typeof m?.content === "string")
-        .slice(-5)
-        .map((m: any) => `- ${String(m.content).replace(/\s+/g, " ").slice(0, 240)}`)
-        .join("\n");
-      return `\n${t.part_name} (${speaker}, ${t.last_activity_at})\n${snippets || "- bez uživatelských zpráv"}`;
+      const userMsgCount = msgs.filter((m: any) => m?.role === "user").length;
+      // Only metadata — NEVER raw message content in overview to protect privacy
+      return `\n${t.part_name} (${speaker}, ${t.last_activity_at}, ${userMsgCount} zpráv)`;
     };
 
     let threadSummary24h = "";
