@@ -562,7 +562,13 @@ serve(async (req) => {
         if (stateFolderId) partFolder = await findBestPartFolder(token, stateFolderId, entry);
       }
 
-      const target = resolveCardTarget(partName, folderId, registry, partFolder, isArchived);
+      // Allow caller to override target folder (e.g. therapist choosing archive vs active)
+      let target = resolveCardTarget(partName, folderId, registry, partFolder, isArchived);
+      if (body.targetFolder === "archive" && registry.archiveFolderId) {
+        target = { ...target, searchRootId: registry.archiveFolderId, pathLabel: "03_ARCHIV_SPICICH/(manuální)", allowCreate: true };
+      } else if (body.targetFolder === "active" && registry.activeFolderId) {
+        target = { ...target, searchRootId: registry.activeFolderId, pathLabel: "01_AKTIVNI_FRAGMENTY/(manuální)", allowCreate: true };
+      }
       const lookupName = target.registryEntry?.name || partName;
       const card = await findCardFile(token, lookupName, target.searchRootId);
 
