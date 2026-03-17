@@ -624,24 +624,66 @@ async function runMirrorBatchStep(params: {
       for (const part of batch) {
         if (!part.name || !part.sections) continue;
         try {
+          // Auto-detected parts go to 01_AKTIVNI_FRAGMENTY (active)
           const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
-            body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections }),
+            body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections, targetFolder: "active" }),
           });
           const writeResult = await writeRes.json();
           if (writeRes.ok && writeResult.success) {
-            state.driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
+            state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (01_AKTIVNI)`);
             await sb.from("did_part_registry").upsert({
               user_id: userId,
               part_name: part.name,
               display_name: part.name,
-              status: "sleeping",
+              status: "active",
               cluster: part.cluster || "nově detekovaný",
-              notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. ${part.inferred_data || ""}`.slice(0, 500),
+              notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. Čeká na ověření týmem. ${part.inferred_data || ""}`.slice(0, 500),
               role_in_system: part.sections?.A?.slice(0, 200) || null,
             }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
             state.dbUpdates.push(`registry_new:${part.name}`);
+
+            // ═══ AUTO-TRIGGER VERIFICATION MEETING ═══
+            const evidence = part.evidence?.join(", ") || part.sections?.A || "detekováno z konverzací";
+            const meetingTopic = `Ověření nové části: ${part.name}`;
+            const meetingAgenda = `Karel detekoval potenciální novou část/fragment: "${part.name}".
+
+═══ DŮKAZY ═══
+${evidence}
+
+═══ POSTUP OVĚŘENÍ ═══
+1. Karel předloží důkazy a kontext detekce
+2. Hanka i Káťa se vyjádří, zda se s touto částí setkaly
+3. Minimální práh: alespoň 2 ze 3 (Karel + terapeutky) souhlasí
+4. Pokud ověřeno → část zůstává v registru a kartotéce
+5. Pokud NEověřeno → Karel odstraní kartu a záznam
+
+Karel navrhne specifické ověřovací úkoly pro tento případ.`;
+
+            const karelOpeningMsg = `Ahoj Haničko, ahoj Káťo 👋
+
+Během analýzy konverzací jsem detekoval potenciální novou část/fragment: **${part.name}**.
+
+**Důkazy:**
+${evidence}
+
+**Co potřebuji od vás:**
+1. Setkaly jste se s touto částí? Pokud ano, popište prosím kontext.
+2. Existují další indicie, že jde o samostatnou část (ne alias existující)?
+3. Navrhněte prosím pozorování/aktivity, které by potvrdily nebo vyvrátily existenci.
+
+Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověření". Prosím vyjádřete se obě. 🙏`;
+
+            await sb.from("did_meetings").insert({
+              user_id: userId,
+              topic: meetingTopic,
+              agenda: meetingAgenda,
+              status: "open",
+              triggered_by: "karel_auto_verification",
+              messages: [{ role: "karel", content: karelOpeningMsg, timestamp: new Date().toISOString() }],
+            });
+            state.dbUpdates.push(`meeting_verification:${part.name}`);
           } else {
             state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${writeResult.error})`);
           }
