@@ -304,17 +304,21 @@ serve(async (req) => {
       messagesSelector: (row: any) => unknown,
       speakerLabel: string
     ) => {
+      const mentionCounts = new Map<string, number>();
       for (const row of rows || []) {
         const texts = extractMessageTexts(messagesSelector(row), ["user"]).slice(-8);
         for (const text of texts) {
           const mentioned = detectMentionedPartKeys(text);
-          if (mentioned.length === 0) continue;
-          for (const key of mentioned) crossModeActivity.add(key);
-          const partsLabel = mentioned
-            .map((key) => partAliasMap.find((p) => p.key === key)?.display || key)
-            .join(", ");
-          crossModeMentions.push(`${sourceLabel}/${speakerLabel} | ${partsLabel}: ${text.slice(0, 260)}`);
+          for (const key of mentioned) {
+            crossModeActivity.add(key);
+            mentionCounts.set(key, (mentionCounts.get(key) || 0) + 1);
+          }
         }
+      }
+      // Only metadata — NEVER raw message content to protect privacy
+      for (const [key, count] of mentionCounts) {
+        const display = partAliasMap.find((p) => p.key === key)?.display || key;
+        crossModeMentions.push(`${sourceLabel}/${speakerLabel}: zmínka o ${display} (${count}×)`);
       }
     };
 
