@@ -3303,8 +3303,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               centrumOperativniUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
 
-              // Post-write verification
-              await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", ["SEKCE 1", "SEKCE 2", "SEKCE 3", "Aktualizace"]);
+              // Post-write verification – all 6 sections + deductive markers
+              const planVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", [
+                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6",
+                "Aktualizace", "PROČ", "AKCE", "DOKDY",
+              ]);
+              if (!planVerify.verified) {
+                console.warn(`[VERIFY] ⚠️ 05_Operativni_Plan verification FAILED: missing=[${planVerify.missingKeywords.join(",")}], length=${planVerify.length}`);
+              }
               continue;
             }
 
@@ -3322,8 +3328,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               centrumDashboardUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
 
-              // Post-write verification
-              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", ["SEKCE 1", "DASHBOARD", "Aktualizace"]);
+              // Post-write verification – all 7 sections + deductive markers
+              const dashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", [
+                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7",
+                "DASHBOARD", "Aktualizace", "DEDUKCE",
+              ]);
+              if (!dashVerify.verified) {
+                console.warn(`[VERIFY] ⚠️ 00_Dashboard verification FAILED: missing=[${dashVerify.missingKeywords.join(",")}], length=${dashVerify.length}`);
+              }
               continue;
             }
 
@@ -3483,8 +3495,13 @@ Všechna data pocházejí z databáze (did_part_registry, did_threads, did_thera
               centrumDashboardUpdated = true;
               console.log(`[CENTRUM-FALLBACK] ✅ Dashboard: full deterministic content written`);
 
-              // Post-write verification
-              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", ["SEKCE 1", "SEKCE 3", "DASHBOARD"]);
+              // Post-write verification – fallback
+              const fallbackDashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", [
+                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7", "DASHBOARD",
+              ]);
+              if (!fallbackDashVerify.verified) {
+                console.warn(`[VERIFY] ⚠️ Dashboard fallback verification FAILED: missing=[${fallbackDashVerify.missingKeywords.join(",")}]`);
+              }
             } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
           }
         }
