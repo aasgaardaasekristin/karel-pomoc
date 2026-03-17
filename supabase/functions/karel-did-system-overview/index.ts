@@ -247,9 +247,16 @@ serve(async (req) => {
         .filter((v: string) => typeof v === "string" && v.trim().length > 0);
     };
 
+    // Hardcoded aliases for known synonyms
+    const knownAliases: Record<string, string[]> = {
+      "dmytri": ["dymi", "dymytri", "dmytri"],
+    };
+
     const partAliasMap = (registry || []).map((r: any) => {
       const key = normalizeKey(r.part_name || r.display_name || "");
-      const aliases = [...new Set([r.part_name, r.display_name].filter(Boolean).map((v: string) => normalizeKey(v)))];
+      const baseAliases = [r.part_name, r.display_name].filter(Boolean).map((v: string) => normalizeKey(v));
+      const extraAliases = knownAliases[key] || [];
+      const aliases = [...new Set([...baseAliases, ...extraAliases])];
       return {
         key,
         display: r.display_name || r.part_name || "část",

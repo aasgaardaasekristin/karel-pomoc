@@ -2247,6 +2247,10 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
+    let finalReportText = "";
+    let aiReportText = "";
+    let hankaHtml = "";
+    let kataHtml = "";
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
     const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0 || recentMeetings.length > 0 || recentEpisodes.length > 0;
 
@@ -3816,8 +3820,8 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
       // Daily report (deterministický, pouze skutečně provedené změny)
       // RULE: Daily reports are EMAIL-ONLY, never saved as standalone files
       const reportMatch = analysisText.match(/\[REPORT\]([\s\S]*?)\[\/REPORT\]/);
-      const aiReportText = reportMatch?.[1]?.trim() || "";
-      const finalReportText = buildDeterministicDailyReport({
+      aiReportText = reportMatch?.[1]?.trim() || "";
+      finalReportText = buildDeterministicDailyReport({
         successful: successfulCardUpdates,
         blocked: blockedCardUpdates,
         aiRecommendations: extractAiRecommendations(aiReportText),
@@ -3825,8 +3829,8 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
       const dateStr = reportDatePrague;
 
       // 5. SEPARATE EMAILS FOR HANKA AND KÁŤA – ONLY from cron
-      let hankaHtml = "";
-      let kataHtml = "";
+      hankaHtml = "";
+      kataHtml = "";
       if (shouldSendEmails && resend && finalReportText) {
         try {
           // Load motivation profiles for adaptive tone
