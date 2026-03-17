@@ -156,6 +156,7 @@ type MirrorState = {
   semanticDriveDone: boolean;
   proceduralDriveDone: boolean;
   episodesDriveDone: boolean;
+  therapistProfileDriveDone: boolean;
   partUpdateIndex: number;
   newPartIndex: number;
   centrumIndex: number;
