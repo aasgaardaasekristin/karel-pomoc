@@ -620,7 +620,7 @@ serve(async (req) => {
         // Auto-increment ID from registry and create as Google Doc
         const nextId = getNextRegistryId(registry?.entries || []);
         const paddedId = String(nextId).padStart(3, "0");
-        const newFileName = `DID_${paddedId}_${partName.replace(/\s+/g, "_")}`;
+        const newFileName = `${paddedId}_${partName.toUpperCase().replace(/\s+/g, "_")}`;
         await createFileInFolder(token, newFileName, fullCard, target.searchRootId);
         resultFileName = newFileName;
         // Add entry to registry
