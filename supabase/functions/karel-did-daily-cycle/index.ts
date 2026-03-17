@@ -144,8 +144,17 @@ function validateCentrumEvidence(
     if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return false;
     // Lines that are just status indicators
     if (/^[▸\-*•]\s*(Žádné|Žádná|Viz |N\/A|–$)/i.test(trimmed)) return false;
+    // DEDUCTIVE CONTENT EXEMPTIONS: Karlovy dedukce, trendy, predikce, registry-based data
+    // These are synthesized by Karel from DB data and don't need [SRC:] tags
+    if (/(?:Karlova dedukce|DEDUKCE|TREND\s*[↑↗→↘↓]|stabilita\s*\(\d|PREDIKCE|predikce|PŘÍČINA|příčinný|AKCE:|DOKDY:|CO:|PROČ:)/i.test(trimmed)) return false;
+    // Registry-based status lines (parts with emojis, IDs, sleep status)
+    if (/^▸\s*.+\[(?:💤|🟢|🟡|🔴|ID:)/i.test(trimmed)) return false;
+    // Watchlist/sleeping parts descriptions from registry
+    if (/(?:spí|💤|Neaktivní|bez aktivity|Riziko spontánního probuzení)/i.test(trimmed) && /(?:▸|^\-)/i.test(trimmed)) return false;
+    // Souhrn/summary lines (aggregated data)
+    if (/^(?:Souhrn:|Celkov)/i.test(trimmed)) return false;
     // Clinical content: contains specific claims about parts, states, recommendations
-    return /(?:komunikoval|mluvil|cítí|potřebuje|doporučen|riziko|trigger|aktivní|spí|probuz|stabilní|nestabilní|regres|pokrok|metoda|technika|sezení)/i.test(trimmed);
+    return /(?:komunikoval|mluvil|cítí|potřebuje|doporučen|riziko|trigger|aktivní|probuz|regres|pokrok|metoda|technika|sezení)/i.test(trimmed);
   };
 
   for (const line of lines) {
