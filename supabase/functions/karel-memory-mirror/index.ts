@@ -1237,25 +1237,24 @@ Vrať JSON:
 
 ═══ INSTRUKCE PRO CENTRUM DOKUMENTY ═══
 
-dashboard_full: Vygeneruj KOMPLETNÍ nový Dashboard (dokument se PŘEPISUJE CELÝ, ne appenduje). Dashboard je 30sekundový přehled aktuální situace za posledních 3 dny:
-SEKCE 1 – STAV SYSTÉMU TEĎ: Pro KAŽDOU aktivní část: jméno, stav emoji (🟢🟡🔴), nálada, poslední kontakt, riziko.
-SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️: Triggery, nesplněné úkoly 3+ dní, části v ohrožení. Pokud žádná: "✅ Žádná kritická upozornění"
-SEKCE 3 – CO SE DĚLO (shrnutí z vláken): Kdo mluvil, klíčové momenty, změny stavů.
-SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤: Jak dlouho spí, riziko probuzení, doporučení.
-SEKCE 5 – TERAPEUTICKÝ FOKUS 🎯: Top 1-3 priority, s kým pracovat, jakou metodou, konkrétní instrukce pro terapeuta.
-SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬: Vzkazy mezi terapeuty, co potřebují vědět navzájem, připomínky úkolů.
-SEKCE 7 – KARLOVY POSTŘEHY 🔍: Vzorce, hypotézy, souvislosti, co motivovat, co kontrolovat, komu co připomínat.
-DŮLEŽITÉ: Piš AKČNĚ (terapeut otevře a ví co dělat), motivuj, připomínej úkoly, kontroluj zda sezení probíhají, upozorňuj na souvislosti.
+dashboard_full: Vygeneruj KOMPLETNÍ nový Dashboard (PŘEPISUJE SE CELÝ). Dashboard NENÍ pasivní shrnutí. Je to OPERAČNÍ CENTRUM — terapeut ho otevře a VÍ co má dělat TEĎKA.
+SEKCE 1 – STAV SYSTÉMU + KARLOVA ANALÝZA: Pro KAŽDOU aktivní část: jméno, stav 🟢🟡🔴, nálada, poslední kontakt, KARLŮV ZÁVĚR (co z toho vyplývá, jaký je trend, predikce kam to směřuje).
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ + AKČNÍ PLÁN ⚠️: Ne jen "úkol X nesplněn" ale "úkol X nesplněn 4 dny → PŘÍČINA: Káťa pravděpodobně zahlcena školou → AKCE: Karel přeřadí úkol na Hanku / sníží náročnost → KONTROLA: zítra ověřit". Pokud žádná: "✅ Systém stabilní, žádné eskalace"
+SEKCE 3 – DEDUKCE Z POSLEDNÍCH DNŮ 🧠: NENÍ shrnutí "kdo mluvil". Je to ANALÝZA: Co Karel vyvodil z kombinace vláken? Jaké skryté souvislosti objevil? Jaké vzorce se opakují? Co se mění k lepšímu/horšímu a PROČ?
+SEKCE 4 – TERAPEUTICKÉ INSTRUKCE 🎯: KONKRÉTNÍ příkazy pro každou terapeutku: "Hanka: v příštím sezení s Arthurem použij techniku X, protože Y. Káťa: Tundrupek potřebuje Z, protože analýza vláken ukazuje W." S odůvodněním PROČ a s měřitelným cílem.
+SEKCE 5 – PREDIKCE A PREVENCE 🔮: Co Karel PŘEDPOVÍDÁ na základě vzorců? Jaké rizikové scénáře hrozí? Jaké preventivní kroky doporučuje? "Pokud Arthur nebude kontaktován do 3 dnů, predikuji regresi na základě vzorce z minulého měsíce."
+SEKCE 6 – KOORDINAČNÍ INSTRUKCE 💬: Ne jen "most mezi terapeuty". Ale: "Hanka zjistila X. To ovlivní Káťinu práci s Y. Karel doporučuje: Káťa změní přístup Z. Hanka ať doplní informaci W." + připomínky nesplněných úkolů s DŮVODEM proč je důležité je splnit.
+SEKCE 7 – KARLOVY STRATEGICKÉ POSTŘEHY 🔍: Hloubkové hypotézy, kauzální řetězce, co funguje a co ne a PROČ, doporučení změn strategie, evaluace vlastní efektivity.
 
-operative_plan_full: Vygeneruj KOMPLETNÍ nový Operativní plán (dokument se PŘEPISUJE CELÝ):
-SEKCE 1 – AKTIVNÍ ČÁSTI A STAV: tabulka s každou aktivní částí.
-SEKCE 2 – PLÁN SEZENÍ: s kým pracovat, metodou, cíl.
-SEKCE 3 – AKTIVNÍ ÚKOLY + HODNOCENÍ: ☐/☑ pro každou terapeutku.
-SEKCE 4 – KOORDINACE: most Hanka↔Káťa, synchronizace.
-SEKCE 5 – RIZIKA: triggery, eskalace nesplněných úkolů.
-SEKCE 6 – KARLOVY POZNÁMKY: postřehy, hypotézy, hodnocení spolupráce.
+operative_plan_full: Vygeneruj KOMPLETNÍ nový Operativní plán (PŘEPISUJE SE CELÝ). Plán NENÍ seznam, je to STRATEGICKÝ DOKUMENT s ODŮVODNĚNÍM:
+SEKCE 1 – STAV ČÁSTÍ + TRENDY: Každá aktivní část: stav, TREND (↑↗→↘↓), ANALÝZA proč trend takový je, CO s tím.
+SEKCE 2 – PLÁN SEZENÍ S ODŮVODNĚNÍM: "S Arthurem pracovat metodou X PROTOŽE analýza ukazuje Y, CÍL: dosáhnout Z, MĚŘÍTKO ÚSPĚCHU: W."
+SEKCE 3 – ÚKOLY + ACCOUNTABILITY: ☐/☑ + u každého nesplněného: PROČ není splněn (Karlova dedukce), CO s tím, ESKALACE pokud deadline překročen.
+SEKCE 4 – KOORDINACE S DEDUKCÍ: "Hanka ví X z vlákna A. Káťa ví Y z vlákna B. ZÁVĚR: Z. AKCE: Karel doporučuje společné sezení / výměnu informací o W."
+SEKCE 5 – RIZIKA + PREVENCE + PREDIKCE: Ne jen seznam rizik, ale KAUZÁLNÍ ANALÝZA: "Riziko A vzniká PROTOŽE B, predikce: pokud C pak D, PREVENCE: E."
+SEKCE 6 – KARLOVA STRATEGICKÁ REFLEXE: Evaluace vlastního vedení, co funguje, co změnit, jaké chyby Karel udělal, co se naučil.
 
-geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se).`;
+geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — i zde ANALYTICKY: ne jen "Arthur žije v X" ale "Arthur se přesunul do X, PŘÍČINA: pravděpodobně Y, DOPAD na terapii: Z".`;
 
         const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
         const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, new_tasks: [] };
