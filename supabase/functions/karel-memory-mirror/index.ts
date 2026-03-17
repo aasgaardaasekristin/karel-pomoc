@@ -1186,18 +1186,54 @@ KRITICKÉ PRAVIDLO DOMÉN:
 DEDUKCE NAPŘÍČ VLÁKNY:
 Karel aktivně propojuje informace z různých vláken. Pokud část X zmíní fakt Y v jednom vlákně, a terapeut A to potvrdí v jiném, Karel dedukuje a zaznamenává jako ověřený fakt.`;
 
+        const registryDigest = registry.map((p: any) => {
+          const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).toISOString().slice(0, 10) : "?";
+          return `${p.part_name}(${p.status}, cluster:${p.cluster||"?"}, last:${lastSeen})`;
+        }).join(", ");
+        const activeTasksDigest = (harvest.activeTasks || []).map((t: any) => {
+          const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+          return `[${t.assigned_to}|${t.priority||"normal"}|${age}d] ${t.task}`;
+        }).join("; ");
+
         const pass2Prompt = `═══ FAKTA ═══
 ${JSON.stringify(pass1Data, null, 1).slice(0, 8000)}
 
-═══ REGISTRY ═══
-Části: ${registry.map((p: any) => `${p.part_name}(${p.status})`).join(", ")}
-Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
+═══ REGISTRY ČÁSTÍ ═══
+${registryDigest}
+
+═══ AKTIVNÍ ÚKOLY TERAPEUTŮ ═══
+${activeTasksDigest || "žádné"}
+
+═══ ENTITY ═══
+${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
 
 ═══ DRIVE (${driveDocsRead}) ═══
 ${driveDigest.slice(0, 12000)}
 
 Vrať JSON:
-{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"..."},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"..."}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_notes":"...","geography_notes":"...","relationships_notes":"...","operative_plan_notes":"..."},"synthesis_summary":"..."}`;
+{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_full":"KOMPLETNÍ 7-sekční Dashboard (viz instrukce níže)","operative_plan_full":"KOMPLETNÍ 6-sekční Operativní plán (viz instrukce níže)","geography_notes":"...","relationships_notes":"..."},"synthesis_summary":"..."}
+
+═══ INSTRUKCE PRO CENTRUM DOKUMENTY ═══
+
+dashboard_full: Vygeneruj KOMPLETNÍ nový Dashboard (dokument se PŘEPISUJE CELÝ, ne appenduje). Dashboard je 30sekundový přehled aktuální situace za posledních 3 dny:
+SEKCE 1 – STAV SYSTÉMU TEĎ: Pro KAŽDOU aktivní část: jméno, stav emoji (🟢🟡🔴), nálada, poslední kontakt, riziko.
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️: Triggery, nesplněné úkoly 3+ dní, části v ohrožení. Pokud žádná: "✅ Žádná kritická upozornění"
+SEKCE 3 – CO SE DĚLO (shrnutí z vláken): Kdo mluvil, klíčové momenty, změny stavů.
+SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤: Jak dlouho spí, riziko probuzení, doporučení.
+SEKCE 5 – TERAPEUTICKÝ FOKUS 🎯: Top 1-3 priority, s kým pracovat, jakou metodou, konkrétní instrukce pro terapeuta.
+SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬: Vzkazy mezi terapeuty, co potřebují vědět navzájem, připomínky úkolů.
+SEKCE 7 – KARLOVY POSTŘEHY 🔍: Vzorce, hypotézy, souvislosti, co motivovat, co kontrolovat, komu co připomínat.
+DŮLEŽITÉ: Piš AKČNĚ (terapeut otevře a ví co dělat), motivuj, připomínej úkoly, kontroluj zda sezení probíhají, upozorňuj na souvislosti.
+
+operative_plan_full: Vygeneruj KOMPLETNÍ nový Operativní plán (dokument se PŘEPISUJE CELÝ):
+SEKCE 1 – AKTIVNÍ ČÁSTI A STAV: tabulka s každou aktivní částí.
+SEKCE 2 – PLÁN SEZENÍ: s kým pracovat, metodou, cíl.
+SEKCE 3 – AKTIVNÍ ÚKOLY + HODNOCENÍ: ☐/☑ pro každou terapeutku.
+SEKCE 4 – KOORDINACE: most Hanka↔Káťa, synchronizace.
+SEKCE 5 – RIZIKA: triggery, eskalace nesplněných úkolů.
+SEKCE 6 – KARLOVY POZNÁMKY: postřehy, hypotézy, hodnocení spolupráce.
+
+geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se).`;
 
         const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
         const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, new_tasks: [] };
