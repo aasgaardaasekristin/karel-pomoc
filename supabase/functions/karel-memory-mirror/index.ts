@@ -636,8 +636,8 @@ async function runMirrorBatchStep(params: {
               user_id: userId,
               part_name: part.name,
               display_name: part.name,
-              status: part.status === "Aktivní" ? "active" : "sleeping",
-              cluster: part.cluster || null,
+              status: "sleeping",
+              cluster: part.cluster || "nově detekovaný",
               notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. ${part.inferred_data || ""}`.slice(0, 500),
               role_in_system: part.sections?.A?.slice(0, 200) || null,
             }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
