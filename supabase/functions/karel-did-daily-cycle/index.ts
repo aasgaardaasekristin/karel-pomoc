@@ -2247,6 +2247,10 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
+    let finalReportText = "";
+    let aiReportText = "";
+    let hankaHtml = "";
+    let kataHtml = "";
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
     const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0 || recentMeetings.length > 0 || recentEpisodes.length > 0;
 
