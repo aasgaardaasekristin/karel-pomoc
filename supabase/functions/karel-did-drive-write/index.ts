@@ -476,8 +476,9 @@ function resolveCardTarget(
   const entry = findBestRegistryEntry(partName, registry.entries);
 
   if (!entry) {
-    const root = registry.activeFolderId || rootFolderId;
-    return { searchRootId: root, allowCreate: true, pathLabel: "01_AKTIVNI_FRAGMENTY/(nová část)", registryEntry: null };
+    // New parts go to archive (sleeping) by default — terapeutka must manually promote
+    const root = registry.archiveFolderId || registry.activeFolderId || rootFolderId;
+    return { searchRootId: root, allowCreate: true, pathLabel: "03_ARCHIV_SPICICH/(nová část)", registryEntry: null };
   }
 
   const stateFolderId = isArchived ? registry.archiveFolderId : registry.activeFolderId;
