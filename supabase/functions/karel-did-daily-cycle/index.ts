@@ -3328,8 +3328,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               centrumDashboardUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
 
-              // Post-write verification
-              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", ["SEKCE 1", "DASHBOARD", "Aktualizace"]);
+              // Post-write verification – all 7 sections + deductive markers
+              const dashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", [
+                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7",
+                "DASHBOARD", "Aktualizace", "DEDUKCE",
+              ]);
+              if (!dashVerify.verified) {
+                console.warn(`[VERIFY] ⚠️ 00_Dashboard verification FAILED: missing=[${dashVerify.missingKeywords.join(",")}], length=${dashVerify.length}`);
+              }
               continue;
             }
 
