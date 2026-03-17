@@ -992,7 +992,12 @@ Deno.serve(async (req) => {
         const activeTasks = harvest.activeTasks || [];
         const lastMirrorTime = harvest.lastMirrorTime || "";
 
-        const pass1System = `Jsi Karel – hloubkový analytický engine. Extrahuj VEŠKERÉ informace z konverzací, i skryté "mezi řádky". Hledej jména, emoce, triggery, souvislosti.`;
+        const pass1System = `Jsi Karel – hloubkový analytický engine. Extrahuj VEŠKERÉ informace z konverzací, i skryté "mezi řádky". Hledej jména, emoce, triggery, souvislosti.
+
+KRITICKÉ PRAVIDLO DOMÉN:
+- PAMET_KAREL slouží VÝHRADNĚ k profilaci TERAPEUTEK (Hanka, Káťa) — osobnostní analýza, motivace, silné/slabé stránky, aktuální stav, emoční projevy, vzorce chování terapeutek.
+- O DID částech/fragmentech (Arthur, Tundrup, Clark atd.) se NIKDY nepíše do PAMET_KAREL. Informace o částech patří do KARTOTEKA_DID (karty částí, Dashboard, 00_CENTRUM).
+- Karel tajně buduje dynamický profil každé terapeutky: sleduje její rozpoložení, stresové faktory, životní situaci, spolehlivost v plnění úkolů, komunikační preference a vše co může ovlivnit způsob interakce.`;
 
         const pass1Prompt = `REGISTR ČÁSTÍ: ${knownPartNames.join(", ") || "prázdný"}
 ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
@@ -1001,7 +1006,7 @@ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné
 ═══ VLÁKNA (od ${lastMirrorTime.slice(0, 16)}) ═══
 ${threadDigests.join("\n═══\n")}
 
-Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"..."}],"therapist_observations":{"hanka":{"mood":"...","stress_level":"..."},"kata":{"mood":"...","stress_level":"..."}},"urgent_signals":["..."],"summary":"..."}`;
+Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain":"THERAPIST|DID_PART|GENERAL"}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"...","confidence":0.9}],"therapist_profiles":{"hanka":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}},"urgent_signals":["..."],"cross_thread_deductions":[{"deduction":"...","sources":["thread1","thread2"],"actionable":true}],"summary":"..."}`;
 
         const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
         const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, urgent_signals: [] };
