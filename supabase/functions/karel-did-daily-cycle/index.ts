@@ -3955,7 +3955,13 @@ Shrň 4-6 bodů relevantních pro Kátinu roli:
 Podpis: "Karel"
 
 DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.
-ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval. Pokud "deadline" → více termínů. Pokud "instruction" → detailní kroky.` },
+ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval. Pokud "deadline" → více termínů. Pokud "instruction" → detailní kroky.
+
+PRAVIDLA SOUKROMÍ (KRITICKÉ):
+- NIKDY necituj doslovně výroky z konverzací ani parafráze přímých výroků
+- Místo citátů piš OPERATIVNÍ INSTRUKCE: "Sledovat vazbu k [část]", "Ověřit pokrok v [oblast]"
+- Citové vazby popisuj analyticky: "pozitivní terapeutický vztah", "empatie k [část]", NE přímé citáty
+- E-mail je OPERATIVNÍ DOKUMENT, ne přepis konverzace` },
                   { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}\n\n═══ MOTIVAČNÍ PROFIL KÁTI ═══\n${formatProfileContext(kataProfile)}` },
                 ],
               }),
