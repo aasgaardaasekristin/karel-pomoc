@@ -17,6 +17,7 @@ import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidCountertransferenceMap from "./DidCountertransferenceMap";
 
 interface PartActivity {
   name: string;
@@ -555,6 +556,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickSubMode
       {/* Colleague View */}
       <div className="mb-4">
         <DidColleagueView refreshTrigger={refreshTrigger} />
+      </div>
+
+      {/* Countertransference Map */}
+      <div className="mb-4">
+        <DidCountertransferenceMap refreshTrigger={refreshTrigger} />
       </div>
 
       {/* Registry Overview (Phase 5) */}

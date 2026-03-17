@@ -333,6 +333,48 @@ export type Database = {
         }
         Relationships: []
       }
+      did_countertransference_bonds: {
+        Row: {
+          bond_description: string | null
+          bond_type: string
+          created_at: string | null
+          id: string
+          intensity: number
+          last_observed_at: string | null
+          part_name: string
+          therapeutic_implication: string | null
+          therapist: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          bond_description?: string | null
+          bond_type?: string
+          created_at?: string | null
+          id?: string
+          intensity?: number
+          last_observed_at?: string | null
+          part_name: string
+          therapeutic_implication?: string | null
+          therapist: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          bond_description?: string | null
+          bond_type?: string
+          created_at?: string | null
+          id?: string
+          intensity?: number
+          last_observed_at?: string | null
+          part_name?: string
+          therapeutic_implication?: string | null
+          therapist?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       did_daily_report_dispatches: {
         Row: {
           created_at: string
