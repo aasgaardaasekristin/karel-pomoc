@@ -2830,51 +2830,47 @@ Pro KAŽDOU část zmíněnou v konverzacích vypiš VŠECHNY sekce kde jsou nov
 Pokud z rozhovorů (zejména terapeutických – mamka/kata režim) vyplývají relevantní informace pro CENTRUM dokumenty, vypiš je v tomto formátu:
 
 [CENTRUM:05_Operativni_Plan]
-⚠️ TENTO DOKUMENT JE KLÍČOVÝ – Karel jej spravuje jako vedoucí terapeutického týmu.
-Vygeneruj KOMPLETNÍ aktualizovaný dokument (ne jen doplněk). Struktura:
+⚠️ TENTO DOKUMENT JE KLÍČOVÝ – Karel jej spravuje jako DEDUKTIVNÍ ANALYTIK a vedoucí terapeutického týmu.
+Vygeneruj KOMPLETNÍ aktualizovaný dokument (ne jen doplněk). Každý záznam MUSÍ sledovat příkazovou strukturu:
+CO → PROČ (dedukce/analýza) → AKCE → KDO → DOKDY → KONTROLA
 
-SEKCE 1 – AKTIVNÍ ČÁSTI A AKTUÁLNÍ STAV
-Tabulka: | Část / ID | Aktuální stav | Kdo pracuje | Priorita tento týden | Poznámka |
-Pro KAŽDOU aktivní část vyplň konkrétní data z dnešních rozhovorů, karet a rešerší.
+SEKCE 1 – AKTIVNÍ ČÁSTI A ANALÝZA STAVU
+Pro KAŽDOU aktivní část:
+▸ Jméno | Stav + TREND (↑↗→↘↓) | Dedukce PROČ je v tomto stavu | Predikce kam směřuje
+▸ CO dělat | PROČ to pomůže (odvoď z dat, ne obecně) | KDO | DOKDY | Jak ověřit úspěch
 
-SEKCE 2 – PLÁN SEZENÍ NA TENTO TÝDEN
+SEKCE 2 – PLÁN SEZENÍ S ODŮVODNĚNÍM
 Pro každou aktivní část:
-- S kým (Hanka/Káťa)
-- Metoda/technika (z rešerší + karet)
-- Cíl sezení
-- Jak oslovit (tón, jazyk)
-- Na co si dát pozor
+- S kým (Hanka/Káťa) + PROČ právě tento terapeut (dedukce z profilů a situace)
+- Metoda/technika + PROČ ji Karel vybral (cross-reference s kartou, historií, rešerší)
+- Cíl sezení + JAK poznat že byl splněn
+- Predikce: co se pravděpodobně stane + jak reagovat na komplikace
 
-SEKCE 3 – AKTIVNÍ ÚKOLY + HODNOCENÍ PLNĚNÍ
-☐/☑ Hanka: [úkol, termín, zdroj, stav plnění]
-☐/☑ Káťa: [úkol, termín, zdroj, stav plnění]
-Nesplněné z minulého týdne se přenesou automaticky.
-Karel zde zaznamenává kdo co splnil a kdo ne – accountability tracking.
+SEKCE 3 – AKTIVNÍ ÚKOLY + ACCOUNTABILITY ANALÝZA
+☐/☑ Pro každý úkol:
+- CO | KDO | DOKDY | stav plnění
+- KARLOVA DEDUKCE: proč úkol nebyl splněn (přetížení? zapomenutí? priorita?) – odvoď z chování terapeuta
+- AKCE: co Karel navrhuje (přeřadit? eskalovat? rozdělit na menší kroky?)
+- KONTROLA: jak Karel ověří splnění
 
-SEKCE 4 – KOORDINACE TERAPEUTŮ + DNEŠNÍ MOST
-- Dnešní most (téma pro telefonát): "Dnes by stálo za to probrat: [téma]"
-- Co Hanka udělala / co Káťa udělala
-- Kde je třeba synchronizace
-- Přímé otázky: "Hani, jak dopadlo X?" / "Káťo, pokročilas s Y?"
+SEKCE 4 – KOORDINACE TERAPEUTŮ + STRATEGICKÝ MOST
+- Dnešní most: CO probrat + PROČ je to teď důležité (dedukce z posledních 48h)
+- Karlova analýza spolupráce: kde se shodují, kde divergují, co to znamená
+- Predikce: co se stane pokud X neproběhne do Y
+- Přímé instrukce: "Hani, UDĚLEJ X protože..." / "Káťo, PROVEĎ Y protože..."
 
-SEKCE 5 – UPOZORNĚNÍ A RIZIKA
-- Triggery (výročí, události, změny)
-- Části v ohrožení
-- Kontraindikace
-- Nesplněné úkoly 3+ dní → ESKALACE
+SEKCE 5 – UPOZORNĚNÍ, RIZIKA A PREDIKCE
+- Pro každé riziko: CO hrozí → PROČ (příčinný řetězec) → CO dělat → KDO → DOKDY
+- PREDIKCE: Karel na základě vzorců PŘEDPOVÍDÁ co se stane v příštích 48h
+  Např.: "Pokud Arthur nebude kontaktován do zítřka, hrozí regrese – důvod: 3 dny bez kontaktu + trigger sezóny"
+- Preventivní akce: CO udělat ABY SE to nestalo
 
-SEKCE 6 – KARLOVY POZNÁMKY
-- Postřehy z rozhovorů
-- Hypotézy k ověření
-- Co fungovalo / nefungovalo
-- Hodnocení spolupráce terapeutického týmu
-
-DŮLEŽITÉ PRO TENTO DOKUMENT:
-- Piš CELÝ dokument, ne jen doplněk – dokument se přepisuje celý
-- Čerpej z VŠECH zdrojů: dnešní rozhovory s částmi, rozhovory s terapeuty (mamka/kata režim), profesní zdroje (Research vlákna POUZE ta co se týkají DID), existující karty částí, strategický výhled
-- Karel vystupuje jako AKTIVNÍ vedoucí týmu – koordinuje, superviduje, hodnotí, motivuje
-- Dokument musí být OKAMŽITĚ AKČNÍ – terapeut otevře a hned ví co dělat
-- Formátuj esteticky, přehledně, s tabulkami a odrážkami
+SEKCE 6 – KARLOVY DEDUKCE A STRATEGICKÉ POSTŘEHY
+- KŘÍŽOVÉ DEDUKCE: propojení informací z RŮZNÝCH vláken/režimů
+  Např.: "Hana zmínila únavu → Káťa zmínila že Hana zrušila sezení → Karel dedukuje: přetížení + riziko vyhoření"
+- PREDIKTIVNÍ ŘEŠENÍ: na základě vzorců Karel KALKULUJE optimální postup
+- HYPOTÉZY k ověření: "Pokud platí X, pak by mělo platit Y → ověření: udělat Z"
+- ACCOUNTABILITY: kdo co splnil, kdo ne, proč, jak motivovat
 [/CENTRUM]
 
 [CENTRUM:06_Strategicky_Vyhled]
@@ -2883,54 +2879,44 @@ Nové strategické poznatky – POUZE pokud z dnešních rozhovorů vyplývají 
 
 [CENTRUM:00_Aktualni_Dashboard]
 ⚠️ TENTO DOKUMENT SE PŘEPISUJE CELÝ – vygeneruj kompletní nový obsah, ne doplněk.
-Dashboard je "kontrolní panel" – čitelný za 30 sekund, nikdy archiv.
+Dashboard je DEDUKTIVNÍ RADAR – čitelný za 30 sekund, ale každý řádek je ANALYTICKÝ ZÁVĚR, ne pasivní shrnutí.
 
 POVINNÁ STRUKTURA (7 sekcí):
 
-SEKCE 1 – STAV SYSTÉMU TEĎ
+SEKCE 1 – STAV SYSTÉMU + ANALÝZA
 Pro KAŽDOU aktivní část:
-▸ Jméno [stav emoji] – kdo frontuje, nálada, stabilita (🟢🟡🔴), poslední kontakt
-▸ Aktuální riziko (nízké/střední/vysoké)
-Souhrn: kolik částí aktivních, kolik spí, celková stabilita systému 1-10
+▸ Jméno [stav emoji] – stabilita (🟢🟡🔴) + TREND (↑↗→↘↓) + PROČ tento trend
+▸ Karlova dedukce: co se SKUTEČNĚ děje pod povrchem (čti mezi řádky)
+Souhrn: celková stabilita 1-10 + PREDIKCE kam systém směřuje
 
-SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️
-- Triggery dne (roční období, blížící se události, výročí traumat)
-- Nesplněné dohody nebo úkoly po termínu
-- Části v ohrožení (destabilizace, regrese, konflikty)
-- Blížící se termíny (škola, terapie, lékař)
-Pokud žádná upozornění: "✅ Žádná kritická upozornění"
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ + PŘÍČINNÉ ŘETĚZCE ⚠️
+Pro každé upozornění: TRIGGER → PŘÍČINA → DŮSLEDEK → PREDIKCE → AKČNÍ PLÁN
+Např.: "Arthur 3 dny bez kontaktu [TRIGGER] → izolace zvyšuje úzkost [PŘÍČINA] → riziko regrese [DŮSLEDEK] → predikce: zhoršení do 48h [PREDIKCE] → AKCE: Hanka kontaktuje zítra, téma: bezpečí [PLÁN]"
 
-SEKCE 3 – CO SE DĚLO POSLEDNÍCH 24H
-- Kdo mluvil s Karlem (jména, délka, téma)
-- Klíčové momenty a důležité výroky
-- Změny stavů (probuzení, usnutí, switche)
-- Co nového se Karel dozvěděl
+SEKCE 3 – CO SE DĚLO + DEDUKCE
+- Kdo mluvil, klíčové momenty + CO TO ZNAMENÁ (ne jen co řekl, ale co z toho vyplývá)
+- Křížové dedukce: propojení informací z různých vláken
+- Skryté signály: co Karel detekoval ale nebylo řečeno explicitně
 
-SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤
-Pro KAŽDOU spící část:
-▸ Jméno – jak dlouho spí, důvod
-▸ Riziko spontánního probuzení (nízké/střední/vysoké)
-▸ Doporučení: nechat/probudit a proč
+SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ + PREDIKCE 💤
+Pro KAŽDOU spící:
+▸ Riziko spontánního probuzení + PROČ (dedukce z triggerů, sezóny, událostí)
+▸ Predikce: kdy se pravděpodobně probudí a co to způsobí
 
-SEKCE 5 – TERAPEUTICKÝ FOKUS DNE 🎯
-Top 1-3 priority (zjednodušené z 05_Terapeuticky_Plan):
-▸ S kým pracovat
-▸ Jakou metodou
-▸ Co tím dosáhnout
-Akční, okamžitě srozumitelné – "dnes udělej tohle"
+SEKCE 5 – TERAPEUTICKÝ FOKUS + INSTRUKCE 🎯
+Top 1-3 priority s KOMPLETNÍ instrukcí:
+▸ CO dělat → PROČ to pomůže → JAK přesně → KDO → DOKDY → JAK ověřit úspěch
+Každá instrukce musí být OKAMŽITĚ PROVEDITELNÁ
 
-SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬
-- Vzkazy Hanka → Káťa
-- Vzkazy Káťa → Hanka
-- Co jedna potřebuje vědět od druhé
-- Strategické postřehy pro sdílení
-Pokud žádné vzkazy: "Žádné nové vzkazy"
+SEKCE 6 – KOMUNIKAČNÍ MOST + STRATEGICKÁ KOORDINACE 💬
+- Vzkazy + KONTEXT proč je to důležité teď
+- Karlova analýza komunikace mezi terapeuty: kde spolupracují dobře, kde ne
 
-SEKCE 7 – KARLOVY POSTŘEHY 🔍
-- Vzorce které Karel zaznamenal ale ještě nezařadil
-- Hypotézy a intuice (explicitně označené jako hypotézy)
-- Propojení mezi částmi/událostmi která si zaslouží pozornost
-- Měkká data a dojmy z rozhovorů
+SEKCE 7 – KARLOVY STRATEGICKÉ DEDUKCE 🔍
+- Predikce a prevence: co se stane v příštích 48-72h na základě vzorců
+- Křížové dedukce které nikdo jiný nevidí
+- Konkrétní návrhy intervencí s odůvodněním
+- "Puzzle": drobnosti z různých vláken které dohromady tvoří obraz
 [/CENTRUM]
 
 [CENTRUM:04_Mapa_Vztahu]
