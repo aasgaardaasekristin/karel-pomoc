@@ -3303,8 +3303,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               centrumOperativniUpdated = true;
               console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
 
-              // Post-write verification
-              await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", ["SEKCE 1", "SEKCE 2", "SEKCE 3", "Aktualizace"]);
+              // Post-write verification – all 6 sections + deductive markers
+              const planVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", [
+                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6",
+                "Aktualizace", "PROČ", "AKCE", "DOKDY",
+              ]);
+              if (!planVerify.verified) {
+                console.warn(`[VERIFY] ⚠️ 05_Operativni_Plan verification FAILED: missing=[${planVerify.missingKeywords.join(",")}], length=${planVerify.length}`);
+              }
               continue;
             }
 
