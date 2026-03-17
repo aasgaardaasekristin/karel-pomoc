@@ -17,6 +17,7 @@ import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidCountertransferenceMap from "./DidCountertransferenceMap";
 
 interface PartActivity {
   name: string;
