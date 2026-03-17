@@ -344,8 +344,14 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
 1. [[[PROFIL_OSOBNOSTI.txt]]] — Psychologický profil: mentalita, charakter, silné stránky, slabiny, vztahy k okolí. Základní profil VŽDY na začátku.
 2. [[[STRATEGIE_KOMUNIKACE.txt]]] — Jak Karel s ní nejlépe jedná: motivace, kritika, úkolování, myšlenkové vzorce, co funguje.
 3. [[[SITUACNI_ANALYZA.txt]]] — Temporální gradient: dlouhodobý (měsíce), střednědobý (týdny), aktuální (dny). Co řeší, jak se cítí.
+   ⚠️ POVINNÁ SEKCE "Citové vazby k DID částem (countertransference)": Pro KAŽDOU část, ke které terapeutka projevuje citový vztah, zapiš:
+   - Jméno části | Typ vazby (mateřský/ochranitelský/nostalgický/partnerský/empatický) | Karlova dedukce (co to odhaluje o terapeutce)
+   - Terapeutický dopad: jak vazba ovlivňuje terapii, co monitorovat
+   Příklady: "silný mateřský vztah k Tundrupkovi", "nostalgie a něha k Aničce", "empatie k Bélovi"
+   NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
 4. [[[VLAKNA_3DNY.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
+   ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
 
 ═══ STÁVAJÍCÍ PROFILY ═══
 ${existingDump}
