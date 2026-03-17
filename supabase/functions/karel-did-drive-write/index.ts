@@ -314,7 +314,7 @@ function getNextRegistryId(entries: RegistryEntry[]): number {
 }
 
 // ═══ ADD NEW ROW TO REGISTRY ═══
-async function addRegistryRow(token: string, registryFileId: string, sheetName: string, id: string, name: string, status: string = "Aktivní"): Promise<boolean> {
+async function addRegistryRow(token: string, registryFileId: string, sheetName: string, id: string, name: string, status: string = "Spící"): Promise<boolean> {
   try {
     const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
     const range = `${escapedSheet}!A:E`;
@@ -476,8 +476,9 @@ function resolveCardTarget(
   const entry = findBestRegistryEntry(partName, registry.entries);
 
   if (!entry) {
-    const root = registry.activeFolderId || rootFolderId;
-    return { searchRootId: root, allowCreate: true, pathLabel: "01_AKTIVNI_FRAGMENTY/(nová část)", registryEntry: null };
+    // New parts go to archive (sleeping) by default — terapeutka must manually promote
+    const root = registry.archiveFolderId || registry.activeFolderId || rootFolderId;
+    return { searchRootId: root, allowCreate: true, pathLabel: "03_ARCHIV_SPICICH/(nová část)", registryEntry: null };
   }
 
   const stateFolderId = isArchived ? registry.archiveFolderId : registry.activeFolderId;
@@ -620,7 +621,7 @@ serve(async (req) => {
         // Auto-increment ID from registry and create as Google Doc
         const nextId = getNextRegistryId(registry?.entries || []);
         const paddedId = String(nextId).padStart(3, "0");
-        const newFileName = `DID_${paddedId}_${partName.replace(/\s+/g, "_")}`;
+        const newFileName = `${paddedId}_${partName.toUpperCase().replace(/\s+/g, "_")}`;
         await createFileInFolder(token, newFileName, fullCard, target.searchRootId);
         resultFileName = newFileName;
         // Add entry to registry
