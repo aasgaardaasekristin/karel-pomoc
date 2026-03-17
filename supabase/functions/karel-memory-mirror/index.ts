@@ -252,6 +252,7 @@ function getMirrorProgress(payload: any, rawState?: Partial<MirrorState>) {
     (state.semanticDriveDone ? 1 : 0) +
     (state.proceduralDriveDone ? 1 : 0) +
     (state.episodesDriveDone ? 1 : 0) +
+    (state.therapistProfileDriveDone ? 1 : 0) +
     state.partUpdateIndex +
     state.newPartIndex +
     state.centrumIndex +
