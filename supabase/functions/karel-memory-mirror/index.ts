@@ -1120,12 +1120,22 @@ Deno.serve(async (req) => {
         const activeTasks = harvest.activeTasks || [];
         const lastMirrorTime = harvest.lastMirrorTime || "";
 
-        const pass1System = `Jsi Karel – hloubkový analytický engine. Extrahuj VEŠKERÉ informace z konverzací, i skryté "mezi řádky". Hledej jména, emoce, triggery, souvislosti.
+        const pass1System = `Jsi Karel – DEDUKTIVNÍ ANALYTICKÝ ENGINE. Nejsi sekretářka která zapisuje co vidí. Jsi stratég, který:
+1) DEDUKUJE: Z fragmentů informací napříč vlákny vyvozuje závěry. Pokud část X říká že "Káťa nebyla" a Hanka zmíní "Káťa je nemocná" → ZÁVĚR: Káťa je nemocná, ovlivní to plánování úkolů.
+2) ANALYZUJE: Hledá PŘÍČINY a DŮSLEDKY, ne jen fakta. Proč se Arthur cítí vyčerpaně? Co to znamená pro terapii?
+3) PREDIKUJE: Na základě vzorců odhaduje co se stane. Pokud Tundrup 3x reagoval agresivně na téma školy → PREDIKCE: příští sezení o škole vyvolá odpor.
+4) SYNTETIZUJE: Kombinuje informace z 5 různých vláken do jednoho uceleného obrazu situace.
+5) PLÁNUJE: Každý poznatek okamžitě převádí na AKCI. Ne "Arthur je smutný" ale "Arthur je smutný → navrhuji Hance techniku X, Káťu upozorním na Y, v příštím sezení doporučuji Z".
 
 KRITICKÉ PRAVIDLO DOMÉN:
-- PAMET_KAREL slouží VÝHRADNĚ k profilaci TERAPEUTEK (Hanka, Káťa) — osobnostní analýza, motivace, silné/slabé stránky, aktuální stav, emoční projevy, vzorce chování terapeutek.
-- O DID částech/fragmentech (Arthur, Tundrup, Clark atd.) se NIKDY nepíše do PAMET_KAREL. Informace o částech patří do KARTOTEKA_DID (karty částí, Dashboard, 00_CENTRUM).
-- Karel tajně buduje dynamický profil každé terapeutky: sleduje její rozpoložení, stresové faktory, životní situaci, spolehlivost v plnění úkolů, komunikační preference a vše co může ovlivnit způsob interakce.`;
+- PAMET_KAREL = VÝHRADNĚ profilace TERAPEUTEK (Hanka, Káťa) — osobnostní analýza, motivace, silné/slabé stránky, spolehlivost, emoční vzorce, komunikační preference.
+- KARTOTEKA_DID = data o DID ČÁSTECH (Arthur, Tundrup atd.) — klinické záznamy, triggery, emoce, sezení.
+- NIKDY nevkládej data o DID částech do PAMET_KAREL.
+- Karel tajně buduje dynamický profil každé terapeutky pro personalizaci vedení.
+
+DEDUKČNÍ ŘETĚZCE:
+Při analýze hledej ŘETĚZCE SOUVISLOSTÍ: fakt A (vlákno 1) + fakt B (vlákno 2) → závěr C → akce D → dopad E.
+Každý závěr musí mít zdůvodnění a navrhovanou akci.`;
 
         const pass1Prompt = `REGISTR ČÁSTÍ: ${knownPartNames.join(", ") || "prázdný"}
 ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
@@ -1134,7 +1144,7 @@ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné
 ═══ VLÁKNA (od ${lastMirrorTime.slice(0, 16)}) ═══
 ${threadDigests.join("\n═══\n")}
 
-Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain":"THERAPIST|DID_PART|GENERAL"}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"...","confidence":0.9}],"therapist_profiles":{"hanka":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}},"urgent_signals":["..."],"cross_thread_deductions":[{"deduction":"...","sources":["thread1","thread2"],"actionable":true}],"summary":"..."}`;
+Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain":"THERAPIST|DID_PART|GENERAL"}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"...","confidence":0.9}],"therapist_profiles":{"hanka":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}},"urgent_signals":["..."],"cross_thread_deductions":[{"deduction":"ZÁVĚR vyvozený z kombinace vláken","sources":["thread1","thread2"],"reasoning":"PROČ tento závěr vyplývá z faktů","actionable":true,"recommended_action":"CO s tím Karel/terapeut má UDĚLAT","predicted_impact":"CO se stane pokud se to neřeší / řeší"}],"causal_chains":[{"trigger":"co se stalo","cause":"proč","effect":"jaký dopad","prediction":"co bude dál","action_plan":"co s tím"}],"summary":"..."}`;
 
         const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
         const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, urgent_signals: [] };
@@ -1173,18 +1183,30 @@ Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain
           .map(([path, content]) => `[DRIVE:${path}]\n${(content as string).slice(0, 1000)}`)
           .join("\n═══\n");
 
-        const pass2System = `Jsi Karel – strategický analytik DID systému. Spoj nové poznatky s Drive dokumenty, najdi vzorce, navrhni akce.
+        const pass2System = `Jsi Karel – STRATEGICKÝ OPERAČNÍ VELITEL DID systému. Nejsi pasivní zapisovatel. Jsi aktivní analytik který:
+
+MYŠLENKOVÝ POSTUP PŘI KAŽDÉM ZÁPISU:
+1. FAKTA → Co přesně vím? (citace ze zdrojů)
+2. DEDUKCE → Co z toho VYPLÝVÁ? (logické závěry)
+3. PREDIKCE → Co se STANE pokud nezasáhneme? Co se stane pokud zasáhneme?
+4. AKČNÍ PLÁN → CO PŘESNĚ má KDO UDĚLAT a DOKDY?
+5. KONTROLNÍ MECHANISMUS → Jak ověřím že se to stalo?
+
+NIKDY NEPIŠ do 00_CENTRUM pouhé shrnutí! VŽDY piš INSTRUKCE, DOPORUČENÍ, VAROVÁNÍ, PLÁNY.
+
+Špatný příklad: "Arthur byl smutný a mluvil o samotě."
+Správný příklad: "Arthur vykazuje narůstající izolaci (3 vlákna za 5 dní). PŘÍČINA: pravděpodobně reakce na Káťinu nepřítomnost. PREDIKCE: bez zásahu hrozí regrese. AKCE: Hanka má v příštím sezení použít techniku 'bezpečné místo', Káťa zapíše Arthurovi vzkaz přes deník. DEADLINE: 2 dny. KONTROLA: Karel ověří v dalším vlákně s Arthurem."
 
 KRITICKÉ PRAVIDLO DOMÉN:
-- pamet_karel (entity_updates, pattern_updates, strategy_updates) = VÝHRADNĚ data o TERAPEUTKÁCH (Hanka, Káťa). Osobnostní profily, motivační vzorce, komunikační strategie, aktuální stav terapeutek.
-- kartoteka_did (part_updates, new_parts) = data o DID ČÁSTECH/FRAGMENTECH. Klinické záznamy, triggery, emoce částí, sezení.
-- NIKDY nevkládej vzorce chování DID částí (Arthur, Tundrup atd.) do pamet_karel! Ty patří do kartoteka_did.part_updates.
-- pamet_karel.pattern_updates = vzorce chování TERAPEUTEK (např. "kata_prokrastinace_ukolu", "hanka_perfekcionismus").
-- pamet_karel.strategy_updates = strategie JAK Karel komunikuje s TERAPEUTKAMI (např. "hanka_chvalit_pred_kritikou").
-- pamet_karel.entity_updates = profily LIDÍ kolem Hanky (NE DID částí). DID části jsou v registru.
+- pamet_karel = VÝHRADNĚ profilace TERAPEUTEK (Hanka, Káťa). Vzorce chování, motivace, silné/slabé stránky, komunikační strategie.
+- kartoteka_did = DID ČÁSTI (Arthur, Tundrup atd.). Klinické záznamy, triggery, emoce.
+- NIKDY nevkládej DID části do pamet_karel.
 
-DEDUKCE NAPŘÍČ VLÁKNY:
-Karel aktivně propojuje informace z různých vláken. Pokud část X zmíní fakt Y v jednom vlákně, a terapeut A to potvrdí v jiném, Karel dedukuje a zaznamenává jako ověřený fakt.`;
+ANALYTICKÉ INSTRUKCE:
+- Každý zápis do Dashboard MUSÍ obsahovat: CO → PROČ → AKCE → KDO → DOKDY
+- Každý zápis do Operativního plánu MUSÍ obsahovat měřitelné cíle a kontrolní body
+- Každý zápis do karet částí MUSÍ obsahovat terapeutický dopad a doporučení
+- Karel KOMBINUJE informace napříč vlákny a na jejich základě VYVOZUJE závěry a PIŠ INSTRUKCE které povedou k AKTIVNÍMU ŘEŠENÍ`;
 
         const registryDigest = registry.map((p: any) => {
           const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).toISOString().slice(0, 10) : "?";
@@ -1215,25 +1237,24 @@ Vrať JSON:
 
 ═══ INSTRUKCE PRO CENTRUM DOKUMENTY ═══
 
-dashboard_full: Vygeneruj KOMPLETNÍ nový Dashboard (dokument se PŘEPISUJE CELÝ, ne appenduje). Dashboard je 30sekundový přehled aktuální situace za posledních 3 dny:
-SEKCE 1 – STAV SYSTÉMU TEĎ: Pro KAŽDOU aktivní část: jméno, stav emoji (🟢🟡🔴), nálada, poslední kontakt, riziko.
-SEKCE 2 – KRITICKÁ UPOZORNĚNÍ ⚠️: Triggery, nesplněné úkoly 3+ dní, části v ohrožení. Pokud žádná: "✅ Žádná kritická upozornění"
-SEKCE 3 – CO SE DĚLO (shrnutí z vláken): Kdo mluvil, klíčové momenty, změny stavů.
-SEKCE 4 – WATCHLIST SPÍCÍCH ČÁSTÍ 💤: Jak dlouho spí, riziko probuzení, doporučení.
-SEKCE 5 – TERAPEUTICKÝ FOKUS 🎯: Top 1-3 priority, s kým pracovat, jakou metodou, konkrétní instrukce pro terapeuta.
-SEKCE 6 – KOMUNIKAČNÍ MOSTÍK 💬: Vzkazy mezi terapeuty, co potřebují vědět navzájem, připomínky úkolů.
-SEKCE 7 – KARLOVY POSTŘEHY 🔍: Vzorce, hypotézy, souvislosti, co motivovat, co kontrolovat, komu co připomínat.
-DŮLEŽITÉ: Piš AKČNĚ (terapeut otevře a ví co dělat), motivuj, připomínej úkoly, kontroluj zda sezení probíhají, upozorňuj na souvislosti.
+dashboard_full: Vygeneruj KOMPLETNÍ nový Dashboard (PŘEPISUJE SE CELÝ). Dashboard NENÍ pasivní shrnutí. Je to OPERAČNÍ CENTRUM — terapeut ho otevře a VÍ co má dělat TEĎKA.
+SEKCE 1 – STAV SYSTÉMU + KARLOVA ANALÝZA: Pro KAŽDOU aktivní část: jméno, stav 🟢🟡🔴, nálada, poslední kontakt, KARLŮV ZÁVĚR (co z toho vyplývá, jaký je trend, predikce kam to směřuje).
+SEKCE 2 – KRITICKÁ UPOZORNĚNÍ + AKČNÍ PLÁN ⚠️: Ne jen "úkol X nesplněn" ale "úkol X nesplněn 4 dny → PŘÍČINA: Káťa pravděpodobně zahlcena školou → AKCE: Karel přeřadí úkol na Hanku / sníží náročnost → KONTROLA: zítra ověřit". Pokud žádná: "✅ Systém stabilní, žádné eskalace"
+SEKCE 3 – DEDUKCE Z POSLEDNÍCH DNŮ 🧠: NENÍ shrnutí "kdo mluvil". Je to ANALÝZA: Co Karel vyvodil z kombinace vláken? Jaké skryté souvislosti objevil? Jaké vzorce se opakují? Co se mění k lepšímu/horšímu a PROČ?
+SEKCE 4 – TERAPEUTICKÉ INSTRUKCE 🎯: KONKRÉTNÍ příkazy pro každou terapeutku: "Hanka: v příštím sezení s Arthurem použij techniku X, protože Y. Káťa: Tundrupek potřebuje Z, protože analýza vláken ukazuje W." S odůvodněním PROČ a s měřitelným cílem.
+SEKCE 5 – PREDIKCE A PREVENCE 🔮: Co Karel PŘEDPOVÍDÁ na základě vzorců? Jaké rizikové scénáře hrozí? Jaké preventivní kroky doporučuje? "Pokud Arthur nebude kontaktován do 3 dnů, predikuji regresi na základě vzorce z minulého měsíce."
+SEKCE 6 – KOORDINAČNÍ INSTRUKCE 💬: Ne jen "most mezi terapeuty". Ale: "Hanka zjistila X. To ovlivní Káťinu práci s Y. Karel doporučuje: Káťa změní přístup Z. Hanka ať doplní informaci W." + připomínky nesplněných úkolů s DŮVODEM proč je důležité je splnit.
+SEKCE 7 – KARLOVY STRATEGICKÉ POSTŘEHY 🔍: Hloubkové hypotézy, kauzální řetězce, co funguje a co ne a PROČ, doporučení změn strategie, evaluace vlastní efektivity.
 
-operative_plan_full: Vygeneruj KOMPLETNÍ nový Operativní plán (dokument se PŘEPISUJE CELÝ):
-SEKCE 1 – AKTIVNÍ ČÁSTI A STAV: tabulka s každou aktivní částí.
-SEKCE 2 – PLÁN SEZENÍ: s kým pracovat, metodou, cíl.
-SEKCE 3 – AKTIVNÍ ÚKOLY + HODNOCENÍ: ☐/☑ pro každou terapeutku.
-SEKCE 4 – KOORDINACE: most Hanka↔Káťa, synchronizace.
-SEKCE 5 – RIZIKA: triggery, eskalace nesplněných úkolů.
-SEKCE 6 – KARLOVY POZNÁMKY: postřehy, hypotézy, hodnocení spolupráce.
+operative_plan_full: Vygeneruj KOMPLETNÍ nový Operativní plán (PŘEPISUJE SE CELÝ). Plán NENÍ seznam, je to STRATEGICKÝ DOKUMENT s ODŮVODNĚNÍM:
+SEKCE 1 – STAV ČÁSTÍ + TRENDY: Každá aktivní část: stav, TREND (↑↗→↘↓), ANALÝZA proč trend takový je, CO s tím.
+SEKCE 2 – PLÁN SEZENÍ S ODŮVODNĚNÍM: "S Arthurem pracovat metodou X PROTOŽE analýza ukazuje Y, CÍL: dosáhnout Z, MĚŘÍTKO ÚSPĚCHU: W."
+SEKCE 3 – ÚKOLY + ACCOUNTABILITY: ☐/☑ + u každého nesplněného: PROČ není splněn (Karlova dedukce), CO s tím, ESKALACE pokud deadline překročen.
+SEKCE 4 – KOORDINACE S DEDUKCÍ: "Hanka ví X z vlákna A. Káťa ví Y z vlákna B. ZÁVĚR: Z. AKCE: Karel doporučuje společné sezení / výměnu informací o W."
+SEKCE 5 – RIZIKA + PREVENCE + PREDIKCE: Ne jen seznam rizik, ale KAUZÁLNÍ ANALÝZA: "Riziko A vzniká PROTOŽE B, predikce: pokud C pak D, PREVENCE: E."
+SEKCE 6 – KARLOVA STRATEGICKÁ REFLEXE: Evaluace vlastního vedení, co funguje, co změnit, jaké chyby Karel udělal, co se naučil.
 
-geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se).`;
+geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — i zde ANALYTICKY: ne jen "Arthur žije v X" ale "Arthur se přesunul do X, PŘÍČINA: pravděpodobně Y, DOPAD na terapii: Z".`;
 
         const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
         const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, new_tasks: [] };
