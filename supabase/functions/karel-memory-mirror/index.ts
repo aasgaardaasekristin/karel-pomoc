@@ -237,6 +237,7 @@ function getMirrorProgress(payload: any, rawState?: Partial<MirrorState>) {
     relationUpdates.length +
     taskUpdates.length +
     3 +
+    1 + // therapist profile
     partUpdates.length +
     newParts.length +
     centrumWrites.length +
