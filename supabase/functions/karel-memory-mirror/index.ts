@@ -588,6 +588,71 @@ async function runMirrorBatchStep(params: {
       return { status: "processing", phase: "drive_episodes", summary: "Drive episodes hotovo", progress: getMirrorProgress(payload, state) };
     }
 
+    // ═══ THERAPIST PROFILING — write to PAMET_KAREL/DID/[HANKA|KATA] ═══
+    if (!state.therapistProfileDriveDone) {
+      const therapistProfile = extractedInfo?.pamet_karel?.therapist_situational_profile;
+      if (therapistProfile) {
+        try {
+          const token = await getAccessToken();
+          const pametId = await findFolderFuzzy(token, ["PAMET_KAREL"]);
+          if (pametId) {
+            const didSubfolder = await findFolder(token, "DID", pametId);
+            if (didSubfolder) {
+              for (const therapist of ["HANKA", "KATA"]) {
+                const tKey = therapist === "HANKA" ? "hanka" : "kata";
+                const profile = therapistProfile[tKey];
+                if (!profile) continue;
+
+                const therapistFolder = await findFolder(token, therapist, didSubfolder);
+                if (!therapistFolder) continue;
+
+                // Find SITUACNI_ANALYZA document
+                const situacniDoc = await findDoc(token, "SITUACNI_ANALYZA", therapistFolder);
+                if (situacniDoc) {
+                  const existing = await readDoc(token, situacniDoc.id);
+                  const dateStr = new Date().toISOString().slice(0, 10);
+                  const hash = contentHash(JSON.stringify(profile));
+                  if (!existing.includes(`[KHASH:${hash}]`)) {
+                    const profileText = `\n\n═══ Situační analýza – ${dateStr} [KHASH:${hash}] ═══
+Nálada: ${profile.current_mood || "–"}
+Energie: ${profile.energy_level || "–"}
+Životní výzvy: ${(profile.life_challenges || []).join(", ") || "–"}
+Poslední chování: ${(profile.recent_behaviors || []).join(", ") || "–"}
+Doporučený přístup Karla: ${profile.recommended_approach || "–"}`;
+                    await updateDoc(token, situacniDoc.id, existing + profileText);
+                    state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/SITUACNI_ANALYZA`);
+                  }
+                }
+
+                // Find KARLOVY_POZNATKY document
+                const poznatkyDoc = await findDoc(token, "KARLOVY_POZNATKY", therapistFolder);
+                if (poznatkyDoc && (profile.personality_traits?.length || profile.strengths_observed?.length || profile.weaknesses_observed?.length)) {
+                  const existing = await readDoc(token, poznatkyDoc.id);
+                  const insightHash = contentHash(`${dateStr}-insights-${tKey}`);
+                  if (!existing.includes(`[KHASH:${insightHash}]`)) {
+                    const insightText = `\n\n═══ Karlovy postřehy – ${new Date().toISOString().slice(0, 10)} [KHASH:${insightHash}] ═══
+Osobnostní rysy: ${(profile.personality_traits || []).join(", ") || "–"}
+Silné stránky: ${(profile.strengths_observed || []).join(", ") || "–"}
+Slabé stránky: ${(profile.weaknesses_observed || []).join(", ") || "–"}
+Aktuální výzvy: ${(profile.current_challenges || []).join(", ") || "–"}
+Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}`;
+                    await updateDoc(token, poznatkyDoc.id, existing + insightText);
+                    state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/KARLOVY_POZNATKY`);
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[mirror] Therapist profile Drive write error:", e);
+        }
+      }
+
+      state.therapistProfileDriveDone = true;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_therapist_profiles", summary: "Drive profily terapeutek hotovo" });
+      return { status: "processing", phase: "drive_therapist_profiles", summary: "Drive profily terapeutek hotovo", progress: getMirrorProgress(payload, state) };
+    }
+
     if (state.partUpdateIndex < partUpdates.length) {
       const token = await getAccessToken();
       const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
