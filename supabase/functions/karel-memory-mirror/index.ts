@@ -620,12 +620,18 @@ async function runMirrorBatchStep(params: {
                   const dateStr = new Date().toISOString().slice(0, 10);
                   const hash = contentHash(JSON.stringify(profile));
                   if (!existing.includes(`[KHASH:${hash}]`)) {
+                    // Build emotional bonds section if available
+                    const bondsText = (profile.part_emotional_bonds || []).length > 0
+                      ? `\nCitové vazby k částem:\n${(profile.part_emotional_bonds || []).map((b: any) =>
+                          `  ${b.part_name}: ${b.bond_type} – ${b.description}${b.therapeutic_implication ? ` | Terapeutický dopad: ${b.therapeutic_implication}` : ""}`
+                        ).join("\n")}`
+                      : "";
                     const profileText = `\n\n═══ Situační analýza – ${dateStr} [KHASH:${hash}] ═══
 Nálada: ${profile.current_mood || "–"}
 Energie: ${profile.energy_level || "–"}
 Životní výzvy: ${(profile.life_challenges || []).join(", ") || "–"}
 Poslední chování: ${(profile.recent_behaviors || []).join(", ") || "–"}
-Doporučený přístup Karla: ${profile.recommended_approach || "–"}`;
+Doporučený přístup Karla: ${profile.recommended_approach || "–"}${bondsText}`;
                     await updateDoc(token, situacniDoc.id, existing + profileText);
                     state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/SITUACNI_ANALYZA`);
                   }
@@ -633,16 +639,21 @@ Doporučený přístup Karla: ${profile.recommended_approach || "–"}`;
 
                 // Find KARLOVY_POZNATKY document
                 const poznatkyDoc = await findDoc(token, "KARLOVY_POZNATKY", therapistFolder);
-                if (poznatkyDoc && (profile.personality_traits?.length || profile.strengths_observed?.length || profile.weaknesses_observed?.length)) {
+                if (poznatkyDoc && (profile.personality_traits?.length || profile.strengths_observed?.length || profile.weaknesses_observed?.length || profile.part_emotional_bonds?.length)) {
                   const existing = await readDoc(token, poznatkyDoc.id);
                   const insightHash = contentHash(`${dateStr}-insights-${tKey}`);
                   if (!existing.includes(`[KHASH:${insightHash}]`)) {
+                    const bondsInsight = (profile.part_emotional_bonds || []).length > 0
+                      ? `\nCountertransference vzorce:\n${(profile.part_emotional_bonds || []).map((b: any) =>
+                          `  ${b.part_name}: ${b.bond_type} – ${b.description}`
+                        ).join("\n")}`
+                      : "";
                     const insightText = `\n\n═══ Karlovy postřehy – ${new Date().toISOString().slice(0, 10)} [KHASH:${insightHash}] ═══
 Osobnostní rysy: ${(profile.personality_traits || []).join(", ") || "–"}
 Silné stránky: ${(profile.strengths_observed || []).join(", ") || "–"}
 Slabé stránky: ${(profile.weaknesses_observed || []).join(", ") || "–"}
 Aktuální výzvy: ${(profile.current_challenges || []).join(", ") || "–"}
-Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}`;
+Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}${bondsInsight}`;
                     await updateDoc(token, poznatkyDoc.id, existing + insightText);
                     state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/KARLOVY_POZNATKY`);
                   }
