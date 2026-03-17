@@ -633,8 +633,10 @@ serve(async (req) => {
         await createFileInFolder(token, newFileName, fullCard, target.searchRootId);
         resultFileName = newFileName;
         // Add entry to registry
+        // Determine status based on target folder
+        const registryStatus = body.targetFolder === "archive" ? "Spící" : "Aktivní";
         if (registry?.registryFileId && registry?.registrySheetName) {
-          await addRegistryRow(token, registry.registryFileId, registry.registrySheetName, paddedId, partName);
+          await addRegistryRow(token, registry.registryFileId, registry.registrySheetName, paddedId, partName, registryStatus);
         }
         console.log(`[update-card-sections] Created Google Doc: ${newFileName} (ID: ${paddedId}) in ${target.pathLabel}`);
       }
