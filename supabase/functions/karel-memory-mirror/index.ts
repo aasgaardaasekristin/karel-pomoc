@@ -779,13 +779,25 @@ Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověřen
       if (kartotekaId) {
         const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
         if (centrumId) {
-          for (const { pattern, content, label } of batch) {
-            const hash = contentHash(content);
+          const dateStr = new Date().toISOString().slice(0, 10);
+          for (const { pattern, content, label, rewrite } of batch) {
             const doc = await findDoc(token, pattern, centrumId);
-            if (doc) {
+            if (!doc) continue;
+
+            if (rewrite) {
+              // ═══ FULL REWRITE for Dashboard and Operativni Plan ═══
+              const header = label === "Dashboard"
+                ? `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (zrcadlení)\n\n`
+                : `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (zrcadlení)\n\n`;
+              await updateDoc(token, doc.id, header + content);
+              state.driveUpdates.push(`CENTRUM/${label} (kompletní přepis)`);
+              console.log(`[CENTRUM] ✅ Full rewrite via mirror: ${label}`);
+            } else {
+              // ═══ APPEND for Geography, Relationships ═══
+              const hash = contentHash(content);
               const existing = await readDoc(token, doc.id);
               if (!existing.includes(`[KHASH:${hash}]`)) {
-                await updateDoc(token, doc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
+                await updateDoc(token, doc.id, `${existing}\n\n[${dateStr}] Zrcadlení: [KHASH:${hash}]\n${content}`);
                 state.driveUpdates.push(`CENTRUM/${label}`);
               }
             }
