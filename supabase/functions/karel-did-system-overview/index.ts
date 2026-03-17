@@ -339,15 +339,20 @@ serve(async (req) => {
       for (const r of registry) {
         const partName = r.display_name || r.part_name;
         const key = normalizeKey(r.part_name || r.display_name || "");
-        const has24hActivity = directThreadActivity.has(key) || crossModeActivity.has(key);
+        const hadDirectThread = directThreadActivity.has(key);
+        const hadCrossMention = crossModeActivity.has(key) && !hadDirectThread;
 
         let line = `- ${partName}: `;
-        line += has24hActivity
-          ? "za posledních 24 hodin proběhla přímá komunikace v aplikaci."
-          : "za posledních 24 hodin bez nové přímé komunikace v aplikaci.";
+        if (hadDirectThread) {
+          line += "PŘÍMÁ AKTIVITA – část sama komunikovala v aplikaci (sub_mode=cast).";
+        } else if (hadCrossMention) {
+          line += "ZMÍNĚNA – někdo o ní mluvil (Hanka/Káťa/research), ale ČÁST SAMA NEKOMUNIKOVALA.";
+        } else {
+          line += "za posledních 24 hodin bez jakékoli aktivity.";
+        }
 
         if (r.last_seen_at) {
-          line += ` Poslední evidovaná aktivita: ${r.last_seen_at}.`;
+          line += ` Poslední evidovaná přímá aktivita: ${r.last_seen_at}.`;
         }
 
         partsSnapshotBlock += `${line}\n`;
