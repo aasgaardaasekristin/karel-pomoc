@@ -314,7 +314,7 @@ function getNextRegistryId(entries: RegistryEntry[]): number {
 }
 
 // ═══ ADD NEW ROW TO REGISTRY ═══
-async function addRegistryRow(token: string, registryFileId: string, sheetName: string, id: string, name: string, status: string = "Aktivní"): Promise<boolean> {
+async function addRegistryRow(token: string, registryFileId: string, sheetName: string, id: string, name: string, status: string = "Spící"): Promise<boolean> {
   try {
     const escapedSheet = `'${sheetName.replace(/'/g, "''")}'`;
     const range = `${escapedSheet}!A:E`;
