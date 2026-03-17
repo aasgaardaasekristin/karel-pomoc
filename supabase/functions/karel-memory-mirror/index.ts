@@ -156,6 +156,7 @@ type MirrorState = {
   semanticDriveDone: boolean;
   proceduralDriveDone: boolean;
   episodesDriveDone: boolean;
+  therapistProfileDriveDone: boolean;
   partUpdateIndex: number;
   newPartIndex: number;
   centrumIndex: number;
@@ -186,6 +187,7 @@ function createInitialMirrorState(): MirrorState {
     semanticDriveDone: false,
     proceduralDriveDone: false,
     episodesDriveDone: false,
+    therapistProfileDriveDone: false,
     partUpdateIndex: 0,
     newPartIndex: 0,
     centrumIndex: 0,
@@ -235,6 +237,7 @@ function getMirrorProgress(payload: any, rawState?: Partial<MirrorState>) {
     relationUpdates.length +
     taskUpdates.length +
     3 +
+    1 + // therapist profile
     partUpdates.length +
     newParts.length +
     centrumWrites.length +
@@ -249,6 +252,7 @@ function getMirrorProgress(payload: any, rawState?: Partial<MirrorState>) {
     (state.semanticDriveDone ? 1 : 0) +
     (state.proceduralDriveDone ? 1 : 0) +
     (state.episodesDriveDone ? 1 : 0) +
+    (state.therapistProfileDriveDone ? 1 : 0) +
     state.partUpdateIndex +
     state.newPartIndex +
     state.centrumIndex +
@@ -314,6 +318,7 @@ async function finalizeMirrorJob(params: {
         semanticDriveDone: true,
         proceduralDriveDone: true,
         episodesDriveDone: true,
+        therapistProfileDriveDone: true,
       }),
       threadsScanned: threadCount,
       driveDocsRead,
@@ -586,6 +591,71 @@ async function runMirrorBatchStep(params: {
       return { status: "processing", phase: "drive_episodes", summary: "Drive episodes hotovo", progress: getMirrorProgress(payload, state) };
     }
 
+    // ═══ THERAPIST PROFILING — write to PAMET_KAREL/DID/[HANKA|KATA] ═══
+    if (!state.therapistProfileDriveDone) {
+      const therapistProfile = extractedInfo?.pamet_karel?.therapist_situational_profile;
+      if (therapistProfile) {
+        try {
+          const token = await getAccessToken();
+          const pametId = await findFolderFuzzy(token, ["PAMET_KAREL"]);
+          if (pametId) {
+            const didSubfolder = await findFolder(token, "DID", pametId);
+            if (didSubfolder) {
+              for (const therapist of ["HANKA", "KATA"]) {
+                const tKey = therapist === "HANKA" ? "hanka" : "kata";
+                const profile = therapistProfile[tKey];
+                if (!profile) continue;
+
+                const therapistFolder = await findFolder(token, therapist, didSubfolder);
+                if (!therapistFolder) continue;
+
+                // Find SITUACNI_ANALYZA document
+                const situacniDoc = await findDoc(token, "SITUACNI_ANALYZA", therapistFolder);
+                if (situacniDoc) {
+                  const existing = await readDoc(token, situacniDoc.id);
+                  const dateStr = new Date().toISOString().slice(0, 10);
+                  const hash = contentHash(JSON.stringify(profile));
+                  if (!existing.includes(`[KHASH:${hash}]`)) {
+                    const profileText = `\n\n═══ Situační analýza – ${dateStr} [KHASH:${hash}] ═══
+Nálada: ${profile.current_mood || "–"}
+Energie: ${profile.energy_level || "–"}
+Životní výzvy: ${(profile.life_challenges || []).join(", ") || "–"}
+Poslední chování: ${(profile.recent_behaviors || []).join(", ") || "–"}
+Doporučený přístup Karla: ${profile.recommended_approach || "–"}`;
+                    await updateDoc(token, situacniDoc.id, existing + profileText);
+                    state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/SITUACNI_ANALYZA`);
+                  }
+                }
+
+                // Find KARLOVY_POZNATKY document
+                const poznatkyDoc = await findDoc(token, "KARLOVY_POZNATKY", therapistFolder);
+                if (poznatkyDoc && (profile.personality_traits?.length || profile.strengths_observed?.length || profile.weaknesses_observed?.length)) {
+                  const existing = await readDoc(token, poznatkyDoc.id);
+                  const insightHash = contentHash(`${dateStr}-insights-${tKey}`);
+                  if (!existing.includes(`[KHASH:${insightHash}]`)) {
+                    const insightText = `\n\n═══ Karlovy postřehy – ${new Date().toISOString().slice(0, 10)} [KHASH:${insightHash}] ═══
+Osobnostní rysy: ${(profile.personality_traits || []).join(", ") || "–"}
+Silné stránky: ${(profile.strengths_observed || []).join(", ") || "–"}
+Slabé stránky: ${(profile.weaknesses_observed || []).join(", ") || "–"}
+Aktuální výzvy: ${(profile.current_challenges || []).join(", ") || "–"}
+Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}`;
+                    await updateDoc(token, poznatkyDoc.id, existing + insightText);
+                    state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/KARLOVY_POZNATKY`);
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[mirror] Therapist profile Drive write error:", e);
+        }
+      }
+
+      state.therapistProfileDriveDone = true;
+      await persistMirrorJob({ sb, jobId, payload, state, phase: "drive_therapist_profiles", summary: "Drive profily terapeutek hotovo" });
+      return { status: "processing", phase: "drive_therapist_profiles", summary: "Drive profily terapeutek hotovo", progress: getMirrorProgress(payload, state) };
+    }
+
     if (state.partUpdateIndex < partUpdates.length) {
       const token = await getAccessToken();
       const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
@@ -624,24 +694,66 @@ async function runMirrorBatchStep(params: {
       for (const part of batch) {
         if (!part.name || !part.sections) continue;
         try {
+          // Auto-detected parts go to 01_AKTIVNI_FRAGMENTY (active)
           const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
-            body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections }),
+            body: JSON.stringify({ mode: "update-card-sections", partName: part.name, sections: part.sections, targetFolder: "active" }),
           });
           const writeResult = await writeRes.json();
           if (writeRes.ok && writeResult.success) {
-            state.driveUpdates.push(`KARTOTEKA/NEW:${part.name}`);
+            state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (01_AKTIVNI)`);
             await sb.from("did_part_registry").upsert({
               user_id: userId,
               part_name: part.name,
               display_name: part.name,
-              status: "sleeping",
+              status: "active",
               cluster: part.cluster || "nově detekovaný",
-              notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. ${part.inferred_data || ""}`.slice(0, 500),
+              notes: `Auto-mirror ${new Date().toISOString().slice(0, 10)}. Čeká na ověření týmem. ${part.inferred_data || ""}`.slice(0, 500),
               role_in_system: part.sections?.A?.slice(0, 200) || null,
             }, { onConflict: "user_id,part_name", ignoreDuplicates: true });
             state.dbUpdates.push(`registry_new:${part.name}`);
+
+            // ═══ AUTO-TRIGGER VERIFICATION MEETING ═══
+            const evidence = part.evidence?.join(", ") || part.sections?.A || "detekováno z konverzací";
+            const meetingTopic = `Ověření nové části: ${part.name}`;
+            const meetingAgenda = `Karel detekoval potenciální novou část/fragment: "${part.name}".
+
+═══ DŮKAZY ═══
+${evidence}
+
+═══ POSTUP OVĚŘENÍ ═══
+1. Karel předloží důkazy a kontext detekce
+2. Hanka i Káťa se vyjádří, zda se s touto částí setkaly
+3. Minimální práh: alespoň 2 ze 3 (Karel + terapeutky) souhlasí
+4. Pokud ověřeno → část zůstává v registru a kartotéce
+5. Pokud NEověřeno → Karel odstraní kartu a záznam
+
+Karel navrhne specifické ověřovací úkoly pro tento případ.`;
+
+            const karelOpeningMsg = `Ahoj Haničko, ahoj Káťo 👋
+
+Během analýzy konverzací jsem detekoval potenciální novou část/fragment: **${part.name}**.
+
+**Důkazy:**
+${evidence}
+
+**Co potřebuji od vás:**
+1. Setkaly jste se s touto částí? Pokud ano, popište prosím kontext.
+2. Existují další indicie, že jde o samostatnou část (ne alias existující)?
+3. Navrhněte prosím pozorování/aktivity, které by potvrdily nebo vyvrátily existenci.
+
+Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověření". Prosím vyjádřete se obě. 🙏`;
+
+            await sb.from("did_meetings").insert({
+              user_id: userId,
+              topic: meetingTopic,
+              agenda: meetingAgenda,
+              status: "open",
+              triggered_by: "karel_auto_verification",
+              messages: [{ role: "karel", content: karelOpeningMsg, timestamp: new Date().toISOString() }],
+            });
+            state.dbUpdates.push(`meeting_verification:${part.name}`);
           } else {
             state.driveUpdates.push(`KARTOTEKA/NEW:${part.name} (ERR:${writeResult.error})`);
           }
@@ -992,7 +1104,12 @@ Deno.serve(async (req) => {
         const activeTasks = harvest.activeTasks || [];
         const lastMirrorTime = harvest.lastMirrorTime || "";
 
-        const pass1System = `Jsi Karel – hloubkový analytický engine. Extrahuj VEŠKERÉ informace z konverzací, i skryté "mezi řádky". Hledej jména, emoce, triggery, souvislosti.`;
+        const pass1System = `Jsi Karel – hloubkový analytický engine. Extrahuj VEŠKERÉ informace z konverzací, i skryté "mezi řádky". Hledej jména, emoce, triggery, souvislosti.
+
+KRITICKÉ PRAVIDLO DOMÉN:
+- PAMET_KAREL slouží VÝHRADNĚ k profilaci TERAPEUTEK (Hanka, Káťa) — osobnostní analýza, motivace, silné/slabé stránky, aktuální stav, emoční projevy, vzorce chování terapeutek.
+- O DID částech/fragmentech (Arthur, Tundrup, Clark atd.) se NIKDY nepíše do PAMET_KAREL. Informace o částech patří do KARTOTEKA_DID (karty částí, Dashboard, 00_CENTRUM).
+- Karel tajně buduje dynamický profil každé terapeutky: sleduje její rozpoložení, stresové faktory, životní situaci, spolehlivost v plnění úkolů, komunikační preference a vše co může ovlivnit způsob interakce.`;
 
         const pass1Prompt = `REGISTR ČÁSTÍ: ${knownPartNames.join(", ") || "prázdný"}
 ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné"}
@@ -1001,7 +1118,7 @@ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné
 ═══ VLÁKNA (od ${lastMirrorTime.slice(0, 16)}) ═══
 ${threadDigests.join("\n═══\n")}
 
-Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"..."}],"therapist_observations":{"hanka":{"mood":"...","stress_level":"..."},"kata":{"mood":"...","stress_level":"..."}},"urgent_signals":["..."],"summary":"..."}`;
+Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain":"THERAPIST|DID_PART|GENERAL"}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"...","confidence":0.9}],"therapist_profiles":{"hanka":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}},"urgent_signals":["..."],"cross_thread_deductions":[{"deduction":"...","sources":["thread1","thread2"],"actionable":true}],"summary":"..."}`;
 
         const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
         const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, urgent_signals: [] };
@@ -1040,7 +1157,18 @@ Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9}],"all_
           .map(([path, content]) => `[DRIVE:${path}]\n${(content as string).slice(0, 1000)}`)
           .join("\n═══\n");
 
-        const pass2System = `Jsi Karel – strategický analytik DID systému. Spoj nové poznatky s Drive dokumenty, najdi vzorce, navrhni akce.`;
+        const pass2System = `Jsi Karel – strategický analytik DID systému. Spoj nové poznatky s Drive dokumenty, najdi vzorce, navrhni akce.
+
+KRITICKÉ PRAVIDLO DOMÉN:
+- pamet_karel (entity_updates, pattern_updates, strategy_updates) = VÝHRADNĚ data o TERAPEUTKÁCH (Hanka, Káťa). Osobnostní profily, motivační vzorce, komunikační strategie, aktuální stav terapeutek.
+- kartoteka_did (part_updates, new_parts) = data o DID ČÁSTECH/FRAGMENTECH. Klinické záznamy, triggery, emoce částí, sezení.
+- NIKDY nevkládej vzorce chování DID částí (Arthur, Tundrup atd.) do pamet_karel! Ty patří do kartoteka_did.part_updates.
+- pamet_karel.pattern_updates = vzorce chování TERAPEUTEK (např. "kata_prokrastinace_ukolu", "hanka_perfekcionismus").
+- pamet_karel.strategy_updates = strategie JAK Karel komunikuje s TERAPEUTKAMI (např. "hanka_chvalit_pred_kritikou").
+- pamet_karel.entity_updates = profily LIDÍ kolem Hanky (NE DID částí). DID části jsou v registru.
+
+DEDUKCE NAPŘÍČ VLÁKNY:
+Karel aktivně propojuje informace z různých vláken. Pokud část X zmíní fakt Y v jednom vlákně, a terapeut A to potvrdí v jiném, Karel dedukuje a zaznamenává jako ověřený fakt.`;
 
         const pass2Prompt = `═══ FAKTA ═══
 ${JSON.stringify(pass1Data, null, 1).slice(0, 8000)}
@@ -1053,7 +1181,7 @@ Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
 ${driveDigest.slice(0, 12000)}
 
 Vrať JSON:
-{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"...","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"...","description":"...","domain":"...","tags":["..."],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"...","description":"...","domain":"...","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}]},"kartoteka_did":{"part_updates":{"name":"text"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"...","cluster":"..."}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_notes":"...","geography_notes":"...","relationships_notes":"...","operative_plan_notes":"..."},"synthesis_summary":"..."}`;
+{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"..."},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"..."}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_notes":"...","geography_notes":"...","relationships_notes":"...","operative_plan_notes":"..."},"synthesis_summary":"..."}`;
 
         const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
         const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, new_tasks: [] };

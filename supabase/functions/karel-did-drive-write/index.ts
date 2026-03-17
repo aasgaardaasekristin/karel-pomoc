@@ -476,9 +476,11 @@ function resolveCardTarget(
   const entry = findBestRegistryEntry(partName, registry.entries);
 
   if (!entry) {
-    // New parts go to archive (sleeping) by default — terapeutka must manually promote
-    const root = registry.archiveFolderId || registry.activeFolderId || rootFolderId;
-    return { searchRootId: root, allowCreate: true, pathLabel: "03_ARCHIV_SPICICH/(nová část)", registryEntry: null };
+    // New parts: placement depends on source
+    // If body contains targetFolder override, use it; otherwise default to active (for auto-detected)
+    // Therapist-requested parts should pass targetFolder explicitly
+    const root = registry.activeFolderId || registry.archiveFolderId || rootFolderId;
+    return { searchRootId: root, allowCreate: true, pathLabel: "01_AKTIVNI_FRAGMENTY/(nová část)", registryEntry: null };
   }
 
   const stateFolderId = isArchived ? registry.archiveFolderId : registry.activeFolderId;
@@ -560,7 +562,13 @@ serve(async (req) => {
         if (stateFolderId) partFolder = await findBestPartFolder(token, stateFolderId, entry);
       }
 
-      const target = resolveCardTarget(partName, folderId, registry, partFolder, isArchived);
+      // Allow caller to override target folder (e.g. therapist choosing archive vs active)
+      let target = resolveCardTarget(partName, folderId, registry, partFolder, isArchived);
+      if (body.targetFolder === "archive" && registry.archiveFolderId) {
+        target = { ...target, searchRootId: registry.archiveFolderId, pathLabel: "03_ARCHIV_SPICICH/(manuální)", allowCreate: true };
+      } else if (body.targetFolder === "active" && registry.activeFolderId) {
+        target = { ...target, searchRootId: registry.activeFolderId, pathLabel: "01_AKTIVNI_FRAGMENTY/(manuální)", allowCreate: true };
+      }
       const lookupName = target.registryEntry?.name || partName;
       const card = await findCardFile(token, lookupName, target.searchRootId);
 
@@ -625,8 +633,10 @@ serve(async (req) => {
         await createFileInFolder(token, newFileName, fullCard, target.searchRootId);
         resultFileName = newFileName;
         // Add entry to registry
+        // Determine status based on target folder
+        const registryStatus = body.targetFolder === "archive" ? "Spící" : "Aktivní";
         if (registry?.registryFileId && registry?.registrySheetName) {
-          await addRegistryRow(token, registry.registryFileId, registry.registrySheetName, paddedId, partName);
+          await addRegistryRow(token, registry.registryFileId, registry.registrySheetName, paddedId, partName, registryStatus);
         }
         console.log(`[update-card-sections] Created Google Doc: ${newFileName} (ID: ${paddedId}) in ${target.pathLabel}`);
       }
