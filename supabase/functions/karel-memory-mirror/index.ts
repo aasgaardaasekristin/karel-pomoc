@@ -620,12 +620,18 @@ async function runMirrorBatchStep(params: {
                   const dateStr = new Date().toISOString().slice(0, 10);
                   const hash = contentHash(JSON.stringify(profile));
                   if (!existing.includes(`[KHASH:${hash}]`)) {
+                    // Build emotional bonds section if available
+                    const bondsText = (profile.part_emotional_bonds || []).length > 0
+                      ? `\nCitové vazby k částem:\n${(profile.part_emotional_bonds || []).map((b: any) =>
+                          `  ${b.part_name}: ${b.bond_type} – ${b.description}${b.therapeutic_implication ? ` | Terapeutický dopad: ${b.therapeutic_implication}` : ""}`
+                        ).join("\n")}`
+                      : "";
                     const profileText = `\n\n═══ Situační analýza – ${dateStr} [KHASH:${hash}] ═══
 Nálada: ${profile.current_mood || "–"}
 Energie: ${profile.energy_level || "–"}
 Životní výzvy: ${(profile.life_challenges || []).join(", ") || "–"}
 Poslední chování: ${(profile.recent_behaviors || []).join(", ") || "–"}
-Doporučený přístup Karla: ${profile.recommended_approach || "–"}`;
+Doporučený přístup Karla: ${profile.recommended_approach || "–"}${bondsText}`;
                     await updateDoc(token, situacniDoc.id, existing + profileText);
                     state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/SITUACNI_ANALYZA`);
                   }
@@ -633,16 +639,21 @@ Doporučený přístup Karla: ${profile.recommended_approach || "–"}`;
 
                 // Find KARLOVY_POZNATKY document
                 const poznatkyDoc = await findDoc(token, "KARLOVY_POZNATKY", therapistFolder);
-                if (poznatkyDoc && (profile.personality_traits?.length || profile.strengths_observed?.length || profile.weaknesses_observed?.length)) {
+                if (poznatkyDoc && (profile.personality_traits?.length || profile.strengths_observed?.length || profile.weaknesses_observed?.length || profile.part_emotional_bonds?.length)) {
                   const existing = await readDoc(token, poznatkyDoc.id);
                   const insightHash = contentHash(`${dateStr}-insights-${tKey}`);
                   if (!existing.includes(`[KHASH:${insightHash}]`)) {
+                    const bondsInsight = (profile.part_emotional_bonds || []).length > 0
+                      ? `\nCountertransference vzorce:\n${(profile.part_emotional_bonds || []).map((b: any) =>
+                          `  ${b.part_name}: ${b.bond_type} – ${b.description}`
+                        ).join("\n")}`
+                      : "";
                     const insightText = `\n\n═══ Karlovy postřehy – ${new Date().toISOString().slice(0, 10)} [KHASH:${insightHash}] ═══
 Osobnostní rysy: ${(profile.personality_traits || []).join(", ") || "–"}
 Silné stránky: ${(profile.strengths_observed || []).join(", ") || "–"}
 Slabé stránky: ${(profile.weaknesses_observed || []).join(", ") || "–"}
 Aktuální výzvy: ${(profile.current_challenges || []).join(", ") || "–"}
-Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}`;
+Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}${bondsInsight}`;
                     await updateDoc(token, poznatkyDoc.id, existing + insightText);
                     state.driveUpdates.push(`PAMET_KAREL/DID/${therapist}/KARLOVY_POZNATKY`);
                   }
@@ -1144,7 +1155,13 @@ ENTITY: ${entities.map((e: any) => `${e.id}:${e.jmeno}`).join(", ") || "žádné
 ═══ VLÁKNA (od ${lastMirrorTime.slice(0, 16)}) ═══
 ${threadDigests.join("\n═══\n")}
 
-Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain":"THERAPIST|DID_PART|GENERAL"}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"...","confidence":0.9}],"therapist_profiles":{"hanka":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}},"urgent_signals":["..."],"cross_thread_deductions":[{"deduction":"ZÁVĚR vyvozený z kombinace vláken","sources":["thread1","thread2"],"reasoning":"PROČ tento závěr vyplývá z faktů","actionable":true,"recommended_action":"CO s tím Karel/terapeut má UDĚLAT","predicted_impact":"CO se stane pokud se to neřeší / řeší"}],"causal_chains":[{"trigger":"co se stalo","cause":"proč","effect":"jaký dopad","prediction":"co bude dál","action_plan":"co s tím"}],"summary":"..."}`;
+DŮLEŽITÉ — CITOVÉ VAZBY A COUNTERTRANSFERENCE:
+Když terapeutka (Hanka/Káťa) popisuje svůj VZTAH k části (např. "je to moje deťátko", "cítím k němu nostalgii", "rozumí si s Káťou"), toto je KLÍČOVÁ informace pro DVĚ domény:
+1) THERAPIST profil: Jak terapeutka citově prožívá části → její countertransference vzorce, citové vazby, postoje (do part_emotional_bonds)
+2) DID_PART karta: Terapeutčino pozorování jako klinický záznam (do raw_facts s domain=DID_PART)
+NIKDY tyto informace nevypisuj doslovně v přehledu! Extrahuj je jako ANALYTICKÉ ZÁVĚRY.
+
+Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain":"THERAPIST|DID_PART|GENERAL"}],"all_names_mentioned":["..."],"new_parts_detected":[{"name":"...","evidence":"...","confidence":0.9}],"therapist_profiles":{"hanka":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"TUNDRUPEK","bond_type":"mateřský/ochranitelský/nostalgický/partnerský/jiný","description":"Karel dedukuje: silný mateřský countertransference, potřeba monitorovat hranice","therapeutic_implication":"co to znamená pro terapii"}]},"kata":{"mood":"...","stress_level":"...","energy":"...","life_situation_notes":"...","reliability_observations":"...","communication_preferences":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"...","bond_type":"...","description":"...","therapeutic_implication":"..."}]}},"urgent_signals":["..."],"cross_thread_deductions":[{"deduction":"ZÁVĚR vyvozený z kombinace vláken","sources":["thread1","thread2"],"reasoning":"PROČ tento závěr vyplývá z faktů","actionable":true,"recommended_action":"CO s tím Karel/terapeut má UDĚLAT","predicted_impact":"CO se stane pokud se to neřeší / řeší"}],"causal_chains":[{"trigger":"co se stalo","cause":"proč","effect":"jaký dopad","prediction":"co bude dál","action_plan":"co s tím"}],"summary":"..."}`;
 
         const pass1Raw = await callAI(LOVABLE_API_KEY!, pass1System, pass1Prompt, "google/gemini-2.5-flash");
         const pass1Data = extractJSON(pass1Raw) || { raw_facts: [], all_names_mentioned: [], new_parts_detected: [], therapist_observations: {}, urgent_signals: [] };
@@ -1233,7 +1250,7 @@ ${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
 ${driveDigest.slice(0, 12000)}
 
 Vrať JSON:
-{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."]}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_full":"KOMPLETNÍ 7-sekční Dashboard (viz instrukce níže)","operative_plan_full":"KOMPLETNÍ 6-sekční Operativní plán (viz instrukce níže)","geography_notes":"...","relationships_notes":"..."},"synthesis_summary":"..."}
+{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"JMÉNO_ČÁSTI","bond_type":"mateřský/ochranitelský/nostalgický/partnerský/empatický/jiný","description":"Karlova dedukce: co citová vazba odhaluje o terapeutce (countertransference vzorec)","therapeutic_implication":"jak to ovlivní terapii, co Karel doporučuje"}]},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"...","bond_type":"...","description":"...","therapeutic_implication":"..."}]}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části — ZAHRŇ pozorování terapeutky jako klinický záznam (co terapeutka řekla O části, její popis chování části, nikoli surové citáty ale analytické shrnutí)"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_full":"KOMPLETNÍ 7-sekční Dashboard (viz instrukce níže)","operative_plan_full":"KOMPLETNÍ 6-sekční Operativní plán (viz instrukce níže)","geography_notes":"...","relationships_notes":"..."},"synthesis_summary":"..."}
 
 ═══ INSTRUKCE PRO CENTRUM DOKUMENTY ═══
 
