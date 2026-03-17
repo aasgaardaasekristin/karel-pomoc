@@ -3495,8 +3495,13 @@ Všechna data pocházejí z databáze (did_part_registry, did_threads, did_thera
               centrumDashboardUpdated = true;
               console.log(`[CENTRUM-FALLBACK] ✅ Dashboard: full deterministic content written`);
 
-              // Post-write verification
-              await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", ["SEKCE 1", "SEKCE 3", "DASHBOARD"]);
+              // Post-write verification – fallback
+              const fallbackDashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", [
+                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7", "DASHBOARD",
+              ]);
+              if (!fallbackDashVerify.verified) {
+                console.warn(`[VERIFY] ⚠️ Dashboard fallback verification FAILED: missing=[${fallbackDashVerify.missingKeywords.join(",")}]`);
+              }
             } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
           }
         }

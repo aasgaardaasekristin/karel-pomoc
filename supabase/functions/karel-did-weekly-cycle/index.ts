@@ -883,6 +883,18 @@ ${perplexityContext}`,
                 await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
                 cardsUpdated.push("00_Dashboard (týdenní přepis)");
                 console.log(`[weekly] ✅ Dashboard rewritten`);
+
+                // Post-write verification – all 7 sections + deductive markers
+                try {
+                  const dashContent = await readFileContent(token, dashFile.id);
+                  const requiredKw = ["SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7", "DEDUKCE", "DASHBOARD"];
+                  const missing = requiredKw.filter(kw => !dashContent.toLowerCase().includes(kw.toLowerCase()));
+                  if (missing.length > 0 || dashContent.length < 400) {
+                    console.warn(`[VERIFY-WEEKLY] ⚠️ 00_Dashboard verification FAILED: missing=[${missing.join(",")}], length=${dashContent.length}`);
+                  } else {
+                    console.log(`[VERIFY-WEEKLY] ✅ 00_Dashboard verified: ${dashContent.length}ch, all ${requiredKw.length} keywords present`);
+                  }
+                } catch (verifyErr) { console.warn("[VERIFY-WEEKLY] Dashboard read-back failed:", verifyErr); }
               }
               continue;
             }
