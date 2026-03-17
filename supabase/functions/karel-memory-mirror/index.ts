@@ -1045,7 +1045,18 @@ Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain
           .map(([path, content]) => `[DRIVE:${path}]\n${(content as string).slice(0, 1000)}`)
           .join("\n═══\n");
 
-        const pass2System = `Jsi Karel – strategický analytik DID systému. Spoj nové poznatky s Drive dokumenty, najdi vzorce, navrhni akce.`;
+        const pass2System = `Jsi Karel – strategický analytik DID systému. Spoj nové poznatky s Drive dokumenty, najdi vzorce, navrhni akce.
+
+KRITICKÉ PRAVIDLO DOMÉN:
+- pamet_karel (entity_updates, pattern_updates, strategy_updates) = VÝHRADNĚ data o TERAPEUTKÁCH (Hanka, Káťa). Osobnostní profily, motivační vzorce, komunikační strategie, aktuální stav terapeutek.
+- kartoteka_did (part_updates, new_parts) = data o DID ČÁSTECH/FRAGMENTECH. Klinické záznamy, triggery, emoce částí, sezení.
+- NIKDY nevkládej vzorce chování DID částí (Arthur, Tundrup atd.) do pamet_karel! Ty patří do kartoteka_did.part_updates.
+- pamet_karel.pattern_updates = vzorce chování TERAPEUTEK (např. "kata_prokrastinace_ukolu", "hanka_perfekcionismus").
+- pamet_karel.strategy_updates = strategie JAK Karel komunikuje s TERAPEUTKAMI (např. "hanka_chvalit_pred_kritikou").
+- pamet_karel.entity_updates = profily LIDÍ kolem Hanky (NE DID částí). DID části jsou v registru.
+
+DEDUKCE NAPŘÍČ VLÁKNY:
+Karel aktivně propojuje informace z různých vláken. Pokud část X zmíní fakt Y v jednom vlákně, a terapeut A to potvrdí v jiném, Karel dedukuje a zaznamenává jako ověřený fakt.`;
 
         const pass2Prompt = `═══ FAKTA ═══
 ${JSON.stringify(pass1Data, null, 1).slice(0, 8000)}
@@ -1058,7 +1069,7 @@ Entity: ${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
 ${driveDigest.slice(0, 12000)}
 
 Vrať JSON:
-{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"...","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"...","description":"...","domain":"...","tags":["..."],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"...","description":"...","domain":"...","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}]},"kartoteka_did":{"part_updates":{"name":"text"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"...","cluster":"..."}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_notes":"...","geography_notes":"...","relationships_notes":"...","operative_plan_notes":"..."},"synthesis_summary":"..."}`;
+{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"..."},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"..."}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_notes":"...","geography_notes":"...","relationships_notes":"...","operative_plan_notes":"..."},"synthesis_summary":"..."}`;
 
         const pass2Raw = await callAI(LOVABLE_API_KEY!, pass2System, pass2Prompt, "google/gemini-2.5-flash");
         const extractedInfo = extractJSON(pass2Raw) || { pamet_karel: {}, kartoteka_did: {}, new_tasks: [] };
