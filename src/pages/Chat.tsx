@@ -1855,8 +1855,25 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
             {/* Thread indicator for cast mode */}
             {activeThread && (
-              <div className="text-center text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
-                Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
+                <span>
+                  Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+                </span>
+                {didSubMode === "cast" && (
+                  <DidKidsThemeEditor
+                    partName={activeThread.partName}
+                    threadId={activeThread.id}
+                    onThreadThemeSaved={(tid, preset) => {
+                      didThreads.updateThreadTheme(tid, preset);
+                      setActiveThread(prev => prev ? { ...prev, themePreset: preset } : prev);
+                    }}
+                    trigger={
+                      <button className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                        🎨
+                      </button>
+                    }
+                  />
+                )}
               </div>
             )}
             {messages.map((message, index) => (
