@@ -1355,6 +1355,8 @@ export type Database = {
           compact_mode: boolean
           created_at: string
           dark_mode: boolean
+          font_color: string
+          font_family: string
           font_scale: number
           id: string
           persona: string
@@ -1372,6 +1374,8 @@ export type Database = {
           compact_mode?: boolean
           created_at?: string
           dark_mode?: boolean
+          font_color?: string
+          font_family?: string
           font_scale?: number
           id?: string
           persona?: string
@@ -1389,6 +1393,8 @@ export type Database = {
           compact_mode?: boolean
           created_at?: string
           dark_mode?: boolean
+          font_color?: string
+          font_family?: string
           font_scale?: number
           id?: string
           persona?: string
