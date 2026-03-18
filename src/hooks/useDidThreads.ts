@@ -64,6 +64,8 @@ export const useDidThreads = () => {
   }, []);
 
   const fetchActiveThreads = useCallback(async (subMode?: string) => {
+    lastSubModeRef.current = subMode;
+    lastFetchAllRef.current = undefined;
     setLoading(true);
     try {
       const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
