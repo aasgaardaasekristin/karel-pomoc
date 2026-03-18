@@ -192,6 +192,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
         <DidMonthlyPanel refreshTrigger={refreshTrigger} />
       </div>
 
+      <DidSystemOverview refreshTrigger={refreshTrigger} />
+
       <div className="mb-4">
         <DidPulseCheck refreshTrigger={refreshTrigger} />
       </div>
