@@ -260,6 +260,23 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     root.style.fontSize = `${14 * prefs.font_scale}px`;
     root.style.setProperty("--radius", RADIUS_MAP[prefs.border_radius] || "0.75rem");
 
+    // Custom font color
+    if (prefs.font_color) {
+      root.style.setProperty("--foreground", prefs.font_color);
+      root.style.setProperty("--card-foreground", prefs.font_color);
+    }
+
+    // Font family
+    const FONT_MAP: Record<string, string> = {
+      default: "'DM Sans', system-ui, sans-serif",
+      comic: "'Comic Neue', 'Comic Sans MS', cursive",
+      rounded: "'Nunito', 'Varela Round', sans-serif",
+      mono: "'JetBrains Mono', 'Fira Code', monospace",
+    };
+    const fontFamily = FONT_MAP[prefs.font_family] || FONT_MAP.default;
+    root.style.setProperty("--font-body", fontFamily);
+    root.style.fontFamily = fontFamily;
+
     if (prefs.compact_mode) root.classList.add("compact");
     else root.classList.remove("compact");
 
