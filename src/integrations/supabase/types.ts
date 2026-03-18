@@ -937,6 +937,7 @@ export type Database = {
           processed_at: string | null
           started_at: string
           sub_mode: string
+          theme_preset: string
           user_id: string
         }
         Insert: {
@@ -950,6 +951,7 @@ export type Database = {
           processed_at?: string | null
           started_at?: string
           sub_mode?: string
+          theme_preset?: string
           user_id?: string
         }
         Update: {
@@ -963,6 +965,7 @@ export type Database = {
           processed_at?: string | null
           started_at?: string
           sub_mode?: string
+          theme_preset?: string
           user_id?: string
         }
         Relationships: []

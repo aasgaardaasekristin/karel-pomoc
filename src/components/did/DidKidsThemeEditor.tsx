@@ -11,9 +11,12 @@ import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeC
 interface Props {
   partName?: string;
   trigger?: React.ReactNode;
+  /** When set, saves the chosen preset to the thread */
+  threadId?: string;
+  onThreadThemeSaved?: (threadId: string, presetKey: string) => void;
 }
 
-const KIDS_PRESETS: Record<string, { label: string; primary_color: string; accent_color: string; emoji: string }> = {
+export const KIDS_PRESETS: Record<string, { label: string; primary_color: string; accent_color: string; emoji: string }> = {
   // Boys themes
   ocean_explorer: { label: "Oceán 🌊", primary_color: "200 38% 42%", accent_color: "190 30% 68%", emoji: "🌊" },
   forest_ranger: { label: "Les 🌲", primary_color: "142 28% 36%", accent_color: "88 22% 62%", emoji: "🌲" },
@@ -25,7 +28,7 @@ const KIDS_PRESETS: Record<string, { label: string; primary_color: string; accen
   pirate: { label: "Pirát 🏴‍☠️", primary_color: "28 38% 38%", accent_color: "45 32% 64%", emoji: "🏴‍☠️" },
   dino: { label: "Dino 🦕", primary_color: "160 28% 40%", accent_color: "130 22% 66%", emoji: "🦕" },
   thunder: { label: "Blesk ⚡", primary_color: "48 40% 44%", accent_color: "210 28% 52%", emoji: "⚡" },
-  // Girls themes (fewer)
+  // Girls themes
   fairy: { label: "Víla 🧚", primary_color: "300 24% 52%", accent_color: "330 28% 74%", emoji: "🧚" },
   rainbow: { label: "Duha 🌈", primary_color: "280 26% 48%", accent_color: "340 30% 70%", emoji: "🌈" },
   butterfly: { label: "Motýl 🦋", primary_color: "270 22% 50%", accent_color: "200 26% 68%", emoji: "🦋" },
@@ -42,7 +45,7 @@ const FONT_OPTIONS = [
   { value: "mono", label: "Kódové" },
 ] as const;
 
-const DidKidsThemeEditor = ({ partName, trigger }: Props) => {
+const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }: Props) => {
   const [open, setOpen] = useState(false);
   const { prefs, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -51,7 +54,6 @@ const DidKidsThemeEditor = ({ partName, trigger }: Props) => {
   const [draft, setDraft] = useState<ThemePrefs>(prefs);
 
   useEffect(() => {
-    // When opening for kids, switch persona to "kluci"
     if (open && currentPersona !== "kluci") {
       setCurrentPersona("kluci");
     }
@@ -71,7 +73,11 @@ const DidKidsThemeEditor = ({ partName, trigger }: Props) => {
     try {
       setSaving(true);
       await updatePrefs(draft);
-      toast.success("Vzhled nastaven! 🎨");
+      // If per-thread mode, also save the preset key to the thread
+      if (threadId && onThreadThemeSaved && draft.theme_preset) {
+        onThreadThemeSaved(threadId, draft.theme_preset);
+      }
+      toast.success(threadId ? `Vzhled pro ${partName || "vlákno"} uložen! 🎨` : "Vzhled nastaven! 🎨");
     } catch (error: any) {
       toast.error(error?.message || "Nepodařilo se uložit vzhled");
     } finally {
@@ -107,7 +113,7 @@ const DidKidsThemeEditor = ({ partName, trigger }: Props) => {
         {trigger || (
           <Button variant="outline" size="sm" className="h-7 px-2.5 text-[10px] gap-1.5">
             <Palette className="w-3 h-3" />
-            Upravit vzhled
+            {threadId ? "Můj vzhled" : "Upravit vzhled"}
           </Button>
         )}
       </DialogTrigger>
@@ -118,7 +124,11 @@ const DidKidsThemeEditor = ({ partName, trigger }: Props) => {
             <Palette className="w-4 h-4 text-primary" />
             {partName ? `Vzhled pro ${partName}` : "Můj vzhled"}
           </DialogTitle>
-          <DialogDescription className="text-xs">Vyber si barvy, motiv a styl, jak chceš, aby Karel vypadal.</DialogDescription>
+          <DialogDescription className="text-xs">
+            {threadId
+              ? "Vyber si barvy a motiv – uloží se jen pro tohle vlákno a příště se automaticky načtou."
+              : "Vyber si barvy, motiv a styl, jak chceš, aby Karel vypadal."}
+          </DialogDescription>
         </DialogHeader>
 
         {/* Save bar */}
@@ -132,7 +142,7 @@ const DidKidsThemeEditor = ({ partName, trigger }: Props) => {
           <div className="mt-2 flex gap-2">
             <Button size="sm" className="h-7 text-[10px] gap-1.5" disabled={!hasPendingChanges || saving} onClick={handleApplyTheme}>
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-              Použít
+              Použít{threadId ? " pro toto vlákno" : ""}
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-[10px] gap-1.5" disabled={!hasPendingChanges || saving} onClick={handleResetTheme}>
               <RotateCcw className="w-3 h-3" />

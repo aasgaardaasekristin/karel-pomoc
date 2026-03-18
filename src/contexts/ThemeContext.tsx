@@ -33,6 +33,23 @@ const PRESETS: Record<string, Partial<ThemePrefs>> = {
   moss: { primary_color: "136 18% 36%", accent_color: "88 14% 66%" },
   cloud: { primary_color: "210 18% 56%", accent_color: "220 14% 78%" },
   earth: { primary_color: "22 26% 42%", accent_color: "34 20% 68%" },
+  // Kids presets (auto-applied per-thread)
+  ocean_explorer: { primary_color: "200 38% 42%", accent_color: "190 30% 68%" },
+  forest_ranger: { primary_color: "142 28% 36%", accent_color: "88 22% 62%" },
+  space: { primary_color: "230 30% 32%", accent_color: "260 24% 58%" },
+  dragon: { primary_color: "14 36% 42%", accent_color: "32 34% 64%" },
+  ninja: { primary_color: "220 18% 28%", accent_color: "340 22% 52%" },
+  minecraft: { primary_color: "120 32% 38%", accent_color: "36 30% 56%" },
+  robot: { primary_color: "210 22% 46%", accent_color: "180 20% 62%" },
+  pirate: { primary_color: "28 38% 38%", accent_color: "45 32% 64%" },
+  dino: { primary_color: "160 28% 40%", accent_color: "130 22% 66%" },
+  thunder: { primary_color: "48 40% 44%", accent_color: "210 28% 52%" },
+  fairy: { primary_color: "300 24% 52%", accent_color: "330 28% 74%" },
+  rainbow: { primary_color: "280 26% 48%", accent_color: "340 30% 70%" },
+  butterfly: { primary_color: "270 22% 50%", accent_color: "200 26% 68%" },
+  flower: { primary_color: "340 28% 54%", accent_color: "20 34% 74%" },
+  sunset_beach: { primary_color: "24 42% 48%", accent_color: "40 36% 70%" },
+  ice: { primary_color: "200 26% 52%", accent_color: "186 20% 74%" },
 };
 
 const DEFAULT_PREFS: ThemePrefs = {

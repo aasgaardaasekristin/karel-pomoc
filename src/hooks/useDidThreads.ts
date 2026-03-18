@@ -15,6 +15,7 @@ export interface DidThread {
   startedAt: string;
   lastActivityAt: string;
   isProcessed: boolean;
+  themePreset: string;
 }
 
 const rowToThread = (row: any): DidThread | null => {
@@ -30,6 +31,7 @@ const rowToThread = (row: any): DidThread | null => {
     startedAt: row.started_at,
     lastActivityAt: row.last_activity_at,
     isProcessed: row.is_processed,
+    themePreset: row.theme_preset || "",
   };
 };
 
@@ -300,6 +302,24 @@ export const useDidThreads = () => {
     setThreads((prev) => prev.filter((thread) => thread.id !== threadId));
   }, []);
 
+  const updateThreadTheme = useCallback(async (threadId: string, themePreset: string) => {
+    const { error } = await supabase
+      .from("did_threads")
+      .update({ theme_preset: themePreset } as any)
+      .eq("id", threadId);
+
+    if (error) {
+      console.error("Update thread theme error:", error);
+      return;
+    }
+
+    setThreads((prev) =>
+      prev.map((thread) =>
+        thread.id === threadId ? { ...thread, themePreset } : thread,
+      ),
+    );
+  }, []);
+
   return {
     threads,
     loading,
@@ -309,5 +329,6 @@ export const useDidThreads = () => {
     updateThreadMessages,
     getThreadByPart,
     deleteThread,
+    updateThreadTheme,
   };
 };

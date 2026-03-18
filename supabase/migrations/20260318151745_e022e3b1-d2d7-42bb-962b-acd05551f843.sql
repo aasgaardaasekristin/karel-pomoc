@@ -1,0 +1,1 @@
+ALTER TABLE public.did_threads ADD COLUMN IF NOT EXISTS theme_preset text DEFAULT '' NOT NULL;

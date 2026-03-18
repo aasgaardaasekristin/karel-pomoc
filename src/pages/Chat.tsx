@@ -50,6 +50,7 @@ import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
+import { useTheme } from "@/contexts/ThemeContext";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
@@ -532,10 +533,16 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
   // Thread management for "cast" mode (hooks must be before early return)
+  const { applyPreset: applyThemePreset, prefs: themePrefs } = useTheme();
+
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
+    // Auto-apply per-thread theme if set
+    if (thread.themePreset) {
+      applyThemePreset(thread.themePreset);
+    }
     // Load part-specific docs in BACKGROUND
     (async () => {
       try {
@@ -552,7 +559,7 @@ const Chat = () => {
         }
       } catch {}
     })();
-  }, [setMessages, setDidInitialContext]);
+  }, [setMessages, setDidInitialContext, applyThemePreset]);
 
   const handleNewCastThread = useCallback(() => {
     setDidFlowState("part-identify");
@@ -693,6 +700,7 @@ const Chat = () => {
       startedAt: data.started_at,
       lastActivityAt: data.last_activity_at,
       isProcessed: data.is_processed,
+      themePreset: (data as any).theme_preset || "",
     };
     
     setActiveThread(thread);
@@ -1847,8 +1855,25 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
             {/* Thread indicator for cast mode */}
             {activeThread && (
-              <div className="text-center text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
-                Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
+                <span>
+                  Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+                </span>
+                {didSubMode === "cast" && (
+                  <DidKidsThemeEditor
+                    partName={activeThread.partName}
+                    threadId={activeThread.id}
+                    onThreadThemeSaved={(tid, preset) => {
+                      didThreads.updateThreadTheme(tid, preset);
+                      setActiveThread(prev => prev ? { ...prev, themePreset: preset } : prev);
+                    }}
+                    trigger={
+                      <button className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
+                        🎨
+                      </button>
+                    }
+                  />
+                )}
               </div>
             )}
             {messages.map((message, index) => (
