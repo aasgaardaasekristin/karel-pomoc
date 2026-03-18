@@ -28,8 +28,8 @@ const PRESETS: Record<string, Partial<ThemePrefs>> = {
 
 const DEFAULT_PREFS: ThemePrefs = {
   persona: "default",
-  primary_color: "150 25% 35%",
-  accent_color: "18 45% 65%",
+  primary_color: "154 24% 38%",
+  accent_color: "20 42% 70%",
   background_image_url: "",
   theme_preset: "default",
   dark_mode: false,
