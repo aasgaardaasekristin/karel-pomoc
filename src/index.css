@@ -155,10 +155,10 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     letter-spacing: 0.01em;
     background-color: hsl(var(--background));
     background-image:
-      radial-gradient(circle at 12% 18%, hsl(var(--theme-glow) / 0.42), transparent 0 24%),
-      radial-gradient(circle at 86% 14%, hsl(var(--theme-glow-strong) / 0.32), transparent 0 22%),
-      radial-gradient(circle at 50% 100%, hsl(var(--theme-soft) / 0.45), transparent 0 28%),
-      linear-gradient(180deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 42%, hsl(var(--theme-soft)) 100%);
+      radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.74), transparent 0 34%),
+      radial-gradient(circle at 88% 12%, hsl(var(--theme-glow-strong) / 0.58), transparent 0 30%),
+      radial-gradient(circle at 50% 110%, hsl(var(--theme-soft) / 0.84), transparent 0 42%),
+      linear-gradient(160deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 48%, hsl(var(--theme-soft)) 100%);
     background-attachment: fixed;
   }
 
