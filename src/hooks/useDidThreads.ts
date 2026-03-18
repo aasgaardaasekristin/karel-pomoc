@@ -31,6 +31,7 @@ const rowToThread = (row: any): DidThread | null => {
     startedAt: row.started_at,
     lastActivityAt: row.last_activity_at,
     isProcessed: row.is_processed,
+    themePreset: row.theme_preset || "",
   };
 };
 
