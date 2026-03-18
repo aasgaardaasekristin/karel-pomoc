@@ -2047,31 +2047,37 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       <header className="border-b border-border/70 bg-card/36 backdrop-blur-md sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
-            <Button variant="ghost" size="sm" onClick={() => {
-              // Research: if inside a thread or new-topic, go back to thread list first
-              if (hubSection === "research" && researchFlowState !== "thread-list") {
-                if (activeResearchThread && messages.length >= 2) {
-                  researchThreads.updateMessages(activeResearchThread.id, messages);
+            <Button
+              variant="ghost"
+              size="sm"
+              data-swipe-back="true"
+              onClick={() => {
+                // Research: if inside a thread or new-topic, go back to thread list first
+                if (hubSection === "research" && researchFlowState !== "thread-list") {
+                  if (activeResearchThread && messages.length >= 2) {
+                    researchThreads.updateMessages(activeResearchThread.id, messages);
+                  }
+                  setActiveResearchThread(null);
+                  setMessages([]);
+                  setResearchFlowState("thread-list");
+                  researchThreads.fetchThreads();
+                  return;
                 }
-                setActiveResearchThread(null);
-                setMessages([]);
-                setResearchFlowState("thread-list");
-                researchThreads.fetchThreads();
-                return;
-              }
-              // DID: if not at entry, go back one level
-              if (hubSection === "did" && didFlowState !== "entry") {
-                handleDidBackHierarchical();
-                return;
-              }
-              // Hana: hierarchical back
-              if (hubSection === "hana") {
-                const back = getHanaBackAction();
-                back.action();
-                return;
-              }
-              navigate("/hub");
-            }} className="h-8 px-2 shrink-0">
+                // DID: if not at entry, go back one level
+                if (hubSection === "did" && didFlowState !== "entry") {
+                  handleDidBackHierarchical();
+                  return;
+                }
+                // Hana: hierarchical back
+                if (hubSection === "hana") {
+                  const back = getHanaBackAction();
+                  back.action();
+                  return;
+                }
+                navigate("/hub");
+              }}
+              className="h-8 px-2 shrink-0"
+            >
               {hubSection === "hana"
                 ? getHanaBackAction().label
                 : (hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry")

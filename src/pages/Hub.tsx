@@ -83,7 +83,7 @@ const Hub = () => {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="max-w-sm w-full">
           <div className="flex justify-center mb-6">
-            <Button variant="ghost" size="sm" onClick={() => { setShowPinEntry(false); setPin(""); setPinError(false); }}>
+            <Button variant="ghost" size="sm" data-swipe-back="true" onClick={() => { setShowPinEntry(false); setPin(""); setPinError(false); }}>
               <ArrowLeft className="w-4 h-4 mr-1" />
               Zpět
             </Button>
