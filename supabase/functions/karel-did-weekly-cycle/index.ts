@@ -281,7 +281,8 @@ serve(async (req) => {
       });
     }
 
-    // Prevent reruns within 6 hours of a completed weekly cycle (both cron AND manual)
+    // Prevent reruns within 6 hours only for automatic cron runs.
+    // Manual runs with force=true must be allowed anytime after explicit button press.
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: recentCompleted } = await sb
       .from("did_update_cycles")
@@ -293,7 +294,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    if (recentCompleted) {
+    if (recentCompleted && isCronCall && !forceRun) {
       return new Response(JSON.stringify({
         success: true,
         skipped: true,
