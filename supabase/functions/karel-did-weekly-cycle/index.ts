@@ -539,6 +539,7 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
       folderId,
       centrumFolderId,
       activitySummary,
+      registrySummary,
       dailyReportsSummary,
       weekConversations,
       researchSummary,
