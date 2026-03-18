@@ -50,7 +50,7 @@ const parseOverviewStream = async (response: Response): Promise<string> => {
   return text.trim();
 };
 
-const DidSystemOverview = ({ refreshTrigger }: Props) => {
+const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
   const [overview, setOverview] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
