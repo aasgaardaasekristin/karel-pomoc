@@ -65,9 +65,35 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
 }
 
 let nonDirectPartNameVariantsForSanitizer: string[] = [];
+let forcedGreetingForSanitizer = "";
+let suppressDmytriAliasMentions = false;
+let canonicalDmytriNameForSanitizer: string | null = null;
+let registryNamesForSanitizer: string[] = [];
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildPragueGreeting(now = new Date()): string {
+  const formatter = new Intl.DateTimeFormat("cs-CZ", {
+    timeZone: "Europe/Prague",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(now)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
+
+  return `Ahoj, Haničko a Káťo! ${parts.weekday} ${parts.day}. ${parts.month} ${parts.year}, ${parts.hour}:${parts.minute}.`;
 }
 
 function sanitizePerspectiveLanguage(text: string, nonDirectPartNames: string[]): string {
@@ -84,8 +110,75 @@ function sanitizePerspectiveLanguage(text: string, nonDirectPartNames: string[])
   return sanitized;
 }
 
+function canonicalizeDmytriAliases(text: string): string {
+  if (!canonicalDmytriNameForSanitizer) return text;
+  return text.replace(/\b(?:Dymi|Dymytri|Dymitri)\b/gi, canonicalDmytriNameForSanitizer);
+}
+
+function lineMentionsRegistryPart(line: string): boolean {
+  const normalizedLine = line.toLowerCase();
+  return registryNamesForSanitizer.some((name) => name && normalizedLine.includes(name.toLowerCase()));
+}
+
+function isForbiddenOverviewLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+
+  const privatePatterns = [
+    /countertransference/i,
+    /emoční\s+vazb/i,
+    /citov\w*\s+vazb/i,
+    /profil\w*/i,
+    /monitor\w*/i,
+    /den[ií]k\s+du[sš][ií]/i,
+    /tajn\w*/i,
+    /utajen\w*/i,
+    /s[aá]m\s+pro\s+sebe/i,
+    /vlastn[ií]\s+potřeb/i,
+    /pokračuji\s+na/i,
+    /pokračuju\s+na/i,
+    /emoční\s+map/i,
+    /citov\w*\s+map/i,
+    /vazb[aá]m?\s+k/i,
+  ];
+
+  const hiddenPartPatterns = [
+    /žádná z dalších dříve aktivních částí/i,
+    /bez přímé aktivity ze strany částí/i,
+    /bez přímé komunikace jakékoli části/i,
+    /doplň informace/i,
+    /informuj mě/i,
+    /check-?in/i,
+  ];
+
+  if (privatePatterns.some((pattern) => pattern.test(trimmed))) return true;
+  if (hiddenPartPatterns.some((pattern) => pattern.test(trimmed))) return true;
+  if (suppressDmytriAliasMentions && /\b(?:dymi(?:ho|mu|m)?|dymytri(?:ho|mu|m)?|dmytri(?:ho|mu|m)?)\b/i.test(trimmed)) return true;
+  if (/Dnes doporučuji:/i.test(trimmed)) return false;
+  if (lineMentionsRegistryPart(trimmed) && /doporučuji|úkol|zaměřit|věnuj|navrhni|prober|zajistit|informuj|doplň/i.test(trimmed)) return true;
+
+  return false;
+}
+
+function removeForbiddenOverviewContent(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !isForbiddenOverviewLine(line))
+    .join("\n");
+}
+
+function enforceGreeting(text: string): string {
+  const stripped = text
+    .trim()
+    .replace(/^(?:Ahoj|Dobré\s+ráno|Dobrý\s+den|Haničko|Miláčku)[^.!?\n]*(?:[.!?])\s*/i, "")
+    .replace(/^(?:pondělí|úterý|středa|čtvrtek|pátek|sobota|neděle)\s+\d{1,2}\.[^\n]*(?:\n|$)/i, "")
+    .trim();
+
+  return forcedGreetingForSanitizer ? `${forcedGreetingForSanitizer}\n\n${stripped}`.trim() : stripped;
+}
+
 function sanitizeOverviewText(text: string): string {
-  return sanitizePerspectiveLanguage(
+  const sanitized = sanitizePerspectiveLanguage(
     text
       .replace(/\[(REG|ÚKOL|SRC|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
       .replace(/^(\s*)\*\s+/gm, "$1– ")
@@ -93,12 +186,10 @@ function sanitizeOverviewText(text: string): string {
       .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
       .replace(/\bHano\b/gi, "Haničko")
       .replace(/\b(redistribuc(e|i|í)|integra(c|č)e poznatk(ů|u)|situační cache|stav systému podle registru)\b/gi, "")
-      // Strip hallucinated stability/health scores
       .replace(/stabilit(a|y|u|ou)\s*:?\s*\d+\s*\/\s*\d+/gi, "")
       .replace(/\d+\s*\/\s*10/g, "")
       .replace(/emoční intenzit(a|y|u)\s*:?\s*\d+/gi, "")
       .replace(/zdraví karty\s*:?\s*\d+\s*%?/gi, "")
-      // Strip clinical jargon the model keeps injecting
       .replace(/\b(akutn(í|ě|ího)\s+(distres|přetížen|stres))/gi, "")
       .replace(/\b(dekompenzac(e|i|í))\b/gi, "")
       .replace(/\b(somatiz(ace|uje|oval))\b/gi, "")
@@ -106,56 +197,70 @@ function sanitizeOverviewText(text: string): string {
       .replace(/\n{3,}/g, "\n\n"),
     nonDirectPartNameVariantsForSanitizer
   );
+
+  return enforceGreeting(removeForbiddenOverviewContent(canonicalizeDmytriAliases(sanitized)))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
   if (!stream) return null;
 
-  const reader = stream.getReader();
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      const reader = stream.getReader();
       let buffer = "";
       let rawAssistantText = "";
-      let emittedSanitizedText = "";
 
-      const flushLine = (line: string) => {
-        if (line.startsWith("data: ")) {
-          const payload = line.slice(6).trim();
-          if (payload && payload !== "[DONE]") {
-            try {
-              const parsed = JSON.parse(payload);
-              const content = parsed?.choices?.[0]?.delta?.content;
-              if (typeof content === "string") {
-                rawAssistantText += content;
-                const fullySanitizedText = sanitizeOverviewText(rawAssistantText);
-                const nextSanitizedChunk = fullySanitizedText.slice(emittedSanitizedText.length);
-                emittedSanitizedText = fullySanitizedText;
-                parsed.choices[0].delta.content = nextSanitizedChunk;
-              }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
-              return;
-            } catch {
-              // fall through and pass line as-is
-            }
-          }
+      const handleLine = (line: string) => {
+        if (!line.startsWith("data: ")) return;
+        const payload = line.slice(6).trim();
+        if (!payload || payload === "[DONE]") return;
+
+        try {
+          const parsed = JSON.parse(payload);
+          const content = parsed?.choices?.[0]?.delta?.content;
+          if (typeof content === "string") rawAssistantText += content;
+        } catch {
+          // ignore malformed chunks
         }
-        controller.enqueue(encoder.encode(`${line}\n`));
       };
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-        for (const line of lines) flushLine(line);
+        for (const line of lines) handleLine(line);
       }
 
-      if (buffer.length > 0) flushLine(buffer);
+      if (buffer) handleLine(buffer);
+
+      const sanitized = sanitizeOverviewText(rawAssistantText);
+      const payload = {
+        id: `overview-${Date.now()}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: "google/gemini-2.5-flash",
+        provider: "Google",
+        choices: [{ index: 0, delta: { content: sanitized, role: "assistant" }, finish_reason: null, native_finish_reason: null }],
+      };
+      const donePayload = {
+        id: `overview-${Date.now()}-done`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: "google/gemini-2.5-flash",
+        provider: "Google",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop", native_finish_reason: "stop" }],
+      };
+
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
   });
@@ -170,16 +275,11 @@ serve(async (req) => {
     const userId = authResult.user.id;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
-    const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // ── 1. Skip Drive reads entirely — overview works only from DB data ──
-    // Reading Drive docs caused latency and fed hallucination with clinical card content.
-
-    // ── 2. DB: registry + tasks + více zdrojů aktivit (parallel) ──
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -200,7 +300,7 @@ serve(async (req) => {
         .order("last_seen_at", { ascending: false }),
       sb
         .from("did_therapist_tasks")
-        .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note")
+        .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, category, note, source_agreement")
         .eq("user_id", userId)
         .in("status", ["pending", "active", "in_progress"])
         .order("created_at", { ascending: false })
@@ -276,9 +376,8 @@ serve(async (req) => {
         .filter((v: string) => typeof v === "string" && v.trim().length > 0);
     };
 
-    // Hardcoded aliases for known synonyms
     const knownAliases: Record<string, string[]> = {
-      "dmytri": ["dymi", "dymytri", "dmytri"],
+      dmytri: ["dymi", "dymytri", "dmytri"],
     };
 
     const partAliasMap = (registry || []).map((r: any) => {
@@ -293,6 +392,12 @@ serve(async (req) => {
       };
     });
 
+    const registryPartKeys = new Set(partAliasMap.map((part) => part.key).filter(Boolean));
+    const dmytriEntry = partAliasMap.find((part) => part.key === "dmytri");
+    suppressDmytriAliasMentions = !dmytriEntry;
+    canonicalDmytriNameForSanitizer = dmytriEntry?.display || null;
+    registryNamesForSanitizer = partAliasMap.map((part) => part.display).filter(Boolean);
+
     const detectMentionedPartKeys = (text: string) => {
       const normalizedText = normalizeKey(text);
       if (!normalizedText) return [] as string[];
@@ -305,18 +410,8 @@ serve(async (req) => {
       return [...new Set(hits)];
     };
 
-    // ── Registry whitelist: ONLY parts that exist in did_part_registry ──
-    const registryPartKeys = new Set(
-      (registry || []).map((r: any) => normalizeKey(r.part_name || r.display_name || "")).filter(Boolean)
-    );
-    const activePartNames = (registry || [])
-      .filter((r: any) => r.status === "active" || r.status === "aktivní")
-      .map((r: any) => r.display_name || r.part_name)
-      .filter(Boolean);
-
-    // Filter threads to ONLY include parts that exist in registry
     const filteredLast24hThreads = (last24hThreads || []).filter((t: any) => {
-      if (t?.sub_mode !== "cast") return true; // mamka/kata threads always pass
+      if (t?.sub_mode !== "cast") return true;
       return registryPartKeys.has(normalizeKey(t.part_name || ""));
     });
     const filteredRecentThreads = (recentThreads || []).filter((t: any) => {
@@ -351,7 +446,6 @@ serve(async (req) => {
           }
         }
       }
-      // Only metadata — NEVER raw message content to protect privacy
       for (const [key, count] of mentionCounts) {
         const display = partAliasMap.find((p) => p.key === key)?.display || key;
         crossModeMentions.push(`${sourceLabel}/${speakerLabel}: zmínka o ${display} (${count}×)`);
@@ -370,8 +464,8 @@ serve(async (req) => {
       .sort((a, b) => b.length - a.length);
 
     nonDirectPartNameVariantsForSanitizer = [...new Set(nonDirectPartNameVariantsForSanitizer)];
+    forcedGreetingForSanitizer = buildPragueGreeting();
 
-    // ── 2a. Formát snapshotu částí bez technického balastu ──
     let partsSnapshotBlock = "";
     if (registry && registry.length > 0) {
       for (const r of registry) {
@@ -397,7 +491,27 @@ serve(async (req) => {
       }
     }
 
-    // ── 2b. Úkoly: deduplikace + zkrácení ──
+    const taskMentionsPart = (task: any) => {
+      const combined = [task?.task, task?.note].filter(Boolean).join(" ").toLowerCase();
+      return registryNamesForSanitizer.some((name) => name && combined.includes(name.toLowerCase()));
+    };
+
+    const isPrivateTask = (task: any) => {
+      const combined = [task?.task, task?.note, task?.source_agreement].filter(Boolean).join(" ").toLowerCase();
+      return [
+        /countertransference/i,
+        /emoční\s+vazb/i,
+        /citov\w*\s+vazb/i,
+        /profil\w*/i,
+        /monitor\w*/i,
+        /tajn\w*/i,
+        /utajen\w*/i,
+        /s[aá]m\s+pro\s+sebe/i,
+        /vlastn[ií]\s+potřeb/i,
+        /den[ií]k\s+du[sš][ií]/i,
+      ].some((pattern) => pattern.test(combined)) || taskMentionsPart(task);
+    };
+
     const priorityWeight = (priority: string | null) => {
       const p = (priority || "normal").toLowerCase();
       if (p === "urgent") return 4;
@@ -407,11 +521,13 @@ serve(async (req) => {
       return 0;
     };
 
-    const sortedTasks = [...(pendingTasks || [])].sort((a: any, b: any) => {
-      const byPriority = priorityWeight(b.priority) - priorityWeight(a.priority);
-      if (byPriority !== 0) return byPriority;
-      return String(a.due_date || "").localeCompare(String(b.due_date || ""));
-    });
+    const sortedTasks = [...(pendingTasks || [])]
+      .filter((task: any) => !isPrivateTask(task))
+      .sort((a: any, b: any) => {
+        const byPriority = priorityWeight(b.priority) - priorityWeight(a.priority);
+        if (byPriority !== 0) return byPriority;
+        return String(a.due_date || "").localeCompare(String(b.due_date || ""));
+      });
 
     const seenTaskKeys = new Set<string>();
     const uniqueTasks: any[] = [];
@@ -428,11 +544,9 @@ serve(async (req) => {
     let tasksBlock = "";
     for (const t of uniqueTasks) {
       const due = t.due_date ? `, termín ${t.due_date}` : "";
-      const note = t.note ? ` — ${String(t.note).slice(0, 90)}` : "";
-      tasksBlock += `\n- ${String(t.task).slice(0, 180)} (pro ${t.assigned_to || "both"}${due})${note}`;
+      tasksBlock += `\n- ${String(t.task).slice(0, 180)} (pro ${t.assigned_to || "both"}${due})`;
     }
 
-    // ── 2c. Kontext vláken + cross-mode zmínek ──
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       const speaker = t.sub_mode === "cast"
@@ -443,14 +557,11 @@ serve(async (req) => {
             ? "Káťa"
             : "terapeut";
       const userMsgCount = msgs.filter((m: any) => m?.role === "user").length;
-      // Only metadata — NEVER raw message content in overview to protect privacy
       return `\n${t.part_name} (${speaker}, ${t.last_activity_at}, ${userMsgCount} zpráv)`;
     };
 
     let threadSummary24h = "";
     let therapistSummary24h = "";
-    let threadSummaryWeek = "";
-    let therapistSummaryWeek = "";
 
     if (filteredLast24hThreads) {
       for (const t of filteredLast24hThreads) {
@@ -463,23 +574,8 @@ serve(async (req) => {
       }
     }
 
-    if (filteredRecentThreads) {
-      for (const t of filteredRecentThreads) {
-        const entry = formatThreadEntry(t);
-        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
-          therapistSummaryWeek += `${entry}\n`;
-        } else {
-          threadSummaryWeek += `${entry}\n`;
-        }
-      }
-    }
-
     const crossModeSummary24h = crossModeMentions.slice(0, 24).map((m) => `- ${m}`).join("\n");
 
-    // ── 2d. Skip reading full cards — they cause hallucination of clinical interpretations ──
-    // The overview should only work with actual conversation data from threads, not card content.
-
-    // ── 2e. Cycles metadata ──
     let cycleInfo = "";
     if (cycles) {
       for (const c of cycles) {
@@ -487,45 +583,7 @@ serve(async (req) => {
       }
     }
 
-    // ── 3. Optional Perplexity tips (jen pokud opravdu existují) ──
-    let perplexityTips = "";
-    if (PERPLEXITY_API_KEY && activePartNames.length > 0) {
-      try {
-        const searchQuery = `terapeutické přístupy pro práci s dětskými částmi DID: ${activePartNames.slice(0, 5).join(", ")}`;
-        const pxRes = await fetch("https://api.perplexity.ai/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "sonar-pro",
-            messages: [
-              {
-                role: "system",
-                content: "Vrať 2-3 stručné, praktické terapeutické tipy v češtině. Bez omáčky, bez disclaimerů.",
-              },
-              { role: "user", content: searchQuery },
-            ],
-            search_recency_filter: "year",
-          }),
-        });
-        if (pxRes.ok) {
-          const pxData = await pxRes.json();
-          perplexityTips = (pxData.choices?.[0]?.message?.content || "").trim();
-        }
-      } catch (e) {
-        console.warn("Perplexity search failed:", e);
-      }
-    }
-
-    // ── 4. Build greeting ──
-    const pragueNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
-    const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
-    const dayName = dayNames[pragueNow.getDay()];
-    const hour = String(pragueNow.getHours()).padStart(2, "0");
-    const minute = String(pragueNow.getMinutes()).padStart(2, "0");
-    const formattedDate = `${dayName} ${pragueNow.getDate()}. ${pragueNow.toLocaleDateString("cs-CZ", { month: "long", year: "numeric", timeZone: "Europe/Prague" })}, ${hour}:${minute}`;
-    const chosenGreeting = `Ahoj, Haničko a Káťo! ${formattedDate}.`;
-
-    // ── 5. Přehled: přirozený styl bez technických tagů ──
+    const chosenGreeting = forcedGreetingForSanitizer;
     const registryNames = (registry || []).map((r: any) => r.display_name || r.part_name).filter(Boolean);
     const whitelistLine = registryNames.length > 0
       ? `POVOLENÉ ČÁSTI (WHITELIST): ${registryNames.join(", ")}. NESMÍŠ zmínit žádnou jinou část ani vymyslet novou.`
@@ -550,6 +608,10 @@ ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 6) NIKDY nepopisuj CO PŘESNĚ část řekla – pouze ŽE komunikovala a jaké TÉMA (abstraktně: "mluvil o pocitech bezpečí", NE citace).
 7) Části bez aktivity za 24h NEZMIŇUJ VŮBEC, nebo max jednou větou.
 8) MAXIMÁLNÍ DÉLKA: 250 slov celkem.
+9) NIKDY nepiš o interní profilaci terapeutek, emočních/citových vazbách, countertransference, utajeném monitoringu ani o tom, co si Karel nechává pro sebe.
+10) Pokud část Dmytri/Dymi není v registru, NESMÍŠ ji zmínit ani jako hypotézu.
+11) Úkoly s neveřejným obsahem vynech – briefing smí obsahovat jen bezpečné veřejné instrukce pro terapeutky.
+12) NEUVÁDĚJ doporučení ani úkoly navázané na konkrétní DID části; briefing smí vést terapeutky jen obecně a provozně.
 
 ⚠️ KRITICKÉ PRAVIDLO – PERSPEKTIVA AKTIVITY:
 - "PŘÍMÁ AKTIVITA" = část SAMA mluvila s Karlem v režimu DID (sub_mode=cast). Piš: "[jméno] komunikoval/a..."
@@ -561,18 +623,12 @@ OSLOVENÍ:
 - Haničku oslovuj "Haničko" nebo "miláčku" (partnerský tón).
 - Káťu oslovuj "Káťo" (kolegiální, mentorský tón).
 - Začni pozdravem oběma.
+- PRVNÍ VĚTA MUSÍ BÝT DOSLOVA: "${chosenGreeting}"
 
 CO MÁŠ DĚLAT:
 - 1 odstavec: PROVOZNÍ PŘEHLED – kdo PŘÍMO komunikoval, o kom se MLUVILO (rozlišuj!), celkový dojem ze systému.
-- 1 odstavec: STAV ÚKOLŮ – co je rozpracované, co má termín, co je zpožděné.
-- "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ (kdo má co udělat, proč).
-
-PŘÍKLAD SPRÁVNÉHO TÓNU:
-"Haničko, miláčku, Káťo – dobré ráno! Včera přímo komunikoval Arthur a Tundrupek. Arthur se věnoval tématu bezpečí, Tundrupek pracoval na důvěře. Hanka navíc mluvila o Bélovi a Aničce – zmínila je v osobním rozhovoru, ale sami aktivní nebyli. Celkově klidný den."
-
-PŘÍKLAD ŠPATNÉHO TÓNU (ZAKÁZÁNO):
-"Včera byl aktivní Bélo, Anička, Bendík..." – ŠPATNĚ pokud tyto části SAMY nekomunikovaly, ale jen o nich někdo mluvil!
-"Hana popsala svou citovou vazbu k Tundrupkovi jako 'deťátko'..." – ZAKÁZÁNO, soukromý obsah terapie!
+- 1 odstavec: STAV ÚKOLŮ – jen bezpečné obecné provozní body bez neveřejných dedukcí a bez jmen částí.
+- "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ, ale pouze obecné provozní kroky bez jmen DID částí.
 
 STRUKTURA:
 "${chosenGreeting}"
@@ -595,9 +651,11 @@ ${crossModeSummary24h || "(žádné zmínky z jiných režimů)"}
 ${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
 
 === AKTIVNÍ ÚKOLY ===
-${tasksBlock || "(bez úkolů)"}
+${tasksBlock || "(bez veřejných úkolů pro briefing)"}
 
-${perplexityTips ? `=== TERAPEUTICKÉ TIPY ===\n${perplexityTips}\n` : ""}`;
+=== POSLEDNÍ CYKLY ===
+${cycleInfo || "(bez dokončeného cyklu)"}`;
+
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -610,7 +668,7 @@ ${perplexityTips ? `=== TERAPEUTICKÉ TIPY ===\n${perplexityTips}\n` : ""}`;
           {
             role: "system",
             content:
-              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ.`
+              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. NIKDY nedávej úkoly navázané na konkrétní DID části. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.`
           },
           { role: "user", content: synthesisPrompt },
         ],
