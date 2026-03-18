@@ -13,6 +13,8 @@ export interface ThemePrefs {
   chat_bubble_style: string;
   compact_mode: boolean;
   animations_enabled: boolean;
+  font_color: string;
+  font_family: string;
 }
 
 const PRESETS: Record<string, Partial<ThemePrefs>> = {
