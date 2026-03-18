@@ -847,7 +847,49 @@ ${perplexityContext}`,
             cardsUpdated.push("06_Strategicky_Vyhled (vytvořen)");
             console.log(`[weekly] ✅ Strategic outlook created`);
           }
-        }
+
+          // ═══ Sync strategic outlook to did_system_profile DB table ═══
+          try {
+            // Parse goals from the strategic section using AI-structured format
+            const extractGoals = (section: string, marker: string): string[] => {
+              const match = section.match(new RegExp(`${marker}[\\s\\S]*?(?=SEKCE|$)`, 'i'));
+              if (!match) return [];
+              return match[0].split('\n')
+                .map(l => l.replace(/^[\s\-•▸►]+/, '').trim())
+                .filter(l => l.length > 5 && !l.startsWith('SEKCE') && !l.startsWith(marker));
+            };
+
+            const shortTermGoals = extractGoals(strategicSection, 'Krátkodob');
+            const midTermGoals = extractGoals(strategicSection, 'Středněd');
+            const longTermGoals = extractGoals(strategicSection, 'Dlouhodob');
+            const priorities = extractGoals(strategicSection, 'Priori');
+            const risks = extractGoals(strategicSection, 'Rizik');
+
+            // Upsert into did_system_profile
+            const { data: existing } = await sb.from("did_system_profile").select("id").eq("user_id", userId).maybeSingle();
+            const profileData = {
+              goals_short_term: shortTermGoals.length > 0 ? shortTermGoals : undefined,
+              goals_mid_term: midTermGoals.length > 0 ? midTermGoals : undefined,
+              goals_long_term: longTermGoals.length > 0 ? longTermGoals : undefined,
+              current_priorities: priorities.length > 0 ? priorities : undefined,
+              risk_factors: risks.length > 0 ? risks : undefined,
+              karel_master_analysis: strategicSection.slice(0, 5000),
+              last_drive_sync: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            // Remove undefined fields
+            const cleanData = Object.fromEntries(Object.entries(profileData).filter(([, v]) => v !== undefined));
+
+            if (existing) {
+              await sb.from("did_system_profile").update(cleanData).eq("id", existing.id);
+              console.log(`[weekly] ✅ did_system_profile updated (goals: ${shortTermGoals.length}/${midTermGoals.length}/${longTermGoals.length})`);
+            } else {
+              await sb.from("did_system_profile").insert({ user_id: userId, ...cleanData });
+              console.log(`[weekly] ✅ did_system_profile created (goals: ${shortTermGoals.length}/${midTermGoals.length}/${longTermGoals.length})`);
+            }
+          } catch (profileErr) {
+            console.warn("[weekly] did_system_profile sync error:", profileErr);
+          }
 
         // ═══ Weekly report: append to 06_Strategicky_Vyhled (NO standalone files) ═══
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
