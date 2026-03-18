@@ -3944,38 +3944,39 @@ PRAVIDLA SOUKROMÍ (KRITICKÉ):
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash-lite",
                 messages: [
-                  { role: "system", content: `Jsi Karel. Vygeneruj denní report pro Káťu (druhý terapeut, Hančina dcera). PROFESIONÁLNÍ tón, tyká jí.
+                  { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu. Vygeneruj denní briefing pro Káťu. Profesionální tón.
 Formát HTML emailu. Struktura:
 
-<h2>Dobré odpoledne Káťo,</h2>
+<h2>Denní briefing pro Káťu</h2>
+<p>Datum: ${new Date().toLocaleDateString("cs-CZ")} | Vedoucí: Karel</p>
+
 <h3>PŘEHLED DNE:</h3>
-Pouze části relevantní pro Kátinu roli (socializace, komunikace s kluky, škola):
-▸ Jméno části - Stav, relevantní pro Káťu, návrh
+Pouze části relevantní pro Kátinu roli:
+▸ Jméno části - Stav, relevantní info, návrh
+POZOR: Rozlišuj PŘÍMOU AKTIVITU části od pouhé ZMÍNKY v terapeutickém rozhovoru!
+NIKDY nezadávej úkoly typu "pracuj s X" pokud X je dormantní/spící!
 
 <h3>⚠️ UPOZORNĚNÍ:</h3> (jen kritická)
 
-<h3>📞 DNEŠNÍ MOST:</h3>
-"Dnes by stálo za to probrat s Hankou: [téma]"
+<h3>📞 KOORDINACE S HANKOU:</h3>
+Co je potřeba probrat s Hankou
 
-<h3>📋 OPERATIVNÍ PLÁN – KLÍČOVÉ BODY PRO KÁŤU:</h3>
-Shrň 4-6 bodů relevantních pro Kátinu roli:
-▸ Konkrétní úkoly pro Káťu
+<h3>📋 ÚKOLY PRO KÁŤU:</h3>
+▸ Konkrétní, splnitelné úkoly
 ▸ S jakými fragmenty pracovat a jak
-▸ Aktuální doporučení
 
 <h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
-▸ Co Káťa splnila (pochvala)
-▸ Co zbývá (přímé otázky: "Káťo, jak jsi pokročila s [úkol]?")
+▸ Co Káťa splnila
+▸ Co zbývá
 
 Podpis: "Karel"
 
-DŮLEŽITÉ: NEPOUŽÍVEJ intimní tón. Pouze profesionální respekt. Nesdílej Hančiny osobní informace.
-ADAPTIVNÍ STYL: Přizpůsob tón na základě motivačního profilu. Pokud je styl "praise" → více pochval. Pokud "deadline" → více termínů. Pokud "instruction" → detailní kroky.
+Tón: profesionální, věcný. ŽÁDNÝ intimní tón. Nesdílej Hančiny osobní informace.
+NIKDY nezmiňuj profilaci ani monitoring terapeutek.
 
 PRAVIDLA SOUKROMÍ (KRITICKÉ):
-- NIKDY necituj doslovně výroky z konverzací ani parafráze přímých výroků
-- Místo citátů piš OPERATIVNÍ INSTRUKCE: "Sledovat vazbu k [část]", "Ověřit pokrok v [oblast]"
-- Citové vazby popisuj analyticky: "pozitivní terapeutický vztah", "empatie k [část]", NE přímé citáty
+- NIKDY necituj doslovně výroky z konverzací
+- Místo citátů piš OPERATIVNÍ INSTRUKCE
 - E-mail je OPERATIVNÍ DOKUMENT, ne přepis konverzace` },
                   { role: "user", content: `Dnešní data:\n${finalReportText}\n\nAI doporučení:\n${aiReportText}${therapeuticPlanContent ? `\n\n═══ OPERATIVNÍ PLÁN (aktuální verze) ═══\n${therapeuticPlanContent}` : ""}${accountabilityBlock ? `\n\n═══ ACCOUNTABILITY ═══\n${accountabilityBlock}` : ""}\n\n═══ MOTIVAČNÍ PROFIL KÁTI ═══\n${formatProfileContext(kataProfile)}` },
                 ],
