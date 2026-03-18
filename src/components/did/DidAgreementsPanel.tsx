@@ -74,17 +74,19 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
 
   const handleRunWeekly = async () => {
     setRunningWeekly(true);
-    toast.info("Týdenní cyklus jsem spustil. Průběh teď budu průběžně obnovovat.");
+    toast.info("Týdenní cyklus jsem spustil. Běžím bez blokace a průběh budu obnovovat.");
 
     try {
       const headers = await getAuthHeaders();
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 180000);
 
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`,
-        { method: "POST", headers, body: JSON.stringify({ source: "manual" }), signal: controller.signal }
-      );
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ source: "manual", force: true }),
+        signal: controller.signal,
+      });
 
       window.clearTimeout(timeout);
 
@@ -101,17 +103,13 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
       }
 
       if (result?.skipped && result?.reason === "already_running") {
-        toast.info("Týdenní cyklus už běží na pozadí.");
-      } else if (result?.skipped && result?.reason === "already_completed_recently") {
-        toast.info("Týdenní cyklus už proběhl před chvílí, zbytečně ho nespouštím znovu.");
-      } else if (result?.skipped && result?.reason === "not_sunday") {
-        toast.info("Automatické spuštění z cron je povoleno jen v neděli.");
+        toast.info("Jiný týdenní cyklus už právě běží na pozadí.");
       } else {
-        toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result?.cardsUpdated?.length || 0} položek.`);
+        toast.success("Týdenní cyklus byl přijat ke spuštění.");
       }
     } catch (e: any) {
       if (e.name === "AbortError") {
-        toast.info("Týdenní cyklus běží dál na pozadí — nechávám panel průběžně obnovovat.");
+        toast.info("Týdenní cyklus běží dál na pozadí — panel průběžně obnovuji.");
       } else {
         toast.error(e.message || "Chyba při spouštění týdenního cyklu");
       }

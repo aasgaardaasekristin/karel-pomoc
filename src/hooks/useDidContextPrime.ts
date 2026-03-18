@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { getAuthHeaders } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 
 interface DidContextPrimeResult {
@@ -16,42 +16,31 @@ export const useDidContextPrime = () => {
   const [systemState, setSystemState] = useState<string>("NEZNÁMÝ");
   const [activeParts, setActiveParts] = useState<string[]>([]);
   const [isPriming, setIsPriming] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef(0);
 
   const runPrime = useCallback(async (partName?: string, subMode?: string) => {
-    // Abort any in-flight prime
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    requestIdRef.current += 1;
+    const requestId = requestIdRef.current;
 
     setIsPriming(true);
     try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-context-prime`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ partName, subMode }),
-          signal: controller.signal,
-        }
-      );
+      const { data, error } = await supabase.functions.invoke("karel-did-context-prime", {
+        body: { partName, subMode },
+      });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown" }));
-        console.error("[DID context-prime] Error:", err);
-        return null;
-      }
+      if (requestId !== requestIdRef.current) return null;
+      if (error) throw error;
+      if (!data) return null;
 
-      const data: DidContextPrimeResult = await res.json();
-      setPrimeCache(data.contextBrief);
-      setSystemState(data.systemState);
-      setActiveParts(data.activePartsLast24h || []);
+      const result = data as DidContextPrimeResult;
+      setPrimeCache(result.contextBrief);
+      setSystemState(result.systemState);
+      setActiveParts(result.activePartsLast24h || []);
 
-      console.log(`[DID context-prime] Done: ${data.contextBrief.length} chars, state: ${data.systemState}, parts: ${data.activePartsLast24h?.join(", ")}`);
-      return data;
+      console.log(`[DID context-prime] Done: ${result.contextBrief.length} chars, state: ${result.systemState}, parts: ${result.activePartsLast24h?.join(", ")}`);
+      return result;
     } catch (e: any) {
-      if (e.name === "AbortError") return null;
+      if (requestId !== requestIdRef.current) return null;
       console.error("[DID context-prime] Failed:", e);
       toast({
         title: "Context Prime selhalo",
@@ -60,7 +49,7 @@ export const useDidContextPrime = () => {
       });
       return null;
     } finally {
-      setIsPriming(false);
+      if (requestId === requestIdRef.current) setIsPriming(false);
     }
   }, []);
 
