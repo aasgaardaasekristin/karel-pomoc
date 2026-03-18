@@ -249,9 +249,36 @@ const DidSprava = ({
                 <Pipette className="w-3 h-3" />
                 Vlastní barvy
               </p>
-              <div className="flex gap-3">
+              <div className="flex gap-3 flex-wrap">
                 <ColorPicker label="Hlavní" value={draft.primary_color} onChange={(c) => setDraftPartial({ primary_color: c, theme_preset: "custom" })} />
                 <ColorPicker label="Doplňková" value={draft.accent_color} onChange={(c) => setDraftPartial({ accent_color: c, theme_preset: "custom" })} />
+                {draft.font_color ? (
+                  <ColorPicker label="Písmo" value={draft.font_color} onChange={(c) => setDraftPartial({ font_color: c })} />
+                ) : (
+                  <button onClick={() => setDraftPartial({ font_color: "0 0% 20%" })} className="text-[9px] text-primary self-end hover:underline pb-1">
+                    + barva písma
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-foreground mb-2">Styl písma</p>
+              <div className="grid grid-cols-4 gap-1.5">
+                {([
+                  { value: "default", label: "Výchozí" },
+                  { value: "comic", label: "Hravé" },
+                  { value: "rounded", label: "Kulaté" },
+                  { value: "mono", label: "Kódové" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setDraftPartial({ font_family: opt.value })}
+                    className={`py-1.5 rounded-lg border-2 text-[10px] transition-all ${draft.font_family === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
             </div>
 
