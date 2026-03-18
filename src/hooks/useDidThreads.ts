@@ -26,6 +26,42 @@ const rowToThread = (row: any): DidThread => ({
 export const useDidThreads = () => {
   const [threads, setThreads] = useState<DidThread[]>([]);
   const [loading, setLoading] = useState(false);
+  const lastSubModeRef = { current: undefined as string | undefined };
+  const lastFetchAllRef = { current: undefined as string | undefined };
+
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const channel = supabase
+      .channel("did_threads_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "did_threads" },
+        () => {
+          // Re-fetch using the last known filter
+          if (lastFetchAllRef.current) {
+            supabase
+              .from("did_threads")
+              .select("*")
+              .eq("sub_mode", lastFetchAllRef.current)
+              .order("last_activity_at", { ascending: false })
+              .limit(50)
+              .then(({ data }) => { if (data) setThreads(data.map(rowToThread)); });
+          } else {
+            const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            let q = supabase
+              .from("did_threads")
+              .select("*")
+              .gte("last_activity_at", cutoff)
+              .order("last_activity_at", { ascending: false });
+            if (lastSubModeRef.current) q = q.eq("sub_mode", lastSubModeRef.current);
+            q.then(({ data }) => { if (data) setThreads(data.map(rowToThread)); });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const fetchActiveThreads = useCallback(async (subMode?: string) => {
     setLoading(true);
