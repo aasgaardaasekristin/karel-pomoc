@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Database, Loader2, ListChecks, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AlertTriangle, Loader2, ListChecks, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
@@ -10,12 +9,12 @@ import DidSystemMap from "./DidSystemMap";
 import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
-// DidSessionPrep moved to DidSystemOverview
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidSprava from "./DidSprava";
 
 interface PartActivity {
   name: string;
@@ -39,12 +38,13 @@ interface Props {
   contextDocs?: string;
 }
 
-const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
+const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
-  const [bootstrapProgress, setBootstrapProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [isReformatting, setIsReformatting] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -81,11 +81,7 @@ const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
             messageCount: Array.isArray(thread.messages) ? thread.messages.length : 0,
           });
 
-          partRows.push({
-            name: thread.part_name,
-            lastSeen,
-            status,
-          });
+          partRows.push({ name: thread.part_name, lastSeen, status });
         }
       }
 
@@ -100,30 +96,18 @@ const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
     }
   }, []);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData, refreshTrigger]);
+  useEffect(() => { loadDashboardData(); }, [loadDashboardData, refreshTrigger]);
 
   const runDidBootstrap = useCallback(async () => {
     setIsBootstrapping(true);
-    setBootstrapProgress({ current: 0, total: 1, currentName: "Spouštím bootstrap" });
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ phase: "scan" }),
-        }
+        { method: "POST", headers, body: JSON.stringify({ phase: "scan" }) }
       );
-
       const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.error || "Bootstrap selhal");
-      }
-
-      setBootstrapProgress({ current: 1, total: 1, currentName: payload?.message || "Hotovo" });
+      if (!response.ok) throw new Error(payload?.error || "Bootstrap selhal");
       toast.success("Bootstrap DID paměti spuštěn");
       setRefreshTrigger((prev) => prev + 1);
     } catch (error: any) {
@@ -134,12 +118,63 @@ const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
     }
   }, []);
 
+  const runHealthAudit = useCallback(async () => {
+    setIsAuditing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-kartoteka-health`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      toast.success(`Audit dokončen: ${data.cardsAudited} karet, ${data.tasksCreated} nových úkolů`);
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (e: any) {
+      toast.error("Audit kartotéky selhal");
+    } finally {
+      setIsAuditing(false);
+    }
+  }, []);
+
+  const runReformat = useCallback(async () => {
+    setIsReformatting(true);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-reformat-cards`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      toast.success(`Přeformátováno: ${data.reformatted || 0} karet`);
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (e: any) {
+      toast.error("Přeformátování selhalo");
+    } finally {
+      setIsReformatting(false);
+    }
+  }, []);
+
   const warningParts = useMemo(() => parts.filter((part) => part.status === "warning"), [parts]);
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
-      <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
+      {/* Správa button at top */}
+      <div className="flex justify-end mb-3">
+        <DidSprava
+          onBootstrap={runDidBootstrap}
+          isBootstrapping={isBootstrapping}
+          onHealthAudit={runHealthAudit}
+          isAuditing={isAuditing}
+          onReformat={runReformat}
+          isReformatting={isReformatting}
+          onManualUpdate={onManualUpdate}
+          isUpdating={isUpdating}
+        />
+      </div>
 
+      <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
 
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">
@@ -182,33 +217,6 @@ const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
 
       <div className="mb-4">
         <DidKartotekaHealth refreshTrigger={refreshTrigger} />
-      </div>
-
-      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-            <Database className="w-3.5 h-3.5 text-primary" />
-            Bootstrap DID paměti
-          </h4>
-          <Button variant="outline" size="sm" onClick={runDidBootstrap} disabled={isBootstrapping} className="h-7 text-[10px] px-3">
-            {isBootstrapping ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Zpracovávám...</> : "Spustit bootstrap"}
-          </Button>
-        </div>
-        <p className="mt-1 text-[10px] text-muted-foreground">Jednorázové nasátí všech karet z Drive do registru částí a sémantické paměti.</p>
-        {bootstrapProgress && (
-          <div className="mt-2">
-            <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>{bootstrapProgress.current}/{bootstrapProgress.total} — {bootstrapProgress.currentName}</span>
-              <span>{Math.round((bootstrapProgress.current / Math.max(1, bootstrapProgress.total)) * 100)}%</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${(bootstrapProgress.current / Math.max(1, bootstrapProgress.total)) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
       {!loading && parts.length > 0 && (
