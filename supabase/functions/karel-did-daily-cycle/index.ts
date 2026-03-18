@@ -3601,13 +3601,28 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
         accountabilityBlock = accountabilityMatch[1].trim();
         console.log(`[daily-cycle] Accountability block found (${accountabilityBlock.length} chars)`);
         
-        // Auto-escalate tasks older than 3 days to high priority
+        // Auto-escalate tasks older than 3 days to high priority + increment escalation_level
         if (pendingTasks && pendingTasks.length > 0) {
           for (const task of pendingTasks) {
             const age = Math.floor((Date.now() - new Date(task.created_at).getTime()) / (1000*60*60*24));
+            const currentLevel = task.escalation_level || 0;
+            const updates: Record<string, any> = {};
+            
             if (age >= 3 && task.priority !== "high") {
-              await sb.from("did_therapist_tasks").update({ priority: "high" }).eq("task", task.task).eq("assigned_to", task.assigned_to);
-              console.log(`[accountability] ⚠️ Escalated task to HIGH: "${task.task}" (${age} days old)`);
+              updates.priority = "high";
+            }
+            // Increment escalation_level based on age thresholds
+            if (age >= 7 && currentLevel < 3) {
+              updates.escalation_level = 3; // Critical
+            } else if (age >= 5 && currentLevel < 2) {
+              updates.escalation_level = 2; // High
+            } else if (age >= 3 && currentLevel < 1) {
+              updates.escalation_level = 1; // Warning
+            }
+            
+            if (Object.keys(updates).length > 0) {
+              await sb.from("did_therapist_tasks").update(updates).eq("id", task.id);
+              console.log(`[accountability] ⚠️ Escalated task "${task.task}" (${age}d): level=${updates.escalation_level ?? currentLevel}, priority=${updates.priority ?? task.priority}`);
             }
           }
         }
