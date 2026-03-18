@@ -27,6 +27,7 @@ const App = () => (
     <TooltipProvider>
       <CrisisSupervisionProvider>
       <ActiveSessionsProvider>
+      <ThemeProvider>
       <ChatProvider>
         <Toaster />
         <Sonner />
