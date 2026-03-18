@@ -505,21 +505,102 @@ const Chat = () => {
     refreshHistory();
   }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
 
-  const handleDidBack = useCallback(() => {
+  // ═══ Hierarchical back navigation for DID ═══
+  // Each state knows exactly one level up:
+  //   chat → thread-list (cast) / therapist-threads (mamka/kata) / terapeut (general/research)
+  //   thread-list → entry
+  //   therapist-threads → terapeut
+  //   pin-entry → terapeut
+  //   part-identify → thread-list
+  //   terapeut → entry
+  //   meeting → terapeut
+  //   live-session → terapeut
+  //   did-kartoteka → live-session
+  //   dashboard → terapeut
+  //   entry → hub
+  const handleDidBackHierarchical = useCallback(() => {
+    // Save current work before navigating
     if (activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
-    } else if (didSubMode && messages.length >= 2) {
+    } else if (didSubMode && messages.length >= 2 && didFlowState === "chat") {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
-    setDidSubMode(null);
-    setDidInitialContext("");
-    setDidDocsLoaded(false);
-    setDidSessionId(null);
-    setActiveThread(null);
-    setMessages([]);
-    setDidFlowState("entry");
+
+    switch (didFlowState) {
+      case "chat": {
+        // From chat, go back to the appropriate list
+        setActiveThread(null);
+        setMessages([]);
+        if (didSubMode === "cast") {
+          setDidFlowState("thread-list");
+          didThreads.fetchActiveThreads("cast");
+        } else if (didSubMode === "mamka" || didSubMode === "kata") {
+          setDidFlowState("therapist-threads");
+          didThreads.fetchAllThreads(didSubMode);
+        } else {
+          // general / research submodes → back to terapeut
+          setDidSubMode(null);
+          setDidFlowState("terapeut");
+        }
+        break;
+      }
+      case "thread-list":
+        // Kluci thread list → back to DID entry
+        setDidSubMode(null);
+        setActiveThread(null);
+        setMessages([]);
+        setDidFlowState("entry");
+        break;
+      case "therapist-threads":
+        // Therapist thread list → back to terapeut dashboard
+        setDidSubMode(null);
+        setActiveThread(null);
+        setMessages([]);
+        setDidFlowState("terapeut");
+        break;
+      case "pin-entry":
+        // PIN entry → back to terapeut
+        setDidSubMode(null);
+        setDidFlowState("terapeut");
+        break;
+      case "part-identify":
+        // Part identify → back to thread list
+        setDidFlowState("thread-list");
+        break;
+      case "terapeut":
+        // Terapeut dashboard → back to DID entry
+        setDidFlowState("entry");
+        break;
+      case "meeting":
+        // Meeting → back to terapeut
+        setMeetingIdFromUrl(null);
+        setDidFlowState("terapeut");
+        break;
+      case "live-session":
+        // Live session → back to terapeut (reset live session state)
+        setDidLiveSession(null);
+        setDidLiveSessionReady(false);
+        setDidLivePartContext("");
+        setDidSubMode(null);
+        setDidFlowState("terapeut");
+        break;
+      case "did-kartoteka":
+        // Kartotéka → back to live-session
+        setDidFlowState("live-session");
+        break;
+      case "loading":
+        // Loading → back to entry (safe fallback)
+        setDidSubMode(null);
+        setDidFlowState("entry");
+        break;
+      case "entry":
+      default:
+        // Entry → back to hub
+        navigate("/hub");
+        break;
+    }
     refreshHistory();
-  }, [didSubMode, messages, didInitialContext, didSessionId, activeThread]);
+  }, [didFlowState, didSubMode, activeThread, messages, didInitialContext, didSessionId, navigate]);
 
   const handleRestoreConversation = useCallback(async (id: string) => {
     const conv = await loadConversation(id);
