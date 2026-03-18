@@ -34,7 +34,7 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
           <MessageCircle className="w-4 h-4" />
-          Aktivní vlákna částí (24h)
+          Aktivní vlákna částí
         </h3>
         <Button variant="outline" size="sm" onClick={onNewThread} className="h-8 text-xs">
           + Nové vlákno

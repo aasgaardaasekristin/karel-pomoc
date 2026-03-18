@@ -286,7 +286,7 @@ This overrides ALL other language instructions.
 
     // Hard runtime truth-guard for DID mode
     if (mode === "childcare") {
-      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu části.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni části že se vzkaz posílá – systém ho odešle automaticky emailem.`;
+      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu části.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni části že se vzkaz posílá – systém ho odešle automaticky emailem.\n- V DID režimu považuj část za AKTIVNÍ pouze tehdy, když sama přímo mluví ve vláknu sub_mode=cast; pouhá zmínka terapeutkou nebo v jiném režimu NENÍ aktivita části.\n- Aliasy Dymi/Dymytri/Dymitri vždy mapuj na jediný kanonický název DMYTRI. Pokud DMYTRI není aktivní v registru, nechovej se k němu jako k aktivní části.\n- Nikdy nevytvářej nové názvy částí z čárek, stavových slov nebo testovacích textů typu „Aktivní“.`;
     }
 
     // ═══ AUTO-PERPLEXITY FOR KATA MODE ═══

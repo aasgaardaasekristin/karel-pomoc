@@ -396,10 +396,12 @@ serve(async (req) => {
 
     const { data: weekThreads } = await sb.from("did_threads")
       .select("part_name, sub_mode, started_at, last_activity_at, messages, part_language")
+      .eq("sub_mode", "cast")
       .gte("started_at", weekAgo);
 
     const { data: monthThreads } = await sb.from("did_threads")
       .select("part_name, sub_mode, started_at, last_activity_at, messages")
+      .eq("sub_mode", "cast")
       .gte("started_at", monthAgo);
 
     // Only fetch metadata from cycles – NO report_summary (may contain stale/deleted data)
@@ -415,20 +417,26 @@ serve(async (req) => {
     // Build activity summaries
     const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string }>();
     for (const t of monthThreads || []) {
-      const key = t.part_name;
-      const existing = activityByPart.get(key) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs" };
-      const msgCount = ((t.messages as any[]) || []).length;
+      const rawName = String(t.part_name || "").trim();
+      const canonicalName = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
+      const hasDirectUserMessage = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
+      if (!canonicalName || !hasDirectUserMessage || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(canonicalName)) continue;
+      const existing = activityByPart.get(canonicalName) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs" };
+      const msgCount = ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
       existing.monthMsgs += msgCount;
       existing.modes.add(t.sub_mode);
       if (!existing.lastSeen || t.last_activity_at > existing.lastSeen) existing.lastSeen = t.last_activity_at;
-      activityByPart.set(key, existing);
+      activityByPart.set(canonicalName, existing);
     }
     for (const t of weekThreads || []) {
-      const key = t.part_name;
-      const existing = activityByPart.get(key) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs" };
-      existing.weekMsgs += ((t.messages as any[]) || []).length;
+      const rawName = String(t.part_name || "").trim();
+      const canonicalName = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
+      const hasDirectUserMessage = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
+      if (!canonicalName || !hasDirectUserMessage || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(canonicalName)) continue;
+      const existing = activityByPart.get(canonicalName) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs" };
+      existing.weekMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
       existing.language = t.part_language || existing.language;
-      activityByPart.set(key, existing);
+      activityByPart.set(canonicalName, existing);
     }
 
     const activitySummary = Array.from(activityByPart.entries())

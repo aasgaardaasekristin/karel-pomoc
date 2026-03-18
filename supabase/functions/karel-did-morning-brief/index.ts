@@ -99,10 +99,11 @@ serve(async (req) => {
     // Motivation profiles
     const { data: profiles } = await supabaseAdmin.from("did_motivation_profiles").select("*");
 
-    // Recent threads (last 24h)
+    // Recent direct part activity (last 24h) — only cast threads with direct user messages
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: recentThreads } = await supabaseAdmin.from("did_threads")
-      .select("part_name, last_activity_at, sub_mode")
+      .select("part_name, last_activity_at, sub_mode, messages")
+      .eq("sub_mode", "cast")
       .gte("last_activity_at", cutoff24h)
       .order("last_activity_at", { ascending: false });
 
@@ -141,9 +142,13 @@ serve(async (req) => {
       return `- [${t.priority}${esc}] ${t.task} (pro: ${t.assigned_to}, H:${t.status_hanka}, K:${t.status_kata}, ${age}d)`;
     }).join("\n");
 
-    const recentActivity = (recentThreads || []).map((t: any) =>
-      `- ${t.part_name} (${t.sub_mode}) — ${new Date(t.last_activity_at).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}`
-    ).join("\n");
+    const recentActivity = (recentThreads || [])
+      .filter((t: any) => Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0))
+      .map((t: any) => {
+        const rawName = String(t.part_name || "").trim();
+        const canonicalName = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
+        return `- ${canonicalName} — ${new Date(t.last_activity_at).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}`;
+      }).join("\n");
 
     const hankaProfile = (profiles || []).find((p: any) => p.therapist === "Hanka");
     const kataProfile = (profiles || []).find((p: any) => p.therapist === "Káťa");
