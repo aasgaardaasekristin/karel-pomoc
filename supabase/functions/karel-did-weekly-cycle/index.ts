@@ -385,28 +385,42 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
     const weekAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [weekThreadsRes, monthThreadsRes, weekCyclesRes, researchRes] = await Promise.all([
-      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages, part_language").eq("sub_mode", "cast").gte("started_at", weekAgo),
-      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages").eq("sub_mode", "cast").gte("started_at", monthAgo),
+    const [weekThreadsRes, monthThreadsRes, weekCyclesRes, researchRes, registryRes] = await Promise.all([
+      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages, part_language").gte("started_at", weekAgo),
+      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages").gte("started_at", monthAgo),
       sb.from("did_update_cycles").select("cycle_type, completed_at, cards_updated").eq("status", "completed").gte("completed_at", weekAgo).order("completed_at", { ascending: true }),
       sb.from("research_threads").select("topic, messages, created_by, last_activity_at").eq("is_deleted", false).gte("last_activity_at", monthAgo),
+      sb.from("did_part_registry").select("part_name, display_name, status, last_seen_at, cluster, role_in_system"),
     ]);
 
     const weekThreads = weekThreadsRes.data || [];
     const monthThreads = monthThreadsRes.data || [];
     const weekCycles = weekCyclesRes.data || [];
     const researchThreads = researchRes.data || [];
+    const partRegistry = registryRes.data || [];
 
-    // Build activity summaries
-    const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string }>();
+    // ── Build CLASSIFIED activity: DIRECT vs MENTION ──
+    // PŘÍMÁ AKTIVITA = sub_mode === "cast" (part speaks directly)
+    // ZMÍNKA = sub_mode !== "cast" (therapist talks ABOUT a part)
+    const directActivityParts = new Set<string>();
+    const mentionedParts = new Set<string>();
+    
+    const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string; isDirect: boolean }>();
+    
     for (const t of monthThreads) {
       const rawName = String(t.part_name || "").trim();
       const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
       const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
       if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
-      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs" };
+      
+      const isCast = t.sub_mode === "cast";
+      if (isCast) directActivityParts.add(cn);
+      else mentionedParts.add(cn);
+      
+      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs", isDirect: isCast };
       existing.monthMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
       existing.modes.add(t.sub_mode);
+      if (isCast) existing.isDirect = true;
       if (!existing.lastSeen || t.last_activity_at > existing.lastSeen) existing.lastSeen = t.last_activity_at;
       activityByPart.set(cn, existing);
     }
@@ -415,23 +429,42 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
       const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
       const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
       if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
-      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs" };
+      
+      const isCast = t.sub_mode === "cast";
+      if (isCast) directActivityParts.add(cn);
+      else mentionedParts.add(cn);
+      
+      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs", isDirect: isCast };
       existing.weekMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
       existing.language = t.part_language || existing.language;
+      if (isCast) existing.isDirect = true;
       activityByPart.set(cn, existing);
     }
 
+    // Build CLASSIFIED activity summary with clear labels
     const activitySummary = Array.from(activityByPart.entries())
-      .map(([name, d]) => `- ${name}: Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`)
+      .map(([name, d]) => {
+        const activityType = d.isDirect ? "PŘÍMÁ AKTIVITA (část mluvila přímo)" : "POUZE ZMÍNKA (terapeut o části hovořil)";
+        return `- ${name}: ${activityType}, Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`;
+      })
       .join("\n");
+
+    // Registry status for sleeping/active classification
+    const registrySummary = partRegistry.map((p: any) => 
+      `- ${p.display_name || p.part_name}: status=${p.status}, cluster=${p.cluster || "?"}, role=${p.role_in_system || "?"}, last_seen=${p.last_seen_at || "nikdy"}`
+    ).join("\n");
 
     const dailyReportsSummary = (weekCycles).filter((c: any) => c.cycle_type === "daily")
       .map((c: any) => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`).join("\n---\n");
 
+    // CLASSIFY conversations: mark each as DIRECT PART SPEECH vs THERAPIST DISCUSSION
     const weekConversations = weekThreads.slice(0, 12).map((t: any) => {
       const msgs = ((t.messages as any[]) || []).slice(-6);
       const isCast = t.sub_mode === "cast";
-      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
+      const contextLabel = isCast 
+        ? `PŘÍMÝ ROZHOVOR S ČÁSTÍ (část ${t.part_name} mluvila přímo s Karlem)` 
+        : `ROZHOVOR TERAPEUTA S KARLEM (terapeut hovořil O části ${t.part_name}, část NEBYLA přítomna)`;
+      return `=== ${t.part_name} | ${contextLabel} | ${t.started_at} ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const researchSummary = researchThreads.slice(0, 8).map((rt: any) => {
