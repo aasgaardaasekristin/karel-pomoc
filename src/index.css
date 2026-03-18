@@ -192,3 +192,33 @@ body.has-bg-image::before {
 .dark body.has-bg-image::before {
   background: hsl(var(--background) / 0.9);
 }
+
+/* Compact mode */
+.compact .chat-message-user,
+.compact .chat-message-assistant {
+  @apply px-3 py-2 text-xs;
+}
+.compact .mode-button {
+  @apply px-3 py-1.5 text-xs;
+}
+
+/* No animations */
+.no-animations *,
+.no-animations *::before,
+.no-animations *::after {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+}
+
+/* Chat bubble styles */
+.chat-bubble-square .chat-message-user,
+.chat-bubble-square .chat-message-assistant {
+  border-radius: 0.375rem !important;
+}
+.chat-bubble-minimal .chat-message-user,
+.chat-bubble-minimal .chat-message-assistant {
+  background: transparent !important;
+  border-left: 3px solid hsl(var(--primary));
+  border-radius: 0 !important;
+  padding-left: 0.75rem;
+}
