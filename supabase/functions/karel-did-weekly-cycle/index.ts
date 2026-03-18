@@ -890,6 +890,7 @@ ${perplexityContext}`,
           } catch (profileErr) {
             console.warn("[weekly] did_system_profile sync error:", profileErr);
           }
+        }
 
         // ═══ Weekly report: append to 06_Strategicky_Vyhled (NO standalone files) ═══
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
