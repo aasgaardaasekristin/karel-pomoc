@@ -188,6 +188,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     if (prefs.compact_mode) root.classList.add("compact"); else root.classList.remove("compact");
     if (prefs.animations_enabled) root.classList.remove("no-animations"); else root.classList.add("no-animations");
 
+    // Chat bubble style
+    document.body.classList.remove("chat-bubble-square", "chat-bubble-minimal");
+    if (prefs.chat_bubble_style === "square") document.body.classList.add("chat-bubble-square");
+    else if (prefs.chat_bubble_style === "minimal") document.body.classList.add("chat-bubble-minimal");
+
     if (prefs.background_image_url) {
       root.style.setProperty("--bg-image", `url(${prefs.background_image_url})`);
       document.body.classList.add("has-bg-image");
