@@ -508,7 +508,7 @@ ${driveContext || "(nedostupné)"}`;
       await supabaseAdmin.from("did_update_cycles").update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        report_summary: truncate(reportText, 10000),
+        report_summary: truncateStr(reportText, 10000),
         cards_updated: cardsUpdated,
       }).eq("id", cycleId);
     }
