@@ -141,12 +141,25 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     @apply border-border;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply text-foreground font-sans;
     font-family: 'DM Sans', system-ui, sans-serif;
     font-size: 14px;
     font-weight: 400;
     letter-spacing: 0.01em;
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(circle at 12% 18%, hsl(var(--theme-glow) / 0.42), transparent 0 24%),
+      radial-gradient(circle at 86% 14%, hsl(var(--theme-glow-strong) / 0.32), transparent 0 22%),
+      radial-gradient(circle at 50% 100%, hsl(var(--theme-soft) / 0.45), transparent 0 28%),
+      linear-gradient(180deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 42%, hsl(var(--theme-soft)) 100%);
+    background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
