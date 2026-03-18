@@ -21,106 +21,118 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 @layer base {
   :root {
     /* Warm, calming palette */
-    --background: 40 33% 98%;
-    --foreground: 30 10% 20%;
+    --background: 42 30% 97%;
+    --foreground: 150 10% 20%;
 
-    --card: 40 30% 97%;
-    --card-foreground: 30 10% 20%;
+    --card: 42 24% 95%;
+    --card-foreground: 150 10% 20%;
 
-    --popover: 40 30% 97%;
-    --popover-foreground: 30 10% 20%;
+    --popover: 42 24% 95%;
+    --popover-foreground: 150 10% 20%;
 
-    /* Sage green - primary, calming */
-    --primary: 150 25% 35%;
-    --primary-foreground: 40 33% 98%;
+    /* Soft sage - primary */
+    --primary: 154 24% 38%;
+    --primary-foreground: 42 35% 98%;
 
-    /* Warm beige - secondary */
-    --secondary: 35 30% 92%;
-    --secondary-foreground: 30 10% 25%;
+    /* Oat / sand */
+    --secondary: 36 24% 90%;
+    --secondary-foreground: 150 10% 24%;
 
     /* Muted warm tones */
-    --muted: 35 20% 94%;
-    --muted-foreground: 30 10% 45%;
+    --muted: 40 18% 92%;
+    --muted-foreground: 150 8% 40%;
 
-    /* Soft terracotta accent */
-    --accent: 18 45% 65%;
-    --accent-foreground: 40 33% 98%;
+    /* Dusty peach accent */
+    --accent: 20 42% 70%;
+    --accent-foreground: 42 35% 98%;
 
-    /* Warm coral for attention */
-    --destructive: 12 70% 55%;
+    --destructive: 12 62% 55%;
     --destructive-foreground: 40 33% 98%;
 
-    --border: 35 20% 88%;
-    --input: 35 20% 88%;
-    --ring: 150 25% 35%;
+    --border: 36 18% 84%;
+    --input: 36 18% 84%;
+    --ring: 154 24% 38%;
 
     --radius: 0.75rem;
 
+    /* Ambient theme layers */
+    --theme-surface: 42 28% 96%;
+    --theme-soft: 38 24% 93%;
+    --theme-glow: 154 30% 88%;
+    --theme-glow-strong: 20 48% 85%;
+    --theme-noise-opacity: 0.035;
+
     /* Chat-specific colors */
-    --chat-user: 35 35% 93%;
-    --chat-assistant: 150 20% 94%;
-    --chat-border: 35 15% 85%;
+    --chat-user: 36 32% 91%;
+    --chat-assistant: 154 20% 92%;
+    --chat-border: 36 14% 82%;
     
     /* Mode button colors */
-    --mode-debrief: 150 30% 40%;
-    --mode-supervision: 200 35% 45%;
-    --mode-safety: 18 50% 55%;
+    --mode-debrief: 154 28% 42%;
+    --mode-supervision: 194 28% 48%;
+    --mode-safety: 20 46% 58%;
 
-    --sidebar-background: 40 30% 96%;
-    --sidebar-foreground: 30 10% 30%;
-    --sidebar-primary: 150 25% 35%;
-    --sidebar-primary-foreground: 40 33% 98%;
-    --sidebar-accent: 35 25% 90%;
-    --sidebar-accent-foreground: 30 10% 25%;
-    --sidebar-border: 35 20% 88%;
-    --sidebar-ring: 150 25% 35%;
+    --sidebar-background: 40 26% 94%;
+    --sidebar-foreground: 150 10% 24%;
+    --sidebar-primary: 154 24% 38%;
+    --sidebar-primary-foreground: 42 35% 98%;
+    --sidebar-accent: 36 22% 88%;
+    --sidebar-accent-foreground: 150 10% 24%;
+    --sidebar-border: 36 18% 84%;
+    --sidebar-ring: 154 24% 38%;
   }
 
   .dark {
-    --background: 30 15% 10%;
-    --foreground: 40 20% 92%;
+    --background: 154 12% 11%;
+    --foreground: 42 18% 92%;
 
-    --card: 30 15% 12%;
-    --card-foreground: 40 20% 92%;
+    --card: 154 12% 13%;
+    --card-foreground: 42 18% 92%;
 
-    --popover: 30 15% 12%;
-    --popover-foreground: 40 20% 92%;
+    --popover: 154 12% 13%;
+    --popover-foreground: 42 18% 92%;
 
-    --primary: 150 30% 50%;
-    --primary-foreground: 30 15% 10%;
+    --primary: 154 28% 56%;
+    --primary-foreground: 154 14% 10%;
 
-    --secondary: 30 15% 18%;
-    --secondary-foreground: 40 20% 92%;
+    --secondary: 154 10% 18%;
+    --secondary-foreground: 42 18% 92%;
 
-    --muted: 30 15% 18%;
-    --muted-foreground: 40 15% 60%;
+    --muted: 154 10% 18%;
+    --muted-foreground: 42 10% 66%;
 
-    --accent: 18 40% 50%;
-    --accent-foreground: 40 20% 92%;
+    --accent: 20 36% 58%;
+    --accent-foreground: 42 18% 94%;
 
-    --destructive: 12 60% 45%;
-    --destructive-foreground: 40 20% 92%;
+    --destructive: 12 52% 46%;
+    --destructive-foreground: 42 18% 94%;
 
-    --border: 30 15% 20%;
-    --input: 30 15% 20%;
-    --ring: 150 30% 50%;
+    --border: 154 10% 22%;
+    --input: 154 10% 22%;
+    --ring: 154 28% 56%;
 
-    --chat-user: 30 15% 18%;
-    --chat-assistant: 150 15% 16%;
-    --chat-border: 30 15% 25%;
+    --theme-surface: 154 12% 12%;
+    --theme-soft: 154 10% 16%;
+    --theme-glow: 154 24% 24%;
+    --theme-glow-strong: 20 24% 22%;
+    --theme-noise-opacity: 0.04;
 
-    --mode-debrief: 150 35% 45%;
-    --mode-supervision: 200 40% 50%;
-    --mode-safety: 18 55% 50%;
+    --chat-user: 154 10% 18%;
+    --chat-assistant: 154 14% 16%;
+    --chat-border: 154 10% 24%;
 
-    --sidebar-background: 30 15% 8%;
-    --sidebar-foreground: 40 15% 90%;
-    --sidebar-primary: 150 30% 50%;
-    --sidebar-primary-foreground: 30 15% 10%;
-    --sidebar-accent: 30 15% 15%;
-    --sidebar-accent-foreground: 40 15% 90%;
-    --sidebar-border: 30 15% 20%;
-    --sidebar-ring: 150 30% 50%;
+    --mode-debrief: 154 30% 48%;
+    --mode-supervision: 194 32% 52%;
+    --mode-safety: 20 42% 56%;
+
+    --sidebar-background: 154 12% 9%;
+    --sidebar-foreground: 42 16% 90%;
+    --sidebar-primary: 154 28% 56%;
+    --sidebar-primary-foreground: 154 14% 10%;
+    --sidebar-accent: 154 10% 16%;
+    --sidebar-accent-foreground: 42 16% 90%;
+    --sidebar-border: 154 10% 22%;
+    --sidebar-ring: 154 28% 56%;
   }
 }
 
@@ -129,12 +141,25 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     @apply border-border;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply text-foreground font-sans;
     font-family: 'DM Sans', system-ui, sans-serif;
     font-size: 14px;
     font-weight: 400;
     letter-spacing: 0.01em;
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(circle at 12% 18%, hsl(var(--theme-glow) / 0.42), transparent 0 24%),
+      radial-gradient(circle at 86% 14%, hsl(var(--theme-glow-strong) / 0.32), transparent 0 22%),
+      radial-gradient(circle at 50% 100%, hsl(var(--theme-soft) / 0.45), transparent 0 28%),
+      linear-gradient(180deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 42%, hsl(var(--theme-soft)) 100%);
+    background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -175,24 +200,23 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 /* Theme background image */
 body.has-bg-image {
   position: relative;
-  z-index: 0;
-  background-image: var(--bg-image);
-  background-size: cover;
-  background-position: center;
+  background-image:
+    linear-gradient(180deg, hsl(var(--background) / 0.62), hsl(var(--background) / 0.82)),
+    radial-gradient(circle at 14% 18%, hsl(var(--theme-glow) / 0.28), transparent 0 24%),
+    radial-gradient(circle at 84% 14%, hsl(var(--theme-glow-strong) / 0.22), transparent 0 20%),
+    var(--bg-image);
+  background-size: auto, auto, auto, cover;
+  background-position: center, 12% 18%, 84% 14%, center;
+  background-repeat: no-repeat;
   background-attachment: fixed;
 }
 
-body.has-bg-image::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: hsl(var(--background) / 0.85);
-  z-index: -1;
-  pointer-events: none;
-}
-
-.dark body.has-bg-image::before {
-  background: hsl(var(--background) / 0.9);
+.dark body.has-bg-image {
+  background-image:
+    linear-gradient(180deg, hsl(var(--background) / 0.7), hsl(var(--background) / 0.88)),
+    radial-gradient(circle at 14% 18%, hsl(var(--theme-glow) / 0.22), transparent 0 24%),
+    radial-gradient(circle at 84% 14%, hsl(var(--theme-glow-strong) / 0.18), transparent 0 20%),
+    var(--bg-image);
 }
 
 /* Compact mode */
