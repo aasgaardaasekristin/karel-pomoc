@@ -130,7 +130,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     };
 
     await supabase
-      .from("user_theme_preferences")
+      .from("user_theme_preferences" as any)
       .upsert(row, { onConflict: "user_id,persona" });
   }, [prefs, userId]);
 
