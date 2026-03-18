@@ -75,7 +75,7 @@ const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
 async function findFolder(token: string, name: string): Promise<string | null> {
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } }, `findFolder:${name}`, GOOGLE_FETCH_TIMEOUT_MS);
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
@@ -87,7 +87,7 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
   do {
     const params = new URLSearchParams({ q, fields: "nextPageToken,files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
     if (pageToken) params.set("pageToken", pageToken);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } }, `listFilesInFolder:${folderId}`, GOOGLE_FETCH_TIMEOUT_MS);
     const data = await res.json();
     allFiles.push(...(data.files || []));
     pageToken = data.nextPageToken || undefined;
@@ -96,9 +96,9 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
 }
 
 async function readFileContent(token: string, fileId: string): Promise<string> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } }, `readFile:${fileId}`, GOOGLE_FETCH_TIMEOUT_MS);
   if (!res.ok) {
-    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+    const exportRes = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } }, `exportFile:${fileId}`, GOOGLE_FETCH_TIMEOUT_MS);
     if (!exportRes.ok) throw new Error(`Cannot read file ${fileId}: ${exportRes.status}`);
     return await exportRes.text();
   }
