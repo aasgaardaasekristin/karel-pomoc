@@ -244,7 +244,7 @@ serve(async (req) => {
             const file = centrumFiles.find(f => f.name.includes(prefix));
             if (file) {
               const content = await readFileContent(token, file.id);
-              driveContext += `\n\n=== ${file.name} ===\n${truncate(content, 2000)}`;
+              driveContext += `\n\n=== ${file.name} ===\n${truncateStr(content, 2000)}`;
             }
           }
         }
