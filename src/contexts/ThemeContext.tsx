@@ -40,6 +40,8 @@ const DEFAULT_PREFS: ThemePrefs = {
   chat_bubble_style: "rounded",
   compact_mode: false,
   animations_enabled: true,
+  font_color: "",
+  font_family: "default",
 };
 
 function parseHSL(hsl: string): { h: number; s: number; l: number } {
