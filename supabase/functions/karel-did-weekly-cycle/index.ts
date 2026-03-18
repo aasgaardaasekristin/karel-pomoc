@@ -708,7 +708,7 @@ ${perplexityContext}`,
           },
         ],
       }),
-    }), 60000, "Weekly AI analysis");
+    }), 180000, "Weekly AI analysis");
 
     let analysisText = "";
     if (analysisResponse.ok) {
