@@ -426,30 +426,36 @@ const Chat = () => {
         (async () => {
           try {
             const headers = await getAuthHeaders();
-            // Load key documents from 00_CENTRUM subfolder
-            const response = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-              { method: "POST", headers, body: JSON.stringify({ 
-                documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-                subFolder: "00_CENTRUM",
-                allowGlobalSearch: false,
-              }) }
-            );
-            if (response.ok) {
-              const data = await response.json();
+            const [docsResponse, registryResponse] = await Promise.all([
+              fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+                { method: "POST", headers, body: JSON.stringify({ 
+                  documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "Mapa_Vztahu_a_Vazeb", "03_Vnitrni_Svet_Geografie", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
+                  subFolder: "00_CENTRUM",
+                  allowGlobalSearch: false,
+                }) }
+              ),
+              supabase
+                .from("did_part_registry")
+                .select("part_name, display_name")
+                .eq("status", "active")
+                .order("updated_at", { ascending: false }),
+            ]);
+
+            if (docsResponse.ok) {
+              const data = await docsResponse.json();
               const docs = data.documents || {};
               basicDocsRef.current = Object.entries(docs)
                 .filter(([, val]) => typeof val === "string" && !val.startsWith("[Dokument"))
                 .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
                 .join("\n\n");
               setDidInitialContext(basicDocsRef.current);
-              // Extract known parts from index
-              const indexDoc = docs["01_Index_Vsech_Casti"] || "";
-              const names = indexDoc.split("\n")
-                .map((l: string) => l.replace(/^[-*•\d_.]\s*/g, "").replace(/^\d+_?/, "").trim())
-                .filter((l: string) => l.length > 1 && l.length < 30 && !l.startsWith("["));
-              setKnownParts(names.slice(0, 30));
             }
+
+            const registryParts = uniqueSanitizedPartNames(
+              ((registryResponse.data as any[]) || []).flatMap((row) => [row.display_name, row.part_name]),
+            );
+            setKnownParts(registryParts.slice(0, 30));
           } catch (e) { console.warn("Basic DID docs preload failed:", e); }
         })();
       }
