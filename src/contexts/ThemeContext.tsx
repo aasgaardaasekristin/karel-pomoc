@@ -13,6 +13,8 @@ export interface ThemePrefs {
   chat_bubble_style: string;
   compact_mode: boolean;
   animations_enabled: boolean;
+  font_color: string;
+  font_family: string;
 }
 
 const PRESETS: Record<string, Partial<ThemePrefs>> = {
@@ -24,6 +26,13 @@ const PRESETS: Record<string, Partial<ThemePrefs>> = {
   midnight: { primary_color: "214 24% 34%", accent_color: "206 18% 68%" },
   rose: { primary_color: "344 30% 50%", accent_color: "18 34% 78%" },
   mint: { primary_color: "164 28% 40%", accent_color: "148 22% 76%" },
+  // Therapeutic presets
+  sand: { primary_color: "32 22% 48%", accent_color: "38 26% 72%" },
+  stone: { primary_color: "200 12% 42%", accent_color: "180 10% 68%" },
+  dawn: { primary_color: "340 18% 52%", accent_color: "24 28% 74%" },
+  moss: { primary_color: "136 18% 36%", accent_color: "88 14% 66%" },
+  cloud: { primary_color: "210 18% 56%", accent_color: "220 14% 78%" },
+  earth: { primary_color: "22 26% 42%", accent_color: "34 20% 68%" },
 };
 
 const DEFAULT_PREFS: ThemePrefs = {
@@ -38,6 +47,8 @@ const DEFAULT_PREFS: ThemePrefs = {
   chat_bubble_style: "rounded",
   compact_mode: false,
   animations_enabled: true,
+  font_color: "",
+  font_family: "default",
 };
 
 function parseHSL(hsl: string): { h: number; s: number; l: number } {
@@ -230,6 +241,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         chat_bubble_style: (data as any).chat_bubble_style || "rounded",
         compact_mode: (data as any).compact_mode ?? false,
         animations_enabled: (data as any).animations_enabled ?? true,
+        font_color: (data as any).font_color || "",
+        font_family: (data as any).font_family || "default",
       });
     } else {
       setPrefs({ ...DEFAULT_PREFS, persona });
@@ -253,6 +266,23 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     root.style.setProperty("--font-scale", String(prefs.font_scale));
     root.style.fontSize = `${14 * prefs.font_scale}px`;
     root.style.setProperty("--radius", RADIUS_MAP[prefs.border_radius] || "0.75rem");
+
+    // Custom font color
+    if (prefs.font_color) {
+      root.style.setProperty("--foreground", prefs.font_color);
+      root.style.setProperty("--card-foreground", prefs.font_color);
+    }
+
+    // Font family
+    const FONT_MAP: Record<string, string> = {
+      default: "'DM Sans', system-ui, sans-serif",
+      comic: "'Comic Neue', 'Comic Sans MS', cursive",
+      rounded: "'Nunito', 'Varela Round', sans-serif",
+      mono: "'JetBrains Mono', 'Fira Code', monospace",
+    };
+    const fontFamily = FONT_MAP[prefs.font_family] || FONT_MAP.default;
+    root.style.setProperty("--font-body", fontFamily);
+    root.style.fontFamily = fontFamily;
 
     if (prefs.compact_mode) root.classList.add("compact");
     else root.classList.remove("compact");
@@ -297,6 +327,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         chat_bubble_style: next.chat_bubble_style,
         compact_mode: next.compact_mode,
         animations_enabled: next.animations_enabled,
+        font_color: next.font_color,
+        font_family: next.font_family,
         updated_at: new Date().toISOString(),
       } as any, { onConflict: "user_id,persona" });
   }, [prefs, userId]);

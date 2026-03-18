@@ -48,6 +48,7 @@ import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
 import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
+import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
@@ -1804,6 +1805,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if (didFlowState === "thread-list" && didSubMode === "cast") {
       return (
         <ScrollArea className="flex-1">
+          <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3">
+            <div className="flex justify-end mb-2">
+              <DidKidsThemeEditor />
+            </div>
+          </div>
           <DidThreadList
             threads={didThreads.threads}
             onSelectThread={handleSelectThread}
@@ -1969,26 +1975,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {hubSection === "did" ? (
-              <>
-                <Button variant="outline" size="sm" onClick={handleManualUpdate} disabled={isManualUpdateLoading} className="h-8 px-2 sm:px-3">
-                  {isManualUpdateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  {syncProgress ? (
-                    <span className="text-xs ml-1">{syncProgress.current}/{syncProgress.total}</span>
-                  ) : (
-                    <span className="hidden sm:inline ml-1">Aktual. kartotéku</span>
-                  )}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleReformatCards} disabled={isReformatting} className="h-8 px-2 sm:px-3">
-                  {isReformatting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                  {reformatProgress ? (
-                    <span className="text-xs ml-1">{reformatProgress.current}/{reformatProgress.total}</span>
-                  ) : (
-                    <span className="hidden sm:inline ml-1">Přeformátovat</span>
-                  )}
-                </Button>
-              </>
-            ) : null}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
             </Button>
