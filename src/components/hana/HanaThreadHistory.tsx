@@ -78,6 +78,20 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
     if (isOpen) fetchThreads();
   }, [isOpen, fetchThreads]);
 
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const channel = supabase
+      .channel("hana_threads_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "karel_hana_conversations" },
+        () => { if (isOpen) fetchThreads(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isOpen, fetchThreads]);
+
   const handleDeleteClick = (e: React.MouseEvent, thread: HanaThread) => {
     e.stopPropagation();
     setDeleteTarget(thread);
