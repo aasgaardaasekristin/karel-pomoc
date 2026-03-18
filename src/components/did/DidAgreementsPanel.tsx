@@ -24,20 +24,15 @@ interface WeeklyCycleData {
   last_error: string;
 }
 
-// Real progress: gather has 7 sub-steps, then analyze/distribute/notify = 10 total steps
 const computeProgress = (cycle: WeeklyCycleData): number => {
-  const { phase, progress_current, progress_total } = cycle;
+  const { phase } = cycle;
   if (phase === "completed") return 100;
   if (phase === "failed") return 0;
-
-  // Gather: 0-50%, Analyze: 50-75%, Distribute: 75-90%, Notify: 90-100%
-  if (phase === "gathering" || phase === "created") {
-    if (progress_total > 0) return Math.round((progress_current / progress_total) * 50);
-    return 5;
-  }
-  if (phase === "gathered") return 50;
-  if (phase === "analyzing") return 62;
-  if (phase === "analyzed") return 75;
+  if (phase === "created") return 5;
+  if (phase === "gathering") return 20;
+  if (phase === "gathered") return 40;
+  if (phase === "analyzing") return 55;
+  if (phase === "analyzed") return 70;
   if (phase === "distributing") return 82;
   if (phase === "distributed") return 90;
   if (phase === "notifying") return 95;
@@ -57,9 +52,9 @@ const PHASE_LABELS: Record<string, string> = {
   failed: "Selhalo ✗",
 };
 
-const NEXT_PHASE_BY_STATE: Record<string, string | undefined> = {
+// Maps: after a phase response, what's the next phase to call
+const PHASE_CHAIN: Record<string, string> = {
   created: "gather",
-  gathering: "gather",  // resume gather sub-steps
   gathered: "analyze",
   analyzed: "distribute",
   distributed: "notify",
@@ -74,7 +69,6 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
   const chainingRef = useRef(false);
-  const autoAdvancedPhaseRef = useRef<string | null>(null);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -92,6 +86,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   useEffect(() => { void loadData(); }, [loadData]);
   useEffect(() => { if (refreshTrigger > 0) void loadData(true); }, [refreshTrigger, loadData]);
 
+  // Clear activeCycleId if the cycle is no longer running
   useEffect(() => {
     if (!activeCycleId) return;
     const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId);
@@ -117,110 +112,76 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
     return result;
   }, []);
 
-  // Auto-advance: after each phase completes, trigger the next one
-  const continueCycle = useCallback(async (cycle: WeeklyCycleData) => {
-    const nextPhase = NEXT_PHASE_BY_STATE[cycle.phase];
-    if (!nextPhase || chainingRef.current) return;
-
-    chainingRef.current = true;
-    setActiveCycleId(cycle.id);
-    autoAdvancedPhaseRef.current = `${cycle.id}:${cycle.phase}`;
-
-    try {
-      const result = await callPhase(nextPhase, cycle.id);
-
-      // If gather needs more calls (resumable), keep calling
-      if (result?.needsMore && nextPhase === "gather") {
-        let gatherResult = result;
-        while (gatherResult?.needsMore) {
-          gatherResult = await callPhase("gather", cycle.id);
-        }
-      }
-
-      if (nextPhase === "notify") onWeeklyCycleComplete?.();
-    } catch (e: any) {
-      if (e.name === "TimeoutError" || e.name === "AbortError") {
-        toast.info("Fáze běží na pozadí – panel průběžně obnovuji.");
-      } else if (e.message?.includes("retryable")) {
-        toast.info("Krok selhal – zkouším znovu...");
-      } else {
-        toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
-      }
-    } finally {
-      chainingRef.current = false;
-      void loadData(true);
-    }
-  }, [callPhase, loadData, onWeeklyCycleComplete]);
-
-  const runPhaseChain = useCallback(async () => {
+  // Strictly serial phase chain: kickoff → gather → analyze → distribute → notify
+  // NO auto-advance from polling. NO while loops. Each phase called once, sequentially.
+  const runFullCycle = useCallback(async () => {
     if (chainingRef.current) return;
     chainingRef.current = true;
 
     try {
       toast.info("Týdenní cyklus spuštěn");
-      const kickoffResult = await callPhase("kickoff");
 
+      // Step 1: Kickoff
+      const kickoffResult = await callPhase("kickoff");
       if (kickoffResult.skipped) {
         if (kickoffResult.cycleId) setActiveCycleId(kickoffResult.cycleId);
         toast.info(kickoffResult.reason === "already_running"
-          ? "Jiný týdenní cyklus už právě běží. Navazuji na jeho průběh."
+          ? "Jiný týdenní cyklus už právě běží."
           : "Nedávno byl dokončen – zkus to znovu později.");
         void loadData(true);
         return;
       }
 
-      if (kickoffResult.cycleId) {
-        setActiveCycleId(kickoffResult.cycleId);
-        autoAdvancedPhaseRef.current = null;
+      const cid = kickoffResult.cycleId;
+      if (!cid) throw new Error("No cycleId from kickoff");
+      setActiveCycleId(cid);
+      void loadData(true);
+
+      // Step 2: Gather (single call, no loops)
+      const gatherResult = await callPhase("gather", cid);
+      void loadData(true);
+      if (gatherResult.phase !== "gathered") {
+        throw new Error(`Gather did not complete: phase=${gatherResult.phase}`);
       }
 
+      // Step 3: Analyze
+      await callPhase("analyze", cid);
       void loadData(true);
+
+      // Step 4: Distribute
+      await callPhase("distribute", cid);
+      void loadData(true);
+
+      // Step 5: Notify
+      await callPhase("notify", cid);
+      void loadData(true);
+
+      toast.success("Týdenní cyklus dokončen ✓");
+      onWeeklyCycleComplete?.();
+
     } catch (e: any) {
-      toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
+      if (e.name === "TimeoutError" || e.name === "AbortError") {
+        toast.info("Fáze běží na pozadí – panel průběžně obnovuji.");
+      } else {
+        toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
+      }
       void loadData(true);
     } finally {
       chainingRef.current = false;
     }
-  }, [callPhase, loadData]);
-
-  const runningCycle = useMemo(
-    () => cycles.find((cycle) => cycle.status === "running") ?? null,
-    [cycles]
-  );
-
-  useEffect(() => {
-    if (!activeCycleId && runningCycle) setActiveCycleId(runningCycle.id);
-  }, [activeCycleId, runningCycle]);
-
-  // Auto-advance when a running cycle is waiting at a checkpoint
-  useEffect(() => {
-    const cycle = cycles.find((item) => item.id === activeCycleId) ?? runningCycle;
-    if (!cycle || cycle.status !== "running") return;
-
-    const resumeKey = `${cycle.id}:${cycle.phase}`;
-    if (!NEXT_PHASE_BY_STATE[cycle.phase] || autoAdvancedPhaseRef.current === resumeKey || chainingRef.current) return;
-
-    void continueCycle(cycle);
-  }, [cycles, activeCycleId, runningCycle, continueCycle]);
-
-  // Polling when active
-  useEffect(() => {
-    if (!activeCycleId) return;
-    const intervalId = window.setInterval(() => void loadData(true), POLL_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [activeCycleId, loadData]);
+  }, [callPhase, loadData, onWeeklyCycleComplete]);
 
   const hasRunning = useMemo(
     () => cycles.some((cycle) => cycle.status === "running" && (Date.now() - new Date(cycle.heartbeat_at || cycle.started_at).getTime()) < STALE_TIMEOUT_MS),
     [cycles]
   );
 
-  // Background polling for orphan running cycles
+  // Polling when active (display only, never triggers phase calls)
   useEffect(() => {
-    if (!hasRunning || activeCycleId) return;
+    if (!activeCycleId && !hasRunning) return;
     const intervalId = window.setInterval(() => void loadData(true), POLL_INTERVAL_MS);
     return () => window.clearInterval(intervalId);
-  }, [hasRunning, activeCycleId, loadData]);
+  }, [activeCycleId, hasRunning, loadData]);
 
   const handleDeleteCycle = async (cycleId: string) => {
     const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
@@ -250,7 +211,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
         <Button
           variant="outline"
           size="sm"
-          onClick={runPhaseChain}
+          onClick={runFullCycle}
           disabled={chainingRef.current || hasRunning}
           className="h-6 px-2 text-[10px]"
         >
@@ -287,7 +248,6 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
               key={cycle.id}
               className={`group rounded-lg border bg-card/50 ${isRunning ? "border-primary/40" : isFailed ? "border-destructive/30" : "border-border"}`}
             >
-              {/* Fixed: use div with role instead of nested button */}
               <div
                 role={isRunning ? undefined : "button"}
                 tabIndex={isRunning ? undefined : 0}

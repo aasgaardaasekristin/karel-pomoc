@@ -16,7 +16,6 @@ const truncate = (value: string, max: number) =>
 
 const GOOGLE_FETCH_TIMEOUT_MS = 12000;
 const PERPLEXITY_TIMEOUT_MS = 30000;
-const GATHER_STEP_BUDGET_MS = 100000; // 100s budget per gather step call
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timeoutId: number | undefined;
@@ -182,12 +181,10 @@ async function updatePhase(sb: any, cycleId: string, phase: string, detail: stri
   console.log(`[weekly] Phase: ${phase} – ${detail}`);
 }
 
-async function heartbeat(sb: any, cycleId: string, detail: string, step?: string, current?: number, total?: number) {
-  const update: any = { heartbeat_at: new Date().toISOString(), phase_detail: detail };
-  if (step !== undefined) update.phase_step = step;
-  if (current !== undefined) update.progress_current = current;
-  if (total !== undefined) update.progress_total = total;
-  await sb.from("did_update_cycles").update(update).eq("id", cycleId);
+async function heartbeat(sb: any, cycleId: string, detail: string) {
+  await sb.from("did_update_cycles").update({
+    heartbeat_at: new Date().toISOString(), phase_detail: detail,
+  }).eq("id", cycleId);
 }
 
 // ═══════════════════════════════════════════
@@ -266,358 +263,286 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
 }
 
 // ═══════════════════════════════════════════
-// RESUMABLE GATHER – runs in sub-steps
-// Each call does ONE sub-step, saves progress, returns.
-// Frontend keeps calling until gather_step === "done".
+// MONOLITHIC GATHER – everything in ONE call
+// No sub-steps, no context_data bloat, no race conditions.
+// All text stays in RAM. Only small metadata saved to DB.
 // ═══════════════════════════════════════════
 
-const GATHER_STEPS = ["init", "cards_active", "cards_archive", "centrum", "db", "perplexity", "done"] as const;
-type GatherStep = typeof GATHER_STEPS[number];
-
 async function phaseGather(sb: any, cycleId: string, userId: string) {
-  // Load current context to see where we left off
-  const { data: cycle } = await sb.from("did_update_cycles")
-    .select("context_data, phase_step").eq("id", cycleId).single();
-
-  const ctx = cycle?.context_data || {};
-  const currentStep: GatherStep = (ctx.gather_step as GatherStep) || "init";
-
-  // If already done, just return
-  if (currentStep === "done") {
-    return { phase: "gathered", cardsFound: (ctx.cardNames || []).length, gather_step: "done" };
+  // Race condition guard: verify cycle is still in a gatherable state
+  const { data: cycleCheck } = await sb.from("did_update_cycles")
+    .select("phase, status").eq("id", cycleId).single();
+  
+  if (!cycleCheck || cycleCheck.status !== "running") {
+    return { phase: cycleCheck?.phase || "unknown", skipped: true, reason: "not_running" };
+  }
+  if (cycleCheck.phase !== "created" && cycleCheck.phase !== "gathering") {
+    return { phase: cycleCheck.phase, skipped: true, reason: "already_past_gather" };
   }
 
-  await updatePhase(sb, cycleId, "gathering", `Sbírám data (krok: ${currentStep})...`, { phase_step: currentStep });
-
-  const stepStart = Date.now();
-
-  try {
-    if (currentStep === "init") {
-      await gatherInit(sb, cycleId, userId, ctx);
-    } else if (currentStep === "cards_active") {
-      await gatherCards(sb, cycleId, ctx, "active");
-    } else if (currentStep === "cards_archive") {
-      await gatherCards(sb, cycleId, ctx, "archive");
-    } else if (currentStep === "centrum") {
-      await gatherCentrum(sb, cycleId, ctx);
-    } else if (currentStep === "db") {
-      await gatherDb(sb, cycleId, userId, ctx);
-    } else if (currentStep === "perplexity") {
-      await gatherPerplexity(sb, cycleId, ctx);
-    }
-  } catch (e) {
-    const errMsg = e instanceof Error ? e.message : "Unknown error";
-    console.error(`[weekly] Gather step ${currentStep} failed:`, errMsg);
-    // Save error but DON'T fail the whole cycle — let frontend retry
-    await sb.from("did_update_cycles").update({
-      heartbeat_at: new Date().toISOString(),
-      last_error: `${currentStep}: ${errMsg}`.slice(0, 500),
-      phase_detail: `Krok ${currentStep} selhal – lze opakovat`,
-    }).eq("id", cycleId);
-    return { phase: "gathering", gather_step: currentStep, error: errMsg, retryable: true };
-  }
-
-  // Check if we're now done
-  const { data: updated } = await sb.from("did_update_cycles")
-    .select("context_data").eq("id", cycleId).single();
-  const newStep = updated?.context_data?.gather_step;
-
-  if (newStep === "done") {
-    await sb.from("did_update_cycles").update({
-      phase: "gathered",
-      phase_detail: `Data sebrána: ${(updated?.context_data?.cardNames || []).length} karet`,
-      heartbeat_at: new Date().toISOString(),
-      phase_step: "done",
-      progress_current: GATHER_STEPS.length,
-      progress_total: GATHER_STEPS.length,
-    }).eq("id", cycleId);
-    return { phase: "gathered", cardsFound: (updated?.context_data?.cardNames || []).length, gather_step: "done" };
-  }
-
-  return { phase: "gathering", gather_step: newStep, needsMore: true };
-}
-
-async function gatherInit(sb: any, cycleId: string, userId: string, ctx: any) {
-  const token = await getAccessToken();
+  await updatePhase(sb, cycleId, "gathering", "Sbírám data z Drive...");
+  const gatherStart = Date.now();
   const dateStr = new Date().toISOString().slice(0, 10);
 
-  const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
-
-  let activeFolderId: string | null = null;
-  let archiveFolderId: string | null = null;
+  // ── All gathered text stays in RAM ──
+  let allCardsContent = "";
+  let centrumDocsContent = "";
+  let agreementsContent = "";
+  let instructionContext = "";
+  let systemMap = "";
+  let perplexityContext = "";
+  const cardNames: string[] = [];
+  let dohodaFolderId: string | null = null;
+  let folderId: string | null = null;
   let centrumFolderId: string | null = null;
-  let activeFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
-  let archiveFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
 
-  if (folderId) {
-    const rootChildren = await listFilesInFolder(token, folderId);
-    const rootFolders = rootChildren.filter(f => f.mimeType === DRIVE_FOLDER_MIME);
-    const centerFolder = rootFolders.find(f => /^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum"));
-    const activeFolder = rootFolders.find(f => /^01/.test(f.name.trim()) || canonicalText(f.name).includes("aktiv"));
-    const archiveFolder = rootFolders.find(f => /^03/.test(f.name.trim()) || canonicalText(f.name).includes("archiv"));
+  try {
+    // ── Step 1: Drive folder discovery ──
+    const token = await getAccessToken();
+    folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
 
-    if (activeFolder) {
-      activeFolderId = activeFolder.id;
-      activeFiles = await listFilesRecursive(token, activeFolder.id);
-      activeFiles = activeFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME);
-    }
-    if (archiveFolder) {
-      archiveFolderId = archiveFolder.id;
-      archiveFiles = await listFilesRecursive(token, archiveFolder.id);
-      archiveFiles = archiveFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME);
-    }
-    if (centerFolder) centrumFolderId = centerFolder.id;
-  }
+    let activeFolderId: string | null = null;
+    let archiveFolderId: string | null = null;
+    let activeFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
+    let archiveFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
 
-  await heartbeat(sb, cycleId, `Nalezeno ${activeFiles.length} aktivních + ${archiveFiles.length} archivních souborů`, "init", 1, GATHER_STEPS.length);
+    if (folderId) {
+      const rootChildren = await listFilesInFolder(token, folderId);
+      const rootFolders = rootChildren.filter(f => f.mimeType === DRIVE_FOLDER_MIME);
+      const centerFolder = rootFolders.find(f => /^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum"));
+      const activeFolder = rootFolders.find(f => /^01/.test(f.name.trim()) || canonicalText(f.name).includes("aktiv"));
+      const archiveFolder = rootFolders.find(f => /^03/.test(f.name.trim()) || canonicalText(f.name).includes("archiv"));
 
-  const newCtx = {
-    ...ctx,
-    gather_step: "cards_active",
-    folderId, activeFolderId, archiveFolderId, centrumFolderId,
-    activeFileList: activeFiles.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
-    archiveFileList: archiveFiles.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
-    allCardsContent: "",
-    centrumDocsContent: "",
-    agreementsContent: "",
-    instructionContext: "",
-    systemMap: "",
-    cardNames: [],
-    dohodaFolderId: null,
-    dateStr,
-    userId,
-    cards_cursor: 0,
-  };
-
-  await sb.from("did_update_cycles").update({
-    context_data: newCtx, heartbeat_at: new Date().toISOString(),
-    progress_current: 1, progress_total: GATHER_STEPS.length, phase_step: "cards_active",
-  }).eq("id", cycleId);
-
-  console.log(`[weekly] Init done: ${activeFiles.length} active, ${archiveFiles.length} archive files`);
-}
-
-async function gatherCards(sb: any, cycleId: string, ctx: any, folder: "active" | "archive") {
-  const token = await getAccessToken();
-  const fileList = folder === "active" ? (ctx.activeFileList || []) : (ctx.archiveFileList || []);
-  const cursor = ctx.cards_cursor || 0;
-  const BATCH_SIZE = 6;
-  const folderLabel = folder === "active" ? "AKTIVNÍ" : "ARCHIV/SPÍ";
-
-  let allCardsContent = ctx.allCardsContent || "";
-  let cardNames: string[] = [...(ctx.cardNames || [])];
-
-  const batch = fileList.slice(cursor, cursor + BATCH_SIZE);
-  let processed = 0;
-
-  for (const file of batch) {
-    try {
-      const content = await readFileContent(token, file.id);
-      if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
-        const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
-        allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${truncate(content, MAX_CARD_CHARS)}`;
-        cardNames.push(`${partName} [${folderLabel}]`);
+      if (activeFolder) {
+        activeFolderId = activeFolder.id;
+        activeFiles = (await listFilesRecursive(token, activeFolder.id)).filter(f => f.mimeType !== DRIVE_FOLDER_MIME);
       }
-      processed++;
-    } catch (e) {
-      console.warn(`Failed to read ${file.name}:`, e);
-      processed++;
+      if (archiveFolder) {
+        archiveFolderId = archiveFolder.id;
+        archiveFiles = (await listFilesRecursive(token, archiveFolder.id)).filter(f => f.mimeType !== DRIVE_FOLDER_MIME);
+      }
+      if (centerFolder) centrumFolderId = centerFolder.id;
     }
-  }
 
-  const newCursor = cursor + processed;
-  const isLastBatch = newCursor >= fileList.length;
+    await heartbeat(sb, cycleId, `Nalezeno ${activeFiles.length} aktivních + ${archiveFiles.length} archivních souborů`);
+    console.log(`[weekly] Discovery: ${activeFiles.length} active, ${archiveFiles.length} archive`);
 
-  let nextStep: string;
-  if (isLastBatch && folder === "active") {
-    nextStep = "cards_archive";
-  } else if (isLastBatch && folder === "archive") {
-    nextStep = "centrum";
-  } else {
-    nextStep = folder === "active" ? "cards_active" : "cards_archive"; // same step, next batch
-  }
+    // ── Step 2: Read card files ──
+    const readCards = async (files: Array<{ id: string; name: string; mimeType?: string }>, folderLabel: string) => {
+      for (const file of files) {
+        try {
+          const content = await readFileContent(token, file.id);
+          if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
+            const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
+            allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${truncate(content, MAX_CARD_CHARS)}`;
+            cardNames.push(`${partName} [${folderLabel}]`);
+          }
+        } catch (e) {
+          console.warn(`Failed to read ${file.name}:`, e);
+        }
+      }
+    };
 
-  const stepIndex = folder === "active" ? 2 : 3;
-  const detail = `Načteno ${cardNames.length} karet (${folder} ${Math.min(newCursor, fileList.length)}/${fileList.length})`;
+    await readCards(activeFiles, "AKTIVNÍ");
+    await heartbeat(sb, cycleId, `Načteno ${cardNames.length} aktivních karet`);
+    console.log(`[weekly] Active cards done: ${cardNames.length}`);
 
-  await sb.from("did_update_cycles").update({
-    context_data: { ...ctx, allCardsContent, cardNames, cards_cursor: isLastBatch ? 0 : newCursor, gather_step: nextStep },
-    heartbeat_at: new Date().toISOString(),
-    phase_detail: detail, phase_step: nextStep,
-    progress_current: stepIndex, progress_total: GATHER_STEPS.length,
-  }).eq("id", cycleId);
+    await readCards(archiveFiles, "ARCHIV/SPÍ");
+    await heartbeat(sb, cycleId, `Načteno ${cardNames.length} karet celkem`);
+    console.log(`[weekly] Archive cards done: ${cardNames.length} total`);
 
-  console.log(`[weekly] Cards ${folder}: ${processed} processed, cursor ${newCursor}/${fileList.length}, next: ${nextStep}`);
-}
+    // ── Step 3: Centrum documents ──
+    if (centrumFolderId) {
+      const centerFiles = await listFilesInFolder(token, centrumFolderId);
+      for (const file of centerFiles) {
+        if (file.mimeType === DRIVE_FOLDER_MIME) {
+          if (canonicalText(file.name).includes("dohod")) {
+            dohodaFolderId = file.id;
+            const dohodaFiles = await listFilesInFolder(token, file.id);
+            for (const df of dohodaFiles) {
+              try {
+                const content = await readFileContent(token, df.id);
+                agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          continue;
+        }
+        try {
+          const content = await readFileContent(token, file.id);
+          const cn = canonicalText(file.name);
+          if (cn.includes("instrukce")) instructionContext = truncate(content, MAX_INSTRUCTION_CHARS);
+          else if (cn.includes("mapa") && cn.includes("vztah")) systemMap = truncate(content, MAX_SYSTEM_MAP_CHARS);
+          centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
+        } catch {}
+      }
+    }
 
-async function gatherCentrum(sb: any, cycleId: string, ctx: any) {
-  const token = await getAccessToken();
-  let centrumDocsContent = ctx.centrumDocsContent || "";
-  let agreementsContent = ctx.agreementsContent || "";
-  let instructionContext = ctx.instructionContext || "";
-  let systemMap = ctx.systemMap || "";
-  let dohodaFolderId = ctx.dohodaFolderId || null;
+    await heartbeat(sb, cycleId, "Centrum hotovo, čtu DB...");
+    console.log(`[weekly] Centrum done`);
 
-  if (ctx.centrumFolderId) {
-    const centerFiles = await listFilesInFolder(token, ctx.centrumFolderId);
-    for (const file of centerFiles) {
-      if (file.mimeType === DRIVE_FOLDER_MIME) {
-        if (canonicalText(file.name).includes("dohod")) {
-          dohodaFolderId = file.id;
-          const dohodaFiles = await listFilesInFolder(token, file.id);
-          for (const df of dohodaFiles) {
-            try {
-              const content = await readFileContent(token, df.id);
-              agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
-            } catch {}
+    // ── Step 4: Database queries ──
+    const weekAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
+    const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [weekThreadsRes, monthThreadsRes, weekCyclesRes, researchRes] = await Promise.all([
+      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages, part_language").eq("sub_mode", "cast").gte("started_at", weekAgo),
+      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages").eq("sub_mode", "cast").gte("started_at", monthAgo),
+      sb.from("did_update_cycles").select("cycle_type, completed_at, cards_updated").eq("status", "completed").gte("completed_at", weekAgo).order("completed_at", { ascending: true }),
+      sb.from("research_threads").select("topic, messages, created_by, last_activity_at").eq("is_deleted", false).gte("last_activity_at", monthAgo),
+    ]);
+
+    const weekThreads = weekThreadsRes.data || [];
+    const monthThreads = monthThreadsRes.data || [];
+    const weekCycles = weekCyclesRes.data || [];
+    const researchThreads = researchRes.data || [];
+
+    // Build activity summaries
+    const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string }>();
+    for (const t of monthThreads) {
+      const rawName = String(t.part_name || "").trim();
+      const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
+      const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
+      if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
+      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs" };
+      existing.monthMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
+      existing.modes.add(t.sub_mode);
+      if (!existing.lastSeen || t.last_activity_at > existing.lastSeen) existing.lastSeen = t.last_activity_at;
+      activityByPart.set(cn, existing);
+    }
+    for (const t of weekThreads) {
+      const rawName = String(t.part_name || "").trim();
+      const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
+      const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
+      if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
+      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs" };
+      existing.weekMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
+      existing.language = t.part_language || existing.language;
+      activityByPart.set(cn, existing);
+    }
+
+    const activitySummary = Array.from(activityByPart.entries())
+      .map(([name, d]) => `- ${name}: Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`)
+      .join("\n");
+
+    const dailyReportsSummary = (weekCycles).filter((c: any) => c.cycle_type === "daily")
+      .map((c: any) => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`).join("\n---\n");
+
+    const weekConversations = weekThreads.slice(0, 12).map((t: any) => {
+      const msgs = ((t.messages as any[]) || []).slice(-6);
+      const isCast = t.sub_mode === "cast";
+      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
+    }).join("\n\n---\n\n");
+
+    const researchSummary = researchThreads.slice(0, 8).map((rt: any) => {
+      const msgs = ((rt.messages as any[]) || []).slice(-4);
+      return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? truncate(m.content, MAX_RESEARCH_MESSAGE_CHARS) : ""}`).join("\n")}`;
+    }).join("\n---\n");
+
+    await heartbeat(sb, cycleId, "DB hotovo, spouštím Perplexity...");
+    console.log(`[weekly] DB gather done`);
+
+    // ── Step 5: Perplexity (only if enough time remains) ──
+    const elapsed = Date.now() - gatherStart;
+    const MIN_BUDGET_FOR_PERPLEXITY_MS = 30000;
+    const remainingMs = 140000 - elapsed; // 140s total budget
+
+    const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+    if (PERPLEXITY_API_KEY && allCardsContent.length > 100 && remainingMs > MIN_BUDGET_FOR_PERPLEXITY_MS) {
+      try {
+        await heartbeat(sb, cycleId, "Hledám nové výzkumy (Perplexity)...");
+
+        const activeFragments = cardNames.filter((n: string) => n.includes("AKTIVNÍ")).map((n: string) => n.replace(" [AKTIVNÍ]", "")).join(", ");
+        const talentKeywords: string[] = [];
+        const talentRegex = /TALENT:\s*([^|]+)/gi;
+        let m;
+        while ((m = talentRegex.exec(allCardsContent)) !== null) talentKeywords.push(m[1].trim());
+        const talentContext = talentKeywords.length > 0
+          ? `\n8. Educational activities for DID alters with specific talents: ${talentKeywords.join(", ")}`
+          : `\n8. Educational activities for DID alters with specific talents (music, physics, art, languages)`;
+
+        const pRes = await withTimeout(fetch("https://api.perplexity.ai/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "sonar-pro",
+            messages: [
+              { role: "system", content: "You are a clinical DID researcher. Return specific, actionable therapeutic methods, contraindications, novel approaches, and academic references." },
+              { role: "user", content: `DID therapeutic approaches 2024-2025:\n1. Novel methods for child alters\n2. Inter-part communication\n3. Creative interventions\n4. Safe awakening of dormant alters\n5. Crisis prevention\n6. Integration strategies\n7. School/social adaptation${talentContext}\nActive parts: ${activeFragments}` },
+            ],
+            search_mode: "academic", search_recency_filter: "year",
+          }),
+        }), Math.min(PERPLEXITY_TIMEOUT_MS, remainingMs - 5000), "Perplexity");
+
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          const text = pData.choices?.[0]?.message?.content || "";
+          const citations: string[] = pData.citations || [];
+          if (text) {
+            perplexityContext = `\n\n═══ AKTUÁLNÍ VÝZKUM (Perplexity) ═══\n${text}`;
+            if (citations.length > 0) perplexityContext += `\n\nCitace:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
           }
         }
-        continue;
+      } catch (e) {
+        console.warn("[weekly] Perplexity failed (non-fatal):", e);
       }
-      try {
-        const content = await readFileContent(token, file.id);
-        const cn = canonicalText(file.name);
-        if (cn.includes("instrukce")) instructionContext = truncate(content, MAX_INSTRUCTION_CHARS);
-        else if (cn.includes("mapa") && cn.includes("vztah")) systemMap = truncate(content, MAX_SYSTEM_MAP_CHARS);
-        centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
-      } catch {}
+    } else if (remainingMs <= MIN_BUDGET_FOR_PERPLEXITY_MS) {
+      console.log(`[weekly] Skipping Perplexity – only ${Math.round(remainingMs / 1000)}s remaining`);
     }
+
+    console.log(`[weekly] Perplexity done, gather complete in ${Math.round((Date.now() - gatherStart) / 1000)}s`);
+
+    // ── Save ONLY small metadata to context_data, NOT the full text ──
+    // Full text goes into a separate context_data field as a single atomic write
+    const contextData = {
+      allCardsContent,
+      centrumDocsContent,
+      agreementsContent,
+      instructionContext,
+      systemMap,
+      perplexityContext,
+      cardNames,
+      dohodaFolderId,
+      folderId,
+      centrumFolderId,
+      activitySummary,
+      dailyReportsSummary,
+      weekConversations,
+      researchSummary,
+      dateStr,
+      userId,
+    };
+
+    // Single atomic write: gathered + all context data
+    await sb.from("did_update_cycles").update({
+      phase: "gathered",
+      phase_detail: `Data sebrána: ${cardNames.length} karet za ${Math.round((Date.now() - gatherStart) / 1000)}s`,
+      context_data: contextData,
+      heartbeat_at: new Date().toISOString(),
+      phase_step: "done",
+      progress_current: 100,
+      progress_total: 100,
+    }).eq("id", cycleId);
+
+    return { phase: "gathered", cardsFound: cardNames.length };
+
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : "Unknown error";
+    console.error(`[weekly] Gather FAILED:`, errMsg);
+    
+    // Mark cycle as failed immediately – no retryable nonsense
+    await sb.from("did_update_cycles").update({
+      status: "failed",
+      phase: "failed",
+      phase_detail: `Gather selhal: ${errMsg}`.slice(0, 500),
+      report_summary: `Sběr dat selhal: ${errMsg}`.slice(0, 2000),
+      completed_at: new Date().toISOString(),
+      heartbeat_at: new Date().toISOString(),
+      context_data: {},
+    }).eq("id", cycleId);
+    
+    throw e; // Re-throw so the main handler returns 500
   }
-
-  await heartbeat(sb, cycleId, "Centrum dokumenty načteny", "db", 4, GATHER_STEPS.length);
-
-  await sb.from("did_update_cycles").update({
-    context_data: { ...ctx, centrumDocsContent, agreementsContent, instructionContext, systemMap, dohodaFolderId, gather_step: "db" },
-    heartbeat_at: new Date().toISOString(),
-    phase_step: "db", progress_current: 4, progress_total: GATHER_STEPS.length,
-  }).eq("id", cycleId);
-
-  console.log(`[weekly] Centrum done`);
-}
-
-async function gatherDb(sb: any, cycleId: string, userId: string, ctx: any) {
-  const weekAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
-  const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-
-  const [weekThreadsRes, monthThreadsRes, weekCyclesRes, researchRes] = await Promise.all([
-    sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages, part_language").eq("sub_mode", "cast").gte("started_at", weekAgo),
-    sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages").eq("sub_mode", "cast").gte("started_at", monthAgo),
-    sb.from("did_update_cycles").select("cycle_type, completed_at, cards_updated").eq("status", "completed").gte("completed_at", weekAgo).order("completed_at", { ascending: true }),
-    sb.from("research_threads").select("topic, messages, created_by, last_activity_at").eq("is_deleted", false).gte("last_activity_at", monthAgo),
-  ]);
-
-  const weekThreads = weekThreadsRes.data || [];
-  const monthThreads = monthThreadsRes.data || [];
-  const weekCycles = weekCyclesRes.data || [];
-  const researchThreads = researchRes.data || [];
-
-  // Build activity summaries
-  const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string }>();
-  for (const t of monthThreads) {
-    const rawName = String(t.part_name || "").trim();
-    const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
-    const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
-    if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
-    const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs" };
-    existing.monthMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
-    existing.modes.add(t.sub_mode);
-    if (!existing.lastSeen || t.last_activity_at > existing.lastSeen) existing.lastSeen = t.last_activity_at;
-    activityByPart.set(cn, existing);
-  }
-  for (const t of weekThreads) {
-    const rawName = String(t.part_name || "").trim();
-    const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
-    const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
-    if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
-    const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs" };
-    existing.weekMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
-    existing.language = t.part_language || existing.language;
-    activityByPart.set(cn, existing);
-  }
-
-  const activitySummary = Array.from(activityByPart.entries())
-    .map(([name, d]) => `- ${name}: Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`)
-    .join("\n");
-
-  const dailyReportsSummary = (weekCycles).filter((c: any) => c.cycle_type === "daily")
-    .map((c: any) => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`).join("\n---\n");
-
-  const weekConversations = weekThreads.slice(0, 12).map((t: any) => {
-    const msgs = ((t.messages as any[]) || []).slice(-6);
-    const isCast = t.sub_mode === "cast";
-    return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
-  }).join("\n\n---\n\n");
-
-  const researchSummary = researchThreads.slice(0, 8).map((rt: any) => {
-    const msgs = ((rt.messages as any[]) || []).slice(-4);
-    return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? truncate(m.content, MAX_RESEARCH_MESSAGE_CHARS) : ""}`).join("\n")}`;
-  }).join("\n---\n");
-
-  await sb.from("did_update_cycles").update({
-    context_data: { ...ctx, activitySummary, dailyReportsSummary, weekConversations, researchSummary, gather_step: "perplexity" },
-    heartbeat_at: new Date().toISOString(),
-    phase_detail: "DB data sebrána, připravuji Perplexity...",
-    phase_step: "perplexity", progress_current: 5, progress_total: GATHER_STEPS.length,
-  }).eq("id", cycleId);
-
-  console.log(`[weekly] DB gather done`);
-}
-
-async function gatherPerplexity(sb: any, cycleId: string, ctx: any) {
-  let perplexityContext = "";
-  const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
-  const allCardsContent = ctx.allCardsContent || "";
-  const cardNames: string[] = ctx.cardNames || [];
-
-  if (PERPLEXITY_API_KEY && allCardsContent.length > 100) {
-    try {
-      await heartbeat(sb, cycleId, "Hledám nové výzkumy (Perplexity)...", "perplexity", 6, GATHER_STEPS.length);
-
-      const activeFragments = cardNames.filter((n: string) => n.includes("AKTIVNÍ")).map((n: string) => n.replace(" [AKTIVNÍ]", "")).join(", ");
-      const talentKeywords: string[] = [];
-      const talentRegex = /TALENT:\s*([^|]+)/gi;
-      let m;
-      while ((m = talentRegex.exec(allCardsContent)) !== null) talentKeywords.push(m[1].trim());
-      const talentContext = talentKeywords.length > 0
-        ? `\n8. Educational activities for DID alters with specific talents: ${talentKeywords.join(", ")}`
-        : `\n8. Educational activities for DID alters with specific talents (music, physics, art, languages)`;
-
-      const pRes = await withTimeout(fetch("https://api.perplexity.ai/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "sonar-pro",
-          messages: [
-            { role: "system", content: "You are a clinical DID researcher. Return specific, actionable therapeutic methods, contraindications, novel approaches, and academic references." },
-            { role: "user", content: `DID therapeutic approaches 2024-2025:\n1. Novel methods for child alters\n2. Inter-part communication\n3. Creative interventions\n4. Safe awakening of dormant alters\n5. Crisis prevention\n6. Integration strategies\n7. School/social adaptation${talentContext}\nActive parts: ${activeFragments}` },
-          ],
-          search_mode: "academic", search_recency_filter: "year",
-        }),
-      }), PERPLEXITY_TIMEOUT_MS, "Perplexity");
-
-      if (pRes.ok) {
-        const pData = await pRes.json();
-        const text = pData.choices?.[0]?.message?.content || "";
-        const citations: string[] = pData.citations || [];
-        if (text) {
-          perplexityContext = `\n\n═══ AKTUÁLNÍ VÝZKUM (Perplexity) ═══\n${text}`;
-          if (citations.length > 0) perplexityContext += `\n\nCitace:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
-        }
-      }
-    } catch (e) {
-      console.warn("[weekly] Perplexity failed (non-fatal):", e);
-    }
-  }
-
-  // Mark gather as done
-  await sb.from("did_update_cycles").update({
-    context_data: { ...ctx, perplexityContext, gather_step: "done" },
-    heartbeat_at: new Date().toISOString(),
-    phase_detail: `Sběr dokončen: ${cardNames.length} karet`,
-    phase_step: "done", progress_current: GATHER_STEPS.length, progress_total: GATHER_STEPS.length,
-  }).eq("id", cycleId);
-
-  console.log(`[weekly] Perplexity done, gather complete`);
 }
 
 // ═══ ANALYZE ═══
@@ -1124,11 +1049,7 @@ serve(async (req) => {
 
       if (isCronCall && result.cycleId) {
         const cid = result.cycleId;
-        // Gather in loop until done
-        let gatherResult: any;
-        do {
-          gatherResult = await phaseGather(sb, cid, userId);
-        } while (gatherResult.needsMore);
+        await phaseGather(sb, cid, userId);
         await phaseAnalyze(sb, cid);
         await phaseDistribute(sb, cid);
         await phaseNotify(sb, cid);
