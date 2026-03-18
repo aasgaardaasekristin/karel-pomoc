@@ -90,8 +90,7 @@ async function createFolderInParent(token: string, name: string, parentId: strin
   return data.id;
 }
 
-const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
-const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const truncateStr = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
