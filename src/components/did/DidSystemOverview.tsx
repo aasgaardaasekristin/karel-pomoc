@@ -116,7 +116,6 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <DidSessionPrep />
           <Button
             variant="outline"
             size="sm"
