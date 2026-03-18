@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, FileText, RefreshCw, AlertCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,109 +15,159 @@ interface WeeklyCycleData {
   cards_updated: any;
   cycle_type: string;
   status: string;
+  phase: string;
+  phase_detail: string;
 }
 
-const RUNNING_TIMEOUT_MS = 10 * 60 * 1000;
-const POLL_INTERVAL_MS = 5000;
+const PHASES = ["kickoff", "gather", "analyze", "distribute", "notify"] as const;
+const PHASE_LABELS: Record<string, string> = {
+  created: "Cyklus vytvořen",
+  gathering: "Sbírám data z Drive...",
+  gathered: "Data sebrána",
+  analyzing: "AI analyzuje data...",
+  analyzed: "Analýza hotová",
+  distributing: "Zapisuji do Drive...",
+  distributed: "Zápis dokončen",
+  notifying: "Odesílám e-maily...",
+  completed: "Dokončeno ✓",
+  failed: "Selhalo ✗",
+};
+
+const PHASE_PROGRESS: Record<string, number> = {
+  created: 5,
+  gathering: 15,
+  gathered: 30,
+  analyzing: 50,
+  analyzed: 65,
+  distributing: 75,
+  distributed: 90,
+  notifying: 95,
+  completed: 100,
+  failed: 0,
+};
+
+const POLL_INTERVAL_MS = 4000;
+const STALE_TIMEOUT_MS = 25 * 60 * 1000; // 25 min
 
 const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { refreshTrigger?: number; onWeeklyCycleComplete?: () => void }) => {
   const [cycles, setCycles] = useState<WeeklyCycleData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [runningWeekly, setRunningWeekly] = useState(false);
+  const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
+  const chainingRef = useRef(false);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-
     const { data } = await supabase
       .from("did_update_cycles")
-      .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status")
+      .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status, phase, phase_detail")
       .eq("cycle_type", "weekly")
       .in("status", ["completed", "running", "failed"])
       .order("created_at", { ascending: false })
       .limit(8);
-
     if (data) setCycles(data as WeeklyCycleData[]);
     if (!silent) setLoading(false);
   }, []);
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
+  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => { if (refreshTrigger > 0) void loadData(true); }, [refreshTrigger, loadData]);
 
-  useEffect(() => {
-    if (refreshTrigger > 0) void loadData(true);
-  }, [refreshTrigger, loadData]);
+  // Call a specific phase
+  const callPhase = useCallback(async (phase: string, cycleId?: string) => {
+    const headers = await getAuthHeaders();
+    const body: any = { phase, force: true };
+    if (cycleId) body.cycleId = cycleId;
 
-  const hasFreshRunning = useMemo(
-    () => cycles.some((cycle) => cycle.status === "running" && (Date.now() - new Date(cycle.started_at).getTime()) < RUNNING_TIMEOUT_MS),
-    [cycles]
-  );
+    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`, {
+      method: "POST", headers, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(160000),
+    });
 
-  useEffect(() => {
-    if (!hasFreshRunning && !runningWeekly) return;
-    const intervalId = window.setInterval(() => {
-      void loadData(true);
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [hasFreshRunning, runningWeekly, loadData]);
+    const result = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error(result?.error || `Phase ${phase} failed`);
+    return result;
+  }, []);
 
-  const handleDeleteCycle = async (cycleId: string) => {
-    const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
-    if (error) {
-      toast.error("Nepodařilo se smazat záznam");
-      return;
-    }
-    toast.success("Týdenní report smazán");
-    void loadData(true);
-  };
-
-  const handleRunWeekly = async () => {
-    setRunningWeekly(true);
-    toast.info("Týdenní cyklus jsem spustil. Běžím bez blokace a průběh budu obnovovat.");
+  // Auto-chain phases
+  const runPhaseChain = useCallback(async () => {
+    if (chainingRef.current) return;
+    chainingRef.current = true;
 
     try {
-      const headers = await getAuthHeaders();
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 180000);
+      // Phase 1: Kickoff
+      toast.info("Týdenní cyklus spuštěn – fáze 1/5");
+      const kickoffResult = await callPhase("kickoff");
 
-      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ source: "manual", force: true }),
-        signal: controller.signal,
-      });
-
-      window.clearTimeout(timeout);
-
-      let result: any = null;
-      try {
-        result = await resp.json();
-      } catch {
-        result = null;
-      }
-
-      if (!resp.ok) {
-        toast.error(`Chyba: ${String(result?.error || "Neznámá chyba").slice(0, 200)}`);
+      if (kickoffResult.skipped) {
+        toast.info(kickoffResult.reason === "already_running"
+          ? "Jiný týdenní cyklus už právě běží."
+          : "Nedávno byl dokončen – zkus to znovu později.");
         return;
       }
 
-      if (result?.skipped && result?.reason === "already_running") {
-        toast.info("Jiný týdenní cyklus už právě běží na pozadí.");
-      } else {
-        toast.success("Týdenní cyklus byl přijat ke spuštění.");
-      }
-    } catch (e: any) {
-      if (e.name === "AbortError") {
-        toast.info("Týdenní cyklus běží dál na pozadí — panel průběžně obnovuji.");
-      } else {
-        toast.error(e.message || "Chyba při spouštění týdenního cyklu");
-      }
-    } finally {
-      setRunningWeekly(false);
+      const cid = kickoffResult.cycleId;
+      setActiveCycleId(cid);
       void loadData(true);
+
+      // Phase 2: Gather
+      toast.info("Fáze 2/5: Sbírám data z Drive a databáze...");
+      await callPhase("gather", cid);
+      void loadData(true);
+
+      // Phase 3: Analyze
+      toast.info("Fáze 3/5: AI analyzuje data (1-2 min)...");
+      await callPhase("analyze", cid);
+      void loadData(true);
+
+      // Phase 4: Distribute
+      toast.info("Fáze 4/5: Zapisuji na Drive a synchronizuji úkoly...");
+      await callPhase("distribute", cid);
+      void loadData(true);
+
+      // Phase 5: Notify
+      toast.info("Fáze 5/5: Odesílám e-maily...");
+      await callPhase("notify", cid);
+      void loadData(true);
+
+      toast.success("Týdenní cyklus úspěšně dokončen! ✅");
       onWeeklyCycleComplete?.();
+    } catch (e: any) {
+      if (e.name === "TimeoutError" || e.name === "AbortError") {
+        toast.info("Fáze běží na pozadí – panel průběžně obnovuji.");
+      } else {
+        toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
+      }
+      void loadData(true);
+    } finally {
+      chainingRef.current = false;
+      setActiveCycleId(null);
     }
+  }, [callPhase, loadData, onWeeklyCycleComplete]);
+
+  // Poll while active cycle is running
+  useEffect(() => {
+    if (!activeCycleId) return;
+    const intervalId = window.setInterval(() => void loadData(true), POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [activeCycleId, loadData]);
+
+  const hasRunning = useMemo(
+    () => cycles.some(c => c.status === "running" && (Date.now() - new Date(c.started_at).getTime()) < STALE_TIMEOUT_MS),
+    [cycles]
+  );
+
+  // Also poll if there's a running cycle we didn't start
+  useEffect(() => {
+    if (!hasRunning || activeCycleId) return;
+    const intervalId = window.setInterval(() => void loadData(true), POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [hasRunning, activeCycleId, loadData]);
+
+  const handleDeleteCycle = async (cycleId: string) => {
+    const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
+    if (error) { toast.error("Nepodařilo se smazat záznam"); return; }
+    toast.success("Týdenní report smazán");
+    void loadData(true);
   };
 
   if (loading) {
@@ -138,13 +188,11 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
         <Button
           variant="outline"
           size="sm"
-          onClick={handleRunWeekly}
-          disabled={runningWeekly || hasFreshRunning}
+          onClick={runPhaseChain}
+          disabled={chainingRef.current || hasRunning}
           className="h-6 px-2 text-[10px]"
         >
-          {runningWeekly ? (
-            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Spouštím...</>
-          ) : hasFreshRunning ? (
+          {chainingRef.current || hasRunning ? (
             <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</>
           ) : (
             <><RefreshCw className="w-3 h-3 mr-1" /> Spustit týdenní cyklus</>
@@ -154,20 +202,21 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
 
       {cycles.length === 0 ? (
         <p className="py-4 text-center text-xs text-muted-foreground">
-          Zatím neproběhl žádný týdenní cyklus. Spusť ho tlačítkem výše.
+          Zatím neproběhl žádný týdenní cyklus.
         </p>
       ) : (
         cycles.map((cycle) => {
           const cards = Array.isArray(cycle.cards_updated) ? cycle.cards_updated : [];
-          const isStaleRunning = cycle.status === "running" && Date.now() - new Date(cycle.started_at).getTime() >= RUNNING_TIMEOUT_MS;
-          const visualStatus = isStaleRunning ? "failed" : cycle.status;
+          const isStale = cycle.status === "running" && Date.now() - new Date(cycle.started_at).getTime() >= STALE_TIMEOUT_MS;
+          const visualStatus = isStale ? "failed" : cycle.status;
           const isRunning = visualStatus === "running";
           const isFailed = visualStatus === "failed";
           const isExpanded = expandedCycle === cycle.id;
           const displayDate = cycle.completed_at || cycle.started_at;
-          const statusLabel = isRunning ? "Běží" : isFailed ? "Selhalo" : "Dokončeno";
-          const summary = isStaleRunning
-            ? "Cyklus se zřejmě zasekl nebo překročil limit. Můžeš ho spustit znovu."
+          const progress = PHASE_PROGRESS[cycle.phase] || 0;
+          const phaseLabel = cycle.phase_detail || PHASE_LABELS[cycle.phase] || cycle.phase;
+          const summary = isStale
+            ? "Cyklus se zřejmě zasekl. Můžeš ho spustit znovu."
             : cycle.report_summary;
 
           return (
@@ -181,29 +230,46 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                 disabled={isRunning}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <span className="text-xs font-medium text-foreground">
                       {isRunning ? "⏳ Probíhá analýza..." : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
                     </span>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      <Badge variant="outline" className={`px-1 py-0 text-[9px] ${isFailed ? "border-destructive/40 text-destructive" : isRunning ? "border-primary/30 text-primary" : ""}`}>
-                        {isRunning ? <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> : isFailed ? <AlertCircle className="w-2.5 h-2.5 mr-0.5" /> : null}
-                        {statusLabel}
-                      </Badge>
-                      {!isRunning && !isFailed && (
-                        <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                          {cards.length} aktualizací
+
+                    {isRunning && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>{phaseLabel}</span>
+                          <span>{progress}%</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted/50 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {!isRunning && (
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <Badge variant="outline" className={`px-1 py-0 text-[9px] ${isFailed ? "border-destructive/40 text-destructive" : ""}`}>
+                          {isFailed ? <AlertCircle className="w-2.5 h-2.5 mr-0.5" /> : null}
+                          {isFailed ? "Selhalo" : "Dokončeno"}
                         </Badge>
-                      )}
-                    </div>
+                        {!isFailed && (
+                          <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                            {cards.length} aktualizací
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1">
                     {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
                     {!isRunning && (
                       <Button
-                        variant="ghost"
-                        size="sm"
+                        variant="ghost" size="sm"
                         onClick={(e) => { e.stopPropagation(); void handleDeleteCycle(cycle.id); }}
                         className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                       >

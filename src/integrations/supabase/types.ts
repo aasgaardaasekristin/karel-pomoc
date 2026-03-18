@@ -974,9 +974,12 @@ export type Database = {
         Row: {
           cards_updated: Json | null
           completed_at: string | null
+          context_data: Json
           created_at: string
           cycle_type: string
           id: string
+          phase: string
+          phase_detail: string
           report_summary: string | null
           started_at: string
           status: string
@@ -985,9 +988,12 @@ export type Database = {
         Insert: {
           cards_updated?: Json | null
           completed_at?: string | null
+          context_data?: Json
           created_at?: string
           cycle_type?: string
           id?: string
+          phase?: string
+          phase_detail?: string
           report_summary?: string | null
           started_at?: string
           status?: string
@@ -996,9 +1002,12 @@ export type Database = {
         Update: {
           cards_updated?: Json | null
           completed_at?: string | null
+          context_data?: Json
           created_at?: string
           cycle_type?: string
           id?: string
+          phase?: string
+          phase_detail?: string
           report_summary?: string | null
           started_at?: string
           status?: string
