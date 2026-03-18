@@ -48,6 +48,11 @@ export function parseTasksFromOverview(text: string): ParsedTask[] {
     tasks.push(...extractTaskLines(sharedWeekly, "both", "longterm"));
   }
 
+  // --- FALLBACK: parse action bullets from "Dnes doporučuji" if structured sections are missing ---
+  if (tasks.length === 0) {
+    tasks.push(...extractRecommendationTasks(text));
+  }
+
   return tasks;
 }
 
@@ -122,6 +127,53 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
     const [shortTitle, overflow] = truncateTitle(currentTitle);
     const fullNote = (overflow + " " + currentNote).trim();
     tasks.push({ task: shortTitle, assigned_to: assignee, category, note: fullNote });
+  }
+
+  return tasks;
+}
+
+function extractRecommendationTasks(text: string): ParsedTask[] {
+  const match = text.match(/Dnes doporučuji\s*:([\s\S]*?)(?:\n\s*📋\s*Úkoly pro|$)/i);
+  if (!match) return [];
+
+  const tasks: ParsedTask[] = [];
+  const lines = match[1]
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const bulletMatch = line.match(/^(?:[-–•]|\d+[.)])\s+(.+)/);
+    const raw = (bulletMatch ? bulletMatch[1] : line).trim();
+    if (!raw || raw.length < 8) continue;
+
+    const assignee = /\b(?:haničk|hanka)\b/i.test(raw)
+      ? "hanka"
+      : /\b(?:káť|kata)\b/i.test(raw)
+        ? "kata"
+        : /\b(?:obě|oběma|společně|spolu|obě terapeutky)\b/i.test(raw)
+          ? "both"
+          : "both";
+
+    const category = /\b(?:zítra|zitra)\b/i.test(raw)
+      ? "tomorrow"
+      : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw)
+        ? "longterm"
+        : "today";
+
+    const cleaned = raw
+      .replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "")
+      .trim();
+
+    const [shortTitle, overflow] = truncateTitle(cleaned);
+    if (!shortTitle) continue;
+
+    tasks.push({
+      task: shortTitle,
+      assigned_to: assignee,
+      category,
+      note: overflow,
+    });
   }
 
   return tasks;
