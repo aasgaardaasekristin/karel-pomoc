@@ -169,6 +169,7 @@ serve(async (req) => {
   }
 
   const source = typeof requestBody.source === "string" ? requestBody.source.trim().toLowerCase() : "manual";
+  const forceRun = requestBody.force === true;
   const isCronCall = source === "cron";
   const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.replace("Bearer ", "") : "";
   const cronAllowedTokens = [serviceRoleKey, anonKey].filter(Boolean);
