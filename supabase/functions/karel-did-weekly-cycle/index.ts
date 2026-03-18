@@ -14,10 +14,9 @@ const MAX_CONVERSATION_MESSAGE_CHARS = 180;
 const truncate = (value: string, max: number) =>
   value.length > max ? `${value.slice(0, max)}…` : value;
 
-const PHASE_BUDGET_MS = 130000;
 const GOOGLE_FETCH_TIMEOUT_MS = 12000;
-const PERPLEXITY_TIMEOUT_MS = 12000;
-const MIN_BUDGET_FOR_PERPLEXITY_MS = 22000;
+const PERPLEXITY_TIMEOUT_MS = 30000;
+const GATHER_STEP_BUDGET_MS = 100000; // 100s budget per gather step call
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timeoutId: number | undefined;
@@ -41,8 +40,6 @@ async function fetchWithRetry(input: string, init: RequestInit, label: string, t
   }
   throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
 }
-
-const hasBudget = (startedAt: number, reserveMs = 0) => Date.now() - startedAt < PHASE_BUDGET_MS - reserveMs;
 
 // ═══ OAuth2 token helper ═══
 async function getAccessToken(): Promise<string> {
@@ -177,12 +174,20 @@ async function createFileInFolder(token: string, fileName: string, content: stri
 
 const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\.(txt|md|doc|docx|xls|xlsx)$/gi, "").replace(/[^a-z0-9]/g, "");
 
-// ═══ Helper: update cycle phase ═══
+// ═══ Helper: update cycle phase with heartbeat ═══
 async function updatePhase(sb: any, cycleId: string, phase: string, detail: string, extra?: Record<string, any>) {
   await sb.from("did_update_cycles").update({
-    phase, phase_detail: detail, started_at: new Date().toISOString(), ...extra,
+    phase, phase_detail: detail, heartbeat_at: new Date().toISOString(), ...extra,
   }).eq("id", cycleId);
   console.log(`[weekly] Phase: ${phase} – ${detail}`);
+}
+
+async function heartbeat(sb: any, cycleId: string, detail: string, step?: string, current?: number, total?: number) {
+  const update: any = { heartbeat_at: new Date().toISOString(), phase_detail: detail };
+  if (step !== undefined) update.phase_step = step;
+  if (current !== undefined) update.progress_current = current;
+  if (total !== undefined) update.progress_total = total;
+  await sb.from("did_update_cycles").update(update).eq("id", cycleId);
 }
 
 // ═══════════════════════════════════════════
@@ -194,11 +199,11 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
   const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
 
   // Auto-cleanup stuck cycles (>8 min without heartbeat)
-  const staleRunningThreshold = new Date(Date.now() - 8 * 60 * 1000).toISOString();
+  const staleThreshold = new Date(Date.now() - 8 * 60 * 1000).toISOString();
   const { data: stuckCycles } = await sb.from("did_update_cycles")
-    .select("id, cycle_type, started_at, phase")
+    .select("id, cycle_type, started_at, phase, heartbeat_at")
     .eq("status", "running")
-    .lt("started_at", staleRunningThreshold);
+    .lt("heartbeat_at", staleThreshold);
 
   if (stuckCycles && stuckCycles.length > 0) {
     for (const stuck of stuckCycles) {
@@ -223,19 +228,19 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
     }
   }
 
-  // Prevent duplicate runs only for fresh heartbeats
+  // Prevent duplicate runs
   const duplicateGuardThreshold = new Date(Date.now() - 6 * 60 * 1000).toISOString();
   const { data: alreadyRunning } = await sb.from("did_update_cycles")
     .select("id, started_at, phase")
     .eq("cycle_type", "weekly").eq("status", "running")
-    .gte("started_at", duplicateGuardThreshold)
+    .gte("heartbeat_at", duplicateGuardThreshold)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
 
   if (alreadyRunning) {
     return { skipped: true, reason: "already_running", cycleId: alreadyRunning.id, phase: alreadyRunning.phase };
   }
 
-  // Cooldown check (only for auto cron, not manual force)
+  // Cooldown check
   if (isCronCall && !forceRun) {
     const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     const { data: recentCompleted } = await sb.from("did_update_cycles")
@@ -249,29 +254,100 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
 
   // Create cycle record
   const { data: cycle } = await sb.from("did_update_cycles")
-    .insert({ cycle_type: "weekly", status: "running", user_id: userId, phase: "created", phase_detail: "Cyklus vytvořen" })
+    .insert({
+      cycle_type: "weekly", status: "running", user_id: userId,
+      phase: "created", phase_detail: "Cyklus vytvořen",
+      heartbeat_at: new Date().toISOString(),
+      phase_step: "", progress_current: 0, progress_total: 0,
+    })
     .select().single();
 
   return { cycleId: cycle.id, phase: "created" };
 }
 
-async function phaseGather(sb: any, cycleId: string, userId: string) {
-  await updatePhase(sb, cycleId, "gathering", "Sbírám data z Drive a databáze...");
+// ═══════════════════════════════════════════
+// RESUMABLE GATHER – runs in sub-steps
+// Each call does ONE sub-step, saves progress, returns.
+// Frontend keeps calling until gather_step === "done".
+// ═══════════════════════════════════════════
 
+const GATHER_STEPS = ["init", "cards_active", "cards_archive", "centrum", "db", "perplexity", "done"] as const;
+type GatherStep = typeof GATHER_STEPS[number];
+
+async function phaseGather(sb: any, cycleId: string, userId: string) {
+  // Load current context to see where we left off
+  const { data: cycle } = await sb.from("did_update_cycles")
+    .select("context_data, phase_step").eq("id", cycleId).single();
+
+  const ctx = cycle?.context_data || {};
+  const currentStep: GatherStep = (ctx.gather_step as GatherStep) || "init";
+
+  // If already done, just return
+  if (currentStep === "done") {
+    return { phase: "gathered", cardsFound: (ctx.cardNames || []).length, gather_step: "done" };
+  }
+
+  await updatePhase(sb, cycleId, "gathering", `Sbírám data (krok: ${currentStep})...`, { phase_step: currentStep });
+
+  const stepStart = Date.now();
+
+  try {
+    if (currentStep === "init") {
+      await gatherInit(sb, cycleId, userId, ctx);
+    } else if (currentStep === "cards_active") {
+      await gatherCards(sb, cycleId, ctx, "active");
+    } else if (currentStep === "cards_archive") {
+      await gatherCards(sb, cycleId, ctx, "archive");
+    } else if (currentStep === "centrum") {
+      await gatherCentrum(sb, cycleId, ctx);
+    } else if (currentStep === "db") {
+      await gatherDb(sb, cycleId, userId, ctx);
+    } else if (currentStep === "perplexity") {
+      await gatherPerplexity(sb, cycleId, ctx);
+    }
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : "Unknown error";
+    console.error(`[weekly] Gather step ${currentStep} failed:`, errMsg);
+    // Save error but DON'T fail the whole cycle — let frontend retry
+    await sb.from("did_update_cycles").update({
+      heartbeat_at: new Date().toISOString(),
+      last_error: `${currentStep}: ${errMsg}`.slice(0, 500),
+      phase_detail: `Krok ${currentStep} selhal – lze opakovat`,
+    }).eq("id", cycleId);
+    return { phase: "gathering", gather_step: currentStep, error: errMsg, retryable: true };
+  }
+
+  // Check if we're now done
+  const { data: updated } = await sb.from("did_update_cycles")
+    .select("context_data").eq("id", cycleId).single();
+  const newStep = updated?.context_data?.gather_step;
+
+  if (newStep === "done") {
+    await sb.from("did_update_cycles").update({
+      phase: "gathered",
+      phase_detail: `Data sebrána: ${(updated?.context_data?.cardNames || []).length} karet`,
+      heartbeat_at: new Date().toISOString(),
+      phase_step: "done",
+      progress_current: GATHER_STEPS.length,
+      progress_total: GATHER_STEPS.length,
+    }).eq("id", cycleId);
+    return { phase: "gathered", cardsFound: (updated?.context_data?.cardNames || []).length, gather_step: "done" };
+  }
+
+  return { phase: "gathering", gather_step: newStep, needsMore: true };
+}
+
+async function gatherInit(sb: any, cycleId: string, userId: string, ctx: any) {
   const token = await getAccessToken();
   const dateStr = new Date().toISOString().slice(0, 10);
 
-  let allCardsContent = "";
-  let centrumDocsContent = "";
-  let agreementsContent = "";
-  let instructionContext = "";
-  let systemMap = "";
-  const cardNames: string[] = [];
-  let centrumFolderId: string | null = null;
-  let dohodaFolderId: string | null = null;
-  let folderId: string | null = null;
+  const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
 
-  folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
+  let activeFolderId: string | null = null;
+  let archiveFolderId: string | null = null;
+  let centrumFolderId: string | null = null;
+  let activeFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
+  let archiveFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
 
   if (folderId) {
     const rootChildren = await listFilesInFolder(token, folderId);
@@ -280,52 +356,146 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
     const activeFolder = rootFolders.find(f => /^01/.test(f.name.trim()) || canonicalText(f.name).includes("aktiv"));
     const archiveFolder = rootFolders.find(f => /^03/.test(f.name.trim()) || canonicalText(f.name).includes("archiv"));
 
-    for (const folder of [activeFolder, archiveFolder].filter(Boolean)) {
-      const files = await listFilesRecursive(token, folder!.id);
-      for (const file of files) {
-        if (file.mimeType === DRIVE_FOLDER_MIME) continue;
-        try {
-          const content = await readFileContent(token, file.id);
-          if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
-            const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
-            const folderLabel = folder === archiveFolder ? "ARCHIV/SPÍ" : "AKTIVNÍ";
-            allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${truncate(content, MAX_CARD_CHARS)}`;
-            cardNames.push(`${partName} [${folderLabel}]`);
-          }
-        } catch (e) { console.warn(`Failed to read ${file.name}:`, e); }
-      }
+    if (activeFolder) {
+      activeFolderId = activeFolder.id;
+      activeFiles = await listFilesRecursive(token, activeFolder.id);
+      activeFiles = activeFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME);
     }
+    if (archiveFolder) {
+      archiveFolderId = archiveFolder.id;
+      archiveFiles = await listFilesRecursive(token, archiveFolder.id);
+      archiveFiles = archiveFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME);
+    }
+    if (centerFolder) centrumFolderId = centerFolder.id;
+  }
 
-    if (centerFolder) {
-      centrumFolderId = centerFolder.id;
-      const centerFiles = await listFilesInFolder(token, centerFolder.id);
-      for (const file of centerFiles) {
-        if (file.mimeType === DRIVE_FOLDER_MIME) {
-          if (canonicalText(file.name).includes("dohod")) {
-            dohodaFolderId = file.id;
-            const dohodaFiles = await listFilesInFolder(token, file.id);
-            for (const df of dohodaFiles) {
-              try {
-                const content = await readFileContent(token, df.id);
-                agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
-              } catch {}
-            }
-          }
-          continue;
-        }
-        try {
-          const content = await readFileContent(token, file.id);
-          const cn = canonicalText(file.name);
-          if (cn.includes("instrukce")) instructionContext = truncate(content, MAX_INSTRUCTION_CHARS);
-          else if (cn.includes("mapa") && cn.includes("vztah")) systemMap = truncate(content, MAX_SYSTEM_MAP_CHARS);
-          centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
-        } catch {}
+  await heartbeat(sb, cycleId, `Nalezeno ${activeFiles.length} aktivních + ${archiveFiles.length} archivních souborů`, "init", 1, GATHER_STEPS.length);
+
+  const newCtx = {
+    ...ctx,
+    gather_step: "cards_active",
+    folderId, activeFolderId, archiveFolderId, centrumFolderId,
+    activeFileList: activeFiles.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
+    archiveFileList: archiveFiles.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })),
+    allCardsContent: "",
+    centrumDocsContent: "",
+    agreementsContent: "",
+    instructionContext: "",
+    systemMap: "",
+    cardNames: [],
+    dohodaFolderId: null,
+    dateStr,
+    userId,
+    cards_cursor: 0,
+  };
+
+  await sb.from("did_update_cycles").update({
+    context_data: newCtx, heartbeat_at: new Date().toISOString(),
+    progress_current: 1, progress_total: GATHER_STEPS.length, phase_step: "cards_active",
+  }).eq("id", cycleId);
+
+  console.log(`[weekly] Init done: ${activeFiles.length} active, ${archiveFiles.length} archive files`);
+}
+
+async function gatherCards(sb: any, cycleId: string, ctx: any, folder: "active" | "archive") {
+  const token = await getAccessToken();
+  const fileList = folder === "active" ? (ctx.activeFileList || []) : (ctx.archiveFileList || []);
+  const cursor = ctx.cards_cursor || 0;
+  const BATCH_SIZE = 6;
+  const folderLabel = folder === "active" ? "AKTIVNÍ" : "ARCHIV/SPÍ";
+
+  let allCardsContent = ctx.allCardsContent || "";
+  let cardNames: string[] = [...(ctx.cardNames || [])];
+
+  const batch = fileList.slice(cursor, cursor + BATCH_SIZE);
+  let processed = 0;
+
+  for (const file of batch) {
+    try {
+      const content = await readFileContent(token, file.id);
+      if (/SEKCE\s+[A-M]/i.test(content) || /KARTA\s+[ČC]ÁSTI/i.test(content) || /^\d{3}[_-]/i.test(file.name)) {
+        const partName = file.name.replace(/\.(txt|md|doc|docx)$/i, "").replace(/^\d{3}[_-]/, "").replace(/_/g, " ");
+        allCardsContent += `\n\n=== KARTA: ${partName} [${folderLabel}] ===\n${truncate(content, MAX_CARD_CHARS)}`;
+        cardNames.push(`${partName} [${folderLabel}]`);
       }
+      processed++;
+    } catch (e) {
+      console.warn(`Failed to read ${file.name}:`, e);
+      processed++;
     }
   }
-  console.log(`[weekly] Loaded ${cardNames.length} cards`);
 
-  // DB data
+  const newCursor = cursor + processed;
+  const isLastBatch = newCursor >= fileList.length;
+
+  let nextStep: string;
+  if (isLastBatch && folder === "active") {
+    nextStep = "cards_archive";
+  } else if (isLastBatch && folder === "archive") {
+    nextStep = "centrum";
+  } else {
+    nextStep = folder === "active" ? "cards_active" : "cards_archive"; // same step, next batch
+  }
+
+  const stepIndex = folder === "active" ? 2 : 3;
+  const detail = `Načteno ${cardNames.length} karet (${folder} ${Math.min(newCursor, fileList.length)}/${fileList.length})`;
+
+  await sb.from("did_update_cycles").update({
+    context_data: { ...ctx, allCardsContent, cardNames, cards_cursor: isLastBatch ? 0 : newCursor, gather_step: nextStep },
+    heartbeat_at: new Date().toISOString(),
+    phase_detail: detail, phase_step: nextStep,
+    progress_current: stepIndex, progress_total: GATHER_STEPS.length,
+  }).eq("id", cycleId);
+
+  console.log(`[weekly] Cards ${folder}: ${processed} processed, cursor ${newCursor}/${fileList.length}, next: ${nextStep}`);
+}
+
+async function gatherCentrum(sb: any, cycleId: string, ctx: any) {
+  const token = await getAccessToken();
+  let centrumDocsContent = ctx.centrumDocsContent || "";
+  let agreementsContent = ctx.agreementsContent || "";
+  let instructionContext = ctx.instructionContext || "";
+  let systemMap = ctx.systemMap || "";
+  let dohodaFolderId = ctx.dohodaFolderId || null;
+
+  if (ctx.centrumFolderId) {
+    const centerFiles = await listFilesInFolder(token, ctx.centrumFolderId);
+    for (const file of centerFiles) {
+      if (file.mimeType === DRIVE_FOLDER_MIME) {
+        if (canonicalText(file.name).includes("dohod")) {
+          dohodaFolderId = file.id;
+          const dohodaFiles = await listFilesInFolder(token, file.id);
+          for (const df of dohodaFiles) {
+            try {
+              const content = await readFileContent(token, df.id);
+              agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
+            } catch {}
+          }
+        }
+        continue;
+      }
+      try {
+        const content = await readFileContent(token, file.id);
+        const cn = canonicalText(file.name);
+        if (cn.includes("instrukce")) instructionContext = truncate(content, MAX_INSTRUCTION_CHARS);
+        else if (cn.includes("mapa") && cn.includes("vztah")) systemMap = truncate(content, MAX_SYSTEM_MAP_CHARS);
+        centrumDocsContent += `\n=== CENTRUM: ${file.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
+      } catch {}
+    }
+  }
+
+  await heartbeat(sb, cycleId, "Centrum dokumenty načteny", "db", 4, GATHER_STEPS.length);
+
+  await sb.from("did_update_cycles").update({
+    context_data: { ...ctx, centrumDocsContent, agreementsContent, instructionContext, systemMap, dohodaFolderId, gather_step: "db" },
+    heartbeat_at: new Date().toISOString(),
+    phase_step: "db", progress_current: 4, progress_total: GATHER_STEPS.length,
+  }).eq("id", cycleId);
+
+  console.log(`[weekly] Centrum done`);
+}
+
+async function gatherDb(sb: any, cycleId: string, userId: string, ctx: any) {
   const weekAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
   const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -369,27 +539,41 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
     .map(([name, d]) => `- ${name}: Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`)
     .join("\n");
 
-  const dailyReportsSummary = (weekCycles).filter(c => c.cycle_type === "daily")
-    .map(c => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`).join("\n---\n");
+  const dailyReportsSummary = (weekCycles).filter((c: any) => c.cycle_type === "daily")
+    .map((c: any) => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`).join("\n---\n");
 
-  const weekConversations = weekThreads.slice(0, 12).map(t => {
+  const weekConversations = weekThreads.slice(0, 12).map((t: any) => {
     const msgs = ((t.messages as any[]) || []).slice(-6);
     const isCast = t.sub_mode === "cast";
     return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
   }).join("\n\n---\n\n");
 
-  const researchSummary = researchThreads.slice(0, 8).map(rt => {
+  const researchSummary = researchThreads.slice(0, 8).map((rt: any) => {
     const msgs = ((rt.messages as any[]) || []).slice(-4);
     return `Téma: ${rt.topic} (${rt.created_by})\n${msgs.map((m: any) => `[${m.role}]: ${typeof m.content === "string" ? truncate(m.content, MAX_RESEARCH_MESSAGE_CHARS) : ""}`).join("\n")}`;
   }).join("\n---\n");
 
-  // Perplexity research
+  await sb.from("did_update_cycles").update({
+    context_data: { ...ctx, activitySummary, dailyReportsSummary, weekConversations, researchSummary, gather_step: "perplexity" },
+    heartbeat_at: new Date().toISOString(),
+    phase_detail: "DB data sebrána, připravuji Perplexity...",
+    phase_step: "perplexity", progress_current: 5, progress_total: GATHER_STEPS.length,
+  }).eq("id", cycleId);
+
+  console.log(`[weekly] DB gather done`);
+}
+
+async function gatherPerplexity(sb: any, cycleId: string, ctx: any) {
   let perplexityContext = "";
   const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+  const allCardsContent = ctx.allCardsContent || "";
+  const cardNames: string[] = ctx.cardNames || [];
+
   if (PERPLEXITY_API_KEY && allCardsContent.length > 100) {
     try {
-      await updatePhase(sb, cycleId, "gathering", "Hledám nové výzkumy (Perplexity)...");
-      const activeFragments = cardNames.filter(n => n.includes("AKTIVNÍ")).map(n => n.replace(" [AKTIVNÍ]", "")).join(", ");
+      await heartbeat(sb, cycleId, "Hledám nové výzkumy (Perplexity)...", "perplexity", 6, GATHER_STEPS.length);
+
+      const activeFragments = cardNames.filter((n: string) => n.includes("AKTIVNÍ")).map((n: string) => n.replace(" [AKTIVNÍ]", "")).join(", ");
       const talentKeywords: string[] = [];
       const talentRegex = /TALENT:\s*([^|]+)/gi;
       let m;
@@ -409,7 +593,7 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
           ],
           search_mode: "academic", search_recency_filter: "year",
         }),
-      }), 30000, "Perplexity");
+      }), PERPLEXITY_TIMEOUT_MS, "Perplexity");
 
       if (pRes.ok) {
         const pData = await pRes.json();
@@ -417,28 +601,26 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
         const citations: string[] = pData.citations || [];
         if (text) {
           perplexityContext = `\n\n═══ AKTUÁLNÍ VÝZKUM (Perplexity) ═══\n${text}`;
-          if (citations.length > 0) perplexityContext += `\n\nCitace:\n${citations.map((c, i) => `[${i + 1}] ${c}`).join("\n")}`;
+          if (citations.length > 0) perplexityContext += `\n\nCitace:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
         }
       }
-    } catch (e) { console.warn("[weekly] Perplexity failed:", e); }
+    } catch (e) {
+      console.warn("[weekly] Perplexity failed (non-fatal):", e);
+    }
   }
 
-  // Save gathered context
-  const context = {
-    allCardsContent, centrumDocsContent, agreementsContent, instructionContext, systemMap,
-    cardNames, centrumFolderId, dohodaFolderId, folderId,
-    activitySummary, dailyReportsSummary, weekConversations, researchSummary, perplexityContext,
-    dateStr, userId,
-  };
-
+  // Mark gather as done
   await sb.from("did_update_cycles").update({
-    phase: "gathered", phase_detail: `Data sebrána: ${cardNames.length} karet`,
-    context_data: context, started_at: new Date().toISOString(),
+    context_data: { ...ctx, perplexityContext, gather_step: "done" },
+    heartbeat_at: new Date().toISOString(),
+    phase_detail: `Sběr dokončen: ${cardNames.length} karet`,
+    phase_step: "done", progress_current: GATHER_STEPS.length, progress_total: GATHER_STEPS.length,
   }).eq("id", cycleId);
 
-  return { phase: "gathered", cardsFound: cardNames.length };
+  console.log(`[weekly] Perplexity done, gather complete`);
 }
 
+// ═══ ANALYZE ═══
 async function phaseAnalyze(sb: any, cycleId: string) {
   await updatePhase(sb, cycleId, "analyzing", "AI analyzuje data (může trvat 1-2 minuty)...");
 
@@ -447,7 +629,6 @@ async function phaseAnalyze(sb: any, cycleId: string) {
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-  // Build the AI prompt (same as before, extracted from context)
   const systemPrompt = buildSystemPrompt(ctx.instructionContext);
   const userPrompt = buildUserPrompt(ctx);
 
@@ -474,16 +655,16 @@ async function phaseAnalyze(sb: any, cycleId: string) {
     throw new Error(`AI analysis failed: ${analysisResponse.status}`);
   }
 
-  // Save analysis to context_data
   const updatedContext = { ...ctx, analysisText };
   await sb.from("did_update_cycles").update({
     phase: "analyzed", phase_detail: `Analýza dokončena: ${analysisText.length} znaků`,
-    context_data: updatedContext, started_at: new Date().toISOString(),
+    context_data: updatedContext, heartbeat_at: new Date().toISOString(),
   }).eq("id", cycleId);
 
   return { phase: "analyzed", analysisLength: analysisText.length };
 }
 
+// ═══ DISTRIBUTE ═══
 async function phaseDistribute(sb: any, cycleId: string) {
   await updatePhase(sb, cycleId, "distributing", "Zapisuji na Drive a synchronizuji úkoly...");
 
@@ -511,7 +692,6 @@ async function phaseDistribute(sb: any, cycleId: string) {
 
   let totalInserted = 0;
 
-  // Extract [UKOL] from AI
   if (analysisText) {
     const ukolySection = analysisText.match(/\[UKOLY\]([\s\S]*?)\[\/UKOLY\]/)?.[1]?.trim();
     if (ukolySection) {
@@ -522,7 +702,6 @@ async function phaseDistribute(sb: any, cycleId: string) {
     }
   }
 
-  // Extract [DOHODA] blocks
   const agreementBlocks: Array<{title: string; parties: string; deadline: string; priority: string; content: string}> = [];
   if (analysisText) {
     const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
@@ -535,7 +714,6 @@ async function phaseDistribute(sb: any, cycleId: string) {
     }
   }
 
-  // Extract [UKOL] from Drive agreements
   if (agreementsContent) {
     const driveUkolRegex = /\[UKOL\]\s*assignee=(\S+)\s*\|\s*task=([^|]+)\|\s*source=([^|]+?)(?:\|\s*priority=(\S+))?\s*\[\/UKOL\]/g;
     for (const m of agreementsContent.matchAll(driveUkolRegex)) {
@@ -548,12 +726,13 @@ async function phaseDistribute(sb: any, cycleId: string) {
     console.log(`[weekly] ✅ Inserted ${totalInserted} therapist tasks`);
   }
 
+  await heartbeat(sb, cycleId, "Zapisuji na Drive...");
+
   // ═══ Drive writes ═══
   if (folderId && analysisText) {
     const token = await getAccessToken();
 
     if (centrumFolderId) {
-      // Strategic outlook
       const strategicSection = analysisText.match(/\[STRATEGICKY_VYHLED\]([\s\S]*?)\[\/STRATEGICKY_VYHLED\]/)?.[1]?.trim();
       if (strategicSection) {
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
@@ -566,7 +745,6 @@ async function phaseDistribute(sb: any, cycleId: string) {
           cardsUpdated.push("06_Strategicky_Vyhled (vytvořen)");
         }
 
-        // Sync to did_system_profile
         try {
           const extractGoals = (section: string, marker: string): string[] => {
             const match = section.match(new RegExp(`${marker}[\\s\\S]*?(?=SEKCE|$)`, 'i'));
@@ -590,7 +768,6 @@ async function phaseDistribute(sb: any, cycleId: string) {
           console.log(`[weekly] ✅ did_system_profile synced`);
         } catch (e) { console.warn("[weekly] Profile sync error:", e); }
 
-        // Append weekly report to strategic doc
         const reportContent = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim();
         if (reportContent && stratFile) {
           const existingContent = await readFileContent(token, stratFile.id);
@@ -601,7 +778,6 @@ async function phaseDistribute(sb: any, cycleId: string) {
         }
       }
 
-      // Write agreements to Drive
       if (agreementBlocks.length > 0) {
         try {
           let agreementsFolderId = dohodaFolderId;
@@ -628,7 +804,7 @@ async function phaseDistribute(sb: any, cycleId: string) {
         } catch (e) { console.warn("[weekly] Agreement write failed:", e); }
       }
 
-      // CENTRUM updates (05, 04, 03, 00)
+      // CENTRUM updates
       const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
       const centerFiles = await listFilesInFolder(token, centrumFolderId);
 
@@ -665,36 +841,37 @@ async function phaseDistribute(sb: any, cycleId: string) {
               cardsUpdated.push(`CENTRUM: ${docName}`);
             }
           }
-        } catch (e) { console.error(`[weekly] CENTRUM update "${docName}" failed:`, e); }
+        } catch (e) { console.warn(`[weekly] CENTRUM write ${docName} failed:`, e); }
       }
     }
   }
 
-  // Save result
   await sb.from("did_update_cycles").update({
-    phase: "distributed", phase_detail: `Distribuce dokončena: ${cardsUpdated.length} položek`,
-    cards_updated: cardsUpdated, report_summary: (analysisText || "").slice(0, 2000),
-    started_at: new Date().toISOString(),
+    phase: "distributed", phase_detail: `Zapsáno: ${cardsUpdated.length} položek`,
+    cards_updated: cardsUpdated, heartbeat_at: new Date().toISOString(),
   }).eq("id", cycleId);
 
   return { phase: "distributed", cardsUpdated };
 }
 
+// ═══ NOTIFY ═══
 async function phaseNotify(sb: any, cycleId: string) {
-  await updatePhase(sb, cycleId, "notifying", "Odesílám e-maily a synchronizuji výzkum...");
+  await updatePhase(sb, cycleId, "notifying", "Odesílám e-maily...");
 
   const { data: cycle } = await sb.from("did_update_cycles").select("context_data, cards_updated").eq("id", cycleId).single();
   const ctx = cycle.context_data;
-  const { analysisText } = ctx;
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const { analysisText, userId } = ctx;
+  const cardsUpdated = cycle.cards_updated || [];
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
   const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
-  const KATA_EMAIL = Deno.env.get("KATA_EMAIL") || "K.CC@seznam.cz";
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const KATA_EMAIL = Deno.env.get("KATA_EMAIL") || "";
 
   // Research sync
   const researchPromise = (async () => {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseKey) return;
     try {
       const resp = await withTimeout(fetch(`${supabaseUrl}/functions/v1/karel-research-weekly-sync`, {
         method: "POST", headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
@@ -761,10 +938,10 @@ async function phaseNotify(sb: any, cycleId: string) {
 
   await Promise.allSettled([researchPromise, emailPromise]);
 
-  // Mark completed – clear context_data to save space
   await sb.from("did_update_cycles").update({
     status: "completed", phase: "completed", phase_detail: "Týdenní cyklus dokončen",
     completed_at: new Date().toISOString(), context_data: {},
+    heartbeat_at: new Date().toISOString(),
   }).eq("id", cycleId);
 
   return { phase: "completed" };
@@ -930,7 +1107,6 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const sb = createClient(supabaseUrl, supabaseKey);
 
-    // Resolve userId
     let userId = requesterUserId;
     if (!userId) {
       const { data: anyUser } = await sb.from("did_threads").select("user_id").order("last_activity_at", { ascending: false }).limit(1).maybeSingle();
@@ -938,7 +1114,6 @@ serve(async (req) => {
     }
     if (!userId) throw new Error("No user found");
 
-    // Route by phase
     let result: any;
 
     if (!phase || phase === "kickoff") {
@@ -947,10 +1122,13 @@ serve(async (req) => {
         return new Response(JSON.stringify({ success: true, ...result }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // For cron calls, run all phases sequentially in one call
       if (isCronCall && result.cycleId) {
         const cid = result.cycleId;
-        await phaseGather(sb, cid, userId);
+        // Gather in loop until done
+        let gatherResult: any;
+        do {
+          gatherResult = await phaseGather(sb, cid, userId);
+        } while (gatherResult.needsMore);
         await phaseAnalyze(sb, cid);
         await phaseDistribute(sb, cid);
         await phaseNotify(sb, cid);
@@ -972,7 +1150,6 @@ serve(async (req) => {
   } catch (error) {
     console.error("[weekly] Error:", error);
 
-    // Mark cycle as failed
     if (cycleId || phase === "kickoff") {
       try {
         const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -982,7 +1159,7 @@ serve(async (req) => {
             status: "failed", completed_at: new Date().toISOString(),
             phase: "failed", phase_detail: `Selhalo ve fázi: ${phase || "kickoff"}`,
             report_summary: `Chyba: ${error instanceof Error ? error.message : "Unknown"}`.slice(0, 2000),
-            context_data: {},
+            context_data: {}, heartbeat_at: new Date().toISOString(),
           }).eq("id", failId);
         }
       } catch {}
