@@ -83,50 +83,56 @@ Theme: Calming, professional, warm - inspired by therapy spaces
   }
 
   .dark {
-    --background: 30 15% 10%;
-    --foreground: 40 20% 92%;
+    --background: 154 12% 11%;
+    --foreground: 42 18% 92%;
 
-    --card: 30 15% 12%;
-    --card-foreground: 40 20% 92%;
+    --card: 154 12% 13%;
+    --card-foreground: 42 18% 92%;
 
-    --popover: 30 15% 12%;
-    --popover-foreground: 40 20% 92%;
+    --popover: 154 12% 13%;
+    --popover-foreground: 42 18% 92%;
 
-    --primary: 150 30% 50%;
-    --primary-foreground: 30 15% 10%;
+    --primary: 154 28% 56%;
+    --primary-foreground: 154 14% 10%;
 
-    --secondary: 30 15% 18%;
-    --secondary-foreground: 40 20% 92%;
+    --secondary: 154 10% 18%;
+    --secondary-foreground: 42 18% 92%;
 
-    --muted: 30 15% 18%;
-    --muted-foreground: 40 15% 60%;
+    --muted: 154 10% 18%;
+    --muted-foreground: 42 10% 66%;
 
-    --accent: 18 40% 50%;
-    --accent-foreground: 40 20% 92%;
+    --accent: 20 36% 58%;
+    --accent-foreground: 42 18% 94%;
 
-    --destructive: 12 60% 45%;
-    --destructive-foreground: 40 20% 92%;
+    --destructive: 12 52% 46%;
+    --destructive-foreground: 42 18% 94%;
 
-    --border: 30 15% 20%;
-    --input: 30 15% 20%;
-    --ring: 150 30% 50%;
+    --border: 154 10% 22%;
+    --input: 154 10% 22%;
+    --ring: 154 28% 56%;
 
-    --chat-user: 30 15% 18%;
-    --chat-assistant: 150 15% 16%;
-    --chat-border: 30 15% 25%;
+    --theme-surface: 154 12% 12%;
+    --theme-soft: 154 10% 16%;
+    --theme-glow: 154 24% 24%;
+    --theme-glow-strong: 20 24% 22%;
+    --theme-noise-opacity: 0.04;
 
-    --mode-debrief: 150 35% 45%;
-    --mode-supervision: 200 40% 50%;
-    --mode-safety: 18 55% 50%;
+    --chat-user: 154 10% 18%;
+    --chat-assistant: 154 14% 16%;
+    --chat-border: 154 10% 24%;
 
-    --sidebar-background: 30 15% 8%;
-    --sidebar-foreground: 40 15% 90%;
-    --sidebar-primary: 150 30% 50%;
-    --sidebar-primary-foreground: 30 15% 10%;
-    --sidebar-accent: 30 15% 15%;
-    --sidebar-accent-foreground: 40 15% 90%;
-    --sidebar-border: 30 15% 20%;
-    --sidebar-ring: 150 30% 50%;
+    --mode-debrief: 154 30% 48%;
+    --mode-supervision: 194 32% 52%;
+    --mode-safety: 20 42% 56%;
+
+    --sidebar-background: 154 12% 9%;
+    --sidebar-foreground: 42 16% 90%;
+    --sidebar-primary: 154 28% 56%;
+    --sidebar-primary-foreground: 154 14% 10%;
+    --sidebar-accent: 154 10% 16%;
+    --sidebar-accent-foreground: 42 16% 90%;
+    --sidebar-border: 154 10% 22%;
+    --sidebar-ring: 154 28% 56%;
   }
 }
 
