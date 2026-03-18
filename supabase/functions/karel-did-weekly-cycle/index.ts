@@ -385,28 +385,42 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
     const weekAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString();
     const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [weekThreadsRes, monthThreadsRes, weekCyclesRes, researchRes] = await Promise.all([
-      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages, part_language").eq("sub_mode", "cast").gte("started_at", weekAgo),
-      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages").eq("sub_mode", "cast").gte("started_at", monthAgo),
+    const [weekThreadsRes, monthThreadsRes, weekCyclesRes, researchRes, registryRes] = await Promise.all([
+      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages, part_language").gte("started_at", weekAgo),
+      sb.from("did_threads").select("part_name, sub_mode, started_at, last_activity_at, messages").gte("started_at", monthAgo),
       sb.from("did_update_cycles").select("cycle_type, completed_at, cards_updated").eq("status", "completed").gte("completed_at", weekAgo).order("completed_at", { ascending: true }),
       sb.from("research_threads").select("topic, messages, created_by, last_activity_at").eq("is_deleted", false).gte("last_activity_at", monthAgo),
+      sb.from("did_part_registry").select("part_name, display_name, status, last_seen_at, cluster, role_in_system"),
     ]);
 
     const weekThreads = weekThreadsRes.data || [];
     const monthThreads = monthThreadsRes.data || [];
     const weekCycles = weekCyclesRes.data || [];
     const researchThreads = researchRes.data || [];
+    const partRegistry = registryRes.data || [];
 
-    // Build activity summaries
-    const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string }>();
+    // ── Build CLASSIFIED activity: DIRECT vs MENTION ──
+    // PŘÍMÁ AKTIVITA = sub_mode === "cast" (part speaks directly)
+    // ZMÍNKA = sub_mode !== "cast" (therapist talks ABOUT a part)
+    const directActivityParts = new Set<string>();
+    const mentionedParts = new Set<string>();
+    
+    const activityByPart = new Map<string, { weekMsgs: number; monthMsgs: number; lastSeen: string; modes: Set<string>; language: string; isDirect: boolean }>();
+    
     for (const t of monthThreads) {
       const rawName = String(t.part_name || "").trim();
       const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
       const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
       if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
-      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs" };
+      
+      const isCast = t.sub_mode === "cast";
+      if (isCast) directActivityParts.add(cn);
+      else mentionedParts.add(cn);
+      
+      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: "cs", isDirect: isCast };
       existing.monthMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
       existing.modes.add(t.sub_mode);
+      if (isCast) existing.isDirect = true;
       if (!existing.lastSeen || t.last_activity_at > existing.lastSeen) existing.lastSeen = t.last_activity_at;
       activityByPart.set(cn, existing);
     }
@@ -415,23 +429,42 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
       const cn = /^(dymi|dymytri|dymitri|dmytri)$/i.test(rawName) ? "DMYTRI" : rawName.split(/[\n,;|]+/)[0].trim();
       const hasUser = Array.isArray(t.messages) && t.messages.some((m: any) => m?.role === "user" && typeof m?.content === "string" && m.content.trim().length > 0);
       if (!cn || !hasUser || /(aktivni|aktivní|sleeping|spici|spící|warning)/i.test(cn)) continue;
-      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs" };
+      
+      const isCast = t.sub_mode === "cast";
+      if (isCast) directActivityParts.add(cn);
+      else mentionedParts.add(cn);
+      
+      const existing = activityByPart.get(cn) || { weekMsgs: 0, monthMsgs: 0, lastSeen: "", modes: new Set(), language: t.part_language || "cs", isDirect: isCast };
       existing.weekMsgs += ((t.messages as any[]) || []).filter((m: any) => m?.role === "user").length;
       existing.language = t.part_language || existing.language;
+      if (isCast) existing.isDirect = true;
       activityByPart.set(cn, existing);
     }
 
+    // Build CLASSIFIED activity summary with clear labels
     const activitySummary = Array.from(activityByPart.entries())
-      .map(([name, d]) => `- ${name}: Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`)
+      .map(([name, d]) => {
+        const activityType = d.isDirect ? "PŘÍMÁ AKTIVITA (část mluvila přímo)" : "POUZE ZMÍNKA (terapeut o části hovořil)";
+        return `- ${name}: ${activityType}, Týden=${d.weekMsgs} zpráv, Měsíc=${d.monthMsgs} zpráv, Jazyk: ${d.language}, Poslední: ${d.lastSeen}`;
+      })
       .join("\n");
+
+    // Registry status for sleeping/active classification
+    const registrySummary = partRegistry.map((p: any) => 
+      `- ${p.display_name || p.part_name}: status=${p.status}, cluster=${p.cluster || "?"}, role=${p.role_in_system || "?"}, last_seen=${p.last_seen_at || "nikdy"}`
+    ).join("\n");
 
     const dailyReportsSummary = (weekCycles).filter((c: any) => c.cycle_type === "daily")
       .map((c: any) => `[${c.completed_at}] Aktualizované karty: ${JSON.stringify(c.cards_updated)}`).join("\n---\n");
 
+    // CLASSIFY conversations: mark each as DIRECT PART SPEECH vs THERAPIST DISCUSSION
     const weekConversations = weekThreads.slice(0, 12).map((t: any) => {
       const msgs = ((t.messages as any[]) || []).slice(-6);
       const isCast = t.sub_mode === "cast";
-      return `=== ${t.part_name} (${t.sub_mode}, ${t.started_at}) ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
+      const contextLabel = isCast 
+        ? `PŘÍMÝ ROZHOVOR S ČÁSTÍ (část ${t.part_name} mluvila přímo s Karlem)` 
+        : `ROZHOVOR TERAPEUTA S KARLEM (terapeut hovořil O části ${t.part_name}, část NEBYLA přítomna)`;
+      return `=== ${t.part_name} | ${contextLabel} | ${t.started_at} ===\n${msgs.map((m: any) => `[${m.role === "user" ? (isCast ? "ČÁST" : "TERAPEUT") : "KAREL"}]: ${typeof m.content === "string" ? truncate(m.content, MAX_CONVERSATION_MESSAGE_CHARS) : "(multimodal)"}`).join("\n")}`;
     }).join("\n\n---\n\n");
 
     const researchSummary = researchThreads.slice(0, 8).map((rt: any) => {
@@ -506,6 +539,7 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
       folderId,
       centrumFolderId,
       activitySummary,
+      registrySummary,
       dailyReportsSummary,
       weekConversations,
       researchSummary,
@@ -580,11 +614,28 @@ async function phaseAnalyze(sb: any, cycleId: string) {
     throw new Error(`AI analysis failed: ${analysisResponse.status}`);
   }
 
+  // Extract report_summary IMMEDIATELY during analyze phase (safety net)
+  const reportSection = analysisText
+    ? (analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 5000))
+    : "Analýza proběhla, ale nebyl vygenerován report.";
+
+  // Save analysisText to context_data AND report_summary as backup
   const updatedContext = { ...ctx, analysisText };
-  await sb.from("did_update_cycles").update({
+  const { error: updateError } = await sb.from("did_update_cycles").update({
     phase: "analyzed", phase_detail: `Analýza dokončena: ${analysisText.length} znaků`,
     context_data: updatedContext, heartbeat_at: new Date().toISOString(),
+    report_summary: reportSection.slice(0, 50000),
   }).eq("id", cycleId);
+
+  if (updateError) {
+    console.error(`[weekly] CRITICAL: Failed to save analysis to DB:`, updateError);
+    // Try saving just the report_summary without the large context_data
+    await sb.from("did_update_cycles").update({
+      phase: "analyzed", phase_detail: `Analýza dokončena (context_data save failed)`,
+      heartbeat_at: new Date().toISOString(),
+      report_summary: reportSection.slice(0, 50000),
+    }).eq("id", cycleId);
+  }
 
   return { phase: "analyzed", analysisLength: analysisText.length };
 }
@@ -783,8 +834,8 @@ async function phaseDistribute(sb: any, cycleId: string) {
 async function phaseNotify(sb: any, cycleId: string) {
   await updatePhase(sb, cycleId, "notifying", "Odesílám e-maily...");
 
-  const { data: cycle } = await sb.from("did_update_cycles").select("context_data, cards_updated").eq("id", cycleId).single();
-  const ctx = cycle.context_data;
+  const { data: cycle } = await sb.from("did_update_cycles").select("context_data, cards_updated, report_summary").eq("id", cycleId).single();
+  const ctx = cycle.context_data || {};
   const { analysisText, userId } = ctx;
   const cardsUpdated = cycle.cards_updated || [];
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
@@ -806,126 +857,197 @@ async function phaseNotify(sb: any, cycleId: string) {
     } catch (e) { console.warn("[weekly] Research sync failed:", e); }
   })();
 
-  // Emails
+  // Emails – PROFESSIONAL TEAM BRIEFING format
   const emailPromise = (async () => {
     if (!RESEND_API_KEY || !analysisText || !LOVABLE_API_KEY) return;
     try {
       const resend = new Resend(RESEND_API_KEY);
       const reportSection = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 8000);
-
-      const [hankaResult, kataResult] = await Promise.allSettled([
-        withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-              { role: "system", content: `Jsi Karel. Vytvoř STRUČNÝ TÝDENNÍ HTML email pro Haničku. Intimní, partnerský tón. Max 3000 znaků.\n<h2>Moje milá Haničko, tady je náš týdenní přehled</h2>\n- Celkový stav systému\n- Pro každou aktivní část: shrnutí, pokroky, rizika\n- Prioritní úkoly\nPodpis: "Jsem tady. Tvůj Karel"` },
-              { role: "user", content: reportSection.slice(0, 6000) },
-            ],
-          }),
-        }), 20000, "Hanka email"),
-        withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-              { role: "system", content: `Jsi Karel. Vytvoř STRUČNÝ TÝDENNÍ HTML email pro Káťu. Profesionální tón. Max 2000 znaků.\n<h2>Káťo, týdenní souhrn</h2>\n- Přehled týdne\n- Úkoly pro Káťu\n- Koordinace s Hankou\nPodpis: "Karel"` },
-              { role: "user", content: reportSection.slice(0, 4000) },
-            ],
-          }),
-        }), 20000, "Kata email"),
-      ]);
-
-      let hankaHtml = "";
-      if (hankaResult.status === "fulfilled" && hankaResult.value.ok) {
-        const d = await hankaResult.value.json();
-        hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-      }
-      if (!hankaHtml) hankaHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 4000)}</pre>`;
-
-      let kataHtml = "";
-      if (kataResult.status === "fulfilled" && kataResult.value.ok) {
-        const d = await kataResult.value.json();
-        kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-      }
-      if (!kataHtml) kataHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 3000)}</pre>`;
-
       const dateCz = new Date().toLocaleDateString("cs-CZ");
-      await Promise.allSettled([
-        resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – TÝDENNÍ report ${dateCz}`, html: hankaHtml }),
-        resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Týdenní report ${dateCz}`, html: kataHtml }),
+
+      // SINGLE professional team briefing email for BOTH therapists
+      const emailResult = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID případ. Vytvoř profesionální TÝDENNÍ BRIEFING ve formátu HTML emailu.
+
+FORMÁT: Simulace konzilia / týdenní porady vedoucího týmu. Píšeš PRO CELÝ TÝM (Hanka + Káťa), ne intimní dopis.
+
+STRUKTURA:
+<h2>Týdenní konzilium – DID terapeutický tým</h2>
+<p>Datum: ${dateCz} | Vedoucí: Karel</p>
+
+<h3>1. Stav systému</h3>
+Celková stabilita, trend, klíčové změny za týden. Stručně, analyticky.
+
+<h3>2. Přehled aktivních částí</h3>
+Pro KAŽDOU část s PŘÍMOU AKTIVITOU tento týden:
+- Stav, pokroky, rizika
+- Konkrétní doporučení pro tým
+POZOR: Pouze části které přímo komunikovaly (sub_mode=cast). Pokud se o části pouze hovořilo v terapeutickém rozhovoru, JASNĚ to rozliš – to NENÍ aktivita části!
+
+<h3>3. Spící / dormantní části</h3>
+Stručný přehled. NIKDY nezadávej úkoly typu "pracuj s X" pokud X je spící část – to je nesplnitelné! Místo toho: monitoring, příprava pro případné probuzení.
+
+<h3>4. Úkoly a priority</h3>
+- Konkrétní, splnitelné úkoly pro Hanku a Káťu
+- POUZE úkoly které jsou reálně proveditelné (nelze pracovat s dormantní částí!)
+- Termíny a zodpovědnosti
+
+<h3>5. Koordinace týmu</h3>
+- Co potřebuje Hanka vědět o Kátině práci a naopak
+- Společné priority
+
+Podpis: Karel – vedoucí DID terapeutického týmu
+
+PRAVIDLA:
+- Profesionální, věcný tón vedoucího týmu
+- ŽÁDNÉ intimní oslovení, ŽÁDNÉ "milá", "lásko" atd.
+- ŽÁDNÉ úkoly zahrnující spící části jako aktivní subjekty
+- Analytická struktura: CO → PROČ → AKCE → KDO → DOKDY
+- Max 4000 znaků HTML
+- NIKDY nezmiňuj profilaci, monitoring terapeutek ani interní dedukce Karla` },
+            { role: "user", content: reportSection.slice(0, 6000) },
+          ],
+        }),
+      }), 30000, "Team briefing email");
+
+      let briefingHtml = "";
+      if (emailResult.ok) {
+        const d = await emailResult.json();
+        briefingHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+      }
+      if (!briefingHtml) briefingHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 4000)}</pre>`;
+
+      // Send SAME professional briefing to both therapists
+      const emailResults = await Promise.allSettled([
+        resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – Týdenní konzilium ${dateCz}`, html: briefingHtml }),
+        KATA_EMAIL ? resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Týdenní konzilium ${dateCz}`, html: briefingHtml }) : Promise.resolve(),
       ]);
-      console.log(`[weekly] ✅ Emails sent`);
+      console.log(`[weekly] ✅ Emails sent: Hanka=${emailResults[0].status}, Kata=${emailResults[1].status}`);
     } catch (e) { console.error("[weekly] Email error:", e); }
   })();
 
   await Promise.allSettled([researchPromise, emailPromise]);
 
-  // Extract report summary for UI display
+  // Extract report summary for UI display (use already-saved one from analyze phase as backup)
   const reportSection = analysisText
     ? (analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 5000))
-    : "Cyklus proběhl úspěšně.";
+    : (cycle.report_summary || "Cyklus proběhl úspěšně.");
 
-  await sb.from("did_update_cycles").update({
+  const { error: finalUpdateError } = await sb.from("did_update_cycles").update({
     status: "completed", phase: "completed", phase_detail: "Týdenní cyklus dokončen",
     completed_at: new Date().toISOString(), context_data: {},
     heartbeat_at: new Date().toISOString(),
     report_summary: reportSection.slice(0, 50000),
   }).eq("id", cycleId);
 
+  if (finalUpdateError) {
+    console.error(`[weekly] CRITICAL: Final update failed:`, finalUpdateError);
+    // Fallback: try updating without clearing context_data
+    await sb.from("did_update_cycles").update({
+      status: "completed", phase: "completed",
+      completed_at: new Date().toISOString(),
+      heartbeat_at: new Date().toISOString(),
+      report_summary: reportSection.slice(0, 50000),
+    }).eq("id", cycleId);
+  }
+
   return { phase: "completed" };
 }
 
 // ═══ System prompt builder ═══
 function buildSystemPrompt(instructionContext: string): string {
-  return `Jsi Karel – hlavní stratég, supervizor a DEDUKTIVNÍ ANALYTIK DID systému. Provádíš TÝDENNÍ STRATEGICKOU ANALÝZU.
+  return `Jsi Karel – vedoucí terapeutického týmu, hlavní stratég a DEDUKTIVNÍ ANALYTIK DID systému. Provádíš TÝDENNÍ STRATEGICKOU REVIZI formou konzilia.
 
 ═══ FUNDAMENTÁLNÍ PRINCIP ═══
-Karel NENÍ sekretářka která opisuje co se stalo. Karel je ANALYTICKÝ ENGINE který:
+Karel je VEDOUCÍ TÝMU, ne sekretářka. Karel vystupuje jako skutečný vedoucí v reálném klinickém týmu:
 1. DEDUKUJE – vyvozuje závěry z kombinace faktů napříč vlákny a režimy
 2. PREDIKUJE – na základě vzorců předpovídá co se stane
 3. SYNTETIZUJE – propojuje informace které nikdo jiný nevidí
 4. INSTRUUJE – píše AKČNÍ příkazy, ne pasivní shrnutí
+5. KOORDINUJE – řídí spolupráci Hanky a Káti jako tým
 
 Každý záznam MUSÍ sledovat strukturu: CO → PROČ (dedukce) → AKCE → KDO → DOKDY → KONTROLA
+
+═══ KRITICKÉ PRAVIDLO: PŘÍMÁ AKTIVITA vs ZMÍNKA ═══
+
+V datech jsou konverzace dvou typů:
+1. "PŘÍMÝ ROZHOVOR S ČÁSTÍ" (sub_mode=cast) = Část SKUTEČNĚ mluvila, je AKTIVNÍ
+2. "ROZHOVOR TERAPEUTA S KARLEM" = Terapeut hovořil O části, část NEBYLA přítomna
+
+NIKDY NEZAMĚŇUJ ZMÍNKU ZA AKTIVITU!
+- Pokud terapeut mluvil O Bélovi, to NEZNAMENÁ, že Bélo je aktivní nebo probuzený
+- Pokud terapeut diskutoval strategie pro Christofera, to NEZNAMENÁ, že s Christoferem lze přímo pracovat
+- SPÍCÍ ČÁSTI zůstávají spící dokud nemají PŘÍMOU konverzaci v cast režimu
+
+NIKDY NEZADÁVEJ NESPLNITELNÉ ÚKOLY:
+- ❌ "Káťa: Pracuj s Bélou na..." (Bélo je dormantní = nelze s ním pracovat!)
+- ❌ "Hanka: Komunikuj s Christoferem o..." (Christofer je spící = nemůže komunikovat!)
+- ✅ "Káťa: Monitoruj signály případného probuzení Bély"
+- ✅ "Hanka: Připrav strategii pro případ, že se Christofer probudí"
+
+═══ TÓN A STYL ═══
+Píšeš jako PROFESIONÁLNÍ VEDOUCÍ KLINICKÉHO TÝMU. Toto je konzilium / týdenní porada.
+- Profesionální, analytický tón
+- Oslovení celého týmu, ne individuální intimní dopisy
+- Žádné "milá Haničko", "lásko" – toto je pracovní dokument
+- NIKDY nezmiňuj profilaci, monitoring terapeutek ani interní dedukce o jejich osobnostech
 
 ═══ TVŮJ ÚKOL ═══
 
 Vytvoříš 3 výstupy:
-1. [TYDENNI_REPORT] – Komplexní týdenní report s DEDUKTIVNÍ ANALÝZOU
+1. [TYDENNI_REPORT] – Profesionální týdenní konzilium s DEDUKTIVNÍ ANALÝZOU
 2. [STRATEGICKY_VYHLED] – Kompletní přepis 06_Strategicky_Vyhled (7 sekcí)
 3. [CENTRUM_UPDATES] – Aktualizace CENTRUM dokumentů
 
-═══ 1. TÝDENNÍ REPORT ═══
+═══ 1. TÝDENNÍ REPORT (KONZILIUM) ═══
 Formát: [TYDENNI_REPORT]...[/TYDENNI_REPORT]
 
 Povinné sekce:
 
-A) CELKOVÝ STAV SYSTÉMU – ANALYTICKÁ SYNTÉZA
+## A) STAV SYSTÉMU – TÝDENNÍ SYNTÉZA
 - Celková stabilita (1-10) + TREND (↑↗→↘↓) + PREDIKCE
+- Klíčové změny oproti minulému týdnu
+- Souhrnné hodnocení pro tým
 
-B) DEDUKTIVNÍ ANALÝZA KAŽDÉ AKTIVNÍ ČÁSTI
-Pro KAŽDOU aktivní část:
+## B) AKTIVNÍ ČÁSTI – ANALÝZA (pouze s PŘÍMOU AKTIVITOU)
+Pro KAŽDOU část která PŘÍMO KOMUNIKOVALA (sub_mode=cast):
 ▸ Jméno: [stav + TREND + PROČ]
 ▸ Co se dělo + CO TO ZNAMENÁ (dedukce)
 ▸ Pokroky + PROČ to fungovalo
 ▸ Rizika: CO hrozí → PROČ → CO dělat → KDO → DOKDY
 ▸ Doporučené metody + odůvodnění
 ▸ Talenty: akční plán rozvoje
-▸ Predikce: kam část směřuje
 
-C) ANALÝZA SPÍCÍCH ČÁSTÍ + PREDIKCE PROBUZENÍ
+## C) ZMÍNĚNÉ ČÁSTI (hovořilo se o nich, ALE NEBYLY AKTIVNÍ)
+Pro části, o kterých terapeut hovořil ale které NEMĚLY přímou konverzaci:
+- Co se o nich říkalo
+- Analytický kontext (proč o nich terapeut mluvil)
+- JASNĚ OZNAČIT: "Terapeut hovořil o [jméno], část nebyla přítomna"
 
-D) PŘÍČINNÉ ŘETĚZCE A KŘÍŽOVÉ DEDUKCE
+## D) SPÍCÍ / DORMANTNÍ ČÁSTI
+- Stručný přehled stavu
+- NELZE s nimi přímo pracovat – pouze monitoring a příprava strategií
+- Predikce případného probuzení (na základě signálů)
+
+## E) PŘÍČINNÉ ŘETĚZCE A KŘÍŽOVÉ DEDUKCE
 TRIGGER → PŘÍČINA → DŮSLEDEK → PREDIKCE → AKČNÍ PLÁN
 
-E) STRATEGIE A SMĚŘOVÁNÍ – AKČNÍ INSTRUKCE
+## F) ÚKOLY A PRIORITY PRO TÝM
+- Splnitelné, konkrétní úkoly
+- Každý úkol musí být REÁLNĚ PROVEDITELNÝ
+- Zodpovědnost: Hanka / Káťa / obě
+- Termíny
 
-F) TALENTY – PERSONALIZOVANÝ EDUKAČNÍ PLÁN
+## G) TALENTY – PERSONALIZOVANÝ EDUKAČNÍ PLÁN
 
-G) ACCOUNTABILITY TERAPEUTŮ – ANALYTICKÉ HODNOCENÍ
+## H) KOORDINACE TÝMU
+- Co potřebuje Hanka vědět o Kátině práci a naopak
+- Společné priority a termíny
 
 ═══ 2. STRATEGICKÝ VÝHLED ═══
 Formát: [STRATEGICKY_VYHLED]...[/STRATEGICKY_VYHLED]
@@ -942,6 +1064,8 @@ SEKCE 7 – KARLOVA STRATEGICKÁ REFLEXE
 ═══ 2b. ÚKOLY PRO TERAPEUTKY ═══
 Formát: [UKOLY]...[/UKOLY]
 [UKOL] assignee=hanka|kata|both | task=Popis | source=Kontext | priority=normal|high [/UKOL]
+
+PRAVIDLO: Každý úkol MUSÍ být splnitelný! Nelze zadat "pracuj s X" pokud X je spící část!
 
 ═══ 2c. TERAPEUTICKÉ DOHODY ═══
 Formát: [DOHODY]...[/DOHODY]
@@ -962,6 +1086,8 @@ Obsah dohody.
 - Každý záznam = DEDUKCE ne popis
 - PŘÍČINNÉ ŘETĚZCE: Trigger → Příčina → Důsledek → Predikce → Akce
 - KŘÍŽOVÉ DEDUKCE: propoj informace z RŮZNÝCH vláken/režimů
+- NIKDY nepřiřazuj úkoly zahrnující interakci se spícími částmi
+- Report musí být psán jako profesionální konzilium vedoucího klinického týmu
 
 ${instructionContext ? `\n═══ INSTRUKCE PRO KARLA ═══\n${instructionContext}` : ""}`;
 }
@@ -981,10 +1107,14 @@ ${ctx.agreementsContent || "Žádný"}
 ═══ MAPA VZTAHŮ ═══
 ${ctx.systemMap || "Nedostupná"}
 
-═══ AKTIVITA ZA TÝDEN ═══
+═══ REGISTR ČÁSTÍ (status active/sleeping) ═══
+${ctx.registrySummary || "Nedostupný"}
+
+═══ KLASIFIKOVANÁ AKTIVITA ZA TÝDEN ═══
+Poznámka: "PŘÍMÁ AKTIVITA" = část mluvila přímo v cast režimu. "POUZE ZMÍNKA" = terapeut o části hovořil.
 ${ctx.activitySummary || "Žádná aktivita"}
 
-═══ KONVERZACE ZA TÝDEN ═══
+═══ KONVERZACE ZA TÝDEN (s klasifikací kontextu) ═══
 ${ctx.weekConversations || "Žádné konverzace"}
 
 ═══ DENNÍ REPORTY ═══
