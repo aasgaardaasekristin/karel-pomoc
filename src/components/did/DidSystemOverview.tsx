@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { FileText, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getAuthHeaders } from "@/lib/auth";
-import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
 import { toast } from "sonner";
 
 interface Props {

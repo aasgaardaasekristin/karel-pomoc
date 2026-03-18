@@ -146,9 +146,6 @@ function isForbiddenOverviewLine(line: string): boolean {
     /žádná z dalších dříve aktivních částí/i,
     /bez přímé aktivity ze strany částí/i,
     /bez přímé komunikace jakékoli části/i,
-    /doplň informace/i,
-    /informuj mě/i,
-    /check-?in/i,
   ];
 
   if (privatePatterns.some((pattern) => pattern.test(trimmed))) return true;
