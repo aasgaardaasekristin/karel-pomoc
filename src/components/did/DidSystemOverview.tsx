@@ -77,7 +77,6 @@ const DidSystemOverview = ({ refreshTrigger }: Props) => {
       }
 
       setOverview(nextOverview);
-      await syncOverviewTasksToBoard(nextOverview);
     } catch (error: any) {
       console.error("Failed to load system overview:", error);
       toast.error(error?.message || "Karlův přehled se nepodařilo načíst");
