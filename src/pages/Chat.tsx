@@ -48,6 +48,7 @@ import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
 import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
+import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
