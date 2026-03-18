@@ -21,59 +21,65 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 @layer base {
   :root {
     /* Warm, calming palette */
-    --background: 40 33% 98%;
-    --foreground: 30 10% 20%;
+    --background: 42 30% 97%;
+    --foreground: 150 10% 20%;
 
-    --card: 40 30% 97%;
-    --card-foreground: 30 10% 20%;
+    --card: 42 24% 95%;
+    --card-foreground: 150 10% 20%;
 
-    --popover: 40 30% 97%;
-    --popover-foreground: 30 10% 20%;
+    --popover: 42 24% 95%;
+    --popover-foreground: 150 10% 20%;
 
-    /* Sage green - primary, calming */
-    --primary: 150 25% 35%;
-    --primary-foreground: 40 33% 98%;
+    /* Soft sage - primary */
+    --primary: 154 24% 38%;
+    --primary-foreground: 42 35% 98%;
 
-    /* Warm beige - secondary */
-    --secondary: 35 30% 92%;
-    --secondary-foreground: 30 10% 25%;
+    /* Oat / sand */
+    --secondary: 36 24% 90%;
+    --secondary-foreground: 150 10% 24%;
 
     /* Muted warm tones */
-    --muted: 35 20% 94%;
-    --muted-foreground: 30 10% 45%;
+    --muted: 40 18% 92%;
+    --muted-foreground: 150 8% 40%;
 
-    /* Soft terracotta accent */
-    --accent: 18 45% 65%;
-    --accent-foreground: 40 33% 98%;
+    /* Dusty peach accent */
+    --accent: 20 42% 70%;
+    --accent-foreground: 42 35% 98%;
 
-    /* Warm coral for attention */
-    --destructive: 12 70% 55%;
+    --destructive: 12 62% 55%;
     --destructive-foreground: 40 33% 98%;
 
-    --border: 35 20% 88%;
-    --input: 35 20% 88%;
-    --ring: 150 25% 35%;
+    --border: 36 18% 84%;
+    --input: 36 18% 84%;
+    --ring: 154 24% 38%;
 
     --radius: 0.75rem;
 
+    /* Ambient theme layers */
+    --theme-surface: 42 28% 96%;
+    --theme-soft: 38 24% 93%;
+    --theme-glow: 154 30% 88%;
+    --theme-glow-strong: 20 48% 85%;
+    --theme-noise-opacity: 0.035;
+
     /* Chat-specific colors */
-    --chat-user: 35 35% 93%;
-    --chat-assistant: 150 20% 94%;
-    --chat-border: 35 15% 85%;
+    --chat-user: 36 32% 91%;
+    --chat-assistant: 154 20% 92%;
+    --chat-border: 36 14% 82%;
     
     /* Mode button colors */
-    --mode-debrief: 150 30% 40%;
-    --mode-supervision: 200 35% 45%;
-    --mode-safety: 18 50% 55%;
+    --mode-debrief: 154 28% 42%;
+    --mode-supervision: 194 28% 48%;
+    --mode-safety: 20 46% 58%;
 
-    --sidebar-background: 40 30% 96%;
-    --sidebar-foreground: 30 10% 30%;
-    --sidebar-primary: 150 25% 35%;
-    --sidebar-primary-foreground: 40 33% 98%;
-    --sidebar-accent: 35 25% 90%;
-    --sidebar-accent-foreground: 30 10% 25%;
-    --sidebar-border: 35 20% 88%;
-    --sidebar-ring: 150 25% 35%;
+    --sidebar-background: 40 26% 94%;
+    --sidebar-foreground: 150 10% 24%;
+    --sidebar-primary: 154 24% 38%;
+    --sidebar-primary-foreground: 42 35% 98%;
+    --sidebar-accent: 36 22% 88%;
+    --sidebar-accent-foreground: 150 10% 24%;
+    --sidebar-border: 36 18% 84%;
+    --sidebar-ring: 154 24% 38%;
   }
 
   .dark {

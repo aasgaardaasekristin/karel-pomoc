@@ -16,14 +16,14 @@ export interface ThemePrefs {
 }
 
 const PRESETS: Record<string, Partial<ThemePrefs>> = {
-  default: { primary_color: "150 25% 35%", accent_color: "18 45% 65%" },
-  ocean: { primary_color: "200 80% 45%", accent_color: "180 60% 50%" },
-  forest: { primary_color: "140 60% 40%", accent_color: "160 50% 45%" },
-  sunset: { primary_color: "25 90% 55%", accent_color: "350 70% 55%" },
-  lavender: { primary_color: "270 60% 60%", accent_color: "290 50% 55%" },
-  midnight: { primary_color: "230 50% 45%", accent_color: "260 40% 50%" },
-  rose: { primary_color: "340 70% 55%", accent_color: "320 50% 50%" },
-  mint: { primary_color: "165 60% 45%", accent_color: "150 50% 50%" },
+  default: { primary_color: "154 24% 38%", accent_color: "20 42% 70%" },
+  ocean: { primary_color: "192 36% 42%", accent_color: "184 28% 72%" },
+  forest: { primary_color: "146 22% 34%", accent_color: "34 28% 72%" },
+  sunset: { primary_color: "24 48% 52%", accent_color: "18 44% 74%" },
+  lavender: { primary_color: "258 24% 54%", accent_color: "282 22% 78%" },
+  midnight: { primary_color: "214 24% 34%", accent_color: "206 18% 68%" },
+  rose: { primary_color: "344 30% 50%", accent_color: "18 34% 78%" },
+  mint: { primary_color: "164 28% 40%", accent_color: "148 22% 76%" },
 };
 
 const DEFAULT_PREFS: ThemePrefs = {
