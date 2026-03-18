@@ -21,13 +21,13 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 @layer base {
   :root {
     /* Warm, calming palette */
-    --background: 42 30% 97%;
+    --background: 42 26% 92%;
     --foreground: 150 10% 20%;
 
-    --card: 42 24% 95%;
+    --card: 42 22% 89%;
     --card-foreground: 150 10% 20%;
 
-    --popover: 42 24% 95%;
+    --popover: 42 22% 90%;
     --popover-foreground: 150 10% 20%;
 
     /* Soft sage - primary */
@@ -35,50 +35,50 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     --primary-foreground: 42 35% 98%;
 
     /* Oat / sand */
-    --secondary: 36 24% 90%;
+    --secondary: 36 26% 85%;
     --secondary-foreground: 150 10% 24%;
 
     /* Muted warm tones */
-    --muted: 40 18% 92%;
+    --muted: 40 18% 87%;
     --muted-foreground: 150 8% 40%;
 
     /* Dusty peach accent */
-    --accent: 20 42% 70%;
+    --accent: 20 38% 68%;
     --accent-foreground: 42 35% 98%;
 
     --destructive: 12 62% 55%;
     --destructive-foreground: 40 33% 98%;
 
-    --border: 36 18% 84%;
-    --input: 36 18% 84%;
+    --border: 36 18% 78%;
+    --input: 36 18% 78%;
     --ring: 154 24% 38%;
 
     --radius: 0.75rem;
 
     /* Ambient theme layers */
-    --theme-surface: 42 28% 96%;
-    --theme-soft: 38 24% 93%;
-    --theme-glow: 154 30% 88%;
-    --theme-glow-strong: 20 48% 85%;
-    --theme-noise-opacity: 0.035;
+    --theme-surface: 42 24% 90%;
+    --theme-soft: 38 24% 84%;
+    --theme-glow: 154 28% 76%;
+    --theme-glow-strong: 20 34% 80%;
+    --theme-noise-opacity: 0.05;
 
     /* Chat-specific colors */
-    --chat-user: 36 32% 91%;
-    --chat-assistant: 154 20% 92%;
-    --chat-border: 36 14% 82%;
+    --chat-user: 36 28% 84%;
+    --chat-assistant: 154 18% 86%;
+    --chat-border: 36 14% 76%;
     
     /* Mode button colors */
     --mode-debrief: 154 28% 42%;
     --mode-supervision: 194 28% 48%;
-    --mode-safety: 20 46% 58%;
+    --mode-safety: 20 38% 56%;
 
-    --sidebar-background: 40 26% 94%;
+    --sidebar-background: 40 24% 88%;
     --sidebar-foreground: 150 10% 24%;
     --sidebar-primary: 154 24% 38%;
     --sidebar-primary-foreground: 42 35% 98%;
-    --sidebar-accent: 36 22% 88%;
+    --sidebar-accent: 36 22% 83%;
     --sidebar-accent-foreground: 150 10% 24%;
-    --sidebar-border: 36 18% 84%;
+    --sidebar-border: 36 18% 78%;
     --sidebar-ring: 154 24% 38%;
   }
 
@@ -155,10 +155,10 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     letter-spacing: 0.01em;
     background-color: hsl(var(--background));
     background-image:
-      radial-gradient(circle at 12% 18%, hsl(var(--theme-glow) / 0.42), transparent 0 24%),
-      radial-gradient(circle at 86% 14%, hsl(var(--theme-glow-strong) / 0.32), transparent 0 22%),
-      radial-gradient(circle at 50% 100%, hsl(var(--theme-soft) / 0.45), transparent 0 28%),
-      linear-gradient(180deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 42%, hsl(var(--theme-soft)) 100%);
+      radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.74), transparent 0 34%),
+      radial-gradient(circle at 88% 12%, hsl(var(--theme-glow-strong) / 0.58), transparent 0 30%),
+      radial-gradient(circle at 50% 110%, hsl(var(--theme-soft) / 0.84), transparent 0 42%),
+      linear-gradient(160deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 48%, hsl(var(--theme-soft)) 100%);
     background-attachment: fixed;
   }
 
@@ -201,21 +201,21 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 body.has-bg-image {
   position: relative;
   background-image:
-    linear-gradient(180deg, hsl(var(--background) / 0.62), hsl(var(--background) / 0.82)),
-    radial-gradient(circle at 14% 18%, hsl(var(--theme-glow) / 0.28), transparent 0 24%),
-    radial-gradient(circle at 84% 14%, hsl(var(--theme-glow-strong) / 0.22), transparent 0 20%),
+    linear-gradient(160deg, hsl(var(--background) / 0.42), hsl(var(--background) / 0.72)),
+    radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.46), transparent 0 32%),
+    radial-gradient(circle at 88% 12%, hsl(var(--theme-glow-strong) / 0.34), transparent 0 28%),
     var(--bg-image);
   background-size: auto, auto, auto, cover;
-  background-position: center, 12% 18%, 84% 14%, center;
+  background-position: center, 8% 14%, 88% 12%, center;
   background-repeat: no-repeat;
   background-attachment: fixed;
 }
 
 .dark body.has-bg-image {
   background-image:
-    linear-gradient(180deg, hsl(var(--background) / 0.7), hsl(var(--background) / 0.88)),
-    radial-gradient(circle at 14% 18%, hsl(var(--theme-glow) / 0.22), transparent 0 24%),
-    radial-gradient(circle at 84% 14%, hsl(var(--theme-glow-strong) / 0.18), transparent 0 20%),
+    linear-gradient(160deg, hsl(var(--background) / 0.68), hsl(var(--background) / 0.86)),
+    radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.28), transparent 0 30%),
+    radial-gradient(circle at 88% 12%, hsl(var(--theme-glow-strong) / 0.22), transparent 0 26%),
     var(--bg-image);
 }
 
