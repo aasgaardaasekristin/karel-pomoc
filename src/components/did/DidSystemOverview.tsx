@@ -8,6 +8,7 @@ import DidSessionPrep from "./DidSessionPrep";
 
 interface Props {
   refreshTrigger: number;
+  onTasksSynced?: () => void;
 }
 
 const parseOverviewStream = async (response: Response): Promise<string> => {
