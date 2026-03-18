@@ -138,7 +138,7 @@ const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
-      <DidSystemOverview refreshTrigger={refreshTrigger} />
+      <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
 
 
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
