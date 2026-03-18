@@ -1345,6 +1345,48 @@ export type Database = {
         }
         Relationships: []
       }
+      user_theme_preferences: {
+        Row: {
+          accent_color: string
+          background_image_url: string | null
+          created_at: string
+          dark_mode: boolean
+          font_scale: number
+          id: string
+          persona: string
+          primary_color: string
+          theme_preset: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accent_color?: string
+          background_image_url?: string | null
+          created_at?: string
+          dark_mode?: boolean
+          font_scale?: number
+          id?: string
+          persona?: string
+          primary_color?: string
+          theme_preset?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          accent_color?: string
+          background_image_url?: string | null
+          created_at?: string
+          dark_mode?: boolean
+          font_scale?: number
+          id?: string
+          persona?: string
+          primary_color?: string
+          theme_preset?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
