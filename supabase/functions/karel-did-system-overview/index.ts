@@ -68,6 +68,7 @@ let nonDirectPartNameVariantsForSanitizer: string[] = [];
 let forcedGreetingForSanitizer = "";
 let suppressDmytriAliasMentions = false;
 let canonicalDmytriNameForSanitizer: string | null = null;
+let registryNamesForSanitizer: string[] = [];
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -114,6 +115,11 @@ function canonicalizeDmytriAliases(text: string): string {
   return text.replace(/\b(?:Dymi|Dymytri|Dymitri)\b/gi, canonicalDmytriNameForSanitizer);
 }
 
+function lineMentionsRegistryPart(line: string): boolean {
+  const normalizedLine = line.toLowerCase();
+  return registryNamesForSanitizer.some((name) => name && normalizedLine.includes(name.toLowerCase()));
+}
+
 function isForbiddenOverviewLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
@@ -136,8 +142,20 @@ function isForbiddenOverviewLine(line: string): boolean {
     /vazb[aá]m?\s+k/i,
   ];
 
+  const hiddenPartPatterns = [
+    /žádná z dalších dříve aktivních částí/i,
+    /bez přímé aktivity ze strany částí/i,
+    /bez přímé komunikace jakékoli části/i,
+    /doplň informace/i,
+    /informuj mě/i,
+    /check-?in/i,
+  ];
+
   if (privatePatterns.some((pattern) => pattern.test(trimmed))) return true;
+  if (hiddenPartPatterns.some((pattern) => pattern.test(trimmed))) return true;
   if (suppressDmytriAliasMentions && /\b(?:dymi(?:ho|mu|m)?|dymytri(?:ho|mu|m)?|dmytri(?:ho|mu|m)?)\b/i.test(trimmed)) return true;
+  if (/Dnes doporučuji:/i.test(trimmed)) return false;
+  if (lineMentionsRegistryPart(trimmed) && /doporučuji|úkol|zaměřit|věnuj|navrhni|prober|zajistit|informuj|doplň/i.test(trimmed)) return true;
 
   return false;
 }
@@ -378,6 +396,7 @@ serve(async (req) => {
     const dmytriEntry = partAliasMap.find((part) => part.key === "dmytri");
     suppressDmytriAliasMentions = !dmytriEntry;
     canonicalDmytriNameForSanitizer = dmytriEntry?.display || null;
+    registryNamesForSanitizer = partAliasMap.map((part) => part.display).filter(Boolean);
 
     const detectMentionedPartKeys = (text: string) => {
       const normalizedText = normalizeKey(text);
@@ -472,6 +491,11 @@ serve(async (req) => {
       }
     }
 
+    const taskMentionsPart = (task: any) => {
+      const combined = [task?.task, task?.note].filter(Boolean).join(" ").toLowerCase();
+      return registryNamesForSanitizer.some((name) => name && combined.includes(name.toLowerCase()));
+    };
+
     const isPrivateTask = (task: any) => {
       const combined = [task?.task, task?.note, task?.source_agreement].filter(Boolean).join(" ").toLowerCase();
       return [
@@ -485,7 +509,7 @@ serve(async (req) => {
         /s[aá]m\s+pro\s+sebe/i,
         /vlastn[ií]\s+potřeb/i,
         /den[ií]k\s+du[sš][ií]/i,
-      ].some((pattern) => pattern.test(combined));
+      ].some((pattern) => pattern.test(combined)) || taskMentionsPart(task);
     };
 
     const priorityWeight = (priority: string | null) => {
@@ -587,6 +611,7 @@ ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 9) NIKDY nepiš o interní profilaci terapeutek, emočních/citových vazbách, countertransference, utajeném monitoringu ani o tom, co si Karel nechává pro sebe.
 10) Pokud část Dmytri/Dymi není v registru, NESMÍŠ ji zmínit ani jako hypotézu.
 11) Úkoly s neveřejným obsahem vynech – briefing smí obsahovat jen bezpečné veřejné instrukce pro terapeutky.
+12) NEUVÁDĚJ doporučení ani úkoly navázané na konkrétní DID části; briefing smí vést terapeutky jen obecně a provozně.
 
 ⚠️ KRITICKÉ PRAVIDLO – PERSPEKTIVA AKTIVITY:
 - "PŘÍMÁ AKTIVITA" = část SAMA mluvila s Karlem v režimu DID (sub_mode=cast). Piš: "[jméno] komunikoval/a..."
@@ -602,8 +627,8 @@ OSLOVENÍ:
 
 CO MÁŠ DĚLAT:
 - 1 odstavec: PROVOZNÍ PŘEHLED – kdo PŘÍMO komunikoval, o kom se MLUVILO (rozlišuj!), celkový dojem ze systému.
-- 1 odstavec: STAV ÚKOLŮ – co je rozpracované, co má termín, co je zpožděné.
-- "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ (kdo má co udělat, proč).
+- 1 odstavec: STAV ÚKOLŮ – jen bezpečné obecné provozní body bez neveřejných dedukcí a bez jmen částí.
+- "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ, ale pouze obecné provozní kroky bez jmen DID částí.
 
 STRUKTURA:
 "${chosenGreeting}"
@@ -643,7 +668,7 @@ ${cycleInfo || "(bez dokončeného cyklu)"}`;
           {
             role: "system",
             content:
-              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.`
+              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. NIKDY nedávej úkoly navázané na konkrétní DID části. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.`
           },
           { role: "user", content: synthesisPrompt },
         ],
