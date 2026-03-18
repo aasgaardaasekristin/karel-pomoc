@@ -693,6 +693,7 @@ const Chat = () => {
       startedAt: data.started_at,
       lastActivityAt: data.last_activity_at,
       isProcessed: data.is_processed,
+      themePreset: (data as any).theme_preset || "",
     };
     
     setActiveThread(thread);
