@@ -93,6 +93,8 @@ export const useDidThreads = () => {
 
   // Fetch ALL threads for a sub_mode (no 24h limit) - used for therapist sections
   const fetchAllThreads = useCallback(async (subMode: string) => {
+    lastFetchAllRef.current = subMode;
+    lastSubModeRef.current = undefined;
     setLoading(true);
     try {
       const { data, error } = await supabase

@@ -73,9 +73,20 @@ const migrateLocalStorageToDb = async () => {
 export const useConversationHistory = () => {
   const [history, setHistory] = useState<SavedConversation[]>([]);
 
-  // Migrate localStorage then load from DB
+  // Migrate localStorage then load from DB + realtime subscription
   useEffect(() => {
     migrateLocalStorageToDb().then(() => fetchFromDb()).then(setHistory);
+
+    const channel = supabase
+      .channel("did_conversations_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "did_conversations" },
+        () => { fetchFromDb().then(setHistory); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const refreshHistory = useCallback(async () => {
