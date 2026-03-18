@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BookOpen, Database, Loader2, RefreshCw, ListChecks, FileText, BarChart3, Upload } from "lucide-react";
+import { AlertTriangle, Database, Loader2, RefreshCw, ListChecks, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +7,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
+import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidSessionPrep from "./DidSessionPrep";
