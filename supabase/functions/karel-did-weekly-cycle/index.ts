@@ -863,10 +863,16 @@ async function phaseNotify(sb: any, cycleId: string) {
 
   await Promise.allSettled([researchPromise, emailPromise]);
 
+  // Extract report summary for UI display
+  const reportSection = analysisText
+    ? (analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 5000))
+    : "Cyklus proběhl úspěšně.";
+
   await sb.from("did_update_cycles").update({
     status: "completed", phase: "completed", phase_detail: "Týdenní cyklus dokončen",
     completed_at: new Date().toISOString(), context_data: {},
     heartbeat_at: new Date().toISOString(),
+    report_summary: reportSection.slice(0, 50000),
   }).eq("id", cycleId);
 
   return { phase: "completed" };

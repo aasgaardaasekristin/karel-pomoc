@@ -310,7 +310,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                 </div>
               </div>
 
-              {isExpanded && summary && (
+              {isExpanded && (
                 <div className="border-t border-border/50 px-3 pb-3">
                   <div className="prose prose-sm mt-2 max-w-none text-[11px] leading-relaxed dark:prose-invert">
                     <ReactMarkdown
