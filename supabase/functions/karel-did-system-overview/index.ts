@@ -689,6 +689,11 @@ ${teamEngagementBlock}
 === AKTIVNÍ ÚKOLY ===
 ${tasksBlock || "(bez veřejných úkolů pro briefing)"}
 
+=== OTEVŘENÉ PORADY ===
+${(openMeetings || []).length > 0
+  ? (openMeetings || []).map((m: any) => `- PORADA: "${m.topic}" (stav: ${m.status}, vytvořena: ${m.created_at}, deadline: ${m.deadline_at || "bez"}, Hanka: ${m.hanka_joined_at ? "připojena" : "NEPŘIPOJENA"}, Káťa: ${m.kata_joined_at ? "připojena" : "NEPŘIPOJENA"}, svolal: ${m.triggered_by || "neznámý"})`).join("\n")
+  : "(žádné otevřené porady)"}
+
 === POSLEDNÍ CYKLY ===
 ${cycleInfo || "(bez dokončeného cyklu)"}`;
 

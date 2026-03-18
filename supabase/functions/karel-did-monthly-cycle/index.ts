@@ -342,18 +342,26 @@ ${weeklySummaries || "(žádné)"}
 AKTUÁLNÍ DOKUMENTY V KARTOTÉCE:
 ${driveContext || "(nedostupné)"}`;
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        stream: false,
-      }),
-    });
+    const aiController = new AbortController();
+    const aiTimeout = setTimeout(() => aiController.abort(), 180000);
+    let aiResp: Response;
+    try {
+      aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-pro",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+          stream: false,
+        }),
+        signal: aiController.signal,
+      });
+    } finally {
+      clearTimeout(aiTimeout);
+    }
 
     if (!aiResp.ok) throw new Error(`AI error: ${aiResp.status} ${await aiResp.text()}`);
 
