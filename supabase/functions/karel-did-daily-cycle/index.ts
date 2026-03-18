@@ -2685,6 +2685,13 @@ NIKDY nevkládej celou konverzaci do jedné sekce. NIKDY nemažeš původní obs
 - Pouze pokud část SAMA komunikuje (má vlastní zprávy s role "user" v režimu "cast"), je aktivní
 - V režimu "kata" nebo "mamka" mluví TERAPEUT, ne části. Jakékoli zmínky o částech jsou jen dotazy/konzultace.
 
+⚠️ NIKDY NEZADÁVEJ NESPLNITELNÉ ÚKOLY:
+- ❌ "Pracuj s Bélou na stabilizaci" (Bélo je dormantní = nelze s ním pracovat!)
+- ❌ "Komunikuj s Christoferem" (Christofer je spící = nemůže komunikovat!)
+- ✅ "Monitoruj signály případného probuzení Bély"
+- ✅ "Připrav strategii pro případ, že se Christofer probudí"
+- Spící/dormantní části NELZE aktivně zapojit do terapie – pouze monitoring a příprava!
+
 ═══ KRITICKÉ PRAVIDLO: BIOLOGICKÉ OSOBY vs DID ČÁSTI ═══
 ⚠️ ABSOLUTNÍ PRIORITA: Následující osoby NEJSOU části DID systému, jsou to reální lidé. NIKDY pro ně NEVYTVÁŘEJ [KARTA:...] blok:
 - Amálka (7 let) – biologická dcera Káti a Jiřího
