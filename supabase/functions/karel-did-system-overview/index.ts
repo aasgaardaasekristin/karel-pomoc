@@ -289,6 +289,7 @@ serve(async (req) => {
       { data: didConversations24h },
       { data: hanaConversations24h },
       { data: researchThreads24h },
+      { data: openMeetings },
     ] = await Promise.all([
       sb
         .from("did_part_registry")
@@ -345,6 +346,13 @@ serve(async (req) => {
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
         .limit(20),
+      sb
+        .from("did_meetings")
+        .select("id, topic, agenda, status, created_at, deadline_at, hanka_joined_at, kata_joined_at, triggered_by")
+        .eq("user_id", userId)
+        .in("status", ["open", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(10),
     ]);
 
     const normalizeKey = (value: string) =>
@@ -629,7 +637,7 @@ ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 5) NIKDY nepoužívej technické značky, markdown nadpisy, ani seznamy s hvězdičkami.
 6) NIKDY nepopisuj CO PŘESNĚ část řekla – pouze ŽE komunikovala a jaké TÉMA velmi obecně.
 7) Části bez přímé aktivity za 24h NEZMIŇUJ po jménech.
-8) MAXIMÁLNÍ DÉLKA: 280 slov celkem.
+8) MAXIMÁLNÍ DÉLKA: 400 slov celkem.
 9) NIKDY nepiš o interní profilaci terapeutek, emočních/citových vazbách, countertransference, utajeném monitoringu ani o tom, co si Karel nechává pro sebe.
 10) Pokud část Dmytri/Dymi není v registru, NESMÍŠ ji zmínit ani jako hypotézu.
 11) Úkoly s neveřejným obsahem vynech – briefing smí obsahovat jen bezpečné veřejné instrukce pro terapeutky.
@@ -680,6 +688,11 @@ ${teamEngagementBlock}
 
 === AKTIVNÍ ÚKOLY ===
 ${tasksBlock || "(bez veřejných úkolů pro briefing)"}
+
+=== OTEVŘENÉ PORADY ===
+${(openMeetings || []).length > 0
+  ? (openMeetings || []).map((m: any) => `- PORADA: "${m.topic}" (stav: ${m.status}, vytvořena: ${m.created_at}, deadline: ${m.deadline_at || "bez"}, Hanka: ${m.hanka_joined_at ? "připojena" : "NEPŘIPOJENA"}, Káťa: ${m.kata_joined_at ? "připojena" : "NEPŘIPOJENA"}, svolal: ${m.triggered_by || "neznámý"})`).join("\n")
+  : "(žádné otevřené porady)"}
 
 === POSLEDNÍ CYKLY ===
 ${cycleInfo || "(bez dokončeného cyklu)"}`;

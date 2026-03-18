@@ -492,7 +492,7 @@ Active parts in this system: ${activeFragments}`;
             search_mode: "academic",
             search_recency_filter: "year",
           }),
-        }), 20000, "Perplexity research");
+        }), 30000, "Perplexity research");
 
         if (pRes.ok) {
           const pData = await pRes.json();
@@ -620,6 +620,22 @@ Formát: [UKOLY]...[/UKOLY]
 Pro každý úkol:
 [UKOL] assignee=hanka|kata|both | task=Popis úkolu + PROČ | source=Kontext/dedukce | priority=normal|high [/UKOL]
 
+═══ 2c. TERAPEUTICKÉ DOHODY ═══
+Formát: [DOHODY]...[/DOHODY]
+
+Karel má AKTIVNĚ TVOŘIT terapeutické dohody na základě analýzy dat. Dohody jsou konkrétní závazky/plány pro terapii.
+Pro každou dohodu:
+[DOHODA] title=Název dohody | parties=hanka|kata|both | deadline=YYYY-MM-DD | priority=normal|high
+Obsah dohody: co se má dělat, proč, jaký je cíl, jak se bude měřit úspěch.
+[/DOHODA]
+
+Příklady dohod které Karel má SAMI INICIOVAT:
+- Plány na konkrétní sezení s částmi (kdo, kdy, jaká metoda, proč)
+- Koordinace mezi terapeutkami (kdo vede jakou část, proč)
+- Krizové plány (co dělat když se probudí spící část)
+- Edukační plány (rozvoj talentů částí)
+- Follow-up dohody (kontrola splnění předchozích dohod)
+
 ═══ 3. CENTRUM UPDATES ═══
 
 [CENTRUM:05_Operativni_Plan]
@@ -708,7 +724,7 @@ ${perplexityContext}`,
           },
         ],
       }),
-    }), 60000, "Weekly AI analysis");
+    }), 180000, "Weekly AI analysis");
 
     let analysisText = "";
     if (analysisResponse.ok) {
@@ -761,6 +777,26 @@ ${perplexityContext}`,
         for (const m of ukolySection.matchAll(ukolRegex)) {
           if (await insertTask(m[2], m[1], m[3], m[4], "Vytvořeno týdenním cyklem")) totalInserted++;
         }
+      }
+    }
+
+    // 5a2. Extract [DOHODA] blocks and write to Drive + create tasks from them
+    const agreementBlocks: Array<{title: string; parties: string; deadline: string; priority: string; content: string}> = [];
+    if (analysisText) {
+      const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
+      if (dohodaSection) {
+        const dohodaRegex = /\[DOHODA\]\s*title=([^|]+)\|\s*parties=(\S+)\s*\|\s*deadline=([^|]+)\|\s*priority=(\S+)\s*\n([\s\S]*?)\[\/DOHODA\]/g;
+        for (const m of dohodaSection.matchAll(dohodaRegex)) {
+          const title = m[1].trim();
+          const parties = m[2].trim();
+          const deadline = m[3].trim();
+          const priority = m[4].trim();
+          const content = m[5].trim();
+          agreementBlocks.push({ title, parties, deadline, priority, content });
+          // Create a task from each agreement
+          if (await insertTask(`DOHODA: ${title}`, parties, `Terapeutická dohoda – ${title}`, priority, "Dohoda z týdenního cyklu")) totalInserted++;
+        }
+        console.log(`[weekly] ✅ Parsed ${agreementBlocks.length} agreement blocks`);
       }
     }
 
@@ -830,6 +866,42 @@ ${perplexityContext}`,
           } else {
             console.warn(`[weekly] 06_Strategicky_Vyhled not found for report append`);
           }
+        }
+      }
+
+      // 5c-agreements. Write agreement blocks to Drive (06_Terapeuticke_Dohody folder)
+      if (agreementBlocks.length > 0) {
+        try {
+          // Find or create the agreements folder
+          let agreementsFolderId = dohodaFolderId;
+          if (!agreementsFolderId && centrumFolderId) {
+            const centerChildren = await listFilesInFolder(token, centrumFolderId);
+            const existingFolder = centerChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+            if (existingFolder) {
+              agreementsFolderId = existingFolder.id;
+            } else {
+              // Create the folder
+              const folderRes = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "06_Terapeuticke_Dohody", parents: [centrumFolderId], mimeType: DRIVE_FOLDER_MIME }),
+              });
+              const folderData = await folderRes.json();
+              agreementsFolderId = folderData.id;
+              console.log(`[weekly] ✅ Created 06_Terapeuticke_Dohody folder`);
+            }
+          }
+          if (agreementsFolderId) {
+            for (const agreement of agreementBlocks) {
+              const fileName = `Dohoda_${dateStr}_${agreement.title.replace(/[^a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9]/g, "_").slice(0, 40)}`;
+              const content = `TERAPEUTICKÁ DOHODA\nVytvořena: ${dateStr} (týdenní cyklus)\nÚčastníci: ${agreement.parties}\nTermín: ${agreement.deadline}\nPriorita: ${agreement.priority}\n\n${agreement.title}\n${"=".repeat(40)}\n\n${agreement.content}`;
+              await createFileInFolder(token, fileName, content, agreementsFolderId);
+              cardsUpdated.push(`Dohoda: ${agreement.title}`);
+            }
+            console.log(`[weekly] ✅ Written ${agreementBlocks.length} agreements to Drive`);
+          }
+        } catch (e) {
+          console.warn("[weekly] Agreement Drive write failed:", e);
         }
       }
 

@@ -7,6 +7,10 @@ interface ParsedTask {
   note: string;
 }
 
+// Cooldown: prevent re-sync within 60 seconds
+let lastSyncTimestamp = 0;
+const SYNC_COOLDOWN_MS = 60_000;
+
 /**
  * Parse daily/weekly tasks from Karel's overview markdown text.
  * Daily tasks → today/tomorrow categories
@@ -68,25 +72,20 @@ function extractSection(block: string, startRe: RegExp, endRe: RegExp): string {
 
 /**
  * Truncate a raw title to a short actionable label (~60 chars max).
- * Splits at common Czech explanation markers and returns [shortTitle, overflow].
  */
 function truncateTitle(raw: string): [string, string] {
-  // Split at explanation markers
   const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:|Oba si|Pokus se|Je to|Má to|Tento|Jedná se)\b/i;
   const splitMatch = raw.match(splitRe);
   let title = splitMatch ? raw.slice(0, splitMatch.index!).trim() : raw.trim();
   let overflow = splitMatch ? raw.slice(splitMatch.index!).trim() : "";
 
-  // Hard cap at 80 chars, break at last space
   if (title.length > 80) {
     const cut = title.lastIndexOf(" ", 80);
     overflow = title.slice(cut > 30 ? cut : 80).trim() + (overflow ? " " + overflow : "");
     title = title.slice(0, cut > 30 ? cut : 80).trim();
   }
 
-  // Strip trailing colon/dash
   title = title.replace(/[:\-–—]\s*$/, "").trim();
-
   return [title, overflow];
 }
 
@@ -137,10 +136,7 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
   if (!match) return [];
 
   const tasks: ParsedTask[] = [];
-  const lines = match[1]
-    .split(/\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = match[1].split(/\n/).map((line) => line.trim()).filter(Boolean);
 
   for (const line of lines) {
     const bulletMatch = line.match(/^(?:[-–•]|\d+[.)])\s+(.+)/);
@@ -151,9 +147,7 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
       ? "hanka"
       : /\b(?:káť|kata)\b/i.test(raw)
         ? "kata"
-        : /\b(?:obě|oběma|společně|spolu|obě terapeutky)\b/i.test(raw)
-          ? "both"
-          : "both";
+        : "both";
 
     const category = /\b(?:zítra|zitra)\b/i.test(raw)
       ? "tomorrow"
@@ -168,12 +162,7 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
     const [shortTitle, overflow] = truncateTitle(cleaned);
     if (!shortTitle) continue;
 
-    tasks.push({
-      task: shortTitle,
-      assigned_to: assignee,
-      category,
-      note: overflow,
-    });
+    tasks.push({ task: shortTitle, assigned_to: assignee, category, note: overflow });
   }
 
   return tasks;
@@ -187,10 +176,32 @@ function normalizeTask(text: string): string {
 }
 
 /**
- * Insert parsed tasks into did_therapist_tasks, with hash-based dedup.
- * Checks ALL existing active tasks (not just today's) to prevent duplicates.
+ * Fuzzy similarity: Jaccard coefficient of word sets (0-1)
+ */
+function wordSimilarity(a: string, b: string): number {
+  const wordsA = new Set(normalizeTask(a).split(" ").filter(w => w.length > 2));
+  const wordsB = new Set(normalizeTask(b).split(" ").filter(w => w.length > 2));
+  if (wordsA.size === 0 && wordsB.size === 0) return 1;
+  if (wordsA.size === 0 || wordsB.size === 0) return 0;
+  let intersection = 0;
+  for (const w of wordsA) {
+    if (wordsB.has(w)) intersection++;
+  }
+  return intersection / (wordsA.size + wordsB.size - intersection);
+}
+
+/**
+ * Insert parsed tasks into did_therapist_tasks, with fuzzy dedup and cooldown.
  */
 export async function syncOverviewTasksToBoard(overviewText: string): Promise<number> {
+  // Cooldown check
+  const now = Date.now();
+  if (now - lastSyncTimestamp < SYNC_COOLDOWN_MS) {
+    console.log("[task-sync] Cooldown active, skipping sync");
+    return 0;
+  }
+  lastSyncTimestamp = now;
+
   const parsed = parseTasksFromOverview(overviewText);
   if (parsed.length === 0) return 0;
 
@@ -200,13 +211,21 @@ export async function syncOverviewTasksToBoard(overviewText: string): Promise<nu
     .select("task, assigned_to, category")
     .neq("status", "done");
 
-  const existingSet = new Set(
-    (existing || []).map(e => `${normalizeTask(e.task)}|${e.assigned_to}`)
-  );
+  const existingTasks = (existing || []).map(e => ({
+    normalized: normalizeTask(e.task),
+    assigned_to: e.assigned_to,
+    raw: e.task,
+  }));
 
   const toInsert = parsed.filter(t => {
-    const key = `${normalizeTask(t.task)}|${t.assigned_to}`;
-    return !existingSet.has(key);
+    const normNew = normalizeTask(t.task);
+    // Check exact match OR fuzzy similarity > 0.6
+    return !existingTasks.some(e =>
+      e.assigned_to === t.assigned_to && (
+        e.normalized === normNew ||
+        wordSimilarity(e.raw, t.task) > 0.6
+      )
+    );
   });
 
   if (toInsert.length === 0) return 0;
