@@ -111,23 +111,26 @@ const DidSystemOverview = ({ refreshTrigger }: Props) => {
             Operativní briefing pro dnešek bez neveřejné interní profilace.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void loadOverview(true)}
-          disabled={refreshing || loading}
-          className="h-7 px-2 text-[10px]"
-        >
-          {refreshing || loading ? (
-            <>
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Obnovuji...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-1 h-3 w-3" /> Obnovit
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <DidSessionPrep />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void loadOverview(true)}
+            disabled={refreshing || loading}
+            className="h-7 px-2 text-[10px]"
+          >
+            {refreshing || loading ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Obnovuji...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-1 h-3 w-3" /> Obnovit
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {loading ? (

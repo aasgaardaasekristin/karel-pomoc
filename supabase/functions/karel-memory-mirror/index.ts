@@ -491,19 +491,30 @@ async function runMirrorBatchStep(params: {
 
     if (state.taskIndex < taskUpdates.length) {
       const batch = taskUpdates.slice(state.taskIndex, state.taskIndex + MIRROR_BATCH.tasks);
+      const VALID_ASSIGNEES = new Set(["hanka", "kata", "both"]);
+      const VALID_CATEGORIES: Record<string, string> = { today: "today", tomorrow: "tomorrow", longterm: "longterm", general: "general", weekly: "weekly", daily: "daily" };
+      const VALID_PRIORITIES: Record<string, string> = { high: "high", normal: "normal", low: "low", vysoká: "high", střední: "normal", nízká: "low" };
+
       for (const task of batch) {
         if (!task.task) continue;
+        const assignee = (task.assigned_to || "").toLowerCase().trim();
+        if (!VALID_ASSIGNEES.has(assignee)) {
+          state.dbUpdates.push(`task_skip_invalid_assignee:${assignee}:${task.task.slice(0, 40)}`);
+          continue;
+        }
         const existingTask = activeTasks.find((t: any) => t.task.toLowerCase().includes(task.task.toLowerCase().slice(0, 30)));
         if (existingTask) {
           state.dbUpdates.push(`task_dedup:${task.task.slice(0, 40)}`);
           continue;
         }
+        const normalizedCategory = VALID_CATEGORIES[(task.category || "").toLowerCase().trim()] || "general";
+        const normalizedPriority = VALID_PRIORITIES[(task.priority || "").toLowerCase().trim()] || "normal";
         await sb.from("did_therapist_tasks").insert({
           user_id: userId,
           task: task.task,
-          assigned_to: task.assigned_to || "both",
-          priority: task.priority || "normal",
-          category: task.category || "general",
+          assigned_to: assignee,
+          priority: normalizedPriority,
+          category: normalizedCategory,
           note: task.reasoning || "",
           source_agreement: "mirror_auto",
         });
