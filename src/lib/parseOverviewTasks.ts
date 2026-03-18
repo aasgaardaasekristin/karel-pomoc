@@ -132,6 +132,53 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
   return tasks;
 }
 
+function extractRecommendationTasks(text: string): ParsedTask[] {
+  const match = text.match(/Dnes doporučuji\s*:([\s\S]*?)(?:\n\s*📋\s*Úkoly pro|$)/i);
+  if (!match) return [];
+
+  const tasks: ParsedTask[] = [];
+  const lines = match[1]
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const bulletMatch = line.match(/^(?:[-–•]|\d+[.)])\s+(.+)/);
+    const raw = (bulletMatch ? bulletMatch[1] : line).trim();
+    if (!raw || raw.length < 8) continue;
+
+    const assignee = /\b(?:haničk|hanka)\b/i.test(raw)
+      ? "hanka"
+      : /\b(?:káť|kata)\b/i.test(raw)
+        ? "kata"
+        : /\b(?:obě|oběma|společně|spolu|obě terapeutky)\b/i.test(raw)
+          ? "both"
+          : "both";
+
+    const category = /\b(?:zítra|zitra)\b/i.test(raw)
+      ? "tomorrow"
+      : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw)
+        ? "longterm"
+        : "today";
+
+    const cleaned = raw
+      .replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "")
+      .trim();
+
+    const [shortTitle, overflow] = truncateTitle(cleaned);
+    if (!shortTitle) continue;
+
+    tasks.push({
+      task: shortTitle,
+      assigned_to: assignee,
+      category,
+      note: overflow,
+    });
+  }
+
+  return tasks;
+}
+
 /**
  * Normalize task text for dedup comparison (lowercase, strip whitespace/punctuation)
  */

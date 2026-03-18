@@ -517,12 +517,12 @@ serve(async (req) => {
     }
 
     // ── 4. Build greeting ──
-    const now = new Date();
+    const pragueNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
     const dayNames = ["neděle", "pondělí", "úterý", "středa", "čtvrtek", "pátek", "sobota"];
-    const dayName = dayNames[now.getDay()];
-    const hour = now.getHours();
-    const minute = now.getMinutes().toString().padStart(2, "0");
-    const formattedDate = `${dayName} ${now.getDate()}. ${now.toLocaleDateString("cs-CZ", { month: "long", year: "numeric" })}, ${hour}:${minute}`;
+    const dayName = dayNames[pragueNow.getDay()];
+    const hour = String(pragueNow.getHours()).padStart(2, "0");
+    const minute = String(pragueNow.getMinutes()).padStart(2, "0");
+    const formattedDate = `${dayName} ${pragueNow.getDate()}. ${pragueNow.toLocaleDateString("cs-CZ", { month: "long", year: "numeric", timeZone: "Europe/Prague" })}, ${hour}:${minute}`;
     const chosenGreeting = `Ahoj, Haničko a Káťo! ${formattedDate}.`;
 
     // ── 5. Přehled: přirozený styl bez technických tagů ──
