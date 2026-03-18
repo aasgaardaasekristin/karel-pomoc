@@ -8,6 +8,7 @@ import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import { ActiveSessionsProvider } from "@/contexts/ActiveSessionsContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import MobileSwipeBack from "@/components/MobileSwipeBack";
 import Login from "./pages/Login";
 import Hub from "./pages/Hub";
 import Chat from "./pages/Chat";
@@ -32,6 +33,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <MobileSwipeBack />
           <Routes>
             {isPomocSubdomain ? (
               <>
