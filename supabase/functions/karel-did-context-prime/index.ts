@@ -914,6 +914,13 @@ Pouze fakta z textu, nevymýšlej. Piš česky.` },
       }
     }
 
+    // Part registry digest for synthesis
+    const partRegistry = dbResults.partRegistry || [];
+    const registryDigest = partRegistry.map((p: any) => {
+      const lastSeen = p.last_seen_at ? new Date(p.last_seen_at).toLocaleDateString("cs-CZ") : "nikdy";
+      return `${p.part_name}: STATUS=${p.status} | cluster=${p.cluster || "?"} | věk=${p.age_estimate || "?"} | poslední kontakt=${lastSeen} | emoce=${p.last_emotional_state || "?"}`;
+    }).join("\n");
+
     // ═══ PHASE 3: AI Synthesis ═══
     const synthesisPrompt = `Jsi analytický modul kognitivního agenta Karla pro DID režim. Vytvoř KONTEXTOVOU CACHE pro nadcházející interakci.
 
