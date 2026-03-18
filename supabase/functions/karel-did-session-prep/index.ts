@@ -240,10 +240,11 @@ serve(async (req) => {
     const tMemory = therapistMemory.status === "fulfilled" ? therapistMemory.value : "";
 
     // Build conversation summaries
+    const activityLabel = (subMode: string) => subMode === "cast" ? "PŘÍMÁ AKTIVITA (část přímo mluvila)" : "ZMÍNKA (pohled terapeutky, část NEMUSÍ být k dispozici)";
     const conversationSummaries = threads.map((t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       const lastMsgs = msgs.slice(-6).map((m: any) => `${m.role === "user" ? "Klient" : "Karel"}: ${truncate(m.content || "", 200)}`).join("\n");
-      return `[${new Date(t.last_activity_at).toLocaleDateString("cs-CZ")}] (${t.sub_mode})\n${lastMsgs}`;
+      return `[${new Date(t.last_activity_at).toLocaleDateString("cs-CZ")}] [${activityLabel(t.sub_mode)}] (${t.sub_mode})\n${lastMsgs}`;
     }).join("\n---\n");
 
     // Build task list
