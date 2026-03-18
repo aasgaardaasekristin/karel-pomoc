@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
 import { ActiveSessionsProvider } from "@/contexts/ActiveSessionsContext";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Login from "./pages/Login";
 import Hub from "./pages/Hub";
@@ -26,6 +27,7 @@ const App = () => (
     <TooltipProvider>
       <CrisisSupervisionProvider>
       <ActiveSessionsProvider>
+      <ThemeProvider>
       <ChatProvider>
         <Toaster />
         <Sonner />
@@ -52,6 +54,7 @@ const App = () => (
           </Routes>
         </BrowserRouter>
       </ChatProvider>
+      </ThemeProvider>
       </ActiveSessionsProvider>
       </CrisisSupervisionProvider>
     </TooltipProvider>

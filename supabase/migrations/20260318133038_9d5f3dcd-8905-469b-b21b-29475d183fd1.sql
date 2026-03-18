@@ -1,0 +1,1 @@
+INSERT INTO storage.buckets (id, name, public) VALUES ('theme-backgrounds', 'theme-backgrounds', true) ON CONFLICT (id) DO NOTHING;

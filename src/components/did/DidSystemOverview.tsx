@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
-import DidSessionPrep from "./DidSessionPrep";
+
 
 interface Props {
   refreshTrigger: number;
@@ -116,7 +116,6 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          <DidSessionPrep />
           <Button
             variant="outline"
             size="sm"

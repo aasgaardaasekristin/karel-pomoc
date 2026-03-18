@@ -171,3 +171,24 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     @apply bg-card border border-border rounded-2xl shadow-lg p-8;
   }
 }
+
+/* Theme background image */
+body.has-bg-image {
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+body.has-bg-image::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: hsl(var(--background) / 0.85);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.dark body.has-bg-image::before {
+  background: hsl(var(--background) / 0.9);
+}

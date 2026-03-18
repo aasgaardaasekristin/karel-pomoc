@@ -90,8 +90,7 @@ async function createFolderInParent(token: string, name: string, parentId: strin
   return data.id;
 }
 
-const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
-const canonicalText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const truncateStr = (s: string, max: number) => s.length > max ? s.slice(0, max) + "…" : s;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -245,7 +244,7 @@ serve(async (req) => {
             const file = centrumFiles.find(f => f.name.includes(prefix));
             if (file) {
               const content = await readFileContent(token, file.id);
-              driveContext += `\n\n=== ${file.name} ===\n${truncate(content, 2000)}`;
+              driveContext += `\n\n=== ${file.name} ===\n${truncateStr(content, 2000)}`;
             }
           }
         }
@@ -509,7 +508,7 @@ ${driveContext || "(nedostupné)"}`;
       await supabaseAdmin.from("did_update_cycles").update({
         status: "completed",
         completed_at: new Date().toISOString(),
-        report_summary: truncate(reportText, 10000),
+        report_summary: truncateStr(reportText, 10000),
         cards_updated: cardsUpdated,
       }).eq("id", cycleId);
     }
