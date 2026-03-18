@@ -79,7 +79,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
     try {
       const headers = await getAuthHeaders();
       const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 20000);
+      const timeout = window.setTimeout(() => controller.abort(), 180000);
 
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`,
