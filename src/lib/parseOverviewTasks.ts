@@ -169,25 +169,45 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
 }
 
 /**
- * Normalize task text for dedup comparison (lowercase, strip whitespace/punctuation)
+ * Normalize task text for dedup comparison:
+ * - lowercase, strip punctuation, strip filler words/salutations
  */
 function normalizeTask(text: string): string {
-  return text.toLowerCase().replace(/[^\w\sáčďéěíňóřšťúůýž]/gi, "").replace(/\s+/g, " ").trim();
+  return text
+    .toLowerCase()
+    .replace(/[^\w\sáčďéěíňóřšťúůýž]/gi, "")
+    // Strip salutations and filler
+    .replace(/\b(haničko|hanka|káťo|kata|prosím|miláčku|milá|obě|společně|bezodkladně|co\s+nejdříve|zkus|prosím|proveďte|proveď|začni|aktivněji)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
- * Fuzzy similarity: Jaccard coefficient of word sets (0-1)
+ * Extract core action words (3+ chars, skip stopwords) for semantic comparison
+ */
+function extractCoreWords(text: string): Set<string> {
+  const stopwords = new Set(["pro", "jako", "kde", "jak", "aby", "při", "což", "ten", "tato", "tyto", "jeho", "její", "jsou", "být", "mít", "dnes", "zítra", "úkol", "úkoly"]);
+  return new Set(
+    normalizeTask(text).split(" ").filter(w => w.length > 2 && !stopwords.has(w))
+  );
+}
+
+/**
+ * Fuzzy similarity: Jaccard + containment for short phrases
  */
 function wordSimilarity(a: string, b: string): number {
-  const wordsA = new Set(normalizeTask(a).split(" ").filter(w => w.length > 2));
-  const wordsB = new Set(normalizeTask(b).split(" ").filter(w => w.length > 2));
+  const wordsA = extractCoreWords(a);
+  const wordsB = extractCoreWords(b);
   if (wordsA.size === 0 && wordsB.size === 0) return 1;
   if (wordsA.size === 0 || wordsB.size === 0) return 0;
   let intersection = 0;
   for (const w of wordsA) {
     if (wordsB.has(w)) intersection++;
   }
-  return intersection / (wordsA.size + wordsB.size - intersection);
+  const jaccard = intersection / (wordsA.size + wordsB.size - intersection);
+  // Also check containment (smaller set fully in larger set)
+  const containment = intersection / Math.min(wordsA.size, wordsB.size);
+  return Math.max(jaccard, containment * 0.85);
 }
 
 /**
