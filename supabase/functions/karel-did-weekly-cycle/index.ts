@@ -620,6 +620,22 @@ Formát: [UKOLY]...[/UKOLY]
 Pro každý úkol:
 [UKOL] assignee=hanka|kata|both | task=Popis úkolu + PROČ | source=Kontext/dedukce | priority=normal|high [/UKOL]
 
+═══ 2c. TERAPEUTICKÉ DOHODY ═══
+Formát: [DOHODY]...[/DOHODY]
+
+Karel má AKTIVNĚ TVOŘIT terapeutické dohody na základě analýzy dat. Dohody jsou konkrétní závazky/plány pro terapii.
+Pro každou dohodu:
+[DOHODA] title=Název dohody | parties=hanka|kata|both | deadline=YYYY-MM-DD | priority=normal|high
+Obsah dohody: co se má dělat, proč, jaký je cíl, jak se bude měřit úspěch.
+[/DOHODA]
+
+Příklady dohod které Karel má SAMI INICIOVAT:
+- Plány na konkrétní sezení s částmi (kdo, kdy, jaká metoda, proč)
+- Koordinace mezi terapeutkami (kdo vede jakou část, proč)
+- Krizové plány (co dělat když se probudí spící část)
+- Edukační plány (rozvoj talentů částí)
+- Follow-up dohody (kontrola splnění předchozích dohod)
+
 ═══ 3. CENTRUM UPDATES ═══
 
 [CENTRUM:05_Operativni_Plan]
