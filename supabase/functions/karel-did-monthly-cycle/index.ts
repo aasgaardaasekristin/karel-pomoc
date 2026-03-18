@@ -509,8 +509,10 @@ ${driveContext || "(nedostupné)"}`;
     // ═══ SEND EMAIL ═══
     try {
       const resendKey = Deno.env.get("RESEND_API_KEY");
+      const hankaEmail = "mujosobniasistentnamiru@gmail.com";
       const kataEmail = Deno.env.get("KATA_EMAIL");
-      if (resendKey && kataEmail) {
+      const recipients = [hankaEmail, kataEmail].filter(Boolean) as string[];
+      if (resendKey && recipients.length > 0) {
         const resend = new Resend(resendKey);
         const month = new Date().toLocaleDateString("cs-CZ", { month: "long", year: "numeric" });
         const cleanupSection = cleanupIssues.length > 0
