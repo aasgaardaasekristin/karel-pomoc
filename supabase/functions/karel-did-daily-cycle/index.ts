@@ -2284,11 +2284,11 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel – osobní AI asistent rodiny. Vygeneruj krátký denní report pro Haničku (partnerku, láska tisíciletá). Intimní, laskavý tón.
-Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný, uklidňující report:
-- Pozdrav Haničku
-- Řekni, že dnes byl klidný den, žádné části se neozvaly
-- Krátké povzbuzení
+                    { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID. Vygeneruj krátký denní report pro celý tým. Profesionální, věcný tón vedoucího.
+Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
+- Shrnutí stavu (klidný den, žádná aktivita)
+- Případné připomenutí otevřených úkolů
+- Povzbuzení pro tým
 Datum: ${dateStr}` },
                     { role: "user", content: "Vygeneruj klidný denní report." },
                   ],
