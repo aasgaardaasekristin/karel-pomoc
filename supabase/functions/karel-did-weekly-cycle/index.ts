@@ -193,18 +193,21 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
 
-  // Auto-cleanup stuck cycles (>20 min)
-  const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  // Auto-cleanup stuck cycles (>8 min without heartbeat)
+  const staleRunningThreshold = new Date(Date.now() - 8 * 60 * 1000).toISOString();
   const { data: stuckCycles } = await sb.from("did_update_cycles")
-    .select("id, cycle_type, started_at")
+    .select("id, cycle_type, started_at, phase")
     .eq("status", "running")
-    .lt("started_at", twentyMinAgo);
+    .lt("started_at", staleRunningThreshold);
 
   if (stuckCycles && stuckCycles.length > 0) {
     for (const stuck of stuckCycles) {
       await sb.from("did_update_cycles").update({
-        status: "failed", completed_at: new Date().toISOString(),
-        report_summary: `Cyklus automaticky označen jako neúspěšný (timeout). Spuštěn: ${stuck.started_at}`,
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        phase: "failed",
+        phase_detail: `Automaticky ukončeno ve fázi ${stuck.phase || "unknown"}`,
+        report_summary: `Cyklus automaticky označen jako neúspěšný (bez heartbeat > 8 min). Spuštěn: ${stuck.started_at}`,
       }).eq("id", stuck.id);
     }
     console.log(`[weekly] Auto-cleanup: ${stuckCycles.length} stuck cycles marked as failed`);
@@ -220,12 +223,12 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
     }
   }
 
-  // Prevent duplicate runs
-  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  // Prevent duplicate runs only for fresh heartbeats
+  const duplicateGuardThreshold = new Date(Date.now() - 6 * 60 * 1000).toISOString();
   const { data: alreadyRunning } = await sb.from("did_update_cycles")
     .select("id, started_at, phase")
     .eq("cycle_type", "weekly").eq("status", "running")
-    .gte("started_at", fifteenMinAgo)
+    .gte("started_at", duplicateGuardThreshold)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
 
   if (alreadyRunning) {
