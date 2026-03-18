@@ -547,6 +547,29 @@ serve(async (req) => {
       tasksBlock += `\n- ${String(t.task).slice(0, 180)} (pro ${t.assigned_to || "both"}${due})`;
     }
 
+    const summarizeTherapistEngagement = (therapistKey: "hanka" | "kata", label: string) => {
+      const relevantTasks = sortedTasks.filter((task: any) => task.assigned_to === therapistKey || task.assigned_to === "both");
+      const statusField = therapistKey === "hanka" ? "status_hanka" : "status_kata";
+      const notStarted = relevantTasks.filter((task: any) => task[statusField] === "not_started").length;
+      const inProgress = relevantTasks.filter((task: any) => task[statusField] === "in_progress").length;
+      const highPriorityPending = relevantTasks.filter((task: any) => ["high", "urgent"].includes(String(task.priority || "").toLowerCase()) && task[statusField] !== "done").length;
+      const hasRecentThread = (filteredLast24hThreads || []).some((thread: any) => thread?.sub_mode === therapistKey);
+      const signal = !hasRecentThread && highPriorityPending > 0
+        ? "nízké zapojení"
+        : hasRecentThread && inProgress > 0
+          ? "aktivní práce"
+          : notStarted >= 2
+            ? "potřeba jemné aktivace"
+            : "stabilní provoz";
+
+      return `${label}: ${signal}; otevřené úkoly ${relevantTasks.length}, rozpracováno ${inProgress}, nezapočato ${notStarted}, vysoká priorita ${highPriorityPending}, kontakt za 24h ${hasRecentThread ? "ano" : "ne"}.`;
+    };
+
+    const teamEngagementBlock = [
+      summarizeTherapistEngagement("hanka", "Hanka"),
+      summarizeTherapistEngagement("kata", "Káťa"),
+    ].join("\n");
+
     const formatThreadEntry = (t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       const speaker = t.sub_mode === "cast"
@@ -598,6 +621,7 @@ Toto je RANNÍ BRIEFING pro terapeutky (Haničku a Káťu). Cílem je dát jim z
 - Kdo ze systému byl aktivní, jaká je celková NÁLADA systému.
 - Co je dnes POTŘEBA udělat (konkrétní akce, ne popisy).
 - Stav rozpracovaných ÚKOLŮ.
+- Jak podpořit týmovou spolupráci a zapojení terapeutek na základě VIDITELNÉ provozní aktivity.
 
 ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 1) NESMÍŠ citovat soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky částí). Tyto informace Karel zpracovává INTERNĚ a zapisuje do Drive dokumentů – NE do přehledu.
@@ -612,6 +636,7 @@ ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 10) Pokud část Dmytri/Dymi není v registru, NESMÍŠ ji zmínit ani jako hypotézu.
 11) Úkoly s neveřejným obsahem vynech – briefing smí obsahovat jen bezpečné veřejné instrukce pro terapeutky.
 12) NEUVÁDĚJ doporučení ani úkoly navázané na konkrétní DID části; briefing smí vést terapeutky jen obecně a provozně.
+13) SMÍŠ vyvodit, že je potřeba více aktivovat Hanku nebo Káťu, POUZE pokud to plyne z provozních signálů níže (málo kontaktu, více nezapočatých úkolů, slabé zapojení). Taková dedukce musí být formulována jako pracovní hypotéza a návrh dalšího kroku, ne jako psychologický profil.
 
 ⚠️ KRITICKÉ PRAVIDLO – PERSPEKTIVA AKTIVITY:
 - "PŘÍMÁ AKTIVITA" = část SAMA mluvila s Karlem v režimu DID (sub_mode=cast). Piš: "[jméno] komunikoval/a..."
@@ -628,7 +653,9 @@ OSLOVENÍ:
 CO MÁŠ DĚLAT:
 - 1 odstavec: PROVOZNÍ PŘEHLED – kdo PŘÍMO komunikoval, o kom se MLUVILO (rozlišuj!), celkový dojem ze systému.
 - 1 odstavec: STAV ÚKOLŮ – jen bezpečné obecné provozní body bez neveřejných dedukcí a bez jmen částí.
+- V odstavci o úkolech můžeš explicitně napsat, že je vhodné více aktivovat Káťu nebo Hanku, pokud to ukazují provozní signály.
 - "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ, ale pouze obecné provozní kroky bez jmen DID částí.
+- Aspoň 1 doporučení má být týmové/koordinační, pokud některá terapeutka vykazuje nižší zapojení.
 
 STRUKTURA:
 "${chosenGreeting}"
@@ -649,6 +676,9 @@ ${crossModeSummary24h || "(žádné zmínky z jiných režimů)"}
 
 === AKTIVITA TERAPEUTEK 24H ===
 ${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
+
+=== SIGNÁLY ZAPOJENÍ TÝMU ===
+${teamEngagementBlock}
 
 === AKTIVNÍ ÚKOLY ===
 ${tasksBlock || "(bez veřejných úkolů pro briefing)"}
