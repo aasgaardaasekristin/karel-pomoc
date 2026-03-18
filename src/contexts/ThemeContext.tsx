@@ -234,6 +234,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         chat_bubble_style: (data as any).chat_bubble_style || "rounded",
         compact_mode: (data as any).compact_mode ?? false,
         animations_enabled: (data as any).animations_enabled ?? true,
+        font_color: (data as any).font_color || "",
+        font_family: (data as any).font_family || "default",
       });
     } else {
       setPrefs({ ...DEFAULT_PREFS, persona });
