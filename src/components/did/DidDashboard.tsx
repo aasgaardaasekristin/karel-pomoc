@@ -10,7 +10,7 @@ import DidSystemMap from "./DidSystemMap";
 import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
-import DidSessionPrep from "./DidSessionPrep";
+// DidSessionPrep moved to DidSystemOverview
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
