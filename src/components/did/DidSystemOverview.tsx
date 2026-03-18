@@ -83,7 +83,10 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
 
       // Sync tasks from overview to task board
       try {
-        await syncOverviewTasksToBoard(nextOverview);
+        const synced = await syncOverviewTasksToBoard(nextOverview);
+        if (synced > 0) {
+          onTasksSynced?.();
+        }
       } catch (e) {
         console.warn("Task sync from overview failed:", e);
       }
