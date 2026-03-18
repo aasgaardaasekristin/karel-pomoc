@@ -19,10 +19,9 @@ interface WeeklyCycleData {
   phase_detail: string;
 }
 
-const PHASES = ["kickoff", "gather", "analyze", "distribute", "notify"] as const;
 const PHASE_LABELS: Record<string, string> = {
   created: "Cyklus vytvořen",
-  gathering: "Sbírám data z Drive...",
+  gathering: "Sbírám data z Drive a databáze...",
   gathered: "Data sebrána",
   analyzing: "AI analyzuje data...",
   analyzed: "Analýza hotová",
@@ -36,18 +35,18 @@ const PHASE_LABELS: Record<string, string> = {
 const PHASE_PROGRESS: Record<string, number> = {
   created: 5,
   gathering: 15,
-  gathered: 30,
-  analyzing: 50,
-  analyzed: 65,
-  distributing: 75,
-  distributed: 90,
-  notifying: 95,
+  gathered: 35,
+  analyzing: 55,
+  analyzed: 72,
+  distributing: 84,
+  distributed: 94,
+  notifying: 97,
   completed: 100,
   failed: 0,
 };
 
 const POLL_INTERVAL_MS = 4000;
-const STALE_TIMEOUT_MS = 25 * 60 * 1000; // 25 min
+const STALE_TIMEOUT_MS = 8 * 60 * 1000;
 
 const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { refreshTrigger?: number; onWeeklyCycleComplete?: () => void }) => {
   const [cycles, setCycles] = useState<WeeklyCycleData[]>([]);
@@ -72,14 +71,23 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   useEffect(() => { void loadData(); }, [loadData]);
   useEffect(() => { if (refreshTrigger > 0) void loadData(true); }, [refreshTrigger, loadData]);
 
-  // Call a specific phase
+  useEffect(() => {
+    if (!activeCycleId) return;
+    const activeCycle = cycles.find((cycle) => cycle.id === activeCycleId);
+    if (!activeCycle || activeCycle.status !== "running") {
+      setActiveCycleId(null);
+    }
+  }, [cycles, activeCycleId]);
+
   const callPhase = useCallback(async (phase: string, cycleId?: string) => {
     const headers = await getAuthHeaders();
     const body: any = { phase, force: true };
     if (cycleId) body.cycleId = cycleId;
 
     const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`, {
-      method: "POST", headers, body: JSON.stringify(body),
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(160000),
     });
 
@@ -88,51 +96,50 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
     return result;
   }, []);
 
-  // Auto-chain phases
   const runPhaseChain = useCallback(async () => {
     if (chainingRef.current) return;
     chainingRef.current = true;
 
+    let currentCycleId: string | null = null;
+
     try {
-      // Phase 1: Kickoff
       toast.info("Týdenní cyklus spuštěn – fáze 1/5");
       const kickoffResult = await callPhase("kickoff");
 
       if (kickoffResult.skipped) {
+        if (kickoffResult.cycleId) setActiveCycleId(kickoffResult.cycleId);
         toast.info(kickoffResult.reason === "already_running"
-          ? "Jiný týdenní cyklus už právě běží."
+          ? "Jiný týdenní cyklus už právě běží. Navazuji na jeho průběh."
           : "Nedávno byl dokončen – zkus to znovu později.");
+        void loadData(true);
         return;
       }
 
-      const cid = kickoffResult.cycleId;
-      setActiveCycleId(cid);
+      currentCycleId = kickoffResult.cycleId;
+      setActiveCycleId(currentCycleId);
       void loadData(true);
 
-      // Phase 2: Gather
       toast.info("Fáze 2/5: Sbírám data z Drive a databáze...");
-      await callPhase("gather", cid);
+      await callPhase("gather", currentCycleId);
       void loadData(true);
 
-      // Phase 3: Analyze
-      toast.info("Fáze 3/5: AI analyzuje data (1-2 min)...");
-      await callPhase("analyze", cid);
+      toast.info("Fáze 3/5: AI analyzuje data...");
+      await callPhase("analyze", currentCycleId);
       void loadData(true);
 
-      // Phase 4: Distribute
       toast.info("Fáze 4/5: Zapisuji na Drive a synchronizuji úkoly...");
-      await callPhase("distribute", cid);
+      await callPhase("distribute", currentCycleId);
       void loadData(true);
 
-      // Phase 5: Notify
       toast.info("Fáze 5/5: Odesílám e-maily...");
-      await callPhase("notify", cid);
+      await callPhase("notify", currentCycleId);
       void loadData(true);
 
       toast.success("Týdenní cyklus úspěšně dokončen! ✅");
       onWeeklyCycleComplete?.();
     } catch (e: any) {
       if (e.name === "TimeoutError" || e.name === "AbortError") {
+        if (currentCycleId) setActiveCycleId(currentCycleId);
         toast.info("Fáze běží na pozadí – panel průběžně obnovuji.");
       } else {
         toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
@@ -140,11 +147,9 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
       void loadData(true);
     } finally {
       chainingRef.current = false;
-      setActiveCycleId(null);
     }
   }, [callPhase, loadData, onWeeklyCycleComplete]);
 
-  // Poll while active cycle is running
   useEffect(() => {
     if (!activeCycleId) return;
     const intervalId = window.setInterval(() => void loadData(true), POLL_INTERVAL_MS);
@@ -152,11 +157,10 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   }, [activeCycleId, loadData]);
 
   const hasRunning = useMemo(
-    () => cycles.some(c => c.status === "running" && (Date.now() - new Date(c.started_at).getTime()) < STALE_TIMEOUT_MS),
+    () => cycles.some((cycle) => cycle.status === "running" && (Date.now() - new Date(cycle.started_at).getTime()) < STALE_TIMEOUT_MS),
     [cycles]
   );
 
-  // Also poll if there's a running cycle we didn't start
   useEffect(() => {
     if (!hasRunning || activeCycleId) return;
     const intervalId = window.setInterval(() => void loadData(true), POLL_INTERVAL_MS);
@@ -165,7 +169,10 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
 
   const handleDeleteCycle = async (cycleId: string) => {
     const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
-    if (error) { toast.error("Nepodařilo se smazat záznam"); return; }
+    if (error) {
+      toast.error("Nepodařilo se smazat záznam");
+      return;
+    }
     toast.success("Týdenní report smazán");
     void loadData(true);
   };
@@ -179,7 +186,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-swipe-back-lock={hasRunning || chainingRef.current ? "true" : undefined}>
       <div className="flex items-center justify-between">
         <h4 className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           <FileText className="w-3.5 h-3.5 text-primary" />
@@ -241,7 +248,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                           <span>{phaseLabel}</span>
                           <span>{progress}%</span>
                         </div>
-                        <div className="h-1.5 w-full rounded-full bg-muted/50 overflow-hidden">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/50">
                           <div
                             className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
                             style={{ width: `${progress}%` }}
@@ -269,9 +276,10 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                     {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
                     {!isRunning && (
                       <Button
-                        variant="ghost" size="sm"
+                        variant="ghost"
+                        size="sm"
                         onClick={(e) => { e.stopPropagation(); void handleDeleteCycle(cycle.id); }}
-                        className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="h-5 w-5 p-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
@@ -285,7 +293,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                   <div className="prose prose-sm mt-2 max-w-none text-[11px] leading-relaxed dark:prose-invert">
                     <ReactMarkdown
                       components={{
-                        h2: ({ children }) => <h2 className="mt-3 mb-1 text-sm font-semibold text-foreground first:mt-1">{children}</h2>,
+                        h2: ({ children }) => <h2 className="first:mt-1 mt-3 mb-1 text-sm font-semibold text-foreground">{children}</h2>,
                         h3: ({ children }) => <h3 className="mt-2 mb-0.5 text-xs font-medium text-foreground">{children}</h3>,
                         p: ({ children }) => <p className="mb-1.5 leading-relaxed text-muted-foreground">{children}</p>,
                         strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,

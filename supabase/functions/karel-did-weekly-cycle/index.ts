@@ -14,6 +14,11 @@ const MAX_CONVERSATION_MESSAGE_CHARS = 180;
 const truncate = (value: string, max: number) =>
   value.length > max ? `${value.slice(0, max)}…` : value;
 
+const PHASE_BUDGET_MS = 130000;
+const GOOGLE_FETCH_TIMEOUT_MS = 12000;
+const PERPLEXITY_TIMEOUT_MS = 12000;
+const MIN_BUDGET_FOR_PERPLEXITY_MS = 22000;
+
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timeoutId: number | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -23,17 +28,41 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   finally { if (timeoutId) clearTimeout(timeoutId); }
 }
 
+async function fetchWithRetry(input: string, init: RequestInit, label: string, timeoutMs: number, attempts = 2) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await withTimeout(fetch(input, init), timeoutMs, `${label} (attempt ${attempt})`);
+      if (response.ok || response.status < 500) return response;
+      lastError = new Error(`${label} failed with status ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
+}
+
+const hasBudget = (startedAt: number, reserveMs = 0) => Date.now() - startedAt < PHASE_BUDGET_MS - reserveMs;
+
 // ═══ OAuth2 token helper ═══
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
   if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
-  });
+
+  const res = await fetchWithRetry(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+    },
+    "Google token",
+    GOOGLE_FETCH_TIMEOUT_MS,
+    3,
+  );
+
   const data = await res.json();
   if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
   return data.access_token;
@@ -46,7 +75,7 @@ const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
 async function findFolder(token: string, name: string): Promise<string | null> {
   const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } }, `findFolder:${name}`, GOOGLE_FETCH_TIMEOUT_MS);
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
@@ -58,7 +87,7 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
   do {
     const params = new URLSearchParams({ q, fields: "nextPageToken,files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
     if (pageToken) params.set("pageToken", pageToken);
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } }, `listFilesInFolder:${folderId}`, GOOGLE_FETCH_TIMEOUT_MS);
     const data = await res.json();
     allFiles.push(...(data.files || []));
     pageToken = data.nextPageToken || undefined;
@@ -67,9 +96,9 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
 }
 
 async function readFileContent(token: string, fileId: string): Promise<string> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } }, `readFile:${fileId}`, GOOGLE_FETCH_TIMEOUT_MS);
   if (!res.ok) {
-    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+    const exportRes = await fetchWithRetry(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } }, `exportFile:${fileId}`, GOOGLE_FETCH_TIMEOUT_MS);
     if (!exportRes.ok) throw new Error(`Cannot read file ${fileId}: ${exportRes.status}`);
     return await exportRes.text();
   }
@@ -164,18 +193,21 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
   const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
 
-  // Auto-cleanup stuck cycles (>20 min)
-  const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  // Auto-cleanup stuck cycles (>8 min without heartbeat)
+  const staleRunningThreshold = new Date(Date.now() - 8 * 60 * 1000).toISOString();
   const { data: stuckCycles } = await sb.from("did_update_cycles")
-    .select("id, cycle_type, started_at")
+    .select("id, cycle_type, started_at, phase")
     .eq("status", "running")
-    .lt("started_at", twentyMinAgo);
+    .lt("started_at", staleRunningThreshold);
 
   if (stuckCycles && stuckCycles.length > 0) {
     for (const stuck of stuckCycles) {
       await sb.from("did_update_cycles").update({
-        status: "failed", completed_at: new Date().toISOString(),
-        report_summary: `Cyklus automaticky označen jako neúspěšný (timeout). Spuštěn: ${stuck.started_at}`,
+        status: "failed",
+        completed_at: new Date().toISOString(),
+        phase: "failed",
+        phase_detail: `Automaticky ukončeno ve fázi ${stuck.phase || "unknown"}`,
+        report_summary: `Cyklus automaticky označen jako neúspěšný (bez heartbeat > 8 min). Spuštěn: ${stuck.started_at}`,
       }).eq("id", stuck.id);
     }
     console.log(`[weekly] Auto-cleanup: ${stuckCycles.length} stuck cycles marked as failed`);
@@ -191,12 +223,12 @@ async function phaseKickoff(sb: any, userId: string, forceRun: boolean, isCronCa
     }
   }
 
-  // Prevent duplicate runs
-  const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  // Prevent duplicate runs only for fresh heartbeats
+  const duplicateGuardThreshold = new Date(Date.now() - 6 * 60 * 1000).toISOString();
   const { data: alreadyRunning } = await sb.from("did_update_cycles")
     .select("id, started_at, phase")
     .eq("cycle_type", "weekly").eq("status", "running")
-    .gte("started_at", fifteenMinAgo)
+    .gte("started_at", duplicateGuardThreshold)
     .order("started_at", { ascending: false }).limit(1).maybeSingle();
 
   if (alreadyRunning) {
