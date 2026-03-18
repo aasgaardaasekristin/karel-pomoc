@@ -652,6 +652,7 @@ CO MÁŠ DĚLAT:
 - 1 odstavec: PROVOZNÍ PŘEHLED – kdo přímo komunikoval, jaká byla obecná témata a dynamika systému.
 - 1 odstavec: DEDUKCE A STAV ÚKOLŮ – explicitně pojmenuj 1–2 pracovní dedukce z provozních dat (např. potřeba více aktivovat Káťu / Hanku, potřeba follow-upu, potřeba rozdělit odpovědnosti).
 - "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ, pouze obecné provozní kroky bez jmen DID částí.
+- Každý akční bod musí být ověřitelný a konkrétní: začínat slovesem, obsahovat kdo/co/na čem má pracovat dnes nebo zítra, a nesmí být jen obecná fráze typu „udržovat rutinu“, „zajistit klidné prostředí“, „připravit se na zpracování informací“, „věnovat se administrativě“.
 - Aspoň 1 doporučení má být koordinační, pokud některá terapeutka vykazuje nižší zapojení.
 
 STRUKTURA:
