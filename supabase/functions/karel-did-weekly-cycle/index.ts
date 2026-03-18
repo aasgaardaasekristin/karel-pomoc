@@ -396,10 +396,12 @@ serve(async (req) => {
 
     const { data: weekThreads } = await sb.from("did_threads")
       .select("part_name, sub_mode, started_at, last_activity_at, messages, part_language")
+      .eq("sub_mode", "cast")
       .gte("started_at", weekAgo);
 
     const { data: monthThreads } = await sb.from("did_threads")
       .select("part_name, sub_mode, started_at, last_activity_at, messages")
+      .eq("sub_mode", "cast")
       .gte("started_at", monthAgo);
 
     // Only fetch metadata from cycles – NO report_summary (may contain stale/deleted data)
