@@ -312,18 +312,22 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
 
               {isExpanded && (
                 <div className="border-t border-border/50 px-3 pb-3">
-                  <div className="prose prose-sm mt-2 max-w-none text-[11px] leading-relaxed dark:prose-invert">
-                    <ReactMarkdown
-                      components={{
-                        h2: ({ children }) => <h2 className="first:mt-1 mt-3 mb-1 text-sm font-semibold text-foreground">{children}</h2>,
-                        h3: ({ children }) => <h3 className="mt-2 mb-0.5 text-xs font-medium text-foreground">{children}</h3>,
-                        p: ({ children }) => <p className="mb-1.5 leading-relaxed text-muted-foreground">{children}</p>,
-                        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
-                      }}
-                    >
-                      {summary.slice(0, 3000)}
-                    </ReactMarkdown>
-                  </div>
+                  {summary ? (
+                    <div className="prose prose-sm mt-2 max-w-none text-[11px] leading-relaxed dark:prose-invert">
+                      <ReactMarkdown
+                        components={{
+                          h2: ({ children }) => <h2 className="first:mt-1 mt-3 mb-1 text-sm font-semibold text-foreground">{children}</h2>,
+                          h3: ({ children }) => <h3 className="mt-2 mb-0.5 text-xs font-medium text-foreground">{children}</h3>,
+                          p: ({ children }) => <p className="mb-1.5 leading-relaxed text-muted-foreground">{children}</p>,
+                          strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                        }}
+                      >
+                        {summary.slice(0, 3000)}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-muted-foreground italic">Report není k dispozici (starší cyklus).</p>
+                  )}
 
                   {cards.length > 0 && (
                     <div className="mt-2 border-t border-border/30 pt-2">
