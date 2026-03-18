@@ -1910,7 +1910,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             onNewThread={handleNewCastThread}
           />
           <div className="flex justify-center pb-4">
-            <Button variant="ghost" size="sm" onClick={handleDidBack}>
+            <Button variant="ghost" size="sm" onClick={handleDidBackHierarchical}>
               ← Zpět
             </Button>
           </div>
