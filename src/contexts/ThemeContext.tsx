@@ -320,6 +320,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         chat_bubble_style: next.chat_bubble_style,
         compact_mode: next.compact_mode,
         animations_enabled: next.animations_enabled,
+        font_color: next.font_color,
+        font_family: next.font_family,
         updated_at: new Date().toISOString(),
       } as any, { onConflict: "user_id,persona" });
   }, [prefs, userId]);
