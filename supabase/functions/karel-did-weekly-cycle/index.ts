@@ -833,8 +833,8 @@ async function phaseDistribute(sb: any, cycleId: string) {
 async function phaseNotify(sb: any, cycleId: string) {
   await updatePhase(sb, cycleId, "notifying", "Odesílám e-maily...");
 
-  const { data: cycle } = await sb.from("did_update_cycles").select("context_data, cards_updated").eq("id", cycleId).single();
-  const ctx = cycle.context_data;
+  const { data: cycle } = await sb.from("did_update_cycles").select("context_data, cards_updated, report_summary").eq("id", cycleId).single();
+  const ctx = cycle.context_data || {};
   const { analysisText, userId } = ctx;
   const cardsUpdated = cycle.cards_updated || [];
   const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
@@ -856,74 +856,104 @@ async function phaseNotify(sb: any, cycleId: string) {
     } catch (e) { console.warn("[weekly] Research sync failed:", e); }
   })();
 
-  // Emails
+  // Emails – PROFESSIONAL TEAM BRIEFING format
   const emailPromise = (async () => {
     if (!RESEND_API_KEY || !analysisText || !LOVABLE_API_KEY) return;
     try {
       const resend = new Resend(RESEND_API_KEY);
       const reportSection = analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 8000);
-
-      const [hankaResult, kataResult] = await Promise.allSettled([
-        withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-              { role: "system", content: `Jsi Karel. Vytvoř STRUČNÝ TÝDENNÍ HTML email pro Haničku. Intimní, partnerský tón. Max 3000 znaků.\n<h2>Moje milá Haničko, tady je náš týdenní přehled</h2>\n- Celkový stav systému\n- Pro každou aktivní část: shrnutí, pokroky, rizika\n- Prioritní úkoly\nPodpis: "Jsem tady. Tvůj Karel"` },
-              { role: "user", content: reportSection.slice(0, 6000) },
-            ],
-          }),
-        }), 20000, "Hanka email"),
-        withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-              { role: "system", content: `Jsi Karel. Vytvoř STRUČNÝ TÝDENNÍ HTML email pro Káťu. Profesionální tón. Max 2000 znaků.\n<h2>Káťo, týdenní souhrn</h2>\n- Přehled týdne\n- Úkoly pro Káťu\n- Koordinace s Hankou\nPodpis: "Karel"` },
-              { role: "user", content: reportSection.slice(0, 4000) },
-            ],
-          }),
-        }), 20000, "Kata email"),
-      ]);
-
-      let hankaHtml = "";
-      if (hankaResult.status === "fulfilled" && hankaResult.value.ok) {
-        const d = await hankaResult.value.json();
-        hankaHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-      }
-      if (!hankaHtml) hankaHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 4000)}</pre>`;
-
-      let kataHtml = "";
-      if (kataResult.status === "fulfilled" && kataResult.value.ok) {
-        const d = await kataResult.value.json();
-        kataHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-      }
-      if (!kataHtml) kataHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 3000)}</pre>`;
-
       const dateCz = new Date().toLocaleDateString("cs-CZ");
-      await Promise.allSettled([
-        resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – TÝDENNÍ report ${dateCz}`, html: hankaHtml }),
-        resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Týdenní report ${dateCz}`, html: kataHtml }),
+
+      // SINGLE professional team briefing email for BOTH therapists
+      const emailResult = await withTimeout(fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID případ. Vytvoř profesionální TÝDENNÍ BRIEFING ve formátu HTML emailu.
+
+FORMÁT: Simulace konzilia / týdenní porady vedoucího týmu. Píšeš PRO CELÝ TÝM (Hanka + Káťa), ne intimní dopis.
+
+STRUKTURA:
+<h2>Týdenní konzilium – DID terapeutický tým</h2>
+<p>Datum: ${dateCz} | Vedoucí: Karel</p>
+
+<h3>1. Stav systému</h3>
+Celková stabilita, trend, klíčové změny za týden. Stručně, analyticky.
+
+<h3>2. Přehled aktivních částí</h3>
+Pro KAŽDOU část s PŘÍMOU AKTIVITOU tento týden:
+- Stav, pokroky, rizika
+- Konkrétní doporučení pro tým
+POZOR: Pouze části které přímo komunikovaly (sub_mode=cast). Pokud se o části pouze hovořilo v terapeutickém rozhovoru, JASNĚ to rozliš – to NENÍ aktivita části!
+
+<h3>3. Spící / dormantní části</h3>
+Stručný přehled. NIKDY nezadávej úkoly typu "pracuj s X" pokud X je spící část – to je nesplnitelné! Místo toho: monitoring, příprava pro případné probuzení.
+
+<h3>4. Úkoly a priority</h3>
+- Konkrétní, splnitelné úkoly pro Hanku a Káťu
+- POUZE úkoly které jsou reálně proveditelné (nelze pracovat s dormantní částí!)
+- Termíny a zodpovědnosti
+
+<h3>5. Koordinace týmu</h3>
+- Co potřebuje Hanka vědět o Kátině práci a naopak
+- Společné priority
+
+Podpis: Karel – vedoucí DID terapeutického týmu
+
+PRAVIDLA:
+- Profesionální, věcný tón vedoucího týmu
+- ŽÁDNÉ intimní oslovení, ŽÁDNÉ "milá", "lásko" atd.
+- ŽÁDNÉ úkoly zahrnující spící části jako aktivní subjekty
+- Analytická struktura: CO → PROČ → AKCE → KDO → DOKDY
+- Max 4000 znaků HTML
+- NIKDY nezmiňuj profilaci, monitoring terapeutek ani interní dedukce Karla` },
+            { role: "user", content: reportSection.slice(0, 6000) },
+          ],
+        }),
+      }), 30000, "Team briefing email");
+
+      let briefingHtml = "";
+      if (emailResult.ok) {
+        const d = await emailResult.json();
+        briefingHtml = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
+      }
+      if (!briefingHtml) briefingHtml = `<pre style="font-family:sans-serif;white-space:pre-wrap;">${reportSection.slice(0, 4000)}</pre>`;
+
+      // Send SAME professional briefing to both therapists
+      const emailResults = await Promise.allSettled([
+        resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [MAMKA_EMAIL], subject: `Karel – Týdenní konzilium ${dateCz}`, html: briefingHtml }),
+        KATA_EMAIL ? resend.emails.send({ from: "Karel <karel@hana-chlebcova.cz>", to: [KATA_EMAIL], subject: `Karel – Týdenní konzilium ${dateCz}`, html: briefingHtml }) : Promise.resolve(),
       ]);
-      console.log(`[weekly] ✅ Emails sent`);
+      console.log(`[weekly] ✅ Emails sent: Hanka=${emailResults[0].status}, Kata=${emailResults[1].status}`);
     } catch (e) { console.error("[weekly] Email error:", e); }
   })();
 
   await Promise.allSettled([researchPromise, emailPromise]);
 
-  // Extract report summary for UI display
+  // Extract report summary for UI display (use already-saved one from analyze phase as backup)
   const reportSection = analysisText
     ? (analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 5000))
-    : "Cyklus proběhl úspěšně.";
+    : (cycle.report_summary || "Cyklus proběhl úspěšně.");
 
-  await sb.from("did_update_cycles").update({
+  const { error: finalUpdateError } = await sb.from("did_update_cycles").update({
     status: "completed", phase: "completed", phase_detail: "Týdenní cyklus dokončen",
     completed_at: new Date().toISOString(), context_data: {},
     heartbeat_at: new Date().toISOString(),
     report_summary: reportSection.slice(0, 50000),
   }).eq("id", cycleId);
+
+  if (finalUpdateError) {
+    console.error(`[weekly] CRITICAL: Final update failed:`, finalUpdateError);
+    // Fallback: try updating without clearing context_data
+    await sb.from("did_update_cycles").update({
+      status: "completed", phase: "completed",
+      completed_at: new Date().toISOString(),
+      heartbeat_at: new Date().toISOString(),
+      report_summary: reportSection.slice(0, 50000),
+    }).eq("id", cycleId);
+  }
 
   return { phase: "completed" };
 }
