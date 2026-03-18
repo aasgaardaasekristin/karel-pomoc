@@ -8,6 +8,7 @@ import DidSessionPrep from "./DidSessionPrep";
 
 interface Props {
   refreshTrigger: number;
+  onTasksSynced?: () => void;
 }
 
 const parseOverviewStream = async (response: Response): Promise<string> => {
@@ -49,7 +50,7 @@ const parseOverviewStream = async (response: Response): Promise<string> => {
   return text.trim();
 };
 
-const DidSystemOverview = ({ refreshTrigger }: Props) => {
+const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
   const [overview, setOverview] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,7 +83,10 @@ const DidSystemOverview = ({ refreshTrigger }: Props) => {
 
       // Sync tasks from overview to task board
       try {
-        await syncOverviewTasksToBoard(nextOverview);
+        const synced = await syncOverviewTasksToBoard(nextOverview);
+        if (synced > 0) {
+          onTasksSynced?.();
+        }
       } catch (e) {
         console.warn("Task sync from overview failed:", e);
       }
