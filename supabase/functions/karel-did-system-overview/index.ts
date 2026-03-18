@@ -67,6 +67,7 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
 let nonDirectPartNameVariantsForSanitizer: string[] = [];
 let forcedGreetingForSanitizer = "";
 let suppressDmytriAliasMentions = false;
+let canonicalDmytriNameForSanitizer: string | null = null;
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -108,6 +109,11 @@ function sanitizePerspectiveLanguage(text: string, nonDirectPartNames: string[])
   return sanitized;
 }
 
+function canonicalizeDmytriAliases(text: string): string {
+  if (!canonicalDmytriNameForSanitizer) return text;
+  return text.replace(/\b(?:Dymi|Dymytri|Dymitri)\b/gi, canonicalDmytriNameForSanitizer);
+}
+
 function isForbiddenOverviewLine(line: string): boolean {
   const trimmed = line.trim();
   if (!trimmed) return false;
@@ -127,6 +133,7 @@ function isForbiddenOverviewLine(line: string): boolean {
     /pokračuju\s+na/i,
     /emoční\s+map/i,
     /citov\w*\s+map/i,
+    /vazb[aá]m?\s+k/i,
   ];
 
   if (privatePatterns.some((pattern) => pattern.test(trimmed))) return true;
@@ -173,7 +180,7 @@ function sanitizeOverviewText(text: string): string {
     nonDirectPartNameVariantsForSanitizer
   );
 
-  return enforceGreeting(removeForbiddenOverviewContent(sanitized))
+  return enforceGreeting(removeForbiddenOverviewContent(canonicalizeDmytriAliases(sanitized)))
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -181,51 +188,61 @@ function sanitizeOverviewText(text: string): string {
 function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
   if (!stream) return null;
 
-  const reader = stream.getReader();
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
+      const reader = stream.getReader();
       let buffer = "";
       let rawAssistantText = "";
-      let emittedSanitizedText = "";
 
-      const flushLine = (line: string) => {
-        if (line.startsWith("data: ")) {
-          const payload = line.slice(6).trim();
-          if (payload && payload !== "[DONE]") {
-            try {
-              const parsed = JSON.parse(payload);
-              const content = parsed?.choices?.[0]?.delta?.content;
-              if (typeof content === "string") {
-                rawAssistantText += content;
-                const fullySanitizedText = sanitizeOverviewText(rawAssistantText);
-                const nextSanitizedChunk = fullySanitizedText.slice(emittedSanitizedText.length);
-                emittedSanitizedText = fullySanitizedText;
-                parsed.choices[0].delta.content = nextSanitizedChunk;
-              }
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
-              return;
-            } catch {
-              // fall through and pass line as-is
-            }
-          }
+      const handleLine = (line: string) => {
+        if (!line.startsWith("data: ")) return;
+        const payload = line.slice(6).trim();
+        if (!payload || payload === "[DONE]") return;
+
+        try {
+          const parsed = JSON.parse(payload);
+          const content = parsed?.choices?.[0]?.delta?.content;
+          if (typeof content === "string") rawAssistantText += content;
+        } catch {
+          // ignore malformed chunks
         }
-        controller.enqueue(encoder.encode(`${line}\n`));
       };
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
-        for (const line of lines) flushLine(line);
+        for (const line of lines) handleLine(line);
       }
 
-      if (buffer.length > 0) flushLine(buffer);
+      if (buffer) handleLine(buffer);
+
+      const sanitized = sanitizeOverviewText(rawAssistantText);
+      const payload = {
+        id: `overview-${Date.now()}`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: "google/gemini-2.5-flash",
+        provider: "Google",
+        choices: [{ index: 0, delta: { content: sanitized, role: "assistant" }, finish_reason: null, native_finish_reason: null }],
+      };
+      const donePayload = {
+        id: `overview-${Date.now()}-done`,
+        object: "chat.completion.chunk",
+        created: Math.floor(Date.now() / 1000),
+        model: "google/gemini-2.5-flash",
+        provider: "Google",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop", native_finish_reason: "stop" }],
+      };
+
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`));
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
   });
@@ -358,7 +375,9 @@ serve(async (req) => {
     });
 
     const registryPartKeys = new Set(partAliasMap.map((part) => part.key).filter(Boolean));
-    suppressDmytriAliasMentions = !registryPartKeys.has("dmytri");
+    const dmytriEntry = partAliasMap.find((part) => part.key === "dmytri");
+    suppressDmytriAliasMentions = !dmytriEntry;
+    canonicalDmytriNameForSanitizer = dmytriEntry?.display || null;
 
     const detectMentionedPartKeys = (text: string) => {
       const normalizedText = normalizeKey(text);
@@ -371,11 +390,6 @@ serve(async (req) => {
       }
       return [...new Set(hits)];
     };
-
-    const activePartNames = (registry || [])
-      .filter((r: any) => r.status === "active" || r.status === "aktivní")
-      .map((r: any) => r.display_name || r.part_name)
-      .filter(Boolean);
 
     const filteredLast24hThreads = (last24hThreads || []).filter((t: any) => {
       if (t?.sub_mode !== "cast") return true;
@@ -524,8 +538,6 @@ serve(async (req) => {
 
     let threadSummary24h = "";
     let therapistSummary24h = "";
-    let threadSummaryWeek = "";
-    let therapistSummaryWeek = "";
 
     if (filteredLast24hThreads) {
       for (const t of filteredLast24hThreads) {
@@ -534,17 +546,6 @@ serve(async (req) => {
           therapistSummary24h += `${entry}\n`;
         } else {
           threadSummary24h += `${entry}\n`;
-        }
-      }
-    }
-
-    if (filteredRecentThreads) {
-      for (const t of filteredRecentThreads) {
-        const entry = formatThreadEntry(t);
-        if (t.sub_mode === "mamka" || t.sub_mode === "kata") {
-          therapistSummaryWeek += `${entry}\n`;
-        } else {
-          threadSummaryWeek += `${entry}\n`;
         }
       }
     }
@@ -603,13 +604,6 @@ CO MÁŠ DĚLAT:
 - 1 odstavec: PROVOZNÍ PŘEHLED – kdo PŘÍMO komunikoval, o kom se MLUVILO (rozlišuj!), celkový dojem ze systému.
 - 1 odstavec: STAV ÚKOLŮ – co je rozpracované, co má termín, co je zpožděné.
 - "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ (kdo má co udělat, proč).
-
-PŘÍKLAD SPRÁVNÉHO TÓNU:
-"Haničko, miláčku, Káťo – dobré ráno! Včera přímo komunikoval Arthur a Tundrupek. Arthur se věnoval tématu bezpečí, Tundrupek pracoval na důvěře. Hanka navíc mluvila o Bélovi a Aničce – zmínila je v osobním rozhovoru, ale sami aktivní nebyli. Celkově klidný den."
-
-PŘÍKLAD ŠPATNÉHO TÓNU (ZAKÁZÁNO):
-"Včera byl aktivní Bélo, Anička, Bendík..." – ŠPATNĚ pokud tyto části SAMY nekomunikovaly, ale jen o nich někdo mluvil!
-"Hana popsala svou citovou vazbu k Tundrupkovi jako 'deťátko'..." – ZAKÁZÁNO, soukromý obsah terapie!
 
 STRUKTURA:
 "${chosenGreeting}"
