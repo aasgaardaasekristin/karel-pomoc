@@ -159,7 +159,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
   const warningParts = useMemo(() => parts.filter((part) => part.status === "warning"), [parts]);
 
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4" data-no-swipe-back="true">
       <div className="mb-4 rounded-[calc(var(--radius)+0.5rem)] border border-border/70 bg-card/36 p-3 shadow-[0_10px_30px_hsl(var(--primary)/0.08)] backdrop-blur-md sm:p-4">
         {/* Správa button at top */}
         <div className="flex justify-end mb-3">
