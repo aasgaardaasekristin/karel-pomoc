@@ -289,6 +289,7 @@ serve(async (req) => {
       { data: didConversations24h },
       { data: hanaConversations24h },
       { data: researchThreads24h },
+      { data: openMeetings },
     ] = await Promise.all([
       sb
         .from("did_part_registry")
@@ -345,6 +346,13 @@ serve(async (req) => {
         .gte("last_activity_at", twentyFourHoursAgo)
         .order("last_activity_at", { ascending: false })
         .limit(20),
+      sb
+        .from("did_meetings")
+        .select("id, topic, agenda, status, created_at, deadline_at, hanka_joined_at, kata_joined_at, triggered_by")
+        .eq("user_id", userId)
+        .in("status", ["open", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(10),
     ]);
 
     const normalizeKey = (value: string) =>
