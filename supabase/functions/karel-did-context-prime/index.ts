@@ -934,6 +934,13 @@ INSTRUKCE:
 - NIKDY nevymýšlej – pouze syntetizuj z dodaných dat
 - Piš česky
 
+═══ KRITICKÉ PRAVIDLO: AKTIVITA vs. ZMÍNKA ═══
+V DID vláknech ROZLIŠUJ:
+- PŘÍMÁ AKTIVITA (sub_mode="cast"): Část přímo mluvila → potvrzeně aktivní
+- ZMÍNKA (sub_mode="mamka"/"kata"): Terapeutka O části hovořila → část NEMUSÍ být k dispozici
+Toto rozlišení MUSÍ být viditelné v cache, aby Karel nikdy nepředpokládal dostupnost části jen z toho, že o ní terapeutka mluvila.
+V sekci "REGISTR ČÁSTÍ" uveď STATUS každé části (active/sleeping/warning) — Karel nesmí zadávat přímé úkoly spícím částem.
+
 STRUKTURA VÝSTUPU:
 ═══ DID SITUAČNÍ CACHE ═══
 📍 Generováno: [datum]
