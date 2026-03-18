@@ -780,6 +780,26 @@ ${perplexityContext}`,
       }
     }
 
+    // 5a2. Extract [DOHODA] blocks and write to Drive + create tasks from them
+    const agreementBlocks: Array<{title: string; parties: string; deadline: string; priority: string; content: string}> = [];
+    if (analysisText) {
+      const dohodaSection = analysisText.match(/\[DOHODY\]([\s\S]*?)\[\/DOHODY\]/)?.[1]?.trim();
+      if (dohodaSection) {
+        const dohodaRegex = /\[DOHODA\]\s*title=([^|]+)\|\s*parties=(\S+)\s*\|\s*deadline=([^|]+)\|\s*priority=(\S+)\s*\n([\s\S]*?)\[\/DOHODA\]/g;
+        for (const m of dohodaSection.matchAll(dohodaRegex)) {
+          const title = m[1].trim();
+          const parties = m[2].trim();
+          const deadline = m[3].trim();
+          const priority = m[4].trim();
+          const content = m[5].trim();
+          agreementBlocks.push({ title, parties, deadline, priority, content });
+          // Create a task from each agreement
+          if (await insertTask(`DOHODA: ${title}`, parties, `Terapeutická dohoda – ${title}`, priority, "Dohoda z týdenního cyklu")) totalInserted++;
+        }
+        console.log(`[weekly] ✅ Parsed ${agreementBlocks.length} agreement blocks`);
+      }
+    }
+
     // 5b. Extract [UKOL] markers from agreement documents on Drive
     if (agreementsContent) {
       // Scan raw agreement text for inline [UKOL] markers
