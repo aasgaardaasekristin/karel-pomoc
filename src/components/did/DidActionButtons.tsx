@@ -53,8 +53,8 @@ const DidActionButtons = ({
         </Button>
       )}
 
-      {/* Manual kartotéka update */}
-      {onManualUpdate && (
+      {/* Manual kartotéka update — only for therapist modes, not cast */}
+      {onManualUpdate && subMode !== "cast" && (
         <Button variant="outline" size="sm" onClick={onManualUpdate} disabled={disabled || isUpdateLoading} className="h-8 px-2.5 gap-1.5 text-xs">
           {isUpdateLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
           <span className="hidden sm:inline">Aktualizovat kartotéku</span>

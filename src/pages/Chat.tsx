@@ -1969,26 +1969,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {hubSection === "did" ? (
-              <>
-                <Button variant="outline" size="sm" onClick={handleManualUpdate} disabled={isManualUpdateLoading} className="h-8 px-2 sm:px-3">
-                  {isManualUpdateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                  {syncProgress ? (
-                    <span className="text-xs ml-1">{syncProgress.current}/{syncProgress.total}</span>
-                  ) : (
-                    <span className="hidden sm:inline ml-1">Aktual. kartotéku</span>
-                  )}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleReformatCards} disabled={isReformatting} className="h-8 px-2 sm:px-3">
-                  {isReformatting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                  {reformatProgress ? (
-                    <span className="text-xs ml-1">{reformatProgress.current}/{reformatProgress.total}</span>
-                  ) : (
-                    <span className="hidden sm:inline ml-1">Přeformátovat</span>
-                  )}
-                </Button>
-              </>
-            ) : null}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
             </Button>

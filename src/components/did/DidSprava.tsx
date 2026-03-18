@@ -23,7 +23,6 @@ const PERSONA_LABELS: Record<string, string> = {
   default: "Výchozí",
   hanka: "Hanička 🌸",
   kata: "Káťa 🦋",
-  kluci: "Kluci 🧩",
 };
 
 const RADIUS_OPTIONS = [
