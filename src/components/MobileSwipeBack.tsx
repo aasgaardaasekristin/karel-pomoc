@@ -33,8 +33,11 @@ const MobileSwipeBack = () => {
         return;
       }
 
-      const lock = document.querySelector("[data-swipe-back-lock='true']");
       const touch = event.touches[0];
+      const target = event.target as Element | null;
+
+      // Check for lock on any ancestor of the touch target
+      const lock = target?.closest("[data-swipe-back-lock='true']");
 
       startX = touch.clientX;
       startY = touch.clientY;
@@ -72,8 +75,18 @@ const MobileSwipeBack = () => {
 
       if (!isFastEnough || !isHorizontalSwipe || !isDominantHorizontal) return;
 
-      const backButton = document.querySelector<HTMLElement>("[data-swipe-back='true']");
-      backButton?.click();
+      // SCOPED: find the closest swipe-back button relative to where the touch started
+      // Walk up from the touch target to find the most specific back button
+      const startTarget = event.target as Element | null;
+      if (!startTarget) return;
+
+      // Find closest back button by walking up from the touch target's container
+      const backButton = startTarget.closest("[data-swipe-back='true']")
+        || document.querySelector<HTMLElement>("[data-swipe-back='true']");
+
+      if (backButton instanceof HTMLElement) {
+        backButton.click();
+      }
     };
 
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
