@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
-import DidSessionPrep from "./DidSessionPrep";
+
 
 interface Props {
   refreshTrigger: number;
