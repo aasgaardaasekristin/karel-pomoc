@@ -637,7 +637,7 @@ ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 5) NIKDY nepoužívej technické značky, markdown nadpisy, ani seznamy s hvězdičkami.
 6) NIKDY nepopisuj CO PŘESNĚ část řekla – pouze ŽE komunikovala a jaké TÉMA velmi obecně.
 7) Části bez přímé aktivity za 24h NEZMIŇUJ po jménech.
-8) MAXIMÁLNÍ DÉLKA: 280 slov celkem.
+8) MAXIMÁLNÍ DÉLKA: 400 slov celkem.
 9) NIKDY nepiš o interní profilaci terapeutek, emočních/citových vazbách, countertransference, utajeném monitoringu ani o tom, co si Karel nechává pro sebe.
 10) Pokud část Dmytri/Dymi není v registru, NESMÍŠ ji zmínit ani jako hypotézu.
 11) Úkoly s neveřejným obsahem vynech – briefing smí obsahovat jen bezpečné veřejné instrukce pro terapeutky.
