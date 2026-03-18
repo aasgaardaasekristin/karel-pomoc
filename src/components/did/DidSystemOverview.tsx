@@ -3,6 +3,8 @@ import { FileText, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
+import DidSessionPrep from "./DidSessionPrep";
 
 interface Props {
   refreshTrigger: number;
@@ -77,6 +79,13 @@ const DidSystemOverview = ({ refreshTrigger }: Props) => {
       }
 
       setOverview(nextOverview);
+
+      // Sync tasks from overview to task board
+      try {
+        await syncOverviewTasksToBoard(nextOverview);
+      } catch (e) {
+        console.warn("Task sync from overview failed:", e);
+      }
     } catch (error: any) {
       console.error("Failed to load system overview:", error);
       toast.error(error?.message || "Karlův přehled se nepodařilo načíst");
@@ -102,23 +111,26 @@ const DidSystemOverview = ({ refreshTrigger }: Props) => {
             Operativní briefing pro dnešek bez neveřejné interní profilace.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void loadOverview(true)}
-          disabled={refreshing || loading}
-          className="h-7 px-2 text-[10px]"
-        >
-          {refreshing || loading ? (
-            <>
-              <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Obnovuji...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-1 h-3 w-3" /> Obnovit
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <DidSessionPrep />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void loadOverview(true)}
+            disabled={refreshing || loading}
+            className="h-7 px-2 text-[10px]"
+          >
+            {refreshing || loading ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Obnovuji...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-1 h-3 w-3" /> Obnovit
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {loading ? (

@@ -10,7 +10,7 @@ import DidSystemMap from "./DidSystemMap";
 import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
-import DidSessionPrep from "./DidSessionPrep";
+// DidSessionPrep moved to DidSystemOverview
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
@@ -140,27 +140,6 @@ const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
       <DidSystemOverview refreshTrigger={refreshTrigger} />
 
-      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-foreground">DID dashboard</h3>
-          <DidSessionPrep />
-        </div>
-
-        {(isUpdating || syncProgress) && syncProgress && (
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>{syncProgress.current}/{syncProgress.total} — {syncProgress.currentName}</span>
-              <span>{Math.round((syncProgress.current / Math.max(1, syncProgress.total)) * 100)}%</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-300"
-                style={{ width: `${(syncProgress.current / Math.max(1, syncProgress.total)) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
 
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">

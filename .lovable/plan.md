@@ -1,124 +1,205 @@
 
+# Vylepšení DID režimu – Komplexní plán
 
-# Audit DID režimu — nalezené problémy a plán oprav
+## Stav: ✅ IMPLEMENTOVÁNO (fáze 1-8 + Nová architektura fáze 1-2)
 
-## 1. PRÁZDNÝ BLOK "DID dashboard" V UI
+## Co bylo provedeno
 
-**Co je špatně:** V `DidDashboard.tsx` (řádky 143–163) je prázdný kontejner s nadpisem "DID dashboard" a tlačítkem `DidSessionPrep`. Kontejner nemá žádný smysluplný obsah — jen sync progress bar, který se zobrazí pouze při manuální aktualizaci. Působí jako prázdná sekce na dashboardu.
+### ✅ 1. Drive read/write funkce
+- `supabase/functions/karel-did-drive-read/index.ts` – čte dokumenty ze složky Kartoteka_DID
+- `supabase/functions/karel-did-drive-write/index.ts` – zapisuje/aktualizuje dokumenty
 
-**Jak se to projevuje:** Uživatel vidí prázdný box s nadpisem "DID dashboard" bez obsahu, který vizuálně zabírá místo mezi "Karlův přehled" a "Úkoly pro terapeutky". Tlačítko "Příprava na sezení" je schované v tomto prázdném bloku.
+### ✅ 2. Odstranění Document Gate + automatické načítání
+- Smazána `DidDocumentGate.tsx`
+- Po výběru podrežimu Karel automaticky načte dokumenty z Drive
+- Loading indikátor během načítání
 
-**Oprava:** Odstranit celý blok (řádky 143–163). Přesunout `DidSessionPrep` do hlavičky `DidSystemOverview` (vedle tlačítka "Obnovit").
+### ✅ 3. Nová tlačítka (deník, vzkaz, záloha)
+- `DidActionButtons.tsx` – Zapsat do deníku, Vzkaz mamce, Vzkaz Káti, Záloha na Drive, Ukončit rozhovor
+- Tlačítka se zobrazují kontextově (deník/vzkazy jen v cast režimu)
 
----
+### ✅ 4. Automatické emaily po ukončení hovoru
+- `karel-email-report` rozšířen o typy: did_handover, did_message_mom, did_message_kata
+- Automatický email po ukončení rozhovoru s částí
 
-## 2. GARBAGE ÚKOLY V DATABÁZI (assigned_to = "Karel")
+### ✅ 5. Podrežim Káťa
+- Přidán 4. podrežim "Káťa mluví s Karlem" (kata)
+- Vlastní system prompt (kataPrompt)
+- Typ přidán do ChatContext
 
-**Co je špatně:** V tabulce `did_therapist_tasks` je 8 úkolů přiřazených **"Karel"** (ne terapeutce). Tyto úkoly vytvořila edge funkce `karel-memory-mirror` (source: `mirror_auto`), která nemá validaci pole `assigned_to`.
+### ✅ 6. Aktualizace system promptu
+- Kompletní přepis childcarePrompt – odstranění NotebookLM referencí
+- Nový kataPrompt pro Káťu
+- Zákaz vymýšlení citací
+- Instrukce pro automatické emaily a Drive integraci
 
-**Konkrétní data v DB:**
-- "Monitorovat Haninu emoční vazbu k Tundrupovi" (assigned_to: Karel, category: supervize) — **soukromá countertransference poznámka**
-- "Prozkoumat význam 'černé' jako Arthurova 'tajného místa'" (Karel, Analýza)
-- "Zvážit, jak podpořit Arthura v komunikaci" (Karel, Komunikace)
-- "Zajistit, aby Káťa byla informována" (Karel, Koordinace týmu)
-- "Navrhnout Káťě konkrétní hru" (Karel, DID_terapie)
-- "Konzultovat s Hanou možnosti neverbálních technik" (Karel, DID_terapie)
-- "Připravit se na záznam o Dymim" (Karel, DID_management)
-- "Vytvořit detailní kartu pro Clark" (Karel, DID_management)
+### ✅ 7. Automatické přepnutí do supervize
+- Po ukončení hovoru s částí Karel automaticky přepne do režimu mamka
 
-**Proč se to stalo:** `karel-memory-mirror/index.ts` řádek 504 zapisuje `assigned_to: task.assigned_to || "both"` bez validace, zda je to terapeutka. AI model vygeneroval úkoly s `assigned_to: "Karel"`, a backend je bez kontroly uložil.
+### ✅ 8. Thread-per-part architektura (Fáze 1)
+- DB tabulky `did_threads` + `did_update_cycles` s RLS
+- Hook `useDidThreads` pro CRUD na vláknech
+- `DidDashboard` – přehled aktivity částí (aktivní/spí/varování)
+- `DidThreadList` – seznam aktivních vláken s 24h pamětí
+- `DidPartIdentifier` – "Kdo teď mluví?" s výběrem/zadáním jména
+- Nový DID flow: Dashboard → Submode → Thread List → Part ID → Chat
+- Auto-save vláken do DB každých 5s
 
-**Jak se to projevuje:** Frontend (`DidTherapistTaskBoard.tsx` řádek 339) tyto úkoly **filtruje** pomocí `isTherapistAssignee()`, takže nejsou viditelné na nástěnce. Ale jsou v DB, znečišťují data, a hlavně obsahují **soukromé countertransference informace**, které by nikdy neměly být v tabulce úkolů.
+### ✅ 9. Denní cyklus (14:00 CET)
+- `karel-did-daily-cycle` edge function
+- pg_cron schedule: `0 13 * * *` UTC (14:00 CET)
+- 5 kroků: sběr → AI analýza → Drive update (sekce E/G/J/K/L) → email → uvolnění paměti
+- Manuální spuštění tlačítkem "Aktualizovat nyní"
 
-**Oprava:**
-1. SQL migrace: smazat úkoly kde `assigned_to NOT IN ('hanka', 'kata', 'both')`
-2. `karel-memory-mirror/index.ts`: přidat validaci `assigned_to` před insertem — pokud není `hanka/kata/both`, nepsat úkol
-3. `TaskSuggestButtons.tsx`: přidat stejnou validaci v `handleSave`
+### ✅ 10. Týdenní cyklus (Fáze 2)
+- `karel-did-weekly-cycle` edge function
+- pg_cron schedule: `0 9 * * 0` UTC (neděle 10:00 CET)
+- Čte VŠECHNY karty z Drive, analyzuje aktivitu za celý týden
+- Aktualizuje 06_Strategicky_Vyhled (7 sekcí)
+- Detekce neaktivních částí (7+ dní)
+- Týdenní report na email (mamka + Káťa)
 
----
+### ✅ 11. Automatická 24h záloha (Fáze 3)
+- Při vstupu do DID režimu Dashboard kontroluje poslední denní cyklus z DB
+- Pokud > 24h od posledního, automaticky spouští `karel-did-daily-cycle`
+- Toast notifikace o průběhu a dokončení
 
-## 3. NEVALIDNÍ KATEGORIE ÚKOLŮ
+### ✅ 12. Perplexity integrace v DID režimu (Fáze 3)
+- Tlačítko "Hledat metody" dostupné ve VŠECH DID podrežimech
+- `karel-did-research` přijímá `partName` pro kontextově specifické vyhledávání
+- Perplexity sonar-pro hledá DID terapeutické metody
 
-**Co je špatně:** Memory mirror generuje úkoly s kategoriemi jako "supervize", "Koordinace týmu", "DID_terapie", "DID_management", "Komunikace", "Analýza", "Péče o část". Frontend ale rozpozná pouze `today`, `tomorrow`, `longterm`, `general`, `weekly`, `daily`.
+### ✅ 13. Audio tandem režim (Fáze 4)
+- `karel-audio-analysis` rozšířen o DID-specifický tandem kontext
 
-**Jak se to projevuje:** Úkoly s neznámou kategorií spadnou do sekce "Dlouhodobé" díky fallbacku v `isLongtermCategory()` (řádek 122), ale zobrazují nesmyslné štítky kategorií.
+### ✅ 14. Vizualizace systému (Fáze 5)
+- `DidSystemMap.tsx` – interaktivní mapa částí s barvami podle aktivity
 
-**Oprava:** V `karel-memory-mirror` normalizovat kategorii na povolené hodnoty (`today`/`tomorrow`/`longterm`) nebo nastavit `general` jako default.
+### ✅ 15. Automatická detekce vzorců (Fáze 5)
+- `karel-did-patterns` edge function – analyzuje 30 dní dat
+- `DidPatternPanel.tsx` – UI pro zobrazení vzorců, alertů a trendů
 
----
+### ✅ 16. PDF Export DID Reportu (Fáze 6)
+- `src/lib/didPdfExport.ts` – generování kompletního PDF reportu
 
-## 4. NEVALIDNÍ PRIORITA ÚKOLŮ
+### ✅ 17. Nová architektura 00_CENTRUM (Fáze 7)
+- **05_Operativni_Plan** (6 sekcí) nahrazuje starý 05_Terapeuticky_Plan
+  - Sekce: Aktivní části, Plán sezení, Aktivní úkoly, Koordinace, Rizika, Karlovy poznámky
+  - Denní cyklus jej kompletně přepisuje
+- **06_Strategicky_Vyhled** (7 sekcí) nahrazuje složku 06_Terapeuticke_Dohody
+  - Sekce: Vize systému, Střednědobé cíle, Dlouhodobé cíle, Strategie práce s částmi, Odložená témata, Archiv splněných cílů, Karlova strategická reflexe
+  - Týdenní cyklus přepisuje, měsíční provádí hloubkovou revizi
+- Koncept individuálních souborů dohod v podsložkách zrušen
+- Zpětná kompatibilita se starými názvy dokumentů zachována
 
-**Co je špatně:** Memory mirror generuje priority jako "Vysoká" a "Střední" (česky), ale frontend používá `high`, `normal`, `low` (anglicky).
+### ✅ 18. Accountability Engine + Personalizované vedení (Fáze 8)
+- **Accountability Engine** v denním cyklu:
+  - Načtení nesplněných úkolů z `did_therapist_tasks`
+  - Povinný blok [ACCOUNTABILITY] s hodnocením 1-10
+  - Automatická eskalace priority u úkolů starších 3 dní
+  - Podmíněná "pozvánka na poradu" v emailech
+- **Proaktivní dotazování** v chat promptech:
+  - Runtime injection nesplněných úkolů do `karel-chat` při režimu mamka/kata
+  - Karel se aktivně ptá: "Hani/Káťo, jak dopadlo [úkol]?"
+- **Personalizované vedení terapeutů**:
+  - Profil Hanky (denní péče, Písek, emoční zázemí)
+  - Profil Káti (koordinace na dálku, Budějovice, škola Townshend, senzorická terapie)
+  - Adaptační algoritmus – Karel se učí silné/slabé stránky
+  - Karlovy vzpomínky z dětství pro budování důvěry
+- **Mechanismus porad** – Karel svolává strukturované sezení při:
+  - Úkol nesplněn 3+ dny
+  - Terapeutky nekomunikovaly 5+ dní
+  - Strategický nesoulad nebo stagnace cílů
+- **Aktualizované edge funkce**: karel-chat, karel-did-daily-cycle, karel-did-weekly-cycle, karel-did-monthly-cycle, karel-did-drive-write, karel-did-session-prep
 
-**Jak se to projevuje:** Funkce `priorityLabel()` (řádek 124) nezná české hodnoty, a zobrazí fallback "Nízká" pro jakoukoliv neznámou hodnotu.
+### ✅ 19. Karlův ranní brief (Fáze 9)
+- `karel-did-morning-brief` edge function
+- pg_cron schedule: `0 6 * * *` UTC (7:00 CET)
+- Načte: nesplněné úkoly, motivační profily, aktivitu za 24h, operativní plán z Drive
+- AI generuje personalizovaný brief pro Hanku i Káťu paralelně (Gemini Flash Lite)
+- Formát: Priorita dne, 3 top úkoly, personalizovaný tip, motivace
+- Email přes Resend oběma terapeutkám
 
-**Oprava:** V `karel-memory-mirror` normalizovat priority na `high`/`normal`/`low`.
+### ✅ 20. Smart Activity Recommender (Fáze 9)
+- Rozšíření `karel-chat` runtime injection
+- Parsuje TALENT záznamy ze sekce H karet v didInitialContext
+- Extrahuje talenty/zájmy z kontextu pomocí regex (formát TALENT|ÚROVEŇ|AKTIVITA)
+- Injektuje personalizovaná doporučení do system promptu
+- Karel proaktivně navrhuje rozvíjející aktivity na míru talentu každé části
 
----
+### ✅ 21. Drive Auto-Cleanup (Fáze 9)
+- Rozšíření `karel-did-monthly-cycle` o auditní krok
+- Skenuje VŠECHNY podsložky kartotéky na Drive
+- Detekuje: .txt/.md soubory (nekonvertované), duplicitní karty, prázdné dokumenty
+- Výsledky zahrnuty v měsíčním emailovém reportu jako "📋 Návrh na úklid"
+- Karel nic nesmaže — pouze navrhuje (bezpečnost)
+- API response obsahuje `cleanupIssues` pole
 
-## 5. `syncOverviewTasksToBoard` JE MRTVÝ KÓD
+## NOVÁ ARCHITEKTURA — DID jako živoucí kognitivní systém
 
-**Co je špatně:** `src/lib/parseOverviewTasks.ts` exportuje funkci `syncOverviewTasksToBoard()`, ale **nikde v celé aplikaci není volána**. Byla zřejmě odpojena při refactoru.
+### ✅ Nová Fáze 1: DID Context Prime + Online smyčka
+- `karel-did-context-prime` edge function — plastická situační cache
+- Paralelní harvest: Drive (00_CENTRUM, karty částí), DB (vlákna, epizody, sémantika, úkoly), Perplexity
+- AI syntéza kontextu přes Gemini 2.5 Flash
+- Injekce do `karel-chat` místo statického didInitialContext
+- Auto-prime z frontendu při otevření vlákna (cast/mamka/kata)
+- Detekce stavu systému: KLIDNÝ/AKTIVNÍ/ZVÝŠENÁ_AKTIVITA/VYSOKÁ_AKTIVITA
 
-**Jak se to projevuje:** Úkoly z Karlova přehledu se **neparsují** a **nesynchronizují** na nástěnku při zobrazení overview. Úkoly, které Karel doporučí v přehledu, se nikam nezapisují.
+### ✅ Nová Fáze 2: DID epizodická paměť + cross-mode sběr
+- `karel-did-episode-generate` edge function
+- Automatické generování strukturovaných epizod z DID vláken (domain: "DID")
+- DID-specifické tagy: part:Arthur, submode:cast, therapist:Hanka, topic:*, technique:*
+- Cross-mode sken: prohledávání `karel_hana_conversations` pro DID zmínky
+- AI klasifikace (YES/NO) zda Hana konverzace obsahuje klinicky relevantní DID info
+- Integrace do denní konsolidace (`karel-daily-consolidation`)
+- Frontend: automatický trigger při ukončení hovoru (handleDidEndCall) i odchodu z vlákna (handleLeaveThread)
+- Fire-and-forget pattern — neblokuje UI
 
-**Oprava:** Buď integrovat volání `syncOverviewTasksToBoard(overview)` do `DidSystemOverview.tsx` po úspěšném načtení přehledu, nebo pokud to není žádoucí, smazat mrtvý kód.
+### ✅ Nová Fáze 3: Part Registry + Live DID Session
+- **`did_part_registry` tabulka** — rychlý lookup stavu všech částí DID systému
+  - Sloupce: part_name, status, cluster, role, age_estimate, language, last_seen_at, emotional state, triggers, strengths
+  - RLS policies pro authenticated users
+  - Auto-populace z `karel-did-episode-generate` (upsert po každém vytvořeném epizodě)
+  - Sleduje total_episodes, total_threads, health_score
+- **Live DID Session panel** (`DidLiveSessionPanel.tsx`)
+  - Real-time coaching terapeutky při práci s konkrétní částí
+  - Audio segmentové nahrávání + analýza (přes karel-audio-analysis)
+  - DID-specifický kontext v system promptu (věk části, jazyk, triggers, switching detekce)
+  - Výběr části před zahájením sezení
+  - Automatický zápis po ukončení
+  - Přístup přes Dashboard → "Live DID sezení"
 
----
+### 🔄 Nová Fáze 4: DID Memory Bootstrap
+- **`karel-did-memory-bootstrap` edge function** — jednorázové nasátí kartotéky z Drive
+  - Fáze `scan`: Načte 01_AKTIVNI_FRAGMENTY, 02_SPICI, 03_ARCHIV z Drive
+  - Fáze `process_one`: Parsuje sekce karty (A-M), extrahuje metadata
+  - Upsert do `did_part_registry`: jméno, věk, status, cluster, role, jazyk, triggers, strengths
+  - Generování epizod z obsahu karet (domain: "DID", tags: bootstrap)
+  - Populace `karel_semantic_entities` pro DID části (typ: "did_cast")
+  - Live progress indikátor v dashboardu (např. "5/23 Arthur")
+  - Tlačítko "Bootstrap DID paměti" v DidDashboard
+  - Batch zpracování pro prevenci timeoutů
 
-## 6. DidCountertransferenceMap EXISTUJE ALE NENÍ ZOBRAZENA
+### ⏳ Nová Fáze 5: Dashboard v2 z Registry
+- `DidDashboard` napojit na `did_part_registry` místo Drive
+- Rychlý přehled emočních stavů, zdraví karet, posledního kontaktu
+- Filtry: aktivní/spící/archivované části
+- Kliknutí na část → detail s historií epizod
 
-**Co je špatně:** Komponenta `DidCountertransferenceMap.tsx` existuje, ale **není importována ani renderována** nikde na dashboardu. Byla zřejmě odstraněna z `DidDashboard.tsx` při předchozím refactoru.
+### ⏳ Nová Fáze 6: Cross-therapist koordinace
+- Automatické sdílení poznatků mezi Hankou a Káťou
+- Karel detekuje relevantní info z jedné konverzace a injektuje do druhé
+- Smart notifications: "Hanka dnes zjistila X o Arthurovi"
+- Integrace do ranního briefu
 
-**Poznámka:** Toto může být záměrné — countertransference data by neměla být viditelná v UI (dle memory `karluv-prehled-systemu`). Pokud je to záměrné, soubor by měl být smazán. Pokud ne, měl by být vrácen do dashboardu.
+### ⏳ Nová Fáze 7: Switching Detection
+- AI detekce přepínání částí v reálném čase během Live Session
+- Analýza jazykových vzorců, tónu, slovní zásoby
+- Alert terapeutce + automatický zápis do registry
+- Aktualizace `did_part_registry.last_seen_at` v reálném čase
 
----
-
-## SHRNUTÍ ODCHÝLENÍ OD ZÁMĚRU
-
-| Problém | Závažnost | Příčina |
-|---------|-----------|---------|
-| Prázdný "DID dashboard" blok | Střední | Nedokončený refactor UI |
-| 8 garbage úkolů pro "Karel" v DB | Vysoká | Chybějící validace v memory-mirror |
-| Soukromé countertransference v task tabulce | Kritická | Dtto |
-| Neplatné kategorie/priority úkolů | Nízká | Mirror generuje české hodnoty místo kódů |
-| Mrtvý kód parseOverviewTasks | Střední | Odpojeno při refactoru, nikdy znovu zapojeno |
-| Countertransference mapa nezobrazena | Informativní | Záměrné nebo nedopatření |
-
----
-
-## PLÁN OPRAV
-
-### Krok 1: Vyčistit DB (SQL migrace)
-```sql
-DELETE FROM did_therapist_tasks 
-WHERE assigned_to NOT IN ('hanka', 'kata', 'both');
-```
-
-### Krok 2: Opravit `karel-memory-mirror/index.ts`
-- Před insertem úkolu (řádek ~501): validovat `assigned_to` ∈ {hanka, kata, both}, jinak skip
-- Normalizovat `category` na `today/tomorrow/longterm`
-- Normalizovat `priority` na `high/normal/low`
-
-### Krok 3: Opravit `TaskSuggestButtons.tsx`
-- V `handleSave`: přidat guard `if (!["hanka","kata","both"].includes(suggestion.assignee)) return`
-
-### Krok 4: Odstranit prázdný "DID dashboard" blok
-- Smazat řádky 143–163 v `DidDashboard.tsx`
-- Přesunout `DidSessionPrep` do `DidSystemOverview.tsx` (vedle "Obnovit")
-
-### Krok 5: Rozhodnout o `syncOverviewTasksToBoard`
-- Znovu napojit na `DidSystemOverview` po načtení overview, NEBO smazat mrtvý kód
-
-### Krok 6: Rozhodnout o `DidCountertransferenceMap`
-- Smazat soubor (pokud záměrně odstraněna z UI), nebo vrátit do dashboardu
-
-### Soubory k úpravě:
-1. `src/components/did/DidDashboard.tsx`
-2. `src/components/did/DidSystemOverview.tsx`
-3. `src/components/did/TaskSuggestButtons.tsx`
-4. `supabase/functions/karel-memory-mirror/index.ts`
-5. SQL migrace (smazání garbage úkolů)
-6. Volitelně: `src/lib/parseOverviewTasks.ts`, `src/components/did/DidCountertransferenceMap.tsx`
-
+### ⏳ Nová Fáze 8: DID Supervision Report
+- Měsíční supervizní report z registry + epizod + vzorců
+- PDF generování s grafem aktivity částí
+- Email pro externího supervizora
+- Anonymizovaná verze pro sdílení

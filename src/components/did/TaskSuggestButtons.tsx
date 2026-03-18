@@ -38,6 +38,10 @@ export const TaskSuggestInline = ({ suggestions, onTaskAdded }: { suggestions: T
   const [saving, setSaving] = useState<number | null>(null);
 
   const handleSave = async (suggestion: TaskSuggestion, idx: number) => {
+    if (!["hanka", "kata", "both"].includes(suggestion.assignee)) {
+      toast.error("Neplatný řešitel úkolu");
+      return;
+    }
     setSaving(idx);
 
     // Dedup check
