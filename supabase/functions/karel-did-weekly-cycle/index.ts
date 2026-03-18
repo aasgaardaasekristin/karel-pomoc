@@ -869,6 +869,42 @@ ${perplexityContext}`,
         }
       }
 
+      // 5c-agreements. Write agreement blocks to Drive (06_Terapeuticke_Dohody folder)
+      if (agreementBlocks.length > 0) {
+        try {
+          // Find or create the agreements folder
+          let agreementsFolderId = dohodaFolderId;
+          if (!agreementsFolderId && centrumFolderId) {
+            const centerChildren = await listFilesInFolder(token, centrumFolderId);
+            const existingFolder = centerChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+            if (existingFolder) {
+              agreementsFolderId = existingFolder.id;
+            } else {
+              // Create the folder
+              const folderRes = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ name: "06_Terapeuticke_Dohody", parents: [centrumFolderId], mimeType: DRIVE_FOLDER_MIME }),
+              });
+              const folderData = await folderRes.json();
+              agreementsFolderId = folderData.id;
+              console.log(`[weekly] ✅ Created 06_Terapeuticke_Dohody folder`);
+            }
+          }
+          if (agreementsFolderId) {
+            for (const agreement of agreementBlocks) {
+              const fileName = `Dohoda_${dateStr}_${agreement.title.replace(/[^a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9]/g, "_").slice(0, 40)}`;
+              const content = `TERAPEUTICKÁ DOHODA\nVytvořena: ${dateStr} (týdenní cyklus)\nÚčastníci: ${agreement.parties}\nTermín: ${agreement.deadline}\nPriorita: ${agreement.priority}\n\n${agreement.title}\n${"=".repeat(40)}\n\n${agreement.content}`;
+              await createFileInFolder(token, fileName, content, agreementsFolderId);
+              cardsUpdated.push(`Dohoda: ${agreement.title}`);
+            }
+            console.log(`[weekly] ✅ Written ${agreementBlocks.length} agreements to Drive`);
+          }
+        } catch (e) {
+          console.warn("[weekly] Agreement Drive write failed:", e);
+        }
+      }
+
       // (therapist tasks already inserted in step 5 above)
 
       // 5c. Process CENTRUM updates (05, 04, 00)
