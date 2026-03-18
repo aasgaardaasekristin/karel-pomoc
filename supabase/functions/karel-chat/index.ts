@@ -133,6 +133,18 @@ ${planContent ? `── OPERATIVNÍ PLÁN (tvé instrukce) ──\n${planContent
           .neq("status", "done")
           .order("priority", { ascending: false });
 
+        // Load part registry for dormancy context
+        const { data: partRegistryData } = await sb.from("did_part_registry")
+          .select("part_name, status, last_seen_at");
+        
+        if (partRegistryData && partRegistryData.length > 0) {
+          const sleepingParts = partRegistryData.filter((p: any) => p.status === "sleeping" || p.status === "dormant");
+          const activeParts = partRegistryData.filter((p: any) => p.status === "active" || p.status === "aktivní");
+          if (sleepingParts.length > 0) {
+            systemPrompt += `\n\n═══ REGISTR ČÁSTÍ – DORMANCY GUARD ═══\nAKTIVNÍ části (lze s nimi přímo pracovat): ${activeParts.map((p: any) => p.part_name).join(", ") || "žádné"}\nSPÍCÍ/DORMANTNÍ části (NELZE zadávat přímé úkoly): ${sleepingParts.map((p: any) => p.part_name).join(", ")}\n⚠️ Pro spící části navrhuj POUZE: monitorování, vizualizace, přípravné kroky. NIKDY přímou práci.`;
+          }
+        }
+
         // Load motivation profiles
         const { data: profiles } = await sb.from("did_motivation_profiles").select("*");
 
