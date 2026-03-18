@@ -432,20 +432,21 @@ serve(async (req) => {
       messagesSelector: (row: any) => unknown,
       speakerLabel: string
     ) => {
-      const mentionCounts = new Map<string, number>();
+      let totalMentions = 0;
       for (const row of rows || []) {
         const texts = extractMessageTexts(messagesSelector(row), ["user"]).slice(-8);
         for (const text of texts) {
           const mentioned = detectMentionedPartKeys(text);
-          for (const key of mentioned) {
-            crossModeActivity.add(key);
-            mentionCounts.set(key, (mentionCounts.get(key) || 0) + 1);
+          if (mentioned.length > 0) {
+            totalMentions += mentioned.length;
+            for (const key of mentioned) {
+              crossModeActivity.add(key);
+            }
           }
         }
       }
-      for (const [key, count] of mentionCounts) {
-        const display = partAliasMap.find((p) => p.key === key)?.display || key;
-        crossModeMentions.push(`${sourceLabel}/${speakerLabel}: zmínka o ${display} (${count}×)`);
+      if (totalMentions > 0) {
+        crossModeMentions.push(`${sourceLabel}/${speakerLabel}: proběhly nepřímé zmínky o částech (${totalMentions}×)`);
       }
     };
 
