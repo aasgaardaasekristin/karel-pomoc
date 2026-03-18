@@ -560,74 +560,75 @@ const Chat = () => {
 
   const [isPartSelecting, setIsPartSelecting] = useState(false);
   const handlePartSelected = useCallback(async (partName: string) => {
-    if (isPartSelecting) return; // Prevent double-click race condition
-    setIsPartSelecting(true);
-    try {
-    // Check for existing thread first (quick DB query)
-    const existing = await didThreads.getThreadByPart(partName, "cast");
-    if (existing) {
-      setActiveThread(existing);
-      setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
-      setDidFlowState("chat");
-      toast.info(`Pokračuješ ve vláknu s ${partName}`);
-      // Auto-prime with specific part context
-      didContextPrime.runPrime(partName, "cast");
-      // Load fresh part docs in background
-      (async () => {
-        try {
-          const headers = await getAuthHeaders();
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-            { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
-          );
-          if (response.ok) {
-            const data = await response.json();
-            const docs = data.documents || {};
-            const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-             setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
-          }
-        } catch {}
-      })();
+    if (isPartSelecting) return;
+
+    const safePartName = sanitizePartName(partName);
+    if (!safePartName) {
+      toast.error("Tahle část nemá platný název.");
       return;
     }
 
-    // Start chat IMMEDIATELY with familiar greeting — no waiting for docs
-    const greeting = getRandomCastGreeting();
-    const initialMessages = [{ role: "assistant" as const, content: greeting }];
-    
-    let partLanguage = "cs";
-    const basicCtx = basicDocsRef.current || didInitialContext;
-    if (basicCtx.toLowerCase().includes("norsky") || basicCtx.toLowerCase().includes("norština")) partLanguage = "no";
-    if (basicCtx.toLowerCase().includes("anglicky") || basicCtx.toLowerCase().includes("english")) partLanguage = "en";
+    setIsPartSelecting(true);
+    try {
+      const existing = await didThreads.getThreadByPart(safePartName, "cast");
+      if (existing) {
+        setActiveThread(existing);
+        setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
+        setDidFlowState("chat");
+        toast.info(`Pokračuješ ve vláknu s ${safePartName}`);
+        didContextPrime.runPrime(safePartName, "cast");
+        (async () => {
+          try {
+            const headers = await getAuthHeaders();
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+              { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${safePartName.replace(/\s+/g, "_")}`] }) }
+            );
+            if (response.ok) {
+              const data = await response.json();
+              const docs = data.documents || {};
+              const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+              setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
+            }
+          } catch {}
+        })();
+        return;
+      }
 
-    const thread = await didThreads.createThread(partName, "cast", partLanguage, initialMessages as any);
-    if (thread) {
-      setActiveThread(thread);
-      setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
-      setDidFlowState("chat");
-      // Auto-prime with specific part context
-      didContextPrime.runPrime(partName, "cast");
-      // Load part-specific docs in BACKGROUND — don't block conversation
-      (async () => {
-        try {
-          const headers = await getAuthHeaders();
-          const response = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-            { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${partName.replace(/\s+/g, "_")}`] }) }
-          );
-          if (response.ok) {
-            const data = await response.json();
-            const docs = data.documents || {};
-            const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-             setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
-            setDidDocsLoaded(true);
-          }
-        } catch {}
-      })();
-    } else {
-      toast.error("Nepodařilo se vytvořit vlákno");
-      setDidFlowState("thread-list");
-    }
+      const greeting = getRandomCastGreeting();
+      const initialMessages = [{ role: "assistant" as const, content: greeting }];
+
+      let partLanguage = "cs";
+      const basicCtx = basicDocsRef.current || didInitialContext;
+      if (basicCtx.toLowerCase().includes("norsky") || basicCtx.toLowerCase().includes("norština")) partLanguage = "no";
+      if (basicCtx.toLowerCase().includes("anglicky") || basicCtx.toLowerCase().includes("english")) partLanguage = "en";
+
+      const thread = await didThreads.createThread(safePartName, "cast", partLanguage, initialMessages as any);
+      if (thread) {
+        setActiveThread(thread);
+        setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
+        setDidFlowState("chat");
+        didContextPrime.runPrime(safePartName, "cast");
+        (async () => {
+          try {
+            const headers = await getAuthHeaders();
+            const response = await fetch(
+              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
+              { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${safePartName.replace(/\s+/g, "_")}`] }) }
+            );
+            if (response.ok) {
+              const data = await response.json();
+              const docs = data.documents || {};
+              const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+              setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
+              setDidDocsLoaded(true);
+            }
+          } catch {}
+        })();
+      } else {
+        toast.error("Nepodařilo se vytvořit vlákno");
+        setDidFlowState("thread-list");
+      }
     } finally {
       setIsPartSelecting(false);
     }

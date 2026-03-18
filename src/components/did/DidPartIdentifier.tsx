@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, UserPlus } from "lucide-react";
+import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
 
 interface Props {
   knownParts: string[];
@@ -11,6 +12,7 @@ interface Props {
 
 const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
   const [customName, setCustomName] = useState("");
+  const visibleParts = uniqueSanitizedPartNames(knownParts);
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
@@ -25,18 +27,18 @@ const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
         Kdo teď mluví?
       </h2>
       <p className="text-sm text-muted-foreground text-center mb-6">
-        Vyber svoji část, nebo napiš jméno.
+        Vyber skutečně aktivní část, nebo napiš jméno ručně.
       </p>
 
-      {knownParts.length > 0 && (
+      {visibleParts.length > 0 && (
         <div className="space-y-2 mb-6">
-          <p className="text-xs text-muted-foreground font-medium">Známé části:</p>
+          <p className="text-xs text-muted-foreground font-medium">Aktivní části:</p>
           <div className="flex flex-wrap gap-2">
-            {knownParts.map((part) => (
+            {visibleParts.map((part) => (
               <button
                 key={part}
                 onClick={() => onSelectPart(part)}
-                className="px-4 py-2 rounded-full border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-sm font-medium text-foreground"
+                className="px-4 py-2 rounded-full border border-border bg-card/70 hover:border-primary/50 hover:bg-card transition-all text-sm font-medium text-foreground"
               >
                 {part}
               </button>
@@ -57,14 +59,18 @@ const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
             placeholder="Jak ti říkají?"
             className="flex-1"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && customName.trim()) {
-                onSelectPart(customName.trim());
+              const safeName = sanitizePartName(customName);
+              if (e.key === "Enter" && safeName) {
+                onSelectPart(safeName);
               }
             }}
           />
           <Button
-            onClick={() => customName.trim() && onSelectPart(customName.trim())}
-            disabled={!customName.trim()}
+            onClick={() => {
+              const safeName = sanitizePartName(customName);
+              if (safeName) onSelectPart(safeName);
+            }}
+            disabled={!sanitizePartName(customName)}
           >
             Začít
           </Button>
