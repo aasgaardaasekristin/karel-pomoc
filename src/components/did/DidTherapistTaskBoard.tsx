@@ -10,15 +10,15 @@ interface TherapistTask {
   task: string;
   assigned_to: string;
   status: string;
-  note: string;
-  completed_note: string;
-  source_agreement: string;
+  note: string | null;
+  completed_note: string | null;
+  source_agreement: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
   due_date: string | null;
-  priority: string;
-  category: string;
+  priority: string | null;
+  category: string | null;
   status_hanka: string;
   status_kata: string;
 }
@@ -26,6 +26,7 @@ interface TherapistTask {
 type TrafficStatus = "not_started" | "in_progress" | "done";
 type CategoryFilter = "all" | "today" | "tomorrow" | "longterm";
 type AssigneeFilter = "all" | "hanka" | "kata" | "both";
+type TherapistAssignee = "hanka" | "kata" | "both";
 
 const TRAFFIC_COLORS: Record<TrafficStatus, string> = {
   not_started: "bg-muted border border-border",
@@ -48,6 +49,7 @@ const STATUS_LABEL: Record<TrafficStatus, string> = {
 const MAX_TODAY = 5;
 const MAX_TOMORROW = 5;
 const MAX_LONGTERM = 10;
+const THERAPIST_ASSIGNEES = new Set<TherapistAssignee>(["hanka", "kata", "both"]);
 
 const stripMarkdownNoise = (text?: string | null) => (text || "")
   .replace(/^\s*[-*]\s+/gm, "")
@@ -57,13 +59,18 @@ const stripMarkdownNoise = (text?: string | null) => (text || "")
 
 const normalizeTask = (text?: string | null) => stripMarkdownNoise(text).toLowerCase();
 
-const assigneeLabel = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
+const normalizeAssignedTo = (value?: string | null): string => (value || "").trim().toLowerCase();
+
+const isTherapistAssignee = (value?: string | null): value is TherapistAssignee =>
+  THERAPIST_ASSIGNEES.has(normalizeAssignedTo(value) as TherapistAssignee);
+
+const assigneeLabel = (a: TherapistAssignee) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
 
 const targetDocumentForCategory = (category?: string | null) =>
   (category === "longterm" || category === "weekly") ? "06_Strategicky_Vyhled" : "05_Operativni_Plan";
 
 const buildTaskQueueKey = (task: { task: string; assigned_to: string; category?: string | null }) =>
-  `${normalizeTask(task.task)}|${task.assigned_to}|${targetDocumentForCategory(task.category)}`;
+  `${normalizeTask(task.task)}|${normalizeAssignedTo(task.assigned_to)}|${targetDocumentForCategory(task.category)}`;
 
 const parsePendingWriteKey = (content?: string | null, targetDocument?: string | null) => {
   if (!content || !targetDocument) return null;
@@ -74,7 +81,7 @@ const parsePendingWriteKey = (content?: string | null, targetDocument?: string |
   return `${normalizeTask(match[1])}|${assigned}|${targetDocument}`;
 };
 
-const isAssigneeVisible = (assignedTo: string, filter: AssigneeFilter) => {
+const isAssigneeVisible = (assignedTo: TherapistAssignee, filter: AssigneeFilter) => {
   if (filter === "all") return true;
   if (filter === "both") return assignedTo === "both";
   if (filter === "hanka") return assignedTo === "hanka" || assignedTo === "both";
@@ -110,6 +117,32 @@ const openExternalDocument = (url: string) => {
   window.open(url, "_blank", "noopener,noreferrer");
 };
 
+const isTodayCategory = (category?: string | null) => category === "today" || category === "daily";
+const isTomorrowCategory = (category?: string | null) => category === "tomorrow";
+const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
+const categoryLabel = (category?: string | null) => isTodayCategory(category) ? "Dnes" : isTomorrowCategory(category) ? "Zítra" : "Dlouhodobé";
+const priorityLabel = (priority?: string | null) => priority === "high" ? "Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
+
+const aggregateTaskStatus = (task: TherapistTask): TrafficStatus => {
+  if (normalizeAssignedTo(task.assigned_to) === "both") {
+    if (task.status_hanka === "done" && task.status_kata === "done") return "done";
+    if ([task.status_hanka, task.status_kata].includes("in_progress") || [task.status_hanka, task.status_kata].includes("done")) {
+      return "in_progress";
+    }
+    return "not_started";
+  }
+
+  return (normalizeAssignedTo(task.assigned_to) === "hanka" ? task.status_hanka : task.status_kata || "not_started") as TrafficStatus;
+};
+
+const statusSummary = (task: TherapistTask) => {
+  const assigned = normalizeAssignedTo(task.assigned_to) as TherapistAssignee;
+  if (assigned === "both") {
+    return `H: ${STATUS_LABEL[(task.status_hanka || "not_started") as TrafficStatus]} • K: ${STATUS_LABEL[(task.status_kata || "not_started") as TrafficStatus]}`;
+  }
+  return STATUS_LABEL[aggregateTaskStatus(task)];
+};
+
 const TrafficLight = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
   <button onClick={onClick} className="flex items-center gap-1 group cursor-pointer" title={`${label}: ${STATUS_LABEL[status]}`}>
     <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-110`} />
@@ -118,12 +151,12 @@ const TrafficLight = ({ status, label, onClick }: { status: TrafficStatus; label
 );
 
 const isAllDone = (task: TherapistTask) => {
-  if (task.assigned_to === "hanka") return task.status_hanka === "done";
-  if (task.assigned_to === "kata") return task.status_kata === "done";
+  const assigned = normalizeAssignedTo(task.assigned_to);
+  if (assigned === "hanka") return task.status_hanka === "done";
+  if (assigned === "kata") return task.status_kata === "done";
   return task.status_hanka === "done" && task.status_kata === "done";
 };
 
-// ── Task Card (shared for today/tomorrow) ──
 const TaskCard = ({
   task,
   expandedTask,
@@ -142,7 +175,7 @@ const TaskCard = ({
   setExpandedTask: (id: string | null) => void;
   noteInputs: Record<string, string>;
   setNoteInputs: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  onToggleTraffic: (task: TherapistTask, who: "hanka" | "kata") => void;
+  onToggleTraffic: (task: TherapistTask, who: TherapistAssignee) => void;
   onDelete: (id: string) => void;
   onAddNote: (id: string) => void;
   isPendingDriveWrite: boolean;
@@ -151,21 +184,27 @@ const TaskCard = ({
 }) => {
   const isExpanded = expandedTask === task.id;
   const safeDriveLink = isSafeDocumentUrl(task.source_agreement);
+  const assigned = normalizeAssignedTo(task.assigned_to) as TherapistAssignee;
 
   return (
     <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-1 shrink-0">
-          {(task.assigned_to === "hanka" || task.assigned_to === "both") && (
-            <TrafficLight status={(task.status_hanka || "not_started") as TrafficStatus} label="H" onClick={() => onToggleTraffic(task, "hanka")} />
-          )}
-          {(task.assigned_to === "kata" || task.assigned_to === "both") && (
-            <TrafficLight status={(task.status_kata || "not_started") as TrafficStatus} label="K" onClick={() => onToggleTraffic(task, "kata")} />
+          {assigned === "both" ? (
+            <TrafficLight status={aggregateTaskStatus(task)} label="Obě" onClick={() => onToggleTraffic(task, "both")} />
+          ) : (
+            <TrafficLight
+              status={aggregateTaskStatus(task)}
+              label={assigned === "hanka" ? "H" : "K"}
+              onClick={() => onToggleTraffic(task, assigned)}
+            />
           )}
         </div>
+
         <button className="flex-1 min-w-0 text-left truncate" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
           <span className="text-[11px] text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
         </button>
+
         <div className="flex items-center gap-0 shrink-0">
           {extraActions}
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setExpandedTask(isExpanded ? null : task.id); }} className="h-5 w-5 p-0">
@@ -176,30 +215,39 @@ const TaskCard = ({
           </Button>
         </div>
       </div>
+
       {isExpanded && (
-        <div className="mt-1.5 pt-1.5 border-t border-border/30 space-y-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
-          {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{stripMarkdownNoise(task.note)}</p>}
+        <div className="mt-1.5 space-y-1.5 border-t border-border/30 pt-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-muted-foreground">
+            <span>👤 {assigneeLabel(assigned)}</span>
+            <span>🗂️ {categoryLabel(task.category)}</span>
+            <span>⚡ {priorityLabel(task.priority)}</span>
+            <span>📍 {statusSummary(task)}</span>
+            {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
+          </div>
+
+          {task.note && <p className="text-[10px] leading-relaxed text-muted-foreground">{stripMarkdownNoise(task.note)}</p>}
 
           {isPendingDriveWrite && (
             <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
-              🆕 Nový úkol — v Drive zatím není. Zapíše se po kliknutí na „Aktual. kartotéku“.
+              🆕 Nový úkol — čeká na propsání do kartotéky.
             </div>
           )}
 
           {isFailedDriveWrite && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-1 text-[9px] text-destructive">
-              ⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku" se úkol zkusí zapsat znovu.
+              ⚠️ Poslední propsání do kartotéky selhalo. Zkus znovu aktualizaci.
             </div>
           )}
 
           {task.source_agreement && (
             <div className="flex items-center gap-1">
-              <span className="text-[9px] text-muted-foreground truncate max-w-[220px]">📋 {stripMarkdownNoise(task.source_agreement)}</span>
+              <span className="max-w-[220px] truncate text-[9px] text-muted-foreground">📋 {stripMarkdownNoise(task.source_agreement)}</span>
               {safeDriveLink && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); openExternalDocument(safeDriveLink); }}
-                  className="inline-flex items-center gap-0.5 text-[9px] text-primary hover:underline shrink-0"
+                  className="inline-flex items-center gap-0.5 shrink-0 text-[9px] text-primary hover:underline"
                 >
                   <ExternalLink className="w-2.5 h-2.5" /> Otevřít
                 </button>
@@ -208,17 +256,18 @@ const TaskCard = ({
           )}
 
           {task.completed_note && (
-            <div className="text-[9px] text-muted-foreground bg-muted/40 rounded px-1.5 py-1 whitespace-pre-line">
-              <MessageSquare className="w-2.5 h-2.5 inline mr-0.5 opacity-60" />
+            <div className="whitespace-pre-line rounded bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+              <MessageSquare className="mr-0.5 inline h-2.5 w-2.5 opacity-60" />
               {task.completed_note}
             </div>
           )}
+
           <div className="flex gap-1">
             <Input
               value={noteInputs[task.id] || ""}
-              onChange={(e) => setNoteInputs(prev => ({ ...prev, [task.id]: e.target.value }))}
-              placeholder="Poznámka..."
-              className="flex-1 h-6 text-[9px] bg-background"
+              onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
+              placeholder="Poznámka nebo instrukce..."
+              className="h-6 flex-1 bg-background text-[9px]"
               onKeyDown={(e) => { if (e.key === "Enter") onAddNote(task.id); }}
             />
             <Button size="sm" onClick={() => onAddNote(task.id)} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim()}>
@@ -231,20 +280,18 @@ const TaskCard = ({
   );
 };
 
-// ── Section Header ──
 const SectionHeader = ({ emoji, label, count, max }: { emoji: string; label: string; count: number; max?: number }) => (
-  <div className="flex items-center justify-between mb-1">
+  <div className="mb-1 flex items-center justify-between">
     <span className="text-[10px] font-semibold text-foreground">{emoji} {label}</span>
     {max !== undefined && <span className="text-[8px] text-muted-foreground">{count}/{max}</span>}
   </div>
 );
 
-// ── Main Component ──
 const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) => {
   const [tasks, setTasks] = useState<TherapistTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTask, setNewTask] = useState("");
-  const [newAssignee, setNewAssignee] = useState<"hanka" | "kata" | "both">("both");
+  const [newAssignee, setNewAssignee] = useState<TherapistAssignee>("both");
   const [newCategory, setNewCategory] = useState<"today" | "tomorrow" | "longterm">("today");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
@@ -253,6 +300,10 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const [adding, setAdding] = useState(false);
   const [pendingTaskKeys, setPendingTaskKeys] = useState<Set<string>>(new Set());
   const [failedTaskKeys, setFailedTaskKeys] = useState<Set<string>>(new Set());
+  const [trafficLock, setTrafficLock] = useState(false);
+
+  const tasksRef = useRef(tasks);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   const loadTasks = useCallback(async () => {
     const [{ data, error }, { data: queueRows }] = await Promise.all([
@@ -280,38 +331,43 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     setFailedTaskKeys(failedSet);
 
     if (!error && data) {
-      // Lifecycle: auto-archive completed tasks older than 3 days
       const now = Date.now();
       const threeDays = 3 * 24 * 60 * 60 * 1000;
-      const toArchive = (data as TherapistTask[]).filter(t =>
-        isAllDone(t) && t.completed_at && (now - new Date(t.completed_at).getTime()) > threeDays
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      const normalizedRows = (data as TherapistTask[])
+        .map((task) => ({ ...task, assigned_to: normalizeAssignedTo(task.assigned_to) }))
+        .filter((task) => isTherapistAssignee(task.assigned_to));
+
+      const toArchive = normalizedRows.filter((task) =>
+        isAllDone(task) && task.completed_at && (now - new Date(task.completed_at).getTime()) > threeDays
       );
       if (toArchive.length > 0) {
-        await supabase.from("did_therapist_tasks").delete().in("id", toArchive.map(t => t.id));
+        await supabase.from("did_therapist_tasks").delete().in("id", toArchive.map((task) => task.id));
       }
 
-      // Lifecycle: escalate stale tasks (7+ days, not done) → high priority
-      const sevenDays = 7 * 24 * 60 * 60 * 1000;
-      const toEscalate = (data as TherapistTask[]).filter(t =>
-        !isAllDone(t) && t.priority !== "high" && (now - new Date(t.created_at).getTime()) > sevenDays
+      const toEscalate = normalizedRows.filter((task) =>
+        !isAllDone(task) && task.priority !== "high" && (now - new Date(task.created_at).getTime()) > sevenDays
       );
       if (toEscalate.length > 0) {
-        await supabase.from("did_therapist_tasks").update({ priority: "high" }).in("id", toEscalate.map(t => t.id));
+        await supabase.from("did_therapist_tasks").update({ priority: "high" }).in("id", toEscalate.map((task) => task.id));
       }
 
-      // Reload after lifecycle changes
       if (toArchive.length > 0 || toEscalate.length > 0) {
         const { data: fresh } = await supabase.from("did_therapist_tasks").select("*").order("created_at", { ascending: false });
-        setTasks((fresh || []) as TherapistTask[]);
+        const freshTasks = ((fresh || []) as TherapistTask[])
+          .map((task) => ({ ...task, assigned_to: normalizeAssignedTo(task.assigned_to) }))
+          .filter((task) => isTherapistAssignee(task.assigned_to));
+        setTasks(freshTasks);
       } else {
-        setTasks(data as TherapistTask[]);
+        setTasks(normalizedRows);
       }
     }
+
     setLoading(false);
   }, []);
 
-  useEffect(() => { loadTasks(); }, [loadTasks]);
-  useEffect(() => { if (refreshTrigger > 0) loadTasks(); }, [refreshTrigger, loadTasks]);
+  useEffect(() => { void loadTasks(); }, [loadTasks]);
+  useEffect(() => { if (refreshTrigger > 0) void loadTasks(); }, [refreshTrigger, loadTasks]);
 
   const handleAddTask = async () => {
     if (!newTask.trim()) return;
@@ -344,59 +400,10 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       });
 
       setNewTask("");
-      loadTasks();
+      void loadTasks();
     }
 
     setAdding(false);
-  };
-
-  const [trafficLock, setTrafficLock] = useState(false);
-
-  // Keep a ref to always read the latest tasks state (avoids stale closure)
-  const tasksRef = useRef(tasks);
-  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
-
-  const handleToggleTraffic = async (taskArg: TherapistTask, who: "hanka" | "kata") => {
-    if (trafficLock) return;
-    setTrafficLock(true);
-
-    // Read fresh state from ref, not from the render-time closure
-    const freshTask = tasksRef.current.find(t => t.id === taskArg.id);
-    if (!freshTask) { setTrafficLock(false); return; }
-
-    const field = who === "hanka" ? "status_hanka" : "status_kata";
-    const current = (freshTask[field] || "not_started") as TrafficStatus;
-    const next = NEXT_STATUS[current];
-    const updates: Record<string, string> = { [field]: next, updated_at: new Date().toISOString() };
-
-    const otherField = who === "hanka" ? "status_kata" : "status_hanka";
-    const otherStatus = (freshTask[otherField] || "not_started") as TrafficStatus;
-    const bothDone = next === "done" && (freshTask.assigned_to !== "both" || otherStatus === "done");
-    if (bothDone) {
-      updates.status = "done";
-      updates.completed_at = new Date().toISOString();
-    } else {
-      updates.status = "pending";
-      updates.completed_at = null as any;
-    }
-
-    // Optimistic update: immediately reflect change in UI
-    setTasks(prev => prev.map(t =>
-      t.id === freshTask.id ? { ...t, ...updates } as TherapistTask : t
-    ));
-
-    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", freshTask.id);
-    if (error) {
-      toast.error("Nepodařilo se změnit stav");
-      await loadTasks(); // revert on error
-    } else if (bothDone) {
-      // Update motivation profile on task completion
-      updateMotivationProfile(who === "hanka" ? "Hanka" : "Káťa", "completed", freshTask.created_at);
-      if (freshTask.assigned_to === "both") {
-        updateMotivationProfile(who === "hanka" ? "Káťa" : "Hanka", "completed", freshTask.created_at);
-      }
-    }
-    setTrafficLock(false);
   };
 
   const updateMotivationProfile = async (therapist: string, event: "completed" | "missed", taskCreatedAt: string) => {
@@ -419,13 +426,12 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         const streak = event === "completed" ? (existing.streak_current || 0) + 1 : 0;
         const bestStreak = Math.max(streak, existing.streak_best || 0);
 
-        // Adapt style based on patterns
         let style = existing.preferred_style || "balanced";
         if (completed > 5) {
           const ratio = completed / Math.max(1, completed + missed);
-          if (ratio > 0.8) style = "praise"; // responds well to encouragement
-          else if (avgDays > 4) style = "deadline"; // needs deadline pressure
-          else style = "instruction"; // needs clear instructions
+          if (ratio > 0.8) style = "praise";
+          else if (avgDays > 4) style = "deadline";
+          else style = "instruction";
         }
 
         await supabase.from("did_motivation_profiles").update({
@@ -453,23 +459,84 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     }
   };
 
+  const handleToggleTraffic = async (taskArg: TherapistTask, who: TherapistAssignee) => {
+    if (trafficLock) return;
+    setTrafficLock(true);
+
+    const freshTask = tasksRef.current.find((task) => task.id === taskArg.id);
+    if (!freshTask) {
+      setTrafficLock(false);
+      return;
+    }
+
+    const updates: Record<string, string | null> = { updated_at: new Date().toISOString() };
+    let bothDone = false;
+
+    if (who === "both") {
+      const current = aggregateTaskStatus(freshTask);
+      const next = NEXT_STATUS[current];
+      updates.status_hanka = next;
+      updates.status_kata = next;
+      bothDone = next === "done";
+    } else {
+      const field = who === "hanka" ? "status_hanka" : "status_kata";
+      const current = (freshTask[field] || "not_started") as TrafficStatus;
+      const next = NEXT_STATUS[current];
+      updates[field] = next;
+
+      const otherField = who === "hanka" ? "status_kata" : "status_hanka";
+      const otherStatus = (freshTask[otherField] || "not_started") as TrafficStatus;
+      bothDone = next === "done" && (normalizeAssignedTo(freshTask.assigned_to) !== "both" || otherStatus === "done");
+    }
+
+    if (bothDone) {
+      updates.status = "done";
+      updates.completed_at = new Date().toISOString();
+    } else {
+      updates.status = "pending";
+      updates.completed_at = null;
+    }
+
+    setTasks((prev) => prev.map((task) => task.id === freshTask.id ? { ...task, ...updates } as TherapistTask : task));
+
+    const { error } = await supabase.from("did_therapist_tasks").update(updates).eq("id", freshTask.id);
+    if (error) {
+      toast.error("Nepodařilo se změnit stav");
+      await loadTasks();
+      setTrafficLock(false);
+      return;
+    }
+
+    if (bothDone) {
+      const assigned = normalizeAssignedTo(freshTask.assigned_to);
+      if (assigned === "both" || who === "both") {
+        void updateMotivationProfile("Hanka", "completed", freshTask.created_at);
+        void updateMotivationProfile("Káťa", "completed", freshTask.created_at);
+      } else {
+        void updateMotivationProfile(who === "hanka" ? "Hanka" : "Káťa", "completed", freshTask.created_at);
+      }
+    }
+
+    setTrafficLock(false);
+  };
+
   const handleDelete = async (taskId: string) => {
     await supabase.from("did_therapist_tasks").delete().eq("id", taskId);
-    loadTasks();
+    await loadTasks();
     toast.success("Úkol odstraněn");
   };
 
   const handleAddNote = async (taskId: string) => {
     const note = noteInputs[taskId]?.trim();
     if (!note) return;
-    const task = tasks.find(t => t.id === taskId);
+    const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
     const existingNote = task.completed_note || "";
     const dateStr = new Date().toLocaleDateString("cs-CZ");
     const updatedNote = existingNote ? `${existingNote}\n[${dateStr}] ${note}` : `[${dateStr}] ${note}`;
     await supabase.from("did_therapist_tasks").update({ completed_note: updatedNote, updated_at: new Date().toISOString() }).eq("id", taskId);
-    setNoteInputs(prev => ({ ...prev, [taskId]: "" }));
-    loadTasks();
+    setNoteInputs((prev) => ({ ...prev, [taskId]: "" }));
+    await loadTasks();
     toast.success("Poznámka přidána");
   };
 
@@ -479,14 +546,9 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       priority: to === "today" ? "high" : "normal",
       updated_at: new Date().toISOString(),
     }).eq("id", taskId);
-    loadTasks();
+    await loadTasks();
     toast.success(`Úkol přesunut do ${to === "today" ? "DNES" : "ZÍTRA"}`);
   };
-
-  const assigneeFull = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Obě";
-  const isTodayCategory = (category?: string | null) => category === "today" || category === "daily";
-  const isTomorrowCategory = (category?: string | null) => category === "tomorrow";
-  const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
 
   const matchesCategoryFilter = (task: TherapistTask) => {
     if (categoryFilter === "all") return true;
@@ -498,19 +560,17 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const isPendingForTask = (task: TherapistTask) => pendingTaskKeys.has(buildTaskQueueKey(task));
   const isFailedForTask = (task: TherapistTask) => failedTaskKeys.has(buildTaskQueueKey(task));
 
-  const active = tasks.filter(t => !isAllDone(t));
-  const done = tasks.filter(t => isAllDone(t));
+  const active = tasks.filter((task) => !isAllDone(task));
+  const done = tasks.filter((task) => isAllDone(task));
 
-  const visibleActive = active.filter(t => matchesCategoryFilter(t) && isAssigneeVisible(t.assigned_to, assigneeFilter));
-  const visibleDone = done.filter(t => matchesCategoryFilter(t) && isAssigneeVisible(t.assigned_to, assigneeFilter));
+  const visibleActive = active.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
+  const visibleDone = done.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
 
-  const todayTasks = visibleActive.filter(t => isTodayCategory(t.category));
-  const tomorrowTasks = visibleActive.filter(t => isTomorrowCategory(t.category));
-  const allTomorrowTasks = tasks.filter(t => isTomorrowCategory(t.category) && isAssigneeVisible(t.assigned_to, assigneeFilter));
-
-  const longtermTasks = visibleActive.filter(t => isLongtermCategory(t.category));
-  const generalActive = longtermTasks.filter(t => t.category === "general" || !t.category);
-  const longtermList = longtermTasks.filter(t => t.category === "longterm" || t.category === "weekly");
+  const todayTasks = visibleActive.filter((task) => isTodayCategory(task.category));
+  const tomorrowTasks = visibleActive.filter((task) => isTomorrowCategory(task.category));
+  const longtermTasks = visibleActive.filter((task) => isLongtermCategory(task.category));
+  const generalActive = longtermTasks.filter((task) => task.category === "general" || !task.category);
+  const longtermList = longtermTasks.filter((task) => task.category === "longterm" || task.category === "weekly");
 
   const showToday = categoryFilter === "all" || categoryFilter === "today";
   const showTomorrow = categoryFilter === "all" || categoryFilter === "tomorrow";
@@ -533,48 +593,49 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   return (
     <div className="space-y-3">
       <div className="space-y-1.5 rounded-md border border-border/60 bg-card/40 p-2">
-        <div className="flex gap-1.5 items-center">
+        <div className="flex items-center gap-1.5">
           <Input
             value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
-            placeholder="Nový úkol..."
-            className="flex-1 h-7 text-[11px] bg-background"
-            onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }}
+            placeholder="Nový konkrétní úkol..."
+            className="h-7 flex-1 bg-background text-[11px]"
+            onKeyDown={(e) => { if (e.key === "Enter") void handleAddTask(); }}
           />
-          <Button size="sm" onClick={handleAddTask} disabled={!newTask.trim() || adding} className="h-7 w-7 p-0">
+          <Button size="sm" onClick={() => void handleAddTask()} disabled={!newTask.trim() || adding} className="h-7 w-7 p-0">
             {adding ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
           </Button>
         </div>
 
-        <div className="rounded-md border border-border/60 bg-background/70 p-1.5 space-y-1.5">
+        <div className="space-y-1.5 rounded-md border border-border/60 bg-background/70 p-1.5">
           <div>
-            <p className="text-[8px] text-muted-foreground mb-1">Kdo</p>
+            <p className="mb-1 text-[8px] text-muted-foreground">Kdo</p>
             <div className="flex flex-wrap gap-1">
-              {(["hanka", "kata", "both"] as const).map(a => (
+              {(["hanka", "kata", "both"] as const).map((assignee) => (
                 <Button
-                  key={a}
-                  variant={assigneeFilter === a ? "default" : "outline"}
+                  key={assignee}
+                  variant={assigneeFilter === assignee ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setAssigneeFilter(assigneeFilter === a ? "all" : a)}
-                  className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
+                  onClick={() => setAssigneeFilter(assigneeFilter === assignee ? "all" : assignee)}
+                  className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
                 >
-                  {assigneeFull(a)}
+                  {assigneeLabel(assignee)}
                 </Button>
               ))}
             </div>
           </div>
+
           <div>
-            <p className="text-[8px] text-muted-foreground mb-1">Kdy</p>
+            <p className="mb-1 text-[8px] text-muted-foreground">Kdy</p>
             <div className="flex flex-wrap gap-1">
-              {(["today", "tomorrow", "longterm"] as const).map(c => (
+              {(["today", "tomorrow", "longterm"] as const).map((category) => (
                 <Button
-                  key={c}
-                  variant={categoryFilter === c ? "default" : "outline"}
+                  key={category}
+                  variant={categoryFilter === category ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setCategoryFilter(categoryFilter === c ? "all" : c)}
-                  className="h-5 rounded-full text-[8px] px-2.5 min-w-0"
+                  onClick={() => setCategoryFilter(categoryFilter === category ? "all" : category)}
+                  className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
                 >
-                  {c === "today" ? "Dnes" : c === "tomorrow" ? "Zítra" : "Dlouhodobé"}
+                  {category === "today" ? "Dnes" : category === "tomorrow" ? "Zítra" : "Dlouhodobé"}
                 </Button>
               ))}
             </div>
@@ -586,7 +647,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         <div>
           <SectionHeader emoji="🔴" label="DNES" count={todayTasks.length} max={MAX_TODAY} />
           <div className="space-y-1">
-            {todayTasks.slice(0, MAX_TODAY).map(task => (
+            {todayTasks.slice(0, MAX_TODAY).map((task) => (
               <TaskCard
                 key={task.id}
                 task={task}
@@ -595,30 +656,26 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 isFailedDriveWrite={isFailedForTask(task)}
               />
             ))}
-            {todayTasks.length > MAX_TODAY && <p className="text-[8px] text-muted-foreground text-center">+{todayTasks.length - MAX_TODAY} skrytých (Karel je přidá později)</p>}
+            {todayTasks.length > MAX_TODAY && <p className="text-center text-[8px] text-muted-foreground">+{todayTasks.length - MAX_TODAY} dalších</p>}
           </div>
         </div>
       )}
 
-      {showTomorrow && (tomorrowTasks.length > 0 || allTomorrowTasks.length > 0) && (
+      {showTomorrow && tomorrowTasks.length > 0 && (
         <div>
           <SectionHeader emoji="🟡" label="ZÍTRA" count={tomorrowTasks.length} max={MAX_TOMORROW} />
-          {tomorrowTasks.length > 0 ? (
-            <div className="space-y-1">
-              {tomorrowTasks.slice(0, MAX_TOMORROW).map(task => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  {...sharedProps}
-                  isPendingDriveWrite={isPendingForTask(task)}
-                  isFailedDriveWrite={isFailedForTask(task)}
-                />
-              ))}
-              {tomorrowTasks.length > MAX_TOMORROW && <p className="text-[8px] text-muted-foreground text-center">+{tomorrowTasks.length - MAX_TOMORROW} skrytých</p>}
-            </div>
-          ) : (
-            <p className="text-[9px] text-muted-foreground text-center py-1.5">Všechny úkoly na zítra splněny ✅</p>
-          )}
+          <div className="space-y-1">
+            {tomorrowTasks.slice(0, MAX_TOMORROW).map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                {...sharedProps}
+                isPendingDriveWrite={isPendingForTask(task)}
+                isFailedDriveWrite={isFailedForTask(task)}
+              />
+            ))}
+            {tomorrowTasks.length > MAX_TOMORROW && <p className="text-center text-[8px] text-muted-foreground">+{tomorrowTasks.length - MAX_TOMORROW} dalších</p>}
+          </div>
         </div>
       )}
 
@@ -626,7 +683,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         <div>
           <SectionHeader emoji="📌" label="Aktivní úkoly" count={generalActive.length} />
           <div className="space-y-1">
-            {generalActive.map(task => (
+            {generalActive.map((task) => (
               <TaskCard
                 key={task.id}
                 task={task}
@@ -639,110 +696,54 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         </div>
       )}
 
-      {active.length === 0 && done.length === 0 && (
-        <p className="text-[10px] text-muted-foreground text-center py-3">Zatím žádné úkoly.</p>
-      )}
-
       {showLongterm && longtermList.length > 0 && (
         <div>
           <SectionHeader emoji="📋" label="Dlouhodobé" count={longtermList.length} max={MAX_LONGTERM} />
-          <div className="space-y-0.5">
-            {longtermList.slice(0, MAX_LONGTERM).map(task => {
-              const isExp = expandedTask === task.id;
-              const safeDriveLink = isSafeDocumentUrl(task.source_agreement);
-              const priorityLabel = task.priority === "high" ? "⚡ Urgentní" : task.priority === "normal" ? "📌 Běžná" : "🕐 Nízká";
-              const assigneeText = task.assigned_to === "hanka" ? "👩 Hanka" : task.assigned_to === "kata" ? "👩‍🦰 Káťa" : "👩‍👩‍👧 Obě";
-
-              return (
-                <div key={task.id} className="group">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      className="flex-1 min-w-0 text-left py-1 px-1.5 rounded transition-colors hover:bg-accent/30"
-                      onClick={() => setExpandedTask(isExp ? null : task.id)}
-                    >
-                      <span className="text-[11px] text-foreground/80 leading-tight">{stripMarkdownNoise(task.task)}</span>
-                    </button>
-                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handlePromote(task.id, "today"); }} className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity" title="Povýšit na DNES">
-                      <ArrowUp className="w-2.5 h-2.5 text-primary" />
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive">
-                      <Trash2 className="w-2.5 h-2.5" />
-                    </Button>
-                  </div>
-
-                  {isExp && (
-                    <div className="ml-1.5 pl-2.5 border-l-2 border-primary/20 mb-2 mt-0.5 space-y-1 animate-in fade-in-0 slide-in-from-top-1 duration-150">
-                      {task.note && <p className="text-[10px] text-muted-foreground leading-relaxed">{stripMarkdownNoise(task.note)}</p>}
-
-                      {(isPendingForTask(task) || isFailedForTask(task)) && (
-                        <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
-                          {isPendingForTask(task)
-                            ? "🆕 Nový úkol — v Drive zatím není. Zapíše se po kliknutí na „Aktual. kartotéku“."
-                            : "⚠️ Poslední zápis do Drive selhal. Po „Aktual. kartotéku“ se úkol zkusí zapsat znovu."}
-                        </div>
-                      )}
-
-                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[9px] text-muted-foreground">
-                        <span>{priorityLabel}</span>
-                        <span>{assigneeText}</span>
-                        {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
-                      </div>
-
-                      {task.source_agreement && (
-                        <div className="flex items-center gap-1 text-[9px]">
-                          <span className="text-muted-foreground truncate max-w-[240px]">📄 {stripMarkdownNoise(task.source_agreement)}</span>
-                          {safeDriveLink && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); openExternalDocument(safeDriveLink); }}
-                              className="inline-flex items-center gap-0.5 text-primary hover:underline shrink-0"
-                            >
-                              <ExternalLink className="w-2.5 h-2.5" /> Otevřít
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {task.completed_note && (
-                        <div className="text-[9px] text-muted-foreground bg-muted/30 rounded px-1.5 py-1 whitespace-pre-line">
-                          <MessageSquare className="w-2.5 h-2.5 inline mr-0.5 opacity-60" />
-                          {task.completed_note}
-                        </div>
-                      )}
-
-                      <div className="flex gap-1 pt-0.5">
-                        <Input
-                          value={noteInputs[task.id] || ""}
-                          onChange={(e) => setNoteInputs(prev => ({ ...prev, [task.id]: e.target.value }))}
-                          placeholder="Poznámka..."
-                          className="flex-1 h-6 text-[9px] bg-background"
-                          onKeyDown={(e) => { if (e.key === "Enter") handleAddNote(task.id); }}
-                        />
-                        <Button size="sm" onClick={() => handleAddNote(task.id)} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim()}>
-                          <Send className="w-2.5 h-2.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {longtermList.length > MAX_LONGTERM && <p className="text-[8px] text-muted-foreground text-center pt-1">+{longtermList.length - MAX_LONGTERM} dalších na Drive</p>}
+          <div className="space-y-1">
+            {longtermList.slice(0, MAX_LONGTERM).map((task) => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                {...sharedProps}
+                isPendingDriveWrite={isPendingForTask(task)}
+                isFailedDriveWrite={isFailedForTask(task)}
+                extraActions={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => { e.stopPropagation(); void handlePromote(task.id, "today"); }}
+                    className="h-5 w-5 p-0 opacity-0 transition-opacity group-hover:opacity-100"
+                    title="Povýšit na DNES"
+                  >
+                    <ArrowUp className="w-2.5 h-2.5 text-primary" />
+                  </Button>
+                }
+              />
+            ))}
+            {longtermList.length > MAX_LONGTERM && <p className="pt-1 text-center text-[8px] text-muted-foreground">+{longtermList.length - MAX_LONGTERM} dalších</p>}
           </div>
         </div>
       )}
 
+      {active.length === 0 && done.length === 0 && (
+        <p className="py-3 text-center text-[10px] text-muted-foreground">Zatím žádné terapeutické úkoly.</p>
+      )}
+
+      {active.length > 0 && visibleActive.length === 0 && (
+        <p className="py-2 text-center text-[10px] text-muted-foreground">Pro zvolený filtr tu teď nic není.</p>
+      )}
+
       {visibleDone.length > 0 && (
         <details className="group/done">
-          <summary className="text-[9px] text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none">
+          <summary className="cursor-pointer select-none text-[9px] text-muted-foreground transition-colors hover:text-foreground">
             ✅ Splněné ({visibleDone.length})
           </summary>
           <div className="mt-1 space-y-0.5">
-            {visibleDone.slice(0, 10).map(task => (
-              <div key={task.id} className="rounded px-2 py-1 bg-muted/20 flex items-center gap-1.5 opacity-50">
-                <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
-                <span className="text-[10px] text-muted-foreground line-through flex-1 truncate">{stripMarkdownNoise(task.task)}</span>
-                <Button variant="ghost" size="sm" onClick={() => handleDelete(task.id)} className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/done:opacity-100">
+            {visibleDone.slice(0, 10).map((task) => (
+              <div key={task.id} className="flex items-center gap-1.5 rounded bg-muted/20 px-2 py-1 opacity-50">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <span className="flex-1 truncate text-[10px] text-muted-foreground line-through">{stripMarkdownNoise(task.task)}</span>
+                <Button variant="ghost" size="sm" onClick={() => void handleDelete(task.id)} className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/done:opacity-100">
                   <Trash2 className="w-2 h-2" />
                 </Button>
               </div>

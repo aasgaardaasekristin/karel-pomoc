@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Database, Loader2, RefreshCw, ListChecks, Upload } from "lucide-react";
+import { AlertTriangle, Database, Loader2, ListChecks, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,7 +39,7 @@ interface Props {
   contextDocs?: string;
 }
 
-const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread }: Props) => {
+const DidDashboard = ({ isUpdating, syncProgress, onQuickThread }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
@@ -138,18 +138,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
+      <DidSystemOverview refreshTrigger={refreshTrigger} />
+
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">DID dashboard</h3>
-            <p className="text-xs text-muted-foreground">Soukromá countertransference mapa byla odstraněna z rozhraní.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <DidSessionPrep />
-            <Button variant="outline" size="sm" onClick={onManualUpdate} disabled={isUpdating} className="h-7 text-[10px] px-2">
-              {isUpdating ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Aktualizuji...</> : <><RefreshCw className="w-3 h-3 mr-1" /> Aktual. kartotéku</>}
-            </Button>
-          </div>
+          <h3 className="text-sm font-semibold text-foreground">DID dashboard</h3>
+          <DidSessionPrep />
         </div>
 
         {(isUpdating || syncProgress) && syncProgress && (
@@ -191,8 +185,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
         <DidMonthlyPanel refreshTrigger={refreshTrigger} />
       </div>
-
-      <DidSystemOverview refreshTrigger={refreshTrigger} />
 
       <div className="mb-4">
         <DidPulseCheck refreshTrigger={refreshTrigger} />

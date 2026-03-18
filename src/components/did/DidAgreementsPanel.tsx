@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, FileText, RefreshCw, AlertCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ interface WeeklyCycleData {
 }
 
 const RUNNING_TIMEOUT_MS = 10 * 60 * 1000;
+const POLL_INTERVAL_MS = 5000;
 
 const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { refreshTrigger?: number; onWeeklyCycleComplete?: () => void }) => {
   const [cycles, setCycles] = useState<WeeklyCycleData[]>([]);
@@ -25,49 +26,67 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   const [runningWeekly, setRunningWeekly] = useState(false);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (refreshTrigger > 0) loadData(true);
-  }, [refreshTrigger]);
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async (silent = false) => {
+  const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
 
     const { data } = await supabase
       .from("did_update_cycles")
       .select("id, completed_at, started_at, report_summary, cards_updated, cycle_type, status")
       .eq("cycle_type", "weekly")
-      .in("status", ["completed", "running"])
+      .in("status", ["completed", "running", "failed"])
       .order("created_at", { ascending: false })
-      .limit(5);
+      .limit(8);
 
     if (data) setCycles(data as WeeklyCycleData[]);
     if (!silent) setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (refreshTrigger > 0) void loadData(true);
+  }, [refreshTrigger, loadData]);
+
+  const hasFreshRunning = useMemo(
+    () => cycles.some((cycle) => cycle.status === "running" && (Date.now() - new Date(cycle.started_at).getTime()) < RUNNING_TIMEOUT_MS),
+    [cycles]
+  );
+
+  useEffect(() => {
+    if (!hasFreshRunning && !runningWeekly) return;
+    const intervalId = window.setInterval(() => {
+      void loadData(true);
+    }, POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [hasFreshRunning, runningWeekly, loadData]);
 
   const handleDeleteCycle = async (cycleId: string) => {
     const { error } = await supabase.from("did_update_cycles").delete().eq("id", cycleId);
-    if (error) { toast.error("Nepodařilo se smazat záznam"); return; }
+    if (error) {
+      toast.error("Nepodařilo se smazat záznam");
+      return;
+    }
     toast.success("Týdenní report smazán");
-    loadData(true);
+    void loadData(true);
   };
 
   const handleRunWeekly = async () => {
     setRunningWeekly(true);
-    toast.info("Spouštím týdenní analýzu... Může trvat 2-5 minut.");
+    toast.info("Týdenní cyklus jsem spustil. Průběh teď budu průběžně obnovovat.");
+
     try {
       const headers = await getAuthHeaders();
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 280000); // 280s timeout
-      
+      const timeout = window.setTimeout(() => controller.abort(), 20000);
+
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-weekly-cycle`,
         { method: "POST", headers, body: JSON.stringify({ source: "manual" }), signal: controller.signal }
       );
-      clearTimeout(timeout);
+
+      window.clearTimeout(timeout);
 
       let result: any = null;
       try {
@@ -76,36 +95,32 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
         result = null;
       }
 
-      if (resp.ok) {
-        if (result?.skipped && result?.reason === "already_running") {
-          toast.info("Týdenní cyklus už běží na pozadí. Průběh se obnovuje automaticky.");
-        } else if (result?.skipped && result?.reason === "not_sunday") {
-          toast.info("Automatické spuštění z cron je povoleno jen v neděli.");
-        } else {
-          toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result?.cardsUpdated?.length || 0} položek.`);
-        }
+      if (!resp.ok) {
+        toast.error(`Chyba: ${String(result?.error || "Neznámá chyba").slice(0, 200)}`);
+        return;
+      }
+
+      if (result?.skipped && result?.reason === "already_running") {
+        toast.info("Týdenní cyklus už běží na pozadí.");
+      } else if (result?.skipped && result?.reason === "already_completed_recently") {
+        toast.info("Týdenní cyklus už proběhl před chvílí, zbytečně ho nespouštím znovu.");
+      } else if (result?.skipped && result?.reason === "not_sunday") {
+        toast.info("Automatické spuštění z cron je povoleno jen v neděli.");
       } else {
-        const errText = result?.error || "Neznámá chyba";
-        toast.error(`Chyba: ${String(errText).slice(0, 200)}`);
+        toast.success(`Týdenní cyklus dokončen. Aktualizováno: ${result?.cardsUpdated?.length || 0} položek.`);
       }
     } catch (e: any) {
       if (e.name === "AbortError") {
-        toast.info("Cyklus pravděpodobně stále běží na pozadí. Obnovte stránku za chvíli.");
+        toast.info("Týdenní cyklus běží dál na pozadí — nechávám panel průběžně obnovovat.");
       } else {
         toast.error(e.message || "Chyba při spouštění týdenního cyklu");
       }
     } finally {
       setRunningWeekly(false);
-      loadData();
+      void loadData(true);
       onWeeklyCycleComplete?.();
     }
   };
-
-  const hasActiveWeekly = cycles.some((cycle) => {
-    if (cycle.status !== "running") return false;
-    const startedAt = new Date(cycle.started_at).getTime();
-    return Date.now() - startedAt < RUNNING_TIMEOUT_MS;
-  });
 
   if (loading) {
     return (
@@ -117,23 +132,22 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
 
   return (
     <div className="space-y-3">
-      {/* Run weekly button */}
       <div className="flex items-center justify-between">
-        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+        <h4 className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           <FileText className="w-3.5 h-3.5 text-primary" />
-          Terapeutické dohody & Týdenní analýzy
+          Terapeutické dohody & Týdenní analýza
         </h4>
         <Button
           variant="outline"
           size="sm"
           onClick={handleRunWeekly}
-          disabled={runningWeekly || hasActiveWeekly}
-          className="h-6 text-[10px] px-2"
+          disabled={runningWeekly || hasFreshRunning}
+          className="h-6 px-2 text-[10px]"
         >
           {runningWeekly ? (
-            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Analyzuji...</>
-          ) : hasActiveWeekly ? (
-            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží na pozadí...</>
+            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Spouštím...</>
+          ) : hasFreshRunning ? (
+            <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</>
           ) : (
             <><RefreshCw className="w-3 h-3 mr-1" /> Spustit týdenní cyklus</>
           )}
@@ -141,59 +155,58 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
       </div>
 
       {cycles.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">
+        <p className="py-4 text-center text-xs text-muted-foreground">
           Zatím neproběhl žádný týdenní cyklus. Spusť ho tlačítkem výše.
         </p>
       ) : (
-        cycles
-          .filter(cycle => {
-            // Hide stuck "running" cycles older than 10 min (client-side only, no DB write)
-            if (cycle.status === "running") {
-              return Date.now() - new Date(cycle.started_at).getTime() < RUNNING_TIMEOUT_MS;
-            }
-            return true;
-          })
-          .map(cycle => {
+        cycles.map((cycle) => {
           const cards = Array.isArray(cycle.cards_updated) ? cycle.cards_updated : [];
-          const isRunning = cycle.status === "running";
+          const isStaleRunning = cycle.status === "running" && Date.now() - new Date(cycle.started_at).getTime() >= RUNNING_TIMEOUT_MS;
+          const visualStatus = isStaleRunning ? "failed" : cycle.status;
+          const isRunning = visualStatus === "running";
+          const isFailed = visualStatus === "failed";
           const isExpanded = expandedCycle === cycle.id;
           const displayDate = cycle.completed_at || cycle.started_at;
+          const statusLabel = isRunning ? "Běží" : isFailed ? "Selhalo" : "Dokončeno";
+          const summary = isStaleRunning
+            ? "Cyklus se zřejmě zasekl nebo překročil limit. Můžeš ho spustit znovu."
+            : cycle.report_summary;
 
           return (
-            <div key={cycle.id} className={`group rounded-lg border bg-card/50 ${isRunning ? "border-primary/40 animate-pulse" : "border-border"}`}>
+            <div
+              key={cycle.id}
+              className={`group rounded-lg border bg-card/50 ${isRunning ? "border-primary/40" : isFailed ? "border-destructive/30" : "border-border"}`}
+            >
               <button
                 onClick={() => !isRunning && setExpandedCycle(isExpanded ? null : cycle.id)}
-                className="w-full p-3 text-left hover:bg-muted/30 transition-colors"
+                className="w-full p-3 text-left transition-colors hover:bg-muted/30"
                 disabled={isRunning}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <div>
                     <span className="text-xs font-medium text-foreground">
                       {isRunning ? "⏳ Probíhá analýza..." : `Týden ${displayDate ? new Date(displayDate).toLocaleDateString("cs-CZ") : "?"}`}
                     </span>
-                    <div className="flex gap-1 mt-1 flex-wrap">
-                      {isRunning ? (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 border-primary/30 text-primary">
-                          <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> Běží...
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0">
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <Badge variant="outline" className={`px-1 py-0 text-[9px] ${isFailed ? "border-destructive/40 text-destructive" : isRunning ? "border-primary/30 text-primary" : ""}`}>
+                        {isRunning ? <Loader2 className="w-2.5 h-2.5 animate-spin mr-0.5" /> : isFailed ? <AlertCircle className="w-2.5 h-2.5 mr-0.5" /> : null}
+                        {statusLabel}
+                      </Badge>
+                      {!isRunning && !isFailed && (
+                        <Badge variant="outline" className="px-1 py-0 text-[9px]">
                           {cards.length} aktualizací
                         </Badge>
                       )}
                     </div>
                   </div>
+
                   <div className="flex items-center gap-1">
-                    {!isRunning && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {isExpanded ? "▲" : "▼"}
-                      </span>
-                    )}
+                    {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
                     {!isRunning && (
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={(e) => { e.stopPropagation(); handleDeleteCycle(cycle.id); }}
+                        onClick={(e) => { e.stopPropagation(); void handleDeleteCycle(cycle.id); }}
                         className="h-5 w-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <Trash2 className="w-3 h-3" />
@@ -203,27 +216,28 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                 </div>
               </button>
 
-              {isExpanded && cycle.report_summary && (
-                <div className="px-3 pb-3 border-t border-border/50">
-                  <div className="mt-2 prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed">
+              {isExpanded && summary && (
+                <div className="border-t border-border/50 px-3 pb-3">
+                  <div className="prose prose-sm mt-2 max-w-none text-[11px] leading-relaxed dark:prose-invert">
                     <ReactMarkdown
                       components={{
-                        h2: ({ children }) => <h2 className="text-sm font-semibold text-foreground mt-3 mb-1 first:mt-1">{children}</h2>,
-                        h3: ({ children }) => <h3 className="text-xs font-medium text-foreground mt-2 mb-0.5">{children}</h3>,
-                        p: ({ children }) => <p className="text-muted-foreground mb-1.5 leading-relaxed">{children}</p>,
-                        strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
+                        h2: ({ children }) => <h2 className="mt-3 mb-1 text-sm font-semibold text-foreground first:mt-1">{children}</h2>,
+                        h3: ({ children }) => <h3 className="mt-2 mb-0.5 text-xs font-medium text-foreground">{children}</h3>,
+                        p: ({ children }) => <p className="mb-1.5 leading-relaxed text-muted-foreground">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
                       }}
                     >
-                      {cycle.report_summary.slice(0, 3000)}
+                      {summary.slice(0, 3000)}
                     </ReactMarkdown>
                   </div>
+
                   {cards.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-border/30">
-                      <p className="text-[10px] text-muted-foreground font-medium mb-1">Aktualizované položky:</p>
+                    <div className="mt-2 border-t border-border/30 pt-2">
+                      <p className="mb-1 text-[10px] font-medium text-muted-foreground">Aktualizované položky:</p>
                       <div className="flex flex-wrap gap-1">
-                        {cards.map((c: any, i: number) => (
-                          <Badge key={i} variant="secondary" className="text-[9px] px-1 py-0">
-                            {typeof c === "string" ? c : c?.name || "?"}
+                        {cards.map((card: any, index: number) => (
+                          <Badge key={index} variant="secondary" className="px-1 py-0 text-[9px]">
+                            {typeof card === "string" ? card : card?.name || "?"}
                           </Badge>
                         ))}
                       </div>
