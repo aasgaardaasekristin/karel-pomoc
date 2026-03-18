@@ -14,6 +14,11 @@ const MAX_CONVERSATION_MESSAGE_CHARS = 180;
 const truncate = (value: string, max: number) =>
   value.length > max ? `${value.slice(0, max)}…` : value;
 
+const PHASE_BUDGET_MS = 130000;
+const GOOGLE_FETCH_TIMEOUT_MS = 12000;
+const PERPLEXITY_TIMEOUT_MS = 12000;
+const MIN_BUDGET_FOR_PERPLEXITY_MS = 22000;
+
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timeoutId: number | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -23,17 +28,41 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   finally { if (timeoutId) clearTimeout(timeoutId); }
 }
 
+async function fetchWithRetry(input: string, init: RequestInit, label: string, timeoutMs: number, attempts = 2) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const response = await withTimeout(fetch(input, init), timeoutMs, `${label} (attempt ${attempt})`);
+      if (response.ok || response.status < 500) return response;
+      lastError = new Error(`${label} failed with status ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(`${label} failed`);
+}
+
+const hasBudget = (startedAt: number, reserveMs = 0) => Date.now() - startedAt < PHASE_BUDGET_MS - reserveMs;
+
 // ═══ OAuth2 token helper ═══
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
   const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
   const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
   if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
-  });
+
+  const res = await fetchWithRetry(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+    },
+    "Google token",
+    GOOGLE_FETCH_TIMEOUT_MS,
+    3,
+  );
+
   const data = await res.json();
   if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
   return data.access_token;
