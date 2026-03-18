@@ -64,25 +64,48 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+let nonDirectPartNameVariantsForSanitizer: string[] = [];
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sanitizePerspectiveLanguage(text: string, nonDirectPartNames: string[]): string {
+  let sanitized = text;
+
+  for (const partName of nonDirectPartNames) {
+    const escapedPartName = escapeRegex(partName).replace(/\s+/g, "\\s+");
+    sanitized = sanitized.replace(
+      new RegExp(`\\b${escapedPartName}\\b\\s+(?:s\\s+Karlem\\s+)?komunikoval(?:a|o|i)?\\b`, "gi"),
+      `o ${partName} se mluvilo`
+    );
+  }
+
+  return sanitized;
+}
+
 function sanitizeOverviewText(text: string): string {
-  return text
-    .replace(/\[(REG|ÚKOL|SRC|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
-    .replace(/^(\s*)\*\s+/gm, "$1– ")
-    .replace(/^(\s*)##+\s*/gm, "$1")
-    .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
-    .replace(/\bHano\b/gi, "Haničko")
-    .replace(/\b(redistribuc(e|i|í)|integra(c|č)e poznatk(ů|u)|situační cache|stav systému podle registru)\b/gi, "")
-    // Strip hallucinated stability/health scores
-    .replace(/stabilit(a|y|u|ou)\s*:?\s*\d+\s*\/\s*\d+/gi, "")
-    .replace(/\d+\s*\/\s*10/g, "")
-    .replace(/emoční intenzit(a|y|u)\s*:?\s*\d+/gi, "")
-    .replace(/zdraví karty\s*:?\s*\d+\s*%?/gi, "")
-    // Strip clinical jargon the model keeps injecting
-    .replace(/\b(akutn(í|ě|ího)\s+(distres|přetížen|stres))/gi, "")
-    .replace(/\b(dekompenzac(e|i|í))\b/gi, "")
-    .replace(/\b(somatiz(ace|uje|oval))\b/gi, "")
-    .replace(/\b(regres(e|i|í))\b/gi, "")
-    .replace(/\n{3,}/g, "\n\n");
+  return sanitizePerspectiveLanguage(
+    text
+      .replace(/\[(REG|ÚKOL|SRC|VLÁKNO:[^\]]+|KARTA:[^\]]+|DRIVE:[^\]]+)\]/g, "")
+      .replace(/^(\s*)\*\s+/gm, "$1– ")
+      .replace(/^(\s*)##+\s*/gm, "$1")
+      .replace(/Stav systému podle registru/gi, "Aktuální obraz systému")
+      .replace(/\bHano\b/gi, "Haničko")
+      .replace(/\b(redistribuc(e|i|í)|integra(c|č)e poznatk(ů|u)|situační cache|stav systému podle registru)\b/gi, "")
+      // Strip hallucinated stability/health scores
+      .replace(/stabilit(a|y|u|ou)\s*:?\s*\d+\s*\/\s*\d+/gi, "")
+      .replace(/\d+\s*\/\s*10/g, "")
+      .replace(/emoční intenzit(a|y|u)\s*:?\s*\d+/gi, "")
+      .replace(/zdraví karty\s*:?\s*\d+\s*%?/gi, "")
+      // Strip clinical jargon the model keeps injecting
+      .replace(/\b(akutn(í|ě|ího)\s+(distres|přetížen|stres))/gi, "")
+      .replace(/\b(dekompenzac(e|i|í))\b/gi, "")
+      .replace(/\b(somatiz(ace|uje|oval))\b/gi, "")
+      .replace(/\b(regres(e|i|í))\b/gi, "")
+      .replace(/\n{3,}/g, "\n\n"),
+    nonDirectPartNameVariantsForSanitizer
+  );
 }
 
 function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStream<Uint8Array> | null {
@@ -95,6 +118,8 @@ function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStr
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       let buffer = "";
+      let rawAssistantText = "";
+      let emittedSanitizedText = "";
 
       const flushLine = (line: string) => {
         if (line.startsWith("data: ")) {
@@ -104,7 +129,11 @@ function sanitizeSseBody(stream: ReadableStream<Uint8Array> | null): ReadableStr
               const parsed = JSON.parse(payload);
               const content = parsed?.choices?.[0]?.delta?.content;
               if (typeof content === "string") {
-                parsed.choices[0].delta.content = sanitizeOverviewText(content);
+                rawAssistantText += content;
+                const fullySanitizedText = sanitizeOverviewText(rawAssistantText);
+                const nextSanitizedChunk = fullySanitizedText.slice(emittedSanitizedText.length);
+                emittedSanitizedText = fullySanitizedText;
+                parsed.choices[0].delta.content = nextSanitizedChunk;
               }
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
               return;
@@ -332,6 +361,15 @@ serve(async (req) => {
     pushMentionsFromSource("DID-HISTORIE", didConversations24h, (row) => row.messages, "uživatel");
     pushMentionsFromSource("HANA", hanaConversations24h, (row) => row.messages, "Hanička");
     pushMentionsFromSource("RESEARCH", researchThreads24h, (row) => row.messages, "uživatel");
+
+    nonDirectPartNameVariantsForSanitizer = partAliasMap
+      .filter((part) => !directThreadActivity.has(part.key))
+      .flatMap((part) => [part.display, ...part.aliases])
+      .map((name) => (typeof name === "string" ? name.trim() : ""))
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+
+    nonDirectPartNameVariantsForSanitizer = [...new Set(nonDirectPartNameVariantsForSanitizer)];
 
     // ── 2a. Formát snapshotu částí bez technického balastu ──
     let partsSnapshotBlock = "";
