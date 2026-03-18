@@ -767,20 +767,16 @@ const Chat = () => {
 
   const loadKnownParts = async () => {
     try {
-      const headers = await getAuthHeaders();
-      // List all files in 01_AKTIVNI_FRAGMENTY to get part names
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-        { method: "POST", headers, body: JSON.stringify({ listAll: true, subFolder: "01_AKTIVNI_FRAGMENTY" }) }
+      const { data } = await supabase
+        .from("did_part_registry")
+        .select("part_name, display_name")
+        .eq("status", "active")
+        .order("updated_at", { ascending: false });
+
+      const names = uniqueSanitizedPartNames(
+        ((data as any[]) || []).flatMap((row) => [row.display_name, row.part_name]),
       );
-      if (response.ok) {
-        const data = await response.json();
-        const files = data.files || [];
-        const names = files
-          .filter((f: any) => f.mimeType !== "application/vnd.google-apps.folder")
-          .map((f: any) => f.name.replace(/^\d+_/, "").replace(/\.(txt|md|doc|docx)$/i, ""));
-        setKnownParts(names.slice(0, 30));
-      }
+      setKnownParts(names.slice(0, 30));
     } catch {}
   };
 
