@@ -45,6 +45,20 @@ const PHASE_PROGRESS: Record<string, number> = {
   failed: 0,
 };
 
+const NEXT_PHASE_BY_STATE: Record<string, string | undefined> = {
+  created: "gather",
+  gathered: "analyze",
+  analyzed: "distribute",
+  distributed: "notify",
+};
+
+const PHASE_TOAST_LABEL: Record<string, string> = {
+  gather: "Fáze 2/5: Sbírám data z Drive a databáze...",
+  analyze: "Fáze 3/5: AI analyzuje data...",
+  distribute: "Fáze 4/5: Zapisuji na Drive a synchronizuji úkoly...",
+  notify: "Fáze 5/5: Odesílám e-maily...",
+};
+
 const POLL_INTERVAL_MS = 4000;
 const STALE_TIMEOUT_MS = 8 * 60 * 1000;
 
@@ -54,6 +68,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
   const [activeCycleId, setActiveCycleId] = useState<string | null>(null);
   const [expandedCycle, setExpandedCycle] = useState<string | null>(null);
   const chainingRef = useRef(false);
+  const autoAdvancedPhaseRef = useRef<string | null>(null);
 
   const loadData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -96,11 +111,33 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
     return result;
   }, []);
 
+  const continueCycle = useCallback(async (cycle: WeeklyCycleData) => {
+    const nextPhase = NEXT_PHASE_BY_STATE[cycle.phase];
+    if (!nextPhase || chainingRef.current) return;
+
+    chainingRef.current = true;
+    setActiveCycleId(cycle.id);
+    autoAdvancedPhaseRef.current = `${cycle.id}:${cycle.phase}`;
+
+    try {
+      toast.info(PHASE_TOAST_LABEL[nextPhase] || "Navazuji na další fázi týdenního cyklu...");
+      await callPhase(nextPhase, cycle.id);
+      if (nextPhase === "notify") onWeeklyCycleComplete?.();
+    } catch (e: any) {
+      if (e.name === "TimeoutError" || e.name === "AbortError") {
+        toast.info("Fáze běží na pozadí – panel průběžně obnovuji.");
+      } else {
+        toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
+      }
+    } finally {
+      chainingRef.current = false;
+      void loadData(true);
+    }
+  }, [callPhase, loadData, onWeeklyCycleComplete]);
+
   const runPhaseChain = useCallback(async () => {
     if (chainingRef.current) return;
     chainingRef.current = true;
-
-    let currentCycleId: string | null = null;
 
     try {
       toast.info("Týdenní cyklus spuštěn – fáze 1/5");
@@ -115,40 +152,38 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
         return;
       }
 
-      currentCycleId = kickoffResult.cycleId;
-      setActiveCycleId(currentCycleId);
-      void loadData(true);
-
-      toast.info("Fáze 2/5: Sbírám data z Drive a databáze...");
-      await callPhase("gather", currentCycleId);
-      void loadData(true);
-
-      toast.info("Fáze 3/5: AI analyzuje data...");
-      await callPhase("analyze", currentCycleId);
-      void loadData(true);
-
-      toast.info("Fáze 4/5: Zapisuji na Drive a synchronizuji úkoly...");
-      await callPhase("distribute", currentCycleId);
-      void loadData(true);
-
-      toast.info("Fáze 5/5: Odesílám e-maily...");
-      await callPhase("notify", currentCycleId);
-      void loadData(true);
-
-      toast.success("Týdenní cyklus úspěšně dokončen! ✅");
-      onWeeklyCycleComplete?.();
-    } catch (e: any) {
-      if (e.name === "TimeoutError" || e.name === "AbortError") {
-        if (currentCycleId) setActiveCycleId(currentCycleId);
-        toast.info("Fáze běží na pozadí – panel průběžně obnovuji.");
-      } else {
-        toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
+      if (kickoffResult.cycleId) {
+        setActiveCycleId(kickoffResult.cycleId);
+        autoAdvancedPhaseRef.current = null;
       }
+
+      void loadData(true);
+    } catch (e: any) {
+      toast.error(`Chyba: ${e.message?.slice(0, 200) || "Neznámá chyba"}`);
       void loadData(true);
     } finally {
       chainingRef.current = false;
     }
-  }, [callPhase, loadData, onWeeklyCycleComplete]);
+  }, [callPhase, loadData]);
+
+  const runningCycle = useMemo(
+    () => cycles.find((cycle) => cycle.status === "running") ?? null,
+    [cycles]
+  );
+
+  useEffect(() => {
+    if (!activeCycleId && runningCycle) setActiveCycleId(runningCycle.id);
+  }, [activeCycleId, runningCycle]);
+
+  useEffect(() => {
+    const cycle = cycles.find((item) => item.id === activeCycleId) ?? runningCycle;
+    if (!cycle || cycle.status !== "running") return;
+
+    const resumeKey = `${cycle.id}:${cycle.phase}`;
+    if (!NEXT_PHASE_BY_STATE[cycle.phase] || autoAdvancedPhaseRef.current === resumeKey || chainingRef.current) return;
+
+    void continueCycle(cycle);
+  }, [cycles, activeCycleId, runningCycle, continueCycle]);
 
   useEffect(() => {
     if (!activeCycleId) return;
