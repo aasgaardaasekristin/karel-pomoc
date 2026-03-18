@@ -977,9 +977,14 @@ export type Database = {
           context_data: Json
           created_at: string
           cycle_type: string
+          heartbeat_at: string | null
           id: string
+          last_error: string | null
           phase: string
           phase_detail: string
+          phase_step: string | null
+          progress_current: number | null
+          progress_total: number | null
           report_summary: string | null
           started_at: string
           status: string
@@ -991,9 +996,14 @@ export type Database = {
           context_data?: Json
           created_at?: string
           cycle_type?: string
+          heartbeat_at?: string | null
           id?: string
+          last_error?: string | null
           phase?: string
           phase_detail?: string
+          phase_step?: string | null
+          progress_current?: number | null
+          progress_total?: number | null
           report_summary?: string | null
           started_at?: string
           status?: string
@@ -1005,9 +1015,14 @@ export type Database = {
           context_data?: Json
           created_at?: string
           cycle_type?: string
+          heartbeat_at?: string | null
           id?: string
+          last_error?: string | null
           phase?: string
           phase_detail?: string
+          phase_step?: string | null
+          progress_current?: number | null
+          progress_total?: number | null
           report_summary?: string | null
           started_at?: string
           status?: string
