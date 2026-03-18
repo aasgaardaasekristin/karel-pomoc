@@ -1348,7 +1348,11 @@ export type Database = {
       user_theme_preferences: {
         Row: {
           accent_color: string
+          animations_enabled: boolean
           background_image_url: string | null
+          border_radius: string
+          chat_bubble_style: string
+          compact_mode: boolean
           created_at: string
           dark_mode: boolean
           font_scale: number
@@ -1361,7 +1365,11 @@ export type Database = {
         }
         Insert: {
           accent_color?: string
+          animations_enabled?: boolean
           background_image_url?: string | null
+          border_radius?: string
+          chat_bubble_style?: string
+          compact_mode?: boolean
           created_at?: string
           dark_mode?: boolean
           font_scale?: number
@@ -1374,7 +1382,11 @@ export type Database = {
         }
         Update: {
           accent_color?: string
+          animations_enabled?: boolean
           background_image_url?: string | null
+          border_radius?: string
+          chat_bubble_style?: string
+          compact_mode?: boolean
           created_at?: string
           dark_mode?: boolean
           font_scale?: number
