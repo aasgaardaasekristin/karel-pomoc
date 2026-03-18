@@ -1,14 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Clock, AlertTriangle, Loader2, BookOpen, ListChecks, FileText, BarChart3, Upload, Database, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, BookOpen, Database, Loader2, RefreshCw, ListChecks, FileText, BarChart3, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
-import DidSystemMap from "./DidSystemMap";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
-import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
 import type { DidSubMode } from "./DidSubModeSelector";
+import DidSystemMap from "./DidSystemMap";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidSessionPrep from "./DidSessionPrep";
@@ -17,94 +15,268 @@ import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
-...
-      {/* Colleague View */}
-      <div className="mb-4">
-        <DidColleagueView refreshTrigger={refreshTrigger} />
-      </div>
 
-      {/* Registry Overview (Phase 5) */}
-      <div className="mb-4">
-        <DidRegistryOverview refreshTrigger={refreshTrigger} onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined} />
-      </div>
+interface PartActivity {
+  name: string;
+  lastSeen: string | null;
+  status: "active" | "sleeping" | "warning";
+}
 
-      {/* Kartotéka Health Check */}
-      <div className="mb-4">
-        <DidKartotekaHealth refreshTrigger={refreshTrigger} />
-      </div>
+interface ActiveThreadSummary {
+  id: string;
+  partName: string;
+  lastActivityAt: string;
+  messageCount: number;
+}
 
-      {/* DID Memory Bootstrap */}
+interface Props {
+  onManualUpdate: () => void;
+  isUpdating: boolean;
+  syncProgress?: { current: number; total: number; currentName: string } | null;
+  onQuickSubMode?: (subMode: DidSubMode) => void;
+  onQuickThread?: (threadId: string, partName: string) => void;
+  contextDocs?: string;
+}
+
+const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread }: Props) => {
+  const [parts, setParts] = useState<PartActivity[]>([]);
+  const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
+  const [pendingWriteCount, setPendingWriteCount] = useState(0);
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
+  const [bootstrapProgress, setBootstrapProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const loadDashboardData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [threadsRes, pendingWritesRes] = await Promise.all([
+        supabase
+          .from("did_threads")
+          .select("id, part_name, last_activity_at, messages")
+          .eq("sub_mode", "cast")
+          .order("last_activity_at", { ascending: false }),
+        supabase
+          .from("did_pending_drive_writes")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending"),
+      ]);
+
+      const threads = threadsRes.data || [];
+      const now = Date.now();
+      const latestByPart = new Map<string, ActiveThreadSummary>();
+      const partRows: PartActivity[] = [];
+
+      for (const thread of threads) {
+        const lastSeen = thread.last_activity_at || null;
+        const diffDays = lastSeen ? (now - new Date(lastSeen).getTime()) / (1000 * 60 * 60 * 24) : Number.POSITIVE_INFINITY;
+        const status: PartActivity["status"] = diffDays <= 1 ? "active" : diffDays > 7 ? "warning" : "sleeping";
+
+        if (!latestByPart.has(thread.part_name)) {
+          latestByPart.set(thread.part_name, {
+            id: thread.id,
+            partName: thread.part_name,
+            lastActivityAt: thread.last_activity_at,
+            messageCount: Array.isArray(thread.messages) ? thread.messages.length : 0,
+          });
+
+          partRows.push({
+            name: thread.part_name,
+            lastSeen,
+            status,
+          });
+        }
+      }
+
+      setParts(partRows);
+      setActiveThreads(Array.from(latestByPart.values()));
+      setPendingWriteCount(pendingWritesRes.count || 0);
+    } catch (error) {
+      console.error("Failed to load DID dashboard data:", error);
+      toast.error("Nepodařilo se načíst DID dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData, refreshTrigger]);
+
+  const runDidBootstrap = useCallback(async () => {
+    setIsBootstrapping(true);
+    setBootstrapProgress({ current: 0, total: 1, currentName: "Spouštím bootstrap" });
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-memory-bootstrap`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ phase: "scan" }),
+        }
+      );
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Bootstrap selhal");
+      }
+
+      setBootstrapProgress({ current: 1, total: 1, currentName: payload?.message || "Hotovo" });
+      toast.success("Bootstrap DID paměti spuštěn");
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (error: any) {
+      console.error("Bootstrap failed:", error);
+      toast.error(error?.message || "Bootstrap DID paměti selhal");
+    } finally {
+      setIsBootstrapping(false);
+    }
+  }, []);
+
+  const warningParts = useMemo(() => parts.filter((part) => part.status === "warning"), [parts]);
+
+  return (
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
       <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-            <Database className="w-3.5 h-3.5 text-primary" />
-            Bootstrap DID paměti
-          </h4>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runDidBootstrap}
-            disabled={isBootstrapping}
-            className="h-7 text-[10px] px-3"
-          >
-            {isBootstrapping ? (
-              <><Loader2 className="w-3 h-3 animate-spin mr-1" />Zpracovávám...</>
-            ) : (
-              "Spustit bootstrap"
-            )}
-          </Button>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">DID dashboard</h3>
+            <p className="text-xs text-muted-foreground">Soukromá countertransference mapa byla odstraněna z rozhraní.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <DidSessionPrep />
+            <Button variant="outline" size="sm" onClick={onManualUpdate} disabled={isUpdating} className="h-7 text-[10px] px-2">
+              {isUpdating ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Aktualizuji...</> : <><RefreshCw className="w-3 h-3 mr-1" /> Aktual. kartotéku</>}
+            </Button>
+          </div>
         </div>
-        <p className="text-[10px] text-muted-foreground mt-1">
-          Jednorázové nasátí všech karet z Drive do registru částí a sémantické paměti.
-        </p>
-        {bootstrapProgress && (
-          <div className="mt-2">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
-              <span>{bootstrapProgress.current}/{bootstrapProgress.total} — {bootstrapProgress.currentName}</span>
-              <span>{Math.round((bootstrapProgress.current / bootstrapProgress.total) * 100)}%</span>
+
+        {(isUpdating || syncProgress) && syncProgress && (
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>{syncProgress.current}/{syncProgress.total} — {syncProgress.currentName}</span>
+              <span>{Math.round((syncProgress.current / Math.max(1, syncProgress.total)) * 100)}%</span>
             </div>
-            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full bg-primary rounded-full transition-all duration-300"
-                style={{ width: `${(bootstrapProgress.current / bootstrapProgress.total) * 100}%` }}
+                className="h-full rounded-full bg-primary transition-all duration-300"
+                style={{ width: `${(syncProgress.current / Math.max(1, syncProgress.total)) * 100}%` }}
               />
             </div>
           </div>
         )}
       </div>
 
-      {/* System Map */}
-      <DidSystemMap
-        parts={parts}
-        activeThreads={activeThreads}
-        onQuickThread={onQuickThread}
-        onDeletePart={async (partName) => {
-          // Delete all threads for this part from the database
-          const { error } = await supabase
-            .from("did_threads")
-            .delete()
-            .eq("part_name", partName)
-            .eq("sub_mode", "cast");
-          if (error) {
-            toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
-          } else {
-            toast.success(`Vlákna pro „${partName}" smazána z mapy`);
-            setParts(prev => prev.filter(p => p.name !== partName));
-            setActiveThreads(prev => prev.filter(t => t.partName !== partName));
-          }
-        }}
-      />
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <ListChecks className="w-3.5 h-3.5 text-primary" />
+            Úkoly pro terapeutky
+          </h4>
+          {pendingWriteCount > 0 && (
+            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 flex items-center gap-1">
+              <Upload className="w-2.5 h-2.5" />
+              {pendingWriteCount} čeká na Drive
+            </Badge>
+          )}
+        </div>
+        <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
+      </div>
 
-      {/* Warnings */}
-      {parts.filter(p => p.status === "warning").length > 0 && (
-        <div className="mt-3 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-yellow-600 mb-1">
-            <AlertTriangle className="w-4 h-4" />
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
+      </div>
+
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+      </div>
+
+      <div className="mb-4">
+        <DidPulseCheck refreshTrigger={refreshTrigger} />
+      </div>
+
+      <div className="mb-4">
+        <DidColleagueView refreshTrigger={refreshTrigger} />
+      </div>
+
+      <div className="mb-4">
+        <DidRegistryOverview
+          refreshTrigger={refreshTrigger}
+          onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
+        />
+      </div>
+
+      <div className="mb-4">
+        <DidKartotekaHealth refreshTrigger={refreshTrigger} />
+      </div>
+
+      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <Database className="w-3.5 h-3.5 text-primary" />
+            Bootstrap DID paměti
+          </h4>
+          <Button variant="outline" size="sm" onClick={runDidBootstrap} disabled={isBootstrapping} className="h-7 text-[10px] px-3">
+            {isBootstrapping ? <><Loader2 className="w-3 h-3 animate-spin mr-1" />Zpracovávám...</> : "Spustit bootstrap"}
+          </Button>
+        </div>
+        <p className="mt-1 text-[10px] text-muted-foreground">Jednorázové nasátí všech karet z Drive do registru částí a sémantické paměti.</p>
+        {bootstrapProgress && (
+          <div className="mt-2">
+            <div className="mb-1 flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>{bootstrapProgress.current}/{bootstrapProgress.total} — {bootstrapProgress.currentName}</span>
+              <span>{Math.round((bootstrapProgress.current / Math.max(1, bootstrapProgress.total)) * 100)}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-300"
+                style={{ width: `${(bootstrapProgress.current / Math.max(1, bootstrapProgress.total)) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!loading && parts.length > 0 && (
+        <DidSystemMap
+          parts={parts}
+          activeThreads={activeThreads}
+          onQuickThread={onQuickThread}
+          onDeletePart={async (partName) => {
+            const { error } = await supabase
+              .from("did_threads")
+              .delete()
+              .eq("part_name", partName)
+              .eq("sub_mode", "cast");
+
+            if (error) {
+              toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
+              return;
+            }
+
+            toast.success(`Vlákna pro „${partName}" smazána z mapy`);
+            setParts((prev) => prev.filter((part) => part.name !== partName));
+            setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
+          }}
+        />
+      )}
+
+      {warningParts.length > 0 && (
+        <div className="mt-3 rounded-lg border border-border bg-card/50 p-3">
+          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
+            <AlertTriangle className="w-4 h-4 text-primary" />
             Upozornění na neaktivní části
           </div>
           <p className="text-xs text-muted-foreground">
-            {parts.filter(p => p.status === "warning").map(p => p.name).join(", ")} – neaktivní více než 7 dní. Zvažte oslovení.
+            {warningParts.map((part) => part.name).join(", ")} – neaktivní více než 7 dní. Zvažte oslovení.
           </p>
+        </div>
+      )}
+
+      {loading && (
+        <div className="mt-4 flex items-center justify-center py-6 text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin mr-2" />
+          Načítám dashboard...
         </div>
       )}
     </div>
