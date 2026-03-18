@@ -1012,6 +1012,9 @@ ${driveDigest || "(nedostupné)"}
 
 ${partCardContent ? `═══ KARTA ČÁSTI: ${partName} ═══\n${partCardContent}` : ""}
 
+═══ REGISTR ČÁSTÍ (STATUS) ═══
+${registryDigest || "(registr prázdný)"}
+
 ═══ DID KONVERZACE (uložené) ═══
 ${didConversations.slice(0, 10).map((c: any) => `[${c.sub_mode}] ${c.label}: ${c.preview?.slice(0, 100)}`).join("\n") || "(žádné)"}
 

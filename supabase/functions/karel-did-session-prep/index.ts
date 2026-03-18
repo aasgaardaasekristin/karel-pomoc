@@ -280,17 +280,34 @@ EMOČNÍ STAV: ${partReg.last_emotional_state || "?"} (intenzita ${partReg.last_
     const cycleSummaries = cycles.map((c: any) => truncate(c.report_summary || "", 500)).join("\n---\n");
 
     // System prompt
+    // Dormancy guard
+    const partStatus = partReg?.status || "neznámý";
+    const isDormant = partStatus !== "active" && partStatus !== "aktivní";
+    const dormancyWarning = isDormant
+      ? `\n⚠️⚠️⚠️ DORMANCY GUARD ⚠️⚠️⚠️\nČást "${partName}" má status "${partStatus}". Část NEMUSÍ být k dispozici pro přímou práci.\nSezení MUSÍ začít sekcí o AKTIVAČNÍ STRATEGII – jak se pokusit část oslovit/probudit.\nNEPŘEDPOKLÁDEJ že část bude reagovat. Připrav alternativní plán pro případ neaktivace.\nVlákna kde sub_mode != "cast" jsou diskuze terapeutek O části, NE důkaz že je část přítomná.\n`
+      : "";
+
     const systemPrompt = isRevision
       ? `Jsi Karel, AI terapeut pro DID. ${therapistDisplay} ti poslala svůj stávající plán sezení s částí "${partName}" a chce ho upravit.
 Uprav plán podle jejího požadavku. Zachovej strukturu a formát, ale zapracuj změny.
-DŮLEŽITÉ: Nikdy nepoužívej dechová cvičení — klientka má epilepsii.
+DŮLEŽITÉ: Nikdy nepoužívej dechová cvičení — klientka má epilepsii.${dormancyWarning}
 Odpověz kompletním upraveným plánem ve stejném formátu.`
       : `Jsi Karel, top-tier AI terapeut specializovaný na DID (disociativní porucha identity).
 Připravuješ PERSONALIZOVANÝ plán 60minutového sezení pro terapeutku ${therapistDisplay} s částí "${partName}".
-
+${dormancyWarning}
 ${therapistKey === "hanka" ? "Hanička je primární terapeutka systému, zkušená a empatická. Oslovuj ji jako partnerku ('Haničko')." : "Káťa je spolupracující terapeutka. Oslovuj ji kolegiálně ('Káťo')."}
 
 CÍL TERAPEUTA: ${goalType === "specific" ? `Konkrétní cíl: ${goalText}` : goalType === "strengthen" ? `Chce posílit: ${goalText}` : "Terapeut nemá konkrétní cíl — navrhni optimální plán na základě dat."}
+
+═══ KRITICKÉ PRAVIDLO: AKTIVITA vs. ZMÍNKA ═══
+Karel MUSÍ rozlišovat v konverzacích:
+- PŘÍMÁ AKTIVITA (sub_mode="cast"): Část přímo mluvila → potvrzená aktivita.
+- ZMÍNKA (sub_mode="mamka"/"kata"): Terapeutka O části hovořila → část NEMUSÍ být k dispozici.
+Karel NESMÍ:
+- Předpokládat že část je aktivní jen proto, že o ní terapeutka mluvila
+- Plánovat přímou práci s částí bez ověření jejího statusu
+- Zadávat úkoly vyžadující přítomnost spící/dormantní části
+Pro spící části smí navrhovat POUZE: monitorování, přípravné kroky, vizualizace, symbolické aktivity.
 
 FORMÁT VÝSTUPU (vždy česky, markdown):
 
@@ -324,7 +341,8 @@ PRAVIDLA:
 - Navrhuj KREATIVNÍ aktivity, které budou bavit i terapeutku
 - Propoj vše s reálnými daty z karty a historie
 - Respektuj věk a jazyk části
-- Zohledni aktuální emoční stav a triggery`;
+- Zohledni aktuální emoční stav a triggery
+- NESMÍŠ navrhovat přímou práci se spícími/dormantními částmi`;
 
     const userContent = isRevision
       ? `STÁVAJÍCÍ PLÁN:\n${previousPlan}\n\nPOŽADAVEK NA ÚPRAVU:\n${revision}`
