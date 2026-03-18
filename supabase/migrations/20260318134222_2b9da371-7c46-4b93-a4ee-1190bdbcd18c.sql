@@ -1,0 +1,1 @@
+UPDATE user_theme_preferences SET dark_mode = false WHERE dark_mode = true;
