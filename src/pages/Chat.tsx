@@ -2061,7 +2061,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               }
               // DID: if not at entry, go back one level
               if (hubSection === "did" && didFlowState !== "entry") {
-                handleDidBack();
+                handleDidBackHierarchical();
                 return;
               }
               // Hana: hierarchical back
