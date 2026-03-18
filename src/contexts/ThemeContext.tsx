@@ -64,20 +64,20 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     setUserId(user.id);
 
     const { data } = await supabase
-      .from("user_theme_preferences")
+      .from("user_theme_preferences" as any)
       .select("*")
       .eq("persona", persona)
       .maybeSingle();
 
     if (data) {
       setPrefs({
-        persona: data.persona,
-        primary_color: data.primary_color,
-        accent_color: data.accent_color,
-        background_image_url: data.background_image_url || "",
-        theme_preset: data.theme_preset,
-        dark_mode: data.dark_mode,
-        font_scale: Number(data.font_scale),
+        persona: (data as any).persona,
+        primary_color: (data as any).primary_color,
+        accent_color: (data as any).accent_color,
+        background_image_url: (data as any).background_image_url || "",
+        theme_preset: (data as any).theme_preset,
+        dark_mode: (data as any).dark_mode,
+        font_scale: Number((data as any).font_scale),
       });
     } else {
       setPrefs({ ...DEFAULT_PREFS, persona });
