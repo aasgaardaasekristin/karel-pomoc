@@ -160,100 +160,102 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
-      {/* Správa button at top */}
-      <div className="flex justify-end mb-3">
-        <DidSprava
-          onBootstrap={runDidBootstrap}
-          isBootstrapping={isBootstrapping}
-          onHealthAudit={runHealthAudit}
-          isAuditing={isAuditing}
-          onReformat={runReformat}
-          isReformatting={isReformatting}
-          onManualUpdate={onManualUpdate}
-          isUpdating={isUpdating}
-        />
-      </div>
-
-      <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
-
-      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-            <ListChecks className="w-3.5 h-3.5 text-primary" />
-            Úkoly pro terapeutky
-          </h4>
-          {pendingWriteCount > 0 && (
-            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 flex items-center gap-1">
-              <Upload className="w-2.5 h-2.5" />
-              {pendingWriteCount} čeká na Drive
-            </Badge>
-          )}
+      <div className="mb-4 rounded-[calc(var(--radius)+0.5rem)] border border-border/70 bg-card/36 p-3 shadow-[0_10px_30px_hsl(var(--primary)/0.08)] backdrop-blur-md sm:p-4">
+        {/* Správa button at top */}
+        <div className="flex justify-end mb-3">
+          <DidSprava
+            onBootstrap={runDidBootstrap}
+            isBootstrapping={isBootstrapping}
+            onHealthAudit={runHealthAudit}
+            isAuditing={isAuditing}
+            onReformat={runReformat}
+            isReformatting={isReformatting}
+            onManualUpdate={onManualUpdate}
+            isUpdating={isUpdating}
+          />
         </div>
-        <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
-      </div>
 
-      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
-      </div>
+        <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
 
-      <div className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
-        <DidMonthlyPanel refreshTrigger={refreshTrigger} />
-      </div>
-
-      <div className="mb-4">
-        <DidPulseCheck refreshTrigger={refreshTrigger} />
-      </div>
-
-      <div className="mb-4">
-        <DidColleagueView refreshTrigger={refreshTrigger} />
-      </div>
-
-      <div className="mb-4">
-        <DidRegistryOverview
-          refreshTrigger={refreshTrigger}
-          onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-        />
-      </div>
-
-      <div className="mb-4">
-        <DidKartotekaHealth refreshTrigger={refreshTrigger} />
-      </div>
-
-      {!loading && parts.length > 0 && (
-        <DidSystemMap
-          parts={parts}
-          activeThreads={activeThreads}
-          onQuickThread={onQuickThread}
-          onDeletePart={async (partName) => {
-            const { error } = await supabase
-              .from("did_threads")
-              .delete()
-              .eq("part_name", partName)
-              .eq("sub_mode", "cast");
-
-            if (error) {
-              toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
-              return;
-            }
-
-            toast.success(`Vlákna pro „${partName}" smazána z mapy`);
-            setParts((prev) => prev.filter((part) => part.name !== partName));
-            setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
-          }}
-        />
-      )}
-
-      {warningParts.length > 0 && (
-        <div className="mt-3 rounded-lg border border-border bg-card/50 p-3">
-          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
-            <AlertTriangle className="w-4 h-4 text-primary" />
-            Upozornění na neaktivní části
+        <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <ListChecks className="w-3.5 h-3.5 text-primary" />
+              Úkoly pro terapeutky
+            </h4>
+            {pendingWriteCount > 0 && (
+              <Badge variant="secondary" className="text-[8px] h-4 px-1.5 flex items-center gap-1">
+                <Upload className="w-2.5 h-2.5" />
+                {pendingWriteCount} čeká na Drive
+              </Badge>
+            )}
           </div>
-          <p className="text-xs text-muted-foreground">
-            {warningParts.map((part) => part.name).join(", ")} – neaktivní více než 7 dní. Zvažte oslovení.
-          </p>
+          <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
         </div>
-      )}
+
+        <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+          <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
+        </div>
+
+        <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+          <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+        </div>
+
+        <div className="mb-4">
+          <DidPulseCheck refreshTrigger={refreshTrigger} />
+        </div>
+
+        <div className="mb-4">
+          <DidColleagueView refreshTrigger={refreshTrigger} />
+        </div>
+
+        <div className="mb-4">
+          <DidRegistryOverview
+            refreshTrigger={refreshTrigger}
+            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
+          />
+        </div>
+
+        <div className="mb-4">
+          <DidKartotekaHealth refreshTrigger={refreshTrigger} />
+        </div>
+
+        {!loading && parts.length > 0 && (
+          <DidSystemMap
+            parts={parts}
+            activeThreads={activeThreads}
+            onQuickThread={onQuickThread}
+            onDeletePart={async (partName) => {
+              const { error } = await supabase
+                .from("did_threads")
+                .delete()
+                .eq("part_name", partName)
+                .eq("sub_mode", "cast");
+
+              if (error) {
+                toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
+                return;
+              }
+
+              toast.success(`Vlákna pro „${partName}" smazána z mapy`);
+              setParts((prev) => prev.filter((part) => part.name !== partName));
+              setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
+            }}
+          />
+        )}
+
+        {warningParts.length > 0 && (
+          <div className="mt-3 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm">
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
+              <AlertTriangle className="w-4 h-4 text-primary" />
+              Upozornění na neaktivní části
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {warningParts.map((part) => part.name).join(", ")} – neaktivní více než 7 dní. Zvažte oslovení.
+            </p>
+          </div>
+        )}
+      </div>
 
       {loading && (
         <div className="mt-4 flex items-center justify-center py-6 text-sm text-muted-foreground">

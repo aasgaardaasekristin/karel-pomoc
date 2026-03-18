@@ -201,21 +201,21 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 body.has-bg-image {
   position: relative;
   background-image:
-    linear-gradient(180deg, hsl(var(--background) / 0.62), hsl(var(--background) / 0.82)),
-    radial-gradient(circle at 14% 18%, hsl(var(--theme-glow) / 0.28), transparent 0 24%),
-    radial-gradient(circle at 84% 14%, hsl(var(--theme-glow-strong) / 0.22), transparent 0 20%),
+    linear-gradient(160deg, hsl(var(--background) / 0.42), hsl(var(--background) / 0.72)),
+    radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.46), transparent 0 32%),
+    radial-gradient(circle at 88% 12%, hsl(var(--theme-glow-strong) / 0.34), transparent 0 28%),
     var(--bg-image);
   background-size: auto, auto, auto, cover;
-  background-position: center, 12% 18%, 84% 14%, center;
+  background-position: center, 8% 14%, 88% 12%, center;
   background-repeat: no-repeat;
   background-attachment: fixed;
 }
 
 .dark body.has-bg-image {
   background-image:
-    linear-gradient(180deg, hsl(var(--background) / 0.7), hsl(var(--background) / 0.88)),
-    radial-gradient(circle at 14% 18%, hsl(var(--theme-glow) / 0.22), transparent 0 24%),
-    radial-gradient(circle at 84% 14%, hsl(var(--theme-glow-strong) / 0.18), transparent 0 20%),
+    linear-gradient(160deg, hsl(var(--background) / 0.68), hsl(var(--background) / 0.86)),
+    radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.28), transparent 0 30%),
+    radial-gradient(circle at 88% 12%, hsl(var(--theme-glow-strong) / 0.22), transparent 0 26%),
     var(--bg-image);
 }
 
