@@ -26,6 +26,13 @@ const PRESETS: Record<string, Partial<ThemePrefs>> = {
   midnight: { primary_color: "214 24% 34%", accent_color: "206 18% 68%" },
   rose: { primary_color: "344 30% 50%", accent_color: "18 34% 78%" },
   mint: { primary_color: "164 28% 40%", accent_color: "148 22% 76%" },
+  // Therapeutic presets
+  sand: { primary_color: "32 22% 48%", accent_color: "38 26% 72%" },
+  stone: { primary_color: "200 12% 42%", accent_color: "180 10% 68%" },
+  dawn: { primary_color: "340 18% 52%", accent_color: "24 28% 74%" },
+  moss: { primary_color: "136 18% 36%", accent_color: "88 14% 66%" },
+  cloud: { primary_color: "210 18% 56%", accent_color: "220 14% 78%" },
+  earth: { primary_color: "22 26% 42%", accent_color: "34 20% 68%" },
 };
 
 const DEFAULT_PREFS: ThemePrefs = {
