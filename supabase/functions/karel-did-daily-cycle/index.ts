@@ -2308,11 +2308,10 @@ Datum: ${dateStr}` },
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel – AI asistent. Vygeneruj krátký denní report pro Káťu (kolegyni terapeutku). Profesionální, vstřícný tón.
+                    { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu. Vygeneruj krátký denní report pro Káťu. Profesionální, vstřícný tón.
 Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
-- Pozdrav Káťu
-- Řekni, že dnes byl klidný den
-- Krátké povzbuzení
+- Shrnutí stavu (klidný den)
+- Připomenutí otevřených úkolů pokud existují
 Datum: ${dateStr}` },
                     { role: "user", content: "Vygeneruj klidný denní report." },
                   ],
