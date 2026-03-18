@@ -613,11 +613,28 @@ async function phaseAnalyze(sb: any, cycleId: string) {
     throw new Error(`AI analysis failed: ${analysisResponse.status}`);
   }
 
+  // Extract report_summary IMMEDIATELY during analyze phase (safety net)
+  const reportSection = analysisText
+    ? (analysisText.match(/\[TYDENNI_REPORT\]([\s\S]*?)\[\/TYDENNI_REPORT\]/)?.[1]?.trim() || analysisText.slice(0, 5000))
+    : "Analýza proběhla, ale nebyl vygenerován report.";
+
+  // Save analysisText to context_data AND report_summary as backup
   const updatedContext = { ...ctx, analysisText };
-  await sb.from("did_update_cycles").update({
+  const { error: updateError } = await sb.from("did_update_cycles").update({
     phase: "analyzed", phase_detail: `Analýza dokončena: ${analysisText.length} znaků`,
     context_data: updatedContext, heartbeat_at: new Date().toISOString(),
+    report_summary: reportSection.slice(0, 50000),
   }).eq("id", cycleId);
+
+  if (updateError) {
+    console.error(`[weekly] CRITICAL: Failed to save analysis to DB:`, updateError);
+    // Try saving just the report_summary without the large context_data
+    await sb.from("did_update_cycles").update({
+      phase: "analyzed", phase_detail: `Analýza dokončena (context_data save failed)`,
+      heartbeat_at: new Date().toISOString(),
+      report_summary: reportSection.slice(0, 50000),
+    }).eq("id", cycleId);
+  }
 
   return { phase: "analyzed", analysisLength: analysisText.length };
 }
