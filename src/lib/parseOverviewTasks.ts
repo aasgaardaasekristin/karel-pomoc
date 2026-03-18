@@ -48,6 +48,11 @@ export function parseTasksFromOverview(text: string): ParsedTask[] {
     tasks.push(...extractTaskLines(sharedWeekly, "both", "longterm"));
   }
 
+  // --- FALLBACK: parse action bullets from "Dnes doporučuji" if structured sections are missing ---
+  if (tasks.length === 0) {
+    tasks.push(...extractRecommendationTasks(text));
+  }
+
   return tasks;
 }
 
