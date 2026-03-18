@@ -49,6 +49,7 @@ import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThre
 import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
+import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
 
 type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
 type HubSection = "did" | "hana" | "research" | null;
