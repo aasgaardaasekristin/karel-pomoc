@@ -231,6 +231,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [currentPersona, setCurrentPersona] = useState("default");
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const savedPrefsRef = useRef<ThemePrefs | null>(null);
 
   const loadPrefs = useCallback(async (persona: string) => {
     const { data: { user } } = await supabase.auth.getUser();
