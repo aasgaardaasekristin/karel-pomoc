@@ -421,8 +421,8 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const [newTask, setNewTask] = useState("");
   const [newAssignee, setNewAssignee] = useState<TherapistAssignee>("both");
   const [newCategory, setNewCategory] = useState<"today" | "tomorrow" | "longterm">("today");
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
-  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("today");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("hanka");
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
