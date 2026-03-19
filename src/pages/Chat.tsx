@@ -1246,29 +1246,76 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if (didSubMode && messages.length >= 2) {
       await saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
-    // Small delay to ensure DB writes complete
     await new Promise(r => setTimeout(r, 500));
 
     setIsManualUpdateLoading(true);
     try {
       const headers = await getAuthHeaders();
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
+      // Use karel-memory-mirror (more comprehensive: PAMET_KAREL + KARTOTEKA_DID + CENTRUM + ZALOHA)
+      const initRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
         method: "POST", headers, body: JSON.stringify({}),
       });
-      if (!response.ok) {
-        const errorBody = await response.text();
-        console.error("Manual update response:", response.status, errorBody);
-        throw new Error(`Chyba ${response.status}: ${errorBody.slice(0, 200)}`);
+      if (!initRes.ok) {
+        const errorBody = await initRes.text();
+        throw new Error(`Chyba ${initRes.status}: ${errorBody.slice(0, 200)}`);
       }
-      const result = await response.json();
-      const updatedCardsCount = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.length : 0;
-      const totalProcessed = (result.threadsProcessed || 0) + (result.conversationsProcessed || 0);
-      const cardNames = Array.isArray(result.cardsUpdated) ? result.cardsUpdated.join(", ") : "";
-      toast.success(`Aktualizace dokončena – ${totalProcessed} vláken, ${updatedCardsCount} karet${cardNames ? `: ${cardNames}` : ""}`);
+      const initData = await initRes.json();
 
-      // Phase 2: Automatically sync registry (backfill missing columns C-F)
+      if (initData.status === "skipped") {
+        toast.info(initData.reason || "Aktualizace již probíhá.");
+        return;
+      }
+
+      if (!initData.jobId) {
+        toast.error(initData.error || "Nepodařilo se vytvořit job.");
+        return;
+      }
+
+      const jobId = initData.jobId;
+      toast.success("Aktualizace spuštěna...");
+
+      // Drive all phases via "continue" calls
+      let consecutiveErrors = 0;
+      for (let i = 0; i < 120; i++) {
+        if (i > 0) await new Promise(r => setTimeout(r, 2000));
+
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 55_000);
+          const step = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+            method: "POST", headers, body: JSON.stringify({ mode: "continue", jobId }),
+            signal: controller.signal,
+          }).then(r => { clearTimeout(timeout); return r.json(); });
+          consecutiveErrors = 0;
+
+          if (step.status === "done") {
+            toast.success(`Aktualizace dokončena: ${step.summary?.slice(0, 100) || "OK"}`);
+            break;
+          }
+          if (step.status === "error") {
+            toast.error(step.summary || "Chyba při aktualizaci.");
+            break;
+          }
+          if (step.status === "idle") {
+            toast.info("Aktualizace dokončena.");
+            break;
+          }
+          if (step.phase && i % 3 === 0) {
+            console.log(`[update] Phase: ${step.phase} | ${step.summary || ""}`);
+          }
+        } catch (stepError: any) {
+          consecutiveErrors++;
+          if (consecutiveErrors >= 5) {
+            toast.error("Příliš mnoho chyb. Zkus to později.");
+            break;
+          }
+          await new Promise(r => setTimeout(r, 3000));
+        }
+      }
+
+      // Phase 2: Registry sync
       try {
-        toast.info("Synchronizuji registr – načítám seznam karet...");
+        toast.info("Synchronizuji registr...");
         const syncHeaders = await getAuthHeaders();
         const listRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
           method: "POST", headers: syncHeaders,
@@ -1300,7 +1347,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         setSyncProgress(null);
       }
 
-      // Clear ALL local DID data after successful update
+      // Clear local DID data
       setActiveThread(null);
       setMessages([]);
       setDidSubMode(null);
