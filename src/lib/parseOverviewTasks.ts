@@ -2,6 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface ParsedTask {
   task: string;
+  detail_instruction: string;
   assigned_to: "hanka" | "kata" | "both";
   category: "today" | "tomorrow" | "longterm";
   note: string;
