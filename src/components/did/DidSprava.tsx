@@ -185,6 +185,21 @@ const DidSprava = ({
           </div>
         )}
 
+        {activeTab === "health" && (
+          <div className="space-y-2">
+            <DidKartotekaHealth refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "registry" && (
+          <div className="space-y-2">
+            <DidRegistryOverview
+              refreshTrigger={refreshTrigger}
+              onSelectPart={onSelectPart}
+            />
+          </div>
+        )}
+
         {activeTab === "theme" && (
           <div className="space-y-4">
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">

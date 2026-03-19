@@ -205,20 +205,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
           <DidPulseCheck refreshTrigger={refreshTrigger} />
         </div>
 
-        <div className="mb-4">
-          <DidColleagueView refreshTrigger={refreshTrigger} />
-        </div>
-
-        <div className="mb-4">
-          <DidRegistryOverview
-            refreshTrigger={refreshTrigger}
-            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-          />
-        </div>
-
-        <div className="mb-4">
-          <DidKartotekaHealth refreshTrigger={refreshTrigger} />
-        </div>
+        {/* DidRegistryOverview and DidKartotekaHealth moved to DidSprava tabs */}
 
         {!loading && parts.length > 0 && (
           <DidSystemMap
