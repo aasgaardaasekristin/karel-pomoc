@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { normalize as driveNormalize, loadDriveRegistryEntries, buildAliasLookup } from "../_shared/driveRegistry.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
