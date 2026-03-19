@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface ResearchThread {
@@ -37,11 +37,29 @@ export const useResearchThreads = () => {
         .select("*")
         .eq("is_deleted", false)
         .order("last_activity_at", { ascending: false });
-      if (!error && data) setThreads((data as any[]).map(rowToThread));
+      if (error) {
+        console.error("[ResearchThreads] Fetch error:", error);
+        return;
+      }
+      if (data) setThreads((data as any[]).map(rowToThread));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  // Realtime subscription for cross-device sync
+  useEffect(() => {
+    const channel = supabase
+      .channel("research_threads_realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "research_threads" },
+        () => { fetchThreads(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchThreads]);
 
   const createThread = useCallback(async (topic: string, createdBy: string, initialMessages: { role: string; content: string }[]): Promise<ResearchThread | null> => {
     const { data, error } = await rt()
