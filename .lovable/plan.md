@@ -1,54 +1,49 @@
 
-Cíl opakuji přesně: opravit, proč se v Arturově vláknu nezobrazuje fotka na pozadí, a zabránit opakování stejné chyby.
 
-Co jsem dohledal:
-- Fotka není ztracená v datech. V databázi pro personu `kluci` stále existuje `background_image_url`.
-- Arturovo vlákno v `did_threads.theme_config` teď obsahuje jen barvy/font/emoji, ale ne `background_image_url`.
-- V `Chat.tsx` se při otevření vlákna aplikuje jen `thread.themeConfig`.
-- `applyTemporaryTheme(...)` skládá dočasný vzhled nad aktuální `prefs`.
-- Jenže `currentPersona` se do `kluci` nepřepíná při vstupu do DID-Kluci toku; přepíná se až při otevření editoru `DidKidsThemeEditor`.
-- To znamená: Arturovo vlákno se teď skládá nad špatným základem (`default` persona bez fotky), ne nad globálním vzhledem `kluci`, kde ta fotka opravdu je.
+## Oprava: Izolace thread vzhledu v režimu Kluci
 
-Z toho plyne přesná příčina:
-1. Fotka není smazaná.
-2. Jen se nenačítá správný základ persony `kluci` před aplikací thread vzhledu.
-3. Proto se použijí thread barvy bez foto-pozadí.
-4. Dřívější „filtr prázdných hodnot“ problém jen zmírnil, ale neopravil hlavní bug.
+**Zadání:** Fotka na pozadí z persony `kluci` prosakuje do thread-listu a DID rozcestníku, protože `setCurrentPersona("kluci")` mění globální stav celé aplikace. Fotka se má zobrazit JEN uvnitř konkrétního vlákna.
 
-Plán opravy:
-1. Opravit zdroj pravdy pro DID-Kluci
-- V `src/pages/Chat.tsx` při vstupu do DID-Kluci režimu explicitně přepnout theme personu na `kluci`.
-- Zajistit, aby se před `handleSelectThread` pracovalo s načtenými preferencemi `kluci`, ne s `default`.
+**Příčina:** `setCurrentPersona("kluci")` v `handleDidSubModeSelect` a `onSelectKluci` přepne globální theme na `kluci` (včetně fotky) ještě PŘED otevřením vlákna → fotka je vidět na thread-listu.
 
-2. Opravit aplikaci thread vzhledu
-- V `handleSelectThread` skládat thread vzhled nad globálními prefs persony `kluci`, ne nad náhodně aktuálním stavem.
-- Tím zůstane Arturova globální fotka zachovaná, pokud ji thread výslovně nepřebíjí.
+---
 
-3. Opravit editor thread vzhledu
-- V `src/components/did/DidKidsThemeEditor.tsx` při otevření thread editoru inicializovat draft z kombinace:
-  - globální prefs `kluci`
-  - plus uložený `thread.theme_config`
-- Nejen z aktuálního `prefs`, které mohou být z jiné persony.
-- Tím se zabrání ukládání „neúplného“ thread configu.
+### Změna 1: ThemeContext — přidat `getPersonaPrefs` (read-only helper)
 
-4. Opravit persistenci thread pozadí
-- Když si vlákno nastaví vlastní pozadí, uložit ho do `did_threads.theme_config.background_image_url`.
-- Když si vlastní pozadí nenastaví, nesmí se tím smazat globální klučičí fotka.
+**Soubor:** `src/contexts/ThemeContext.tsx`
 
-5. Opravit návrat z vlákna
-- Při odchodu z threadu vždy obnovit globální `kluci` prefs, ne obecný poslední theme stav.
-- Tím se odstraní další zdroj nekonzistence mezi rozcestníkem a vláknem.
+- Přidat novou funkci `getPersonaPrefs(persona: string): Promise<ThemePrefs>` — načte prefs z DB bez změny globálního stavu.
+- S interní cache, aby se nequery DB při každém otevření vlákna.
+- Přidat do `ThemeContextValue` interface a Provider value.
 
-6. Ověření po opravě
-- Arturovo vlákno: musí znovu zobrazit původní fotku.
-- Seznam vláken: nesmí převzít Arturovu thread stylizaci.
-- Jiné vlákno bez vlastní fotky: použije globální `kluci` fotku jen pokud má být součástí globálního vzhledu.
-- Vlákno s vlastní fotkou: použije svou fotku a po návratu neprosákne výš.
+### Změna 2: Chat.tsx — odstranit globální přepnutí persony, izolovat theme na vlákno
 
-Soubory k úpravě:
-- `src/pages/Chat.tsx`
-- `src/components/did/DidKidsThemeEditor.tsx`
-- případně drobně `src/contexts/ThemeContext.tsx`, pokud bude potřeba bezpečnější přepnutí persony a obnovení správného základu
+**Soubor:** `src/pages/Chat.tsx`
 
-Krátký technický závěr:
-Bug není v tom, že by se fotka smazala. Bug je v tom, že se Arturovo vlákno teď skládá nad špatnou personou (`default`), protože `kluci` se nepřepnou včas. Oprava tedy musí být: nejdřív načíst globální theme `kluci`, teprve potom přes něj aplikovat thread override.
+1. **Odstranit** všechna volání `setCurrentPersona("kluci")` (řádky ~883, ~1599, ~1883).
+2. **Odstranit** `setCurrentPersona("default")` při odchodu z thread-listu (řádek ~551) — nebude potřeba, protože se persona nikdy nepřepíná.
+
+3. **`handleSelectThread`** — před `applyTemporaryTheme` nejdřív načíst základ `kluci` přes `getPersonaPrefs("kluci")`, pak přes něj vrstvit `thread.themeConfig`:
+   ```
+   const kluciBase = await getPersonaPrefs("kluci");
+   const threadOverrides = thread.themeConfig (filtrované neprázdné);
+   applyTemporaryTheme({ ...kluciBase, ...threadOverrides });
+   ```
+   Tím se fotka z `kluci` zobrazí jako základ, ale jen dočasně pro vlákno.
+
+4. **`handleQuickThread`** — stejná logika jako bod 3.
+
+5. **`restoreGlobalTheme()`** při odchodu z vlákna zůstává beze změny — vrátí se na `default` prefs (bez fotky), což je správné chování pro thread-list.
+
+### Co se NEMĚNÍ
+- `DidKidsThemeEditor` — draft inicializace z `prefs` bude fungovat správně, protože při otevření editoru (uvnitř vlákna) budou `prefs` už obsahovat správný základ `kluci` + thread override.
+- Globální persona zůstane vždy `default` během celého Kluci toku.
+
+### Logická kontrola efektů
+- **Thread-list:** persona = `default`, žádná fotka → ✅ správně
+- **Arturovo vlákno:** dočasný theme = `kluci` základ (s fotkou) + Arturovy barvy → ✅ fotka vidět
+- **Odchod z vlákna:** `restoreGlobalTheme()` vrátí `default` → ✅ fotka zmizí
+- **DID rozcestník:** persona = `default` → ✅ bez prosaku
+- **Vlákno s vlastní fotkou:** thread override přebije `kluci` fotku → ✅ správně
+- **Vlákno bez vlastní fotky:** zdědí `kluci` fotku → ✅ správně
+
