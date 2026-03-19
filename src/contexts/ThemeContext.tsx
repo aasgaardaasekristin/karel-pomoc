@@ -216,6 +216,7 @@ interface ThemeContextValue {
   loading: boolean;
   applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
   restoreGlobalTheme: () => void;
+  getPersonaPrefs: (persona: string) => Promise<ThemePrefs>;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -232,6 +233,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const savedPrefsRef = useRef<ThemePrefs | null>(null);
+  const personaPrefsCache = useRef<Record<string, ThemePrefs>>({});
 
   const loadPrefs = useCallback(async (persona: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -386,8 +388,47 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  // Read-only helper: fetch persona prefs from DB without changing global state.
+  // Cached per-session so repeated calls don't hit DB.
+  const getPersonaPrefs = useCallback(async (persona: string): Promise<ThemePrefs> => {
+    if (personaPrefsCache.current[persona]) {
+      return personaPrefsCache.current[persona];
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { ...DEFAULT_PREFS, persona };
+
+    const { data } = await supabase
+      .from("user_theme_preferences")
+      .select("*")
+      .eq("persona", persona)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const result: ThemePrefs = data
+      ? {
+          persona: (data as any).persona,
+          primary_color: (data as any).primary_color,
+          accent_color: (data as any).accent_color,
+          background_image_url: (data as any).background_image_url || "",
+          theme_preset: (data as any).theme_preset,
+          dark_mode: (data as any).dark_mode,
+          font_scale: Number((data as any).font_scale),
+          border_radius: (data as any).border_radius || "normal",
+          chat_bubble_style: (data as any).chat_bubble_style || "rounded",
+          compact_mode: (data as any).compact_mode ?? false,
+          animations_enabled: (data as any).animations_enabled ?? true,
+          font_color: (data as any).font_color || "",
+          font_family: (data as any).font_family || "default",
+        }
+      : { ...DEFAULT_PREFS, persona };
+
+    personaPrefsCache.current[persona] = result;
+    return result;
+  }, []);
+
   return (
-    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading, applyTemporaryTheme, restoreGlobalTheme }}>
+    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading, applyTemporaryTheme, restoreGlobalTheme, getPersonaPrefs }}>
       {children}
     </ThemeContext.Provider>
   );

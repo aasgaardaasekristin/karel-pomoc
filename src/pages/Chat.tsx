@@ -548,7 +548,6 @@ const Chat = () => {
       case "thread-list":
         // Kluci thread list → back to DID entry
         restoreGlobalTheme();
-        setCurrentPersona("default");
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
@@ -617,29 +616,34 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
   // Thread management for "cast" mode (hooks must be before early return)
-  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, setCurrentPersona } = useTheme();
+  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, getPersonaPrefs } = useTheme();
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
-    // Auto-apply per-thread theme if set (temporary, thread-scoped — never writes to global DB)
-    // Only override fields that have meaningful values — don't wipe background_image_url with ""
+
+    // Compose thread theme: kluci base (with background photo) + thread overrides
+    // This is TEMPORARY — never changes global persona, never leaks to thread-list
+    const kluciBase = await getPersonaPrefs("kluci");
+
+    // Filter out empty thread overrides so they don't wipe kluci base values (e.g. background_image_url)
+    let threadOverrides: Partial<typeof themePrefs> = {};
     if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
-      const filtered = Object.fromEntries(
+      threadOverrides = Object.fromEntries(
         Object.entries(thread.themeConfig).filter(([, v]) => v !== "" && v !== null && v !== undefined)
-      );
-      if (Object.keys(filtered).length > 0) {
-        applyTemporaryTheme(filtered as Partial<typeof themePrefs>);
-      }
+      ) as Partial<typeof themePrefs>;
     } else if (thread.themePreset && thread.themePreset !== "default") {
-      // Use temporary theme from KIDS_PRESETS lookup, not global applyPreset
       const { KIDS_PRESETS } = await import("@/components/did/DidKidsThemeEditor");
       const preset = KIDS_PRESETS[thread.themePreset];
       if (preset) {
-        applyTemporaryTheme({ primary_color: preset.primary_color, accent_color: preset.accent_color });
+        threadOverrides = { primary_color: preset.primary_color, accent_color: preset.accent_color };
       }
     }
+
+    // Layer: kluci global base → thread-specific overrides
+    applyTemporaryTheme({ ...kluciBase, ...threadOverrides });
+
     // Load part-specific docs in BACKGROUND
     (async () => {
       try {
@@ -656,7 +660,7 @@ const Chat = () => {
         }
       } catch {}
     })();
-  }, [setMessages, setDidInitialContext, applyTemporaryTheme]);
+  }, [setMessages, setDidInitialContext, applyTemporaryTheme, getPersonaPrefs]);
 
   const handleNewCastThread = useCallback(() => {
     setDidFlowState("part-identify");
@@ -789,6 +793,16 @@ const Chat = () => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
+
+    // Compose thread theme: kluci base + thread overrides (same logic as handleSelectThread)
+    const kluciBase = await getPersonaPrefs("kluci");
+    let threadOverrides: Partial<typeof themePrefs> = {};
+    if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
+      threadOverrides = Object.fromEntries(
+        Object.entries(thread.themeConfig).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      ) as Partial<typeof themePrefs>;
+    }
+    applyTemporaryTheme({ ...kluciBase, ...threadOverrides });
     
     // Load part docs in background
     (async () => {
@@ -808,7 +822,7 @@ const Chat = () => {
     })();
     
     toast.info(`Navazuješ na rozhovor s ${partName}`);
-  }, [setDidSubMode, setMessages, setDidInitialContext]);
+  }, [setDidSubMode, setMessages, setDidInitialContext, applyTemporaryTheme, getPersonaPrefs]);
 
   // Handle ?meeting=<id> URL parameter
   useEffect(() => {
@@ -879,8 +893,7 @@ const Chat = () => {
     setActiveThread(null);
 
     if (subMode === "cast") {
-      // Use pre-loaded basic docs, just fetch threads
-      setCurrentPersona("kluci");
+      // Use pre-loaded basic docs, just fetch threads — NO global persona change
       setDidFlowState("loading");
       await didThreads.fetchActiveThreads("cast");
       // knownParts already loaded during dashboard pre-load
@@ -1596,7 +1609,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             }}
             onSelectKluci={() => {
               setDidSubMode("cast");
-              setCurrentPersona("kluci");
               setDidFlowState("loading");
               // Auto-prime DID context in background
               didContextPrime.runPrime(undefined, "cast");
@@ -1880,7 +1892,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             onSelectTerapeut={() => setDidFlowState("terapeut")}
             onSelectKluci={() => {
               setDidSubMode("cast");
-              setCurrentPersona("kluci");
               setDidFlowState("thread-list");
             }}
             onBack={() => setMode("debrief")}
