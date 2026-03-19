@@ -374,6 +374,27 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
         {/* Background image */}
         <div>
           <p className="text-xs font-medium text-foreground mb-2">Pozadí</p>
+          
+          {/* Preset backgrounds grid */}
+          <div className="grid grid-cols-4 gap-1.5 mb-2">
+            {PRESET_BACKGROUNDS.map((bg) => (
+              <button
+                key={bg.key}
+                onClick={() => setDraftPartial({ background_image_url: bg.url })}
+                className={`relative h-12 rounded-lg border-2 overflow-hidden transition-all ${
+                  draft.background_image_url === bg.url 
+                    ? "border-primary ring-1 ring-primary/30 scale-105" 
+                    : "border-border hover:border-primary/50 hover:scale-[1.03]"
+                }`}
+              >
+                <div className="absolute inset-0" style={{ background: bg.gradient }} />
+                <span className="absolute bottom-0 left-0 right-0 text-[8px] text-white text-center font-medium drop-shadow-md bg-black/20 py-0.5">
+                  {bg.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
           {draft.background_image_url ? (
             <div className="relative rounded-lg border border-border overflow-hidden h-20">
               <img src={draft.background_image_url} alt="Pozadí" className="w-full h-full object-cover" />
@@ -391,8 +412,9 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               className="w-full h-14 rounded-lg border-2 border-dashed border-border hover:border-primary/50 flex items-center justify-center gap-2 text-xs text-muted-foreground transition-colors"
             >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
-              {uploading ? "Nahrávám..." : "Nahrát obrázek"}
+              {uploading ? "Nahrávám..." : "Nahrát vlastní obrázek"}
             </button>
+          )}
           )}
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
         </div>
