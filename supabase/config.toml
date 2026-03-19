@@ -149,3 +149,6 @@ verify_jwt = false
 
 [functions.karel-did-part-summary]
 verify_jwt = false
+
+[functions.karel-task-feedback]
+verify_jwt = false
