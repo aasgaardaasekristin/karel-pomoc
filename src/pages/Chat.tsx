@@ -1418,7 +1418,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
             ...(mode === "childcare" && didContextPrime.primeCache ? { didContextPrimeCache: didContextPrime.primeCache } : {}),
-            ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName } : {}),
+            ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName, didThreadLabel: activeThread.threadLabel, didEnteredName: activeThread.enteredName } : {}),
           };
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 90000);
