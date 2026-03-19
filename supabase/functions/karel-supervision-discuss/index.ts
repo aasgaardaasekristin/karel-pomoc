@@ -96,31 +96,48 @@ ${sessionReport?.slice(0, 2000) || "Nedostupný"}`;
       });
     }
 
-    // Initial analysis
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Haničko, přečetl jsem si celou kartu klienta ${clientName} a všechna sezení. Tady je můj odborný pohled:\n\n1. Co vidím jako klíčové v tomto případu\n2. Na co bych tě upozornil\n3. Co bych doporučil změnit v přístupu\n4. Na co se soustředit příště\n\nPiš.`,
-          },
-        ],
-      }),
-    });
+    // Initial analysis – with retry
+    let lastErr = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
+      const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: `Haničko, přečetl jsem si celou kartu klienta ${clientName} a všechna sezení. Tady je můj odborný pohled:\n\n1. Co vidím jako klíčové v tomto případu\n2. Na co bych tě upozornil\n3. Co bych doporučil změnit v přístupu\n4. Na co se soustředit příště\n\nPiš.`,
+            },
+          ],
+        }),
+      });
 
-    if (!aiRes.ok) throw new Error(`AI error: ${aiRes.status}`);
-    const aiData = await aiRes.json();
+      const bodyText = await aiRes.text();
+      if (!aiRes.ok) {
+        lastErr = `AI ${aiRes.status}: ${bodyText.slice(0, 200)}`;
+        console.error(`Attempt ${attempt + 1} failed:`, lastErr);
+        if (aiRes.status === 429 || aiRes.status >= 500) continue;
+        throw new Error(lastErr);
+      }
 
-    return new Response(JSON.stringify({ response: aiData.choices?.[0]?.message?.content || "" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      if (!bodyText || bodyText.trim().length === 0) {
+        lastErr = "Empty AI response";
+        console.error(`Attempt ${attempt + 1}: empty body`);
+        continue;
+      }
+
+      const aiData = JSON.parse(bodyText);
+      return new Response(JSON.stringify({ response: aiData.choices?.[0]?.message?.content || "" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    throw new Error(`AI failed after 3 attempts: ${lastErr}`);
   } catch (e) {
     console.error("karel-supervision-discuss error:", e);
     return new Response(JSON.stringify({ error: e.message }), {
