@@ -143,10 +143,26 @@ const statusSummary = (task: TherapistTask) => {
   return STATUS_LABEL[aggregateTaskStatus(task)];
 };
 
-const TrafficLight = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
-  <button onClick={onClick} className="flex items-center gap-1 group cursor-pointer" title={`${label}: ${STATUS_LABEL[status]}`}>
-    <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-110`} />
-    <span className="text-[8px] font-medium text-muted-foreground opacity-70">{label}</span>
+const STATUS_BADGE_STYLES: Record<TrafficStatus, string> = {
+  not_started: "bg-muted text-muted-foreground border-border",
+  in_progress: "bg-accent/60 text-accent-foreground border-accent",
+  done: "bg-primary/20 text-primary border-primary/40",
+};
+
+const STATUS_BADGE_ICON: Record<TrafficStatus, string> = {
+  not_started: "—",
+  in_progress: "⏳",
+  done: "✓",
+};
+
+const StatusBadge = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
+  <button
+    onClick={(e) => { e.stopPropagation(); onClick(); }}
+    className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[8px] font-semibold leading-[16px] cursor-pointer transition-all hover:scale-105 ${STATUS_BADGE_STYLES[status]}`}
+    title={`${label}: ${STATUS_LABEL[status]} — klikni pro změnu`}
+  >
+    <span>{label}:</span>
+    <span>{STATUS_BADGE_ICON[status]}</span>
   </button>
 );
 
