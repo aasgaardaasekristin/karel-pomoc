@@ -170,10 +170,10 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
       .replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "")
       .trim();
 
-    const [shortTitle, overflow] = truncateTitle(cleaned);
+    const [shortTitle, fullText] = truncateTitle(cleaned);
     if (!shortTitle) continue;
 
-    tasks.push({ task: shortTitle, assigned_to: assignee, category, note: overflow });
+    tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: "" });
   }
 
   return tasks;
