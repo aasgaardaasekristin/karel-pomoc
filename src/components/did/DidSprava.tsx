@@ -128,20 +128,21 @@ const DidSprava = ({
           <DialogDescription className="text-xs">Nástroje a osobní nastavení vzhledu pro každou personu zvlášť.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted">
-          <button
-            onClick={() => setActiveTab("tools")}
-            className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === "tools" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-          >
-            🛠 Nástroje
-          </button>
-          <button
-            onClick={() => setActiveTab("theme")}
-            className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === "theme" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-          >
-            <Palette className="w-3 h-3 inline mr-1" />
-            Vzhled
-          </button>
+        <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
+          {([
+            { key: "tools" as const, label: "🛠 Nástroje" },
+            { key: "health" as const, label: "❤️ Zdraví" },
+            { key: "registry" as const, label: "📋 Registr" },
+            { key: "theme" as const, label: "🎨 Vzhled" },
+          ]).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {activeTab === "tools" && (
