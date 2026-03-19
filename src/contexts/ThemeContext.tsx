@@ -214,6 +214,8 @@ interface ThemeContextValue {
   currentPersona: string;
   setCurrentPersona: (p: string) => void;
   loading: boolean;
+  applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
+  restoreGlobalTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
