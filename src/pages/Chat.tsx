@@ -529,6 +529,7 @@ const Chat = () => {
     switch (didFlowState) {
       case "chat": {
         // From chat, go back to the appropriate list
+        restoreGlobalTheme();
         setActiveThread(null);
         setMessages([]);
         if (didSubMode === "cast") {
@@ -614,14 +615,16 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
   // Thread management for "cast" mode (hooks must be before early return)
-  const { applyPreset: applyThemePreset, prefs: themePrefs } = useTheme();
+  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme } = useTheme();
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
-    // Auto-apply per-thread theme if set
-    if (thread.themePreset) {
+    // Auto-apply per-thread theme if set (temporary, thread-scoped)
+    if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
+      applyTemporaryTheme(thread.themeConfig as Partial<typeof themePrefs>);
+    } else if (thread.themePreset) {
       applyThemePreset(thread.themePreset);
     }
     // Load part-specific docs in BACKGROUND
@@ -743,6 +746,8 @@ const Chat = () => {
       // Trigger episode generation in background
       triggerEpisodeGeneration(activeThread.id);
     }
+    // Restore global theme when leaving thread
+    restoreGlobalTheme();
     setActiveThread(null);
     setMessages([]);
     if (didSubMode === "mamka" || didSubMode === "kata") {
@@ -752,7 +757,7 @@ const Chat = () => {
       setDidFlowState("thread-list");
       didThreads.fetchActiveThreads("cast");
     }
-  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration]);
+  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme]);
 
   // Quick thread entry from dashboard — load thread directly by ID
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
@@ -782,6 +787,8 @@ const Chat = () => {
       lastActivityAt: data.last_activity_at,
       isProcessed: data.is_processed,
       themePreset: (data as any).theme_preset || "",
+      themeConfig: (data as any).theme_config || {},
+      threadEmoji: (data as any).thread_emoji || "",
     };
     
     setActiveThread(thread);
@@ -1944,9 +1951,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   <DidKidsThemeEditor
                     partName={activeThread.partName}
                     threadId={activeThread.id}
-                    onThreadThemeSaved={(tid, preset) => {
-                      didThreads.updateThreadTheme(tid, preset);
-                      setActiveThread(prev => prev ? { ...prev, themePreset: preset } : prev);
+                    onThreadThemeSaved={(tid, preset, config) => {
+                      didThreads.updateThreadThemeConfig(tid, preset, config);
+                      setActiveThread(prev => prev ? { ...prev, themePreset: preset, themeConfig: config, threadEmoji: config.thread_emoji || "" } : prev);
                     }}
                     trigger={
                       <button className="text-[10px] text-primary hover:underline flex items-center gap-0.5">

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Palette, Check, Image, X, Loader2, Save, RotateCcw, Sun, Moon, Sparkles } from "lucide-react";
+import { Palette, Check, Image, X, Loader2, Save, RotateCcw, Sun, Moon, Sparkles, Lock, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -7,43 +7,46 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   partName?: string;
   trigger?: React.ReactNode;
   /** When set, saves the chosen preset to the thread */
   threadId?: string;
-  onThreadThemeSaved?: (threadId: string, presetKey: string) => void;
+  onThreadThemeSaved?: (threadId: string, presetKey: string, config: Record<string, any>) => void;
 }
 
-export const KIDS_PRESETS: Record<string, { label: string; primary_color: string; accent_color: string; emoji: string }> = {
-  // Boys themes
-  ocean_explorer: { label: "Oceán 🌊", primary_color: "200 38% 42%", accent_color: "190 30% 68%", emoji: "🌊" },
-  forest_ranger: { label: "Les 🌲", primary_color: "142 28% 36%", accent_color: "88 22% 62%", emoji: "🌲" },
-  space: { label: "Vesmír 🚀", primary_color: "230 30% 32%", accent_color: "260 24% 58%", emoji: "🚀" },
-  dragon: { label: "Drak 🐉", primary_color: "14 36% 42%", accent_color: "32 34% 64%", emoji: "🐉" },
-  ninja: { label: "Ninja 🥷", primary_color: "220 18% 28%", accent_color: "340 22% 52%", emoji: "🥷" },
-  minecraft: { label: "Pixely 🟩", primary_color: "120 32% 38%", accent_color: "36 30% 56%", emoji: "🟩" },
-  robot: { label: "Robot 🤖", primary_color: "210 22% 46%", accent_color: "180 20% 62%", emoji: "🤖" },
-  pirate: { label: "Pirát 🏴‍☠️", primary_color: "28 38% 38%", accent_color: "45 32% 64%", emoji: "🏴‍☠️" },
-  dino: { label: "Dino 🦕", primary_color: "160 28% 40%", accent_color: "130 22% 66%", emoji: "🦕" },
-  thunder: { label: "Blesk ⚡", primary_color: "48 40% 44%", accent_color: "210 28% 52%", emoji: "⚡" },
-  // Girls themes
-  fairy: { label: "Víla 🧚", primary_color: "300 24% 52%", accent_color: "330 28% 74%", emoji: "🧚" },
-  rainbow: { label: "Duha 🌈", primary_color: "280 26% 48%", accent_color: "340 30% 70%", emoji: "🌈" },
-  butterfly: { label: "Motýl 🦋", primary_color: "270 22% 50%", accent_color: "200 26% 68%", emoji: "🦋" },
-  flower: { label: "Květ 🌸", primary_color: "340 28% 54%", accent_color: "20 34% 74%", emoji: "🌸" },
-  // Neutral
-  sunset_beach: { label: "Západ 🌅", primary_color: "24 42% 48%", accent_color: "40 36% 70%", emoji: "🌅" },
-  ice: { label: "Led 🧊", primary_color: "200 26% 52%", accent_color: "186 20% 74%", emoji: "🧊" },
+export const KIDS_PRESETS: Record<string, { label: string; primary_color: string; accent_color: string; emoji: string; effect?: string }> = {
+  ocean_explorer: { label: "Oceán 🌊", primary_color: "200 38% 42%", accent_color: "190 30% 68%", emoji: "🌊", effect: "wave" },
+  forest_ranger: { label: "Les 🌲", primary_color: "142 28% 36%", accent_color: "88 22% 62%", emoji: "🌲", effect: "grow" },
+  space: { label: "Vesmír 🚀", primary_color: "230 30% 32%", accent_color: "260 24% 58%", emoji: "🚀", effect: "float" },
+  dragon: { label: "Drak 🐉", primary_color: "14 36% 42%", accent_color: "32 34% 64%", emoji: "🐉", effect: "shake" },
+  ninja: { label: "Ninja 🥷", primary_color: "220 18% 28%", accent_color: "340 22% 52%", emoji: "🥷", effect: "fade" },
+  minecraft: { label: "Pixely 🟩", primary_color: "120 32% 38%", accent_color: "36 30% 56%", emoji: "🟩", effect: "pixel" },
+  robot: { label: "Robot 🤖", primary_color: "210 22% 46%", accent_color: "180 20% 62%", emoji: "🤖", effect: "pulse" },
+  pirate: { label: "Pirát 🏴‍☠️", primary_color: "28 38% 38%", accent_color: "45 32% 64%", emoji: "🏴‍☠️", effect: "wave" },
+  dino: { label: "Dino 🦕", primary_color: "160 28% 40%", accent_color: "130 22% 66%", emoji: "🦕", effect: "grow" },
+  thunder: { label: "Blesk ⚡", primary_color: "48 40% 44%", accent_color: "210 28% 52%", emoji: "⚡", effect: "shake" },
+  fairy: { label: "Víla 🧚", primary_color: "300 24% 52%", accent_color: "330 28% 74%", emoji: "🧚", effect: "float" },
+  rainbow: { label: "Duha 🌈", primary_color: "280 26% 48%", accent_color: "340 30% 70%", emoji: "🌈", effect: "pulse" },
+  butterfly: { label: "Motýl 🦋", primary_color: "270 22% 50%", accent_color: "200 26% 68%", emoji: "🦋", effect: "float" },
+  flower: { label: "Květ 🌸", primary_color: "340 28% 54%", accent_color: "20 34% 74%", emoji: "🌸", effect: "grow" },
+  sunset_beach: { label: "Západ 🌅", primary_color: "24 42% 48%", accent_color: "40 36% 70%", emoji: "🌅", effect: "fade" },
+  ice: { label: "Led 🧊", primary_color: "200 26% 52%", accent_color: "186 20% 74%", emoji: "🧊", effect: "pulse" },
 };
 
+const SECRET_PRESET = { label: "??? 🔮", primary_color: "270 40% 36%", accent_color: "320 35% 60%", emoji: "🔮" };
+const SECRET_UNLOCK_COUNT = 5;
+
 const FONT_OPTIONS = [
-  { value: "default", label: "Výchozí" },
-  { value: "comic", label: "Hravé" },
-  { value: "rounded", label: "Kulaté" },
-  { value: "mono", label: "Kódové" },
+  { value: "default", label: "Výchozí", preview: "Aa" },
+  { value: "comic", label: "Hravé", preview: "Aa" },
+  { value: "rounded", label: "Kulaté", preview: "Aa" },
+  { value: "mono", label: "Kódové", preview: "01" },
 ] as const;
+
+const THREAD_EMOJIS = ["🐱", "🐶", "🦊", "🐸", "🐻", "🦁", "🐼", "🐨", "🐯", "🦄", "🐲", "👾", "🤖", "👻", "⭐", "🎮"];
 
 const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }: Props) => {
   const [open, setOpen] = useState(false);
@@ -51,11 +54,22 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<ThemePrefs>(prefs);
+  const [draft, setDraft] = useState<ThemePrefs & { thread_emoji?: string }>(prefs);
+  const [selectedEffect, setSelectedEffect] = useState<string | null>(null);
+  const [secretUnlocked, setSecretUnlocked] = useState(false);
+  const [visitCount, setVisitCount] = useState(0);
 
   useEffect(() => {
-    if (open && currentPersona !== "kluci") {
-      setCurrentPersona("kluci");
+    if (open) {
+      if (currentPersona !== "kluci") setCurrentPersona("kluci");
+      // Track visits for secret preset
+      const key = `karel_kids_theme_visits_${partName || "global"}`;
+      try {
+        const count = Number(localStorage.getItem(key) || "0") + 1;
+        localStorage.setItem(key, String(count));
+        setVisitCount(count);
+        if (count >= SECRET_UNLOCK_COUNT) setSecretUnlocked(true);
+      } catch {}
     }
   }, [open]);
 
@@ -65,7 +79,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
 
   const hasPendingChanges = useMemo(() => JSON.stringify(draft) !== JSON.stringify(prefs), [draft, prefs]);
 
-  const setDraftPartial = (partial: Partial<ThemePrefs>) => {
+  const setDraftPartial = (partial: Partial<ThemePrefs & { thread_emoji?: string }>) => {
     setDraft((prev) => ({ ...prev, ...partial, persona: "kluci" }));
   };
 
@@ -73,11 +87,28 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
     try {
       setSaving(true);
       await updatePrefs(draft);
-      // If per-thread mode, also save the preset key to the thread
-      if (threadId && onThreadThemeSaved && draft.theme_preset) {
-        onThreadThemeSaved(threadId, draft.theme_preset);
+      
+      const config: Record<string, any> = {
+        primary_color: draft.primary_color,
+        accent_color: draft.accent_color,
+        dark_mode: draft.dark_mode,
+        font_family: draft.font_family,
+        font_scale: draft.font_scale,
+        thread_emoji: (draft as any).thread_emoji || "",
+      };
+
+      if (threadId && onThreadThemeSaved) {
+        onThreadThemeSaved(threadId, draft.theme_preset || "custom", config);
+        // Silent mapping: log theme preference
+        logThemePreference(partName || "", draft.theme_preset || "custom", config, threadId);
       }
-      toast.success(threadId ? `Vzhled pro ${partName || "vlákno"} uložen! 🎨` : "Vzhled nastaven! 🎨");
+      
+      toast.success(
+        threadId 
+          ? `Vzhled pro ${partName || "vlákno"} uložen! 🎨` 
+          : "Vzhled nastaven! 🎨",
+        { duration: 2000 }
+      );
     } catch (error: any) {
       toast.error(error?.message || "Nepodařilo se uložit vzhled");
     } finally {
@@ -126,10 +157,20 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
           </DialogTitle>
           <DialogDescription className="text-xs">
             {threadId
-              ? "Vyber si barvy a motiv – uloží se jen pro tohle vlákno a příště se automaticky načtou."
+              ? "⚡ Tento vzhled platí jen pro toto vlákno — jiných se nedotkne!"
               : "Vyber si barvy, motiv a styl, jak chceš, aby Karel vypadal."}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Per-thread warning banner */}
+        {threadId && (
+          <div className="rounded-lg border border-accent/30 bg-accent/10 p-2.5 flex items-center gap-2">
+            <span className="text-lg">🎯</span>
+            <p className="text-[10px] text-foreground/80">
+              Tvůj vzhled se uloží do tohoto vlákna. Příště se automaticky načte!
+            </p>
+          </div>
+        )}
 
         {/* Save bar */}
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
@@ -151,6 +192,24 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
           </div>
         </div>
 
+        {/* Thread emoji picker */}
+        {threadId && (
+          <div>
+            <p className="text-xs font-medium text-foreground mb-2">Tvůj avatar 🎭</p>
+            <div className="flex flex-wrap gap-1.5">
+              {THREAD_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => setDraftPartial({ thread_emoji: emoji } as any)}
+                  className={`w-9 h-9 rounded-lg border-2 text-lg flex items-center justify-center transition-all hover:scale-110 ${(draft as any).thread_emoji === emoji ? "border-primary bg-primary/10 scale-110" : "border-border hover:border-primary/50"}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Theme presets grid */}
         <div>
           <p className="text-xs font-medium text-foreground mb-2">Vyber motiv</p>
@@ -158,8 +217,17 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
             {Object.entries(KIDS_PRESETS).map(([name, preset]) => (
               <button
                 key={name}
-                onClick={() => setDraftPartial({ primary_color: preset.primary_color, accent_color: preset.accent_color, theme_preset: name })}
-                className={`relative h-12 rounded-lg border-2 transition-all overflow-hidden ${draft.theme_preset === name ? "border-primary ring-1 ring-primary/30 scale-105" : "border-border hover:border-primary/50"}`}
+                onClick={() => {
+                  setDraftPartial({ primary_color: preset.primary_color, accent_color: preset.accent_color, theme_preset: name });
+                  setSelectedEffect(preset.effect || null);
+                  // Auto-clear effect after animation
+                  setTimeout(() => setSelectedEffect(null), 600);
+                }}
+                className={`relative h-14 rounded-lg border-2 transition-all overflow-hidden group ${
+                  draft.theme_preset === name 
+                    ? "border-primary ring-1 ring-primary/30 scale-105" 
+                    : "border-border hover:border-primary/50 hover:scale-[1.03]"
+                } ${selectedEffect && draft.theme_preset === name ? `animate-${selectedEffect === "shake" ? "pulse" : "scale-in"}` : ""}`}
               >
                 <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${preset.primary_color}) 0%, hsl(${preset.accent_color}) 100%)` }} />
                 {draft.theme_preset === name && (
@@ -170,12 +238,70 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
                 <span className="absolute bottom-0.5 left-0 right-0 text-[9px] text-white text-center font-medium drop-shadow-md">
                   {preset.label}
                 </span>
+                {/* Hover emoji pop */}
+                <span className="absolute top-0.5 right-0.5 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                  {preset.emoji}
+                </span>
               </button>
             ))}
+            {/* Secret preset */}
+            {secretUnlocked ? (
+              <button
+                onClick={() => setDraftPartial({ primary_color: SECRET_PRESET.primary_color, accent_color: SECRET_PRESET.accent_color, theme_preset: "secret_magic" })}
+                className={`relative h-14 rounded-lg border-2 transition-all overflow-hidden ${
+                  draft.theme_preset === "secret_magic" ? "border-primary ring-1 ring-primary/30 scale-105" : "border-border hover:border-primary/50"
+                }`}
+              >
+                <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${SECRET_PRESET.primary_color}) 0%, hsl(${SECRET_PRESET.accent_color}) 100%)` }} />
+                <span className="absolute bottom-0.5 left-0 right-0 text-[9px] text-white text-center font-medium drop-shadow-md">
+                  {SECRET_PRESET.label}
+                </span>
+              </button>
+            ) : (
+              <div className="relative h-14 rounded-lg border-2 border-dashed border-border flex items-center justify-center opacity-50">
+                <Lock className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[8px] text-muted-foreground absolute bottom-0.5">
+                  {SECRET_UNLOCK_COUNT - visitCount > 0 ? `ještě ${SECRET_UNLOCK_COUNT - visitCount}×` : ""}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Custom color pickers */}
+        {/* Live chat preview — "Vyzkoušej si to" */}
+        <div>
+          <p className="text-xs font-medium text-foreground mb-2 flex items-center gap-1.5">
+            <MessageCircle className="w-3.5 h-3.5" />
+            Vyzkoušej si to
+          </p>
+          <div className="rounded-xl border border-border overflow-hidden" style={{ background: `linear-gradient(180deg, hsl(${draft.primary_color} / 0.08) 0%, hsl(${draft.accent_color} / 0.05) 100%)` }}>
+            <div className="p-3 space-y-2">
+              {/* Assistant bubble */}
+              <div className="flex gap-2 items-end">
+                <span className="text-base">{(draft as any).thread_emoji || "🤖"}</span>
+                <div className="rounded-2xl rounded-bl-sm px-3 py-2 max-w-[75%] text-[11px]" style={{ 
+                  background: `hsl(${draft.primary_color} / 0.15)`,
+                  color: draft.font_color ? `hsl(${draft.font_color})` : undefined,
+                  fontFamily: draft.font_family === "comic" ? "'Comic Neue', cursive" : draft.font_family === "rounded" ? "'Nunito', sans-serif" : draft.font_family === "mono" ? "'JetBrains Mono', monospace" : "inherit",
+                }}>
+                  Ahoj {partName || "ty"}! Jak se dneska máš? 😊
+                </div>
+              </div>
+              {/* User bubble */}
+              <div className="flex gap-2 items-end justify-end">
+                <div className="rounded-2xl rounded-br-sm px-3 py-2 max-w-[75%] text-[11px]" style={{
+                  background: `hsl(${draft.accent_color} / 0.2)`,
+                  color: draft.font_color ? `hsl(${draft.font_color})` : undefined,
+                  fontFamily: draft.font_family === "comic" ? "'Comic Neue', cursive" : draft.font_family === "rounded" ? "'Nunito', sans-serif" : draft.font_family === "mono" ? "'JetBrains Mono', monospace" : "inherit",
+                }}>
+                  Dneska dobře! 🎉
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Custom color pickers with gradient preview */}
         <div>
           <p className="text-xs font-medium text-foreground mb-2">Vlastní barvy</p>
           <div className="flex gap-3">
@@ -190,6 +316,8 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               + vlastní barva písma
             </button>
           )}
+          {/* Gradient preview bar */}
+          <div className="mt-2 h-3 rounded-full overflow-hidden border border-border" style={{ background: `linear-gradient(90deg, hsl(${draft.primary_color}) 0%, hsl(${draft.accent_color}) 100%)` }} />
         </div>
 
         {/* Font style */}
@@ -200,26 +328,13 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               <button
                 key={opt.value}
                 onClick={() => setDraftPartial({ font_family: opt.value })}
-                className={`py-2 rounded-lg border-2 text-[10px] transition-all ${draft.font_family === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                className={`py-2.5 rounded-lg border-2 transition-all ${draft.font_family === opt.value ? "border-primary bg-primary/10 text-foreground scale-105" : "border-border text-muted-foreground hover:border-primary/50 hover:scale-[1.02]"}`}
                 style={{ fontFamily: opt.value === "comic" ? "'Comic Neue', cursive" : opt.value === "rounded" ? "'Nunito', sans-serif" : opt.value === "mono" ? "'JetBrains Mono', monospace" : "inherit" }}
               >
-                {opt.label}
+                <span className="text-lg block">{opt.preview}</span>
+                <span className="text-[9px] block mt-0.5">{opt.label}</span>
               </button>
             ))}
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="rounded-xl border border-border overflow-hidden bg-card">
-          <div className="h-8 flex">
-            <div className="flex-1" style={{ background: `hsl(${draft.primary_color})` }} />
-            <div className="flex-1" style={{ background: `hsl(${draft.accent_color})` }} />
-          </div>
-          <div className="p-3 bg-background">
-            <p className="text-xs font-medium text-foreground" style={{ color: draft.font_color ? `hsl(${draft.font_color})` : undefined }}>
-              Takhle to bude vypadat 🎨
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-1">Barvy a styl se změní po kliknutí na Použít.</p>
           </div>
         </div>
 
@@ -277,6 +392,18 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
     </Dialog>
   );
 };
+
+/** Silent logging of theme preferences for profiling */
+async function logThemePreference(partName: string, presetKey: string, config: Record<string, any>, threadId: string) {
+  try {
+    await supabase.from("did_part_theme_preferences" as any).insert({
+      part_name: partName,
+      theme_preset: presetKey,
+      theme_config: config,
+      thread_id: threadId,
+    });
+  } catch {}
+}
 
 function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (hsl: string) => void }) {
   const hex = hslToHex(value);

@@ -578,6 +578,72 @@ export type Database = {
         }
         Relationships: []
       }
+      did_part_profiles: {
+        Row: {
+          challenges: Json | null
+          cognitive_profile: Json | null
+          communication_style: Json | null
+          confidence_score: number | null
+          created_at: string
+          emotional_profile: Json | null
+          evidence_sources: Json | null
+          id: string
+          interests: Json | null
+          last_enriched_at: string | null
+          motivations: Json | null
+          needs: Json | null
+          part_name: string
+          personality_traits: Json | null
+          strengths: Json | null
+          theme_preferences: Json | null
+          therapeutic_approach: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          challenges?: Json | null
+          cognitive_profile?: Json | null
+          communication_style?: Json | null
+          confidence_score?: number | null
+          created_at?: string
+          emotional_profile?: Json | null
+          evidence_sources?: Json | null
+          id?: string
+          interests?: Json | null
+          last_enriched_at?: string | null
+          motivations?: Json | null
+          needs?: Json | null
+          part_name: string
+          personality_traits?: Json | null
+          strengths?: Json | null
+          theme_preferences?: Json | null
+          therapeutic_approach?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          challenges?: Json | null
+          cognitive_profile?: Json | null
+          communication_style?: Json | null
+          confidence_score?: number | null
+          created_at?: string
+          emotional_profile?: Json | null
+          evidence_sources?: Json | null
+          id?: string
+          interests?: Json | null
+          last_enriched_at?: string | null
+          motivations?: Json | null
+          needs?: Json | null
+          part_name?: string
+          personality_traits?: Json | null
+          strengths?: Json | null
+          theme_preferences?: Json | null
+          therapeutic_approach?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_part_registry: {
         Row: {
           age_estimate: string | null
@@ -723,6 +789,44 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "did_part_sessions_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "did_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      did_part_theme_preferences: {
+        Row: {
+          chosen_at: string
+          id: string
+          part_name: string
+          theme_config: Json | null
+          theme_preset: string
+          thread_id: string | null
+          user_id: string
+        }
+        Insert: {
+          chosen_at?: string
+          id?: string
+          part_name: string
+          theme_config?: Json | null
+          theme_preset?: string
+          thread_id?: string | null
+          user_id?: string
+        }
+        Update: {
+          chosen_at?: string
+          id?: string
+          part_name?: string
+          theme_config?: Json | null
+          theme_preset?: string
+          thread_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_part_theme_preferences_thread_id_fkey"
             columns: ["thread_id"]
             isOneToOne: false
             referencedRelation: "did_threads"
@@ -972,7 +1076,9 @@ export type Database = {
           processed_at: string | null
           started_at: string
           sub_mode: string
+          theme_config: Json | null
           theme_preset: string
+          thread_emoji: string | null
           user_id: string
         }
         Insert: {
@@ -986,7 +1092,9 @@ export type Database = {
           processed_at?: string | null
           started_at?: string
           sub_mode?: string
+          theme_config?: Json | null
           theme_preset?: string
+          thread_emoji?: string | null
           user_id?: string
         }
         Update: {
@@ -1000,7 +1108,9 @@ export type Database = {
           processed_at?: string | null
           started_at?: string
           sub_mode?: string
+          theme_config?: Json | null
           theme_preset?: string
+          thread_emoji?: string | null
           user_id?: string
         }
         Relationships: []

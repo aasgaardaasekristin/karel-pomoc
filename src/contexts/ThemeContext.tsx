@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface ThemePrefs {
@@ -214,6 +214,8 @@ interface ThemeContextValue {
   currentPersona: string;
   setCurrentPersona: (p: string) => void;
   loading: boolean;
+  applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
+  restoreGlobalTheme: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -229,6 +231,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [currentPersona, setCurrentPersona] = useState("default");
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const savedPrefsRef = useRef<ThemePrefs | null>(null);
 
   const loadPrefs = useCallback(async (persona: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -368,8 +371,20 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     return data.publicUrl;
   }, [userId, currentPersona]);
 
+  const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
+    savedPrefsRef.current = prefs;
+    setPrefs((prev) => ({ ...prev, ...config }));
+  }, [prefs]);
+
+  const restoreGlobalTheme = useCallback(() => {
+    if (savedPrefsRef.current) {
+      setPrefs(savedPrefsRef.current);
+      savedPrefsRef.current = null;
+    }
+  }, []);
+
   return (
-    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading }}>
+    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading, applyTemporaryTheme, restoreGlobalTheme }}>
       {children}
     </ThemeContext.Provider>
   );
