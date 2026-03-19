@@ -904,6 +904,7 @@ export type Database = {
           completed_at: string | null
           completed_note: string | null
           created_at: string
+          detail_instruction: string | null
           due_date: string | null
           escalation_level: number | null
           id: string
@@ -923,6 +924,7 @@ export type Database = {
           completed_at?: string | null
           completed_note?: string | null
           created_at?: string
+          detail_instruction?: string | null
           due_date?: string | null
           escalation_level?: number | null
           id?: string
@@ -942,6 +944,7 @@ export type Database = {
           completed_at?: string | null
           completed_note?: string | null
           created_at?: string
+          detail_instruction?: string | null
           due_date?: string | null
           escalation_level?: number | null
           id?: string

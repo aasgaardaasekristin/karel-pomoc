@@ -1,0 +1,1 @@
+ALTER TABLE public.did_therapist_tasks ADD COLUMN IF NOT EXISTS detail_instruction text DEFAULT '';
