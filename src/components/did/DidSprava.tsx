@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidReportDiagnostics from "./DidReportDiagnostics";
 
 interface Props {
   onBootstrap: () => void;
