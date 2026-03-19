@@ -76,8 +76,10 @@ function extractSection(block: string, startRe: RegExp, endRe: RegExp): string {
  * Returns [shortTitle, fullOriginalText] — the full text is preserved for detail_instruction.
  */
 function truncateTitle(raw: string): [string, string] {
-  const fullText = raw.trim();
-  let title = fullText;
+  const fullText = raw.trim().replace(/\s+/g, " ");
+  let title = fullText
+    .replace(/^(?:(?:miláčku|milacku)\s*,?\s*)?(?:haničko|hanička|hanka|káťo|káťa|kata|obě terapeutky|obě|společně|haničko a káťo|hanka a káťa|haničko i káťo)\s*[:–,—-]*\s*/i, "")
+    .trim();
 
   // Strip "Proč:/Důvod:" prefix for the short title only
   const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:)\b/i;
@@ -86,18 +88,25 @@ function truncateTitle(raw: string): [string, string] {
     title = title.slice(0, splitMatch.index!).trim();
   }
 
-  if (title.length > 80) {
+  // Prefer a compact action label before explanatory clauses
+  const clauseSplit = title.search(/(?:,\s*(?:aby|protože|a potom|a pak)|\s+-\s+|\s+→\s+|\.\s+)/i);
+  if (clauseSplit > 24) {
+    title = title.slice(0, clauseSplit).trim();
+  }
+
+  if (title.length > 68) {
     const sentenceEnd = Math.max(
-      title.lastIndexOf(". ", 80),
-      title.lastIndexOf(": ", 80),
+      title.lastIndexOf(". ", 68),
+      title.lastIndexOf(": ", 68),
+      title.lastIndexOf(", ", 68),
     );
-    const cut = sentenceEnd > 30 ? sentenceEnd + 1 : title.lastIndexOf(" ", 80);
-    const cutPos = cut > 30 ? cut : 80;
+    const cut = sentenceEnd > 30 ? sentenceEnd + 1 : title.lastIndexOf(" ", 68);
+    const cutPos = cut > 30 ? cut : 68;
     title = title.slice(0, cutPos).trim();
   }
 
-  title = title.replace(/[:\-–—]\s*$/, "").trim();
-  return [title, fullText];
+  title = title.replace(/[:\-–—,]\s*$/, "").trim();
+  return [title || fullText, fullText];
 }
 
 function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", category: "today" | "tomorrow" | "longterm"): ParsedTask[] {
