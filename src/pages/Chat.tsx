@@ -883,8 +883,7 @@ const Chat = () => {
     setActiveThread(null);
 
     if (subMode === "cast") {
-      // Use pre-loaded basic docs, just fetch threads
-      setCurrentPersona("kluci");
+      // Use pre-loaded basic docs, just fetch threads — NO global persona change
       setDidFlowState("loading");
       await didThreads.fetchActiveThreads("cast");
       // knownParts already loaded during dashboard pre-load
