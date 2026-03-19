@@ -371,8 +371,20 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     return data.publicUrl;
   }, [userId, currentPersona]);
 
+  const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
+    savedPrefsRef.current = prefs;
+    setPrefs((prev) => ({ ...prev, ...config }));
+  }, [prefs]);
+
+  const restoreGlobalTheme = useCallback(() => {
+    if (savedPrefsRef.current) {
+      setPrefs(savedPrefsRef.current);
+      savedPrefsRef.current = null;
+    }
+  }, []);
+
   return (
-    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading }}>
+    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading, applyTemporaryTheme, restoreGlobalTheme }}>
       {children}
     </ThemeContext.Provider>
   );
