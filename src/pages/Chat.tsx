@@ -655,10 +655,10 @@ const Chat = () => {
   }, []);
 
   const [isPartSelecting, setIsPartSelecting] = useState(false);
-  const handlePartSelected = useCallback(async (partName: string) => {
+  const handlePartSelected = useCallback(async (selection: import("@/components/did/DidPartIdentifier").PartSelection) => {
     if (isPartSelecting) return;
 
-    const safePartName = sanitizePartName(partName);
+    const safePartName = sanitizePartName(selection.partName);
     if (!safePartName) {
       toast.error("Tahle část nemá platný název.");
       return;
@@ -666,31 +666,7 @@ const Chat = () => {
 
     setIsPartSelecting(true);
     try {
-      const existing = await didThreads.getThreadByPart(safePartName, "cast");
-      if (existing) {
-        setActiveThread(existing);
-        setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
-        setDidFlowState("chat");
-        toast.info(`Pokračuješ ve vláknu s ${safePartName}`);
-        didContextPrime.runPrime(safePartName, "cast");
-        (async () => {
-          try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-              { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${safePartName.replace(/\s+/g, "_")}`] }) }
-            );
-            if (response.ok) {
-              const data = await response.json();
-              const docs = data.documents || {};
-              const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-              setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
-            }
-          } catch {}
-        })();
-        return;
-      }
-
+      // Always create a new thread (forceNew) — "Nové vlákno" must always create fresh
       const greeting = getRandomCastGreeting();
       const initialMessages = [{ role: "assistant" as const, content: greeting }];
 
@@ -699,7 +675,11 @@ const Chat = () => {
       if (basicCtx.toLowerCase().includes("norsky") || basicCtx.toLowerCase().includes("norština")) partLanguage = "no";
       if (basicCtx.toLowerCase().includes("anglicky") || basicCtx.toLowerCase().includes("english")) partLanguage = "en";
 
-      const thread = await didThreads.createThread(safePartName, "cast", partLanguage, initialMessages as any);
+      const thread = await didThreads.createThread(safePartName, "cast", partLanguage, initialMessages as any, {
+        forceNew: true,
+        threadLabel: selection.threadLabel,
+        enteredName: selection.raw,
+      });
       if (thread) {
         setActiveThread(thread);
         setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
