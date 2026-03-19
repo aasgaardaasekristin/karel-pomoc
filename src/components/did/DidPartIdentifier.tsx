@@ -3,11 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft, Loader2, Search } from "lucide-react";
 import { sanitizePartName } from "@/lib/didPartNaming";
+import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 
 export interface PartSelection {
-  partName: string;   // canonical part name (e.g. "Arthur")
-  threadLabel: string; // display label for the thread (e.g. "Tundrupek")
+  partName: string;   // canonical part name from server (e.g. "arthur")
+  threadLabel: string; // display label for the thread (e.g. "Artur")
   raw: string;         // original user input
 }
 
@@ -28,24 +29,45 @@ const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
     setIsDetecting(true);
     try {
       const rawInput = customName.trim();
-      // Fuzzy match against known parts from did_part_registry
-      const inputLower = safeName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      
-      const match = knownParts.find((part) => {
-        const partLower = part.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        return partLower === inputLower 
-          || partLower.includes(inputLower) 
-          || inputLower.includes(partLower);
-      });
 
-      if (match) {
-        // Matched a known part — use canonical name, keep entered name as label
-        const label = match.toLowerCase() === safeName.toLowerCase() ? match : safeName;
-        toast.success(`Rozpoznán: ${match} ✓`);
-        onSelectPart({ partName: match, threadLabel: label, raw: rawInput });
+      // Call server-side identity resolver (DB + Drive Excel + Levenshtein)
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-part-detect`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ name: safeName }),
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+
+        if (result.matched && result.partName) {
+          // Server matched — use canonical name from registry
+          const label = result.partName.toLowerCase() === safeName.toLowerCase() ? result.displayName : safeName;
+          toast.success(`Rozpoznán: ${result.displayName} ✓ (${result.source === "both" ? "DB + Drive" : result.source === "db" ? "registr" : "Drive Excel"})`);
+          onSelectPart({ partName: result.partName, threadLabel: label, raw: rawInput });
+        } else {
+          // No match — use input as-is
+          onSelectPart({ partName: safeName, threadLabel: safeName, raw: rawInput });
+        }
       } else {
-        // No match — use as-is for both
-        onSelectPart({ partName: safeName, threadLabel: safeName, raw: rawInput });
+        // Server error — fall back to local matching
+        console.warn("[DidPartIdentifier] Server detection failed, using local fallback");
+        const inputLower = safeName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const match = knownParts.find((part) => {
+          const partLower = part.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          return partLower === inputLower || partLower.includes(inputLower) || inputLower.includes(partLower);
+        });
+        if (match) {
+          const label = match.toLowerCase() === safeName.toLowerCase() ? match : safeName;
+          toast.success(`Rozpoznán: ${match} ✓`);
+          onSelectPart({ partName: match, threadLabel: label, raw: rawInput });
+        } else {
+          onSelectPart({ partName: safeName, threadLabel: safeName, raw: rawInput });
+        }
       }
     } finally {
       setIsDetecting(false);
