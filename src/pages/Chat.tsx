@@ -1882,7 +1882,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             onSelectTerapeut={() => setDidFlowState("terapeut")}
             onSelectKluci={() => {
               setDidSubMode("cast");
-              setCurrentPersona("kluci");
               setDidFlowState("thread-list");
             }}
             onBack={() => setMode("debrief")}
