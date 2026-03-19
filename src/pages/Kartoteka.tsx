@@ -598,6 +598,16 @@ const Kartoteka = () => {
                 </div>
               )}
             </TabsContent>
+
+            {/* ─── ROZHOVOR ─── */}
+            <TabsContent value="discussion">
+              <ClientDiscussionChat clientId={selectedClient.id} clientName={selectedClient.name} />
+            </TabsContent>
+
+            {/* ─── PŘÍPRAVA NA SEZENÍ ─── */}
+            <TabsContent value="prep">
+              <ClientSessionPrepPanel clientId={selectedClient.id} clientName={selectedClient.name} />
+            </TabsContent>
           </Tabs>
         </div>
       </ScrollArea>
