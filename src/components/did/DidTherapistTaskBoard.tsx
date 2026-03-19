@@ -738,14 +738,6 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           <div>
             <p className="mb-1 text-[8px] text-muted-foreground">Kdo</p>
             <div className="flex flex-wrap gap-1">
-              <Button
-                variant={assigneeFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => { setAssigneeFilter("all"); }}
-                className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
-              >
-                Vše
-              </Button>
               {(["hanka", "kata", "both"] as const).map((assignee) => (
                 <Button
                   key={assignee}
@@ -763,14 +755,6 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           <div>
             <p className="mb-1 text-[8px] text-muted-foreground">Kdy</p>
             <div className="flex flex-wrap gap-1">
-              <Button
-                variant={categoryFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => { setCategoryFilter("all"); }}
-                className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
-              >
-                Vše
-              </Button>
               {(["today", "tomorrow", "longterm"] as const).map((category) => (
                 <Button
                   key={category}
