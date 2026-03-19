@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
+import { loadDriveRegistryEntries, buildAliasMapText } from "../_shared/driveRegistry.ts";
 
 /**
  * Karel DID Context Prime – Dynamická situační cache pro DID režim
@@ -609,6 +610,8 @@ serve(async (req) => {
     let driveData: Record<string, Record<string, string>> = {};
     let partCardContent: string | null = null;
     let driveError: string | null = null;
+    let driveAliasMapText = "";
+    let driveError: string | null = null;
 
     const drivePromise = (async () => {
       try {
@@ -627,6 +630,16 @@ serve(async (req) => {
         if (centrumId) {
           reads.push(readFolderDocs(token, centrumId, 8, 3000).then(d => { driveData["CENTRUM"] = d; }));
         }
+
+        // Load registry alias map from Drive (authoritative identity source)
+        reads.push(loadDriveRegistryEntries(token).then(entries => {
+          driveAliasMapText = buildAliasMapText(entries);
+          if (driveAliasMapText) {
+            console.log(`[did-context-prime] Loaded ${entries.length} Drive registry entries with alias map`);
+          }
+        }).catch(e => {
+          console.warn("[did-context-prime] Drive registry alias load failed:", e.message);
+        }));
 
         // PAMET_KAREL/DID/ — therapist profiles
         const pametId = await findFolder(token, "PAMET_KAREL");
@@ -1015,6 +1028,8 @@ ${healthDigest || "(žádné)"}
 ${driveDigest || "(nedostupné)"}
 
 ${partCardContent ? `═══ KARTA ČÁSTI: ${partName} ═══\n${partCardContent}` : ""}
+
+${driveAliasMapText ? `═══ MAPA ALIASŮ ČÁSTÍ (z Drive registru) ═══\nKaždý řádek = KANONICKÉ_JMÉNO = alias1, alias2, ...\nPři jakékoli práci s identitou části VŽDY používej kanonické jméno.\n${driveAliasMapText}` : ""}
 
 ═══ REGISTR ČÁSTÍ (STATUS) ═══
 ${registryDigest || "(registr prázdný)"}

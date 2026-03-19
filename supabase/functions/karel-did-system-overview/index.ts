@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { normalize as driveNormalize, loadDriveRegistryEntries, buildAliasLookup } from "../_shared/driveRegistry.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -379,23 +380,49 @@ serve(async (req) => {
       return dp[la][lb];
     }
 
+    // ── Load Drive registry aliases (authoritative source) ──
+    let driveAliasLookup = new Map<string, string>();
+    try {
+      const driveToken = await (async () => {
+        const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+        const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+        const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+        if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing creds");
+        const res = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+        });
+        const data = await res.json();
+        if (!data.access_token) throw new Error("Token error");
+        return data.access_token;
+      })();
+      const driveEntries = await loadDriveRegistryEntries(driveToken);
+      driveAliasLookup = buildAliasLookup(driveEntries);
+      console.log(`[system-overview] Loaded ${driveEntries.length} Drive registry entries with aliases`);
+    } catch (e) {
+      console.warn("[system-overview] Drive registry load failed (non-blocking):", e.message);
+    }
+
     const knownAliases: Record<string, string[]> = {
       dmytri: ["dymi", "dymytri", "dmytri"],
     };
 
-    // Build alias map with dynamic Levenshtein-based alias generation
-    const registryKeys = (registry || []).map((r: any) => ({
-      key: normalizeKey(r.part_name || r.display_name || ""),
-      partName: r.part_name,
-      displayName: r.display_name,
-    }));
-
+    // Build alias map: merge DB registry + Drive aliases + Levenshtein
     const partAliasMap = (registry || []).map((r: any) => {
       const key = normalizeKey(r.part_name || r.display_name || "");
       const baseAliases = [r.part_name, r.display_name].filter(Boolean).map((v: string) => normalizeKey(v));
       const extraAliases = knownAliases[key] || [];
 
-      // Dynamic Levenshtein aliases: collect all thread part_names within edit distance ≤ 2
+      // Drive aliases: find all aliases that resolve to this part's canonical name
+      const driveAliases: string[] = [];
+      for (const [aliasKey, canonical] of driveAliasLookup.entries()) {
+        if (normalizeKey(canonical) === key && !baseAliases.includes(aliasKey)) {
+          driveAliases.push(aliasKey);
+        }
+      }
+
+      // Dynamic Levenshtein aliases from threads
       const threadPartNames = new Set<string>();
       for (const t of (last24hThreads || [])) {
         const tKey = normalizeKey(t?.part_name || "");
@@ -412,7 +439,7 @@ serve(async (req) => {
         }
       }
 
-      const aliases = [...new Set([...baseAliases, ...extraAliases, ...threadPartNames])];
+      const aliases = [...new Set([...baseAliases, ...extraAliases, ...driveAliases, ...threadPartNames])];
       return {
         key,
         display: r.display_name || r.part_name || "část",

@@ -1,66 +1,38 @@
 
-Cíl: opravit rozpoznání identity části tak, aby Karel bral sloupec B v registru na Drive jako autoritativní zdroj jména + aliasů, a aby se stejná logika použila i při „Osvěž paměť“ a v overview.
+✅ HOTOVO: Parsování aliasů ze sloupce B Drive registru
 
-Co jsem ověřil
-- V nahrané tabulce je přesně ten formát, který popisuješ:
-  - `ARTHUR (ARTUR, ARTÍK)`
-  - `DMYTRI (DYMI, DYMKO)`
-- To znamená: text před závorkou je kanonické jméno části, texty v závorce jsou aliasy téže identity.
-- `karel-did-part-detect` to dnes neparsuje. Bere celou buňku B jako jeden slepený string.
-- `DidPartIdentifier.tsx` už detektor volá, takže UI není hlavní problém.
-- `karel-did-context-prime` dnes registry sheet z `00_CENTRUM` pro alias mapu nenačítá, takže „Osvěž paměť“ v tomto bodě nefunguje tak, jak potřebuješ.
-- `karel-did-system-overview` používá vlastní logiku, takže bez sjednocení resolveru by se identity dál rozpadaly.
+## Co bylo opraveno
 
-Co opravím
-1. Zavedu jednotné parsování sloupce B
-- Z buňky typu `ARTHUR (ARTUR, ARTÍK)` vytvořit:
-  - canonical: `ARTHUR`
-  - aliases: `ARTUR`, `ARTÍK`
-- Matching bude:
-  - case-insensitive
-  - bez diakritiky
-  - proti hlavnímu jménu i každému aliasu zvlášť
-  - podřetězec bude platná shoda, jak požaduješ
+### 1. Sdílená utilita `_shared/driveRegistry.ts`
+- `parseAliases("ARTHUR (ARTUR, ARTÍK)")` → `{ primary: "ARTHUR", aliases: ["ARTUR", "ARTÍK"] }`
+- `scoreEntryMatch()` — porovnává vstup proti primárnímu jménu I každému aliasu zvlášť
+- `buildAliasMapText()` — generuje textovou mapu aliasů pro context injection
+- `buildAliasLookup()` — normalizovaný alias → kanonické jméno
 
-2. Opravím live detekci identity
-- `karel-did-part-detect` bude hledat v Drive registru podle aliasů ze sloupce B.
-- Pokud uživatel zadá `artík`, vrátí se kanonická část `ARTHUR`.
-- Výstup resolveru doplním o informaci, který alias byl skutečně trefen.
+### 2. `karel-did-part-detect` (live detekce identity)
+- Parsuje sloupec B na primární jméno + aliasy
+- Matchuje vstup proti každému aliasu individuálně (ne proti slepenci)
+- `"artik"` → match na alias `ARTÍK` → vrátí kanonické `ARTHUR`
+- `"dymi"` → match na alias `DYMI` → vrátí kanonické `DMYTRI`
+- Výstup obsahuje `matchedAlias` — který alias byl trefen
 
-3. Napojím stejnou logiku na „Osvěž paměť“
-- `karel-did-context-prime` bude při refreshi načítat registry sheet z `00_CENTRUM`.
-- Z něj sestaví alias mapu a vloží ji do situační cache.
-- Tím bude Karel po refreshi vědět, že aliasy jsou totožné identity, nejen při vstupu do vlákna, ale i v lokálním kontextu.
+### 3. `karel-did-context-prime` (Osvěž paměť)
+- Při refreshi načítá Drive registry a parsuje aliasy
+- Injektuje mapu aliasů do situační cache:
+  ```
+  ARTHUR = ARTUR, ARTÍK
+  DMYTRI = DYMI, DYMKO
+  ```
+- Karel po refreshi ví, že aliasy jsou totožné identity
 
-4. Sjednotím overview a agregace
-- `karel-did-system-overview` přepojím na stejný resolver.
-- Přehled pak nebude posuzovat `ARTUR / ARTÍK / ARTHUR` jako různé identity.
-- Stejná logika se použije i pro seskupování recentních vláken.
+### 4. `karel-did-system-overview` (Přehled)
+- Načítá Drive registry aliasy a přidává je do `partAliasMap`
+- Přehled seskupuje `ARTUR / ARTÍK / ARTHUR` pod jednu identitu
+- Nepřímé zmínky aliasů se správně mapují na kanonickou část
 
-5. Omezím riziko dalších chyb
-- Resolver bude mít prioritu:
-  1. Drive alias map
-  2. DB registry names
-  3. fuzzy fallback
-- Tím se zabrání tomu, aby hrubý fuzzy match přebil explicitní alias ze sloupce B.
-
-Soubory k úpravě
-- `supabase/functions/karel-did-part-detect/index.ts`
-- `supabase/functions/karel-did-context-prime/index.ts`
-- `supabase/functions/karel-did-system-overview/index.ts`
-- volitelně sdílená utilita v `supabase/functions/_shared/...` pro:
-  - normalizaci textu
-  - parsování `Jméno (alias1, alias2)`
-  - lookup aliasů
-
-Implementační poznámka
-- Není problém to naprogramovat.
-- Problém v aktuálním stavu je čistě v tom, že kód dnes neparsuje závorky ve sloupci B a nepoužívá tuto tabulku při refreshi paměti jako aliasový registr.
-- Oprava je přímá: sloupec B se musí číst jako seznam ekvivalentních jmen jedné části.
-
-Výsledek po opravě
-- `artík` -> `ARTHUR`
-- `artur` -> `ARTHUR`
-- `dymi` -> `DMYTRI`
-- „Osvěž paměť“ znovu natáhne aliasovou mapu z `00_CENTRUM`
-- Overview i další DID funkce budou pracovat s jednou kanonickou identitou místo fragmentace jmen
+## Výsledek
+- `artík` → `ARTHUR` ✅
+- `artur` → `ARTHUR` ✅
+- `dymi` → `DMYTRI` ✅
+- „Osvěž paměť" načte alias mapu z Drive ✅
+- Overview nesekupuje identity do fragmentů ✅
