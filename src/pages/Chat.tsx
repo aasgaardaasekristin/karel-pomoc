@@ -614,14 +614,16 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
   // Thread management for "cast" mode (hooks must be before early return)
-  const { applyPreset: applyThemePreset, prefs: themePrefs } = useTheme();
+  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme } = useTheme();
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
-    // Auto-apply per-thread theme if set
-    if (thread.themePreset) {
+    // Auto-apply per-thread theme if set (temporary, thread-scoped)
+    if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
+      applyTemporaryTheme(thread.themeConfig as Partial<typeof themePrefs>);
+    } else if (thread.themePreset) {
       applyThemePreset(thread.themePreset);
     }
     // Load part-specific docs in BACKGROUND
