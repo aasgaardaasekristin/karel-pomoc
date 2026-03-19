@@ -334,11 +334,28 @@ const TaskCard = ({
             const detailText = stripMarkdownNoise(task.detail_instruction);
             const noteText = stripMarkdownNoise(task.note);
 
-            // Use detail_instruction if available and different from title
+            // Containment check: if one text contains the other, they're effectively the same
+            const isSameContent = (a: string, b: string) => {
+              if (!a || !b) return false;
+              const na = normalizeTask(a);
+              const nb = normalizeTask(b);
+              if (na === nb) return true;
+              // If one contains the other (truncated vs full), treat as duplicate
+              if (na.includes(nb) || nb.includes(na)) return true;
+              // Check if they share >80% of words
+              const wa = new Set(na.split(/\s+/).filter(w => w.length > 2));
+              const wb = new Set(nb.split(/\s+/).filter(w => w.length > 2));
+              if (wa.size === 0 || wb.size === 0) return false;
+              let overlap = 0;
+              for (const w of wa) { if (wb.has(w)) overlap++; }
+              return overlap / Math.min(wa.size, wb.size) > 0.8;
+            };
+
+            // Use detail_instruction if available and NOT same as title
             let displayText = "";
-            if (detailText && normalizeTask(detailText) !== titleNorm) {
+            if (detailText && !isSameContent(detailText, task.task)) {
               displayText = detailText;
-            } else if (noteText && normalizeTask(noteText) !== titleNorm) {
+            } else if (noteText && !isSameContent(noteText, task.task)) {
               displayText = noteText;
             }
 
