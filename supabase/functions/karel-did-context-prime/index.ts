@@ -1016,6 +1016,27 @@ ${partCardContent ? `═══ KARTA ČÁSTI: ${partName} ═══\n${partCardC
 ═══ REGISTR ČÁSTÍ (STATUS) ═══
 ${registryDigest || "(registr prázdný)"}
 
+═══ PSYCHOLOGICKÉ PROFILY ČÁSTÍ ═══
+${(() => {
+  const profiles = dbResults.partProfiles || [];
+  if (!profiles.length) return "(žádné profily)";
+  return profiles.map((p: any) => {
+    const traits = Array.isArray(p.personality_traits) ? p.personality_traits.join(", ") : "";
+    const needs = Array.isArray(p.needs) ? p.needs.join(", ") : "";
+    const motivations = Array.isArray(p.motivations) ? p.motivations.join(", ") : "";
+    const interests = Array.isArray(p.interests) ? p.interests.join(", ") : "";
+    const commStyle = typeof p.communication_style === "object" ? JSON.stringify(p.communication_style) : "";
+    const approach = typeof p.therapeutic_approach === "object" ? JSON.stringify(p.therapeutic_approach) : "";
+    return `[${p.part_name}] (conf: ${p.confidence_score})
+  Osobnost: ${traits || "?"}
+  Potřeby: ${needs || "?"}
+  Motivace: ${motivations || "?"}
+  Zájmy: ${interests || "?"}
+  Komunikace: ${commStyle || "?"}
+  Doporučený přístup: ${approach || "?"}`;
+  }).join("\n");
+})()}
+
 ═══ DID KONVERZACE (uložené) ═══
 ${didConversations.slice(0, 10).map((c: any) => `[${c.sub_mode}] ${c.label}: ${c.preview?.slice(0, 100)}`).join("\n") || "(žádné)"}
 
