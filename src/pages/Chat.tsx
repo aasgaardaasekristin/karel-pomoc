@@ -789,6 +789,8 @@ const Chat = () => {
       themePreset: (data as any).theme_preset || "",
       themeConfig: (data as any).theme_config || {},
       threadEmoji: (data as any).thread_emoji || "",
+      threadLabel: (data as any).thread_label || "",
+      enteredName: (data as any).entered_name || "",
     };
     
     setActiveThread(thread);
