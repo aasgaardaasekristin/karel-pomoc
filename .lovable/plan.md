@@ -1,56 +1,54 @@
 
+Cíl opakuji přesně: opravit, proč se v Arturově vláknu nezobrazuje fotka na pozadí, a zabránit opakování stejné chyby.
 
-# Oprava: Karel neví kdo s ním mluví + barva tlačítka "Ukončit hovor"
+Co jsem dohledal:
+- Fotka není ztracená v datech. V databázi pro personu `kluci` stále existuje `background_image_url`.
+- Arturovo vlákno v `did_threads.theme_config` teď obsahuje jen barvy/font/emoji, ale ne `background_image_url`.
+- V `Chat.tsx` se při otevření vlákna aplikuje jen `thread.themeConfig`.
+- `applyTemporaryTheme(...)` skládá dočasný vzhled nad aktuální `prefs`.
+- Jenže `currentPersona` se do `kluci` nepřepíná při vstupu do DID-Kluci toku; přepíná se až při otevření editoru `DidKidsThemeEditor`.
+- To znamená: Arturovo vlákno se teď skládá nad špatným základem (`default` persona bez fotky), ne nad globálním vzhledem `kluci`, kde ta fotka opravdu je.
 
-## Nalezený bug
+Z toho plyne přesná příčina:
+1. Fotka není smazaná.
+2. Jen se nenačítá správný základ persony `kluci` před aplikací thread vzhledu.
+3. Proto se použijí thread barvy bez foto-pozadí.
+4. Dřívější „filtr prázdných hodnot“ problém jen zmírnil, ale neopravil hlavní bug.
 
-### Příčina č. 1: `didPartName` se nikdy neinjektuje do system promptu
-- Frontend posílá `didPartName: activeThread.partName` (řádek 1421 v Chat.tsx)
-- Edge funkce `karel-chat/index.ts` ho přijme na řádku 14: `const { ... didPartName ... } = await req.json()`
-- **Ale nikdy ho nepoužije.** Žádný řádek v celém souboru nepřidá `didPartName` do `systemPrompt`.
-- Proto Karel neví, kdo s ním mluví, a ptá se znovu "Jsi to ty, Artur?"
+Plán opravy:
+1. Opravit zdroj pravdy pro DID-Kluci
+- V `src/pages/Chat.tsx` při vstupu do DID-Kluci režimu explicitně přepnout theme personu na `kluci`.
+- Zajistit, aby se před `handleSelectThread` pracovalo s načtenými preferencemi `kluci`, ne s `default`.
 
-### Příčina č. 2: `threadLabel` / `enteredName` se neposílá
-- Frontend posílá jen `didPartName: activeThread.partName` (canonical = "Arthur")
-- Ale neposílá `threadLabel` ("Tundrupek") ani `enteredName` ("tundrupek")
-- Karel tedy nemá info, jakým jménem se část představila
+2. Opravit aplikaci thread vzhledu
+- V `handleSelectThread` skládat thread vzhled nad globálními prefs persony `kluci`, ne nad náhodně aktuálním stavem.
+- Tím zůstane Arturova globální fotka zachovaná, pokud ji thread výslovně nepřebíjí.
 
-### Příčina č. 3: System prompt říká "polož 2-4 otázky na identifikaci"
-- Řádky 389-396 v `systemPrompts.ts` instruují Karla, aby se na začátku vždy ptal "Jak ti mám říkat?", "Jsi nahoře nebo dole?" atd.
-- To je správné pro obecný případ, ale ŠPATNĚ pokud už část byla detekována z registru — tehdy Karel ví kdo mluví a musí rovnou navázat
+3. Opravit editor thread vzhledu
+- V `src/components/did/DidKidsThemeEditor.tsx` při otevření thread editoru inicializovat draft z kombinace:
+  - globální prefs `kluci`
+  - plus uložený `thread.theme_config`
+- Nejen z aktuálního `prefs`, které mohou být z jiné persony.
+- Tím se zabrání ukládání „neúplného“ thread configu.
 
-## Plán opravy
+4. Opravit persistenci thread pozadí
+- Když si vlákno nastaví vlastní pozadí, uložit ho do `did_threads.theme_config.background_image_url`.
+- Když si vlastní pozadí nenastaví, nesmí se tím smazat globální klučičí fotka.
 
-### 1. `karel-chat/index.ts` — injektovat identitu části do system promptu
-- Po řádku ~38 (kde se injektuje `didSubMode`), přidat nový blok:
-  - Pokud `didSubMode === "cast"` a existuje `didPartName`:
-    - Injektovat do system promptu: `"IDENTIFIKOVANÁ ČÁST: [partName]. Tato část byla detekována z registru. Karel VÍ kdo s ním mluví. NEPTEJ SE na jméno znovu."`
-  - Pokud existuje i `didThreadLabel` (nově posílaný):
-    - Injektovat: `"Část se představila jako: [threadLabel]. Interně jde o část [partName]."`
+5. Opravit návrat z vlákna
+- Při odchodu z threadu vždy obnovit globální `kluci` prefs, ne obecný poslední theme stav.
+- Tím se odstraní další zdroj nekonzistence mezi rozcestníkem a vláknem.
 
-### 2. `Chat.tsx` řádek 1421 — posílat i `threadLabel` a `enteredName`
-- Rozšířit request body o:
-  ```
-  didThreadLabel: activeThread.threadLabel
-  didEnteredName: activeThread.enteredName
-  ```
+6. Ověření po opravě
+- Arturovo vlákno: musí znovu zobrazit původní fotku.
+- Seznam vláken: nesmí převzít Arturovu thread stylizaci.
+- Jiné vlákno bez vlastní fotky: použije globální `kluci` fotku jen pokud má být součástí globálního vzhledu.
+- Vlákno s vlastní fotkou: použije svou fotku a po návratu neprosákne výš.
 
-### 3. `systemPrompts.ts` řádky 389-396 — podmínit identifikační otázky
-- Upravit text sekce "IDENTIFIKACE ČÁSTI": 
-  - "Pokud systém poskytl IDENTIFIKOVANOU ČÁST, Karel VÍ kdo mluví a NEPTÁ SE na jméno. Rovnou navazuje s plnou návazností z karty."
-  - "Orientační otázky použij POUZE pokud nebyla poskytnuta identifikace části."
+Soubory k úpravě:
+- `src/pages/Chat.tsx`
+- `src/components/did/DidKidsThemeEditor.tsx`
+- případně drobně `src/contexts/ThemeContext.tsx`, pokud bude potřeba bezpečnější přepnutí persony a obnovení správného základu
 
-### 4. `DidActionButtons.tsx` — změnit barvu tlačítka "Ukončit hovor"
-- Nahradit `variant="destructive"` (červená/oranžová) za jemnější styl
-- Použít `variant="outline"` s tlumenou červenou/šedou: `className="... border-muted-foreground/30 text-muted-foreground hover:bg-muted"`
-- Výsledek: tlačítko bude vizuálně subtilnější, ne "pěst na oko"
-
-## Soubory k úpravě
-
-| Soubor | Změna |
-|--------|-------|
-| `supabase/functions/karel-chat/index.ts` | Injektovat `didPartName` + `didThreadLabel` do system promptu pro cast mode |
-| `src/pages/Chat.tsx` | Posílat `didThreadLabel` a `didEnteredName` v request body |
-| `supabase/functions/karel-chat/systemPrompts.ts` | Podmínit identifikační otázky — neptát se když je část známá |
-| `src/components/did/DidActionButtons.tsx` | Změnit barvu "Ukončit hovor" na jemnější |
-
+Krátký technický závěr:
+Bug není v tom, že by se fotka smazala. Bug je v tom, že se Arturovo vlákno teď skládá nad špatnou personou (`default`), protože `kluci` se nepřepnou včas. Oprava tedy musí být: nejdřív načíst globální theme `kluci`, teprve potom přes něj aplikovat thread override.
