@@ -782,6 +782,8 @@ const Chat = () => {
       lastActivityAt: data.last_activity_at,
       isProcessed: data.is_processed,
       themePreset: (data as any).theme_preset || "",
+      themeConfig: (data as any).theme_config || {},
+      threadEmoji: (data as any).thread_emoji || "",
     };
     
     setActiveThread(thread);
