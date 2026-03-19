@@ -2065,7 +2065,7 @@ serve(async (req) => {
 
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
-      .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
+      .select("task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
       .neq("status", "done")
       .order("created_at", { ascending: true });
     const pendingTasksSummary = (pendingTasks || []).map((t: any) => {
@@ -3907,10 +3907,10 @@ Co je potřeba probrat s Káťou
 ▸ S jakými fragmenty pracovat a jak (POUZE splnitelné úkoly!)
 ▸ NIKDY nezadávej úkoly typu "pracuj s X" pokud X je dormantní/spící!
 
-<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
-▸ Co bylo splněno
-▸ Co nebylo splněno
-▸ Přímé otázky ohledně konkrétních úkolů
+<h3>📋 HODNOCENÍ SPOLUPRÁCE A PROCESU ÚKOLŮ:</h3>
+▸ Jak pokračuje proces úkolování: úroveň spolupráce, kde to vázne, co jde dobře
+▸ Na co se zaměřit konkrétně dnes, co zlepšit
+▸ Přímé otázky ohledně konkrétních nezapočatých nebo zaseklých úkolů
 
 Podpis: "Karel – vedoucí DID terapeutického týmu"
 
@@ -3964,7 +3964,9 @@ Co je potřeba probrat s Hankou
 ▸ Konkrétní, splnitelné úkoly
 ▸ S jakými fragmenty pracovat a jak
 
-<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
+<h3>📋 HODNOCENÍ SPOLUPRÁCE A PROCESU ÚKOLŮ:</h3>
+▸ Jak pokračuje proces úkolování Káti: úroveň spolupráce, kde to vázne, co jde dobře
+▸ Na co se zaměřit, co zlepšit
 ▸ Co Káťa splnila
 ▸ Co zbývá
 
