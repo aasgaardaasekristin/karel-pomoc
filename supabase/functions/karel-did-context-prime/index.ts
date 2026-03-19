@@ -611,7 +611,6 @@ serve(async (req) => {
     let partCardContent: string | null = null;
     let driveError: string | null = null;
     let driveAliasMapText = "";
-    let driveError: string | null = null;
 
     const drivePromise = (async () => {
       try {
