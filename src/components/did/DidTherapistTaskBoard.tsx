@@ -245,7 +245,16 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
-          {task.note && <p className="text-[10px] leading-relaxed text-muted-foreground">{stripMarkdownNoise(task.note)}</p>}
+          {task.note && (
+            <div className="rounded bg-muted/30 px-1.5 py-1">
+              <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
+                {stripMarkdownNoise(task.task)}{task.note ? `\n\n${stripMarkdownNoise(task.note)}` : ""}
+              </p>
+            </div>
+          )}
+          {!task.note && task.task.length > 60 && (
+            <p className="text-[10px] leading-relaxed text-foreground/80">{stripMarkdownNoise(task.task)}</p>
+          )}
 
           {isPendingDriveWrite && (
             <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
