@@ -116,9 +116,9 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
 
     if (boldMatch || plainMatch) {
       if (currentTitle) {
-        const [shortTitle, overflow] = truncateTitle(currentTitle);
-        const fullNote = (overflow + " " + currentNote).trim();
-        tasks.push({ task: shortTitle, assigned_to: assignee, category, note: fullNote });
+        const fullRaw = (currentTitle + (currentNote ? " " + currentNote : "")).trim();
+        const [shortTitle, fullText] = truncateTitle(fullRaw);
+        tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: currentNote.trim() });
       }
       const match = boldMatch || plainMatch!;
       currentTitle = match[1].trim();
@@ -127,16 +127,16 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       currentNote += " " + trimmed;
     } else {
       if (trimmed.length > 10) {
-        const [shortTitle, overflow] = truncateTitle(trimmed);
-        tasks.push({ task: shortTitle, assigned_to: assignee, category, note: overflow });
+        const [shortTitle, fullText] = truncateTitle(trimmed);
+        tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: "" });
       }
     }
   }
 
   if (currentTitle) {
-    const [shortTitle, overflow] = truncateTitle(currentTitle);
-    const fullNote = (overflow + " " + currentNote).trim();
-    tasks.push({ task: shortTitle, assigned_to: assignee, category, note: fullNote });
+    const fullRaw = (currentTitle + (currentNote ? " " + currentNote : "")).trim();
+    const [shortTitle, fullText] = truncateTitle(fullRaw);
+    tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: currentNote.trim() });
   }
 
   return tasks;
