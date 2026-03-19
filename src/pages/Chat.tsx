@@ -621,11 +621,16 @@ const Chat = () => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
-    // Auto-apply per-thread theme if set (temporary, thread-scoped)
+    // Auto-apply per-thread theme if set (temporary, thread-scoped — never writes to global DB)
     if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
       applyTemporaryTheme(thread.themeConfig as Partial<typeof themePrefs>);
-    } else if (thread.themePreset) {
-      applyThemePreset(thread.themePreset);
+    } else if (thread.themePreset && thread.themePreset !== "default") {
+      // Use temporary theme from KIDS_PRESETS lookup, not global applyPreset
+      const { KIDS_PRESETS } = await import("@/components/did/DidKidsThemeEditor");
+      const preset = KIDS_PRESETS[thread.themePreset];
+      if (preset) {
+        applyTemporaryTheme({ primary_color: preset.primary_color, accent_color: preset.accent_color });
+      }
     }
     // Load part-specific docs in BACKGROUND
     (async () => {
@@ -643,7 +648,7 @@ const Chat = () => {
         }
       } catch {}
     })();
-  }, [setMessages, setDidInitialContext, applyThemePreset]);
+  }, [setMessages, setDidInitialContext, applyTemporaryTheme]);
 
   const handleNewCastThread = useCallback(() => {
     setDidFlowState("part-identify");
