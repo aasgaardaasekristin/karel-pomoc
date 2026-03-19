@@ -509,9 +509,14 @@ async function runMirrorBatchStep(params: {
         }
         const normalizedCategory = VALID_CATEGORIES[(task.category || "").toLowerCase().trim()] || "general";
         const normalizedPriority = VALID_PRIORITIES[(task.priority || "").toLowerCase().trim()] || "normal";
+        const detailInstruction = task.detail_instruction || [
+          `Co udělat: ${task.task}`,
+          task.reasoning ? `Proč: ${task.reasoning}` : "Další krok: Udělej první konkrétní krok a pak napiš krátký update.",
+        ].join("\n");
         await sb.from("did_therapist_tasks").insert({
           user_id: userId,
           task: task.task,
+          detail_instruction: detailInstruction,
           assigned_to: assignee,
           priority: normalizedPriority,
           category: normalizedCategory,

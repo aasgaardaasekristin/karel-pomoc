@@ -657,8 +657,10 @@ async function phaseDistribute(sb: any, cycleId: string) {
     const key = `${task.trim().toLowerCase()}|${assignee}`;
     if (existingTaskKeys.has(key)) return false;
     existingTaskKeys.add(key);
+    const detailInstruction = `${task.trim()}\n\nKontext: ${origin} ${dateStr}.\nZdroj: ${source.trim()}.`;
     const { error } = await sb.from("did_therapist_tasks").insert({
       task: task.trim(), assigned_to: assignee, source_agreement: source.trim(),
+      detail_instruction: detailInstruction,
       priority: priority.trim() || "normal", note: `${origin} ${dateStr}`,
       user_id: userId, status_hanka: "not_started", status_kata: "not_started",
     });

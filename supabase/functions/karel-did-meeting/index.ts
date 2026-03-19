@@ -365,8 +365,14 @@ JSON pole
       // Insert tasks into did_therapist_tasks
       for (const t of tasks) {
         try {
+          const detailInstruction = t.detail_instruction || t.instruction || [
+            `Co udělat: ${t.task}`,
+            `Kontext: výstup z porady ${new Date().toISOString().slice(0, 10)} k tématu ${meeting.topic}.`,
+            "Další krok: potvrď odpovědnost, první krok a případnou překážku.",
+          ].join("\n");
           await sb.from("did_therapist_tasks").insert({
             task: t.task,
+            detail_instruction: detailInstruction,
             assigned_to: t.assigned_to || "both",
             priority: t.priority || "normal",
             category: t.category || "porada",

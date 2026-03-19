@@ -76,8 +76,10 @@ function extractSection(block: string, startRe: RegExp, endRe: RegExp): string {
  * Returns [shortTitle, fullOriginalText] — the full text is preserved for detail_instruction.
  */
 function truncateTitle(raw: string): [string, string] {
-  const fullText = raw.trim();
-  let title = fullText;
+  const fullText = raw.trim().replace(/\s+/g, " ");
+  let title = fullText
+    .replace(/^(?:(?:miláčku|milacku)\s*,?\s*)?(?:haničko|hanička|hanka|káťo|káťa|kata|obě terapeutky|obě|společně|haničko a káťo|hanka a káťa|haničko i káťo)\s*[:–,—-]*\s*/i, "")
+    .trim();
 
   // Strip "Proč:/Důvod:" prefix for the short title only
   const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:)\b/i;
@@ -86,18 +88,47 @@ function truncateTitle(raw: string): [string, string] {
     title = title.slice(0, splitMatch.index!).trim();
   }
 
-  if (title.length > 80) {
+  // Prefer a compact action label before explanatory clauses
+  const clauseSplit = title.search(/(?:,\s*(?:aby|protože|a potom|a pak)|\s+-\s+|\s+→\s+|\.\s+)/i);
+  if (clauseSplit > 24) {
+    title = title.slice(0, clauseSplit).trim();
+  }
+
+  if (title.length > 68) {
     const sentenceEnd = Math.max(
-      title.lastIndexOf(". ", 80),
-      title.lastIndexOf(": ", 80),
+      title.lastIndexOf(". ", 68),
+      title.lastIndexOf(": ", 68),
+      title.lastIndexOf(", ", 68),
     );
-    const cut = sentenceEnd > 30 ? sentenceEnd + 1 : title.lastIndexOf(" ", 80);
-    const cutPos = cut > 30 ? cut : 80;
+    const cut = sentenceEnd > 30 ? sentenceEnd + 1 : title.lastIndexOf(" ", 68);
+    const cutPos = cut > 30 ? cut : 68;
     title = title.slice(0, cutPos).trim();
   }
 
-  title = title.replace(/[:\-–—]\s*$/, "").trim();
-  return [title, fullText];
+  title = title.replace(/[:\-–—,]\s*$/, "").trim();
+  return [title || fullText, fullText];
+}
+
+function buildDetailInstruction(params: {
+  shortTitle: string;
+  fullText: string;
+  explicitInstruction?: string;
+  note?: string;
+  assignee: "hanka" | "kata" | "both";
+  category: "today" | "tomorrow" | "longterm";
+}): string {
+  const { shortTitle, fullText, explicitInstruction = "", note = "", assignee, category } = params;
+  const actionText = explicitInstruction.trim() || fullText.trim() || shortTitle.trim();
+  const who = assignee === "hanka" ? "Hanka" : assignee === "kata" ? "Káťa" : "Hanka i Káťa";
+  const when = category === "today" ? "Je potřeba to rozběhnout ještě dnes." : category === "tomorrow" ? "Připravte to na zítřek a ověřte další krok." : "Ber to jako dlouhodobější úkol a průběžně sleduj posun.";
+  const uniqueNote = note.trim() && normalizeTask(note) !== normalizeTask(actionText) ? note.trim() : "";
+
+  return [
+    `Co udělat: ${actionText}`,
+    `Pro koho: ${who}.`,
+    `Zaměření: ${when}`,
+    uniqueNote ? `Doplňující kontext: ${uniqueNote}` : `Další krok: Udělej první konkrétní krok a pak napiš krátký update, co se pohnulo a kde to vázne.`,
+  ].join("\n");
 }
 
 function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", category: "today" | "tomorrow" | "longterm"): ParsedTask[] {
@@ -105,24 +136,20 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
   const tasks: ParsedTask[] = [];
   const lines = section.split(/\n/);
   let currentTitle = "";
-  let currentFullText = "";
   let currentInstruction = "";
   let currentNote = "";
 
   const flushTask = () => {
     if (!currentTitle) return;
     const [shortTitle, fullOriginal] = truncateTitle(currentTitle);
-    // detail_instruction priority: explicit Instrukce: line > full original text (if different from short title)
-    let detail = currentInstruction.trim();
-    if (!detail && fullOriginal !== shortTitle) {
-      detail = fullOriginal;
-    }
-    // Also append note content to detail if note has unique info
-    if (currentNote.trim() && detail) {
-      detail += "\n" + currentNote.trim();
-    } else if (currentNote.trim() && !detail) {
-      detail = currentNote.trim();
-    }
+    const detail = buildDetailInstruction({
+      shortTitle,
+      fullText: fullOriginal,
+      explicitInstruction: currentInstruction,
+      note: currentNote,
+      assignee,
+      category,
+    });
     tasks.push({
       task: shortTitle,
       detail_instruction: detail,
@@ -131,7 +158,6 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       note: currentNote.trim(),
     });
     currentTitle = "";
-    currentFullText = "";
     currentInstruction = "";
     currentNote = "";
   };
@@ -140,7 +166,6 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Check for "Instrukce:" line (the new two-line format)
     const instructionMatch = trimmed.match(/^Instrukce\s*:\s*(.+)/i);
     if (instructionMatch && currentTitle) {
       currentInstruction = instructionMatch[1].trim();
@@ -156,21 +181,20 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       currentTitle = match[1].trim();
       currentNote = match[2] || "";
     } else if (currentTitle) {
-      // Continuation line — append to detail instruction (accumulate full context)
       if (currentInstruction) {
         currentInstruction += " " + trimmed;
       } else {
-        // Treat continuation as part of the instruction, not just note
         currentNote += " " + trimmed;
       }
-    } else {
-      // Standalone line without a preceding title
-      if (trimmed.length > 10) {
-        const [shortTitle, fullText] = truncateTitle(trimmed);
-        // Preserve full text as detail_instruction when it differs from short title
-        const detail = fullText !== shortTitle ? fullText : "";
-        tasks.push({ task: shortTitle, detail_instruction: detail, assigned_to: assignee, category, note: "" });
-      }
+    } else if (trimmed.length > 10) {
+      const [shortTitle, fullText] = truncateTitle(trimmed);
+      tasks.push({
+        task: shortTitle,
+        detail_instruction: buildDetailInstruction({ shortTitle, fullText, assignee, category }),
+        assigned_to: assignee,
+        category,
+        note: "",
+      });
     }
   }
 
@@ -191,9 +215,10 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
 
   const flushPending = (instruction: string) => {
     if (!pendingTitle) return;
-    const [shortTitle] = truncateTitle(pendingTitle);
+    const [shortTitle, fullText] = truncateTitle(pendingTitle);
+    const detail = instruction.trim() || fullText;
     if (shortTitle) {
-      tasks.push({ task: shortTitle, detail_instruction: instruction, assigned_to: pendingAssignee, category: pendingCategory, note: "" });
+      tasks.push({ task: shortTitle, detail_instruction: detail, assigned_to: pendingAssignee, category: pendingCategory, note: "" });
     }
     pendingTitle = "";
   };
@@ -211,7 +236,7 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
     // Bold title line
     const boldMatch = line.match(/^\*\*(.+?)\*\*\s*:?\s*(.*)/);
     if (boldMatch) {
-      flushPending(""); // flush previous without instruction
+      flushPending("");
       const raw = boldMatch[1].trim();
       pendingTitle = raw.replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "").trim();
       pendingAssignee = /\b(?:haničk|hanka)\b/i.test(raw) ? "hanka" : /\b(?:káť|kata)\b/i.test(raw) ? "kata" : "both";
@@ -224,17 +249,17 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
     const raw = (bulletMatch ? bulletMatch[1] : line).trim();
     if (!raw || raw.length < 8) continue;
 
-    flushPending(""); // flush any pending bold without instruction
+    flushPending("");
 
     const assignee = /\b(?:haničk|hanka)\b/i.test(raw) ? "hanka" : /\b(?:káť|kata)\b/i.test(raw) ? "kata" : "both";
     const category = /\b(?:zítra|zitra)\b/i.test(raw) ? "tomorrow" : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw) ? "longterm" : "today";
     const cleaned = raw.replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "").trim();
-    const [shortTitle] = truncateTitle(cleaned);
+    const [shortTitle, fullText] = truncateTitle(cleaned);
     if (!shortTitle) continue;
-    tasks.push({ task: shortTitle, detail_instruction: "", assigned_to: assignee, category, note: "" });
+    tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: "" });
   }
 
-  flushPending(""); // flush last pending
+  flushPending("");
   return tasks;
 }
 
