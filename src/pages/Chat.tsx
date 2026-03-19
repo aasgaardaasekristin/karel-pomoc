@@ -1892,11 +1892,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if (didFlowState === "thread-list" && didSubMode === "cast") {
       return (
         <ScrollArea className="flex-1">
-          <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3">
-            <div className="flex justify-end mb-2">
-              <DidKidsThemeEditor />
-            </div>
-          </div>
           <DidThreadList
             threads={didThreads.threads}
             onSelectThread={handleSelectThread}
