@@ -86,7 +86,6 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
   const handleApplyTheme = async () => {
     try {
       setSaving(true);
-      await updatePrefs(draft);
       
       const config: Record<string, any> = {
         primary_color: draft.primary_color,
@@ -94,13 +93,22 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
         dark_mode: draft.dark_mode,
         font_family: draft.font_family,
         font_scale: draft.font_scale,
+        background_image_url: draft.background_image_url,
         thread_emoji: (draft as any).thread_emoji || "",
       };
 
-      if (threadId && onThreadThemeSaved) {
-        onThreadThemeSaved(threadId, draft.theme_preset || "custom", config);
-        // Silent mapping: log theme preference
+      if (threadId) {
+        // THREAD-SCOPED: only apply temporarily + save to thread, do NOT write to global user_theme_preferences
+        applyTemporaryTheme(draft);
+        
+        if (onThreadThemeSaved) {
+          onThreadThemeSaved(threadId, draft.theme_preset || "custom", config);
+        }
+        // Silent mapping: log theme preference for profiling
         logThemePreference(partName || "", draft.theme_preset || "custom", config, threadId);
+      } else {
+        // GLOBAL: write to user_theme_preferences as before
+        await updatePrefs(draft);
       }
       
       toast.success(
