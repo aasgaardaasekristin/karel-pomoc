@@ -1029,6 +1029,8 @@ ${driveDigest || "(nedostupné)"}
 
 ${partCardContent ? `═══ KARTA ČÁSTI: ${partName} ═══\n${partCardContent}` : ""}
 
+${driveAliasMapText ? `═══ MAPA ALIASŮ ČÁSTÍ (z Drive registru) ═══\nKaždý řádek = KANONICKÉ_JMÉNO = alias1, alias2, ...\nPři jakékoli práci s identitou části VŽDY používej kanonické jméno.\n${driveAliasMapText}` : ""}
+
 ═══ REGISTR ČÁSTÍ (STATUS) ═══
 ${registryDigest || "(registr prázdný)"}
 
