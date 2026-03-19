@@ -438,13 +438,24 @@ serve(async (req) => {
       return [...new Set(hits)];
     };
 
+    // Filter threads: include if part_name matches registry OR is within Levenshtein distance ≤ 2
+    const isKnownPart = (partName: string) => {
+      const key = normalizeKey(partName || "");
+      if (registryPartKeys.has(key)) return true;
+      // Fuzzy: check Levenshtein distance against all registry keys
+      for (const rk of registryPartKeys) {
+        if (rk.length >= 3 && key.length >= 3 && levenshteinDist(key, rk) <= 2) return true;
+      }
+      return false;
+    };
+
     const filteredLast24hThreads = (last24hThreads || []).filter((t: any) => {
       if (t?.sub_mode !== "cast") return true;
-      return registryPartKeys.has(normalizeKey(t.part_name || ""));
+      return isKnownPart(t.part_name || "");
     });
     const filteredRecentThreads = (recentThreads || []).filter((t: any) => {
       if (t?.sub_mode !== "cast") return true;
-      return registryPartKeys.has(normalizeKey(t.part_name || ""));
+      return isKnownPart(t.part_name || "");
     });
 
     const directThreadActivity = new Set(
