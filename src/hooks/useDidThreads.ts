@@ -357,5 +357,6 @@ export const useDidThreads = () => {
     getThreadByPart,
     deleteThread,
     updateThreadTheme,
+    updateThreadThemeConfig,
   };
 };
