@@ -225,8 +225,6 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
   return tasks;
 }
 
-  return tasks;
-}
 
 /**
  * Normalize task text for dedup comparison:
