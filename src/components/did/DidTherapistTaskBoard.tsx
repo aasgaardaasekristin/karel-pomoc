@@ -300,11 +300,7 @@ const TaskCard = ({
         </div>
 
         <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
-          {isExpanded ? (
-            <span className="text-[11px] font-medium text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
-          ) : (
-            <span className="text-[11px] text-foreground leading-tight truncate block">{stripMarkdownNoise(task.task)}</span>
-          )}
+          <span className={`text-[11px] text-foreground leading-tight ${isExpanded ? "font-medium" : "truncate block"}`}>{stripMarkdownNoise(task.task)}</span>
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
@@ -328,44 +324,52 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
-          {/* Full detailed instruction — never duplicate the title */}
+          {/* Detail instruction — show only content that is NOT the same as the title */}
           {(() => {
             const titleNorm = normalizeTask(task.task);
-            const detailText = stripMarkdownNoise(task.detail_instruction);
-            const noteText = stripMarkdownNoise(task.note);
+            const detailRaw = (task.detail_instruction || "").trim();
+            const noteRaw = (task.note || "").trim();
 
-            // Containment check: if one text contains the other, they're effectively the same
-            const isSameContent = (a: string, b: string) => {
-              if (!a || !b) return false;
-              const na = normalizeTask(a);
-              const nb = normalizeTask(b);
-              if (na === nb) return true;
-              // If one contains the other (truncated vs full), treat as duplicate
-              if (na.includes(nb) || nb.includes(na)) return true;
-              // Check if they share >80% of words
-              const wa = new Set(na.split(/\s+/).filter(w => w.length > 2));
-              const wb = new Set(nb.split(/\s+/).filter(w => w.length > 2));
-              if (wa.size === 0 || wb.size === 0) return false;
+            // Check if text is essentially the same as title (substring, containment, or high word overlap)
+            const isDuplicateOf = (candidate: string) => {
+              if (!candidate) return true;
+              const cn = normalizeTask(candidate);
+              if (!cn || cn.length < 5) return true;
+              if (cn === titleNorm) return true;
+              if (cn.includes(titleNorm) || titleNorm.includes(cn)) return true;
+              const wa = new Set(titleNorm.split(/\s+/).filter(w => w.length > 2));
+              const wb = new Set(cn.split(/\s+/).filter(w => w.length > 2));
+              if (wa.size === 0 || wb.size === 0) return true;
               let overlap = 0;
               for (const w of wa) { if (wb.has(w)) overlap++; }
-              return overlap / Math.min(wa.size, wb.size) > 0.8;
+              return overlap / Math.min(wa.size, wb.size) > 0.7;
             };
 
-            // Use detail_instruction if available and NOT same as title
-            let displayText = "";
-            if (detailText && !isSameContent(detailText, task.task)) {
-              displayText = detailText;
-            } else if (noteText && !isSameContent(noteText, task.task)) {
-              displayText = noteText;
-            }
+            // Priority: detail_instruction first, then note as fallback
+            const detailOk = detailRaw && !isDuplicateOf(detailRaw);
+            const noteOk = noteRaw && !isDuplicateOf(noteRaw);
+            
+            // If both are unique, show both; if only one, show that one
+            const blocks: { label: string; text: string }[] = [];
+            if (detailOk) blocks.push({ label: "📝 Instrukce", text: stripMarkdownNoise(detailRaw) });
+            if (noteOk) blocks.push({ label: "💡 Poznámka", text: stripMarkdownNoise(noteRaw) });
 
-            return displayText ? (
-              <div className="rounded bg-muted/30 px-2 py-1.5">
-                <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                  {displayText}
-                </p>
+            return blocks.length > 0 ? (
+              <div className="space-y-1">
+                {blocks.map((b, i) => (
+                  <div key={i} className="rounded bg-muted/30 px-2 py-1.5">
+                    <span className="text-[8px] font-semibold text-muted-foreground uppercase">{b.label}</span>
+                    <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                      {b.text}
+                    </p>
+                  </div>
+                ))}
               </div>
-            ) : null;
+            ) : (
+              <div className="rounded bg-muted/20 px-2 py-1 text-[9px] text-muted-foreground italic">
+                Žádná podrobná instrukce. Použij pole níže pro update.
+              </div>
+            );
           })()}
 
           {isPendingDriveWrite && (

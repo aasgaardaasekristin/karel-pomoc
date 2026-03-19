@@ -105,16 +105,24 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
   const tasks: ParsedTask[] = [];
   const lines = section.split(/\n/);
   let currentTitle = "";
+  let currentFullText = "";
   let currentInstruction = "";
   let currentNote = "";
 
   const flushTask = () => {
     if (!currentTitle) return;
-    const shortTitle = currentTitle.length > 80
-      ? truncateTitle(currentTitle)[0]
-      : currentTitle;
-    // detail_instruction is the Instrukce: line (rich explanation), NOT a repeat of the title
-    const detail = currentInstruction.trim() || "";
+    const [shortTitle, fullOriginal] = truncateTitle(currentTitle);
+    // detail_instruction priority: explicit Instrukce: line > full original text (if different from short title)
+    let detail = currentInstruction.trim();
+    if (!detail && fullOriginal !== shortTitle) {
+      detail = fullOriginal;
+    }
+    // Also append note content to detail if note has unique info
+    if (currentNote.trim() && detail) {
+      detail += "\n" + currentNote.trim();
+    } else if (currentNote.trim() && !detail) {
+      detail = currentNote.trim();
+    }
     tasks.push({
       task: shortTitle,
       detail_instruction: detail,
@@ -123,6 +131,7 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       note: currentNote.trim(),
     });
     currentTitle = "";
+    currentFullText = "";
     currentInstruction = "";
     currentNote = "";
   };
@@ -147,16 +156,20 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       currentTitle = match[1].trim();
       currentNote = match[2] || "";
     } else if (currentTitle) {
-      // Continuation line — append to instruction if we already have one, else to note
+      // Continuation line — append to detail instruction (accumulate full context)
       if (currentInstruction) {
         currentInstruction += " " + trimmed;
       } else {
+        // Treat continuation as part of the instruction, not just note
         currentNote += " " + trimmed;
       }
     } else {
+      // Standalone line without a preceding title
       if (trimmed.length > 10) {
         const [shortTitle, fullText] = truncateTitle(trimmed);
-        tasks.push({ task: shortTitle, detail_instruction: "", assigned_to: assignee, category, note: "" });
+        // Preserve full text as detail_instruction when it differs from short title
+        const detail = fullText !== shortTitle ? fullText : "";
+        tasks.push({ task: shortTitle, detail_instruction: detail, assigned_to: assignee, category, note: "" });
       }
     }
   }
