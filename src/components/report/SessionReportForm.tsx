@@ -157,6 +157,12 @@ const SessionReportForm = () => {
       if (!response.ok) throw new Error("Triage error");
       const data = await response.json();
       updateTriageData(activeSessionId, data);
+
+      // Save triage to client_sessions in DB
+      await saveToClientSession({
+        ai_risk_assessment: JSON.stringify(data),
+      });
+
       toast.success("Triage dokončen");
     } catch {
       toast.error("Chyba při triage");
