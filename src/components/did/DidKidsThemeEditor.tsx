@@ -48,9 +48,16 @@ const FONT_OPTIONS = [
 
 const THREAD_EMOJIS = ["🐱", "🐶", "🦊", "🐸", "🐻", "🦁", "🐼", "🐨", "🐯", "🦄", "🐲", "👾", "🤖", "👻", "⭐", "🎮"];
 
+const PRESET_BACKGROUNDS = [
+  { key: "space", label: "Vesmír 🚀", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&q=80", gradient: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)" },
+  { key: "forest", label: "Les 🌲", url: "https://images.unsplash.com/photo-1448375240586-882707db888b?w=800&q=80", gradient: "linear-gradient(135deg, #134e5e, #71b280)" },
+  { key: "ocean", label: "Oceán 🌊", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80", gradient: "linear-gradient(135deg, #2193b0, #6dd5ed)" },
+  { key: "dragon", label: "Drak 🐉", url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80", gradient: "linear-gradient(135deg, #c31432, #240b36)" },
+];
+
 const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }: Props) => {
   const [open, setOpen] = useState(false);
-  const { prefs, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
+  const { prefs, updatePrefs, uploadBackground, currentPersona, setCurrentPersona, applyTemporaryTheme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -86,7 +93,6 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
   const handleApplyTheme = async () => {
     try {
       setSaving(true);
-      await updatePrefs(draft);
       
       const config: Record<string, any> = {
         primary_color: draft.primary_color,
@@ -94,13 +100,22 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
         dark_mode: draft.dark_mode,
         font_family: draft.font_family,
         font_scale: draft.font_scale,
+        background_image_url: draft.background_image_url,
         thread_emoji: (draft as any).thread_emoji || "",
       };
 
-      if (threadId && onThreadThemeSaved) {
-        onThreadThemeSaved(threadId, draft.theme_preset || "custom", config);
-        // Silent mapping: log theme preference
+      if (threadId) {
+        // THREAD-SCOPED: only apply temporarily + save to thread, do NOT write to global user_theme_preferences
+        applyTemporaryTheme(draft);
+        
+        if (onThreadThemeSaved) {
+          onThreadThemeSaved(threadId, draft.theme_preset || "custom", config);
+        }
+        // Silent mapping: log theme preference for profiling
         logThemePreference(partName || "", draft.theme_preset || "custom", config, threadId);
+      } else {
+        // GLOBAL: write to user_theme_preferences as before
+        await updatePrefs(draft);
       }
       
       toast.success(
@@ -366,6 +381,27 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
         {/* Background image */}
         <div>
           <p className="text-xs font-medium text-foreground mb-2">Pozadí</p>
+          
+          {/* Preset backgrounds grid */}
+          <div className="grid grid-cols-4 gap-1.5 mb-2">
+            {PRESET_BACKGROUNDS.map((bg) => (
+              <button
+                key={bg.key}
+                onClick={() => setDraftPartial({ background_image_url: bg.url })}
+                className={`relative h-12 rounded-lg border-2 overflow-hidden transition-all ${
+                  draft.background_image_url === bg.url 
+                    ? "border-primary ring-1 ring-primary/30 scale-105" 
+                    : "border-border hover:border-primary/50 hover:scale-[1.03]"
+                }`}
+              >
+                <div className="absolute inset-0" style={{ background: bg.gradient }} />
+                <span className="absolute bottom-0 left-0 right-0 text-[8px] text-white text-center font-medium drop-shadow-md bg-black/20 py-0.5">
+                  {bg.label}
+                </span>
+              </button>
+            ))}
+          </div>
+
           {draft.background_image_url ? (
             <div className="relative rounded-lg border border-border overflow-hidden h-20">
               <img src={draft.background_image_url} alt="Pozadí" className="w-full h-full object-cover" />
@@ -383,7 +419,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               className="w-full h-14 rounded-lg border-2 border-dashed border-border hover:border-primary/50 flex items-center justify-center gap-2 text-xs text-muted-foreground transition-colors"
             >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
-              {uploading ? "Nahrávám..." : "Nahrát obrázek"}
+              {uploading ? "Nahrávám..." : "Nahrát vlastní obrázek"}
             </button>
           )}
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />

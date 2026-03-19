@@ -5,9 +5,15 @@ import { ArrowLeft, Loader2, Search } from "lucide-react";
 import { sanitizePartName } from "@/lib/didPartNaming";
 import { toast } from "sonner";
 
+export interface PartSelection {
+  partName: string;   // canonical part name (e.g. "Arthur")
+  threadLabel: string; // display label for the thread (e.g. "Tundrupek")
+  raw: string;         // original user input
+}
+
 interface Props {
   knownParts: string[];
-  onSelectPart: (partName: string) => void;
+  onSelectPart: (selection: PartSelection) => void;
   onBack: () => void;
 }
 
@@ -21,6 +27,7 @@ const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
 
     setIsDetecting(true);
     try {
+      const rawInput = customName.trim();
       // Fuzzy match against known parts from did_part_registry
       const inputLower = safeName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       
@@ -32,11 +39,13 @@ const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
       });
 
       if (match) {
+        // Matched a known part — use canonical name, keep entered name as label
+        const label = match.toLowerCase() === safeName.toLowerCase() ? match : safeName;
         toast.success(`Rozpoznán: ${match} ✓`);
-        onSelectPart(match);
+        onSelectPart({ partName: match, threadLabel: label, raw: rawInput });
       } else {
-        // No match found — use as-is (new part)
-        onSelectPart(safeName);
+        // No match — use as-is for both
+        onSelectPart({ partName: safeName, threadLabel: safeName, raw: rawInput });
       }
     } finally {
       setIsDetecting(false);

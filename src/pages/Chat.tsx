@@ -547,6 +547,7 @@ const Chat = () => {
       }
       case "thread-list":
         // Kluci thread list → back to DID entry
+        restoreGlobalTheme();
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
@@ -621,11 +622,16 @@ const Chat = () => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
-    // Auto-apply per-thread theme if set (temporary, thread-scoped)
+    // Auto-apply per-thread theme if set (temporary, thread-scoped — never writes to global DB)
     if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
       applyTemporaryTheme(thread.themeConfig as Partial<typeof themePrefs>);
-    } else if (thread.themePreset) {
-      applyThemePreset(thread.themePreset);
+    } else if (thread.themePreset && thread.themePreset !== "default") {
+      // Use temporary theme from KIDS_PRESETS lookup, not global applyPreset
+      const { KIDS_PRESETS } = await import("@/components/did/DidKidsThemeEditor");
+      const preset = KIDS_PRESETS[thread.themePreset];
+      if (preset) {
+        applyTemporaryTheme({ primary_color: preset.primary_color, accent_color: preset.accent_color });
+      }
     }
     // Load part-specific docs in BACKGROUND
     (async () => {
@@ -643,17 +649,17 @@ const Chat = () => {
         }
       } catch {}
     })();
-  }, [setMessages, setDidInitialContext, applyThemePreset]);
+  }, [setMessages, setDidInitialContext, applyTemporaryTheme]);
 
   const handleNewCastThread = useCallback(() => {
     setDidFlowState("part-identify");
   }, []);
 
   const [isPartSelecting, setIsPartSelecting] = useState(false);
-  const handlePartSelected = useCallback(async (partName: string) => {
+  const handlePartSelected = useCallback(async (selection: import("@/components/did/DidPartIdentifier").PartSelection) => {
     if (isPartSelecting) return;
 
-    const safePartName = sanitizePartName(partName);
+    const safePartName = sanitizePartName(selection.partName);
     if (!safePartName) {
       toast.error("Tahle část nemá platný název.");
       return;
@@ -661,31 +667,7 @@ const Chat = () => {
 
     setIsPartSelecting(true);
     try {
-      const existing = await didThreads.getThreadByPart(safePartName, "cast");
-      if (existing) {
-        setActiveThread(existing);
-        setMessages(existing.messages as { role: "user" | "assistant"; content: string }[]);
-        setDidFlowState("chat");
-        toast.info(`Pokračuješ ve vláknu s ${safePartName}`);
-        didContextPrime.runPrime(safePartName, "cast");
-        (async () => {
-          try {
-            const headers = await getAuthHeaders();
-            const response = await fetch(
-              `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-              { method: "POST", headers, body: JSON.stringify({ documents: [`Karta_${safePartName.replace(/\s+/g, "_")}`] }) }
-            );
-            if (response.ok) {
-              const data = await response.json();
-              const docs = data.documents || {};
-              const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-              setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
-            }
-          } catch {}
-        })();
-        return;
-      }
-
+      // Always create a new thread (forceNew) — "Nové vlákno" must always create fresh
       const greeting = getRandomCastGreeting();
       const initialMessages = [{ role: "assistant" as const, content: greeting }];
 
@@ -694,7 +676,11 @@ const Chat = () => {
       if (basicCtx.toLowerCase().includes("norsky") || basicCtx.toLowerCase().includes("norština")) partLanguage = "no";
       if (basicCtx.toLowerCase().includes("anglicky") || basicCtx.toLowerCase().includes("english")) partLanguage = "en";
 
-      const thread = await didThreads.createThread(safePartName, "cast", partLanguage, initialMessages as any);
+      const thread = await didThreads.createThread(safePartName, "cast", partLanguage, initialMessages as any, {
+        forceNew: true,
+        threadLabel: selection.threadLabel,
+        enteredName: selection.raw,
+      });
       if (thread) {
         setActiveThread(thread);
         setMessages(initialMessages as { role: "user" | "assistant"; content: string }[]);
@@ -789,6 +775,8 @@ const Chat = () => {
       themePreset: (data as any).theme_preset || "",
       themeConfig: (data as any).theme_config || {},
       threadEmoji: (data as any).thread_emoji || "",
+      threadLabel: (data as any).thread_label || "",
+      enteredName: (data as any).entered_name || "",
     };
     
     setActiveThread(thread);
@@ -1905,11 +1893,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if (didFlowState === "thread-list" && didSubMode === "cast") {
       return (
         <ScrollArea className="flex-1">
-          <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3">
-            <div className="flex justify-end mb-2">
-              <DidKidsThemeEditor />
-            </div>
-          </div>
           <DidThreadList
             threads={didThreads.threads}
             onSelectThread={handleSelectThread}
@@ -1945,7 +1928,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             {activeThread && (
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
                 <span>
-                  Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+                  Vlákno: <strong>{activeThread.threadLabel || activeThread.partName}</strong>
+                  {activeThread.threadLabel && activeThread.threadLabel !== activeThread.partName && (
+                    <span className="text-muted-foreground/60"> ({activeThread.partName})</span>
+                  )}
+                  {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
                 </span>
                 <DidKidsThemeEditor
                   partName={activeThread.partName}
