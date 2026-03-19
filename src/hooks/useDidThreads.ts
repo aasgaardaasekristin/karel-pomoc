@@ -18,6 +18,8 @@ export interface DidThread {
   themePreset: string;
   themeConfig: Record<string, any>;
   threadEmoji: string;
+  threadLabel: string;
+  enteredName: string;
 }
 
 const rowToThread = (row: any): DidThread | null => {
@@ -36,6 +38,8 @@ const rowToThread = (row: any): DidThread | null => {
     themePreset: row.theme_preset || "",
     themeConfig: (row as any).theme_config || {},
     threadEmoji: (row as any).thread_emoji || "",
+    threadLabel: (row as any).thread_label || "",
+    enteredName: (row as any).entered_name || "",
   };
 };
 
@@ -76,6 +80,12 @@ const getActiveRegistryPartKeys = async () => {
       .filter(Boolean),
   );
 };
+
+export interface CreateThreadOptions {
+  threadLabel?: string;
+  enteredName?: string;
+  forceNew?: boolean;
+}
 
 export const useDidThreads = () => {
   const [threads, setThreads] = useState<DidThread[]>([]);
@@ -192,6 +202,7 @@ export const useDidThreads = () => {
     subMode: string,
     partLanguage: string = "cs",
     initialMessages: { role: string; content: string }[] = [],
+    options?: CreateThreadOptions,
   ): Promise<DidThread | null> => {
     const safePartName = sanitizePartName(partName);
     if (!safePartName) {
@@ -199,25 +210,28 @@ export const useDidThreads = () => {
       return null;
     }
 
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: existing } = await supabase
-      .from("did_threads")
-      .select("*")
-      .ilike("part_name", safePartName)
-      .eq("sub_mode", subMode)
-      .gte("last_activity_at", cutoff)
-      .order("last_activity_at", { ascending: false })
-      .limit(1);
+    // Only deduplicate when NOT forceNew
+    if (!options?.forceNew) {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: existing } = await supabase
+        .from("did_threads")
+        .select("*")
+        .ilike("part_name", safePartName)
+        .eq("sub_mode", subMode)
+        .gte("last_activity_at", cutoff)
+        .order("last_activity_at", { ascending: false })
+        .limit(1);
 
-    if (existing && existing.length > 0) {
-      const thread = rowToThread(existing[0]);
-      if (!thread) return null;
+      if (existing && existing.length > 0) {
+        const thread = rowToThread(existing[0]);
+        if (!thread) return null;
 
-      setThreads((prev) => {
-        if (prev.some((t) => t.id === thread.id)) return prev;
-        return [thread, ...prev];
-      });
-      return thread;
+        setThreads((prev) => {
+          if (prev.some((t) => t.id === thread.id)) return prev;
+          return [thread, ...prev];
+        });
+        return thread;
+      }
     }
 
     const { data, error } = await supabase
@@ -230,7 +244,9 @@ export const useDidThreads = () => {
         last_activity_at: new Date().toISOString(),
         is_processed: false,
         processed_at: null,
-      })
+        thread_label: options?.threadLabel || "",
+        entered_name: options?.enteredName || "",
+      } as any)
       .select()
       .single();
 

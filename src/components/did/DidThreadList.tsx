@@ -35,6 +35,10 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
     return KIDS_PRESETS[themePreset]?.emoji || null;
   };
 
+  const getDisplayName = (thread: DidThread) => {
+    return thread.threadLabel || thread.partName;
+  };
+
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 mt-4 pb-4">
       <div className="flex items-center justify-between mb-3">
@@ -55,7 +59,8 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
         <div className="space-y-2">
           {threads.map((thread) => {
             const presetEmoji = getThreadPresetEmoji(thread.themePreset);
-            const preset = thread.themePreset && KIDS_PRESETS[thread.themePreset];
+            const displayName = getDisplayName(thread);
+            const isAlias = thread.threadLabel && thread.threadLabel !== thread.partName;
             
             return (
               <div
@@ -63,23 +68,23 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
                 className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card/50 hover:bg-card cursor-pointer transition-colors group"
                 onClick={() => onSelectThread(thread)}
               >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                  style={preset ? {
-                    background: `linear-gradient(135deg, hsl(${preset.primary_color}), hsl(${preset.accent_color}))`,
-                  } : undefined}
-                >
-                  {presetEmoji ? (
+                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                  {thread.threadEmoji ? (
+                    <span className="text-sm">{thread.threadEmoji}</span>
+                  ) : presetEmoji ? (
                     <span className="text-sm">{presetEmoji}</span>
                   ) : (
                     <span className="text-sm font-medium text-primary bg-primary/10 w-full h-full rounded-full flex items-center justify-center">
-                      {thread.partName.charAt(0).toUpperCase()}
+                      {displayName.charAt(0).toUpperCase()}
                     </span>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
-                    {thread.partName}
+                    {displayName}
+                    {isAlias && (
+                      <span className="text-[9px] text-muted-foreground">({thread.partName})</span>
+                    )}
                     {presetEmoji && (
                       <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
                         <Palette className="w-2.5 h-2.5" />
