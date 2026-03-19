@@ -362,34 +362,57 @@ serve(async (req) => {
         .replace(/[\u0300-\u036f]/g, "")
         .trim();
 
-    const extractMessageTexts = (messages: unknown, allowedRoles: string[] = ["user"]): string[] => {
-      if (!Array.isArray(messages)) return [];
-      const roleSet = new Set(allowedRoles.map((r) => String(r).toLowerCase()));
-      return messages
-        .filter((m: any) => roleSet.has(String(m?.role || "").toLowerCase()))
-        .map((m: any) => {
-          const content = m?.content;
-          if (typeof content === "string") return content;
-          if (Array.isArray(content)) {
-            return content
-              .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
-              .filter(Boolean)
-              .join(" ");
-          }
-          return "";
-        })
-        .filter((v: string) => typeof v === "string" && v.trim().length > 0);
-    };
+    // ── Levenshtein distance for dynamic alias resolution ──
+    function levenshteinDist(a: string, b: string): number {
+      const la = a.length, lb = b.length;
+      if (la === 0) return lb;
+      if (lb === 0) return la;
+      const dp: number[][] = Array.from({ length: la + 1 }, (_, i) =>
+        Array.from({ length: lb + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+      );
+      for (let i = 1; i <= la; i++) {
+        for (let j = 1; j <= lb; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      return dp[la][lb];
+    }
 
     const knownAliases: Record<string, string[]> = {
       dmytri: ["dymi", "dymytri", "dmytri"],
     };
 
+    // Build alias map with dynamic Levenshtein-based alias generation
+    const registryKeys = (registry || []).map((r: any) => ({
+      key: normalizeKey(r.part_name || r.display_name || ""),
+      partName: r.part_name,
+      displayName: r.display_name,
+    }));
+
     const partAliasMap = (registry || []).map((r: any) => {
       const key = normalizeKey(r.part_name || r.display_name || "");
       const baseAliases = [r.part_name, r.display_name].filter(Boolean).map((v: string) => normalizeKey(v));
       const extraAliases = knownAliases[key] || [];
-      const aliases = [...new Set([...baseAliases, ...extraAliases])];
+
+      // Dynamic Levenshtein aliases: collect all thread part_names within edit distance ≤ 2
+      const threadPartNames = new Set<string>();
+      for (const t of (last24hThreads || [])) {
+        const tKey = normalizeKey(t?.part_name || "");
+        if (tKey && tKey.length >= 3 && key.length >= 3) {
+          const dist = levenshteinDist(key, tKey);
+          if (dist <= 2 && dist > 0) threadPartNames.add(tKey);
+        }
+      }
+      for (const t of (recentThreads || [])) {
+        const tKey = normalizeKey(t?.part_name || "");
+        if (tKey && tKey.length >= 3 && key.length >= 3) {
+          const dist = levenshteinDist(key, tKey);
+          if (dist <= 2 && dist > 0) threadPartNames.add(tKey);
+        }
+      }
+
+      const aliases = [...new Set([...baseAliases, ...extraAliases, ...threadPartNames])];
       return {
         key,
         display: r.display_name || r.part_name || "část",
@@ -415,13 +438,24 @@ serve(async (req) => {
       return [...new Set(hits)];
     };
 
+    // Filter threads: include if part_name matches registry OR is within Levenshtein distance ≤ 2
+    const isKnownPart = (partName: string) => {
+      const key = normalizeKey(partName || "");
+      if (registryPartKeys.has(key)) return true;
+      // Fuzzy: check Levenshtein distance against all registry keys
+      for (const rk of registryPartKeys) {
+        if (rk.length >= 3 && key.length >= 3 && levenshteinDist(key, rk) <= 2) return true;
+      }
+      return false;
+    };
+
     const filteredLast24hThreads = (last24hThreads || []).filter((t: any) => {
       if (t?.sub_mode !== "cast") return true;
-      return registryPartKeys.has(normalizeKey(t.part_name || ""));
+      return isKnownPart(t.part_name || "");
     });
     const filteredRecentThreads = (recentThreads || []).filter((t: any) => {
       if (t?.sub_mode !== "cast") return true;
-      return registryPartKeys.has(normalizeKey(t.part_name || ""));
+      return isKnownPart(t.part_name || "");
     });
 
     const directThreadActivity = new Set(
