@@ -617,7 +617,7 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
   // Thread management for "cast" mode (hooks must be before early return)
-  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, setCurrentPersona } = useTheme();
+  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, getPersonaPrefs } = useTheme();
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
