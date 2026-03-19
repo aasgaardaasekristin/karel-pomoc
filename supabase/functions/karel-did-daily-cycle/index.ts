@@ -3907,10 +3907,10 @@ Co je potřeba probrat s Káťou
 ▸ S jakými fragmenty pracovat a jak (POUZE splnitelné úkoly!)
 ▸ NIKDY nezadávej úkoly typu "pracuj s X" pokud X je dormantní/spící!
 
-<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
-▸ Co bylo splněno
-▸ Co nebylo splněno
-▸ Přímé otázky ohledně konkrétních úkolů
+<h3>📋 HODNOCENÍ SPOLUPRÁCE A PROCESU ÚKOLŮ:</h3>
+▸ Jak pokračuje proces úkolování: úroveň spolupráce, kde to vázne, co jde dobře
+▸ Na co se zaměřit konkrétně dnes, co zlepšit
+▸ Přímé otázky ohledně konkrétních nezapočatých nebo zaseklých úkolů
 
 Podpis: "Karel – vedoucí DID terapeutického týmu"
 
