@@ -263,6 +263,7 @@ export async function syncOverviewTasksToBoard(overviewText: string): Promise<nu
 
   const rows = toInsert.map(t => ({
     task: t.task,
+    detail_instruction: t.detail_instruction || "",
     assigned_to: t.assigned_to,
     category: t.category,
     note: t.note || "",
