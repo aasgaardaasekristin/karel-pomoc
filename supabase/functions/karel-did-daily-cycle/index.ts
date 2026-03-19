@@ -1756,11 +1756,14 @@ serve(async (req) => {
     resolvedUserId = anyThread?.user_id || null;
   }
 
-  // ═══ EMAIL GUARD: Only send report emails from scheduled cron calls ═══
+  // ═══ EMAIL GUARD: Daily report emails must only go out in the afternoon slot (14:00 Prague) or catch-up runs ═══
   const isTestEmail = requestBody?.testEmail === true;
-  const shouldSendEmails = (isCronCall && isCronSource) || isTestEmail;
+  const nowPragueForEmailGuard = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
+  const pragueHourForEmailGuard = nowPragueForEmailGuard.getHours();
+  const isAfternoonCronWindow = isCronCall && isCronSource && pragueHourForEmailGuard >= 13;
+  const shouldSendEmails = isAfternoonCronWindow || isTestEmail;
   if (!shouldSendEmails) {
-    console.log("[daily-cycle] Manual invocation – will process cards but NOT send report emails.");
+    console.log(`[daily-cycle] Email sending disabled for this run (manual or morning slot). Prague hour=${pragueHourForEmailGuard}`);
   }
 
   let cycleId: string | null = null;
