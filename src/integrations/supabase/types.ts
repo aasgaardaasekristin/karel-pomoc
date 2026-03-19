@@ -1067,6 +1067,7 @@ export type Database = {
       did_threads: {
         Row: {
           created_at: string
+          entered_name: string | null
           id: string
           is_processed: boolean
           last_activity_at: string
@@ -1079,10 +1080,12 @@ export type Database = {
           theme_config: Json | null
           theme_preset: string
           thread_emoji: string | null
+          thread_label: string | null
           user_id: string
         }
         Insert: {
           created_at?: string
+          entered_name?: string | null
           id?: string
           is_processed?: boolean
           last_activity_at?: string
@@ -1095,10 +1098,12 @@ export type Database = {
           theme_config?: Json | null
           theme_preset?: string
           thread_emoji?: string | null
+          thread_label?: string | null
           user_id?: string
         }
         Update: {
           created_at?: string
+          entered_name?: string | null
           id?: string
           is_processed?: boolean
           last_activity_at?: string
@@ -1111,6 +1116,7 @@ export type Database = {
           theme_config?: Json | null
           theme_preset?: string
           thread_emoji?: string | null
+          thread_label?: string | null
           user_id?: string
         }
         Relationships: []
