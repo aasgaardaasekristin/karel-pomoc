@@ -529,6 +529,7 @@ const Chat = () => {
     switch (didFlowState) {
       case "chat": {
         // From chat, go back to the appropriate list
+        restoreGlobalTheme();
         setActiveThread(null);
         setMessages([]);
         if (didSubMode === "cast") {
