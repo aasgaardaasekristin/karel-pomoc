@@ -967,6 +967,9 @@ ${partName ? `═══ KARTA ČÁSTI: ${partName} ═══\n[klíčové info z
 ═══ ZDRAVÍ KARTOTÉKY ═══
 [stav karet, chybějící sekce]
 
+═══ OSOBNOSTNÍ PROFILY ═══
+[shrnutí psychologických profilů částí – osobnostní rysy, potřeby, motivace, komunikační styl, doporučený terapeutický přístup]
+
 ═══ DID VZORCE A STRATEGIE ═══
 [relevantní vzorce a co funguje]
 
