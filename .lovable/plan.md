@@ -1,171 +1,114 @@
 
+Cíl: okamžitě doručit to, co mělo už fungovat — rozpoznání části při vstupu do vlákna podle registru v databázi i podle Excel registru na Drive, následné sjednocení na kanonické jméno a teprve potom načtení správné karty do lokální kontextové paměti.
 
-## Komplexní architektonický audit a plán refaktoru Karel DID systému
+Co jsem ověřil
+- `DidPartIdentifier.tsx` dnes dělá jen primitivní lokální porovnání přes `includes()` nad `knownParts`. Excel na Drive vůbec nekontroluje.
+- `karel-did-part-detect/index.ts` kontroluje pouze `did_part_registry`. Drive Excel nekontroluje.
+- `karel-did-system-overview/index.ts` má jen natvrdo aliasy pro `dmytri`; obecná aliasová logika pro `Arthur = Artur` neexistuje.
+- V kódu už existuje čtení Excel registru z Drive:
+  - `karel-did-daily-cycle/index.ts` umí načíst registry sheet (`readRegistryRows`, `loadRegistryContext`, `findBestRegistryEntry`)
+  - `karel-did-drive-write/index.ts` umí totéž
+- Tedy: potřebná logika pro Excel existuje, ale není napojená do live detekce částí.
+- V databázi je potvrzená duplicita:
+  - `arthur / ARTHUR`
+  - `artur / artur`
 
----
+Proč to teď selhává
+1. Vstup „Jak ti říkají?“ nevolá centrální detekci identity.
+2. Centrální detekce identity nečte Drive registr.
+3. Vlákno se vytvoří ještě před plnou kanonizací identity.
+4. Přehled pak bere názvy z vláken a neumí je vždy sloučit.
+5. Načtení karty používá `Karta_${safePartName}`, takže pokud je kanonické jméno špatně, natáhne se špatný nebo žádný kontext.
 
-### ČÁST 1: Rozdělit monolitický `karel-did-daily-cycle` (4555 řádků)
+Implementační plán
+1. Zavedu jednotný resolver identity části
+- Vytvořit jednu sdílenou serverovou logiku pro:
+  - normalizaci jmen
+  - fuzzy matching
+  - porovnání s DB registrem
+  - porovnání s Excel registrem na Drive
+  - výběr kanonického jména
+- Resolver bude vracet:
+  - `matched`
+  - `canonicalPartName`
+  - `displayName`
+  - `source` (`db`, `drive`, `both`, `new`)
+  - `aliasesMatched`
+  - `registry/profile/card` metadata
 
-**Problém:** Jedna funkce dělá 10 věcí sekvenčně. Selhání kroku 2 (Drive token) zastaví kroky 3-10. Email na řádku ~4006 nikdy nepřijde, pokud selže cokoli před ním.
+2. Napojit live vstup „Jak ti říkají?“ na resolver
+- `DidPartIdentifier.tsx` přestane rozhodovat lokálně.
+- Po Enter/kliknutí zavolá `karel-did-part-detect`.
+- Teprve výsledek resolveru rozhodne:
+  - pod jakým `part_name` se vlákno uloží
+  - jaký `thread_label` zůstane jako alias
+  - jaká karta se natáhne do kontextu
 
-**Navrhovaná architektura — 4 samostatné funkce:**
+3. Rozšířit `karel-did-part-detect` o Drive Excel
+- Reuse existující registry parsování z daily-cycle/drive-write.
+- Pořadí rozhodování:
+  1. DB exact / alias / fuzzy
+  2. Drive Excel exact / alias / fuzzy
+  3. sloučení obou zdrojů do jedné kandidátní množiny
+  4. pokud shoda dost silná, vrátit kanonickou část
+  5. pokud není, označit jako novou / neověřenou část
+- Přidat robustnější scoring:
+  - exact
+  - bez diakritiky
+  - prefix/id match
+  - edit distance / podobnost pro `artur ↔ arthur`
+  - podpora aliasů z registru a z `display_name`
 
-```text
-┌─────────────────────────────────────────────────────┐
-│  DŘÍVE: karel-did-daily-cycle (4555 řádků, vše)     │
-│  ────────────────────────────────────────────────── │
-│  1. Drive auth + čtení/zápis karet                  │
-│  2. Normalizace                                     │
-│  3. Sběr DB dat                                     │
-│  4. AI analýza + CENTRUM                            │
-│  5. Profilace částí                                  │
-│  6. EMAIL (závislý na 1-5)                           │
-│  7. Auto-meeting, feedback, cleanup                  │
-└─────────────────────────────────────────────────────┘
+4. Opravit tvorbu vláken a načítání kontextu
+- `Chat.tsx` bude při vytvoření vlákna vždy ukládat kanonické `part_name`.
+- `thread_label` zůstane jméno, kterým se část představila.
+- Následné čtení karty z Drive poběží už nad kanonickým jménem, ne nad raw vstupem.
+- Tím se splní požadavek: detekce identity → načtení správné karty → lokální kontext → adekvátní komunikace.
 
-          ↓ rozdělit na ↓
+5. Opravit přehled a další agregace
+- `karel-did-system-overview` nahradí hardcoded aliasy obecným resolverem.
+- Přehled přestane rozdělovat `ARTHUR`, `artur`, `Arthur` do více entit.
+- Stejný resolver použít i tam, kde se z vláken generují souhrny, audity a denní maily.
 
-┌────────────────────────────┐  ┌──────────────────────┐
-│ karel-did-daily-cycle      │  │ karel-did-daily-email │
-│ (~3500 řádků)              │  │ (~400 řádků, NOVÁ)   │
-│ Drive karty + CENTRUM +    │  │ POUZE DB data →      │
-│ profilace + feedback +     │  │ AI email → Resend    │
-│ cleanup                    │  │ 0 Drive calls        │
-│ BEZ emailu                 │  │ Nezávislá na 1.      │
-└────────────────────────────┘  └──────────────────────┘
-          cron: 06:00, 14:00           cron: 06:15, 14:15
-          catch-up: 15:30, 17:00       catch-up: 16:00, 17:30
-```
+6. Vyčistit už vzniklou nekonzistenci v datech
+- Sloučit duplicitní registry záznamy `artur -> arthur` / finální kanonický tvar podle zvoleného standardu.
+- Přemapovat existující data:
+  - `did_threads`
+  - `did_part_sessions`
+  - `did_part_profiles`
+  - případně další DID tabulky s `part_name`
+- Nejde jen o UI chybu; je nutné opravit i historická data, jinak se chyba bude vracet v přehledech a analýzách.
 
----
+7. Zabránit opakování chyby
+- Zavést pravidlo: žádné nové cast vlákno bez serverové detekce identity.
+- Přidat ochranu při insert/update registru:
+  - varování při blízké duplicitě
+  - možnost aliasu místo nové části
+- Přidat audit log, z jakého zdroje byla identita rozpoznána (DB / Drive / fuzzy / nová část).
 
-### ČÁST 2: Nová funkce `karel-did-daily-email`
+Soubory k úpravě
+- `src/components/did/DidPartIdentifier.tsx`
+- `src/pages/Chat.tsx`
+- `supabase/functions/karel-did-part-detect/index.ts`
+- `supabase/functions/karel-did-system-overview/index.ts`
+- sdílená Drive registry utilita v `supabase/functions/_shared/...`
+- datová oprava existujících záznamů v DID tabulkách
 
-**Datové zdroje (výhradně DB, 0 Drive calls):**
-- `did_threads` — 24h, všechny sub_modes (cast, mamka, kata)
-- `did_conversations` — 24h
-- `karel_hana_conversations` — 24h
-- `research_threads` — 24h
-- `did_part_registry` — aktuální stav
-- `did_therapist_tasks` — otevřené + nedávno splněné
-- `did_meetings` — otevřené
-- `did_update_cycles` — poslední weekly + monthly `report_summary` (střednědobý/dlouhodobý kontext)
-- `client_sessions`, `crisis_briefs`, `karel_episodes` — 24h
-- `did_pulse_checks` — 7d
-- `did_motivation_profiles` — pro adaptivní tón emailu
-- `did_task_feedback` — 24h (audit Karlovy komunikace)
+Důležitá architektonická změna
+- Excel na Drive nebude jen „někde bokem“ pro dávkové cykly.
+- Stane se součástí online rozhodovací vrstvy pro identitu části.
+- DB registr zůstane rychlá operativní vrstva, Drive Excel bude autoritativní kontrolní zdroj pro aliasy, ID a kartu.
 
-**Klíčová logika:**
-1. Rozdělit 24h vlákna na "včera odpoledne/večer" vs "dnes" (Prague timezone)
-2. Načíst `report_summary` z posledního weekly a monthly cyklu jako střednědobý kontext
-3. Cross-mode audit: projít VŠECHNY režimy komunikace za 24h
-4. AI generování personalizovaného emailu pro Hanku a Káťu (reuse stávajícího promptu z řádků 4029-4163)
-5. Odeslání přes Resend
-6. Záznam do `did_daily_report_dispatches` (dedup max 1/den/osoba)
+Výsledek po úpravě
+- `Artur`, `Arthur`, `artur`, případně další aliasy se sjednotí na jednu část.
+- Vlákno se povede pod správnou částí.
+- Karel natáhne správnou kartu do lokální kontextové paměti.
+- Přehled, denní maily i další DID analýzy přestanou duplikovat stejné části pod různými jmény.
+- Chyba nebude jen maskovaná v přehledu, ale opraví se v samotném vstupním bodu systému.
 
-**Záruky:**
-- Email se pošle i když Drive token expiroval
-- Email se pošle i když daily-cycle vůbec neběžel
-- Email se pošle i když AI analýza karet selhala
-
----
-
-### ČÁST 3: Sloučit "Aktualizovat kartotéku" a "Zrcadlit do Drive"
-
-**Audit současného stavu:**
-
-| Funkce | Tlačítko | Co dělá | Kde je |
-|--------|----------|---------|--------|
-| `handleManualUpdate` | "Aktualizovat kartotéku" | Volá `karel-did-daily-cycle` → Drive karty + CENTRUM + registry sync | DidActionButtons (v terapeutickém vlákně), DidSprava (dashboard) |
-| `handleMirrorToDrive` | "Zrcadlit do Drive" | Volá `karel-memory-mirror` → DB entity/vzorce/strategie + Drive PAMET_KAREL + KARTOTEKA_DID | HanaChat (Správa popover) |
-
-**Problém:** Obě funkce dělají podobnou věc — redistribuují nová data z konverzací do Drive a DB. Ale:
-- `karel-did-daily-cycle` (manuální trigger) zapisuje do KARTOTEKA_DID karet a CENTRUM dokumentů
-- `karel-memory-mirror` zapisuje do PAMET_KAREL (semantic, procedural, episodes) + KARTOTEKA_DID karet + CENTRUM + ZALOHA
-
-**`karel-memory-mirror` je komplexnější** — dělá vše co daily-cycle + navíc PAMET_KAREL.
-
-**Řešení:**
-1. **Zachovat JEDNO tlačítko: "Aktualizovat kartotéku"** — ale přepojit na `karel-memory-mirror` místo `karel-did-daily-cycle`
-2. **Odstranit "Zrcadlit do Drive"** z HanaChat jako samostatné tlačítko (mirror se stane součástí "Aktualizovat kartotéku")
-3. **V DidActionButtons** (tlačítko ve vlákně terapeutek) přepojit `onManualUpdate` na volání mirror engine
-4. **V DidSprava** přepojit "Aktualizovat kartotéku" na mirror engine
-5. **`karel-did-daily-cycle`** zůstane jen pro cron (automatický Drive sync) — manuální trigger z UI půjde přes mirror
-
-**Logická kontrola:**
-- Mirror zapisuje do PAMET_KAREL (entity, vzorce, strategie) → ✅ komplexnější než daily-cycle
-- Mirror zapisuje do KARTOTEKA_DID karet → ✅ stejné jako daily-cycle
-- Mirror zapisuje do CENTRUM dokumentů → ✅ stejné jako daily-cycle
-- Mirror zapisuje do ZALOHA → ✅ navíc oproti daily-cycle
-- Mirror NEMÁ registry sync (backfill C-F) → potřeba přidat do mirror flow nebo ponechat jako separátní fázi po dokončení
-
----
-
-### ČÁST 4: Přesunout administrativní funkce do Správy (ozubené kolečko)
-
-**Audit — co je na dashboardu a co by mělo být ve Správě:**
-
-| Komponenta | Aktuálně | Doporučení | Důvod |
-|------------|----------|------------|-------|
-| `DidSystemOverview` (Přehled Karla) | Dashboard hlavní | ✅ Zůstává — denní operativní info |
-| `DidTherapistTaskBoard` (Úkoly) | Dashboard | ✅ Zůstává — denní práce |
-| `DidAgreementsPanel` (Týdenní analýza) | Dashboard | ✅ Zůstává — strategická info |
-| `DidMonthlyPanel` (Měsíční analýza) | Dashboard | ✅ Zůstává — strategická info |
-| `DidPulseCheck` | Dashboard | ✅ Zůstává — rychlý dotazník |
-| `DidColleagueView` | Dashboard | ✅ Zůstává — týmový přehled |
-| `DidRegistryOverview` (Přehled registru) | Dashboard | ⚠️ **Přesunout do Správy** — administrativní nástroj, ne denní operativa |
-| `DidKartotekaHealth` (Zdraví kartotéky) | Dashboard | ⚠️ **Přesunout do Správy** — diagnostický nástroj |
-| `DidSystemMap` (Mapa systému) | Dashboard dole | ⚠️ **Zvážit** — vizualizace je užitečná, ale ne denní nástroj |
-
-**Ve Správě (DidSprava) již jsou:**
-- Aktualizovat kartotéku
-- Audit zdraví kartotéky (spouštěč, ne panel)
-- Přeformátovat karty
-- Bootstrap DID paměti
-- Nastavení vzhledu
-
-**Doporučení:**
-1. Přesunout `DidKartotekaHealth` panel do Správy jako nový tab "Zdraví"
-2. Přesunout `DidRegistryOverview` do Správy jako nový tab "Registr"
-3. Tím se dashboard zjednoduší na operativní přehled (Overview + Tasks + Weekly + Monthly + Pulse + Colleague)
-
----
-
-### ČÁST 5: Vylepšení spolehlivosti a inteligence
-
-**5a. Retence dat — audit:**
-- `did_threads` se NEMAZOU — zůstávají neomezeně → ⚠️ **Potenciální problém** za 6-12 měsíců (tisíce vláken)
-- **Řešení:** Přidat archivační logiku do daily-cycle — vlákna starší 30 dní s `is_processed = true` přesunout do archivní tabulky nebo soft-delete. Karel musí nejdřív extrahovat klíčové poznatky do episodické paměti/entit.
-
-**5b. Duplicitní Drive helpers:**
-- `getAccessToken()`, `findFolder()`, `readFileContent()`, `listFilesInFolder()` jsou zkopírované ve 4+ edge funkcích
-- **Řešení:** Extrahovat do `supabase/functions/_shared/drive.ts` — sdílená utilita
-
-**5c. Oprava runtime bugů:**
-- `finalReportText is not defined` (17.3.) — proměnná je deklarovaná na řádku 2250 ale při early return (řádek 2259) se nestihne naplnit
-- **Řešení:** V nové `karel-did-daily-email` tento problém neexistuje (email je nezávislý)
-
-**5d. Cross-mode intelligence:**
-- `karel-did-system-overview` již dělá cross-mode scan správně (Hana, research, DID konverzace)
-- `karel-did-daily-email` musí replikovat stejný cross-mode scan + přidat weekly/monthly kontext
-- **Vylepšení:** Přidat do email promptu explicitní instrukci "Projdi VŠECHNY režimy komunikace za 24h a identifikuj skryté souvislosti napříč režimy"
-
----
-
-### Soubory k vytvoření/editaci
-
-1. **NOVÝ:** `supabase/functions/karel-did-daily-email/index.ts` — samostatná email funkce (~400 řádků)
-2. **EDIT:** `supabase/functions/karel-did-daily-cycle/index.ts` — odstranit email blok (řádky 4003-4165)
-3. **EDIT:** `supabase/config.toml` — přidat `[functions.karel-did-daily-email]`
-4. **SQL:** Nové cron joby pro `karel-did-daily-email` (06:15, 14:15, 16:00, 17:30 CET)
-5. **EDIT:** `src/pages/Chat.tsx` — přepojit `handleManualUpdate` na `karel-memory-mirror` místo `karel-did-daily-cycle`
-6. **EDIT:** `src/components/hana/HanaChat.tsx` — odstranit samostatné tlačítko "Zrcadlit do Drive" (funkce se stane součástí "Aktualizovat kartotéku")
-7. **EDIT:** `src/components/did/DidDashboard.tsx` — přesunout `DidKartotekaHealth` a `DidRegistryOverview` do Správy
-8. **EDIT:** `src/components/did/DidSprava.tsx` — přidat nové taby "Zdraví" a "Registr" pro přesunuté komponenty
-
-### Priority implementace
-1. **Kritická:** Nová `karel-did-daily-email` + cron joby (řeší měsíční problém s maily)
-2. **Vysoká:** Odstranit email blok z `karel-did-daily-cycle`
-3. **Střední:** Sjednotit "Aktualizovat kartotéku" / "Zrcadlit do Drive" na mirror engine
-4. **Nízká:** Přesun panelů do Správy, sdílení Drive helpers
-
+Pořadí implementace
+1. Kritické: live detekce přes DB + Drive v `karel-did-part-detect`
+2. Kritické: přepojení `DidPartIdentifier` a `Chat.tsx` na kanonické jméno
+3. Kritické: datové sloučení existujících duplicit
+4. Vysoká priorita: sjednocení overview a dalších agregací na stejný resolver
+5. Následně: prevence duplicit a audit zdroje rozpoznání
