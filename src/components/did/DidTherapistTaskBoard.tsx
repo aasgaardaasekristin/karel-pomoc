@@ -17,6 +17,7 @@ interface TaskFeedbackEntry {
 interface TherapistTask {
   id: string;
   task: string;
+  detail_instruction: string | null;
   assigned_to: string;
   status: string;
   note: string | null;
