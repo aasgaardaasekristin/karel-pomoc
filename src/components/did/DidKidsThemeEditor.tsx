@@ -422,7 +422,6 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               {uploading ? "Nahrávám..." : "Nahrát vlastní obrázek"}
             </button>
           )}
-          )}
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
         </div>
       </DialogContent>
