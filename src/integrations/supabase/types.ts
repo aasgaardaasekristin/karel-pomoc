@@ -865,6 +865,38 @@ export type Database = {
         }
         Relationships: []
       }
+      did_task_feedback: {
+        Row: {
+          author: string
+          created_at: string | null
+          id: string
+          message: string
+          task_id: string
+        }
+        Insert: {
+          author: string
+          created_at?: string | null
+          id?: string
+          message: string
+          task_id: string
+        }
+        Update: {
+          author?: string
+          created_at?: string | null
+          id?: string
+          message?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_task_feedback_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "did_therapist_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_therapist_tasks: {
         Row: {
           assigned_to: string

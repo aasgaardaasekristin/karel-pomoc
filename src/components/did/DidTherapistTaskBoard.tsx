@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, MessageSquare, ChevronDown, ChevronUp, Send, Trash2, ExternalLink, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
+
+interface TaskFeedbackEntry {
+  id: string;
+  task_id: string;
+  author: string;
+  message: string;
+  created_at: string;
+}
 
 interface TherapistTask {
   id: string;
@@ -202,6 +211,75 @@ const TaskCard = ({
   const safeDriveLink = isSafeDocumentUrl(task.source_agreement);
   const assigned = normalizeAssignedTo(task.assigned_to) as TherapistAssignee;
 
+  const [feedback, setFeedback] = useState<TaskFeedbackEntry[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [sendingFeedback, setSendingFeedback] = useState(false);
+  const feedEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isExpanded) return;
+    const loadFeedback = async () => {
+      const { data } = await supabase
+        .from("did_task_feedback")
+        .select("*")
+        .eq("task_id", task.id)
+        .order("created_at", { ascending: true });
+      setFeedback((data as TaskFeedbackEntry[]) || []);
+    };
+    void loadFeedback();
+  }, [isExpanded, task.id]);
+
+  useEffect(() => {
+    if (feedEndRef.current) feedEndRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [feedback.length]);
+
+  const handleSendUpdate = async () => {
+    const text = noteInputs[task.id]?.trim();
+    if (!text) return;
+    setSendingFeedback(true);
+
+    // Determine author from the assigned_to or default to hanka
+    const author = assigned === "kata" ? "kata" : "hanka";
+
+    // Save therapist's message
+    const { error: insertErr } = await supabase.from("did_task_feedback").insert({
+      task_id: task.id,
+      author,
+      message: text,
+    });
+    if (insertErr) {
+      toast.error("Nepodařilo se odeslat update");
+      setSendingFeedback(false);
+      return;
+    }
+
+    setNoteInputs((prev) => ({ ...prev, [task.id]: "" }));
+    setFeedback((prev) => [...prev, { id: crypto.randomUUID(), task_id: task.id, author, message: text, created_at: new Date().toISOString() }]);
+
+    // Call Karel for AI response
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-task-feedback`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ taskId: task.id, message: text, author }),
+      });
+      if (resp.ok) {
+        const { reply } = await resp.json();
+        setFeedback((prev) => [...prev, { id: crypto.randomUUID(), task_id: task.id, author: "karel", message: reply, created_at: new Date().toISOString() }]);
+      }
+    } catch (e) {
+      console.warn("Karel feedback error:", e);
+    }
+
+    setSendingFeedback(false);
+  };
+
+  const authorLabel = (a: string) => a === "hanka" ? "Hanka" : a === "kata" ? "Káťa" : "Karel";
+  const authorStyle = (a: string) => a === "karel"
+    ? "bg-primary/10 border-primary/20 text-foreground"
+    : "bg-muted/40 border-border/40 text-foreground/90";
+
   return (
     <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
       <div className="flex items-center gap-1.5">
@@ -245,15 +323,13 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
+          {/* Show only the note as supplementary instruction — title is already above */}
           {task.note && (
             <div className="rounded bg-muted/30 px-1.5 py-1">
               <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                {stripMarkdownNoise(task.task)}{task.note ? `\n\n${stripMarkdownNoise(task.note)}` : ""}
+                {stripMarkdownNoise(task.note)}
               </p>
             </div>
-          )}
-          {!task.note && task.task.length > 60 && (
-            <p className="text-[10px] leading-relaxed text-foreground/80">{stripMarkdownNoise(task.task)}</p>
           )}
 
           {isPendingDriveWrite && (
@@ -283,7 +359,24 @@ const TaskCard = ({
             </div>
           )}
 
-          {task.completed_note && (
+          {/* Feedback feed */}
+          {feedback.length > 0 && (
+            <div className="space-y-1 max-h-[160px] overflow-y-auto rounded bg-background/50 p-1">
+              {feedback.map((entry) => (
+                <div key={entry.id} className={`rounded border px-1.5 py-1 ${authorStyle(entry.author)}`}>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[8px] font-semibold">{entry.author === "karel" ? "🤖" : "💬"} {authorLabel(entry.author)}</span>
+                    <span className="text-[7px] text-muted-foreground">{new Date(entry.created_at).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                  </div>
+                  <p className="text-[9px] leading-relaxed whitespace-pre-line mt-0.5">{entry.message}</p>
+                </div>
+              ))}
+              <div ref={feedEndRef} />
+            </div>
+          )}
+
+          {/* Legacy completed_note display */}
+          {task.completed_note && feedback.length === 0 && (
             <div className="whitespace-pre-line rounded bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
               <MessageSquare className="mr-0.5 inline h-2.5 w-2.5 opacity-60" />
               {task.completed_note}
@@ -294,12 +387,12 @@ const TaskCard = ({
             <Input
               value={noteInputs[task.id] || ""}
               onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
-              placeholder="Poznámka nebo instrukce..."
+              placeholder="Jak to jde? Napiš update..."
               className="h-6 flex-1 bg-background text-[9px]"
-              onKeyDown={(e) => { if (e.key === "Enter") onAddNote(task.id); }}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
             />
-            <Button size="sm" onClick={() => onAddNote(task.id)} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim()}>
-              <Send className="w-2.5 h-2.5" />
+            <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
+              {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
             </Button>
           </div>
         </div>
