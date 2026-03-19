@@ -1927,7 +1927,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             {activeThread && (
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
                 <span>
-                  Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
+                  Vlákno: <strong>{activeThread.threadLabel || activeThread.partName}</strong>
+                  {activeThread.threadLabel && activeThread.threadLabel !== activeThread.partName && (
+                    <span className="text-muted-foreground/60"> ({activeThread.partName})</span>
+                  )}
+                  {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
                 </span>
                 <DidKidsThemeEditor
                   partName={activeThread.partName}
