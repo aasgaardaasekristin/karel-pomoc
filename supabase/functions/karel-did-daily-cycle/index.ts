@@ -2065,7 +2065,7 @@ serve(async (req) => {
 
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
-      .select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
+      .select("task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
       .neq("status", "done")
       .order("created_at", { ascending: true });
     const pendingTasksSummary = (pendingTasks || []).map((t: any) => {
