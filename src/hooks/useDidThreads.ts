@@ -55,9 +55,14 @@ const filterCastThreads = (rows: any[], activePartKeys: Set<string>) => {
     const partKey = normalizePartKey(thread.partName);
     if (!partKey || !activePartKeys.has(partKey)) return false;
     if (!hasMeaningfulPartActivity(thread.messages)) return false;
-    if (seen.has(partKey)) return false;
 
-    seen.add(partKey);
+    // Deduplicate by composite key: partKey + enteredName/threadLabel
+    // This allows multiple threads for the same part with different aliases
+    const alias = thread.enteredName || thread.threadLabel || "";
+    const dedupeKey = alias ? `${partKey}::${normalizePartKey(alias) || alias}` : `${partKey}::${thread.id}`;
+    if (seen.has(dedupeKey)) return false;
+
+    seen.add(dedupeKey);
     return true;
   });
 };
