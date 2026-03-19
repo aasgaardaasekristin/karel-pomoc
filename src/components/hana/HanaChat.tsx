@@ -663,7 +663,7 @@ const HanaChat = () => {
               <div className="border-t border-border pt-2 space-y-1">
                 <Button variant="ghost" size="sm" onClick={() => { handleMirrorToDrive(); setSpravaOpen(false); }} disabled={isMirroring || isLoading} className="w-full justify-start h-7 px-2 text-xs gap-1.5">
                   {isMirroring ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}
-                  Zrcadlit do Drive
+                  Aktualizovat kartotéku
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => { handleBootstrap(); setSpravaOpen(false); }} disabled={isBootstrapping || isLoading} className="w-full justify-start h-7 px-2 text-xs gap-1.5">
                   {isBootstrapping ? <Loader2 className="w-3 h-3 animate-spin" /> : <Database className="w-3 h-3" />}

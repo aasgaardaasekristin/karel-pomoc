@@ -12,8 +12,6 @@ import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
-import DidKartotekaHealth from "./DidKartotekaHealth";
-import DidRegistryOverview from "./DidRegistryOverview";
 import DidSprava from "./DidSprava";
 
 interface PartActivity {
@@ -172,6 +170,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
             isReformatting={isReformatting}
             onManualUpdate={onManualUpdate}
             isUpdating={isUpdating}
+            refreshTrigger={refreshTrigger}
+            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
           />
         </div>
 
@@ -209,16 +209,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
           <DidColleagueView refreshTrigger={refreshTrigger} />
         </div>
 
-        <div className="mb-4">
-          <DidRegistryOverview
-            refreshTrigger={refreshTrigger}
-            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-          />
-        </div>
-
-        <div className="mb-4">
-          <DidKartotekaHealth refreshTrigger={refreshTrigger} />
-        </div>
+        {/* DidRegistryOverview and DidKartotekaHealth moved to DidSprava tabs */}
 
         {!loading && parts.length > 0 && (
           <DidSystemMap

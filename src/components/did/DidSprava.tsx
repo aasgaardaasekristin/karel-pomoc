@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, Palette, Check, Image, X, Sun, Moon, Sparkles, MessageCircle, Minimize2, Pipette, Save, RotateCcw } from "lucide-react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, Palette, Check, Image, X, Sun, Moon, Sparkles, MessageCircle, Minimize2, Pipette, Save, RotateCcw, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -7,6 +7,8 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
+import DidKartotekaHealth from "./DidKartotekaHealth";
+import DidRegistryOverview from "./DidRegistryOverview";
 
 interface Props {
   onBootstrap: () => void;
@@ -17,6 +19,8 @@ interface Props {
   isReformatting?: boolean;
   onManualUpdate?: () => void;
   isUpdating?: boolean;
+  refreshTrigger?: number;
+  onSelectPart?: (partName: string) => void;
 }
 
 const PERSONA_LABELS: Record<string, string> = {
@@ -47,9 +51,11 @@ const DidSprava = ({
   isReformatting,
   onManualUpdate,
   isUpdating,
+  refreshTrigger = 0,
+  onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry">("tools");
   const { prefs, presets, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -122,20 +128,21 @@ const DidSprava = ({
           <DialogDescription className="text-xs">Nástroje a osobní nastavení vzhledu pro každou personu zvlášť.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted">
-          <button
-            onClick={() => setActiveTab("tools")}
-            className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === "tools" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-          >
-            🛠 Nástroje
-          </button>
-          <button
-            onClick={() => setActiveTab("theme")}
-            className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === "theme" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-          >
-            <Palette className="w-3 h-3 inline mr-1" />
-            Vzhled
-          </button>
+        <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
+          {([
+            { key: "tools" as const, label: "🛠 Nástroje" },
+            { key: "health" as const, label: "❤️ Zdraví" },
+            { key: "registry" as const, label: "📋 Registr" },
+            { key: "theme" as const, label: "🎨 Vzhled" },
+          ]).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {activeTab === "tools" && (
@@ -174,6 +181,21 @@ const DidSprava = ({
               desc="Jednorázové nasátí všech karet z Drive do registru"
               loading={isBootstrapping}
               onClick={() => { onBootstrap(); setOpen(false); }}
+            />
+          </div>
+        )}
+
+        {activeTab === "health" && (
+          <div className="space-y-2">
+            <DidKartotekaHealth refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "registry" && (
+          <div className="space-y-2">
+            <DidRegistryOverview
+              refreshTrigger={refreshTrigger}
+              onSelectPart={onSelectPart}
             />
           </div>
         )}
