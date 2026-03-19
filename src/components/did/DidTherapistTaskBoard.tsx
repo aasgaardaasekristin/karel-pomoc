@@ -327,14 +327,17 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
-          {/* Show only the note as supplementary instruction — title is already above */}
-          {task.note && (
-            <div className="rounded bg-muted/30 px-1.5 py-1">
-              <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                {stripMarkdownNoise(task.note)}
-              </p>
-            </div>
-          )}
+          {/* Full detailed instruction: merged task + note */}
+          {(() => {
+            const fullInstruction = [stripMarkdownNoise(task.task), stripMarkdownNoise(task.note)].filter(Boolean).join("\n\n");
+            return fullInstruction ? (
+              <div className="rounded bg-muted/30 px-2 py-1.5">
+                <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
+                  {fullInstruction}
+                </p>
+              </div>
+            ) : null;
+          })()}
 
           {isPendingDriveWrite && (
             <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
