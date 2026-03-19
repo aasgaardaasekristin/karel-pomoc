@@ -745,6 +745,8 @@ const Chat = () => {
       // Trigger episode generation in background
       triggerEpisodeGeneration(activeThread.id);
     }
+    // Restore global theme when leaving thread
+    restoreGlobalTheme();
     setActiveThread(null);
     setMessages([]);
     if (didSubMode === "mamka" || didSubMode === "kata") {
@@ -754,7 +756,7 @@ const Chat = () => {
       setDidFlowState("thread-list");
       didThreads.fetchActiveThreads("cast");
     }
-  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration]);
+  }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme]);
 
   // Quick thread entry from dashboard — load thread directly by ID
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
