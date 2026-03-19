@@ -202,6 +202,12 @@ const DidSprava = ({
           </div>
         )}
 
+        {activeTab === "reports" && (
+          <div className="space-y-2">
+            <DidReportDiagnostics refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
         {activeTab === "theme" && (
           <div className="space-y-4">
             <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
