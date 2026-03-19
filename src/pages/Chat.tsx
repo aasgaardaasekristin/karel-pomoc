@@ -1950,9 +1950,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   <DidKidsThemeEditor
                     partName={activeThread.partName}
                     threadId={activeThread.id}
-                    onThreadThemeSaved={(tid, preset) => {
-                      didThreads.updateThreadTheme(tid, preset);
-                      setActiveThread(prev => prev ? { ...prev, themePreset: preset } : prev);
+                    onThreadThemeSaved={(tid, preset, config) => {
+                      didThreads.updateThreadThemeConfig(tid, preset, config);
+                      setActiveThread(prev => prev ? { ...prev, themePreset: preset, themeConfig: config, threadEmoji: config.thread_emoji || "" } : prev);
                     }}
                     trigger={
                       <button className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
