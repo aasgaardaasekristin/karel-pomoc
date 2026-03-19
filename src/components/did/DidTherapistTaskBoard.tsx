@@ -143,10 +143,26 @@ const statusSummary = (task: TherapistTask) => {
   return STATUS_LABEL[aggregateTaskStatus(task)];
 };
 
-const TrafficLight = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
-  <button onClick={onClick} className="flex items-center gap-1 group cursor-pointer" title={`${label}: ${STATUS_LABEL[status]}`}>
-    <span className={`w-2.5 h-2.5 rounded-full ${TRAFFIC_COLORS[status]} shadow-sm transition-all duration-200 group-hover:scale-110`} />
-    <span className="text-[8px] font-medium text-muted-foreground opacity-70">{label}</span>
+const STATUS_BADGE_STYLES: Record<TrafficStatus, string> = {
+  not_started: "bg-muted text-muted-foreground border-border",
+  in_progress: "bg-accent/60 text-accent-foreground border-accent",
+  done: "bg-primary/20 text-primary border-primary/40",
+};
+
+const STATUS_BADGE_ICON: Record<TrafficStatus, string> = {
+  not_started: "—",
+  in_progress: "⏳",
+  done: "✓",
+};
+
+const StatusBadge = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
+  <button
+    onClick={(e) => { e.stopPropagation(); onClick(); }}
+    className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[8px] font-semibold leading-[16px] cursor-pointer transition-all hover:scale-105 ${STATUS_BADGE_STYLES[status]}`}
+    title={`${label}: ${STATUS_LABEL[status]} — klikni pro změnu`}
+  >
+    <span>{label}:</span>
+    <span>{STATUS_BADGE_ICON[status]}</span>
   </button>
 );
 
@@ -189,11 +205,14 @@ const TaskCard = ({
   return (
     <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
       <div className="flex items-center gap-1.5">
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (
-            <TrafficLight status={aggregateTaskStatus(task)} label="Obě" onClick={() => onToggleTraffic(task, "both")} />
+            <>
+              <StatusBadge status={(task.status_hanka || "not_started") as TrafficStatus} label="H" onClick={() => onToggleTraffic(task, "hanka")} />
+              <StatusBadge status={(task.status_kata || "not_started") as TrafficStatus} label="K" onClick={() => onToggleTraffic(task, "kata")} />
+            </>
           ) : (
-            <TrafficLight
+            <StatusBadge
               status={aggregateTaskStatus(task)}
               label={assigned === "hanka" ? "H" : "K"}
               onClick={() => onToggleTraffic(task, assigned)}
@@ -226,7 +245,16 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
-          {task.note && <p className="text-[10px] leading-relaxed text-muted-foreground">{stripMarkdownNoise(task.note)}</p>}
+          {task.note && (
+            <div className="rounded bg-muted/30 px-1.5 py-1">
+              <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
+                {stripMarkdownNoise(task.task)}{task.note ? `\n\n${stripMarkdownNoise(task.note)}` : ""}
+              </p>
+            </div>
+          )}
+          {!task.note && task.task.length > 60 && (
+            <p className="text-[10px] leading-relaxed text-foreground/80">{stripMarkdownNoise(task.task)}</p>
+          )}
 
           {isPendingDriveWrite && (
             <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
@@ -610,12 +638,20 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           <div>
             <p className="mb-1 text-[8px] text-muted-foreground">Kdo</p>
             <div className="flex flex-wrap gap-1">
+              <Button
+                variant={assigneeFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setAssigneeFilter("all"); }}
+                className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
+              >
+                Vše
+              </Button>
               {(["hanka", "kata", "both"] as const).map((assignee) => (
                 <Button
                   key={assignee}
                   variant={assigneeFilter === assignee ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setAssigneeFilter(assigneeFilter === assignee ? "all" : assignee)}
+                  onClick={() => { setAssigneeFilter(assignee); setNewAssignee(assignee); }}
                   className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
                 >
                   {assigneeLabel(assignee)}
@@ -627,12 +663,20 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           <div>
             <p className="mb-1 text-[8px] text-muted-foreground">Kdy</p>
             <div className="flex flex-wrap gap-1">
+              <Button
+                variant={categoryFilter === "all" ? "default" : "outline"}
+                size="sm"
+                onClick={() => { setCategoryFilter("all"); }}
+                className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
+              >
+                Vše
+              </Button>
               {(["today", "tomorrow", "longterm"] as const).map((category) => (
                 <Button
                   key={category}
                   variant={categoryFilter === category ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setCategoryFilter(categoryFilter === category ? "all" : category)}
+                  onClick={() => { setCategoryFilter(category); setNewCategory(category); }}
                   className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
                 >
                   {category === "today" ? "Dnes" : category === "tomorrow" ? "Zítra" : "Dlouhodobé"}
