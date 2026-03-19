@@ -298,8 +298,12 @@ const TaskCard = ({
           )}
         </div>
 
-        <button className="flex-1 min-w-0 text-left truncate" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
-          <span className="text-[11px] text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
+        <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
+          {isExpanded ? (
+            <span className="text-[11px] font-medium text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
+          ) : (
+            <span className="text-[11px] text-foreground leading-tight truncate block">{stripMarkdownNoise(task.task)}</span>
+          )}
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
