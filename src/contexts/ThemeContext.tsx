@@ -372,7 +372,10 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [userId, currentPersona]);
 
   const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
-    savedPrefsRef.current = prefs;
+    // Only save the global prefs if we're not already in temporary mode
+    if (!savedPrefsRef.current) {
+      savedPrefsRef.current = prefs;
+    }
     setPrefs((prev) => ({ ...prev, ...config }));
   }, [prefs]);
 

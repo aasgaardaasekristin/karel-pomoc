@@ -50,7 +50,7 @@ const THREAD_EMOJIS = ["🐱", "🐶", "🦊", "🐸", "🐻", "🦁", "🐼", "
 
 const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }: Props) => {
   const [open, setOpen] = useState(false);
-  const { prefs, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
+  const { prefs, updatePrefs, uploadBackground, currentPersona, setCurrentPersona, applyTemporaryTheme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
