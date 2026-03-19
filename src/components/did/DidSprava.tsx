@@ -19,6 +19,8 @@ interface Props {
   isReformatting?: boolean;
   onManualUpdate?: () => void;
   isUpdating?: boolean;
+  refreshTrigger?: number;
+  onSelectPart?: (partName: string) => void;
 }
 
 const PERSONA_LABELS: Record<string, string> = {
