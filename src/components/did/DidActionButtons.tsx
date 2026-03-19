@@ -64,7 +64,7 @@ const DidActionButtons = ({
 
       {/* 🚪 End call button — Karel NIKDY neukončuje hovor sám */}
       {onEndCall && (
-        <Button variant="destructive" size="sm" onClick={onEndCall} disabled={disabled} className="h-8 px-2.5 gap-1.5 text-xs">
+        <Button variant="outline" size="sm" onClick={onEndCall} disabled={disabled} className="h-8 px-2.5 gap-1.5 text-xs border-muted-foreground/30 text-muted-foreground hover:bg-muted hover:text-foreground">
           <PhoneOff className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">🚪 Ukončit hovor</span>
           <span className="sm:hidden">🚪 Ukončit</span>
