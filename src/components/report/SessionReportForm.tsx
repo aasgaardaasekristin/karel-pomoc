@@ -171,6 +171,45 @@ const SessionReportForm = () => {
     }
   };
 
+  // Helper to upsert session data into client_sessions
+  const saveToClientSession = async (extraFields: Record<string, any>) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Check if session record already exists for this active session
+      const sessionKey = `karel_session_db_id_${activeSessionId}`;
+      let dbSessionId = localStorage.getItem(sessionKey);
+
+      const sessionData = {
+        client_id: activeSession.clientId,
+        report_context: formData.context || "",
+        report_key_theme: formData.keyTheme || "",
+        report_therapist_emotions: formData.therapistEmotions || [],
+        report_transference: formData.transference || "",
+        report_risks: formData.risks || [],
+        report_missing_data: formData.missingData || "",
+        report_interventions_tried: formData.interventionsTried || "",
+        report_next_session_goal: formData.nextSessionGoal || "",
+        ...extraFields,
+      };
+
+      if (dbSessionId) {
+        await supabase.from("client_sessions").update(sessionData).eq("id", dbSessionId);
+      } else {
+        const { data: inserted } = await supabase.from("client_sessions").insert({
+          ...sessionData,
+          notes: `Sezení – ${new Date().toLocaleDateString("cs-CZ")}`,
+        }).select("id").single();
+        if (inserted?.id) {
+          localStorage.setItem(sessionKey, inserted.id);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to save session to DB:", e);
+    }
+  };
+
   const handleGenerateReport = async () => {
     setIsGenerating(true);
     updateReportText(activeSessionId, "");
@@ -198,7 +237,14 @@ const SessionReportForm = () => {
       const data = await response.json();
       updateReportText(activeSessionId, data.report);
       updateStatus(activeSessionId, "report-ready");
-      toast.success("Report vygenerován");
+
+      // Save report + form data to client_sessions in DB
+      await saveToClientSession({
+        ai_analysis: data.report,
+        ai_risk_assessment: triageData ? JSON.stringify(triageData) : "",
+      });
+
+      toast.success("Report vygenerován a uložen do kartotéky");
     } catch {
       toast.error("Chyba při generování reportu");
     } finally {
