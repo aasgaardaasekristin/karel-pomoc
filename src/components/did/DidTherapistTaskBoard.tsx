@@ -17,6 +17,7 @@ interface TaskFeedbackEntry {
 interface TherapistTask {
   id: string;
   task: string;
+  detail_instruction: string | null;
   assigned_to: string;
   status: string;
   note: string | null;
@@ -327,13 +328,24 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
-          {/* Full detailed instruction: merged task + note */}
+          {/* Full detailed instruction — never duplicate the title */}
           {(() => {
-            const fullInstruction = [stripMarkdownNoise(task.task), stripMarkdownNoise(task.note)].filter(Boolean).join("\n\n");
-            return fullInstruction ? (
+            const titleNorm = normalizeTask(task.task);
+            const detailText = stripMarkdownNoise(task.detail_instruction);
+            const noteText = stripMarkdownNoise(task.note);
+
+            // Use detail_instruction if available and different from title
+            let displayText = "";
+            if (detailText && normalizeTask(detailText) !== titleNorm) {
+              displayText = detailText;
+            } else if (noteText && normalizeTask(noteText) !== titleNorm) {
+              displayText = noteText;
+            }
+
+            return displayText ? (
               <div className="rounded bg-muted/30 px-2 py-1.5">
                 <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                  {fullInstruction}
+                  {displayText}
                 </p>
               </div>
             ) : null;
