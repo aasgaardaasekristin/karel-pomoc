@@ -109,29 +109,47 @@ function truncateTitle(raw: string): [string, string] {
   return [title || fullText, fullText];
 }
 
+function buildDetailInstruction(params: {
+  shortTitle: string;
+  fullText: string;
+  explicitInstruction?: string;
+  note?: string;
+  assignee: "hanka" | "kata" | "both";
+  category: "today" | "tomorrow" | "longterm";
+}): string {
+  const { shortTitle, fullText, explicitInstruction = "", note = "", assignee, category } = params;
+  const actionText = explicitInstruction.trim() || fullText.trim() || shortTitle.trim();
+  const who = assignee === "hanka" ? "Hanka" : assignee === "kata" ? "Káťa" : "Hanka i Káťa";
+  const when = category === "today" ? "Je potřeba to rozběhnout ještě dnes." : category === "tomorrow" ? "Připravte to na zítřek a ověřte další krok." : "Ber to jako dlouhodobější úkol a průběžně sleduj posun.";
+  const uniqueNote = note.trim() && normalizeTask(note) !== normalizeTask(actionText) ? note.trim() : "";
+
+  return [
+    `Co udělat: ${actionText}`,
+    `Pro koho: ${who}.`,
+    `Zaměření: ${when}`,
+    uniqueNote ? `Doplňující kontext: ${uniqueNote}` : `Další krok: Udělej první konkrétní krok a pak napiš krátký update, co se pohnulo a kde to vázne.`,
+  ].join("\n");
+}
+
 function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", category: "today" | "tomorrow" | "longterm"): ParsedTask[] {
   if (!section.trim()) return [];
   const tasks: ParsedTask[] = [];
   const lines = section.split(/\n/);
   let currentTitle = "";
-  let currentFullText = "";
   let currentInstruction = "";
   let currentNote = "";
 
   const flushTask = () => {
     if (!currentTitle) return;
     const [shortTitle, fullOriginal] = truncateTitle(currentTitle);
-    // detail_instruction priority: explicit Instrukce: line > full original text (if different from short title)
-    let detail = currentInstruction.trim();
-    if (!detail && fullOriginal !== shortTitle) {
-      detail = fullOriginal;
-    }
-    // Also append note content to detail if note has unique info
-    if (currentNote.trim() && detail) {
-      detail += "\n" + currentNote.trim();
-    } else if (currentNote.trim() && !detail) {
-      detail = currentNote.trim();
-    }
+    const detail = buildDetailInstruction({
+      shortTitle,
+      fullText: fullOriginal,
+      explicitInstruction: currentInstruction,
+      note: currentNote,
+      assignee,
+      category,
+    });
     tasks.push({
       task: shortTitle,
       detail_instruction: detail,
@@ -140,7 +158,6 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       note: currentNote.trim(),
     });
     currentTitle = "";
-    currentFullText = "";
     currentInstruction = "";
     currentNote = "";
   };
@@ -149,7 +166,6 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Check for "Instrukce:" line (the new two-line format)
     const instructionMatch = trimmed.match(/^Instrukce\s*:\s*(.+)/i);
     if (instructionMatch && currentTitle) {
       currentInstruction = instructionMatch[1].trim();
@@ -165,21 +181,20 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
       currentTitle = match[1].trim();
       currentNote = match[2] || "";
     } else if (currentTitle) {
-      // Continuation line — append to detail instruction (accumulate full context)
       if (currentInstruction) {
         currentInstruction += " " + trimmed;
       } else {
-        // Treat continuation as part of the instruction, not just note
         currentNote += " " + trimmed;
       }
-    } else {
-      // Standalone line without a preceding title
-      if (trimmed.length > 10) {
-        const [shortTitle, fullText] = truncateTitle(trimmed);
-        // Preserve full text as detail_instruction when it differs from short title
-        const detail = fullText !== shortTitle ? fullText : "";
-        tasks.push({ task: shortTitle, detail_instruction: detail, assigned_to: assignee, category, note: "" });
-      }
+    } else if (trimmed.length > 10) {
+      const [shortTitle, fullText] = truncateTitle(trimmed);
+      tasks.push({
+        task: shortTitle,
+        detail_instruction: buildDetailInstruction({ shortTitle, fullText, assignee, category }),
+        assigned_to: assignee,
+        category,
+        note: "",
+      });
     }
   }
 

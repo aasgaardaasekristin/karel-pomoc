@@ -540,7 +540,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
     const { error } = await supabase.from("did_therapist_tasks").insert({
       task: taskText,
-      detail_instruction: taskText,
+      detail_instruction: `Co udělat: ${taskText}\nDalší krok: Začni prvním konkrétním krokem a pak dopiš, kde se to hýbe a kde to vázne.`,
       assigned_to: newAssignee,
       category: newCategory,
       source_agreement: sourceReference,
