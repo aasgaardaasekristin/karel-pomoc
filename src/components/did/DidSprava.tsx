@@ -134,6 +134,7 @@ const DidSprava = ({
             { key: "tools" as const, label: "🛠 Nástroje" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
+            { key: "reports" as const, label: "📧 Reporty" },
             { key: "theme" as const, label: "🎨 Vzhled" },
           ]).map(tab => (
             <button
