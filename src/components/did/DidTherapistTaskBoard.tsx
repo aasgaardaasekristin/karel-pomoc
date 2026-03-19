@@ -298,8 +298,12 @@ const TaskCard = ({
           )}
         </div>
 
-        <button className="flex-1 min-w-0 text-left truncate" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
-          <span className="text-[11px] text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
+        <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
+          {isExpanded ? (
+            <span className="text-[11px] font-medium text-foreground leading-tight">{stripMarkdownNoise(task.task)}</span>
+          ) : (
+            <span className="text-[11px] text-foreground leading-tight truncate block">{stripMarkdownNoise(task.task)}</span>
+          )}
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
@@ -323,14 +327,17 @@ const TaskCard = ({
             {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
           </div>
 
-          {/* Show only the note as supplementary instruction — title is already above */}
-          {task.note && (
-            <div className="rounded bg-muted/30 px-1.5 py-1">
-              <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
-                {stripMarkdownNoise(task.note)}
-              </p>
-            </div>
-          )}
+          {/* Full detailed instruction: merged task + note */}
+          {(() => {
+            const fullInstruction = [stripMarkdownNoise(task.task), stripMarkdownNoise(task.note)].filter(Boolean).join("\n\n");
+            return fullInstruction ? (
+              <div className="rounded bg-muted/30 px-2 py-1.5">
+                <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line">
+                  {fullInstruction}
+                </p>
+              </div>
+            ) : null;
+          })()}
 
           {isPendingDriveWrite && (
             <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
@@ -414,8 +421,8 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const [newTask, setNewTask] = useState("");
   const [newAssignee, setNewAssignee] = useState<TherapistAssignee>("both");
   const [newCategory, setNewCategory] = useState<"today" | "tomorrow" | "longterm">("today");
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
-  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("today");
+  const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("hanka");
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [noteInputs, setNoteInputs] = useState<Record<string, string>>({});
   const [adding, setAdding] = useState(false);
@@ -731,14 +738,6 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           <div>
             <p className="mb-1 text-[8px] text-muted-foreground">Kdo</p>
             <div className="flex flex-wrap gap-1">
-              <Button
-                variant={assigneeFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => { setAssigneeFilter("all"); }}
-                className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
-              >
-                Vše
-              </Button>
               {(["hanka", "kata", "both"] as const).map((assignee) => (
                 <Button
                   key={assignee}
@@ -756,14 +755,6 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           <div>
             <p className="mb-1 text-[8px] text-muted-foreground">Kdy</p>
             <div className="flex flex-wrap gap-1">
-              <Button
-                variant={categoryFilter === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => { setCategoryFilter("all"); }}
-                className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
-              >
-                Vše
-              </Button>
               {(["today", "tomorrow", "longterm"] as const).map((category) => (
                 <Button
                   key={category}

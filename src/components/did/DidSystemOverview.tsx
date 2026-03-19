@@ -111,9 +111,6 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
             <FileText className="w-3.5 h-3.5 text-primary" />
             Karlův přehled
           </h4>
-          <p className="mt-1 text-[10px] text-muted-foreground">
-            Operativní briefing pro dnešek bez neveřejné interní profilace.
-          </p>
         </div>
         <div className="flex items-center gap-1.5">
           <Button
