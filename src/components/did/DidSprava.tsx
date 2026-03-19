@@ -7,6 +7,8 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
+import DidKartotekaHealth from "./DidKartotekaHealth";
+import DidRegistryOverview from "./DidRegistryOverview";
 
 interface Props {
   onBootstrap: () => void;
