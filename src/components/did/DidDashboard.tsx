@@ -170,6 +170,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
             isReformatting={isReformatting}
             onManualUpdate={onManualUpdate}
             isUpdating={isUpdating}
+            refreshTrigger={refreshTrigger}
+            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
           />
         </div>
 
