@@ -36,6 +36,13 @@ serve(async (req) => {
     // DID-specific metadata
     if ((mode === "childcare" || effectiveMode === "kata") && didSubMode) {
       systemPrompt += `\n\n═══ AKTIVNÍ PODREŽIM ═══\nAktuální didSubMode: "${didSubMode}"`;
+
+      // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
+      if (didSubMode === "cast" && didPartName) {
+        const label = didThreadLabel || didEnteredName || didPartName;
+        systemPrompt += `\n\n═══ IDENTIFIKOVANÁ ČÁST (z registru) ═══\n⚠️ Tato část BYLA DETEKOVÁNA z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno části: ${didPartName}\n• Část se představila jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Část již byla identifikována. Rovnou navazuj s plnou návazností z karty. Oslovuj část jménem „${label}".`;
+        console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
+      }
     }
 
     // ═══ RUNTIME INJECTION: Pending therapist tasks + Karel's Insight + Dashboard deductions ═══
