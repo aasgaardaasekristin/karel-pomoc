@@ -216,6 +216,7 @@ interface ThemeContextValue {
   loading: boolean;
   applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
   restoreGlobalTheme: () => void;
+  getPersonaPrefs: (persona: string) => Promise<ThemePrefs>;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
