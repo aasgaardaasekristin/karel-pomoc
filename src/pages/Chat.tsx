@@ -623,8 +623,14 @@ const Chat = () => {
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
     // Auto-apply per-thread theme if set (temporary, thread-scoped — never writes to global DB)
+    // Only override fields that have meaningful values — don't wipe background_image_url with ""
     if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
-      applyTemporaryTheme(thread.themeConfig as Partial<typeof themePrefs>);
+      const filtered = Object.fromEntries(
+        Object.entries(thread.themeConfig).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      );
+      if (Object.keys(filtered).length > 0) {
+        applyTemporaryTheme(filtered as Partial<typeof themePrefs>);
+      }
     } else if (thread.themePreset && thread.themePreset !== "default") {
       // Use temporary theme from KIDS_PRESETS lookup, not global applyPreset
       const { KIDS_PRESETS } = await import("@/components/did/DidKidsThemeEditor");
