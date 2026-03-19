@@ -1,9 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, MessageSquare, ChevronDown, ChevronUp, Send, Trash2, ExternalLink, ArrowUp } from "lucide-react";
 import { toast } from "sonner";
+
+interface TaskFeedbackEntry {
+  id: string;
+  task_id: string;
+  author: string;
+  message: string;
+  created_at: string;
+}
 
 interface TherapistTask {
   id: string;
