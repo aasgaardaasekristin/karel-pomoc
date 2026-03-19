@@ -3964,7 +3964,9 @@ Co je potřeba probrat s Hankou
 ▸ Konkrétní, splnitelné úkoly
 ▸ S jakými fragmenty pracovat a jak
 
-<h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
+<h3>📋 HODNOCENÍ SPOLUPRÁCE A PROCESU ÚKOLŮ:</h3>
+▸ Jak pokračuje proces úkolování Káti: úroveň spolupráce, kde to vázne, co jde dobře
+▸ Na co se zaměřit, co zlepšit
 ▸ Co Káťa splnila
 ▸ Co zbývá
 
