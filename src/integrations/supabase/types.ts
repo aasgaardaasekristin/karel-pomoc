@@ -381,33 +381,42 @@ export type Database = {
           cycle_id: string | null
           error_message: string | null
           id: string
+          last_retry_strategy: string | null
           recipient: string
           report_date: string
+          retry_count: number
           sent_at: string | null
           status: string
           updated_at: string
+          watchdog_log: string | null
         }
         Insert: {
           created_at?: string
           cycle_id?: string | null
           error_message?: string | null
           id?: string
+          last_retry_strategy?: string | null
           recipient: string
           report_date: string
+          retry_count?: number
           sent_at?: string | null
           status?: string
           updated_at?: string
+          watchdog_log?: string | null
         }
         Update: {
           created_at?: string
           cycle_id?: string | null
           error_message?: string | null
           id?: string
+          last_retry_strategy?: string | null
           recipient?: string
           report_date?: string
+          retry_count?: number
           sent_at?: string | null
           status?: string
           updated_at?: string
+          watchdog_log?: string | null
         }
         Relationships: [
           {

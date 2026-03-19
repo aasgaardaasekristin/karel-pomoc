@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, Palette, Check, Image, X, Sun, Moon, Sparkles, MessageCircle, Minimize2, Pipette, Save, RotateCcw, ClipboardList } from "lucide-react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, Palette, Check, Image, X, Sun, Moon, Sparkles, MessageCircle, Minimize2, Pipette, Save, RotateCcw, ClipboardList, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidReportDiagnostics from "./DidReportDiagnostics";
 
 interface Props {
   onBootstrap: () => void;
@@ -55,7 +56,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports">("tools");
   const { prefs, presets, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -133,6 +134,7 @@ const DidSprava = ({
             { key: "tools" as const, label: "🛠 Nástroje" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
+            { key: "reports" as const, label: "📧 Reporty" },
             { key: "theme" as const, label: "🎨 Vzhled" },
           ]).map(tab => (
             <button
@@ -197,6 +199,12 @@ const DidSprava = ({
               refreshTrigger={refreshTrigger}
               onSelectPart={onSelectPart}
             />
+          </div>
+        )}
+
+        {activeTab === "reports" && (
+          <div className="space-y-2">
+            <DidReportDiagnostics refreshTrigger={refreshTrigger} />
           </div>
         )}
 
