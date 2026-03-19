@@ -793,6 +793,16 @@ const Chat = () => {
     setActiveThread(thread);
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
+
+    // Compose thread theme: kluci base + thread overrides (same logic as handleSelectThread)
+    const kluciBase = await getPersonaPrefs("kluci");
+    let threadOverrides: Partial<typeof themePrefs> = {};
+    if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
+      threadOverrides = Object.fromEntries(
+        Object.entries(thread.themeConfig).filter(([, v]) => v !== "" && v !== null && v !== undefined)
+      ) as Partial<typeof themePrefs>;
+    }
+    applyTemporaryTheme({ ...kluciBase, ...threadOverrides });
     
     // Load part docs in background
     (async () => {
