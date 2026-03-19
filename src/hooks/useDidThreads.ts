@@ -16,6 +16,8 @@ export interface DidThread {
   lastActivityAt: string;
   isProcessed: boolean;
   themePreset: string;
+  themeConfig: Record<string, any>;
+  threadEmoji: string;
 }
 
 const rowToThread = (row: any): DidThread | null => {
