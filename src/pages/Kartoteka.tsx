@@ -23,10 +23,12 @@ import {
   MessageSquare,
   LogOut,
   HardDriveDownload,
+  CalendarPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
-
+import ClientDiscussionChat from "@/components/report/ClientDiscussionChat";
+import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
 type Client = {
   id: string;
   name: string;
@@ -363,25 +365,30 @@ const Kartoteka = () => {
       <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
           <Tabs defaultValue="card" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="card" className="gap-1.5 text-xs sm:text-sm">
-                <User className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Karta</span>
-                <span className="sm:hidden">Karta</span>
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+                <User className="w-3.5 h-3.5 hidden sm:block" />
+                Karta
               </TabsTrigger>
-              <TabsTrigger value="sessions" className="gap-1.5 text-xs sm:text-sm">
-                <FileText className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Sezení</span>
-                <span className="sm:hidden">Sezení</span>
-                {sessions.length > 0 && <Badge variant="secondary" className="ml-1 text-xs">{sessions.length}</Badge>}
+              <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+                <FileText className="w-3.5 h-3.5 hidden sm:block" />
+                Sezení
+                {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
               </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-1.5 text-xs sm:text-sm">
-                <ListChecks className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Úkoly</span>
-                <span className="sm:hidden">Úkoly</span>
+              <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+                <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
+                Úkoly
                 {tasks.filter(t => t.status !== "done").length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-xs">{tasks.filter(t => t.status !== "done").length}</Badge>
+                  <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+                <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
+                Rozhovor
+              </TabsTrigger>
+              <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
+                <CalendarPlus className="w-3.5 h-3.5 hidden sm:block" />
+                Příprava
               </TabsTrigger>
             </TabsList>
 
@@ -590,6 +597,16 @@ const Kartoteka = () => {
                   ))}
                 </div>
               )}
+            </TabsContent>
+
+            {/* ─── ROZHOVOR ─── */}
+            <TabsContent value="discussion">
+              <ClientDiscussionChat clientId={selectedClient.id} clientName={selectedClient.name} />
+            </TabsContent>
+
+            {/* ─── PŘÍPRAVA NA SEZENÍ ─── */}
+            <TabsContent value="prep">
+              <ClientSessionPrepPanel clientId={selectedClient.id} clientName={selectedClient.name} />
             </TabsContent>
           </Tabs>
         </div>
