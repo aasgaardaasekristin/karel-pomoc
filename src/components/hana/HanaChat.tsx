@@ -58,6 +58,59 @@ const HanaChat = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const audioRecorder = useAudioRecorder();
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
+  const lastSavedRef = useRef<string>("");
+
+  const persistConversation = useCallback(async (
+    targetConversationId: string | null,
+    nextMessages: Message[],
+    options?: { isActive?: boolean }
+  ) => {
+    if (!targetConversationId) return;
+
+    const payload: Record<string, unknown> = {
+      messages: nextMessages as any,
+      last_activity_at: new Date().toISOString(),
+    };
+
+    if (typeof options?.isActive === "boolean") {
+      payload.is_active = options.isActive;
+    }
+
+    const { error } = await supabase
+      .from("karel_hana_conversations")
+      .update(payload as any)
+      .eq("id", targetConversationId);
+
+    if (error) {
+      console.error("[HanaChat] Persist error:", error);
+      return;
+    }
+
+    lastSavedRef.current = JSON.stringify(nextMessages);
+  }, []);
+
+  const createConversation = useCallback(async () => {
+    await supabase
+      .from("karel_hana_conversations")
+      .update({ is_active: false })
+      .eq("is_active", true);
+
+    const welcomeMessages: Message[] = [{ role: "assistant", content: WELCOME_MESSAGE }];
+    const { data: newConv, error } = await supabase
+      .from("karel_hana_conversations")
+      .insert({ messages: welcomeMessages as any, is_active: true })
+      .select("id")
+      .single();
+
+    if (error || !newConv) {
+      console.error("[HanaChat] Create conversation error:", error);
+      toast.error("Nepodařilo se založit nové vlákno");
+      return null;
+    }
+
+    lastSavedRef.current = JSON.stringify(welcomeMessages);
+    return { id: newConv.id, welcomeMessages };
+  }, []);
 
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {
@@ -162,49 +215,71 @@ const HanaChat = () => {
   }, [messages]);
 
   // Persist messages to DB only when they actually change (debounced)
-  const lastSavedRef = useRef<string>("");
   useEffect(() => {
     if (!conversationId || messages.length < 1) return;
     const serialized = JSON.stringify(messages);
     if (serialized === lastSavedRef.current) return;
-    const timeout = setTimeout(() => {
-      lastSavedRef.current = serialized;
-      supabase
-        .from("karel_hana_conversations")
-        .update({ messages: messages as any, last_activity_at: new Date().toISOString() })
-        .eq("id", conversationId)
-        .then();
-    }, 2000);
-    return () => clearTimeout(timeout);
-  }, [conversationId, messages]);
 
-  // Save on visibility change
+    const timeout = setTimeout(() => {
+      void persistConversation(conversationId, messages);
+    }, 400);
+
+    return () => clearTimeout(timeout);
+  }, [conversationId, messages, persistConversation]);
+
+  // Save on visibility/page change for mobile reliability
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden" && conversationId && messages.length > 1) {
-        supabase
-          .from("karel_hana_conversations")
-          .update({ messages: messages as any, last_activity_at: new Date().toISOString() })
-          .eq("id", conversationId)
-          .then();
+    const flushConversation = () => {
+      if (conversationId && messages.length > 1) {
+        void persistConversation(conversationId, messages);
       }
     };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        flushConversation();
+      }
+    };
+
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, [conversationId, messages]);
+    window.addEventListener("pagehide", flushConversation);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", flushConversation);
+    };
+  }, [conversationId, messages, persistConversation]);
 
   const sendMessage = useCallback(async () => {
     if ((!input.trim() && attachments.length === 0) || isLoading) return;
+
     const userMessage = input.trim();
     const currentAttachments = [...attachments];
+    const userContent = buildAttachmentContent(userMessage, currentAttachments) as string;
+    const nextMessages: Message[] = [...messages, { role: "user", content: userContent }];
+
     setInput("");
     clearAttachments();
-    const userContent = buildAttachmentContent(userMessage, currentAttachments);
-    setMessages(prev => [...prev, { role: "user", content: userContent as any }]);
+    setMessages(nextMessages);
     setIsLoading(true);
+
+    let activeConversationId = conversationId;
     let assistantContent = "";
 
     try {
+      if (!activeConversationId) {
+        const created = await createConversation();
+        if (!created) {
+          setMessages(messages);
+          return;
+        }
+        activeConversationId = created.id;
+        setConversationId(created.id);
+        setChatStarted(true);
+      }
+
+      await persistConversation(activeConversationId, nextMessages);
+
       const headers = await getAuthHeaders();
       const recentMessages = [...messages.slice(-30), { role: "user", content: userContent }];
 
@@ -215,7 +290,7 @@ const HanaChat = () => {
           headers,
           body: JSON.stringify({
             messages: recentMessages,
-            conversationId,
+            conversationId: activeConversationId,
             contextPrimeCache: contextPrimeCache || undefined,
           }),
         }
@@ -259,65 +334,60 @@ const HanaChat = () => {
           }
         }
       }
+
+      if (assistantContent && activeConversationId) {
+        await persistConversation(activeConversationId, [...nextMessages, { role: "assistant", content: assistantContent }]);
+      }
     } catch (error) {
       console.error("Hana chat error:", error);
       const errMsg = error instanceof Error ? error.message : "Chyba při komunikaci";
       toast.error(errMsg === "Failed to fetch" ? "Spojení selhalo. Zkus to prosím znovu." : errMsg);
-      if (!assistantContent) setMessages(prev => prev.slice(0, -1));
+      if (!assistantContent) {
+        setMessages(nextMessages);
+      }
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache]);
+  }, [input, attachments, isLoading, messages, conversationId, clearAttachments, contextPrimeCache, createConversation, persistConversation]);
 
   const handleNewConversation = useCallback(async () => {
-    // Archive current
     if (conversationId) {
-      await supabase
-        .from("karel_hana_conversations")
-        .update({ is_active: false, messages: messages as any })
-        .eq("id", conversationId);
+      await persistConversation(conversationId, messages, { isActive: false });
     }
-    // Create new
-    const { data: newConv } = await supabase
-      .from("karel_hana_conversations")
-      .insert({ messages: [{ role: "assistant", content: WELCOME_MESSAGE }] })
-      .select("id")
-      .single();
-    if (newConv) {
-      setConversationId(newConv.id);
-      setMessages([{ role: "assistant", content: WELCOME_MESSAGE }]);
-      setChatStarted(true);
-      toast.success("Nová konverzace zahájena");
-      setTimeout(() => runContextPrime(true), 500);
-    }
-  }, [conversationId, messages, runContextPrime]);
+
+    const created = await createConversation();
+    if (!created) return;
+
+    setConversationId(created.id);
+    setMessages(created.welcomeMessages);
+    setChatStarted(true);
+    toast.success("Nová konverzace zahájena");
+    setTimeout(() => runContextPrime(true), 500);
+  }, [conversationId, messages, createConversation, persistConversation, runContextPrime]);
 
   const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string }[]) => {
-    // Save current conversation first
     if (conversationId && messages.length > 1) {
-      await supabase
-        .from("karel_hana_conversations")
-        .update({ messages: messages as any, last_activity_at: new Date().toISOString() })
-        .eq("id", conversationId);
+      await persistConversation(conversationId, messages, { isActive: false });
     }
-    // Mark all as inactive, then activate the selected one
+
     await supabase
       .from("karel_hana_conversations")
       .update({ is_active: false })
       .neq("id", threadId);
+
     await supabase
       .from("karel_hana_conversations")
-      .update({ is_active: true })
+      .update({ is_active: true, last_activity_at: new Date().toISOString() })
       .eq("id", threadId);
-    
+
     setConversationId(threadId);
     setMessages(threadMessages as Message[]);
     setChatStarted(true);
     lastSavedRef.current = JSON.stringify(threadMessages);
     toast.success("Vlákno načteno");
     setTimeout(() => runContextPrime(true), 500);
-  }, [conversationId, messages, runContextPrime]);
+  }, [conversationId, messages, persistConversation, runContextPrime]);
 
   const handleRefreshMemory = useCallback(async () => {
     if (isRefreshingMemory) return;
