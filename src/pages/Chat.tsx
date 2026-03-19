@@ -1947,21 +1947,19 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 <span>
                   Vlákno: <strong>{activeThread.partName}</strong> • {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
                 </span>
-                {didSubMode === "cast" && (
-                  <DidKidsThemeEditor
-                    partName={activeThread.partName}
-                    threadId={activeThread.id}
-                    onThreadThemeSaved={(tid, preset, config) => {
-                      didThreads.updateThreadThemeConfig(tid, preset, config);
-                      setActiveThread(prev => prev ? { ...prev, themePreset: preset, themeConfig: config, threadEmoji: config.thread_emoji || "" } : prev);
-                    }}
-                    trigger={
-                      <button className="text-[10px] text-primary hover:underline flex items-center gap-0.5">
-                        🎨
-                      </button>
-                    }
-                  />
-                )}
+                <DidKidsThemeEditor
+                  partName={activeThread.partName}
+                  threadId={activeThread.id}
+                  onThreadThemeSaved={(tid, preset, config) => {
+                    didThreads.updateThreadThemeConfig(tid, preset, config);
+                    setActiveThread(prev => prev ? { ...prev, themePreset: preset, themeConfig: config, threadEmoji: config.thread_emoji || "" } : prev);
+                  }}
+                  trigger={
+                    <button className="text-[10px] text-primary hover:underline flex items-center gap-1">
+                      🎨 Můj vzhled
+                    </button>
+                  }
+                />
               </div>
             )}
             {messages.map((message, index) => (
