@@ -547,6 +547,7 @@ const Chat = () => {
       }
       case "thread-list":
         // Kluci thread list → back to DID entry
+        restoreGlobalTheme();
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
