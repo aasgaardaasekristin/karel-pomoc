@@ -34,6 +34,8 @@ const rowToThread = (row: any): DidThread | null => {
     lastActivityAt: row.last_activity_at,
     isProcessed: row.is_processed,
     themePreset: row.theme_preset || "",
+    themeConfig: (row as any).theme_config || {},
+    threadEmoji: (row as any).thread_emoji || "",
   };
 };
 
