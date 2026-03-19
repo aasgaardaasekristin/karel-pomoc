@@ -57,78 +57,97 @@ Počty:
       ? `FORMULÁŘ:\n${formSummary}\n\nKONTEXT Z CHATU:\n${contextFromChat}`
       : `FORMULÁŘ:\n${formSummary}`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "generate_triage",
-              description: "Generate clinical triage analysis",
-              parameters: {
-                type: "object",
-                properties: {
-                  followUpQuestions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        q: { type: "string" },
-                        why: { type: "string" },
-                      },
-                      required: ["q", "why"],
+    const payload = {
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "generate_triage",
+            description: "Generate clinical triage analysis",
+            parameters: {
+              type: "object",
+              properties: {
+                followUpQuestions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      q: { type: "string" },
+                      why: { type: "string" },
                     },
-                  },
-                  criticalDataToCollect: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        item: { type: "string" },
-                        why: { type: "string" },
-                      },
-                      required: ["item", "why"],
-                    },
-                  },
-                  contraindicationFlags: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        flag: { type: "string" },
-                        why: { type: "string" },
-                      },
-                      required: ["flag", "why"],
-                    },
-                  },
-                  recommendedNextSteps: {
-                    type: "array",
-                    items: { type: "string" },
+                    required: ["q", "why"],
                   },
                 },
-                required: ["followUpQuestions", "criticalDataToCollect", "contraindicationFlags", "recommendedNextSteps"],
-                additionalProperties: false,
+                criticalDataToCollect: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      item: { type: "string" },
+                      why: { type: "string" },
+                    },
+                    required: ["item", "why"],
+                  },
+                },
+                contraindicationFlags: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      flag: { type: "string" },
+                      why: { type: "string" },
+                    },
+                    required: ["flag", "why"],
+                  },
+                },
+                recommendedNextSteps: {
+                  type: "array",
+                  items: { type: "string" },
+                },
               },
+              required: ["followUpQuestions", "criticalDataToCollect", "contraindicationFlags", "recommendedNextSteps"],
+              additionalProperties: false,
             },
           },
-        ],
-        tool_choice: { type: "function", function: { name: "generate_triage" } },
-      }),
-    });
+        },
+      ],
+      tool_choice: { type: "function", function: { name: "generate_triage" } },
+    };
 
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("AI gateway error:", response.status, text);
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok || (response.status !== 502 && response.status !== 503)) break;
+      console.warn(`AI gateway attempt ${attempt + 1} failed with ${response.status}, retrying...`);
+      if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+    }
+
+    if (!response || !response.ok) {
+      const text = await response?.text();
+      console.error("AI gateway error:", response?.status, text);
+      if (response?.status === 429) {
+        return new Response(JSON.stringify({ error: "AI je momentálně přetížené, zkus to za chvilku." }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response?.status === 402) {
+        return new Response(JSON.stringify({ error: "Nedostatek kreditů pro AI." }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
       throw new Error("AI gateway error");
     }
 
