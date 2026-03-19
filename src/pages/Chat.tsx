@@ -548,6 +548,7 @@ const Chat = () => {
       case "thread-list":
         // Kluci thread list → back to DID entry
         restoreGlobalTheme();
+        setCurrentPersona("default");
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
@@ -616,7 +617,7 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
   // Thread management for "cast" mode (hooks must be before early return)
-  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, setCurrentPersona } = useTheme();
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
@@ -879,6 +880,7 @@ const Chat = () => {
 
     if (subMode === "cast") {
       // Use pre-loaded basic docs, just fetch threads
+      setCurrentPersona("kluci");
       setDidFlowState("loading");
       await didThreads.fetchActiveThreads("cast");
       // knownParts already loaded during dashboard pre-load
@@ -1594,6 +1596,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             }}
             onSelectKluci={() => {
               setDidSubMode("cast");
+              setCurrentPersona("kluci");
               setDidFlowState("loading");
               // Auto-prime DID context in background
               didContextPrime.runPrime(undefined, "cast");
@@ -1877,6 +1880,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             onSelectTerapeut={() => setDidFlowState("terapeut")}
             onSelectKluci={() => {
               setDidSubMode("cast");
+              setCurrentPersona("kluci");
               setDidFlowState("thread-list");
             }}
             onBack={() => setMode("debrief")}
