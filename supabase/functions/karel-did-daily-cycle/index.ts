@@ -2107,8 +2107,10 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
     const isManualTrigger = !isCronCall || requestBody?.source === "manual";
 
     if (!isManualTrigger) {
-      const nowPrague = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
-      const pragueHour = nowPrague.getHours();
+      const pragueHour = parseInt(
+        new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Prague", hour: "numeric", hour12: false }).format(new Date()),
+        10
+      );
       // Morning slot: 04:00-12:59 CET  |  Afternoon slot: 13:00-23:59 CET
       const currentSlot = pragueHour < 13 ? "morning" : "afternoon";
 
