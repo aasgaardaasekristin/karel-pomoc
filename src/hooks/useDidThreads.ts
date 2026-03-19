@@ -324,6 +324,29 @@ export const useDidThreads = () => {
     );
   }, []);
 
+  const updateThreadThemeConfig = useCallback(async (threadId: string, themePreset: string, themeConfig: Record<string, any>) => {
+    const emoji = themeConfig.thread_emoji || "";
+    const { error } = await supabase
+      .from("did_threads")
+      .update({ 
+        theme_preset: themePreset,
+        theme_config: themeConfig,
+        thread_emoji: emoji,
+      } as any)
+      .eq("id", threadId);
+
+    if (error) {
+      console.error("Update thread theme config error:", error);
+      return;
+    }
+
+    setThreads((prev) =>
+      prev.map((thread) =>
+        thread.id === threadId ? { ...thread, themePreset, themeConfig, threadEmoji: emoji } : thread,
+      ),
+    );
+  }, []);
+
   return {
     threads,
     loading,
