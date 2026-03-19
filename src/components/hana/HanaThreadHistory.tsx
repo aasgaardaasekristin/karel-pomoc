@@ -57,11 +57,16 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
   const [isMirroring, setIsMirroring] = useState(false);
 
   const fetchThreads = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("karel_hana_conversations")
       .select("id, messages, is_active, last_activity_at, started_at")
       .order("last_activity_at", { ascending: false })
-      .limit(20);
+      .limit(50);
+
+    if (error) {
+      console.error("[HanaThreadHistory] Fetch error:", error);
+      return;
+    }
 
     if (data) {
       setThreads(data.map(r => ({
@@ -74,23 +79,27 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
     }
   }, []);
 
+  // Always fetch on open
   useEffect(() => {
     if (isOpen) fetchThreads();
   }, [isOpen, fetchThreads]);
 
-  // Realtime subscription for cross-device sync
+  // Realtime subscription - ALWAYS active for cross-device sync
   useEffect(() => {
+    // Initial fetch so threads are ready before panel opens
+    fetchThreads();
+
     const channel = supabase
       .channel("hana_threads_realtime")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "karel_hana_conversations" },
-        () => { if (isOpen) fetchThreads(); }
+        () => { fetchThreads(); }
       )
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [isOpen, fetchThreads]);
+  }, [fetchThreads]);
 
   const handleDeleteClick = (e: React.MouseEvent, thread: HanaThread) => {
     e.stopPropagation();
