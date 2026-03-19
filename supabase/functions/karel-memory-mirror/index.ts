@@ -512,6 +512,7 @@ async function runMirrorBatchStep(params: {
         await sb.from("did_therapist_tasks").insert({
           user_id: userId,
           task: task.task,
+          detail_instruction: task.detail_instruction || task.reasoning || task.task,
           assigned_to: assignee,
           priority: normalizedPriority,
           category: normalizedCategory,

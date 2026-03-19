@@ -367,6 +367,7 @@ JSON pole
         try {
           await sb.from("did_therapist_tasks").insert({
             task: t.task,
+            detail_instruction: t.detail_instruction || t.instruction || t.task,
             assigned_to: t.assigned_to || "both",
             priority: t.priority || "normal",
             category: t.category || "porada",

@@ -540,6 +540,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
     const { error } = await supabase.from("did_therapist_tasks").insert({
       task: taskText,
+      detail_instruction: taskText,
       assigned_to: newAssignee,
       category: newCategory,
       source_agreement: sourceReference,

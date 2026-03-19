@@ -262,6 +262,7 @@ serve(async (req) => {
         const { error } = await sb.from("did_therapist_tasks").insert({
           user_id: userId,
           task: taskText,
+          detail_instruction: `Doplnit ${section} u karty ${card.partName}.\n\nDůvod: health score ${card.healthScore}%.\nChybějící sekce: ${card.missingSections.join(", ")}`,
           assigned_to: "both",
           category: "kartoteka",
           priority: card.healthScore < 30 ? "high" : "normal",

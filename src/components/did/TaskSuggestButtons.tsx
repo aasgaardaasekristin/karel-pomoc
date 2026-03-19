@@ -62,6 +62,7 @@ export const TaskSuggestInline = ({ suggestions, onTaskAdded }: { suggestions: T
 
     const { error } = await supabase.from("did_therapist_tasks").insert({
       task: suggestion.task,
+      detail_instruction: suggestion.task,
       assigned_to: suggestion.assignee,
       category: suggestion.category,
       status: "pending",

@@ -200,9 +200,10 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
 
   const flushPending = (instruction: string) => {
     if (!pendingTitle) return;
-    const [shortTitle] = truncateTitle(pendingTitle);
+    const [shortTitle, fullText] = truncateTitle(pendingTitle);
+    const detail = instruction.trim() || fullText;
     if (shortTitle) {
-      tasks.push({ task: shortTitle, detail_instruction: instruction, assigned_to: pendingAssignee, category: pendingCategory, note: "" });
+      tasks.push({ task: shortTitle, detail_instruction: detail, assigned_to: pendingAssignee, category: pendingCategory, note: "" });
     }
     pendingTitle = "";
   };
@@ -220,7 +221,7 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
     // Bold title line
     const boldMatch = line.match(/^\*\*(.+?)\*\*\s*:?\s*(.*)/);
     if (boldMatch) {
-      flushPending(""); // flush previous without instruction
+      flushPending("");
       const raw = boldMatch[1].trim();
       pendingTitle = raw.replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "").trim();
       pendingAssignee = /\b(?:haničk|hanka)\b/i.test(raw) ? "hanka" : /\b(?:káť|kata)\b/i.test(raw) ? "kata" : "both";
@@ -233,17 +234,17 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
     const raw = (bulletMatch ? bulletMatch[1] : line).trim();
     if (!raw || raw.length < 8) continue;
 
-    flushPending(""); // flush any pending bold without instruction
+    flushPending("");
 
     const assignee = /\b(?:haničk|hanka)\b/i.test(raw) ? "hanka" : /\b(?:káť|kata)\b/i.test(raw) ? "kata" : "both";
     const category = /\b(?:zítra|zitra)\b/i.test(raw) ? "tomorrow" : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw) ? "longterm" : "today";
     const cleaned = raw.replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "").trim();
-    const [shortTitle] = truncateTitle(cleaned);
+    const [shortTitle, fullText] = truncateTitle(cleaned);
     if (!shortTitle) continue;
-    tasks.push({ task: shortTitle, detail_instruction: "", assigned_to: assignee, category, note: "" });
+    tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: "" });
   }
 
-  flushPending(""); // flush last pending
+  flushPending("");
   return tasks;
 }
 
