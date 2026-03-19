@@ -1594,6 +1594,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             }}
             onSelectKluci={() => {
               setDidSubMode("cast");
+              setCurrentPersona("kluci");
               setDidFlowState("loading");
               // Auto-prime DID context in background
               didContextPrime.runPrime(undefined, "cast");
