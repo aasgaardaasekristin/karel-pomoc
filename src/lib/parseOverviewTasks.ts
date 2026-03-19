@@ -172,32 +172,58 @@ function extractRecommendationTasks(text: string): ParsedTask[] {
   const tasks: ParsedTask[] = [];
   const lines = match[1].split(/\n/).map((line) => line.trim()).filter(Boolean);
 
-  for (const line of lines) {
+  let pendingTitle = "";
+  let pendingAssignee: "hanka" | "kata" | "both" = "both";
+  let pendingCategory: "today" | "tomorrow" | "longterm" = "today";
+
+  const flushPending = (instruction: string) => {
+    if (!pendingTitle) return;
+    const [shortTitle] = truncateTitle(pendingTitle);
+    if (shortTitle) {
+      tasks.push({ task: shortTitle, detail_instruction: instruction, assigned_to: pendingAssignee, category: pendingCategory, note: "" });
+    }
+    pendingTitle = "";
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Check for "Instrukce:" line following a bold title
+    const instructionMatch = line.match(/^Instrukce\s*:\s*(.+)/i);
+    if (instructionMatch && pendingTitle) {
+      flushPending(instructionMatch[1].trim());
+      continue;
+    }
+
+    // Bold title line
+    const boldMatch = line.match(/^\*\*(.+?)\*\*\s*:?\s*(.*)/);
+    if (boldMatch) {
+      flushPending(""); // flush previous without instruction
+      const raw = boldMatch[1].trim();
+      pendingTitle = raw.replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "").trim();
+      pendingAssignee = /\b(?:haničk|hanka)\b/i.test(raw) ? "hanka" : /\b(?:káť|kata)\b/i.test(raw) ? "kata" : "both";
+      pendingCategory = /\b(?:zítra|zitra)\b/i.test(raw) ? "tomorrow" : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw) ? "longterm" : "today";
+      continue;
+    }
+
+    // Bullet or plain line (old format fallback)
     const bulletMatch = line.match(/^(?:[-–•]|\d+[.)])\s+(.+)/);
     const raw = (bulletMatch ? bulletMatch[1] : line).trim();
     if (!raw || raw.length < 8) continue;
 
-    const assignee = /\b(?:haničk|hanka)\b/i.test(raw)
-      ? "hanka"
-      : /\b(?:káť|kata)\b/i.test(raw)
-        ? "kata"
-        : "both";
+    flushPending(""); // flush any pending bold without instruction
 
-    const category = /\b(?:zítra|zitra)\b/i.test(raw)
-      ? "tomorrow"
-      : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw)
-        ? "longterm"
-        : "today";
-
-    const cleaned = raw
-      .replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "")
-      .trim();
-
-    const [shortTitle, fullText] = truncateTitle(cleaned);
+    const assignee = /\b(?:haničk|hanka)\b/i.test(raw) ? "hanka" : /\b(?:káť|kata)\b/i.test(raw) ? "kata" : "both";
+    const category = /\b(?:zítra|zitra)\b/i.test(raw) ? "tomorrow" : /\b(?:tento týden|během týdne|do týdne|později)\b/i.test(raw) ? "longterm" : "today";
+    const cleaned = raw.replace(/^(?:Hanička|Hanka|Káťa|Kata|Obě terapeutky|Obě|Společně)\s*[:–-]\s*/i, "").trim();
+    const [shortTitle] = truncateTitle(cleaned);
     if (!shortTitle) continue;
-
-    tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: "" });
+    tasks.push({ task: shortTitle, detail_instruction: "", assigned_to: assignee, category, note: "" });
   }
+
+  flushPending(""); // flush last pending
+  return tasks;
+}
 
   return tasks;
 }
