@@ -116,6 +116,10 @@ const HanaChat = () => {
   useEffect(() => {
     const loadActiveConversation = async () => {
       try {
+        // Wait for auth session to be available before querying RLS-protected table
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return; // will retry via onAuthStateChange
+
         const { data } = await supabase
           .from("karel_hana_conversations")
           .select("id, messages")
@@ -140,7 +144,17 @@ const HanaChat = () => {
         console.warn("Failed to load Hana conversation:", e);
       }
     };
+
     loadActiveConversation();
+
+    // Retry when auth session becomes available (fixes cold-load race condition)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        loadActiveConversation();
+      }
+    });
+
+    return () => { subscription.unsubscribe(); };
   }, []);
 
   // ═══ Auto-trigger context prime on mount and new thread ═══

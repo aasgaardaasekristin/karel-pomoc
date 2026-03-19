@@ -89,6 +89,13 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
     // Initial fetch so threads are ready before panel opens
     fetchThreads();
 
+    // Re-fetch when auth session is restored (fixes race condition on cold load)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        fetchThreads();
+      }
+    });
+
     const channel = supabase
       .channel("hana_threads_realtime")
       .on(
@@ -98,7 +105,10 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      subscription.unsubscribe();
+      supabase.removeChannel(channel);
+    };
   }, [fetchThreads]);
 
   const handleDeleteClick = (e: React.MouseEvent, thread: HanaThread) => {
