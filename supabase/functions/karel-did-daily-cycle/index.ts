@@ -1758,13 +1758,16 @@ serve(async (req) => {
 
   // ═══ EMAIL GUARD: Daily report emails must only go out in the afternoon slot (14:00 Prague) or catch-up runs ═══
   const isTestEmail = requestBody?.testEmail === true;
-  const nowPragueForEmailGuard = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" }));
-  const pragueHourForEmailGuard = nowPragueForEmailGuard.getHours();
-  const isAfternoonCronWindow = isCronCall && isCronSource && pragueHourForEmailGuard >= 13;
-  const shouldSendEmails = isAfternoonCronWindow || isTestEmail;
-  if (!shouldSendEmails) {
-    console.log(`[daily-cycle] Email sending disabled for this run (manual or morning slot). Prague hour=${pragueHourForEmailGuard}`);
-  }
+  const isCatchup = requestBody?.catchup === true;
+  const isWatchdog = requestBody?.source === "watchdog";
+  // Use Intl.DateTimeFormat for reliable Prague time in Deno edge runtime
+  const pragueHourForEmailGuard = parseInt(
+    new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Prague", hour: "numeric", hour12: false }).format(new Date()),
+    10
+  );
+  const isAfternoonCronWindow = isCronCall && pragueHourForEmailGuard >= 13;
+  const shouldSendEmails = isAfternoonCronWindow || isTestEmail || isCatchup || isWatchdog;
+  console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, shouldSendEmails=${shouldSendEmails}`);
 
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
