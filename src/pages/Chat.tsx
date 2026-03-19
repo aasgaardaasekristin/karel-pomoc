@@ -822,7 +822,7 @@ const Chat = () => {
     })();
     
     toast.info(`Navazuješ na rozhovor s ${partName}`);
-  }, [setDidSubMode, setMessages, setDidInitialContext]);
+  }, [setDidSubMode, setMessages, setDidInitialContext, applyTemporaryTheme, getPersonaPrefs]);
 
   // Handle ?meeting=<id> URL parameter
   useEffect(() => {
