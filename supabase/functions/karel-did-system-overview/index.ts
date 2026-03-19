@@ -658,16 +658,25 @@ OSLOVENÍ:
 
 CO MÁŠ DĚLAT:
 - 1 odstavec: PROVOZNÍ PŘEHLED – kdo přímo komunikoval, jaká byla obecná témata a dynamika systému.
-- 1 odstavec: DEDUKCE A STAV ÚKOLŮ – explicitně pojmenuj 1–2 pracovní dedukce z provozních dat (např. potřeba více aktivovat Káťu / Hanku, potřeba follow-upu, potřeba rozdělit odpovědnosti).
+- 1 odstavec: DEDUKCE A STAV ÚKOLŮ – explicitně pojmenuj 1–2 pracovní dedukce z provozních dat (např. potřeba více aktivovat Káťu / Hanku, potřeba follow-upu, potřeba rozdělit odpovědnosti). Zahrň krátké zhodnocení procesu úkolování: úroveň spolupráce terapeutek, kde to vázne, co jde dobře, na co se zaměřit, co zlepšit.
 - "Dnes doporučuji:" – 3-5 KONKRÉTNÍCH AKČNÍCH KROKŮ, pouze obecné provozní kroky bez jmen DID částí.
-- Každý akční bod musí být ověřitelný a konkrétní: začínat slovesem, obsahovat kdo/co/na čem má pracovat dnes nebo zítra, a nesmí být jen obecná fráze typu „udržovat rutinu“, „zajistit klidné prostředí“, „připravit se na zpracování informací“, „věnovat se administrativě“.
+- Každý akční bod musí být ověřitelný a konkrétní: začínat slovesem, obsahovat kdo/co/na čem má pracovat dnes nebo zítra, a nesmí být jen obecná fráze typu „udržovat rutinu", „zajistit klidné prostředí", „připravit se na zpracování informací", „věnovat se administrativě".
 - Aspoň 1 doporučení má být koordinační, pokud některá terapeutka vykazuje nižší zapojení.
+
+📋 FORMÁT ÚKOLŮ (POVINNÝ):
+Po "Dnes doporučuji:" musí KAŽDÝ úkol mít DVOUŘÁDKOVÝ formát:
+**Krátký název úkolu** (max 60 znaků, akční sloveso)
+Instrukce: Podrobné, srozumitelné vysvětlení CO konkrétně udělat, JAK to udělat a PROČ je to důležité. Min. 2 věty.
+
+Příklad správného formátu:
+**Synchronizovat rozpracované úkoly**
+Instrukce: Projdi nástěnku úkolů a označ ty, na kterých jsi dnes pracovala. U nezapočatých napiš krátký update proč čekají – Karel potřebuje vidět kde je blok, aby mohl navrhnout další kroky.
 
 STRUKTURA:
 "${chosenGreeting}"
 1 odstavec: provozní přehled.
-1 odstavec: dedukce a stav úkolů.
-"Dnes doporučuji:" 3-5 akčních bodů.
+1 odstavec: dedukce, stav úkolů a zhodnocení procesu úkolování.
+"Dnes doporučuji:" 3-5 akčních bodů ve dvouřádkovém formátu.
 
 VSTUPNÍ DATA (použij JEN pro zjištění KDO byl aktivní a JAKÁ JE PROVOZNÍ SITUACE – NECITUJ obsah):
 
