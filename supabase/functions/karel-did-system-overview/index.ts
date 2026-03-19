@@ -465,6 +465,25 @@ serve(async (req) => {
         .filter(Boolean)
     );
 
+    const extractMessageTexts = (messages: unknown, allowedRoles: string[] = ["user"]): string[] => {
+      if (!Array.isArray(messages)) return [];
+      const roleSet = new Set(allowedRoles.map((r) => String(r).toLowerCase()));
+      return messages
+        .filter((m: any) => roleSet.has(String(m?.role || "").toLowerCase()))
+        .map((m: any) => {
+          const content = m?.content;
+          if (typeof content === "string") return content;
+          if (Array.isArray(content)) {
+            return content
+              .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+              .filter(Boolean)
+              .join(" ");
+          }
+          return "";
+        })
+        .filter((v: string) => typeof v === "string" && v.trim().length > 0);
+    };
+
     const crossModeActivity = new Set<string>();
     const crossModeMentions: string[] = [];
 
