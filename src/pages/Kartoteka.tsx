@@ -23,10 +23,12 @@ import {
   MessageSquare,
   LogOut,
   HardDriveDownload,
+  CalendarPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
-
+import ClientDiscussionChat from "@/components/report/ClientDiscussionChat";
+import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
 type Client = {
   id: string;
   name: string;
