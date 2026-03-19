@@ -72,28 +72,32 @@ function extractSection(block: string, startRe: RegExp, endRe: RegExp): string {
 }
 
 /**
- * Truncate a raw title to a short actionable label (~60 chars max).
+ * Truncate a raw title to a short actionable label (~80 chars max).
+ * Returns [shortTitle, fullOriginalText] — the full text is preserved for detail_instruction.
  */
 function truncateTitle(raw: string): [string, string] {
-  const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:)\b/i;
-  const splitMatch = raw.match(splitRe);
-  let title = splitMatch ? raw.slice(0, splitMatch.index!).trim() : raw.trim();
-  let overflow = splitMatch ? raw.slice(splitMatch.index!).trim() : "";
+  const fullText = raw.trim();
+  let title = fullText;
 
-  if (title.length > 150) {
-    // Try to cut at sentence boundary (. or :) within first 150 chars
+  // Strip "Proč:/Důvod:" prefix for the short title only
+  const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:)\b/i;
+  const splitMatch = title.match(splitRe);
+  if (splitMatch) {
+    title = title.slice(0, splitMatch.index!).trim();
+  }
+
+  if (title.length > 80) {
     const sentenceEnd = Math.max(
-      title.lastIndexOf(". ", 150),
-      title.lastIndexOf(": ", 150),
+      title.lastIndexOf(". ", 80),
+      title.lastIndexOf(": ", 80),
     );
-    const cut = sentenceEnd > 40 ? sentenceEnd + 1 : title.lastIndexOf(" ", 150);
-    const cutPos = cut > 40 ? cut : 150;
-    overflow = title.slice(cutPos).trim() + (overflow ? " " + overflow : "");
+    const cut = sentenceEnd > 30 ? sentenceEnd + 1 : title.lastIndexOf(" ", 80);
+    const cutPos = cut > 30 ? cut : 80;
     title = title.slice(0, cutPos).trim();
   }
 
   title = title.replace(/[:\-–—]\s*$/, "").trim();
-  return [title, overflow];
+  return [title, fullText];
 }
 
 function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", category: "today" | "tomorrow" | "longterm"): ParsedTask[] {
