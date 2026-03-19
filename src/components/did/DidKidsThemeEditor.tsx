@@ -48,6 +48,13 @@ const FONT_OPTIONS = [
 
 const THREAD_EMOJIS = ["🐱", "🐶", "🦊", "🐸", "🐻", "🦁", "🐼", "🐨", "🐯", "🦄", "🐲", "👾", "🤖", "👻", "⭐", "🎮"];
 
+const PRESET_BACKGROUNDS = [
+  { key: "space", label: "Vesmír 🚀", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&q=80", gradient: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)" },
+  { key: "forest", label: "Les 🌲", url: "https://images.unsplash.com/photo-1448375240586-882707db888b?w=800&q=80", gradient: "linear-gradient(135deg, #134e5e, #71b280)" },
+  { key: "ocean", label: "Oceán 🌊", url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=800&q=80", gradient: "linear-gradient(135deg, #2193b0, #6dd5ed)" },
+  { key: "dragon", label: "Drak 🐉", url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80", gradient: "linear-gradient(135deg, #c31432, #240b36)" },
+];
+
 const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }: Props) => {
   const [open, setOpen] = useState(false);
   const { prefs, updatePrefs, uploadBackground, currentPersona, setCurrentPersona, applyTemporaryTheme } = useTheme();
