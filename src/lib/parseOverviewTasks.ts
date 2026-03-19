@@ -105,40 +105,63 @@ function extractTaskLines(section: string, assignee: "hanka" | "kata" | "both", 
   const tasks: ParsedTask[] = [];
   const lines = section.split(/\n/);
   let currentTitle = "";
+  let currentInstruction = "";
   let currentNote = "";
+
+  const flushTask = () => {
+    if (!currentTitle) return;
+    const shortTitle = currentTitle.length > 80
+      ? truncateTitle(currentTitle)[0]
+      : currentTitle;
+    // detail_instruction is the Instrukce: line (rich explanation), NOT a repeat of the title
+    const detail = currentInstruction.trim() || "";
+    tasks.push({
+      task: shortTitle,
+      detail_instruction: detail,
+      assigned_to: assignee,
+      category,
+      note: currentNote.trim(),
+    });
+    currentTitle = "";
+    currentInstruction = "";
+    currentNote = "";
+  };
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
+    // Check for "Instrukce:" line (the new two-line format)
+    const instructionMatch = trimmed.match(/^Instrukce\s*:\s*(.+)/i);
+    if (instructionMatch && currentTitle) {
+      currentInstruction = instructionMatch[1].trim();
+      continue;
+    }
+
     const boldMatch = trimmed.match(/^\*\*(.+?)\*\*\s*:?\s*(.*)/);
     const plainMatch = !boldMatch ? trimmed.match(/^([A-ZÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ][^:]{3,50}):\s*(.+)/i) : null;
 
     if (boldMatch || plainMatch) {
-      if (currentTitle) {
-        const fullRaw = (currentTitle + (currentNote ? " " + currentNote : "")).trim();
-        const [shortTitle, fullText] = truncateTitle(fullRaw);
-        tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: currentNote.trim() });
-      }
+      flushTask();
       const match = boldMatch || plainMatch!;
       currentTitle = match[1].trim();
       currentNote = match[2] || "";
     } else if (currentTitle) {
-      currentNote += " " + trimmed;
+      // Continuation line — append to instruction if we already have one, else to note
+      if (currentInstruction) {
+        currentInstruction += " " + trimmed;
+      } else {
+        currentNote += " " + trimmed;
+      }
     } else {
       if (trimmed.length > 10) {
         const [shortTitle, fullText] = truncateTitle(trimmed);
-        tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: "" });
+        tasks.push({ task: shortTitle, detail_instruction: "", assigned_to: assignee, category, note: "" });
       }
     }
   }
 
-  if (currentTitle) {
-    const fullRaw = (currentTitle + (currentNote ? " " + currentNote : "")).trim();
-    const [shortTitle, fullText] = truncateTitle(fullRaw);
-    tasks.push({ task: shortTitle, detail_instruction: fullText, assigned_to: assignee, category, note: currentNote.trim() });
-  }
-
+  flushTask();
   return tasks;
 }
 
