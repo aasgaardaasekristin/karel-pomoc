@@ -205,11 +205,14 @@ const TaskCard = ({
   return (
     <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
       <div className="flex items-center gap-1.5">
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (
-            <TrafficLight status={aggregateTaskStatus(task)} label="Obě" onClick={() => onToggleTraffic(task, "both")} />
+            <>
+              <StatusBadge status={(task.status_hanka || "not_started") as TrafficStatus} label="H" onClick={() => onToggleTraffic(task, "hanka")} />
+              <StatusBadge status={(task.status_kata || "not_started") as TrafficStatus} label="K" onClick={() => onToggleTraffic(task, "kata")} />
+            </>
           ) : (
-            <TrafficLight
+            <StatusBadge
               status={aggregateTaskStatus(task)}
               label={assigned === "hanka" ? "H" : "K"}
               onClick={() => onToggleTraffic(task, assigned)}
