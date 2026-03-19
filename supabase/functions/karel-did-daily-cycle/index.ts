@@ -4190,6 +4190,112 @@ PRAVIDLA SOUKROMÍ (KRITICKÉ):
       console.warn("[daily-cycle] Escalation logic error (non-fatal):", escErr);
     }
 
+    // ═══ AUTO-FEEDBACK: Karel generates proactive feedback for stale tasks (3+ days) ═══
+    try {
+      const { data: staleFeedbackTasks } = await sb.from("did_therapist_tasks")
+        .select("id, task, note, assigned_to, status_hanka, status_kata, created_at, priority, category, escalation_level")
+        .neq("status", "done");
+
+      if (staleFeedbackTasks && staleFeedbackTasks.length > 0) {
+        const now = Date.now();
+        const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+        const staleForFeedback = staleFeedbackTasks.filter(t => 
+          (now - new Date(t.created_at).getTime()) >= threeDaysMs
+        );
+
+        if (staleForFeedback.length > 0) {
+          // Check which tasks already got Karel auto-feedback today
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: existingFeedback } = await sb.from("did_task_feedback")
+            .select("task_id, created_at")
+            .eq("author", "karel")
+            .gte("created_at", `${today}T00:00:00Z`);
+
+          const alreadyFeedbackToday = new Set((existingFeedback || []).map((f: any) => f.task_id));
+          const tasksNeedingFeedback = staleForFeedback.filter(t => !alreadyFeedbackToday.has(t.id));
+
+          if (tasksNeedingFeedback.length > 0) {
+            console.log(`[auto-feedback] Generating Karel feedback for ${tasksNeedingFeedback.length} stale tasks`);
+            const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+
+            // Process up to 5 tasks to stay within time budget
+            for (const task of tasksNeedingFeedback.slice(0, 5)) {
+              try {
+                const ageDays = Math.floor((now - new Date(task.created_at).getTime()) / (24 * 60 * 60 * 1000));
+                const statusH = task.status_hanka || "not_started";
+                const statusK = task.status_kata || "not_started";
+                const statusLabel = (s: string) => s === "done" ? "splněno" : s === "in_progress" ? "rozpracováno" : "nezapočato";
+                const assignedTo = task.assigned_to === "both" ? "obě terapeutky" : task.assigned_to === "hanka" ? "Hanka" : "Káťa";
+
+                // Load motivation profile for targeted therapist
+                const targetTherapist = task.assigned_to === "kata" ? "Káťa" : "Hanka";
+                const { data: profile } = await sb.from("did_motivation_profiles")
+                  .select("preferred_style, tasks_completed, tasks_missed, streak_current")
+                  .eq("therapist", targetTherapist)
+                  .maybeSingle();
+
+                const styleHint = profile?.preferred_style === "praise"
+                  ? "Používej uznání a pochvaly, motivuj pozitivně."
+                  : profile?.preferred_style === "deadline"
+                  ? "Buď konkrétní ohledně termínů a důsledků."
+                  : profile?.preferred_style === "instruction"
+                  ? "Dej jasné, konkrétní kroky co udělat."
+                  : "Vyvážený přístup — pochvala + instrukce.";
+
+                const feedbackRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: "google/gemini-2.5-flash-lite",
+                    messages: [{
+                      role: "system",
+                      content: `Jsi Karel — vedoucí terapeutického týmu. Generuješ PROAKTIVNÍ zpětnou vazbu k úkolu, který je ${ageDays} dní starý a stále nesplněný.
+
+PRAVIDLA:
+- Max 2-3 věty, profesionální ale lidský tón
+- Oslovovej ${task.assigned_to === "both" ? "obě terapeutky (Hanko, Káťo)" : targetTherapist}
+- Zeptej se jak to jde, nebo nabídni pomoc/rozklad úkolu na menší kroky
+- ${ageDays >= 7 ? "Úkol je kriticky pozadu — buď přímý a navrhni konkrétní řešení." : ageDays >= 5 ? "Úkol je pozadu — jemná urgence, nabídni pomoc." : "Připomínka — zeptej se zda nepotřebuje pomoct."}
+- ${styleHint}
+- NIKDY nezmiňuj profilaci, monitoring, ani že sleduješ délku plnění
+
+ÚKOL: ${task.task}
+${task.note ? `INSTRUKCE: ${task.note}` : ""}
+PŘIŘAZENO: ${assignedTo}
+STAV: H: ${statusLabel(statusH)}, K: ${statusLabel(statusK)}
+STÁŘÍ: ${ageDays} dní
+PRIORITA: ${task.priority || "normal"}
+ESKALACE: level ${task.escalation_level || 0}`,
+                    }, {
+                      role: "user",
+                      content: `Vygeneruj proaktivní zpětnou vazbu k tomuto úkolu.`,
+                    }],
+                  }),
+                });
+
+                if (feedbackRes.ok) {
+                  const fbData = await feedbackRes.json();
+                  const karelMessage = fbData.choices?.[0]?.message?.content;
+                  if (karelMessage) {
+                    await sb.from("did_task_feedback").insert({
+                      task_id: task.id,
+                      author: "karel",
+                      message: karelMessage,
+                    });
+                    console.log(`[auto-feedback] ✅ Feedback for "${task.task.slice(0, 40)}..." (${ageDays}d old)`);
+                  }
+                }
+              } catch (fbErr) {
+                console.warn(`[auto-feedback] Error for task ${task.id}:`, fbErr);
+              }
+            }
+          }
+        }
+      }
+    } catch (autoFeedbackErr) {
+      console.warn("[daily-cycle] Auto-feedback error (non-fatal):", autoFeedbackErr);
+    }
+
     // ═══ AUTO-CLEANUP: remove old duplicates and completed tasks from therapist task board ═══
     try {
       // 1. Remove tasks completed (both statuses "done") more than 14 days ago
