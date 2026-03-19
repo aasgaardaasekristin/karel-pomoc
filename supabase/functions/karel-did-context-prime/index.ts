@@ -610,6 +610,8 @@ serve(async (req) => {
     let driveData: Record<string, Record<string, string>> = {};
     let partCardContent: string | null = null;
     let driveError: string | null = null;
+    let driveAliasMapText = "";
+    let driveError: string | null = null;
 
     const drivePromise = (async () => {
       try {
