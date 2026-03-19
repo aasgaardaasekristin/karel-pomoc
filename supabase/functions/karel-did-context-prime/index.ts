@@ -631,6 +631,16 @@ serve(async (req) => {
           reads.push(readFolderDocs(token, centrumId, 8, 3000).then(d => { driveData["CENTRUM"] = d; }));
         }
 
+        // Load registry alias map from Drive (authoritative identity source)
+        reads.push(loadDriveRegistryEntries(token).then(entries => {
+          driveAliasMapText = buildAliasMapText(entries);
+          if (driveAliasMapText) {
+            console.log(`[did-context-prime] Loaded ${entries.length} Drive registry entries with alias map`);
+          }
+        }).catch(e => {
+          console.warn("[did-context-prime] Drive registry alias load failed:", e.message);
+        }));
+
         // PAMET_KAREL/DID/ — therapist profiles
         const pametId = await findFolder(token, "PAMET_KAREL");
         if (pametId) {
