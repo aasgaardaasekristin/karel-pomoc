@@ -50,7 +50,7 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
       .select("*")
       .gte("report_date", since)
       .order("report_date", { ascending: false });
-    setDispatches((data as Dispatch[]) || []);
+    setDispatches((data as unknown as Dispatch[]) || []);
     setLoading(false);
   };
 
