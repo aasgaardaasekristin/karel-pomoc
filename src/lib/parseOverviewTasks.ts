@@ -74,15 +74,21 @@ function extractSection(block: string, startRe: RegExp, endRe: RegExp): string {
  * Truncate a raw title to a short actionable label (~60 chars max).
  */
 function truncateTitle(raw: string): [string, string] {
-  const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:|Oba si|Pokus se|Je to|Má to|Tento|Jedná se)\b/i;
+  const splitRe = /\s*(?:Proč:|Důvod:|Poznámka:)\b/i;
   const splitMatch = raw.match(splitRe);
   let title = splitMatch ? raw.slice(0, splitMatch.index!).trim() : raw.trim();
   let overflow = splitMatch ? raw.slice(splitMatch.index!).trim() : "";
 
-  if (title.length > 80) {
-    const cut = title.lastIndexOf(" ", 80);
-    overflow = title.slice(cut > 30 ? cut : 80).trim() + (overflow ? " " + overflow : "");
-    title = title.slice(0, cut > 30 ? cut : 80).trim();
+  if (title.length > 150) {
+    // Try to cut at sentence boundary (. or :) within first 150 chars
+    const sentenceEnd = Math.max(
+      title.lastIndexOf(". ", 150),
+      title.lastIndexOf(": ", 150),
+    );
+    const cut = sentenceEnd > 40 ? sentenceEnd + 1 : title.lastIndexOf(" ", 150);
+    const cutPos = cut > 40 ? cut : 150;
+    overflow = title.slice(cutPos).trim() + (overflow ? " " + overflow : "");
+    title = title.slice(0, cutPos).trim();
   }
 
   title = title.replace(/[:\-–—]\s*$/, "").trim();
