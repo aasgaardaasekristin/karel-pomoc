@@ -879,6 +879,7 @@ const Chat = () => {
 
     if (subMode === "cast") {
       // Use pre-loaded basic docs, just fetch threads
+      setCurrentPersona("kluci");
       setDidFlowState("loading");
       await didThreads.fetchActiveThreads("cast");
       // knownParts already loaded during dashboard pre-load
