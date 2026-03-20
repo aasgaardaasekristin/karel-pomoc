@@ -1389,11 +1389,18 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         localStorage.removeItem(DID_DOCS_LOADED_KEY);
         localStorage.removeItem(DID_SESSION_ID_KEY);
       } catch {}
-      refreshHistory();
+
+      // Do not block the loading spinner on history refresh
+      void refreshHistory().catch((historyError) => {
+        console.warn("History refresh failed after manual update:", historyError);
+      });
     } catch (error) {
       console.error("Manual update error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při aktualizaci kartotéky");
-    } finally { setIsManualUpdateLoading(false); }
+    } finally {
+      setSyncProgress(null);
+      setIsManualUpdateLoading(false);
+    }
   };
 
   const handleReformatCards = async () => {
