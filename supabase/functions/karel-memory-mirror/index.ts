@@ -868,7 +868,8 @@ Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověřen
   } catch (bgError) {
     console.error("[mirror-batch] Error:", bgError);
     await sb.from("karel_memory_logs").update({
-      log_type: "redistribute",
+      log_type: "mirror_failed",
+      updated_at: new Date().toISOString(),
       summary: `Chyba při zápisu: ${bgError instanceof Error ? bgError.message : "unknown"}`,
       details: {
         error: true,
