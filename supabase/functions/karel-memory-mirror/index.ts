@@ -1358,8 +1358,9 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
     } catch (continueError) {
       console.error("[mirror] Continue error:", continueError);
       await sb.from("karel_memory_logs").update({
-        log_type: "redistribute",
+        log_type: "mirror_failed",
         summary: `Chyba: ${continueError instanceof Error ? continueError.message : "unknown"}`,
+        updated_at: new Date().toISOString(),
         details: { error: true, phase: "error" },
       }).eq("id", jobId);
       return new Response(JSON.stringify({ status: "error", phase: "error", summary: continueError instanceof Error ? continueError.message : "Neznámá chyba" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
