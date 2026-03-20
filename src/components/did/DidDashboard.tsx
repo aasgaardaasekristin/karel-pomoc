@@ -155,6 +155,26 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
     }
   }, []);
 
+  const runCentrumSync = useCallback(async () => {
+    setIsCentrumSyncing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-centrum-sync`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      );
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      toast.success(data.summary || "Centrum synchronizováno");
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (e: any) {
+      console.error("Centrum sync failed:", e);
+      toast.error("Synchronizace Centra selhala");
+    } finally {
+      setIsCentrumSyncing(false);
+    }
+  }, []);
+
   const warningParts = useMemo(() => parts.filter((part) => part.status === "warning"), [parts]);
 
   return (
