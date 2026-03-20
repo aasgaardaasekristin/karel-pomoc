@@ -163,6 +163,16 @@ const DidSprava = ({
               />
             )}
 
+            {onCentrumSync && (
+              <ToolButton
+                icon={<ClipboardList className={`w-4 h-4 text-emerald-600 ${isCentrumSyncing ? "animate-pulse" : ""}`} />}
+                title="Aktualizovat Centrum"
+                desc="Synchronizace CENTRUM dokumentů na Drive"
+                loading={isCentrumSyncing}
+                onClick={() => { onCentrumSync(); setOpen(false); }}
+              />
+            )}
+
             <ToolButton
               icon={<HeartPulse className={`w-4 h-4 text-primary ${isAuditing ? "animate-pulse" : ""}`} />}
               title="Audit zdraví kartotéky"
