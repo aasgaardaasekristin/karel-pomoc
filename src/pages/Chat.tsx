@@ -1313,14 +1313,18 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         }
       }
 
-      // Phase 2: Registry sync
+      // Phase 2: Registry sync (with per-request timeouts to prevent hanging)
       try {
         toast.info("Synchronizuji registr...");
         const syncHeaders = await getAuthHeaders();
+        const listController = new AbortController();
+        const listTimeout = setTimeout(() => listController.abort(), 30_000);
         const listRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
           method: "POST", headers: syncHeaders,
           body: JSON.stringify({ syncRegistry: true, syncMode: "list" }),
+          signal: listController.signal,
         });
+        clearTimeout(listTimeout);
         const listData = await listRes.json();
         const entries = listData.entries || [];
         const total = entries.length;
@@ -1331,10 +1335,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           const displayName = (entry.fileName || "").replace(/^\d+_/, "").replace(/\.[^.]+$/, "");
           setSyncProgress({ current: i + 1, total, currentName: displayName });
           try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 25_000);
             const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
               method: "POST", headers: syncHeaders,
               body: JSON.stringify({ syncRegistry: true, syncMode: "process_one", fileId: entry.fileId, fileName: entry.fileName, folderLabel: entry.folderLabel }),
+              signal: controller.signal,
             });
+            clearTimeout(timeout);
             const data = await res.json();
             if (data.result === "skip") skipped++;
             else synced++;
