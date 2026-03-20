@@ -1,0 +1,1 @@
+UPDATE did_update_cycles SET status = 'failed', last_error = 'Stuck - no heartbeat for over 1 hour, manually marked as failed', completed_at = now() WHERE id = 'ac263db0-879c-4764-9b5f-5d5af323ffe3' AND status = 'running';
