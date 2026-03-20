@@ -1124,6 +1124,7 @@ Deno.serve(async (req) => {
 
         await sb.from("karel_memory_logs").update({
           summary: `Drive: ${driveDocsRead} dokumentů přečteno`,
+          updated_at: new Date().toISOString(),
           details: {
             ...job.details,
             phase: "drive_done",
