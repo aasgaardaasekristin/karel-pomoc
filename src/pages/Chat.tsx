@@ -1263,74 +1263,88 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         .lt("updated_at", staleCutoff);
 
       // Start mirror with force=true
-      const initRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-        method: "POST", headers, body: JSON.stringify({ force: true }),
-      });
-      if (!initRes.ok) {
-        const errorBody = await initRes.text();
-        throw new Error(`Chyba ${initRes.status}: ${errorBody.slice(0, 200)}`);
-      }
-      const initData = await initRes.json();
-
-      if (initData.status === "skipped") {
-        toast.info(initData.reason || "Aktualizace již probíhá.");
-        return;
-      }
-
-      if (!initData.jobId) {
-        toast.error(initData.error || "Nepodařilo se vytvořit job.");
-        return;
-      }
-
-      const jobId = initData.jobId;
-      toast.success("Aktualizace spuštěna...");
-
-      // Drive all phases via "continue" calls with global timeout
-      let consecutiveErrors = 0;
       let mirrorDone = false;
-      for (let i = 0; i < 120; i++) {
-        if (Date.now() > globalDeadline) {
-          console.warn("[update] Global 10min timeout reached, moving on");
-          toast.warning("Aktualizace trvá příliš dlouho, pokračuji dál...");
-          break;
-        }
-        if (i > 0) await new Promise(r => setTimeout(r, 2000));
+      let mirrorSkipped = false;
+      try {
+        console.log("[mirror] Starting mirror init call with force=true");
+        const initRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+          method: "POST", headers, body: JSON.stringify({ force: true }),
+        });
+        console.log("[mirror] Init response status:", initRes.status);
+        if (!initRes.ok) {
+          const errorBody = await initRes.text();
+          console.error("[mirror] Init call failed:", initRes.status, errorBody.slice(0, 300));
+          toast.error(`Mirror chyba ${initRes.status}`);
+        } else {
+          const initData = await initRes.json();
+          console.log("[mirror] Init response data:", JSON.stringify(initData).slice(0, 500));
 
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 55_000);
-          const step = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-            method: "POST", headers, body: JSON.stringify({ mode: "continue", jobId }),
-            signal: controller.signal,
-          }).then(r => { clearTimeout(timeout); return r.json(); });
-          consecutiveErrors = 0;
+          if (initData.status === "skipped") {
+            console.warn("[mirror] Mirror skipped:", initData.reason);
+            toast.info(initData.reason || "Mirror přeskočen.");
+            mirrorSkipped = true;
+          } else if (!initData.jobId) {
+            console.error("[mirror] No jobId in response:", initData);
+            toast.error(initData.error || "Nepodařilo se vytvořit mirror job.");
+          } else {
+            const jobId = initData.jobId;
+            console.log("[mirror] Job created:", jobId);
+            toast.success("Mirror spuštěn...");
 
-          if (step.status === "done") {
-            toast.success(`Aktualizace dokončena: ${step.summary?.slice(0, 100) || "OK"}`);
-            mirrorDone = true;
-            break;
+            // Drive all phases via "continue" calls with global timeout
+            let consecutiveErrors = 0;
+            for (let i = 0; i < 120; i++) {
+              if (Date.now() > globalDeadline) {
+                console.warn("[mirror] Global 10min timeout reached");
+                toast.warning("Mirror trvá příliš dlouho, pokračuji dál...");
+                break;
+              }
+              if (i > 0) await new Promise(r => setTimeout(r, 2000));
+
+              try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 55_000);
+                const step = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
+                  method: "POST", headers, body: JSON.stringify({ mode: "continue", jobId }),
+                  signal: controller.signal,
+                }).then(r => { clearTimeout(timeout); return r.json(); });
+                consecutiveErrors = 0;
+                console.log(`[mirror] Continue #${i} response:`, JSON.stringify(step).slice(0, 300));
+
+                if (step.status === "done") {
+                  toast.success(`Mirror dokončen: ${step.summary?.slice(0, 100) || "OK"}`);
+                  mirrorDone = true;
+                  break;
+                }
+                if (step.status === "error") {
+                  console.error("[mirror] Job error:", step.summary);
+                  toast.error(step.summary || "Chyba mirror jobu.");
+                  break;
+                }
+                if (step.status === "idle") {
+                  console.log("[mirror] Job idle (already finished)");
+                  toast.info("Mirror dokončen.");
+                  mirrorDone = true;
+                  break;
+                }
+              } catch (stepError: any) {
+                consecutiveErrors++;
+                console.error(`[mirror] Continue error #${consecutiveErrors}:`, stepError.message);
+                if (consecutiveErrors >= 5) {
+                  toast.error("Mirror: příliš mnoho chyb, pokračuji na registr...");
+                  break;
+                }
+                await new Promise(r => setTimeout(r, 3000));
+              }
+            }
           }
-          if (step.status === "error") {
-            toast.error(step.summary || "Chyba při aktualizaci.");
-            break;
-          }
-          if (step.status === "idle") {
-            toast.info("Aktualizace dokončena.");
-            mirrorDone = true;
-            break;
-          }
-          if (step.phase && i % 3 === 0) {
-            console.log(`[update] Phase: ${step.phase} | ${step.summary || ""}`);
-          }
-        } catch (stepError: any) {
-          consecutiveErrors++;
-          if (consecutiveErrors >= 5) {
-            toast.error("Příliš mnoho chyb. Pokračuji na registr...");
-            break;
-          }
-          await new Promise(r => setTimeout(r, 3000));
         }
+      } catch (mirrorError: any) {
+        console.error("[mirror] Unexpected error:", mirrorError);
+        toast.error(`Mirror selhal: ${mirrorError.message?.slice(0, 100)}`);
       }
+
+      console.log("[mirror] Mirror phase complete. mirrorDone:", mirrorDone, "mirrorSkipped:", mirrorSkipped);
 
       // Phase 2: Registry sync — wrapped in hard 3-min timeout so spinner NEVER hangs
       const REGISTRY_TIMEOUT_MS = 3 * 60 * 1000;
