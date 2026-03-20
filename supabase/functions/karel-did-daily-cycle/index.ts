@@ -1722,6 +1722,160 @@ async function normalizeCardStructures(token: string, rootFolderId: string, forc
   return normalized;
 }
 
+// ═══ KROK 0B – AUDIT STRUKTURY KARTY PŘED ZPRACOVÁNÍM ═══
+// Povinný krok při každém spuštění aktualizace kartotéky.
+// Ověří strukturu A-M, doplní chybějící sekce, opraví malformátování,
+// povýší STUB karty na PLNÉ pokud existují data z vlákna.
+
+const SECTION_TEMPLATES: Record<string, string> = {
+  A: "(zatím prázdné)\n\nZákladní identita:\n* ID:\n* Jméno:\n* Věk:\n* Pohlaví:\n* Jazyk:\n* Typ:\n* Klastr:\n* Status:\n\nHistorický kontext:\n\nCo uklidňuje:\n\nSenzorické kotvy:\n\nVztahy:\n\nTechnology povědomí o systému:",
+  B: "(zatím prázdné)\n\nAktuální stav (posuvné okno):\n-\n-\n-\n\nPsychologické charakteristiky:\n\nPsychologická profilace / Osobnostní profil:\n\nObranné mechanismy:\n\nReakce na kontakt:",
+  C: "(zatím prázdné)\n\nJádrové potřeby:\n-\n\nJádrové strachy:\n-\n\nTriggery:\n-\n\nVnitřní konflikty:\n-\n\nIdentifikovaná rizika:\n-",
+  D: "(zatím prázdné)\n\nPrincipy práce:\n-\n\nKontraindikace:\n-\n\nDoporučené terapeutické techniky:\n-",
+  E: "(zatím prázdné)\n\nAktuální stav:\n\nChronologický log:\nDatum\tUdálost\tVýsledek",
+  F: "(zatím prázdné)\n\nSituační karta:\n\nBezpečnostní pravidla:\n\nPoznámky pro příští kontakt:",
+  G: "(zatím prázdné)\n\nDatum\tCo se dělo\tStabilizační opatření\tDalší krok",
+  H: "(zatím prázdné)\n\nDlouhodobé cíle:\n-\n\nTalent & Growth Profile:",
+  I: "(zatím prázdné)\n\nTerapeutické metody a přístupy:\nNázev | Cíl | Postup | Pomůcky | Proč to funguje | Terapeut | Časový horizont",
+  J: "(zatím prázdné)\n\nAktuální stav – tři priority:\n1.\n2.\n3.\n\nNávrh intervence pro nejbližší dny:\n-\n\nKrizové situace:\n-",
+  K: "(zatím prázdné)\n\nDatum | Co bylo navrženo | Výsledek | Hodnocení",
+  L: "(zatím prázdné)\n\nObdobí | Aktivita | Poznámka",
+  M: "(zatím prázdné)\n\nKarlova analytická poznámka:",
+};
+
+interface AuditResult {
+  partName: string;
+  fileName: string;
+  changes: string[];
+  promoted: boolean; // STUB → FULL
+  created: boolean;  // brand new card
+}
+
+async function auditCardStructure(
+  token: string,
+  fileId: string,
+  fileName: string,
+  fileMimeType: string | undefined,
+  partName: string,
+  hasThreadData: boolean,
+): Promise<AuditResult> {
+  const changes: string[] = [];
+  let promoted = false;
+  const dateStr = new Date().toISOString().slice(0, 10);
+
+  let content: string;
+  try {
+    content = await readFileContent(token, fileId);
+  } catch (e) {
+    console.error(`[AUDIT-0B] Cannot read card "${fileName}":`, e);
+    return { partName, fileName, changes: [`ERR: nelze číst kartu`], promoted: false, created: false };
+  }
+
+  if (!looksLikeDidCard(fileName, content)) {
+    return { partName, fileName, changes: [], promoted: false, created: false };
+  }
+
+  const sections = parseCardSections(content);
+  const existingLetters = Object.keys(sections).filter(k => k !== "_preamble" && SECTION_ORDER.includes(k));
+
+  // Detect STUB card: has only A and/or E
+  const isStub = existingLetters.length <= 2 && existingLetters.every(l => l === "A" || l === "E");
+
+  // Case 3: STUB without thread data → leave as is (intentional state)
+  if (isStub && !hasThreadData) {
+    console.log(`[AUDIT-0B] "${partName}": STUB karta bez dat z vlákna – ponecháno beze změny`);
+    return { partName, fileName, changes: [], promoted: false, created: false };
+  }
+
+  let needsWrite = false;
+
+  // Case 1 & 2: Check every section A-M
+  for (const letter of SECTION_ORDER) {
+    const existing = sections[letter];
+
+    if (!existing || existing.trim() === "") {
+      // Case 1: Missing section entirely → create with template
+      sections[letter] = SECTION_TEMPLATES[letter] || "(zatím prázdné)";
+      changes.push(`chyběla sekce ${letter} – automaticky vytvořena`);
+      needsWrite = true;
+    } else {
+      // Case 2: Section exists – light structural check
+      // Ensure section has content beyond just whitespace
+      const trimmed = existing.trim();
+      if (trimmed.length < 3 && trimmed !== "-") {
+        sections[letter] = SECTION_TEMPLATES[letter] || "(zatím prázdné)";
+        changes.push(`sekce ${letter} měla nesprávnou strukturu – automaticky opravena`);
+        needsWrite = true;
+      }
+    }
+  }
+
+  // STUB → FULL promotion (Case 3 exception: has thread data)
+  if (isStub && hasThreadData && changes.length > 0) {
+    promoted = true;
+    changes.push(`STUB karta povýšena na PLNOU kartu na základě vlákna`);
+  }
+
+  if (needsWrite) {
+    const rebuilt = buildCard(partName, sections);
+    await updateFileById(token, fileId, rebuilt, fileMimeType);
+    console.log(`[AUDIT-0B] ✅ "${partName}": ${changes.length} oprav provedeno${promoted ? " (STUB→PLNÁ)" : ""}`);
+  } else {
+    console.log(`[AUDIT-0B] "${partName}": struktura OK, žádné opravy`);
+  }
+
+  return { partName, fileName, changes, promoted, created: false };
+}
+
+// Log audit results to PAMET_KAREL_LOGS/DAILY_JOB_LOG on Drive
+async function logAuditResults(token: string, rootFolderId: string, results: AuditResult[]): Promise<void> {
+  const significantResults = results.filter(r => r.changes.length > 0);
+  if (significantResults.length === 0) return;
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const timeStr = new Date().toISOString().slice(11, 16);
+  const logLines = significantResults.map(r => {
+    const prefix = r.created ? "NOVÁ KARTA" : r.promoted ? "POVÝŠENÍ STUB→PLNÁ" : "AUDIT OPRAVA";
+    return `[${dateStr} ${timeStr}] ${prefix} – Karta "${r.partName}" (${r.fileName}): ${r.changes.join("; ")}`;
+  });
+
+  // Find PAMET_KAREL_LOGS folder
+  try {
+    const rootChildren = await listFilesInFolder(token, rootFolderId);
+    // Look for PAMET_KAREL or similar
+    const pametFolder = rootChildren.find(f =>
+      f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("pametk")
+    );
+    if (!pametFolder) {
+      console.warn("[AUDIT-0B-LOG] PAMET_KAREL folder not found, skipping Drive log");
+      return;
+    }
+
+    const pametChildren = await listFilesInFolder(token, pametFolder.id);
+    const logsFolder = pametChildren.find(f =>
+      f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("log")
+    );
+    const targetFolderId = logsFolder?.id || pametFolder.id;
+
+    // Find or create DAILY_JOB_LOG
+    const logFileName = "DAILY_JOB_LOG";
+    const existingLog = pametChildren.find(f => canonicalText(f.name).includes("dailyjoblog"));
+    const logFileId = existingLog?.id ||
+      (logsFolder ? (await listFilesInFolder(token, logsFolder.id)).find(f => canonicalText(f.name).includes("dailyjoblog"))?.id : null);
+
+    const logContent = `\n\n═══ KROK 0B – AUDIT STRUKTURY (${dateStr} ${timeStr}) ═══\n${logLines.join("\n")}`;
+
+    if (logFileId) {
+      await appendToDoc(token, logFileId, logContent);
+    } else {
+      await createFileInFolder(token, logFileName, logContent.trim(), targetFolderId);
+    }
+    console.log(`[AUDIT-0B-LOG] ✅ Logged ${significantResults.length} audit results to Drive`);
+  } catch (e) {
+    console.warn("[AUDIT-0B-LOG] Failed to log to Drive (non-fatal):", e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -2259,6 +2413,73 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
     let aiReportText = "";
     let hankaHtml = "";
     let kataHtml = "";
+
+    // ═══ KROK 0B – AUDIT STRUKTURY KARTY PŘED ZPRACOVÁNÍM ═══
+    // Povinný krok: pro každé nezpracované vlákno audituje strukturu odpovídající karty
+    const auditResults: AuditResult[] = [];
+    if (folderId && registryContext && threads.length > 0) {
+      console.log(`[KROK-0B] Starting structural audit for ${threads.length} unprocessed thread(s)...`);
+      const auditedParts = new Set<string>();
+
+      for (const thread of threads) {
+        if ((thread.sub_mode || "cast") !== "cast") continue; // audit only "cast" threads
+        const partName = normalizePartHint(thread.part_name || "");
+        if (!partName || auditedParts.has(canonicalText(partName))) continue;
+        auditedParts.add(canonicalText(partName));
+
+        try {
+          const target = await resolveCardTarget(token, folderId, partName, registryContext);
+          const lookupName = target.registryEntry?.name || partName;
+
+          if (!target.registryEntry) {
+            // Case 4: Part has no registry entry AND no card → create new STUB/FULL card
+            // (handled later by AI analysis + updateCardSections with allowCreate)
+            console.log(`[KROK-0B] "${partName}": mimo registr – bude řešeno v AI analýze`);
+            continue;
+          }
+
+          const card = await findCardFile(token, lookupName, target.searchRootId);
+          if (card) {
+            // Audit existing card structure
+            const hasThreadMsgs = Array.isArray(thread.messages) && (thread.messages as any[]).filter((m: any) => m?.role === "user").length >= 2;
+            const result = await auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs);
+            auditResults.push(result);
+            if (result.changes.length > 0) {
+              cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
+            }
+          } else {
+            // Case 4: Registry entry exists but no card file found
+            // This is already handled by the fail-safe in the main loop (blockedCardUpdates)
+            console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – fail-safe`);
+          }
+        } catch (e) {
+          console.warn(`[KROK-0B] Audit error for "${partName}":`, e);
+        }
+      }
+
+      // Log audit results to Drive
+      if (auditResults.length > 0) {
+        try {
+          await logAuditResults(token, folderId, auditResults);
+        } catch (e) {
+          console.warn("[KROK-0B] Drive logging failed (non-fatal):", e);
+        }
+      }
+
+      const totalChanges = auditResults.reduce((sum, r) => sum + r.changes.length, 0);
+      const promotions = auditResults.filter(r => r.promoted).length;
+      console.log(`[KROK-0B] ✅ Audit complete: ${auditResults.length} karet zkontrolováno, ${totalChanges} oprav, ${promotions} povýšení STUB→PLNÁ`);
+
+      // Update cycle progress
+      if (cycleId) {
+        await sb.from("did_update_cycles").update({
+          phase: "audit_0b",
+          phase_detail: `Audit: ${auditResults.length} karet, ${totalChanges} oprav`,
+          heartbeat_at: new Date().toISOString(),
+        }).eq("id", cycleId);
+      }
+    }
+
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
     const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0 || recentMeetings.length > 0 || recentEpisodes.length > 0;
 
