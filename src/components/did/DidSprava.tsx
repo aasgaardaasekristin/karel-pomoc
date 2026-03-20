@@ -54,6 +54,8 @@ const DidSprava = ({
   isReformatting,
   onManualUpdate,
   isUpdating,
+  onCentrumSync,
+  isCentrumSyncing,
   refreshTrigger = 0,
   onSelectPart,
 }: Props) => {
