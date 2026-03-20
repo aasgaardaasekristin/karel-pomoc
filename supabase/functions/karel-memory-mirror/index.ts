@@ -1372,7 +1372,7 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
   try {
     // ═══ HEARTBEAT-BASED CONCURRENCY LOCK ═══
     const HEARTBEAT_STALE_MINUTES = 3;
-    const force = body?.force === true;
+    const force = reqBody?.force === true;
     const heartbeatCutoff = new Date(Date.now() - HEARTBEAT_STALE_MINUTES * 60 * 1000).toISOString();
 
     // Force mode: kill all existing mirror_job rows for this user
