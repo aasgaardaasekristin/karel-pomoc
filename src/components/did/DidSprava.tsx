@@ -20,6 +20,8 @@ interface Props {
   isReformatting?: boolean;
   onManualUpdate?: () => void;
   isUpdating?: boolean;
+  onCentrumSync?: () => void;
+  isCentrumSyncing?: boolean;
   refreshTrigger?: number;
   onSelectPart?: (partName: string) => void;
 }
