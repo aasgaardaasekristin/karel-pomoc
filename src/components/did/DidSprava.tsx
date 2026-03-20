@@ -20,6 +20,8 @@ interface Props {
   isReformatting?: boolean;
   onManualUpdate?: () => void;
   isUpdating?: boolean;
+  onCentrumSync?: () => void;
+  isCentrumSyncing?: boolean;
   refreshTrigger?: number;
   onSelectPart?: (partName: string) => void;
 }
@@ -52,6 +54,8 @@ const DidSprava = ({
   isReformatting,
   onManualUpdate,
   isUpdating,
+  onCentrumSync,
+  isCentrumSyncing,
   refreshTrigger = 0,
   onSelectPart,
 }: Props) => {
@@ -156,6 +160,16 @@ const DidSprava = ({
                 desc="Synchronizace dat z rozhovorů do karet na Drive"
                 loading={isUpdating}
                 onClick={() => { onManualUpdate(); setOpen(false); }}
+              />
+            )}
+
+            {onCentrumSync && (
+              <ToolButton
+                icon={<ClipboardList className={`w-4 h-4 text-emerald-600 ${isCentrumSyncing ? "animate-pulse" : ""}`} />}
+                title="Aktualizovat Centrum"
+                desc="Synchronizace CENTRUM dokumentů na Drive"
+                loading={isCentrumSyncing}
+                onClick={() => { onCentrumSync(); setOpen(false); }}
               />
             )}
 
