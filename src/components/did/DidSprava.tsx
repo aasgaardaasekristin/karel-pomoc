@@ -177,6 +177,16 @@ const DidSprava = ({
               />
             )}
 
+            {onCleanupTasks && (
+              <ToolButton
+                icon={<Trash2 className={`w-4 h-4 text-amber-600 ${isCleaningTasks ? "animate-pulse" : ""}`} />}
+                title="Vyčistit úkoly"
+                desc="Archivovat not_started úkoly starší 7 dní"
+                loading={isCleaningTasks}
+                onClick={() => { onCleanupTasks(); setOpen(false); }}
+              />
+            )}
+
             <ToolButton
               icon={<HeartPulse className={`w-4 h-4 text-primary ${isAuditing ? "animate-pulse" : ""}`} />}
               title="Audit zdraví kartotéky"
