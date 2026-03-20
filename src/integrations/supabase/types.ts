@@ -1303,6 +1303,7 @@ export type Database = {
           semantic_updates: number
           strategy_updates: number
           summary: string
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -1315,6 +1316,7 @@ export type Database = {
           semantic_updates?: number
           strategy_updates?: number
           summary?: string
+          updated_at?: string
           user_id?: string
         }
         Update: {
@@ -1327,6 +1329,7 @@ export type Database = {
           semantic_updates?: number
           strategy_updates?: number
           summary?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
