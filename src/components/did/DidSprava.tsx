@@ -58,6 +58,8 @@ const DidSprava = ({
   isUpdating,
   onCentrumSync,
   isCentrumSyncing,
+  onCleanupTasks,
+  isCleaningTasks,
   refreshTrigger = 0,
   onSelectPart,
 }: Props) => {
