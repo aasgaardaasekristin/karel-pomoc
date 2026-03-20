@@ -1046,7 +1046,8 @@ Deno.serve(async (req) => {
 
         if (threadDigests.length === 0) {
           await sb.from("karel_memory_logs").update({
-            log_type: "redistribute", summary: "Žádná nová data od posledního zrcadlení.",
+            log_type: "mirror_done", summary: "Žádná nová data od posledního zrcadlení.",
+            updated_at: new Date().toISOString(),
             details: { phase: "done", progress: { completed: 1, total: 1, percent: 100 } },
           }).eq("id", jobId);
           return new Response(JSON.stringify({ status: "done", summary: "Žádná nová data od posledního zrcadlení." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
