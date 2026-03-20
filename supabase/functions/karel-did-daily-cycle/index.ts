@@ -2552,7 +2552,9 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
 
     // ═══ KROK 0B – AUDIT STRUKTURY KARTY PŘED ZPRACOVÁNÍM ═══
     // Povinný krok: pro každé nezpracované vlákno audituje strukturu odpovídající karty
+    // Handles: Case 1 (missing sections), Case 2 (malformed structure), Case 3 (STUB promotion), Case 4 (no card exists)
     const auditResults: AuditResult[] = [];
+    const auditAlerts: string[] = []; // ⚠️ alerts for Hanka's daily report
     if (folderId && registryContext && threads.length > 0) {
       console.log(`[KROK-0B] Starting structural audit for ${threads.length} unprocessed thread(s)...`);
       const auditedParts = new Set<string>();
@@ -2568,25 +2570,60 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
           const lookupName = target.registryEntry?.name || partName;
 
           if (!target.registryEntry) {
-            // Case 4: Part has no registry entry AND no card → create new STUB/FULL card
-            // (handled later by AI analysis + updateCardSections with allowCreate)
-            console.log(`[KROK-0B] "${partName}": mimo registr – bude řešeno v AI analýze`);
+            // ═══ Case 4: Part has NO registry entry AND no card → create new card ═══
+            console.log(`[KROK-0B] "${partName}": mimo registr – vytvářím novou kartu (Case 4)`);
+            if (registryContext.activeFolderId) {
+              try {
+                const result = await createNewCardForPart(
+                  token, partName,
+                  Array.isArray(thread.messages) ? thread.messages as any[] : [],
+                  registryContext.activeFolderId,
+                  registryContext,
+                );
+                auditResults.push(result);
+                cardsUpdated.push(`${partName} (AUDIT-0B: NOVÁ KARTA – ${result.created ? "vytvořena" : "chyba"})`);
+                if (result.alertForHanka) {
+                  auditAlerts.push(result.alertForHanka);
+                }
+              } catch (e) {
+                console.error(`[KROK-0B] Case 4 failed for "${partName}":`, e);
+              }
+            }
             continue;
           }
 
           const card = await findCardFile(token, lookupName, target.searchRootId);
           if (card) {
-            // Audit existing card structure
+            // Cases 1, 2, 3: Audit existing card structure
             const hasThreadMsgs = Array.isArray(thread.messages) && (thread.messages as any[]).filter((m: any) => m?.role === "user").length >= 2;
             const result = await auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs);
             auditResults.push(result);
             if (result.changes.length > 0) {
               cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
             }
+            if (result.alertForHanka) {
+              auditAlerts.push(result.alertForHanka);
+            }
           } else {
-            // Case 4: Registry entry exists but no card file found
-            // This is already handled by the fail-safe in the main loop (blockedCardUpdates)
-            console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – fail-safe`);
+            // ═══ Case 4b: Registry entry exists but no card file found → create card ═══
+            console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – vytvářím (Case 4b)`);
+            if (registryContext.activeFolderId) {
+              try {
+                const result = await createNewCardForPart(
+                  token, lookupName,
+                  Array.isArray(thread.messages) ? thread.messages as any[] : [],
+                  registryContext.activeFolderId,
+                  registryContext,
+                );
+                auditResults.push(result);
+                cardsUpdated.push(`${lookupName} (AUDIT-0B: KARTA VYTVOŘENA – chyběla na Drive)`);
+                if (result.alertForHanka) {
+                  auditAlerts.push(result.alertForHanka);
+                }
+              } catch (e) {
+                console.error(`[KROK-0B] Case 4b failed for "${lookupName}":`, e);
+              }
+            }
           }
         } catch (e) {
           console.warn(`[KROK-0B] Audit error for "${partName}":`, e);
@@ -2604,13 +2641,14 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
 
       const totalChanges = auditResults.reduce((sum, r) => sum + r.changes.length, 0);
       const promotions = auditResults.filter(r => r.promoted).length;
-      console.log(`[KROK-0B] ✅ Audit complete: ${auditResults.length} karet zkontrolováno, ${totalChanges} oprav, ${promotions} povýšení STUB→PLNÁ`);
+      const newCards = auditResults.filter(r => r.created).length;
+      console.log(`[KROK-0B] ✅ Audit complete: ${auditResults.length} karet zkontrolováno, ${totalChanges} oprav, ${promotions} povýšení STUB→PLNÁ, ${newCards} nových karet`);
 
       // Update cycle progress
       if (cycleId) {
         await sb.from("did_update_cycles").update({
           phase: "audit_0b",
-          phase_detail: `Audit: ${auditResults.length} karet, ${totalChanges} oprav`,
+          phase_detail: `Audit: ${auditResults.length} karet, ${totalChanges} oprav, ${newCards} nových`,
           heartbeat_at: new Date().toISOString(),
         }).eq("id", cycleId);
       }
