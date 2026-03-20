@@ -180,12 +180,21 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
     setIsCleaningTasks(true);
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      console.log("sevenDaysAgo:", sevenDaysAgo);
+
+      const { data: allTasks } = await supabase
+        .from("did_therapist_tasks")
+        .select("id, status, created_at")
+        .limit(5);
+      console.log("Sample tasks:", JSON.stringify(allTasks));
+
       const { data, error } = await supabase
         .from("did_therapist_tasks")
         .update({ status: "archived" } as any)
         .in("status", ["not_started", "pending"] as any)
         .lt("created_at", sevenDaysAgo)
         .select("id");
+      console.log("Cleanup result:", { data, error });
       if (error) throw error;
       const count = data?.length || 0;
       toast.success(`Archivováno ${count} starých úkolů`);
