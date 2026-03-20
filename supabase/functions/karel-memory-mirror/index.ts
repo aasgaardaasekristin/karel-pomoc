@@ -968,6 +968,11 @@ Deno.serve(async (req) => {
 
     const currentPhase = job.details?.phase || "created";
 
+    // ═══ IMMEDIATE HEARTBEAT — update updated_at before any heavy work ═══
+    await sb.from("karel_memory_logs").update({
+      updated_at: new Date().toISOString(),
+    }).eq("id", jobId);
+
     try {
       // ═══ PHASE: HARVEST — collect DB data ═══
       if (currentPhase === "created" || currentPhase === "harvest") {
