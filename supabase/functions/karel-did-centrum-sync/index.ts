@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
       sessionsRes,
     ] = await Promise.all([
       supabase.from("did_part_registry").select("*").order("part_name"),
-      supabase.from("did_therapist_tasks").select("*").in("status", ["pending", "in_progress"]).order("priority"),
+      supabase.from("did_therapist_tasks").select("*").in("status", ["pending", "in_progress"]).order("created_at", { ascending: false }).limit(20),
       supabase.from("did_kartoteka_health").select("*").order("part_name"),
       supabase.from("karel_episodes").select("id, domain, summary_karel, emotional_intensity, timestamp_start, participants, tags").order("timestamp_start", { ascending: false }).limit(20),
       supabase.from("karel_semantic_patterns").select("description, domain, confidence, tags").order("confidence", { ascending: false }).limit(15),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, Palette, Check, Image, X, Sun, Moon, Sparkles, MessageCircle, Minimize2, Pipette, Save, RotateCcw, ClipboardList, Mail } from "lucide-react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, Palette, Check, Image, X, Sun, Moon, Sparkles, MessageCircle, Minimize2, Pipette, Save, RotateCcw, ClipboardList, Mail, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -22,6 +22,8 @@ interface Props {
   isUpdating?: boolean;
   onCentrumSync?: () => void;
   isCentrumSyncing?: boolean;
+  onCleanupTasks?: () => void;
+  isCleaningTasks?: boolean;
   refreshTrigger?: number;
   onSelectPart?: (partName: string) => void;
 }
@@ -56,6 +58,8 @@ const DidSprava = ({
   isUpdating,
   onCentrumSync,
   isCentrumSyncing,
+  onCleanupTasks,
+  isCleaningTasks,
   refreshTrigger = 0,
   onSelectPart,
 }: Props) => {
@@ -170,6 +174,16 @@ const DidSprava = ({
                 desc="Synchronizace CENTRUM dokumentů na Drive"
                 loading={isCentrumSyncing}
                 onClick={() => { onCentrumSync(); setOpen(false); }}
+              />
+            )}
+
+            {onCleanupTasks && (
+              <ToolButton
+                icon={<Trash2 className={`w-4 h-4 text-amber-600 ${isCleaningTasks ? "animate-pulse" : ""}`} />}
+                title="Vyčistit úkoly"
+                desc="Archivovat not_started úkoly starší 7 dní"
+                loading={isCleaningTasks}
+                onClick={() => { onCleanupTasks(); setOpen(false); }}
               />
             )}
 

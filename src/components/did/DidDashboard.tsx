@@ -44,6 +44,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
   const [isAuditing, setIsAuditing] = useState(false);
   const [isReformatting, setIsReformatting] = useState(false);
   const [isCentrumSyncing, setIsCentrumSyncing] = useState(false);
+  const [isCleaningTasks, setIsCleaningTasks] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -175,6 +176,28 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
     }
   }, []);
 
+  const runCleanupTasks = useCallback(async () => {
+    setIsCleaningTasks(true);
+    try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("did_therapist_tasks")
+        .update({ status: "archived" } as any)
+        .in("status", ["pending"] as any)
+        .lt("created_at", sevenDaysAgo)
+        .select("id");
+      if (error) throw error;
+      const count = data?.length || 0;
+      toast.success(`Archivováno ${count} starých úkolů`);
+      setRefreshTrigger((prev) => prev + 1);
+    } catch (e: any) {
+      console.error("Cleanup tasks failed:", e);
+      toast.error("Čištění úkolů selhalo");
+    } finally {
+      setIsCleaningTasks(false);
+    }
+  }, []);
+
   const warningParts = useMemo(() => parts.filter((part) => part.status === "warning"), [parts]);
 
   return (
@@ -193,6 +216,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
             isUpdating={isUpdating}
             onCentrumSync={runCentrumSync}
             isCentrumSyncing={isCentrumSyncing}
+            onCleanupTasks={runCleanupTasks}
+            isCleaningTasks={isCleaningTasks}
             refreshTrigger={refreshTrigger}
             onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
           />
