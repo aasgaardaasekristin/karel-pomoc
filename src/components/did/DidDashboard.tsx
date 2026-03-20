@@ -44,6 +44,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
   const [isAuditing, setIsAuditing] = useState(false);
   const [isReformatting, setIsReformatting] = useState(false);
   const [isCentrumSyncing, setIsCentrumSyncing] = useState(false);
+  const [isCleaningTasks, setIsCleaningTasks] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
 
