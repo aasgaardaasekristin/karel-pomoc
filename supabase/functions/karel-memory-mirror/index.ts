@@ -1057,6 +1057,7 @@ Deno.serve(async (req) => {
 
         await sb.from("karel_memory_logs").update({
           summary: `Harvest: ${threadDigests.length} vláken, ${totalChars} znaků`,
+          updated_at: new Date().toISOString(),
           details: {
             phase: "harvest_done",
             state: createInitialMirrorState(),
