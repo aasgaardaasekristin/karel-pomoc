@@ -22,6 +22,8 @@ interface Props {
   isUpdating?: boolean;
   onCentrumSync?: () => void;
   isCentrumSyncing?: boolean;
+  onCleanupTasks?: () => void;
+  isCleaningTasks?: boolean;
   refreshTrigger?: number;
   onSelectPart?: (partName: string) => void;
 }
