@@ -312,8 +312,9 @@ async function finalizeMirrorJob(params: {
   const synthesisSum = extractedInfo?.synthesis_summary || `Mirror: ${state.dbUpdates.length} DB, ${state.driveUpdates.length} Drive`;
 
   await sb.from("karel_memory_logs").update({
-    log_type: "redistribute",
+    log_type: "mirror_done",
     summary: synthesisSum,
+    updated_at: new Date().toISOString(),
     details: {
       totalMs: totalTime,
       scope: lastMirrorTime,
