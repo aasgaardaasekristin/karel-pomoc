@@ -191,6 +191,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
             isReformatting={isReformatting}
             onManualUpdate={onManualUpdate}
             isUpdating={isUpdating}
+            onCentrumSync={runCentrumSync}
+            isCentrumSyncing={isCentrumSyncing}
             refreshTrigger={refreshTrigger}
             onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
           />
