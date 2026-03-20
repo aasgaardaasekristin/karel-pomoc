@@ -1189,6 +1189,7 @@ Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain
 
         await sb.from("karel_memory_logs").update({
           summary: `AI Pass 1: ${pass1Data.raw_facts?.length || 0} faktů, ${pass1Data.all_names_mentioned?.length || 0} jmen`,
+          updated_at: new Date().toISOString(),
           details: {
             ...job.details,
             phase: "pass1_done",
