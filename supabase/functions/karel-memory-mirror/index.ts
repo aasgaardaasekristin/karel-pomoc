@@ -1337,8 +1337,9 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
       const payload = job.details?.payload;
       if (!payload) {
         await sb.from("karel_memory_logs").update({
-          log_type: "redistribute",
+          log_type: "mirror_failed",
           summary: "Chyba: chybí payload jobu",
+          updated_at: new Date().toISOString(),
           details: { error: true, phase: "error" },
         }).eq("id", jobId);
         return new Response(JSON.stringify({ status: "error", phase: "error", summary: "Chyba: chybí payload" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
