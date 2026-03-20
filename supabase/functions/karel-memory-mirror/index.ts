@@ -1368,8 +1368,38 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
   }
 
   try {
-    // ═══ CONCURRENCY LOCK ═══
-    const LOCK_MINUTES = 5;
+    // ═══ HEARTBEAT-BASED CONCURRENCY LOCK ═══
+    const HEARTBEAT_STALE_MINUTES = 3;
+    const force = body?.force === true;
+    const heartbeatCutoff = new Date(Date.now() - HEARTBEAT_STALE_MINUTES * 60 * 1000).toISOString();
+
+    // Force mode: kill all existing mirror_job rows for this user
+    if (force) {
+      console.log("[mirror] Force mode: cleaning up old jobs");
+      await sb.from("karel_memory_logs")
+        .update({ log_type: "mirror_failed", summary: "Ukončeno force modem", updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("log_type", "mirror_job");
+    } else {
+      // Check for alive jobs (updated_at within last 3 minutes)
+      const { data: aliveJobs } = await sb.from("karel_memory_logs")
+        .select("id, updated_at")
+        .eq("user_id", userId)
+        .eq("log_type", "mirror_job")
+        .gte("updated_at", heartbeatCutoff);
+
+      if (aliveJobs && aliveJobs.length > 0) {
+        return new Response(JSON.stringify({ status: "skipped", reason: "Redistribuce již probíhá." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Auto-cleanup stale jobs (heartbeat older than 3 min)
+      await sb.from("karel_memory_logs")
+        .update({ log_type: "mirror_failed", summary: "Automaticky ukončeno (stale heartbeat)", updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("log_type", "mirror_job")
+        .lt("updated_at", heartbeatCutoff);
+    }
+
     const { data: lockRow, error: insertError } = await sb.from("karel_memory_logs").insert({
       user_id: userId, log_type: "mirror_job", summary: "Job vytvořen, čekám na fázi harvest...",
       details: { phase: "created", state: createInitialMirrorState() },
@@ -1381,20 +1411,7 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
     }
 
     const jobId = lockRow!.id;
-
-    const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
-    const { data: allLocks } = await sb.from("karel_memory_logs")
-      .select("id, created_at")
-      .eq("user_id", userId).eq("log_type", "mirror_job")
-      .gte("created_at", lockCutoff).order("created_at", { ascending: true });
-
-    const olderLock = allLocks?.find((l: any) => l.id !== jobId && l.created_at <= (lockRow!.created_at || ""));
-    if (olderLock) {
-      await sb.from("karel_memory_logs").delete().eq("id", jobId);
-      return new Response(JSON.stringify({ status: "skipped", reason: "Redistribuce již probíhá." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    console.log("[mirror] Job created:", jobId, "for user:", userId);
+    console.log("[mirror] Job created:", jobId, "for user:", userId, force ? "(force)" : "");
 
     // Return immediately – all heavy work happens in "continue" calls
     return new Response(JSON.stringify({
