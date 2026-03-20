@@ -2413,6 +2413,73 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
     let aiReportText = "";
     let hankaHtml = "";
     let kataHtml = "";
+
+    // ═══ KROK 0B – AUDIT STRUKTURY KARTY PŘED ZPRACOVÁNÍM ═══
+    // Povinný krok: pro každé nezpracované vlákno audituje strukturu odpovídající karty
+    const auditResults: AuditResult[] = [];
+    if (folderId && registryContext && threads.length > 0) {
+      console.log(`[KROK-0B] Starting structural audit for ${threads.length} unprocessed thread(s)...`);
+      const auditedParts = new Set<string>();
+
+      for (const thread of threads) {
+        if ((thread.sub_mode || "cast") !== "cast") continue; // audit only "cast" threads
+        const partName = normalizePartHint(thread.part_name || "");
+        if (!partName || auditedParts.has(canonicalText(partName))) continue;
+        auditedParts.add(canonicalText(partName));
+
+        try {
+          const target = await resolveCardTarget(token, folderId, partName, registryContext);
+          const lookupName = target.registryEntry?.name || partName;
+
+          if (!target.registryEntry) {
+            // Case 4: Part has no registry entry AND no card → create new STUB/FULL card
+            // (handled later by AI analysis + updateCardSections with allowCreate)
+            console.log(`[KROK-0B] "${partName}": mimo registr – bude řešeno v AI analýze`);
+            continue;
+          }
+
+          const card = await findCardFile(token, lookupName, target.searchRootId);
+          if (card) {
+            // Audit existing card structure
+            const hasThreadMsgs = Array.isArray(thread.messages) && (thread.messages as any[]).filter((m: any) => m?.role === "user").length >= 2;
+            const result = await auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs);
+            auditResults.push(result);
+            if (result.changes.length > 0) {
+              cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
+            }
+          } else {
+            // Case 4: Registry entry exists but no card file found
+            // This is already handled by the fail-safe in the main loop (blockedCardUpdates)
+            console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – fail-safe`);
+          }
+        } catch (e) {
+          console.warn(`[KROK-0B] Audit error for "${partName}":`, e);
+        }
+      }
+
+      // Log audit results to Drive
+      if (auditResults.length > 0) {
+        try {
+          await logAuditResults(token, folderId, auditResults);
+        } catch (e) {
+          console.warn("[KROK-0B] Drive logging failed (non-fatal):", e);
+        }
+      }
+
+      const totalChanges = auditResults.reduce((sum, r) => sum + r.changes.length, 0);
+      const promotions = auditResults.filter(r => r.promoted).length;
+      console.log(`[KROK-0B] ✅ Audit complete: ${auditResults.length} karet zkontrolováno, ${totalChanges} oprav, ${promotions} povýšení STUB→PLNÁ`);
+
+      // Update cycle progress
+      if (cycleId) {
+        await sb.from("did_update_cycles").update({
+          phase: "audit_0b",
+          phase_detail: `Audit: ${auditResults.length} karet, ${totalChanges} oprav`,
+          heartbeat_at: new Date().toISOString(),
+        }).eq("id", cycleId);
+      }
+    }
+
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
     const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0 || recentMeetings.length > 0 || recentEpisodes.length > 0;
 
