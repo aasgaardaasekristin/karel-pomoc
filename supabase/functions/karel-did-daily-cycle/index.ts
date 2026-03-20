@@ -4729,16 +4729,19 @@ ESKALACE: level ${task.escalation_level || 0}`,
 
     if (cycle) {
       // Store VALIDATED deterministic report, not raw AI output (anti-hallucination)
+      // Include audit alerts (Case 4: new parts detected) in report summary
+      const auditAlertText = auditAlerts.length > 0 ? `\n\n${auditAlerts.join("\n")}` : "";
       const validatedReportSummary = finalReportText
-        ? finalReportText.slice(0, 2000)
+        ? (finalReportText + auditAlertText).slice(0, 2000)
         : (cardsUpdated.length > 0
-          ? `Aktualizováno ${cardsUpdated.length} karet: ${cardsUpdated.join(", ").slice(0, 1800)}`
-          : "Žádné změny");
+          ? `Aktualizováno ${cardsUpdated.length} karet: ${cardsUpdated.join(", ").slice(0, 1600)}${auditAlertText}`
+          : `Žádné změny${auditAlertText}`);
       await sb.from("did_update_cycles").update({
         status: hadCardUpdateErrors ? "failed" : "completed",
         completed_at: new Date().toISOString(),
         report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
+        context_data: { auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined },
       }).eq("id", cycle.id);
     }
 
