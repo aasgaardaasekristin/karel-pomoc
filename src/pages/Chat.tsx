@@ -1335,6 +1335,12 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       // Phase 2: Registry sync — wrapped in hard 3-min timeout so spinner NEVER hangs
       const REGISTRY_TIMEOUT_MS = 3 * 60 * 1000;
       const registrySyncWork = async () => {
+        console.log("[registry-sync] registrySyncWork:start", {
+          now: Date.now(),
+          globalDeadline,
+          hasGlobalDeadline: typeof globalDeadline === "number" && Number.isFinite(globalDeadline),
+          remainingMs: typeof globalDeadline === "number" ? globalDeadline - Date.now() : null,
+        });
         const syncHeaders = await getAuthHeaders();
         const listController = new AbortController();
         const listTimeout = setTimeout(() => listController.abort(), 30_000);
@@ -1347,10 +1353,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         const listData = await listRes.json();
         const entries = listData.entries || [];
         const total = entries.length;
+        console.log("[registry-sync] list loaded", {
+          total,
+          globalDeadline,
+          hasGlobalDeadline: typeof globalDeadline === "number" && Number.isFinite(globalDeadline),
+        });
         if (total === 0) return { synced: 0, skipped: 0, errors: 0, total: 0 };
         let synced = 0, skipped = 0, errors = 0;
         setSyncProgress({ current: 0, total, currentName: "..." });
         const deadline = Date.now() + REGISTRY_TIMEOUT_MS;
+        console.log("[registry-sync] loop deadline created", { deadline, globalDeadline, total });
         for (let i = 0; i < total; i++) {
           if (Date.now() > deadline || Date.now() > globalDeadline) {
             console.warn(`[registry-sync] Timeout at ${i + 1}/${total}`);
@@ -1382,6 +1394,10 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           registrySyncWork(),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), REGISTRY_TIMEOUT_MS + 5000)),
         ]);
+        console.log("[registry-sync] before setSyncProgress(null) after Promise.race", {
+          result,
+          globalDeadline,
+        });
         setSyncProgress(null);
         if (result) {
           const { synced, skipped, errors, total } = result;
@@ -1392,6 +1408,10 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         }
       } catch (e) {
         console.warn("Registry sync failed:", e);
+        console.log("[registry-sync] before setSyncProgress(null) in catch", {
+          error: e,
+          globalDeadline,
+        });
         setSyncProgress(null);
         toast.error("Synchronizace registru selhala");
       }
@@ -1420,6 +1440,10 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       console.error("Manual update error:", error);
       toast.error(error instanceof Error ? error.message : "Chyba při aktualizaci kartotéky");
     } finally {
+      console.log("[registry-sync] before setSyncProgress(null) in finally", {
+        globalDeadline,
+        hasGlobalDeadline: typeof globalDeadline === "number" && Number.isFinite(globalDeadline),
+      });
       setSyncProgress(null);
       setIsManualUpdateLoading(false);
     }
