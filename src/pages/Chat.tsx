@@ -1332,11 +1332,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         }
       }
 
-      // Phase 2: Registry sync (always runs, even if mirror failed/timed out)
-      const REGISTRY_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes max for registry sync
-      const registryDeadline = Date.now() + REGISTRY_TIMEOUT_MS;
-      try {
-        toast.info("Synchronizuji registr...");
+      // Phase 2: Registry sync — wrapped in hard 3-min timeout so spinner NEVER hangs
+      const REGISTRY_TIMEOUT_MS = 3 * 60 * 1000;
+      const registrySyncWork = async () => {
         const syncHeaders = await getAuthHeaders();
         const listController = new AbortController();
         const listTimeout = setTimeout(() => listController.abort(), 30_000);
@@ -1349,12 +1347,13 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         const listData = await listRes.json();
         const entries = listData.entries || [];
         const total = entries.length;
+        if (total === 0) return { synced: 0, skipped: 0, errors: 0, total: 0 };
         let synced = 0, skipped = 0, errors = 0;
         setSyncProgress({ current: 0, total, currentName: "..." });
+        const deadline = Date.now() + REGISTRY_TIMEOUT_MS;
         for (let i = 0; i < total; i++) {
-          if (Date.now() > registryDeadline || Date.now() > globalDeadline) {
-            console.warn(`[registry-sync] Timeout reached at entry ${i + 1}/${total}, stopping`);
-            toast.warning(`Registr: timeout po ${i}/${total} položkách`);
+          if (Date.now() > deadline || Date.now() > globalDeadline) {
+            console.warn(`[registry-sync] Timeout at ${i + 1}/${total}`);
             break;
           }
           const entry = entries[i];
@@ -1362,23 +1361,39 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           setSyncProgress({ current: i + 1, total, currentName: displayName });
           try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 15_000);
+            const t = setTimeout(() => controller.abort(), 15_000);
             const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
               method: "POST", headers: syncHeaders,
               body: JSON.stringify({ syncRegistry: true, syncMode: "process_one", fileId: entry.fileId, fileName: entry.fileName, folderLabel: entry.folderLabel }),
               signal: controller.signal,
             });
-            clearTimeout(timeout);
+            clearTimeout(t);
             const data = await res.json();
             if (data.result === "skip") skipped++;
             else synced++;
           } catch { errors++; }
         }
+        return { synced, skipped, errors, total };
+      };
+
+      try {
+        toast.info("Synchronizuji registr...");
+        const result = await Promise.race([
+          registrySyncWork(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), REGISTRY_TIMEOUT_MS + 5000)),
+        ]);
         setSyncProgress(null);
-        if (synced > 0 || skipped > 0) toast.success(`Registr: ${synced} aktualizováno, ${skipped} přeskočeno${errors ? `, ${errors} chyb` : ""}`);
+        if (result) {
+          const { synced, skipped, errors, total } = result;
+          if (total === 0) toast.info("Registr: žádné položky k synchronizaci");
+          else if (synced > 0 || skipped > 0) toast.success(`Registr: ${synced} aktualizováno, ${skipped} přeskočeno${errors ? `, ${errors} chyb` : ""}`);
+        } else {
+          toast.warning("Synchronizace registru vypršela, ale data mohla být uložena");
+        }
       } catch (e) {
         console.warn("Registry sync failed:", e);
         setSyncProgress(null);
+        toast.error("Synchronizace registru selhala");
       }
 
       // Clear local DID data
