@@ -1299,6 +1299,7 @@ export type Database = {
           episodes_created: number
           errors: string[]
           id: string
+          job_type: string
           log_type: string
           semantic_updates: number
           strategy_updates: number
@@ -1312,6 +1313,7 @@ export type Database = {
           episodes_created?: number
           errors?: string[]
           id?: string
+          job_type?: string
           log_type?: string
           semantic_updates?: number
           strategy_updates?: number
@@ -1325,6 +1327,7 @@ export type Database = {
           episodes_created?: number
           errors?: string[]
           id?: string
+          job_type?: string
           log_type?: string
           semantic_updates?: number
           strategy_updates?: number
