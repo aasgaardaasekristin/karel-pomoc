@@ -183,7 +183,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
       const { data, error } = await supabase
         .from("did_therapist_tasks")
         .update({ status: "archived" } as any)
-        .in("status", ["pending"] as any)
+        .in("status", ["not_started", "pending"] as any)
         .lt("created_at", sevenDaysAgo)
         .select("id");
       if (error) throw error;
