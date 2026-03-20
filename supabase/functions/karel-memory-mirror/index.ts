@@ -281,6 +281,7 @@ async function persistMirrorJob(params: {
   const { sb, jobId, payload, state, phase, summary, extra = {} } = params;
   await sb.from("karel_memory_logs").update({
     summary,
+    updated_at: new Date().toISOString(),
     details: {
       payload,
       state,
