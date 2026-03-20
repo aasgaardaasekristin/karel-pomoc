@@ -1,0 +1,1 @@
+ALTER TABLE public.karel_memory_logs ADD COLUMN IF NOT EXISTS job_type text NOT NULL DEFAULT 'mirror';
