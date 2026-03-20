@@ -281,6 +281,7 @@ async function persistMirrorJob(params: {
   const { sb, jobId, payload, state, phase, summary, extra = {} } = params;
   await sb.from("karel_memory_logs").update({
     summary,
+    updated_at: new Date().toISOString(),
     details: {
       payload,
       state,
@@ -311,8 +312,9 @@ async function finalizeMirrorJob(params: {
   const synthesisSum = extractedInfo?.synthesis_summary || `Mirror: ${state.dbUpdates.length} DB, ${state.driveUpdates.length} Drive`;
 
   await sb.from("karel_memory_logs").update({
-    log_type: "redistribute",
+    log_type: "mirror_done",
     summary: synthesisSum,
+    updated_at: new Date().toISOString(),
     details: {
       totalMs: totalTime,
       scope: lastMirrorTime,
@@ -1044,7 +1046,8 @@ Deno.serve(async (req) => {
 
         if (threadDigests.length === 0) {
           await sb.from("karel_memory_logs").update({
-            log_type: "redistribute", summary: "Žádná nová data od posledního zrcadlení.",
+            log_type: "mirror_done", summary: "Žádná nová data od posledního zrcadlení.",
+            updated_at: new Date().toISOString(),
             details: { phase: "done", progress: { completed: 1, total: 1, percent: 100 } },
           }).eq("id", jobId);
           return new Response(JSON.stringify({ status: "done", summary: "Žádná nová data od posledního zrcadlení." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1054,6 +1057,7 @@ Deno.serve(async (req) => {
 
         await sb.from("karel_memory_logs").update({
           summary: `Harvest: ${threadDigests.length} vláken, ${totalChars} znaků`,
+          updated_at: new Date().toISOString(),
           details: {
             phase: "harvest_done",
             state: createInitialMirrorState(),
@@ -1122,6 +1126,7 @@ Deno.serve(async (req) => {
 
         await sb.from("karel_memory_logs").update({
           summary: `Drive: ${driveDocsRead} dokumentů přečteno`,
+          updated_at: new Date().toISOString(),
           details: {
             ...job.details,
             phase: "drive_done",
@@ -1186,6 +1191,7 @@ Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain
 
         await sb.from("karel_memory_logs").update({
           summary: `AI Pass 1: ${pass1Data.raw_facts?.length || 0} faktů, ${pass1Data.all_names_mentioned?.length || 0} jmen`,
+          updated_at: new Date().toISOString(),
           details: {
             ...job.details,
             phase: "pass1_done",
@@ -1313,6 +1319,7 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
 
         await sb.from("karel_memory_logs").update({
           summary: `Syntéza hotová. ${(extractedInfo.new_tasks || []).length} úkolů, ${(extractedInfo.kartoteka_did?.new_parts || []).length} nových částí.`,
+          updated_at: new Date().toISOString(),
           details: {
             phase: "queued",
             payload,
@@ -1332,8 +1339,9 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
       const payload = job.details?.payload;
       if (!payload) {
         await sb.from("karel_memory_logs").update({
-          log_type: "redistribute",
+          log_type: "mirror_failed",
           summary: "Chyba: chybí payload jobu",
+          updated_at: new Date().toISOString(),
           details: { error: true, phase: "error" },
         }).eq("id", jobId);
         return new Response(JSON.stringify({ status: "error", phase: "error", summary: "Chyba: chybí payload" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1352,8 +1360,9 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
     } catch (continueError) {
       console.error("[mirror] Continue error:", continueError);
       await sb.from("karel_memory_logs").update({
-        log_type: "redistribute",
+        log_type: "mirror_failed",
         summary: `Chyba: ${continueError instanceof Error ? continueError.message : "unknown"}`,
+        updated_at: new Date().toISOString(),
         details: { error: true, phase: "error" },
       }).eq("id", jobId);
       return new Response(JSON.stringify({ status: "error", phase: "error", summary: continueError instanceof Error ? continueError.message : "Neznámá chyba" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -1361,8 +1370,38 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
   }
 
   try {
-    // ═══ CONCURRENCY LOCK ═══
-    const LOCK_MINUTES = 5;
+    // ═══ HEARTBEAT-BASED CONCURRENCY LOCK ═══
+    const HEARTBEAT_STALE_MINUTES = 3;
+    const force = body?.force === true;
+    const heartbeatCutoff = new Date(Date.now() - HEARTBEAT_STALE_MINUTES * 60 * 1000).toISOString();
+
+    // Force mode: kill all existing mirror_job rows for this user
+    if (force) {
+      console.log("[mirror] Force mode: cleaning up old jobs");
+      await sb.from("karel_memory_logs")
+        .update({ log_type: "mirror_failed", summary: "Ukončeno force modem", updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("log_type", "mirror_job");
+    } else {
+      // Check for alive jobs (updated_at within last 3 minutes)
+      const { data: aliveJobs } = await sb.from("karel_memory_logs")
+        .select("id, updated_at")
+        .eq("user_id", userId)
+        .eq("log_type", "mirror_job")
+        .gte("updated_at", heartbeatCutoff);
+
+      if (aliveJobs && aliveJobs.length > 0) {
+        return new Response(JSON.stringify({ status: "skipped", reason: "Redistribuce již probíhá." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Auto-cleanup stale jobs (heartbeat older than 3 min)
+      await sb.from("karel_memory_logs")
+        .update({ log_type: "mirror_failed", summary: "Automaticky ukončeno (stale heartbeat)", updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("log_type", "mirror_job")
+        .lt("updated_at", heartbeatCutoff);
+    }
+
     const { data: lockRow, error: insertError } = await sb.from("karel_memory_logs").insert({
       user_id: userId, log_type: "mirror_job", summary: "Job vytvořen, čekám na fázi harvest...",
       details: { phase: "created", state: createInitialMirrorState() },
@@ -1374,20 +1413,7 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
     }
 
     const jobId = lockRow!.id;
-
-    const lockCutoff = new Date(Date.now() - LOCK_MINUTES * 60 * 1000).toISOString();
-    const { data: allLocks } = await sb.from("karel_memory_logs")
-      .select("id, created_at")
-      .eq("user_id", userId).eq("log_type", "mirror_job")
-      .gte("created_at", lockCutoff).order("created_at", { ascending: true });
-
-    const olderLock = allLocks?.find((l: any) => l.id !== jobId && l.created_at <= (lockRow!.created_at || ""));
-    if (olderLock) {
-      await sb.from("karel_memory_logs").delete().eq("id", jobId);
-      return new Response(JSON.stringify({ status: "skipped", reason: "Redistribuce již probíhá." }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    console.log("[mirror] Job created:", jobId, "for user:", userId);
+    console.log("[mirror] Job created:", jobId, "for user:", userId, force ? "(force)" : "");
 
     // Return immediately – all heavy work happens in "continue" calls
     return new Response(JSON.stringify({

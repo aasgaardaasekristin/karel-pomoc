@@ -1249,11 +1249,22 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     await new Promise(r => setTimeout(r, 500));
 
     setIsManualUpdateLoading(true);
+    const GLOBAL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+    const globalDeadline = Date.now() + GLOBAL_TIMEOUT_MS;
+
     try {
       const headers = await getAuthHeaders();
-      // Use karel-memory-mirror (more comprehensive: PAMET_KAREL + KARTOTEKA_DID + CENTRUM + ZALOHA)
+
+      // Force cleanup: mark stale mirror_job rows (updated_at > 3 min) as failed
+      const staleCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+      await supabase.from("karel_memory_logs")
+        .update({ log_type: "mirror_failed", summary: "Frontend force cleanup", updated_at: new Date().toISOString() } as any)
+        .eq("log_type", "mirror_job")
+        .lt("updated_at", staleCutoff);
+
+      // Start mirror with force=true
       const initRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-        method: "POST", headers, body: JSON.stringify({}),
+        method: "POST", headers, body: JSON.stringify({ force: true }),
       });
       if (!initRes.ok) {
         const errorBody = await initRes.text();
@@ -1274,9 +1285,15 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       const jobId = initData.jobId;
       toast.success("Aktualizace spuštěna...");
 
-      // Drive all phases via "continue" calls
+      // Drive all phases via "continue" calls with global timeout
       let consecutiveErrors = 0;
+      let mirrorDone = false;
       for (let i = 0; i < 120; i++) {
+        if (Date.now() > globalDeadline) {
+          console.warn("[update] Global 10min timeout reached, moving on");
+          toast.warning("Aktualizace trvá příliš dlouho, pokračuji dál...");
+          break;
+        }
         if (i > 0) await new Promise(r => setTimeout(r, 2000));
 
         try {
@@ -1290,6 +1307,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
           if (step.status === "done") {
             toast.success(`Aktualizace dokončena: ${step.summary?.slice(0, 100) || "OK"}`);
+            mirrorDone = true;
             break;
           }
           if (step.status === "error") {
@@ -1298,6 +1316,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           }
           if (step.status === "idle") {
             toast.info("Aktualizace dokončena.");
+            mirrorDone = true;
             break;
           }
           if (step.phase && i % 3 === 0) {
@@ -1306,14 +1325,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         } catch (stepError: any) {
           consecutiveErrors++;
           if (consecutiveErrors >= 5) {
-            toast.error("Příliš mnoho chyb. Zkus to později.");
+            toast.error("Příliš mnoho chyb. Pokračuji na registr...");
             break;
           }
           await new Promise(r => setTimeout(r, 3000));
         }
       }
 
-      // Phase 2: Registry sync (with per-request timeouts to prevent hanging)
+      // Phase 2: Registry sync (always runs, even if mirror failed/timed out)
       try {
         toast.info("Synchronizuji registr...");
         const syncHeaders = await getAuthHeaders();
