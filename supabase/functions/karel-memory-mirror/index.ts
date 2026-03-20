@@ -1317,6 +1317,7 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
 
         await sb.from("karel_memory_logs").update({
           summary: `Syntéza hotová. ${(extractedInfo.new_tasks || []).length} úkolů, ${(extractedInfo.kartoteka_did?.new_parts || []).length} nových částí.`,
+          updated_at: new Date().toISOString(),
           details: {
             phase: "queued",
             payload,
