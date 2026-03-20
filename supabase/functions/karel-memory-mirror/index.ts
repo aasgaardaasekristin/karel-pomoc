@@ -979,11 +979,13 @@ Deno.serve(async (req) => {
       if (currentPhase === "created" || currentPhase === "harvest") {
         console.log(`[mirror] Phase HARVEST for job ${jobId}`);
 
+        // Check both old "redistribute" and new "mirror_done" log types for last successful mirror
         const { data: lastMirror } = await sb.from("karel_memory_logs")
           .select("created_at")
-          .eq("user_id", userId).eq("log_type", "redistribute")
+          .eq("user_id", userId).in("log_type", ["redistribute", "mirror_done"])
           .order("created_at", { ascending: false }).limit(1);
         const lastMirrorTime = lastMirror?.[0]?.created_at || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        console.log(`[mirror] Last mirror time: ${lastMirrorTime}`);
 
         const [hanaRes, didThreadsRes, didConvsRes, researchRes, episodesRes, entitiesRes, patternsRes, relationsRes, strategiesRes, tasksRes, registryRes] = await Promise.all([
           sb.from("karel_hana_conversations").select("id, messages, last_activity_at, current_domain, current_hana_state").eq("user_id", userId).gte("last_activity_at", lastMirrorTime).order("last_activity_at", { ascending: false }).limit(30),
