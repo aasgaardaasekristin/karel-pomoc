@@ -1749,6 +1749,54 @@ interface AuditResult {
   changes: string[];
   promoted: boolean; // STUB → FULL
   created: boolean;  // brand new card
+  alertForHanka: string | null; // ⚠️ alert for daily report
+}
+
+// ═══ CASE 2 HELPERS: Validate subsection structure against reference ═══
+const SECTION_EXPECTED_SUBSECTIONS: Record<string, string[]> = {
+  A: ["Základní identita", "Historický kontext", "Co uklidňuje", "Senzorické kotvy", "Vztahy", "Povědomí o systému"],
+  B: ["Aktuální stav", "Psychologické charakteristiky", "Psychologická profilace", "Osobnostní profil", "Obranné mechanismy", "Reakce na kontakt"],
+  C: ["Jádrové potřeby", "Jádrové strachy", "Triggery", "Vnitřní konflikty", "Identifikovaná rizika"],
+  D: ["Principy práce", "Kontraindikace", "Doporučené terapeutické techniky"],
+  E: ["Aktuální stav", "Chronologický log"],
+  F: ["Situační karta", "Bezpečnostní pravidla", "Poznámky pro příští kontakt"],
+  J: ["Aktuální stav", "tři priority", "Návrh intervence", "Krizové situace"],
+};
+
+function detectStructuralIssues(letter: string, sectionContent: string): { hasIssues: boolean; unclassifiable: string[] } {
+  const expected = SECTION_EXPECTED_SUBSECTIONS[letter];
+  if (!expected || !sectionContent || sectionContent === "(zatím prázdné)") {
+    return { hasIssues: false, unclassifiable: [] };
+  }
+
+  const contentLower = stripDiacritics(sectionContent).toLowerCase();
+  const unclassifiable: string[] = [];
+
+  // Check for non-standard blocks: lines starting with headers that don't match expected subsections
+  const headerLines = sectionContent.split("\n").filter(line => {
+    const trimmed = line.trim();
+    // Lines that look like subsection headers (bold-ish, ending with colon, or all-caps)
+    return trimmed.length > 3 && trimmed.length < 80 &&
+      (trimmed.endsWith(":") || /^[A-ZÁ-Ž][A-ZÁ-Ž\s]{3,}$/.test(trimmed) || /^[*•▸►]/.test(trimmed) === false) &&
+      !/^\d{4}-\d{2}-\d{2}/.test(trimmed) && // not dates
+      !/^[-–—]/.test(trimmed) && // not bullets
+      !/^\(/.test(trimmed); // not parenthetical notes
+  });
+
+  for (const headerLine of headerLines) {
+    const headerNorm = stripDiacritics(headerLine.trim().replace(/:$/, "")).toLowerCase();
+    const matchesExpected = expected.some(exp =>
+      stripDiacritics(exp).toLowerCase().split(/\s+/).some(word =>
+        word.length > 3 && headerNorm.includes(word)
+      )
+    );
+    if (!matchesExpected && headerLine.trim().length > 5) {
+      // This header doesn't match any expected subsection
+      unclassifiable.push(headerLine.trim());
+    }
+  }
+
+  return { hasIssues: unclassifiable.length > 0, unclassifiable };
 }
 
 async function auditCardStructure(
@@ -1768,11 +1816,11 @@ async function auditCardStructure(
     content = await readFileContent(token, fileId);
   } catch (e) {
     console.error(`[AUDIT-0B] Cannot read card "${fileName}":`, e);
-    return { partName, fileName, changes: [`ERR: nelze číst kartu`], promoted: false, created: false };
+    return { partName, fileName, changes: [`ERR: nelze číst kartu`], promoted: false, created: false, alertForHanka: null };
   }
 
   if (!looksLikeDidCard(fileName, content)) {
-    return { partName, fileName, changes: [], promoted: false, created: false };
+    return { partName, fileName, changes: [], promoted: false, created: false, alertForHanka: null };
   }
 
   const sections = parseCardSections(content);
@@ -1784,7 +1832,7 @@ async function auditCardStructure(
   // Case 3: STUB without thread data → leave as is (intentional state)
   if (isStub && !hasThreadData) {
     console.log(`[AUDIT-0B] "${partName}": STUB karta bez dat z vlákna – ponecháno beze změny`);
-    return { partName, fileName, changes: [], promoted: false, created: false };
+    return { partName, fileName, changes: [], promoted: false, created: false, alertForHanka: null };
   }
 
   let needsWrite = false;
@@ -1794,26 +1842,40 @@ async function auditCardStructure(
     const existing = sections[letter];
 
     if (!existing || existing.trim() === "") {
-      // Case 1: Missing section entirely → create with template
+      // ═══ Case 1: Missing section entirely → create with template ═══
       sections[letter] = SECTION_TEMPLATES[letter] || "(zatím prázdné)";
       changes.push(`chyběla sekce ${letter} – automaticky vytvořena`);
       needsWrite = true;
     } else {
-      // Case 2: Section exists – light structural check
-      // Ensure section has content beyond just whitespace
       const trimmed = existing.trim();
+
+      // ═══ Case 1b: Section exists but is effectively empty ═══
       if (trimmed.length < 3 && trimmed !== "-") {
         sections[letter] = SECTION_TEMPLATES[letter] || "(zatím prázdné)";
         changes.push(`sekce ${letter} měla nesprávnou strukturu – automaticky opravena`);
         needsWrite = true;
+        continue;
+      }
+
+      // ═══ Case 2: Section exists but has structural issues ═══
+      const { hasIssues, unclassifiable } = detectStructuralIssues(letter, trimmed);
+      if (hasIssues && unclassifiable.length > 0) {
+        // Don't delete content – append "Nezařazeno" block with unclassifiable headers
+        const unclassifiedBlock = `\n\nNezařazeno – k ručnímu doplnění (${dateStr}):\n${unclassifiable.map(u => `• ${u}`).join("\n")}`;
+        // Only add if not already present
+        if (!existing.includes("Nezařazeno – k ručnímu doplnění")) {
+          sections[letter] = existing + unclassifiedBlock;
+          changes.push(`sekce ${letter} měla nesprávnou strukturu – automaticky opravena`);
+          needsWrite = true;
+        }
       }
     }
   }
 
-  // STUB → FULL promotion (Case 3 exception: has thread data)
+  // ═══ Case 3 exception: STUB → FULL promotion (has thread data) ═══
   if (isStub && hasThreadData && changes.length > 0) {
     promoted = true;
-    changes.push(`STUB karta povýšena na PLNOU kartu na základě vlákna`);
+    changes.push(`STUB karta povýšena na PLNOU kartu na základě vlákna z ${dateStr}`);
   }
 
   if (needsWrite) {
@@ -1824,7 +1886,81 @@ async function auditCardStructure(
     console.log(`[AUDIT-0B] "${partName}": struktura OK, žádné opravy`);
   }
 
-  return { partName, fileName, changes, promoted, created: false };
+  return { partName, fileName, changes, promoted, created: false, alertForHanka: null };
+}
+
+// ═══ Case 4: Create a brand new card for a part that has no card at all ═══
+async function createNewCardForPart(
+  token: string,
+  partName: string,
+  threadMessages: any[],
+  activeFolderId: string,
+  registryContext: RegistryContext | null,
+): Promise<AuditResult> {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const userMsgs = getUserMessages(threadMessages);
+  const hasEnoughData = userMsgs.length >= 3;
+
+  // Build initial sections
+  const sections: Record<string, string> = {};
+
+  // Section A: basic identity from what we know
+  sections["A"] = `Jméno: ${partName}\nStatus: Aktivní\nPrvní kontakt: ${dateStr}\n\n(Další údaje k doplnění)`;
+
+  // Section E: chronological log
+  sections["E"] = `Aktuální stav:\n✅ Aktivní – první kontakt s Karlem ${dateStr}\n\nChronologický log:\n${dateStr}\tPrvní kontakt s Karlem\tNová karta vytvořena automaticky`;
+
+  if (hasEnoughData) {
+    // FULL card: fill remaining sections with templates (AI will fill them in the main analysis)
+    for (const letter of SECTION_ORDER) {
+      if (!sections[letter]) {
+        sections[letter] = SECTION_TEMPLATES[letter] || "(zatím prázdné)";
+      }
+    }
+  }
+
+  const cardType = hasEnoughData ? "PLNÁ" : "STUB";
+
+  // Determine filename
+  const nextId = getNextRegistryId(registryContext?.entries || []);
+  const paddedId = String(nextId).padStart(3, "0");
+  const normalizedName = partName.replace(/\s+/g, "_").toUpperCase();
+  const newFileName = `${paddedId}_${normalizedName}`;
+
+  // Create the card file
+  const fullCard = buildCard(partName, sections);
+  await createFileInFolder(token, newFileName, fullCard, activeFolderId);
+  console.log(`[AUDIT-0B-CASE4] ✅ Nová ${cardType} karta vytvořena: ${newFileName}`);
+
+  // Add to registry spreadsheet
+  if (registryContext?.registryFileId && registryContext?.registrySheetName) {
+    const added = await addRegistryRow(
+      token, registryContext.registryFileId, registryContext.registrySheetName,
+      paddedId, partName, "Aktivní", "", "", `Automaticky vytvořeno ${dateStr}`
+    );
+    if (added) {
+      registryContext.entries.push({
+        id: paddedId,
+        name: partName,
+        age: "",
+        status: "Aktivní",
+        cluster: "",
+        note: `Automaticky vytvořeno ${dateStr}`,
+        normalizedName: canonicalText(partName),
+      });
+    }
+  }
+
+  const alertMsg = `⚠️ Nová část nebo fragment detekován: ${partName}. Karta vytvořena (${cardType}). Doporučuji ověřit.`;
+
+  return {
+    partName,
+    fileName: newFileName,
+    changes: [`Nová karta vytvořena pro část ${partName} na základě vlákna z ${dateStr}. Typ: ${cardType}`],
+    promoted: false,
+    created: true,
+    alertForHanka: alertMsg,
+  };
 }
 
 // Log audit results to PAMET_KAREL_LOGS/DAILY_JOB_LOG on Drive
@@ -2416,7 +2552,9 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
 
     // ═══ KROK 0B – AUDIT STRUKTURY KARTY PŘED ZPRACOVÁNÍM ═══
     // Povinný krok: pro každé nezpracované vlákno audituje strukturu odpovídající karty
+    // Handles: Case 1 (missing sections), Case 2 (malformed structure), Case 3 (STUB promotion), Case 4 (no card exists)
     const auditResults: AuditResult[] = [];
+    const auditAlerts: string[] = []; // ⚠️ alerts for Hanka's daily report
     if (folderId && registryContext && threads.length > 0) {
       console.log(`[KROK-0B] Starting structural audit for ${threads.length} unprocessed thread(s)...`);
       const auditedParts = new Set<string>();
@@ -2432,25 +2570,60 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
           const lookupName = target.registryEntry?.name || partName;
 
           if (!target.registryEntry) {
-            // Case 4: Part has no registry entry AND no card → create new STUB/FULL card
-            // (handled later by AI analysis + updateCardSections with allowCreate)
-            console.log(`[KROK-0B] "${partName}": mimo registr – bude řešeno v AI analýze`);
+            // ═══ Case 4: Part has NO registry entry AND no card → create new card ═══
+            console.log(`[KROK-0B] "${partName}": mimo registr – vytvářím novou kartu (Case 4)`);
+            if (registryContext.activeFolderId) {
+              try {
+                const result = await createNewCardForPart(
+                  token, partName,
+                  Array.isArray(thread.messages) ? thread.messages as any[] : [],
+                  registryContext.activeFolderId,
+                  registryContext,
+                );
+                auditResults.push(result);
+                cardsUpdated.push(`${partName} (AUDIT-0B: NOVÁ KARTA – ${result.created ? "vytvořena" : "chyba"})`);
+                if (result.alertForHanka) {
+                  auditAlerts.push(result.alertForHanka);
+                }
+              } catch (e) {
+                console.error(`[KROK-0B] Case 4 failed for "${partName}":`, e);
+              }
+            }
             continue;
           }
 
           const card = await findCardFile(token, lookupName, target.searchRootId);
           if (card) {
-            // Audit existing card structure
+            // Cases 1, 2, 3: Audit existing card structure
             const hasThreadMsgs = Array.isArray(thread.messages) && (thread.messages as any[]).filter((m: any) => m?.role === "user").length >= 2;
             const result = await auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs);
             auditResults.push(result);
             if (result.changes.length > 0) {
               cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
             }
+            if (result.alertForHanka) {
+              auditAlerts.push(result.alertForHanka);
+            }
           } else {
-            // Case 4: Registry entry exists but no card file found
-            // This is already handled by the fail-safe in the main loop (blockedCardUpdates)
-            console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – fail-safe`);
+            // ═══ Case 4b: Registry entry exists but no card file found → create card ═══
+            console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – vytvářím (Case 4b)`);
+            if (registryContext.activeFolderId) {
+              try {
+                const result = await createNewCardForPart(
+                  token, lookupName,
+                  Array.isArray(thread.messages) ? thread.messages as any[] : [],
+                  registryContext.activeFolderId,
+                  registryContext,
+                );
+                auditResults.push(result);
+                cardsUpdated.push(`${lookupName} (AUDIT-0B: KARTA VYTVOŘENA – chyběla na Drive)`);
+                if (result.alertForHanka) {
+                  auditAlerts.push(result.alertForHanka);
+                }
+              } catch (e) {
+                console.error(`[KROK-0B] Case 4b failed for "${lookupName}":`, e);
+              }
+            }
           }
         } catch (e) {
           console.warn(`[KROK-0B] Audit error for "${partName}":`, e);
@@ -2468,13 +2641,14 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
 
       const totalChanges = auditResults.reduce((sum, r) => sum + r.changes.length, 0);
       const promotions = auditResults.filter(r => r.promoted).length;
-      console.log(`[KROK-0B] ✅ Audit complete: ${auditResults.length} karet zkontrolováno, ${totalChanges} oprav, ${promotions} povýšení STUB→PLNÁ`);
+      const newCards = auditResults.filter(r => r.created).length;
+      console.log(`[KROK-0B] ✅ Audit complete: ${auditResults.length} karet zkontrolováno, ${totalChanges} oprav, ${promotions} povýšení STUB→PLNÁ, ${newCards} nových karet`);
 
       // Update cycle progress
       if (cycleId) {
         await sb.from("did_update_cycles").update({
           phase: "audit_0b",
-          phase_detail: `Audit: ${auditResults.length} karet, ${totalChanges} oprav`,
+          phase_detail: `Audit: ${auditResults.length} karet, ${totalChanges} oprav, ${newCards} nových`,
           heartbeat_at: new Date().toISOString(),
         }).eq("id", cycleId);
       }
@@ -4555,16 +4729,19 @@ ESKALACE: level ${task.escalation_level || 0}`,
 
     if (cycle) {
       // Store VALIDATED deterministic report, not raw AI output (anti-hallucination)
+      // Include audit alerts (Case 4: new parts detected) in report summary
+      const auditAlertText = auditAlerts.length > 0 ? `\n\n${auditAlerts.join("\n")}` : "";
       const validatedReportSummary = finalReportText
-        ? finalReportText.slice(0, 2000)
+        ? (finalReportText + auditAlertText).slice(0, 2000)
         : (cardsUpdated.length > 0
-          ? `Aktualizováno ${cardsUpdated.length} karet: ${cardsUpdated.join(", ").slice(0, 1800)}`
-          : "Žádné změny");
+          ? `Aktualizováno ${cardsUpdated.length} karet: ${cardsUpdated.join(", ").slice(0, 1600)}${auditAlertText}`
+          : `Žádné změny${auditAlertText}`);
       await sb.from("did_update_cycles").update({
         status: hadCardUpdateErrors ? "failed" : "completed",
         completed_at: new Date().toISOString(),
         report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
+        context_data: { auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined },
       }).eq("id", cycle.id);
     }
 
