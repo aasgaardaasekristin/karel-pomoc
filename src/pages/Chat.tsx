@@ -1333,6 +1333,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       }
 
       // Phase 2: Registry sync (always runs, even if mirror failed/timed out)
+      const REGISTRY_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes max for registry sync
+      const registryDeadline = Date.now() + REGISTRY_TIMEOUT_MS;
       try {
         toast.info("Synchronizuji registr...");
         const syncHeaders = await getAuthHeaders();
@@ -1350,12 +1352,17 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         let synced = 0, skipped = 0, errors = 0;
         setSyncProgress({ current: 0, total, currentName: "..." });
         for (let i = 0; i < total; i++) {
+          if (Date.now() > registryDeadline || Date.now() > globalDeadline) {
+            console.warn(`[registry-sync] Timeout reached at entry ${i + 1}/${total}, stopping`);
+            toast.warning(`Registr: timeout po ${i}/${total} položkách`);
+            break;
+          }
           const entry = entries[i];
           const displayName = (entry.fileName || "").replace(/^\d+_/, "").replace(/\.[^.]+$/, "");
           setSyncProgress({ current: i + 1, total, currentName: displayName });
           try {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 25_000);
+            const timeout = setTimeout(() => controller.abort(), 15_000);
             const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
               method: "POST", headers: syncHeaders,
               body: JSON.stringify({ syncRegistry: true, syncMode: "process_one", fileId: entry.fileId, fileName: entry.fileName, folderLabel: entry.folderLabel }),
