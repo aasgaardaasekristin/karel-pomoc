@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
 interface SessionPlan {
   id: string;
@@ -61,6 +62,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [prefSelectedPart, setPrefSelectedPart] = useState("");
   const [prefStep, setPrefStep] = useState<"ask" | "detail">("ask");
   const [prefDetail, setPrefDetail] = useState("");
+
+  // Live session state
+  const [liveSessionActive, setLiveSessionActive] = useState(false);
 
   const loadTodayPlan = useCallback(async () => {
     setLoading(true);
@@ -188,7 +192,8 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         .eq("id", plan.id);
 
       setPlan(prev => prev ? { ...prev, status: "in_progress" } : null);
-      toast.success(`Sezení s ${plan.selected_part} zahájeno — záznam vytvořen`);
+      setLiveSessionActive(true);
+      toast.success(`Sezení s ${plan.selected_part} zahájeno — Karel je připraven asistovat`);
     } catch (e: any) {
       toast.error("Nepodařilo se zahájit sezení");
       console.error(e);
@@ -254,11 +259,45 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         .update({ status: "generated", updated_at: new Date().toISOString() })
         .eq("id", plan.id);
       setPlan(prev => prev ? { ...prev, status: "generated" } : null);
+      setLiveSessionActive(false);
       toast.success("Stav vrácen na Naplánováno");
     } catch (e: any) {
       toast.error("Nepodařilo se změnit stav");
     }
   }, [plan]);
+
+  // ═══ LIVE SESSION END HANDLER ═══
+  const handleLiveSessionEnd = useCallback(async (summary: string) => {
+    setLiveSessionActive(false);
+    if (!plan) return;
+
+    // Save AI analysis to session record
+    try {
+      const { data: sessionRow } = await supabase
+        .from("did_part_sessions")
+        .select("id")
+        .eq("part_name", plan.selected_part)
+        .eq("session_date", plan.plan_date)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (sessionRow) {
+        await supabase
+          .from("did_part_sessions")
+          .update({
+            ai_analysis: summary,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sessionRow.id);
+      }
+    } catch (e) {
+      console.error("Failed to save AI analysis:", e);
+    }
+
+    // Run existing endSession logic (Drive write + status update)
+    await endSession();
+  }, [plan, endSession]);
 
   if (loading) {
     return (
@@ -266,6 +305,21 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         <div className="flex items-center text-xs text-muted-foreground">
           <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám plán sezení...
         </div>
+      </div>
+    );
+  }
+
+  // ═══ LIVE SESSION ACTIVE → show DidLiveSessionPanel ═══
+  if (liveSessionActive && plan) {
+    return (
+      <div className="mb-4 rounded-lg border border-border/70 bg-card/38 backdrop-blur-sm overflow-hidden" style={{ minHeight: "60vh" }}>
+        <DidLiveSessionPanel
+          partName={plan.selected_part}
+          therapistName={plan.therapist === "kata" || plan.therapist === "Káťa" ? "Káťa" : "Hanka"}
+          contextBrief={plan.plan_markdown}
+          onEnd={handleLiveSessionEnd}
+          onBack={() => setLiveSessionActive(false)}
+        />
       </div>
     );
   }
@@ -457,6 +511,16 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                   className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
                 >
                   <Play className="mr-1 h-2.5 w-2.5" /> Zahájit sezení
+                </Button>
+              )}
+              {plan.status === "in_progress" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLiveSessionActive(true)}
+                  className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  <Play className="mr-1 h-2.5 w-2.5" /> Otevřít live asistenci
                 </Button>
               )}
               {plan.status === "in_progress" && (

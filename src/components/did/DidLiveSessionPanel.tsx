@@ -2,12 +2,13 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
+import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -39,15 +40,20 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recorder = useSessionAudioRecorder();
+  const imageUpload = useImageUpload();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
+  const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
+  const imageSegmentCountRef = useRef(0);
 
   // Auto-greet
   useEffect(() => {
     if (messages.length === 0) {
       const greeting = `${therapistName === "Káťa" ? "Káťo" : "Hani"}, jsem tu s tebou na živém sezení s **${partName}**. 🎯
 
-Piš mi, co ${partName} říká nebo dělá, a já ti v reálném čase poradím jak reagovat. Můžeš také zapnout nahrávání.
+Piš mi, co ${partName} říká nebo dělá, a já ti v reálném čase poradím jak reagovat. Můžeš také:
+- 🎙️ **Nahrát audio** — analyzuji tón, emoce, switching
+- 📷 **Vyfotit obrázek** — kresbu, výraz, situaci — okamžitě zanalyzuji
 
 ${contextBrief ? `📋 *Mám nastudovaný kontext – vím, kde jsme naposledy skončili.*` : ""}
 
@@ -196,6 +202,54 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       toast.error("Chyba při analýze audia");
     } finally {
       setIsAudioAnalyzing(false);
+    }
+  };
+
+  // Image analysis
+  const handleImageAnalysis = async () => {
+    if (isImageAnalyzing || imageUpload.pendingImages.length === 0) return;
+    setIsImageAnalyzing(true);
+    try {
+      const img = imageUpload.pendingImages[0];
+      imageSegmentCountRef.current += 1;
+      const segNum = imageSegmentCountRef.current;
+
+      const chatContext = messages.slice(-6).map(m =>
+        `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
+      ).join("\n");
+
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            fileBase64: img.dataUrl,
+            fileName: img.name,
+            mode: "did-live-session",
+            chatContext,
+            extraContext: `DID část: ${partName}, Terapeutka: ${therapistName}. Analyzuj obrázek v kontextu živého sezení — zaměř se na emoční výraz, kresbu, neverbální signály, známky distresu nebo switchingu.`,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Chyba při analýze obrázku");
+      const { analysis } = await response.json();
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      setMessages(prev => [
+        ...prev,
+        { role: "user", content: `📷 *[Obrázek #${segNum}: ${img.name}]*` },
+        { role: "assistant", content: analysis },
+      ]);
+      imageUpload.clearImages();
+      toast.success(`Obrázek #${segNum} analyzován`);
+    } catch (error) {
+      console.error("Image analysis error:", error);
+      toast.error("Chyba při analýze obrázku");
+    } finally {
+      setIsImageAnalyzing(false);
     }
   };
 
@@ -389,8 +443,22 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           </Button>
         </div>
 
-        {/* Audio recorder strip */}
+        {/* Audio & Image tools strip */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
+          {/* Camera button */}
+          <Button variant="outline" size="sm" onClick={imageUpload.openFilePicker} className="gap-1.5 h-8 text-xs">
+            <Camera className="w-3.5 h-3.5" /> Fotka
+          </Button>
+          <input
+            ref={imageUpload.fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            onChange={imageUpload.handleFileChange}
+            className="hidden"
+          />
+
+          {/* Audio recorder */}
           {recorder.state === "idle" && (
             <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
               <Mic className="w-3.5 h-3.5" /> Nahrávat
@@ -434,10 +502,39 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           )}
           {isAudioAnalyzing && (
             <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje…
+              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje audio…
+            </span>
+          )}
+          {isImageAnalyzing && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje obrázek…
             </span>
           )}
         </div>
+
+        {/* Image preview strip */}
+        {imageUpload.pendingImages.length > 0 && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {imageUpload.pendingImages.map((img, i) => (
+              <div key={i} className="relative group">
+                <img src={img.dataUrl} alt={img.name} className="h-16 w-16 object-cover rounded-md border border-border" />
+                <button
+                  onClick={() => imageUpload.removeImage(i)}
+                  className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            <Button size="sm" onClick={handleImageAnalysis} disabled={isImageAnalyzing} className="h-8 text-xs gap-1.5">
+              {isImageAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+              Analyzovat obrázek
+            </Button>
+            <Button variant="ghost" size="sm" onClick={imageUpload.clearImages} className="h-8 text-xs">
+              Zahodit
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
