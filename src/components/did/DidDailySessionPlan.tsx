@@ -88,7 +88,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [customPartName, setCustomPartName] = useState("");
   const [prevSession, setPrevSession] = useState<PreviousSession | null>(null);
-  const [prevSessionExpanded, setPrevSessionExpanded] = useState(false);
+  const [_prevSessionExpanded, _setPrevSessionExpanded] = useState(false); // kept for hook order
 
   // Preference dialog state
   const [prefDialogOpen, setPrefDialogOpen] = useState(false);
@@ -590,11 +590,52 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
             </div>
 
             {expanded && (
-              <div className="mt-2 rounded-md border border-border/60 bg-background/40 p-3 max-h-[400px] overflow-y-auto session-plan-content">
-                <div
-                  className="text-[11px] leading-5 text-foreground"
-                  dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
-                />
+              <div className="mt-2 space-y-3 max-h-[500px] overflow-y-auto">
+                {/* Session plan */}
+                <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
+                  <div
+                    className="text-[11px] leading-5 text-foreground"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
+                  />
+                </div>
+
+                {/* Previous session: handoff + AI analysis inline */}
+                {prevSession && (
+                  <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                      <FileText className="w-3 h-3 text-primary" />
+                      Poslední sezení — {prevSession.therapist}, {prevSession.session_date}
+                    </div>
+
+                    {prevSession.handoff_note && prevSession.handoff_note.trim() && (
+                      <div className="rounded-md bg-primary/5 border border-primary/15 p-2.5">
+                        <span className="text-[9px] font-medium text-primary flex items-center gap-1 mb-1">
+                          <MessageSquare className="w-2.5 h-2.5" />
+                          Předání pro kolegyni
+                        </span>
+                        <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
+                      </div>
+                    )}
+
+                    {prevSession.ai_analysis && prevSession.ai_analysis.trim() && (
+                      <div>
+                        <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                          <Brain className="w-2.5 h-2.5" />
+                          AI analýza sezení
+                        </span>
+                        <div
+                          className="text-[10px] leading-4 text-muted-foreground whitespace-pre-wrap"
+                        >
+                          {prevSession.ai_analysis}
+                        </div>
+                      </div>
+                    )}
+
+                    {!prevSession.handoff_note?.trim() && !prevSession.ai_analysis?.trim() && (
+                      <p className="text-[10px] text-muted-foreground/60 italic">Bez detailů z minulého sezení.</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -602,35 +643,6 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
               <p className="text-[11px] text-muted-foreground line-clamp-2">
               {plan.plan_markdown.replace(/[#*\-]/g, '').slice(0, 150)}…
               </p>
-            )}
-
-            {/* Previous session context */}
-            {prevSession && (
-              <div className="mt-3 pt-3 border-t border-border/30">
-                <button
-                  onClick={() => setPrevSessionExpanded(!prevSessionExpanded)}
-                  className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
-                >
-                  <FileText className="w-3 h-3" />
-                  Poslední sezení s {plan.selected_part} — {prevSession.therapist}, {prevSession.session_date}
-                  {prevSessionExpanded ? <ChevronUp className="w-2.5 h-2.5 ml-auto" /> : <ChevronDown className="w-2.5 h-2.5 ml-auto" />}
-                </button>
-                {prevSessionExpanded && (
-                  <div className="mt-2 space-y-2">
-                    {prevSession.handoff_note && prevSession.handoff_note.trim() && (
-                      <div className="rounded bg-primary/5 border border-primary/15 p-2">
-                        <span className="text-[9px] font-medium text-primary block mb-1">📋 Předání pro kolegyni</span>
-                        <p className="text-[10px] text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
-                      </div>
-                    )}
-                    {prevSession.ai_analysis && (
-                      <div className="text-[10px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
-                        {prevSession.ai_analysis.slice(0, 500)}{prevSession.ai_analysis.length > 500 ? "…" : ""}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             )}
           </div>
         )}
