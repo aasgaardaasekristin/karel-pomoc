@@ -63,6 +63,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [prefStep, setPrefStep] = useState<"ask" | "detail">("ask");
   const [prefDetail, setPrefDetail] = useState("");
 
+  // Live session state
+  const [liveSessionActive, setLiveSessionActive] = useState(false);
+
   const loadTodayPlan = useCallback(async () => {
     setLoading(true);
     try {
