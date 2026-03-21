@@ -1391,7 +1391,7 @@ async function updateCardSections(
   partName: string,
   newSections: Record<string, string>,
   folderId: string,
-  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string; registryContext?: RegistryContext | null }
+  options?: { allowCreate?: boolean; searchName?: string; canonicalPartName?: string; registryContext?: RegistryContext | null; sectionModes?: Record<string, string> }
 ): Promise<{ fileName: string; sectionsUpdated: string[]; isNew: boolean }> {
   const allowCreate = options?.allowCreate ?? false;
   const searchName = options?.searchName || partName;
