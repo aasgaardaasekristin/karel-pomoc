@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -48,6 +48,11 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const audioSegmentCountRef = useRef(0);
   const imageSegmentCountRef = useRef(0);
 
+  // Switch detection state
+  const [activePart, setActivePart] = useState(partName);
+  const [switchLog, setSwitchLog] = useState<{ from: string; to: string; time: string }[]>([]);
+  const [switchFlash, setSwitchFlash] = useState(false);
+
   // Reflection dialog state
   const [showReflection, setShowReflection] = useState(false);
   const [reflectionEmotions, setReflectionEmotions] = useState<string[]>([]);
@@ -84,26 +89,47 @@ ${contextBrief ? `📋 *Mám nastudovaný kontext – vím, kde jsme naposledy s
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [messages]);
 
+  const detectSwitch = useCallback((text: string) => {
+    const switchMatch = text.match(/\[SWITCH:([^\]]+)\]/);
+    if (switchMatch) {
+      const newPart = switchMatch[1].trim();
+      if (newPart && newPart.toLowerCase() !== activePart.toLowerCase()) {
+        const entry = { from: activePart, to: newPart, time: new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) };
+        setSwitchLog(prev => [...prev, entry]);
+        setActivePart(newPart);
+        setSwitchFlash(true);
+        setTimeout(() => setSwitchFlash(false), 2000);
+        toast.info(`⚡ Switch: ${entry.from} → ${entry.to}`);
+      }
+      return text.replace(/\[SWITCH:[^\]]+\]/g, "").trim();
+    }
+    return text;
+  }, [activePart]);
+
   const buildContext = useCallback(() => {
+    const switchHistory = switchLog.length > 0
+      ? `\nHISTORIE SWITCHŮ V TOMTO SEZENÍ:\n${switchLog.map(s => `${s.time}: ${s.from} → ${s.to}`).join("\n")}\n`
+      : "";
     return `═══ LIVE DID SEZENÍ ═══
-Část: ${partName}
+Část: ${activePart} (původně: ${partName})
 Terapeutka: ${therapistName}
 Čas: ${new Date().toISOString()}
-
+${switchHistory}
 ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 ═══ INSTRUKCE ═══
-- Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${partName}".
-- ${therapistName} ti píše, co ${partName} říká/dělá, nebo posílá audio segmenty.
+- Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${activePart}".
+- ${therapistName} ti píše, co ${activePart} říká/dělá, nebo posílá audio segmenty.
 - Odpovídej OKAMŽITĚ a STRUČNĚ (3-5 řádků max):
-  🎯 Co říct ${partName} (přesná věta, respektuj jazyk a věk části)
+  🎯 Co říct ${activePart} (přesná věta, respektuj jazyk a věk části)
   👀 Na co si dát pozor (neverbální signály, switching, disociace)
   ⚠️ Rizika/varování (trigger, freeze, regrese)
   🎮 Další krok (technika, aktivita, uklidnění)
 - Pokud dostaneš audio analýzu, reaguj na zjištění z hlasu (tenze, emoce, switching).
 - Buď direktivní a konkrétní. Žádné filozofování.
 - Respektuj věk a vývojovou úroveň části.
-- Při známkách distresu nebo switchingu OKAMŽITĚ upozorni.`;
-  }, [partName, therapistName, contextBrief]);
+- Při známkách distresu nebo switchingu OKAMŽITĚ upozorni.
+- Pokud detekuješ SWITCH (změnu identity/části), označ to tagem [SWITCH:JMÉNO_NOVÉ_ČÁSTI] na konci odpovědi.`;
+  }, [partName, activePart, therapistName, contextBrief, switchLog]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -159,6 +185,14 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
             buffer = line + "\n" + buffer;
             break;
           }
+        }
+      }
+
+      // Detect switch in final response
+      if (assistantContent) {
+        const cleaned = detectSwitch(assistantContent);
+        if (cleaned !== assistantContent) {
+          setMessages([...updatedMessages, { role: "assistant", content: cleaned }]);
         }
       }
     } catch (error) {
@@ -408,6 +442,11 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
       // Save to did_part_sessions
       let savedSessionId: string | null = null;
       try {
+        // Build switch log text for notes
+        const switchLogText = switchLog.length > 0
+          ? `\n\n## SWITCH LOG\n${switchLog.map(s => `- ${s.time}: ${s.from} → ${s.to}`).join("\n")}`
+          : "";
+
         const { data: insertedRow } = await supabase.from("did_part_sessions").insert({
           part_name: partName,
           therapist: therapistName,
@@ -417,7 +456,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           methods_effectiveness: effectiveness,
           tasks_assigned: tasksList,
           audio_analysis: audioAnalyses.join("\n---\n") || "",
-          karel_notes: report,
+          karel_notes: report + switchLogText,
           karel_therapist_feedback: therapistFeedback,
         }).select("id").single();
         savedSessionId = insertedRow?.id || null;
@@ -617,18 +656,30 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border bg-card/50">
+      <div className={`px-4 py-3 border-b border-border bg-card/50 transition-colors duration-500 ${switchFlash ? "bg-amber-500/10" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8 shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </Button>
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors duration-500 ${switchFlash ? "bg-amber-500/20" : "bg-primary/10"}`}>
               <span className="text-sm">🧩</span>
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-foreground">Live DID sezení</h3>
-              <p className="text-xs text-muted-foreground truncate">{partName} • {therapistName}</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Live DID sezení</h3>
+                {switchLog.length > 0 && (
+                  <Badge variant="outline" className="text-[9px] gap-0.5 h-4 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    <Shuffle className="w-2.5 h-2.5" />
+                    {switchLog.length}× switch
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                <span className={`font-medium ${switchFlash ? "text-amber-600 dark:text-amber-400" : ""}`}>{activePart}</span>
+                {activePart !== partName && <span className="text-muted-foreground/60"> (start: {partName})</span>}
+                {" • "}{therapistName}
+              </p>
             </div>
           </div>
           <Button
@@ -734,6 +785,18 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
             <Button variant="ghost" size="sm" onClick={imageUpload.clearImages} className="h-8 text-xs">
               Zahodit
             </Button>
+          </div>
+        )}
+
+        {/* Switch history strip */}
+        {switchLog.length > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            <Shuffle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+            {switchLog.map((s, i) => (
+              <Badge key={i} variant="outline" className="text-[9px] h-5 border-amber-500/30 text-amber-700 dark:text-amber-400 bg-amber-500/5">
+                {s.time} {s.from} → {s.to}
+              </Badge>
+            ))}
           </div>
         )}
       </div>
