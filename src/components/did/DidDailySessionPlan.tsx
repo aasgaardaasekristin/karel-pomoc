@@ -95,6 +95,22 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   useEffect(() => { loadTodayPlan(); }, [loadTodayPlan, refreshTrigger]);
 
+  // Load previous session for current plan's part
+  useEffect(() => {
+    if (!plan?.selected_part) { setPrevSession(null); return; }
+    const loadPrev = async () => {
+      const { data } = await supabase
+        .from("did_part_sessions")
+        .select("therapist, session_date, ai_analysis, handoff_note")
+        .eq("part_name", plan.selected_part)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setPrevSession((data as PreviousSession) || null);
+    };
+    loadPrev();
+  }, [plan?.selected_part]);
+
   const loadRegistryParts = useCallback(async () => {
     const { data } = await supabase
       .from("did_part_registry")
