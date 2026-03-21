@@ -29,6 +29,7 @@ interface PreviousSession {
   session_date: string;
   ai_analysis: string | null;
   handoff_note: string | null;
+  karel_notes: string | null;
 }
 
 interface Props {
@@ -128,7 +129,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       // Filter out both case variants of current therapist
       let query = supabase
         .from("did_part_sessions")
-        .select("therapist, session_date, ai_analysis, handoff_note")
+        .select("therapist, session_date, ai_analysis, handoff_note, karel_notes")
         .eq("part_name", plan.selected_part)
         .order("created_at", { ascending: false })
         .limit(10);
@@ -636,6 +637,23 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                         />
                       </div>
                     )}
+
+                    {(() => {
+                      const notes = prevSession.karel_notes || "";
+                      const refIdx = notes.indexOf("## REFLEXE TERAPEUTKY");
+                      if (refIdx === -1) return null;
+                      const refText = notes.slice(refIdx + "## REFLEXE TERAPEUTKY".length).trim();
+                      if (!refText) return null;
+                      return (
+                        <div className="rounded-md bg-amber-500/5 border border-amber-500/15 p-2.5">
+                          <span className="text-[9px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1">
+                            <PenLine className="w-2.5 h-2.5" />
+                            Reflexe terapeutky
+                          </span>
+                          <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{refText}</p>
+                        </div>
+                      );
+                    })()}
 
                     {!prevSession.handoff_note?.trim() && !prevSession.ai_analysis?.trim() && (
                       <p className="text-[10px] text-muted-foreground/60 italic">Bez detailů z minulého sezení.</p>
