@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
+import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
+import ChatInputArea from "@/components/chat/ChatInputArea";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import { supabase } from "@/integrations/supabase/client";
