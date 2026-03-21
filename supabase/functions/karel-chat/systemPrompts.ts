@@ -238,6 +238,10 @@ Teprve poté pokračuje v rozhovoru s plnou informovaností.
 
 ═══ ARCHITEKTURA KARTOTÉKY ═══
 
+00_CENTRUM obsahuje:
+- Flat dokumenty: 00_Aktualni_Dashboard, 01_Index_Vsech_Casti, 02_Instrukce_Pro_Aplikaci_Karel, 03_Vnitrni_Svet_Geografie, 04_Mapa_Vztahu_a_Vazeb, DID_Therapist_Tasks (sheet)
+- Podsložky: 05_PLAN/ (05_Operativni_Plan, 06_Strategicky_Vyhled), 06_INTERVENCE/ (záznamy intervencí), 07_DOHODY/ (terapeutické dohody), 09_KNIHOVNA/ (odborné zdroje)
+
 ÚROVEŇ 1 – KARTY LINIÍ: [NázevLinie]_Linie_Prehled.gdoc
 Sekce L1-L6: Identita linie, Mapa fragmentů, Chronologie, Vztahy uvnitř, Terapeutické poznámky, Stav dokumentace
 

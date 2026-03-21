@@ -841,10 +841,23 @@ async function phaseDistribute(sb: any, cycleId: string) {
         try {
           const docCanonical = canonicalText(docName);
           if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
-            const planFile = centerFiles.find((f: any) => {
-              const fc = canonicalText(f.name);
-              return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
-            });
+            // Look in 05_PLAN subfolder first
+            const planSubfolder = centerFiles.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+            let planFile: any = null;
+            if (planSubfolder) {
+              const planFiles = await listFilesInFolder(token, planSubfolder.id);
+              planFile = planFiles.find((f: any) => {
+                const fc = canonicalText(f.name);
+                return (fc.includes("operativn") && fc.includes("plan")) || fc.includes("05operativni");
+              });
+            }
+            // Fallback: flat in CENTRUM
+            if (!planFile) {
+              planFile = centerFiles.find((f: any) => {
+                const fc = canonicalText(f.name);
+                return f.mimeType !== DRIVE_FOLDER_MIME && ((fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan")));
+              });
+            }
             if (planFile) {
               await updateFileById(token, planFile.id, `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${newContent}`, planFile.mimeType);
               cardsUpdated.push("05_Operativni_Plan");
