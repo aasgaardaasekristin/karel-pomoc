@@ -1,41 +1,46 @@
 
 
-# Auto-generování úkolů po ukončení sezení
+# Post-session reflexe terapeutky
 
-## Proč právě tento krok
+## Proč tento krok
 
-Session finalizace v `DidLiveSessionPanel` už **parsuje sekci `## ÚKOLY`** z AI reportu (řádky 386-388) a ukládá je jako JSON do `did_part_sessions.tasks_assigned`. Ale **nikdy je nepropíše do `did_therapist_tasks`** — úkoly existují v zápisu, ale neobjeví se na nástěnce. Terapeutky je musí ručně přepisovat. Tohle je jasný gap, který uzavře smyčku: sezení → analýza → handoff → úkoly na nástěnce.
+Aktuální flow po ukončení sezení: AI analýza → uložení → auto-úkoly → handoff note → hotovo. Chybí **subjektivní pohled terapeutky** — co cítila, co ji překvapilo, co by příště udělala jinak. Tato data jsou klíčová pro supervizi, detekci přenosu/protipřenosu a zlepšování terapeutického přístupu. Implementačně je to přímočaré — dialog po ukončení sezení, uložení do existující tabulky `did_part_sessions`.
 
-## Plán
+## Co se změní
 
-### 1. Rozšířit parsování úkolů v handleEndSession
+### 1. Reflexní dialog po ukončení sezení
 
-Aktuální kód parsuje jen textové řádky. Upravit prompt v sekci `## ÚKOLY` tak, aby Karel vracal strukturovaný formát:
-```
-- [hanka|kata|both] [today|tomorrow|longterm] Konkrétní úkol
-```
+Místo okamžitého volání `onEnd(report)` se po úspěšné finalizaci zobrazí modální dialog se 3 otázkami:
 
-Parsovat tyto řádky na objekty `{ task, assignee, category }`.
+- **Emoce terapeutky** — jak se cítila během sezení (multiselect z předpřipravených: klidná, nejistá, frustrovaná, dojatá, vyčerpaná, nadějná, úzkostná, překvapená)
+- **Co tě překvapilo?** — volný text (1-2 věty)
+- **Co bys příště udělala jinak?** — volný text (1-2 věty)
 
-### 2. Automatický insert do did_therapist_tasks
+Tlačítko "Přeskočit" umožní dialog zavřít bez vyplnění.
 
-Po uložení session (řádky 390-409) přidat blok, který:
-- Pro každý parsovaný úkol provede dedup check (stejně jako v `TaskSuggestButtons.tsx` — ilike na prvních 30 znaků)
-- Pokud úkol neexistuje, insertne do `did_therapist_tasks` s:
-  - `task`, `assigned_to`, `category`
-  - `source_agreement: "Sezení s [partName]"`
-  - `priority` odvozená z category (today=high, tomorrow=normal, longterm=low)
-  - `detail_instruction` s kontextem ze sezení
+### 2. Uložení do did_part_sessions
 
-### 3. Toast s počtem vytvořených úkolů
+Reflexe se uloží jako update do právě vytvořeného záznamu (`savedSessionId`):
+- `karel_notes` se rozšíří o sekci `\n\n## REFLEXE TERAPEUTKY\n...`
+- Žádná DB migrace — využije existující textové pole
 
-Po insertu zobrazit toast: "Vytvořeno X úkolů na nástěnce".
+### 3. Obohacení handoff note
+
+Pokud terapeutka vyplní reflexi PŘED generováním handoff note, její postřehy se zahrnou do promptu pro handoff — kolegyně tak dostane i subjektivní pohled.
 
 ## Soubor k úpravě
 
-- `src/components/did/DidLiveSessionPanel.tsx` — jediný soubor
+- `src/components/did/DidLiveSessionPanel.tsx` — přidání reflexního dialogu a úprava flow v `handleEndSession`
 
-## Bez nových závislostí, bez DB migrace
+## Bez DB migrace, bez nových závislostí
 
-Využívá existující tabulku `did_therapist_tasks` a existující parsovací logiku. Prompt se mírně upraví pro strukturovanější výstup.
+Využije existující sloupce v `did_part_sessions` a UI komponenty (Dialog, Button, Badge).
+
+## Technické detaily
+
+- Nový state: `showReflection: boolean`, `reflectionData: { emotions: string[], surprise: string, nextTime: string }`
+- Po úspěšné finalizaci se nastaví `showReflection = true` místo okamžitého `onEnd()`
+- Dialog používá `<Dialog>` z shadcn/ui
+- Po odeslání/přeskočení se zavolá `onEnd(report)`
+- Pořadí flow se změní: finalize → save session → auto-tasks → **reflexe dialog** → handoff note → onEnd
 
