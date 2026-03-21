@@ -141,38 +141,37 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           Plán sezení na dnes
         </h4>
         <div className="flex items-center gap-1.5">
-          {!plan && !generating && (
+          {!generating && (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => generatePlan()}
-                className="h-7 px-2 text-[10px]"
-              >
-                <Zap className="mr-1 h-3 w-3" /> Vygenerovat
-              </Button>
-              <Popover open={overrideOpen} onOpenChange={setOverrideOpen}>
+              {!plan && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => generatePlan()}
+                  className="h-7 px-2 text-[10px]"
+                >
+                  <Zap className="mr-1 h-3 w-3" /> Vygenerovat
+                </Button>
+              )}
+              <Popover open={overrideOpen} onOpenChange={(open) => { setOverrideOpen(open); if (!open) setCustomPartName(""); }}>
                 <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 px-2 text-[10px]"
-                  >
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
                     <UserRoundCog className="mr-1 h-3 w-3" />
-                    Určit část
+                    {plan ? "Přegenerovat" : "Určit část"}
                     <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-48 p-1.5" align="end">
+                <PopoverContent className="w-52 p-1.5" align="end">
                   <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
-                    Přepsat automatický výběr:
+                    {plan ? "Nahradí stávající plán:" : "Přepsat automatický výběr:"}
                   </p>
-                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                  <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
                     {registryParts.map((p) => (
                       <button
                         key={p.part_name}
                         onClick={() => {
                           setOverrideOpen(false);
+                          setCustomPartName("");
                           generatePlan(p.part_name);
                         }}
                         className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
@@ -190,54 +189,51 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                       <p className="text-[10px] text-muted-foreground px-2 py-1">Žádné části v registru</p>
                     )}
                   </div>
-                </PopoverContent>
-              </Popover>
-            </>
-          )}
-          {plan && (
-            <>
-              <Popover open={overrideOpen} onOpenChange={setOverrideOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
-                    <UserRoundCog className="mr-1 h-3 w-3" />
-                    Přegenerovat
-                    <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-48 p-1.5" align="end">
-                  <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
-                    Vyber část (nahradí stávající plán):
-                  </p>
-                  <div className="max-h-48 overflow-y-auto space-y-0.5">
-                    {registryParts.map((p) => (
-                      <button
-                        key={p.part_name}
-                        onClick={() => {
-                          setOverrideOpen(false);
-                          generatePlan(p.part_name);
-                        }}
-                        className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
+                  <div className="border-t border-border/60 pt-2 px-1">
+                    <p className="text-[9px] text-muted-foreground mb-1 flex items-center gap-1">
+                      <PenLine className="h-2.5 w-2.5" /> Nebo napiš jméno:
+                    </p>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const name = customPartName.trim();
+                        if (!name) return;
+                        setOverrideOpen(false);
+                        setCustomPartName("");
+                        generatePlan(name);
+                      }}
+                      className="flex gap-1"
+                    >
+                      <input
+                        type="text"
+                        value={customPartName}
+                        onChange={(e) => setCustomPartName(e.target.value)}
+                        placeholder="Jméno části…"
+                        className="flex-1 h-7 rounded border border-border/70 bg-background px-2 text-[11px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      />
+                      <Button
+                        type="submit"
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 px-2 text-[10px]"
+                        disabled={!customPartName.trim()}
                       >
-                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                          p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
-                        }`} />
-                        {p.part_name}
-                        <span className="text-[9px] text-muted-foreground ml-auto">
-                          {p.status === "active" ? "aktivní" : "spící"}
-                        </span>
-                      </button>
-                    ))}
+                        <Zap className="h-3 w-3" />
+                      </Button>
+                    </form>
                   </div>
                 </PopoverContent>
               </Popover>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setExpanded(!expanded)}
-                className="h-7 px-2 text-[10px]"
-              >
-                {expanded ? "Sbalit" : "Rozbalit"}
-              </Button>
+              {plan && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setExpanded(!expanded)}
+                  className="h-7 px-2 text-[10px]"
+                >
+                  {expanded ? "Sbalit" : "Rozbalit"}
+                </Button>
+              )}
             </>
           )}
         </div>
