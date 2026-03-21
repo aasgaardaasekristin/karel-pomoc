@@ -351,18 +351,53 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
     await heartbeat(sb, cycleId, `Načteno ${cardNames.length} karet celkem`);
     console.log(`[weekly] Archive cards done: ${cardNames.length} total`);
 
-    // ── Step 3: Centrum documents ──
+    // ── Step 3: Centrum documents (flat + subfolders) ──
     if (centrumFolderId) {
       const centerFiles = await listFilesInFolder(token, centrumFolderId);
       for (const file of centerFiles) {
         if (file.mimeType === DRIVE_FOLDER_MIME) {
-          if (canonicalText(file.name).includes("dohod")) {
+          const cn = canonicalText(file.name);
+          // 07_DOHODY (or legacy dohod pattern)
+          if (/^07/.test(file.name.trim()) || cn.includes("dohod")) {
             dohodaFolderId = file.id;
             const dohodaFiles = await listFilesInFolder(token, file.id);
             for (const df of dohodaFiles) {
               try {
                 const content = await readFileContent(token, df.id);
                 agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          // 05_PLAN — read both docs as centrum docs
+          if (/^05.*plan/i.test(file.name) || cn.includes("05plan")) {
+            const planFiles = await listFilesInFolder(token, file.id);
+            for (const pf of planFiles) {
+              if (pf.mimeType === DRIVE_FOLDER_MIME) continue;
+              try {
+                const content = await readFileContent(token, pf.id);
+                centrumDocsContent += `\n=== CENTRUM (05_PLAN): ${pf.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          // 06_INTERVENCE — read last N interventions
+          if (/^06.*intervenc/i.test(file.name) || cn.includes("intervenc")) {
+            const interFiles = await listFilesInFolder(token, file.id);
+            const sorted = interFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME).sort((a, b) => b.name.localeCompare(a.name)).slice(0, 5);
+            for (const sf of sorted) {
+              try {
+                const content = await readFileContent(token, sf.id);
+                centrumDocsContent += `\n=== INTERVENCE: ${sf.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          // 09_KNIHOVNA — read as context
+          if (/^09.*knihovn/i.test(file.name) || cn.includes("knihovn")) {
+            const libFiles = await listFilesInFolder(token, file.id);
+            for (const lf of libFiles.slice(0, 5)) {
+              if (lf.mimeType === DRIVE_FOLDER_MIME) continue;
+              try {
+                const content = await readFileContent(token, lf.id);
+                centrumDocsContent += `\n=== KNIHOVNA: ${lf.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
               } catch {}
             }
           }
