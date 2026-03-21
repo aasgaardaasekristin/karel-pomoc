@@ -1,0 +1,179 @@
+import { useCallback, useEffect, useState } from "react";
+import { Target, Loader2, RefreshCw, Zap } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
+import { toast } from "sonner";
+
+interface SessionPlan {
+  id: string;
+  plan_date: string;
+  selected_part: string;
+  urgency_score: number;
+  urgency_breakdown: Record<string, number>;
+  plan_markdown: string;
+  therapist: string;
+  status: string;
+  distributed_drive: boolean;
+  distributed_email: boolean;
+}
+
+interface Props {
+  refreshTrigger: number;
+}
+
+const urgencyLabels: Record<string, string> = {
+  crisis: "Krize",
+  nightmares_flashbacks: "Noční můry",
+  emotional_dysregulation: "Emoční dysregulace",
+  pending_tasks: "Nedokončené úkoly",
+  recent_activity: "Nedávná aktivita",
+  dormant_7d: "Neaktivní >7d",
+  fallback_oldest: "Nejdéle neviděn",
+};
+
+const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
+  const [plan, setPlan] = useState<SessionPlan | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const loadTodayPlan = useCallback(async () => {
+    setLoading(true);
+    try {
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const { data, error } = await (supabase as any)
+        .from("did_daily_session_plans")
+        .select("*")
+        .eq("plan_date", today)
+        .maybeSingle();
+      if (error) throw error;
+      setPlan(data || null);
+    } catch (e) {
+      console.error("Failed to load session plan:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadTodayPlan(); }, [loadTodayPlan, refreshTrigger]);
+
+  const generatePlan = useCallback(async () => {
+    setGenerating(true);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-auto-session-plan`,
+        { method: "POST", headers, body: JSON.stringify({}) }
+      );
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Generování selhalo");
+      if (data.skipped) {
+        toast.info("Plán na dnes už existuje");
+      } else {
+        toast.success(`Plán vygenerován pro ${data.selectedPart} (naléhavost ${data.urgencyScore})`);
+      }
+      await loadTodayPlan();
+    } catch (e: any) {
+      toast.error(e.message || "Generování plánu selhalo");
+    } finally {
+      setGenerating(false);
+    }
+  }, [loadTodayPlan]);
+
+  if (loading) {
+    return (
+      <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm">
+        <div className="flex items-center text-xs text-muted-foreground">
+          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám plán sezení...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+          <Target className="w-3.5 h-3.5 text-primary" />
+          Plán sezení na dnes
+        </h4>
+        <div className="flex items-center gap-1.5">
+          {!plan && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={generatePlan}
+              disabled={generating}
+              className="h-7 px-2 text-[10px]"
+            >
+              {generating ? (
+                <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Generuji...</>
+              ) : (
+                <><Zap className="mr-1 h-3 w-3" /> Vygenerovat</>
+              )}
+            </Button>
+          )}
+          {plan && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded(!expanded)}
+              className="h-7 px-2 text-[10px]"
+            >
+              {expanded ? "Sbalit" : "Rozbalit"}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {!plan ? (
+        <p className="text-[11px] text-muted-foreground">
+          Automatický plán se generuje ve 13:50. Můžeš ho vygenerovat i ručně.
+        </p>
+      ) : (
+        <div>
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-semibold">
+              {plan.selected_part}
+            </Badge>
+            <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+              Naléhavost: {plan.urgency_score}
+            </Badge>
+            {Object.entries(plan.urgency_breakdown || {}).map(([key, val]) => (
+              <Badge key={key} variant="outline" className="text-[9px] h-4 px-1">
+                {urgencyLabels[key] || key} +{val as number}
+              </Badge>
+            ))}
+          </div>
+
+          <div className="flex gap-1.5 mb-2">
+            {plan.distributed_drive && (
+              <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Drive</Badge>
+            )}
+            {plan.distributed_email && (
+              <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Email</Badge>
+            )}
+          </div>
+
+          {expanded && (
+            <div className="mt-2 rounded-md border border-border/60 bg-background/40 p-3 max-h-[400px] overflow-y-auto">
+              <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">
+                {plan.plan_markdown}
+              </p>
+            </div>
+          )}
+
+          {!expanded && (
+            <p className="text-[11px] text-muted-foreground line-clamp-2">
+              {plan.plan_markdown.slice(0, 150)}...
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DidDailySessionPlan;
