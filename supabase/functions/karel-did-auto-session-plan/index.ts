@@ -239,6 +239,21 @@ serve(async (req) => {
 
   const todayPrague = getPragueDate();
 
+  // Get user_id - from auth or fallback to first registry user
+  let userId: string | null = null;
+  if (!isCron) {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user } } = await sb.auth.getUser(token);
+    userId = user?.id || null;
+  }
+  if (!userId) {
+    const { data: firstPart } = await sb.from("did_part_registry").select("user_id").limit(1).maybeSingle();
+    userId = firstPart?.user_id || null;
+  }
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "No user_id found" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   try {
     // Check if plan already exists for today
     const { data: existingPlan } = await sb.from("did_daily_session_plans")
