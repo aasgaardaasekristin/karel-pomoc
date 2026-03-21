@@ -230,6 +230,9 @@ ${recentActivity || "(žádná)"}
 OPERATIVNÍ PLÁN:
 ${operativniPlan || "(nedostupný)"}
 
+ÚKOLY TERAPEUTEK Z DRIVE:
+${therapistTasksFromDrive || "(nedostupné)"}
+
 MOTIVAČNÍ PROFIL ${therapist.toUpperCase()}:
 ${profileInfo}
 
