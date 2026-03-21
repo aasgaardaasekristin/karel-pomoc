@@ -3685,6 +3685,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
                 searchName: resolvedPartName,
                 canonicalPartName: resolvedPartName,
                 registryContext,
+                sectionModes,
               }
             );
             const effectiveAction: CardActionType = result.isNew ? "nova_karta" : target.actionType;
