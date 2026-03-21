@@ -65,14 +65,6 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [customPartName, setCustomPartName] = useState("");
   const [prevSession, setPrevSession] = useState<PreviousSession | null>(null);
   const [prevSessionExpanded, setPrevSessionExpanded] = useState(false);
-  const [plan, setPlan] = useState<SessionPlan | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [genStep, setGenStep] = useState(0);
-  const [expanded, setExpanded] = useState(false);
-  const [registryParts, setRegistryParts] = useState<{ part_name: string; status: string }[]>([]);
-  const [overrideOpen, setOverrideOpen] = useState(false);
-  const [customPartName, setCustomPartName] = useState("");
 
   // Preference dialog state
   const [prefDialogOpen, setPrefDialogOpen] = useState(false);
