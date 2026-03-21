@@ -690,27 +690,56 @@ Pozoruhodné chování: ${(profile.notable_behaviors || []).join(", ") || "–"}
     }
 
     if (state.partUpdateIndex < partUpdates.length) {
-      const token = await getAccessToken();
-      const kartotekaId = await findFolderFuzzy(token, ["kartoteka_DID", "Kartoteka_DID", "KARTOTEKA_DID"]);
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
       const batch = partUpdates.slice(state.partUpdateIndex, state.partUpdateIndex + MIRROR_BATCH.partUpdates);
 
-      if (kartotekaId) {
-        for (const [partName, content] of batch) {
-          const hash = contentHash(content);
-          const searchQ = `name contains '${partName}' and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
-          const params = new URLSearchParams({ q: searchQ, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-          const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-          const data = await res.json();
-          const partDoc = data.files?.[0];
-          if (partDoc) {
-            const existing = await readDoc(token, partDoc.id);
-            if (existing.includes(`[KHASH:${hash}]`)) {
-              state.driveUpdates.push(`KARTOTEKA/${partName} (dedup)`);
-              continue;
+      for (const [partName, content] of batch) {
+        if (!partName || !content) continue;
+        try {
+          // Parse content for [SEKCE:X] / [SEKCE:X:REPLACE] / [SEKCE:X:ROTATE] tags
+          const sectionRegex = /\[SEKCE:([A-M])(?::(\w+))?\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
+          const sections: Record<string, string> = {};
+          const sectionModes: Record<string, string> = {};
+          let match;
+          let hasSections = false;
+
+          while ((match = sectionRegex.exec(content)) !== null) {
+            const letter = match[1].toUpperCase();
+            const mode = (match[2] || "APPEND").toUpperCase();
+            const text = match[3].trim();
+            if (text) {
+              sections[letter] = text;
+              sectionModes[letter] = mode;
+              hasSections = true;
             }
-            await updateDoc(token, partDoc.id, `${existing}\n\n═══ Karel – zrcadlení (${new Date().toISOString().slice(0, 10)}) [KHASH:${hash}] ═══\n${content}`);
-            state.driveUpdates.push(`KARTOTEKA/${partName}`);
           }
+
+          if (!hasSections) {
+            // Fallback: treat entire content as section A append
+            sections["A"] = content;
+            sectionModes["A"] = "APPEND";
+          }
+
+          // Route through karel-did-drive-write for proper REPLACE/APPEND handling
+          const writeRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+            body: JSON.stringify({ mode: "update-card-sections", partName, sections, sectionModes }),
+          });
+          const writeResult = await writeRes.json();
+
+          if (writeRes.ok && writeResult.success) {
+            const modes = Object.entries(sectionModes).map(([k, v]) => `${k}:${v}`).join(",");
+            state.driveUpdates.push(`KARTOTEKA/${partName} (${modes})`);
+            console.log(`[mirror] Card updated via drive-write: ${partName}, sections: ${Object.keys(sections).join(",")}, modes: ${modes}`);
+          } else {
+            console.warn(`[mirror] drive-write failed for ${partName}:`, writeResult.error || writeResult);
+            state.driveUpdates.push(`KARTOTEKA/${partName} (FAILED: ${writeResult.error?.slice?.(0, 80) || "unknown"})`);
+          }
+        } catch (e) {
+          console.warn(`[mirror] Part update error for ${partName}:`, e);
+          state.driveUpdates.push(`KARTOTEKA/${partName} (ERROR)`);
         }
       }
 
@@ -1280,7 +1309,7 @@ ${entities.map((e: any) => `${e.jmeno}(${e.typ})`).join(", ")}
 ${driveDigest.slice(0, 12000)}
 
 Vrať JSON:
-{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"JMÉNO_ČÁSTI","bond_type":"mateřský/ochranitelský/nostalgický/partnerský/empatický/jiný","description":"Karlova dedukce: co citová vazba odhaluje o terapeutce (countertransference vzorec)","therapeutic_implication":"jak to ovlivní terapii, co Karel doporučuje"}]},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"...","bond_type":"...","description":"...","therapeutic_implication":"..."}]}}},"kartoteka_did":{"part_updates":{"name":"text pro kartu části — ZAHRŇ pozorování terapeutky jako klinický záznam (co terapeutka řekla O části, její popis chování části, nikoli surové citáty ale analytické shrnutí)"},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_full":"KOMPLETNÍ 7-sekční Dashboard (viz instrukce níže)","operative_plan_full":"KOMPLETNÍ 6-sekční Operativní plán (viz instrukce níže)","geography_notes":"...","relationships_notes":"..."},"synthesis_summary":"..."}
+{"pamet_karel":{"entity_updates":[{"id":"...","jmeno":"...","typ":"clovek","role_vuci_hance":"...","new_properties":["..."],"new_notes":"..."}],"pattern_updates":[{"id":"TERAPEUT_vzorec_id","description":"vzorec chování TERAPEUTKY","domain":"THERAPIST","tags":["hanka|kata","osobnost|motivace|styl"],"confidence_delta":0.1}],"relation_updates":[{"subject_id":"...","relation":"...","object_id":"...","description":"..."}],"strategy_updates":[{"id":"TERAPEUT_strategie_id","description":"strategie komunikace Karla s TERAPEUTKOU","domain":"THERAPIST","hana_state":"...","effectiveness_delta":0.1,"new_guidelines":["..."]}],"therapist_situational_profile":{"hanka":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"JMÉNO_ČÁSTI","bond_type":"mateřský/ochranitelský/nostalgický/partnerský/empatický/jiný","description":"Karlova dedukce: co citová vazba odhaluje o terapeutce (countertransference vzorec)","therapeutic_implication":"jak to ovlivní terapii, co Karel doporučuje"}]},"kata":{"current_mood":"...","energy_level":"...","life_challenges":["..."],"recent_behaviors":["..."],"recommended_approach":"...","personality_traits":["..."],"strengths_observed":["..."],"weaknesses_observed":["..."],"current_challenges":["..."],"notable_behaviors":["..."],"part_emotional_bonds":[{"part_name":"...","bond_type":"...","description":"...","therapeutic_implication":"..."}]}}},"kartoteka_did":{"part_updates":{"JMENO_CASTI":"[SEKCE:A:REPLACE] kompletní aktuální stav\n[SEKCE:A] doplňkový append pro vztahy/mechanismy\n[SEKCE:B:REPLACE] kompletní profilace\n[SEKCE:C:REPLACE] kompletní potřeby/strachy\n[SEKCE:E] nový záznam\n[SEKCE:L:REPLACE] kompletní aktivita — POUŽÍVEJ TAGY [SEKCE:X:REPLACE] pro sekce které se mají přepsat a [SEKCE:X] pro append. Sekce A(stav),B,C,D,F,J,L,M = REPLACE. Sekce E,G,H,I,K = APPEND."},"new_parts":[{"name":"...","sections":{"A":"..."},"status":"active","cluster":"nově detekovaný","confidence":0.9,"evidence":["..."]}]},"zaloha":{"client_updates":{"name":"notes"}},"new_tasks":[{"task":"...","assigned_to":"...","priority":"...","category":"...","reasoning":"..."}],"centrum_updates":{"dashboard_full":"KOMPLETNÍ 7-sekční Dashboard (viz instrukce níže)","operative_plan_full":"KOMPLETNÍ 6-sekční Operativní plán (viz instrukce níže)","geography_notes":"...","relationships_notes":"..."},"synthesis_summary":"..."}
 
 ═══ INSTRUKCE PRO CENTRUM DOKUMENTY ═══
 
