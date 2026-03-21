@@ -332,6 +332,9 @@ Co je potřeba probrat s Káťou
 ▸ Úroveň spolupráce, kde to vázne, co jde dobře
 ▸ Přímé otázky ohledně konkrétních zaseklých úkolů
 
+${todaySessionPlan ? `<h3>🎯 PLÁN SEZENÍ NA DNES:</h3>
+Součástí dat je automaticky vygenerovaný plán sezení. ZAHRŇ ho do briefingu jako vlastní sekci s klíčovými body plánu (část, cíl, aktivity, na co dát pozor). Neopisuj celý plán, shrň klíčové body.` : ""}
+
 ${weeklySummary ? "<h3>📊 STŘEDNĚDOBÝ KONTEXT (z týdenní analýzy):</h3>\nKlíčové body z poslední týdenní analýzy relevantní pro dnešek." : ""}
 
 Podpis: "Karel – vedoucí DID terapeutického týmu"
