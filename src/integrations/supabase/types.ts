@@ -781,6 +781,7 @@ export type Database = {
           ai_analysis: string | null
           audio_analysis: string | null
           created_at: string
+          handoff_note: string | null
           id: string
           image_analysis: string | null
           karel_notes: string | null
@@ -804,6 +805,7 @@ export type Database = {
           ai_analysis?: string | null
           audio_analysis?: string | null
           created_at?: string
+          handoff_note?: string | null
           id?: string
           image_analysis?: string | null
           karel_notes?: string | null
@@ -827,6 +829,7 @@ export type Database = {
           ai_analysis?: string | null
           audio_analysis?: string | null
           created_at?: string
+          handoff_note?: string | null
           id?: string
           image_analysis?: string | null
           karel_notes?: string | null
