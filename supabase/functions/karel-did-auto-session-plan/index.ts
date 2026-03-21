@@ -438,9 +438,9 @@ NIKDY nepoužívej dechová cvičení. Klientka má epilepsii.
 Formát: Markdown, česky. Začni ## 🛡️ Stabilizační plán sezení (60 min)`
       : `Jsi Karel, top-tier AI terapeut pro DID. Automaticky sestavuješ DENNÍ PLÁN SEZENÍ.
 
-Vybraná část: "${selectedPart.partName}" (skóre naléhavosti: ${selectedPart.score})
+Vybraná část: "${selectedPart.partName}" (skóre naléhavosti: ${selectedPart.score}, tier: ${selectedPart.tier})
 Důvody výběru: ${Object.entries(selectedPart.breakdown).map(([k, v]) => `${k}: +${v}`).join(", ")}
-${isDormant ? `\n⚠️ DORMANCY GUARD: Část "${selectedPart.partName}" je SPÍCÍ (status: ${partReg?.status}). Plán MUSÍ začít AKTIVAČNÍ STRATEGIÍ. Nepředpokládej okamžitou responzivitu.\n` : ""}
+${selectedPart.tier === "fading" ? `\n🔶 FADING ALERT: Část "${selectedPart.partName}" byla aktivní v posledních 3 dnech, ale posledních 24h se ODMLČELA. Plán musí zohlednit možné důvody odmlčení a strategii jemného obnovení kontaktu.\n` : ""}${selectedPart.tier === "sleeping" ? `\n⚠️ DORMANCY GUARD: Část "${selectedPart.partName}" je SPÍCÍ/DORMANTNÍ (status: ${partReg?.status}). Plán MUSÍ začít AKTIVAČNÍ STRATEGIÍ. Nepředpokládej okamžitou responzivitu.\n` : ""}${selectedPart.tier === "override" ? `\n✅ THERAPIST OVERRIDE: Terapeutka explicitně zvolila "${selectedPart.partName}" pro dnešní sezení.\n` : ""}
 
 PRAVIDLA:
 - NIKDY nepoužívej dechová cvičení — klientka má epilepsii
