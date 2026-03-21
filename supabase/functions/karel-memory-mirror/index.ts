@@ -927,7 +927,7 @@ Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověřen
       return { status: "processing", phase: "drive_clients", summary: `Záloha klientů ${state.clientUpdateIndex}/${clientUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    await finalizeMirrorJob({ sb, jobId, payload, state });
+    await finalizeMirrorJob({ sb, userId, jobId, payload, state });
     return { status: "done", phase: "done", summary: extractedInfo?.synthesis_summary || "Zrcadlení dokončeno", progress: getMirrorProgress(payload, state) };
   } catch (bgError) {
     console.error("[mirror-batch] Error:", bgError);
