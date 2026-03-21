@@ -966,6 +966,33 @@ export type Database = {
         }
         Relationships: []
       }
+      did_supervision_reports: {
+        Row: {
+          created_at: string
+          id: string
+          meta_json: Json
+          period_days: number
+          report_markdown: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          meta_json?: Json
+          period_days?: number
+          report_markdown: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          meta_json?: Json
+          period_days?: number
+          report_markdown?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_system_profile: {
         Row: {
           created_at: string
