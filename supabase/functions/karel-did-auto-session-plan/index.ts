@@ -348,19 +348,21 @@ serve(async (req) => {
     // ═══ THERAPIST OVERRIDE ═══
     let selectedPart: UrgencyResult;
     if (forcePart) {
-      const partExists = registry.find(p => p.part_name.toLowerCase() === forcePart!.toLowerCase());
-      if (!partExists) {
-        return new Response(JSON.stringify({ error: `Část "${forcePart}" nenalezena v registru` }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+      // Try case-insensitive match, also try canonical (no diacritics)
+      const forceCanon = canonicalText(forcePart);
+      const partExists = registry.find(p =>
+        p.part_name.toLowerCase() === forcePart!.toLowerCase() ||
+        canonicalText(p.part_name) === forceCanon
+      );
+      const resolvedName = partExists ? partExists.part_name : forcePart;
       selectedPart = {
-        partName: partExists.part_name,
+        partName: resolvedName,
         score: 99,
         breakdown: { therapist_override: 99 },
         tier: "override",
       };
-      console.log(`[auto-session-plan] Therapist override: ${partExists.part_name}`);
+      console.log(`[auto-session-plan] Therapist override: ${resolvedName}${partExists ? "" : " (not in registry, custom name)"}`);
+
     } else {
       selectedPart = scores[0];
       if (!selectedPart || selectedPart.score === 0) {
