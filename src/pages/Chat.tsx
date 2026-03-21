@@ -908,30 +908,7 @@ const Chat = () => {
         });
         
         if (response.ok && response.body) {
-          // Read the streamed response to completion to extract research context
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let researchContent = "";
-          let buffer = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let idx: number;
-            while ((idx = buffer.indexOf("\n")) !== -1) {
-              let line = buffer.slice(0, idx);
-              buffer = buffer.slice(idx + 1);
-              if (line.endsWith("\r")) line = line.slice(0, -1);
-              if (!line.startsWith("data: ")) continue;
-              const jsonStr = line.slice(6).trim();
-              if (jsonStr === "[DONE]") break;
-              try {
-                const parsed = JSON.parse(jsonStr);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) researchContent += content;
-              } catch {}
-            }
-          }
+          const researchContent = await parseSSEStream(response.body, () => {});
           if (researchContent) {
             setDidInitialContext(prev => prev + "\n\n[Předběžný výzkum k tématu]\n" + researchContent.slice(0, 3000));
           }
