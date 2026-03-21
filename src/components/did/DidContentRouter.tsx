@@ -104,7 +104,7 @@ export interface DidContentRouterProps {
   isHandbookLoading: boolean;
   audioRecorder: any;
   attachments: any[];
-  removeAttachment: (index: number) => void;
+  removeAttachment: (id: string) => void;
   openFilePicker: () => void;
   captureScreenshot: () => void;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
