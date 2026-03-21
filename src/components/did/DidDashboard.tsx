@@ -15,6 +15,7 @@ import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
+import DidSupervisionReport from "./DidSupervisionReport";
 
 interface PartActivity {
   name: string;
@@ -267,6 +268,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
         </div>
 
         <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+
+        <DidSupervisionReport refreshTrigger={refreshTrigger} />
 
         <div className="mb-4">
           <DidColleagueView refreshTrigger={refreshTrigger} />
