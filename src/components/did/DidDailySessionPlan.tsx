@@ -497,45 +497,40 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         {plan && (
           <div>
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-semibold">
+              <Badge variant="secondary" className="text-[11px] h-5 px-2 font-semibold">
                 {plan.selected_part}
               </Badge>
-              <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                Naléhavost: {plan.urgency_score}
-              </Badge>
-              {Object.entries(plan.urgency_breakdown || {}).map(([key, val]) => (
-                <Badge key={key} variant="outline" className="text-[9px] h-4 px-1">
-                  {urgencyLabels[key] || key} +{val as number}
-                </Badge>
-              ))}
-            </div>
+              <span className={`h-2 w-2 rounded-full shrink-0 ${
+                plan.urgency_score >= 70 ? "bg-destructive" : plan.urgency_score >= 40 ? "bg-amber-500" : "bg-primary"
+              }`} title={`Naléhavost: ${plan.urgency_score}`} />
 
-            {/* ═══ STATUS INDICATOR + LIFECYCLE BUTTONS ═══ */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-2">
               {plan.status === "generated" && (
-                <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
-                  <Clock className="mr-1 h-2.5 w-2.5" /> Naplánováno
+                <Badge variant="outline" className="text-[11px] h-5 px-2 border-amber-500/50 text-amber-600">
+                  <Clock className="mr-1 h-3 w-3" /> Naplánováno
                 </Badge>
               )}
               {plan.status === "in_progress" && (
-                <Badge className="text-[10px] h-5 px-1.5 bg-primary/20 text-primary border border-primary/30">
-                  <Play className="mr-1 h-2.5 w-2.5" /> Probíhá
+                <Badge className="text-[11px] h-5 px-2 bg-primary/20 text-primary border border-primary/30">
+                  <Play className="mr-1 h-3 w-3" /> Probíhá
                 </Badge>
               )}
               {plan.status === "done" && (
-                <Badge className="text-[10px] h-5 px-1.5 bg-green-500/20 text-green-700 border border-green-500/30">
-                  <CheckCircle2 className="mr-1 h-2.5 w-2.5" /> Dokončeno
+                <Badge className="text-[11px] h-5 px-2 bg-green-500/20 text-green-700 border border-green-500/30">
+                  <CheckCircle2 className="mr-1 h-3 w-3" /> Dokončeno
                 </Badge>
               )}
+            </div>
 
+            {/* ═══ LIFECYCLE BUTTONS ═══ */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
               {plan.status === "generated" && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={startSession}
-                  className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
+                  className="h-7 px-2.5 text-[11px] border-primary/40 text-primary hover:bg-primary/10"
                 >
-                  <Play className="mr-1 h-2.5 w-2.5" /> Zahájit sezení
+                  <Play className="mr-1 h-3 w-3" /> Zahájit sezení
                 </Button>
               )}
               {plan.status === "in_progress" && (
@@ -543,9 +538,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                   variant="outline"
                   size="sm"
                   onClick={() => setLiveSessionActive(true)}
-                  className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
+                  className="h-7 px-2.5 text-[11px] border-primary/40 text-primary hover:bg-primary/10"
                 >
-                  <Play className="mr-1 h-2.5 w-2.5" /> Otevřít live asistenci
+                  <Play className="mr-1 h-3 w-3" /> Otevřít live asistenci
                 </Button>
               )}
               {plan.status === "in_progress" && (
@@ -553,9 +548,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                   variant="outline"
                   size="sm"
                   onClick={endSession}
-                  className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10"
+                  className="h-7 px-2.5 text-[11px] border-green-500/40 text-green-700 hover:bg-green-500/10"
                 >
-                  <Square className="mr-1 h-2.5 w-2.5" /> Ukončit sezení
+                  <Square className="mr-1 h-3 w-3" /> Ukončit sezení
                 </Button>
               )}
               {plan.status === "done" && (
@@ -563,31 +558,25 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                   variant="ghost"
                   size="sm"
                   onClick={revertStatus}
-                  className="h-6 px-2 text-[10px] text-muted-foreground"
+                  className="h-7 px-2.5 text-[11px] text-muted-foreground"
                 >
                   ↩ Vrátit
                 </Button>
               )}
-
-              {plan.distributed_drive && (
-                <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Drive</Badge>
-              )}
-              {plan.distributed_email && (
-                <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Email</Badge>
-              )}
             </div>
 
             {expanded && (
-              <div className="mt-2 rounded-md border border-border/60 bg-background/40 p-3 max-h-[400px] overflow-y-auto">
-                <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">
-                  {plan.plan_markdown}
-                </p>
+              <div className="mt-2 rounded-md border border-border/60 bg-background/40 p-3 max-h-[400px] overflow-y-auto session-plan-content">
+                <div
+                  className="text-[11px] leading-5 text-foreground"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
+                />
               </div>
             )}
 
             {!expanded && (
               <p className="text-[11px] text-muted-foreground line-clamp-2">
-              {plan.plan_markdown.slice(0, 150)}...
+              {plan.plan_markdown.replace(/[#*\-]/g, '').slice(0, 150)}…
               </p>
             )}
 
