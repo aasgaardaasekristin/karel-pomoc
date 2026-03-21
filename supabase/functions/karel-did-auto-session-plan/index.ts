@@ -90,16 +90,24 @@ function getPragueDate(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
 }
 
-// ═══ Urgency scoring ═══
+// ═══ Urgency scoring v2 ═══
+// Priority tiers:
+//   1. FADING: was active (cast thread) in last 3d but silent last 24h → highest (+6)
+//   2. ACTIVE: has cast thread in last 3d → high (+4)
+//   3. SLEEPING: no cast thread in 3d → allowed but lower (+1 max from dormancy)
+//   Therapist override bypasses all scoring.
+
 interface UrgencyResult {
   partName: string;
   score: number;
   breakdown: Record<string, number>;
+  tier: "fading" | "active" | "sleeping" | "override";
 }
 
 function calculateUrgencyScores(
   registry: any[],
-  threads24h: any[],
+  threads3d: any[],   // cast threads from last 3 days
+  threads24h: any[],  // cast threads from last 24h
   crisisBriefs24h: any[],
   pendingTasks: any[],
   sessions: any[],
@@ -107,10 +115,9 @@ function calculateUrgencyScores(
   const now = Date.now();
   const DAY = 24 * 60 * 60 * 1000;
 
-  // Index crisis briefs - check if any part mentioned
+  // Crisis briefs mentioning parts
   const crisisPartNames = new Set<string>();
   for (const brief of crisisBriefs24h) {
-    // Crisis briefs don't have part_name directly, but scenario may mention parts
     for (const part of registry) {
       if (brief.scenario?.toLowerCase().includes(part.part_name.toLowerCase()) ||
           brief.raw_brief?.toLowerCase().includes(part.part_name.toLowerCase())) {
@@ -119,17 +126,22 @@ function calculateUrgencyScores(
     }
   }
 
-  // Index recent threads by part
-  const recentThreadParts = new Set<string>();
-  for (const t of threads24h) {
-    if (t.sub_mode === "cast") recentThreadParts.add(t.part_name);
+  // Direct activity (cast mode) in last 3 days
+  const activeParts3d = new Set<string>();
+  for (const t of threads3d) {
+    if (t.sub_mode === "cast") activeParts3d.add(t.part_name);
   }
 
-  // Index pending tasks by part
+  // Direct activity (cast mode) in last 24h
+  const activeParts24h = new Set<string>();
+  for (const t of threads24h) {
+    if (t.sub_mode === "cast") activeParts24h.add(t.part_name);
+  }
+
+  // Pending tasks by part
   const tasksByPart = new Map<string, number>();
   for (const t of pendingTasks) {
     const cat = t.category || "";
-    // Try to match part name from task text or category
     for (const part of registry) {
       if (t.task?.toLowerCase().includes(part.part_name.toLowerCase()) || cat.toLowerCase().includes(part.part_name.toLowerCase())) {
         tasksByPart.set(part.part_name, (tasksByPart.get(part.part_name) || 0) + 1);
@@ -137,25 +149,44 @@ function calculateUrgencyScores(
     }
   }
 
-  // Index sessions by part (last 7 days)
-  const lastSessionByPart = new Map<string, string>();
-  for (const s of sessions) {
-    if (!lastSessionByPart.has(s.part_name)) {
-      lastSessionByPart.set(s.part_name, s.session_date);
-    }
-  }
-
   return registry.map(part => {
     const breakdown: Record<string, number> = {};
     let score = 0;
 
-    // Krizový stav +5
+    const wasActive3d = activeParts3d.has(part.part_name);
+    const isActive24h = activeParts24h.has(part.part_name);
+
+    // Determine tier
+    let tier: "fading" | "active" | "sleeping";
+    if (wasActive3d && !isActive24h) {
+      tier = "fading";
+      // FADING: was active in 3d, silent now → HIGHEST priority
+      breakdown["fading_alert"] = 6;
+      score += 6;
+    } else if (wasActive3d) {
+      tier = "active";
+      // ACTIVE: currently communicating
+      breakdown["active_3d"] = 4;
+      score += 4;
+    } else {
+      tier = "sleeping";
+      // SLEEPING: no direct activity in 3d
+      // Still allowed but much lower base
+      const lastSeen = part.last_seen_at ? new Date(part.last_seen_at).getTime() : 0;
+      const daysSinceLastSeen = lastSeen ? (now - lastSeen) / DAY : Infinity;
+      if (daysSinceLastSeen > 7) {
+        breakdown["dormant_7d"] = 1;
+        score += 1;
+      }
+    }
+
+    // Crisis bonus (any tier)
     if (crisisPartNames.has(part.part_name)) {
       breakdown["crisis"] = 5;
       score += 5;
     }
 
-    // Noční můry / flashbacky +4
+    // Nightmares/flashbacks
     const triggers = (part.known_triggers || []).map((t: string) => t.toLowerCase());
     const hasNightmares = triggers.some((t: string) => t.includes("noční") || t.includes("flashback") || t.includes("nightmare"));
     const emoState = (part.last_emotional_state || "").toLowerCase();
@@ -164,34 +195,26 @@ function calculateUrgencyScores(
       score += 4;
     }
 
-    // Emoční dysregulace +3
+    // Emotional dysregulation
     if ((part.last_emotional_intensity || 0) >= 4) {
       breakdown["emotional_dysregulation"] = 3;
       score += 3;
     }
 
-    // Nedokončený úkol +2
+    // Pending tasks
     if ((tasksByPart.get(part.part_name) || 0) > 0) {
       breakdown["pending_tasks"] = 2;
       score += 2;
     }
 
-    // Nedávná aktivita (24h) +2
-    if (recentThreadParts.has(part.part_name)) {
-      breakdown["recent_activity"] = 2;
-      score += 2;
-    }
-
-    // Spící část >7 dní +1
-    const lastSeen = part.last_seen_at ? new Date(part.last_seen_at).getTime() : 0;
-    const daysSinceLastSeen = lastSeen ? (now - lastSeen) / DAY : Infinity;
-    if (daysSinceLastSeen > 7 && part.status !== "active") {
-      breakdown["dormant_7d"] = 1;
-      score += 1;
-    }
-
-    return { partName: part.part_name, score, breakdown };
-  }).sort((a, b) => b.score - a.score);
+    return { partName: part.part_name, score, breakdown, tier };
+  }).sort((a, b) => {
+    // Sort by tier priority first, then score
+    const tierOrder = { fading: 0, active: 1, sleeping: 2, override: -1 };
+    const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
+    if (tierDiff !== 0) return tierDiff;
+    return b.score - a.score;
+  });
 }
 
 // ═══ Perplexity research ═══
