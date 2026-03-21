@@ -240,11 +240,11 @@ async function loadRegistryContext(token: string, rootFolderId: string): Promise
   const clusterFolderId = pick((c, r) => /^02/.test(r.trim()) || c.includes("klastr") || c.includes("rodokmen"));
   const archiveFolderId = pick((c, r) => /^03/.test(r.trim()) || (c.includes("archiv") && /spic|spis/.test(c)));
 
-  // Find 06_Terapeuticke_Dohody subfolder inside 00_CENTRUM
+  // Find 07_DOHODY subfolder inside 00_CENTRUM (new architecture)
   let agreementsFolderId: string | null = null;
   if (centerFolderId) {
     const centerFiles = await listFilesInFolder(token, centerFolderId);
-    const agFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^06/.test(f.name.trim()) || canonicalText(f.name).includes("dohod")));
+    const agFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^07/.test(f.name.trim()) || canonicalText(f.name).includes("dohod")));
     agreementsFolderId = agFolder?.id || null;
   }
 
