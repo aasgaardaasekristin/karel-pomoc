@@ -89,26 +89,47 @@ ${contextBrief ? `📋 *Mám nastudovaný kontext – vím, kde jsme naposledy s
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [messages]);
 
+  const detectSwitch = useCallback((text: string) => {
+    const switchMatch = text.match(/\[SWITCH:([^\]]+)\]/);
+    if (switchMatch) {
+      const newPart = switchMatch[1].trim();
+      if (newPart && newPart.toLowerCase() !== activePart.toLowerCase()) {
+        const entry = { from: activePart, to: newPart, time: new Date().toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" }) };
+        setSwitchLog(prev => [...prev, entry]);
+        setActivePart(newPart);
+        setSwitchFlash(true);
+        setTimeout(() => setSwitchFlash(false), 2000);
+        toast.info(`⚡ Switch: ${entry.from} → ${entry.to}`);
+      }
+      return text.replace(/\[SWITCH:[^\]]+\]/g, "").trim();
+    }
+    return text;
+  }, [activePart]);
+
   const buildContext = useCallback(() => {
+    const switchHistory = switchLog.length > 0
+      ? `\nHISTORIE SWITCHŮ V TOMTO SEZENÍ:\n${switchLog.map(s => `${s.time}: ${s.from} → ${s.to}`).join("\n")}\n`
+      : "";
     return `═══ LIVE DID SEZENÍ ═══
-Část: ${partName}
+Část: ${activePart} (původně: ${partName})
 Terapeutka: ${therapistName}
 Čas: ${new Date().toISOString()}
-
+${switchHistory}
 ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
 ═══ INSTRUKCE ═══
-- Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${partName}".
-- ${therapistName} ti píše, co ${partName} říká/dělá, nebo posílá audio segmenty.
+- Jsi Karel, kognitivní agent PŘÍTOMNÝ na živém sezení s DID částí "${activePart}".
+- ${therapistName} ti píše, co ${activePart} říká/dělá, nebo posílá audio segmenty.
 - Odpovídej OKAMŽITĚ a STRUČNĚ (3-5 řádků max):
-  🎯 Co říct ${partName} (přesná věta, respektuj jazyk a věk části)
+  🎯 Co říct ${activePart} (přesná věta, respektuj jazyk a věk části)
   👀 Na co si dát pozor (neverbální signály, switching, disociace)
   ⚠️ Rizika/varování (trigger, freeze, regrese)
   🎮 Další krok (technika, aktivita, uklidnění)
 - Pokud dostaneš audio analýzu, reaguj na zjištění z hlasu (tenze, emoce, switching).
 - Buď direktivní a konkrétní. Žádné filozofování.
 - Respektuj věk a vývojovou úroveň části.
-- Při známkách distresu nebo switchingu OKAMŽITĚ upozorni.`;
-  }, [partName, therapistName, contextBrief]);
+- Při známkách distresu nebo switchingu OKAMŽITĚ upozorni.
+- Pokud detekuješ SWITCH (změnu identity/části), označ to tagem [SWITCH:JMÉNO_NOVÉ_ČÁSTI] na konci odpovědi.`;
+  }, [partName, activePart, therapistName, contextBrief, switchLog]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
