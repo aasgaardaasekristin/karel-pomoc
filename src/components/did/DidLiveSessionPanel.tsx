@@ -478,7 +478,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           {recorder.state === "recording" && (
             <div className="flex items-center gap-2 bg-destructive/5 rounded-lg px-3 py-1.5">
               <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
-              <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)}</span>
+              <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)} / {formatDuration(recorder.maxDuration)}</span>
               <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-1.5 w-20" />
               <Button variant="ghost" size="sm" onClick={recorder.pauseRecording} className="h-7 w-7 p-0">
                 <Pause className="w-3.5 h-3.5" />
