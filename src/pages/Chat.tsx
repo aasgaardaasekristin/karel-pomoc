@@ -40,6 +40,7 @@ import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
 import LiveSessionPanel from "@/components/report/LiveSessionPanel";
 import DidLiveSessionPanel from "@/components/did/DidLiveSessionPanel";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import DidPartSelector from "@/components/did/DidPartSelector";
 import DidPartCard from "@/components/did/DidPartCard";
 import PostSessionTools from "@/components/report/PostSessionTools";
@@ -1769,7 +1770,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if (didFlowState === "terapeut" && !didSubMode) {
       return (
         <ScrollArea className="flex-1">
-          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
+          <ErrorBoundary fallbackTitle="Dashboard selhal">
+            <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
+          </ErrorBoundary>
           <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
             <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
             <div className="space-y-2">
@@ -1901,23 +1904,25 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
       // Step 3: Live session panel
       return (
-        <DidLiveSessionPanel
-          partName={didLiveSession.partName}
-          therapistName={didLiveSession.therapistName}
-          contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
-          onEnd={(summary) => {
-            toast.success("DID sezení zpracováno");
-            setDidLiveSession(null);
-            setDidLiveSessionReady(false);
-            setDidLivePartContext("");
-            setDidSubMode("mamka");
-            setDidFlowState("chat");
-            setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
-          }}
-          onBack={() => {
-            setDidLiveSessionReady(false);
-          }}
-        />
+        <ErrorBoundary fallbackTitle="Live session panel selhal">
+          <DidLiveSessionPanel
+            partName={didLiveSession.partName}
+            therapistName={didLiveSession.therapistName}
+            contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
+            onEnd={(summary) => {
+              toast.success("DID sezení zpracováno");
+              setDidLiveSession(null);
+              setDidLiveSessionReady(false);
+              setDidLivePartContext("");
+              setDidSubMode("mamka");
+              setDidFlowState("chat");
+              setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
+            }}
+            onBack={() => {
+              setDidLiveSessionReady(false);
+            }}
+          />
+        </ErrorBoundary>
       );
     }
 
