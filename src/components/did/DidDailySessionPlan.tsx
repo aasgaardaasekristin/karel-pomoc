@@ -259,11 +259,45 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         .update({ status: "generated", updated_at: new Date().toISOString() })
         .eq("id", plan.id);
       setPlan(prev => prev ? { ...prev, status: "generated" } : null);
+      setLiveSessionActive(false);
       toast.success("Stav vrácen na Naplánováno");
     } catch (e: any) {
       toast.error("Nepodařilo se změnit stav");
     }
   }, [plan]);
+
+  // ═══ LIVE SESSION END HANDLER ═══
+  const handleLiveSessionEnd = useCallback(async (summary: string) => {
+    setLiveSessionActive(false);
+    if (!plan) return;
+
+    // Save AI analysis to session record
+    try {
+      const { data: sessionRow } = await supabase
+        .from("did_part_sessions")
+        .select("id")
+        .eq("part_name", plan.selected_part)
+        .eq("session_date", plan.plan_date)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (sessionRow) {
+        await supabase
+          .from("did_part_sessions")
+          .update({
+            ai_analysis: summary,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sessionRow.id);
+      }
+    } catch (e) {
+      console.error("Failed to save AI analysis:", e);
+    }
+
+    // Run existing endSession logic (Drive write + status update)
+    await endSession();
+  }, [plan, endSession]);
 
   if (loading) {
     return (
