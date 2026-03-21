@@ -48,6 +48,11 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const audioSegmentCountRef = useRef(0);
   const imageSegmentCountRef = useRef(0);
 
+  // Switch detection state
+  const [activePart, setActivePart] = useState(partName);
+  const [switchLog, setSwitchLog] = useState<{ from: string; to: string; time: string }[]>([]);
+  const [switchFlash, setSwitchFlash] = useState(false);
+
   // Reflection dialog state
   const [showReflection, setShowReflection] = useState(false);
   const [reflectionEmotions, setReflectionEmotions] = useState<string[]>([]);
