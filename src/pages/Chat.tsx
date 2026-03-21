@@ -22,13 +22,7 @@ import SupervisionChat from "@/components/report/SupervisionChat";
 import CrisisBriefPanel from "@/components/CrisisBriefPanel";
 import DidSubModeSelector from "@/components/did/DidSubModeSelector";
 import DidEntryScreen from "@/components/did/DidEntryScreen";
-import DidPinEntry from "@/components/did/DidPinEntry";
-import DidTherapistThreads from "@/components/did/DidTherapistThreads";
 import DidConversationHistory from "@/components/did/DidConversationHistory";
-import DidActionButtons from "@/components/did/DidActionButtons";
-import DidDashboard from "@/components/did/DidDashboard";
-import DidThreadList from "@/components/did/DidThreadList";
-import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import type { DidSubMode } from "@/components/did/DidSubModeSelector";
 import { useChatContext } from "@/contexts/ChatContext";
 import { useConversationHistory } from "@/hooks/useConversationHistory";
@@ -38,25 +32,35 @@ import StudyMaterialPanel from "@/components/StudyMaterialPanel";
 import HanaChat from "@/components/hana/HanaChat";
 import ClientSummaryCard from "@/components/report/ClientSummaryCard";
 import LiveSessionPanel from "@/components/report/LiveSessionPanel";
-import DidLiveSessionPanel from "@/components/did/DidLiveSessionPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import DidPartSelector from "@/components/did/DidPartSelector";
-import DidPartCard from "@/components/did/DidPartCard";
 import PostSessionTools from "@/components/report/PostSessionTools";
 import ResearchThreadList from "@/components/research/ResearchThreadList";
 import ResearchNewTopicDialog from "@/components/research/ResearchNewTopicDialog";
 import { useResearchThreads, type ResearchThread } from "@/hooks/useResearchThreads";
-import DidMeetingPanel from "@/components/did/DidMeetingPanel";
-import DidRegistryOverview from "@/components/did/DidRegistryOverview";
-import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useManualUpdate } from "@/hooks/useManualUpdate";
+import DidContentRouter from "@/components/did/DidContentRouter";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY,
   getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
   parseSSEStream, WELCOME_MESSAGES,
 } from "@/lib/chatHelpers";
+
+const LoadingSkeleton = () => (
+  <div className="flex justify-start">
+    <div className="chat-message-assistant">
+      <div className="flex items-center gap-3">
+        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        <div className="space-y-2 flex-1">
+          <div className="h-3 bg-muted rounded animate-pulse w-48" />
+          <div className="h-3 bg-muted rounded animate-pulse w-32" />
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 const Chat = () => {
   const {
@@ -107,8 +111,6 @@ const Chat = () => {
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const [isFileAnalyzing, setIsFileAnalyzing] = useState(false);
   const [isDidResearchLoading, setIsDidResearchLoading] = useState(false);
-  const [isManualUpdateLoading, setIsManualUpdateLoading] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [isHandbookLoading, setIsHandbookLoading] = useState(false);
   const [isResearchHandbookLoading, setIsResearchHandbookLoading] = useState(false);
   const [isReformatting, setIsReformatting] = useState(false);
@@ -140,6 +142,14 @@ const Chat = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const { history, saveConversation, loadConversation, deleteConversation, refreshHistory } = useConversationHistory();
+
+  // Manual update hook
+  const manualUpdate = useManualUpdate({
+    activeThread, messages, didSubMode, didInitialContext, didSessionId,
+    didThreads, saveConversation, refreshHistory,
+    setActiveThread, setMessages, setDidSubMode, setDidInitialContext,
+    setDidDocsLoaded, setDidSessionId, setDidFlowState,
+  });
 
   useEffect(() => {
     try { localStorage.setItem(ACTIVE_MODE_KEY, mode); } catch {}
@@ -223,12 +233,10 @@ const Chat = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });
       else {
-        // Redirect to hub if no section selected
         if (!hubSection) {
           navigate("/hub", { replace: true });
           return;
         }
-        // For Hana section, verify PIN
         if (hubSection === "hana") {
           try {
             if (sessionStorage.getItem(HANA_PIN_KEY) !== "1") {
@@ -240,12 +248,10 @@ const Chat = () => {
             return;
           }
         }
-        // Auto-set mode based on hub section
         if (hubSection === "did" && mode !== "childcare") {
           setMode("childcare");
         } else if (hubSection === "research") {
           if (mode !== "research") setMode("research");
-          // Always load research threads when entering research section
           researchThreads.fetchThreads();
         } else if (hubSection === "hana" && mode === "childcare") {
           setMode("debrief");
@@ -435,20 +441,7 @@ const Chat = () => {
   }, [mode, messages, didSubMode, didInitialContext, didSessionId, activeThread]);
 
   // ═══ Hierarchical back navigation for DID ═══
-  // Each state knows exactly one level up:
-  //   chat → thread-list (cast) / therapist-threads (mamka/kata) / terapeut (general/research)
-  //   thread-list → entry
-  //   therapist-threads → terapeut
-  //   pin-entry → terapeut
-  //   part-identify → thread-list
-  //   terapeut → entry
-  //   meeting → terapeut
-  //   live-session → terapeut
-  //   did-kartoteka → live-session
-  //   dashboard → terapeut
-  //   entry → hub
   const handleDidBackHierarchical = useCallback(() => {
-    // Save current work before navigating
     if (activeThread && messages.length >= 2) {
       didThreads.updateThreadMessages(activeThread.id, messages);
     } else if (didSubMode && messages.length >= 2 && didFlowState === "chat") {
@@ -457,7 +450,6 @@ const Chat = () => {
 
     switch (didFlowState) {
       case "chat": {
-        // From chat, go back to the appropriate list
         restoreGlobalTheme();
         setActiveThread(null);
         setMessages([]);
@@ -468,14 +460,12 @@ const Chat = () => {
           setDidFlowState("therapist-threads");
           didThreads.fetchAllThreads(didSubMode);
         } else {
-          // general / research submodes → back to terapeut
           setDidSubMode(null);
           setDidFlowState("terapeut");
         }
         break;
       }
       case "thread-list":
-        // Kluci thread list → back to DID entry
         restoreGlobalTheme();
         setDidSubMode(null);
         setActiveThread(null);
@@ -483,32 +473,26 @@ const Chat = () => {
         setDidFlowState("entry");
         break;
       case "therapist-threads":
-        // Therapist thread list → back to terapeut dashboard
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
         setDidFlowState("terapeut");
         break;
       case "pin-entry":
-        // PIN entry → back to terapeut
         setDidSubMode(null);
         setDidFlowState("terapeut");
         break;
       case "part-identify":
-        // Part identify → back to thread list
         setDidFlowState("thread-list");
         break;
       case "terapeut":
-        // Terapeut dashboard → back to DID entry
         setDidFlowState("entry");
         break;
       case "meeting":
-        // Meeting → back to terapeut
         setMeetingIdFromUrl(null);
         setDidFlowState("terapeut");
         break;
       case "live-session":
-        // Live session → back to terapeut (reset live session state)
         setDidLiveSession(null);
         setDidLiveSessionReady(false);
         setDidLivePartContext("");
@@ -516,17 +500,14 @@ const Chat = () => {
         setDidFlowState("terapeut");
         break;
       case "did-kartoteka":
-        // Kartotéka → back to live-session
         setDidFlowState("live-session");
         break;
       case "loading":
-        // Loading → back to entry (safe fallback)
         setDidSubMode(null);
         setDidFlowState("entry");
         break;
       case "entry":
       default:
-        // Entry → back to hub
         navigate("/hub");
         break;
     }
@@ -544,7 +525,7 @@ const Chat = () => {
     setDidFlowState("chat");
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
-  // Thread management for "cast" mode (hooks must be before early return)
+
   const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, getPersonaPrefs } = useTheme();
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
@@ -552,11 +533,7 @@ const Chat = () => {
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
 
-    // Compose thread theme: kluci base (with background photo) + thread overrides
-    // This is TEMPORARY — never changes global persona, never leaks to thread-list
     const kluciBase = await getPersonaPrefs("kluci");
-
-    // Filter out empty thread overrides so they don't wipe kluci base values (e.g. background_image_url)
     let threadOverrides: Partial<typeof themePrefs> = {};
     if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
       threadOverrides = Object.fromEntries(
@@ -569,11 +546,8 @@ const Chat = () => {
         threadOverrides = { primary_color: preset.primary_color, accent_color: preset.accent_color };
       }
     }
-
-    // Layer: kluci global base → thread-specific overrides
     applyTemporaryTheme({ ...kluciBase, ...threadOverrides });
 
-    // Load part-specific docs in BACKGROUND
     (async () => {
       try {
         const headers = await getAuthHeaders();
@@ -584,8 +558,8 @@ const Chat = () => {
         if (response.ok) {
           const data = await response.json();
           const docs = data.documents || {};
-           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-            setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
+          const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
+          setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
       } catch {}
     })();
@@ -607,7 +581,6 @@ const Chat = () => {
 
     setIsPartSelecting(true);
     try {
-      // Always create a new thread (forceNew) — "Nové vlákno" must always create fresh
       const greeting = getRandomCastGreeting();
       const initialMessages = [{ role: "assistant" as const, content: greeting }];
 
@@ -669,10 +642,8 @@ const Chat = () => {
     const threadToProcess = activeThread;
     if (activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
-      // Trigger episode generation in background
       triggerEpisodeGeneration(activeThread.id);
     }
-    // Restore global theme when leaving thread
     restoreGlobalTheme();
     setActiveThread(null);
     setMessages([]);
@@ -685,12 +656,11 @@ const Chat = () => {
     }
   }, [activeThread, messages, setMessages, didSubMode, triggerEpisodeGeneration, restoreGlobalTheme]);
 
-  // Quick thread entry from dashboard — load thread directly by ID
+  // Quick thread entry from dashboard
   const handleQuickThread = useCallback(async (threadId: string, partName: string) => {
     setDidSubMode("cast");
     setDidFlowState("loading");
     
-    // Fetch the thread from DB
     const { data, error } = await supabase
       .from("did_threads")
       .select("*")
@@ -723,7 +693,6 @@ const Chat = () => {
     setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
     setDidFlowState("chat");
 
-    // Compose thread theme: kluci base + thread overrides (same logic as handleSelectThread)
     const kluciBase = await getPersonaPrefs("kluci");
     let threadOverrides: Partial<typeof themePrefs> = {};
     if (thread.themeConfig && Object.keys(thread.themeConfig).length > 0) {
@@ -733,7 +702,6 @@ const Chat = () => {
     }
     applyTemporaryTheme({ ...kluciBase, ...threadOverrides });
     
-    // Load part docs in background
     (async () => {
       try {
         const headers = await getAuthHeaders();
@@ -745,7 +713,7 @@ const Chat = () => {
           const docData = await response.json();
           const docs = docData.documents || {};
           const partDocs = Object.entries(docs).map(([key, val]) => `[Kartoteka_DID: ${key}]\n${val}`).join("\n\n");
-           setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
+          setDidInitialContext(basicDocsRef.current + "\n\n" + partDocs);
         }
       } catch {}
     })();
@@ -822,10 +790,8 @@ const Chat = () => {
     setActiveThread(null);
 
     if (subMode === "cast") {
-      // Use pre-loaded basic docs, just fetch threads — NO global persona change
       setDidFlowState("loading");
       await didThreads.fetchActiveThreads("cast");
-      // knownParts already loaded during dashboard pre-load
       if (basicDocsRef.current) {
         setDidInitialContext(basicDocsRef.current);
       }
@@ -834,7 +800,6 @@ const Chat = () => {
     }
 
     if (subMode === "research") {
-      // Use pre-loaded basic docs, go straight to chat
       if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
       setDidDocsLoaded(true);
       setDidFlowState("chat");
@@ -842,8 +807,6 @@ const Chat = () => {
       return;
     }
 
-    // mamka / kata / general — DON'T load full docs yet
-    // Just start conversation and ask what to discuss
     const newSessionId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setDidSessionId(newSessionId);
     if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
@@ -862,13 +825,11 @@ const Chat = () => {
     if (isEnrichingContext) return;
     setIsEnrichingContext(true);
     try {
-      // 1. Detect which parts/topics are mentioned — try to load their specific cards
       const basicCtx = basicDocsRef.current || didInitialContext;
       const mentionedParts = knownParts.filter(p => 
         userMessage.toLowerCase().includes(p.toLowerCase())
       );
       
-      // 2. Load specific part cards from Drive
       if (mentionedParts.length > 0) {
         try {
           const headers = await getAuthHeaders();
@@ -891,7 +852,6 @@ const Chat = () => {
         } catch {}
       }
 
-      // 3. Quick Perplexity pre-research on the topic (non-blocking)
       try {
         const headers = await getAuthHeaders();
         const searchQuery = mentionedParts.length > 0
@@ -921,7 +881,7 @@ const Chat = () => {
     }
   };
 
-  // ── Common handlers (unchanged logic, cleaned up) ──
+  // ── Common handlers ──
 
   const handleSoapHandoff = async () => {
     if (messages.length < 2 || isSoapLoading) return;
@@ -978,7 +938,6 @@ const Chat = () => {
       ).join("\n");
       const headers = await getAuthHeaders();
       
-      // Build DID-specific context for audio analysis
       const didContext = mode === "childcare" ? {
         didMode: true,
         partName: activeThread?.partName || undefined,
@@ -1041,22 +1000,17 @@ const Chat = () => {
     } finally { setIsFileAnalyzing(false); }
   };
 
-
-  // 📓 Zapsat do deníku — Karel připraví zápis, část ho odsouhlasí
-  const handleWriteDiary = () => {
+  const handleWriteDiary = useCallback(() => {
     if (!activeThread || isLoading) return;
     const diaryPrompt = `📓 Připrav zápis do deníku z našeho dnešního rozhovoru. Shrň co jsme probírali, jakou náladu jsem měl/a a co by stálo za zapamatování. Ukaž mi to – můžu to upravit než to uložíš.`;
     setInput(diaryPrompt);
-    // Auto-send
     setTimeout(() => {
       const btn = document.querySelector('[data-send-btn]') as HTMLButtonElement;
       if (btn) btn.click();
     }, 100);
-  };
+  }, [activeThread, isLoading]);
 
-  // (triggerEpisodeGeneration defined above, near handleLeaveThread)
-
-  const handleDidEndCall = async () => {
+  const handleDidEndCall = useCallback(async () => {
     const threadToProcess = activeThread;
     if (activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
@@ -1064,7 +1018,6 @@ const Chat = () => {
       saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
     }
 
-    // Trigger episode generation in background
     if (threadToProcess && messages.length >= 2) {
       triggerEpisodeGeneration(threadToProcess.id);
     }
@@ -1081,9 +1034,9 @@ const Chat = () => {
     setMessages([{ role: "assistant", content: `Haničko, právě skončil rozhovor${endedPartName ? ` s částí ${endedPartName}` : ""}.
 
 Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se zpracují při nejbližší automatické nebo manuální aktualizaci kartotéky.` }]);
-  };
+  }, [activeThread, messages, didSubMode, didInitialContext, didSessionId, mode, triggerEpisodeGeneration]);
 
-  const handleDidResearch = async () => {
+  const handleDidResearch = useCallback(async () => {
     if (isDidResearchLoading) return;
     const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
     const searchContext = messages.slice(-10).map(m =>
@@ -1118,233 +1071,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       toast.error(error instanceof Error ? error.message : "Chyba při vyhledávání");
       if (!assistantContent) setMessages(prev => prev.slice(0, -1));
     } finally { setIsDidResearchLoading(false); }
-  };
-
-  const handleManualUpdate = async () => {
-    if (isManualUpdateLoading) return;
-    // First save ALL current data to DB before triggering cycle
-    if (activeThread && messages.length >= 2) {
-      await didThreads.updateThreadMessages(activeThread.id, messages);
-    }
-    if (didSubMode && messages.length >= 2) {
-      await saveConversation(didSubMode, messages, didInitialContext, didSessionId ?? undefined);
-    }
-    await new Promise(r => setTimeout(r, 500));
-
-    setIsManualUpdateLoading(true);
-    const GLOBAL_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
-    const globalDeadline = Date.now() + GLOBAL_TIMEOUT_MS;
-
-    try {
-      const headers = await getAuthHeaders();
-
-      // Force cleanup: mark stale mirror_job rows (updated_at > 3 min) as failed
-      const staleCutoff = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-      await supabase.from("karel_memory_logs")
-        .update({ log_type: "mirror_failed", summary: "Frontend force cleanup", updated_at: new Date().toISOString() } as any)
-        .eq("log_type", "mirror_job")
-        .lt("updated_at", staleCutoff);
-
-      // Start mirror with force=true
-      let mirrorDone = false;
-      let mirrorSkipped = false;
-      try {
-        console.log("[mirror] Starting mirror init call with force=true");
-        const initRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-          method: "POST", headers, body: JSON.stringify({ force: true }),
-        });
-        console.log("[mirror] Init response status:", initRes.status);
-        if (!initRes.ok) {
-          const errorBody = await initRes.text();
-          console.error("[mirror] Init call failed:", initRes.status, errorBody.slice(0, 300));
-          toast.error(`Mirror chyba ${initRes.status}`);
-        } else {
-          const initData = await initRes.json();
-          console.log("[mirror] Init response data:", JSON.stringify(initData).slice(0, 500));
-
-          if (initData.status === "skipped") {
-            console.warn("[mirror] Mirror skipped:", initData.reason);
-            toast.info(initData.reason || "Mirror přeskočen.");
-            mirrorSkipped = true;
-          } else if (!initData.jobId) {
-            console.error("[mirror] No jobId in response:", initData);
-            toast.error(initData.error || "Nepodařilo se vytvořit mirror job.");
-          } else {
-            const jobId = initData.jobId;
-            console.log("[mirror] Job created:", jobId);
-            toast.success("Mirror spuštěn...");
-
-            // Drive all phases via "continue" calls with global timeout
-            let consecutiveErrors = 0;
-            for (let i = 0; i < 120; i++) {
-              if (Date.now() > globalDeadline) {
-                console.warn("[mirror] Global 10min timeout reached");
-                toast.warning("Mirror trvá příliš dlouho, pokračuji dál...");
-                break;
-              }
-              if (i > 0) await new Promise(r => setTimeout(r, 2000));
-
-              try {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 55_000);
-                const step = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-memory-mirror`, {
-                  method: "POST", headers, body: JSON.stringify({ mode: "continue", jobId }),
-                  signal: controller.signal,
-                }).then(r => { clearTimeout(timeout); return r.json(); });
-                consecutiveErrors = 0;
-                console.log(`[mirror] Continue #${i} response:`, JSON.stringify(step).slice(0, 300));
-
-                if (step.status === "done") {
-                  toast.success(`Mirror dokončen: ${step.summary?.slice(0, 100) || "OK"}`);
-                  mirrorDone = true;
-                  break;
-                }
-                if (step.status === "error") {
-                  console.error("[mirror] Job error:", step.summary);
-                  toast.error(step.summary || "Chyba mirror jobu.");
-                  break;
-                }
-                if (step.status === "idle") {
-                  console.log("[mirror] Job idle (already finished)");
-                  toast.info("Mirror dokončen.");
-                  mirrorDone = true;
-                  break;
-                }
-              } catch (stepError: any) {
-                consecutiveErrors++;
-                console.error(`[mirror] Continue error #${consecutiveErrors}:`, stepError.message);
-                if (consecutiveErrors >= 5) {
-                  toast.error("Mirror: příliš mnoho chyb, pokračuji na registr...");
-                  break;
-                }
-                await new Promise(r => setTimeout(r, 3000));
-              }
-            }
-          }
-        }
-      } catch (mirrorError: any) {
-        console.error("[mirror] Unexpected error:", mirrorError);
-        toast.error(`Mirror selhal: ${mirrorError.message?.slice(0, 100)}`);
-      }
-
-      console.log("[mirror] Mirror phase complete. mirrorDone:", mirrorDone, "mirrorSkipped:", mirrorSkipped);
-
-      // Phase 2: Registry sync — wrapped in hard 3-min timeout so spinner NEVER hangs
-      const REGISTRY_TIMEOUT_MS = 3 * 60 * 1000;
-      const registrySyncWork = async () => {
-        console.log("[registry-sync] registrySyncWork:start", {
-          now: Date.now(),
-          globalDeadline,
-          hasGlobalDeadline: typeof globalDeadline === "number" && Number.isFinite(globalDeadline),
-          remainingMs: typeof globalDeadline === "number" ? globalDeadline - Date.now() : null,
-        });
-        const syncHeaders = await getAuthHeaders();
-        const listController = new AbortController();
-        const listTimeout = setTimeout(() => listController.abort(), 30_000);
-        const listRes = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
-          method: "POST", headers: syncHeaders,
-          body: JSON.stringify({ syncRegistry: true, syncMode: "list" }),
-          signal: listController.signal,
-        });
-        clearTimeout(listTimeout);
-        const listData = await listRes.json();
-        const entries = listData.entries || [];
-        const total = entries.length;
-        console.log("[registry-sync] list loaded", {
-          total,
-          globalDeadline,
-          hasGlobalDeadline: typeof globalDeadline === "number" && Number.isFinite(globalDeadline),
-        });
-        if (total === 0) return { synced: 0, skipped: 0, errors: 0, total: 0 };
-        let synced = 0, skipped = 0, errors = 0;
-        setSyncProgress({ current: 0, total, currentName: "..." });
-        const deadline = Date.now() + REGISTRY_TIMEOUT_MS;
-        console.log("[registry-sync] loop deadline created", { deadline, globalDeadline, total });
-        for (let i = 0; i < total; i++) {
-          if (Date.now() > deadline || Date.now() > globalDeadline) {
-            console.warn(`[registry-sync] Timeout at ${i + 1}/${total}`);
-            break;
-          }
-          const entry = entries[i];
-          const displayName = (entry.fileName || "").replace(/^\d+_/, "").replace(/\.[^.]+$/, "");
-          setSyncProgress({ current: i + 1, total, currentName: displayName });
-          try {
-            const controller = new AbortController();
-            const t = setTimeout(() => controller.abort(), 15_000);
-            const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-daily-cycle`, {
-              method: "POST", headers: syncHeaders,
-              body: JSON.stringify({ syncRegistry: true, syncMode: "process_one", fileId: entry.fileId, fileName: entry.fileName, folderLabel: entry.folderLabel }),
-              signal: controller.signal,
-            });
-            clearTimeout(t);
-            const data = await res.json();
-            if (data.result === "skip") skipped++;
-            else synced++;
-          } catch { errors++; }
-        }
-        return { synced, skipped, errors, total };
-      };
-
-      try {
-        toast.info("Synchronizuji registr...");
-        const result = await Promise.race([
-          registrySyncWork(),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), REGISTRY_TIMEOUT_MS + 5000)),
-        ]);
-        console.log("[registry-sync] before setSyncProgress(null) after Promise.race", {
-          result,
-          globalDeadline,
-        });
-        setSyncProgress(null);
-        if (result) {
-          const { synced, skipped, errors, total } = result;
-          if (total === 0) toast.info("Registr: žádné položky k synchronizaci");
-          else if (synced > 0 || skipped > 0) toast.success(`Registr: ${synced} aktualizováno, ${skipped} přeskočeno${errors ? `, ${errors} chyb` : ""}`);
-        } else {
-          toast.warning("Synchronizace registru vypršela, ale data mohla být uložena");
-        }
-      } catch (e) {
-        console.warn("Registry sync failed:", e);
-        console.log("[registry-sync] before setSyncProgress(null) in catch", {
-          error: e,
-          globalDeadline,
-        });
-        setSyncProgress(null);
-        toast.error("Synchronizace registru selhala");
-      }
-
-      // Clear local DID data
-      setActiveThread(null);
-      setMessages([]);
-      setDidSubMode(null);
-      setDidInitialContext("");
-      setDidDocsLoaded(false);
-      setDidSessionId(null);
-      setDidFlowState("entry");
-      clearMessages("childcare");
-      try {
-        localStorage.removeItem("karel_did_submode");
-        localStorage.removeItem("karel_did_context");
-        localStorage.removeItem(DID_DOCS_LOADED_KEY);
-        localStorage.removeItem(DID_SESSION_ID_KEY);
-      } catch {}
-
-      // Do not block the loading spinner on history refresh
-      void refreshHistory().catch((historyError) => {
-        console.warn("History refresh failed after manual update:", historyError);
-      });
-    } catch (error) {
-      console.error("Manual update error:", error);
-      toast.error(error instanceof Error ? error.message : "Chyba při aktualizaci kartotéky");
-    } finally {
-      console.log("[registry-sync] before setSyncProgress(null) in finally", {
-        globalDeadline,
-        hasGlobalDeadline: typeof globalDeadline === "number" && Number.isFinite(globalDeadline),
-      });
-      setSyncProgress(null);
-      setIsManualUpdateLoading(false);
-    }
-  };
+  }, [isDidResearchLoading, messages, activeThread]);
 
   const handleReformatCards = async () => {
     if (isReformatting) return;
@@ -1404,12 +1131,11 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     }
   };
 
-  const handleGenerateHandbook = async () => {
+  const handleGenerateHandbook = useCallback(async () => {
     if (isHandbookLoading) return;
     setIsHandbookLoading(true);
     try {
       const { generateKataHandbook } = await import("@/lib/didPdfExport");
-      // Pass current kata conversation messages for inclusion in the handbook
       const currentMessages = (didSubMode === "kata" && messages.length >= 2) ? messages : undefined;
       await generateKataHandbook(currentMessages);
       toast.success("Příručka pro Káťu vygenerována a stažena");
@@ -1419,7 +1145,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     } finally {
       setIsHandbookLoading(false);
     }
-  };
+  }, [isHandbookLoading, didSubMode, messages]);
 
   const handleResearchHandbook = async () => {
     if (isResearchHandbookLoading || !activeResearchThread || messages.length < 2) return;
@@ -1450,7 +1176,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       const headers = await getAuthHeaders();
       const isResearch = mode === "research" || (mode === "childcare" && didSubMode === "research");
       const endpoint = isResearch ? "karel-research" : "karel-chat";
-      // Limit messages to last 30 and didInitialContext to 80k chars to avoid request size issues
       const recentMessages = [...messages.slice(-30), { role: "user", content: userContent }];
       const trimmedContext = didInitialContext && didInitialContext.length > 80000
         ? didInitialContext.slice(0, 80000) + "\n[...kontext zkrácen...]"
@@ -1482,23 +1207,20 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         });
       });
 
-      // ═══ SWITCH DETECTION: If Karel detects a switch, update the thread part_name ═══
+      // ═══ SWITCH DETECTION ═══
       if (activeThread && didSubMode === "cast" && assistantContent) {
         const switchMatch = assistantContent.match(/\[SWITCH:([^\]]+)\]/);
         if (switchMatch) {
           const newPartName = switchMatch[1].trim();
           if (newPartName && newPartName.toLowerCase() !== activeThread.partName.toLowerCase()) {
             console.log(`[switch-detect] Part switched from "${activeThread.partName}" to "${newPartName}"`);
-            // Update thread in DB
             await supabase
               .from("did_threads")
               .update({ part_name: newPartName })
               .eq("id", activeThread.id);
-            // Update local state
             setActiveThread(prev => prev ? { ...prev, partName: newPartName } : prev);
             toast.info(`Switch detekován: ${activeThread.partName} → ${newPartName}`);
           }
-          // Clean the switch marker from displayed message
           assistantContent = assistantContent.replace(/\[SWITCH:[^\]]+\]/g, "").trim();
           setMessages((prev) => {
             const n = [...prev];
@@ -1508,17 +1230,16 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         }
       }
 
-      // Detect and process [ODESLAT_VZKAZ:mamka/kata] markers for immediate email sending
+      // Detect [ODESLAT_VZKAZ:mamka/kata] markers
       if (mode === "childcare" && assistantContent) {
         const vzkazRegex = /\[ODESLAT_VZKAZ:(mamka|kata)\]([\s\S]*?)\[\/ODESLAT_VZKAZ\]/g;
         let match;
         while ((match = vzkazRegex.exec(assistantContent)) !== null) {
-          const recipient = match[1]; // "mamka" or "kata"
+          const recipient = match[1];
           const messageText = match[2].trim();
           if (messageText) {
             const recipientEmail = recipient === "kata" ? "K.CC@seznam.cz" : "mujosobniasistentnamiru@gmail.com";
             const recipientName = recipient === "kata" ? "Káťa" : "Mamka";
-            // Fire-and-forget email send
             (async () => {
               try {
                 const emailHeaders = await getAuthHeaders();
@@ -1549,7 +1270,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           }
         }
 
-        // Clean the markers from displayed message
         const cleanedContent = assistantContent.replace(/\[ODESLAT_VZKAZ:(mamka|kata)\]([\s\S]*?)\[\/ODESLAT_VZKAZ\]/g, "").trim();
         if (cleanedContent !== assistantContent) {
           assistantContent = cleanedContent;
@@ -1560,7 +1280,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           });
         }
       }
-      // Trigger background enrichment for mamka/kata/general on first substantive message
+      // Trigger background enrichment
       if (mode === "childcare" && !didDocsLoaded && !activeThread &&
           (didSubMode === "mamka" || didSubMode === "kata" || didSubMode === "general") &&
           messages.length <= 2 && userMessage.length > 5) {
@@ -1577,459 +1297,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  };
-
-  const LoadingSkeleton = () => (
-    <div className="flex justify-start">
-      <div className="chat-message-assistant">
-        <div className="flex items-center gap-3">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          <div className="space-y-2 flex-1">
-            <div className="h-3 bg-muted rounded animate-pulse w-48" />
-            <div className="h-3 bg-muted rounded animate-pulse w-32" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ── Render ──
-
-  const renderDidContent = () => {
-    // Entry screen: Terapeut / Kluci
-    if (didFlowState === "entry" && !didSubMode) {
-      return (
-        <ScrollArea className="flex-1">
-           <DidEntryScreen
-            onSelectTerapeut={() => {
-              setDidFlowState("terapeut");
-              // Auto-prime DID context in background
-              didContextPrime.runPrime(undefined, "mamka");
-            }}
-            onSelectKluci={() => {
-              setDidSubMode("cast");
-              setDidFlowState("loading");
-              // Auto-prime DID context in background
-              didContextPrime.runPrime(undefined, "cast");
-              (async () => {
-                await didThreads.fetchActiveThreads("cast");
-                if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
-                setDidFlowState("thread-list");
-              })();
-            }}
-            onBack={() => navigate("/hub")}
-          />
-        </ScrollArea>
-      );
-    }
-
-    // Terapeut view: Dashboard + Hanička/Káťa buttons
-    if (didFlowState === "terapeut" && !didSubMode) {
-      return (
-        <ScrollArea className="flex-1">
-          <ErrorBoundary fallbackTitle="Dashboard selhal">
-            <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
-          </ErrorBoundary>
-          <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
-            <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
-            <div className="space-y-2">
-              <button
-                onClick={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-pink-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-pink-500"
-              >
-                <span className="text-lg">💗</span>
-                <div>
-                  <div className="font-medium text-foreground">Hanička</div>
-                  <div className="text-xs text-muted-foreground">Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
-                </div>
-              </button>
-              <button
-                onClick={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-blue-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-blue-500"
-              >
-                <span className="text-lg">💙</span>
-                <div>
-                  <div className="font-medium text-foreground">Káťa</div>
-                  <div className="text-xs text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
-                </div>
-              </button>
-              <button
-                onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-amber-500"
-              >
-                <span className="text-lg">📋</span>
-                <div>
-                  <div className="font-medium text-foreground">Porady týmu</div>
-                  <div className="text-xs text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
-                </div>
-              </button>
-              <button
-                onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-border bg-card hover:border-emerald-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-emerald-500"
-              >
-                <span className="text-lg">🧩</span>
-                <div>
-                  <div className="font-medium text-foreground">Live DID sezení</div>
-                  <div className="text-xs text-muted-foreground">Karel radí v reálném čase při práci s částí – audio + chat</div>
-                </div>
-              </button>
-            </div>
-            <div className="flex justify-center mt-4">
-              <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
-                ← Zpět
-              </Button>
-            </div>
-          </div>
-        </ScrollArea>
-      );
-    }
-
-    // Meeting view
-    if (didFlowState === "meeting") {
-      return (
-        <DidMeetingPanel
-          meetingId={meetingIdFromUrl}
-          therapist={meetingTherapist}
-          onBack={() => {
-            setDidFlowState("terapeut");
-            setMeetingIdFromUrl(null);
-          }}
-        />
-      );
-    }
-
-    // DID Kartotéka — full registry view
-    if (didFlowState === "did-kartoteka") {
-      return (
-        <ScrollArea className="flex-1">
-          <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-serif font-semibold text-foreground">Kartotéka částí</h2>
-              <Button variant="ghost" size="sm" onClick={() => setDidFlowState("live-session")}>← Zpět</Button>
-            </div>
-            <DidRegistryOverview
-              refreshTrigger={0}
-              onSelectPart={(partName: string) => {
-                const therapistName = didSubMode === "kata" ? "Káťa" : "Hanka";
-                setDidLiveSession({ partName, therapistName });
-                setDidLiveSessionReady(false);
-                setDidLivePartContext("");
-                setDidFlowState("live-session");
-              }}
-            />
-          </div>
-        </ScrollArea>
-      );
-    }
-
-    // Live DID session — therapist selects part, then real-time coaching
-    if (didFlowState === "live-session") {
-      const therapistName = didSubMode === "kata" ? "Káťa" : "Hanka";
-
-      // Step 1: Part selection
-      if (!didLiveSession) {
-        return (
-          <DidPartSelector
-            therapistName={therapistName}
-            knownParts={knownParts}
-            onSelectPart={(name) => {
-              setDidLiveSession({ partName: name, therapistName });
-              setDidLiveSessionReady(false);
-              setDidLivePartContext("");
-            }}
-            onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
-            onOpenKartoteka={() => setDidFlowState("did-kartoteka")}
-          />
-        );
-      }
-
-      // Step 2: Part card (summary before session)
-      if (!didLiveSessionReady) {
-        return (
-          <DidPartCard
-            partName={didLiveSession.partName}
-            therapistName={didLiveSession.therapistName}
-            onStartLiveSession={() => setDidLiveSessionReady(true)}
-            onContextLoaded={(ctx) => setDidLivePartContext(ctx)}
-            onBack={() => {
-              setDidLiveSession(null);
-              setDidLiveSessionReady(false);
-            }}
-          />
-        );
-      }
-
-      // Step 3: Live session panel
-      return (
-        <ErrorBoundary fallbackTitle="Live session panel selhal">
-          <DidLiveSessionPanel
-            partName={didLiveSession.partName}
-            therapistName={didLiveSession.therapistName}
-            contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
-            onEnd={(summary) => {
-              toast.success("DID sezení zpracováno");
-              setDidLiveSession(null);
-              setDidLiveSessionReady(false);
-              setDidLivePartContext("");
-              setDidSubMode("mamka");
-              setDidFlowState("chat");
-              setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
-            }}
-            onBack={() => {
-              setDidLiveSessionReady(false);
-            }}
-          />
-        </ErrorBoundary>
-      );
-    }
-
-
-    if (didFlowState === "pin-entry" && (didSubMode === "mamka" || didSubMode === "kata")) {
-      const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
-      return (
-        <DidPinEntry
-          therapistName={name}
-          onSuccess={async () => {
-            setDidFlowState("loading");
-            await didThreads.fetchAllThreads(didSubMode);
-            if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
-            
-            // AUTO-PREP: Load therapist tasks, recent threads, motivation profile
-            try {
-              const tn = didSubMode === "mamka" ? "hanka" : "kata";
-              const [tasksRes, threadsRes, profileRes] = await Promise.all([
-                supabase.from("did_therapist_tasks").select("task, assigned_to, status_hanka, status_kata, priority, due_date").neq("status", "done").order("created_at", { ascending: false }).limit(15),
-                supabase.from("did_threads").select("part_name, messages, last_activity_at").eq("sub_mode", didSubMode).order("last_activity_at", { ascending: false }).limit(3),
-                supabase.from("did_motivation_profiles").select("*").eq("therapist", tn).limit(1).maybeSingle(),
-              ]);
-              let ctx = "";
-              const tasks = (tasksRes.data || []).filter((t: any) => t.assigned_to === "both" || t.assigned_to === tn);
-              if (tasks.length > 0) {
-                ctx += `\n\n[AUTO-PREP: Úkoly pro ${tn}]\n` + tasks.slice(0, 10).map((t: any) => {
-                  const st = didSubMode === "mamka" ? t.status_hanka : t.status_kata;
-                  return `- [${st}] ${t.task} (${t.priority}${t.due_date ? `, ${t.due_date}` : ""})`;
-                }).join("\n");
-              }
-              const thr = threadsRes.data || [];
-              if (thr.length > 0) {
-                ctx += `\n\n[AUTO-PREP: Poslední rozhovory]\n` + thr.map((t: any) => {
-                  const msgs = ((t.messages as any[]) || []).slice(-3);
-                  const preview = msgs.map((m: any) => `${m.role === "user" ? "T" : "K"}: ${typeof m.content === "string" ? m.content.slice(0, 60) : ""}`).join(" | ");
-                  return `- ${t.part_name}: ${preview}`;
-                }).join("\n");
-              }
-              const p = profileRes.data;
-              if (p) ctx += `\n\n[AUTO-PREP: Profil ${tn}] Styl: ${p.preferred_style}, Streak: ${p.streak_current}/${p.streak_best}, Splněno/Nesplněno: ${p.tasks_completed}/${p.tasks_missed}`;
-              if (ctx) setDidInitialContext(prev => prev ? prev + ctx : ctx);
-            } catch (e) { console.warn("Auto-prep failed:", e); }
-            
-            setDidFlowState("therapist-threads");
-          }}
-          onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
-        />
-      );
-    }
-
-    // Therapist thread list (Hanička/Káťa)
-    if (didFlowState === "therapist-threads" && (didSubMode === "mamka" || didSubMode === "kata")) {
-      const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
-      return (
-        <ScrollArea className="flex-1">
-          <DidTherapistThreads
-            therapistName={name}
-            threads={didThreads.threads}
-            onSelectThread={(thread) => {
-              setActiveThread(thread);
-              setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
-              setDidFlowState("chat");
-              // Load docs in background
-              (async () => {
-                try {
-                  const headers = await getAuthHeaders();
-                  const response = await fetch(
-                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-drive-read`,
-                    { method: "POST", headers, body: JSON.stringify({
-                      documents: ["01_Index_Vsech_Casti", "00_Aktualni_Dashboard", "05_Operativni_Plan", "06_Strategicky_Vyhled"],
-                      subFolder: "00_CENTRUM",
-                      allowGlobalSearch: false,
-                    }) }
-                  );
-                  if (response.ok) {
-                    const data = await response.json();
-                    const docs = data.documents || {};
-                    const enriched = Object.entries(docs)
-                      .filter(([, val]) => typeof val === "string" && !(val as string).startsWith("[Dokument"))
-                      .map(([key, val]) => `[Kartoteka_DID/00_CENTRUM: ${key}]\n${val}`)
-                      .join("\n\n");
-                    setDidInitialContext(prev => prev ? prev + "\n\n" + enriched : enriched);
-                  }
-                } catch {}
-              })();
-            }}
-            onDeleteThread={(id) => didThreads.deleteThread(id)}
-            onNewThread={async () => {
-              const greetings: Record<string, string> = {
-                mamka: `Haničko, jsem tady s tebou. Mám přehled o systému.\n\nCo teď potřebuješ? Můžeme řešit:\n- 🧩 **Konkrétní část** nebo klastr\n- 🔥 **Akutní situaci**, kterou potřebuješ probrat\n- 💡 **Obecnou radu** k přístupu nebo metodám\n\nPověz mi, co se děje.`,
-                kata: `Ahoj Káťo! 😊 Mám přehled o aktuálním stavu systému.\n\nCo potřebuješ?\n- 🧩 Poradit se ohledně **konkrétní části**?\n- 🔥 Probrat **situaci**, která nastala?\n- 💡 Obecnou **radu** jak reagovat?\n\nŘekni mi, co řešíš.`,
-              };
-              const greeting = greetings[didSubMode!] || greetings.mamka;
-              const initialMsgs = [{ role: "assistant" as const, content: greeting }];
-              const thread = await didThreads.createThread(name, didSubMode!, "cs", initialMsgs as any);
-              if (thread) {
-                setActiveThread(thread);
-                setMessages(initialMsgs as { role: "user" | "assistant"; content: string }[]);
-                setDidFlowState("chat");
-              }
-            }}
-            onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
-          />
-        </ScrollArea>
-      );
-    }
-
-    if (!didSubMode) {
-      // Fallback
-      return (
-        <ScrollArea className="flex-1">
-          <DidEntryScreen
-            onSelectTerapeut={() => setDidFlowState("terapeut")}
-            onSelectKluci={() => {
-              setDidSubMode("cast");
-              setDidFlowState("thread-list");
-            }}
-            onBack={() => setMode("debrief")}
-          />
-        </ScrollArea>
-      );
-    }
-
-    if (didFlowState === "loading") {
-      return (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-3">
-            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
-            <p className="text-sm text-muted-foreground">Připravuji DID režim...</p>
-          </div>
-        </div>
-      );
-    }
-
-    if (didFlowState === "thread-list" && didSubMode === "cast") {
-      return (
-        <ScrollArea className="flex-1">
-          <DidThreadList
-            threads={didThreads.threads}
-            onSelectThread={handleSelectThread}
-            onDeleteThread={(id) => didThreads.deleteThread(id)}
-            onNewThread={handleNewCastThread}
-          />
-          <div className="flex justify-center pb-4">
-            <Button variant="ghost" size="sm" onClick={handleDidBackHierarchical}>
-              ← Zpět
-            </Button>
-          </div>
-        </ScrollArea>
-      );
-    }
-
-    if (didFlowState === "part-identify") {
-      return (
-        <DidPartIdentifier
-          knownParts={knownParts}
-          onSelectPart={handlePartSelected}
-          onBack={() => setDidFlowState("thread-list")}
-        />
-      );
-    }
-
-    // Chat view (all DID submodes)
-    return (
-      <>
-        {/* Chat Messages */}
-        <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
-          <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
-            {/* Thread indicator for cast mode */}
-            {activeThread && (
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
-                <span>
-                  Vlákno: <strong>{activeThread.threadLabel || activeThread.partName}</strong>
-                  {activeThread.threadLabel && activeThread.threadLabel !== activeThread.partName && (
-                    <span className="text-muted-foreground/60"> ({activeThread.partName})</span>
-                  )}
-                  {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
-                </span>
-                <DidKidsThemeEditor
-                  partName={activeThread.partName}
-                  threadId={activeThread.id}
-                  onThreadThemeSaved={(tid, preset, config) => {
-                    didThreads.updateThreadThemeConfig(tid, preset, config);
-                    setActiveThread(prev => prev ? { ...prev, themePreset: preset, themeConfig: config, threadEmoji: config.thread_emoji || "" } : prev);
-                  }}
-                  trigger={
-                    <button className="text-[10px] text-primary hover:underline flex items-center gap-1">
-                      🎨 Můj vzhled
-                    </button>
-                  }
-                />
-              </div>
-            )}
-            {messages.map((message, index) => (
-              <ChatMessage key={index} message={message} />
-            ))}
-            {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
-            {isEnrichingContext && (
-              <div className="text-center text-[10px] text-muted-foreground animate-pulse">
-                📚 Dostudovávám materiály k tématu...
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-
-        {/* Input Area */}
-        <ChatInputArea
-          input={input} setInput={setInput}
-          onSend={sendMessage} onKeyDown={handleKeyDown}
-          isLoading={isLoading} disabled={isSoapLoading}
-          isAnalyzing={isFileAnalyzing}
-          attachments={attachments}
-          onRemoveAttachment={removeAttachment}
-          onOpenFilePicker={openFilePicker}
-          onCaptureScreenshot={captureScreenshot}
-          onOpenDrivePicker={() => setDrivePickerOpen(true)}
-          onAutoAnalyze={handleAutoAnalyze}
-          fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-          onFileChange={handleFileChange}
-          textareaRef={textareaRef}
-          footerText="Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči."
-        >
-          <div className="flex items-center gap-2 flex-wrap mt-2">
-            <AudioRecordButton
-              state={audioRecorder.state} duration={audioRecorder.duration}
-              maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
-              isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
-              onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
-              onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
-            />
-          </div>
-          {messages.length > 1 && (
-            <DidActionButtons
-              subMode={didSubMode}
-              onEndCall={handleDidEndCall}
-              onManualUpdate={handleManualUpdate}
-              onLeaveThread={(didSubMode === "cast" || didSubMode === "mamka" || didSubMode === "kata") && activeThread ? handleLeaveThread : undefined}
-              onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
-              onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
-              isUpdateLoading={isManualUpdateLoading}
-              isHandbookLoading={isHandbookLoading}
-              disabled={isLoading}
-            />
-          )}
-        </ChatInputArea>
-      </>
-    );
-  };
+  }, [sendMessage]);
 
   // Hierarchical back logic for Hana section
   const getHanaBackAction = () => {
@@ -2055,7 +1325,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               size="sm"
               data-swipe-back="true"
               onClick={() => {
-                // Research: if inside a thread or new-topic, go back to thread list first
                 if (hubSection === "research" && researchFlowState !== "thread-list") {
                   if (activeResearchThread && messages.length >= 2) {
                     researchThreads.updateMessages(activeResearchThread.id, messages);
@@ -2066,12 +1335,10 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   researchThreads.fetchThreads();
                   return;
                 }
-                // DID: if not at entry, go back one level
                 if (hubSection === "did" && didFlowState !== "entry") {
                   handleDidBackHierarchical();
                   return;
                 }
-                // Hana: hierarchical back
                 if (hubSection === "hana") {
                   const back = getHanaBackAction();
                   back.action();
@@ -2102,13 +1369,79 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       </header>
 
       {hubSection === "did" ? (
-        /* DID Section - no mode toggle, no mode selector, straight to DID content */
         <>
           <CrisisBriefPanel />
-          {renderDidContent()}
+          <DidContentRouter
+            didFlowState={didFlowState}
+            setDidFlowState={setDidFlowState}
+            didSubMode={didSubMode}
+            setDidSubMode={setDidSubMode}
+            activeThread={activeThread}
+            setActiveThread={setActiveThread}
+            messages={messages}
+            setMessages={setMessages}
+            knownParts={knownParts}
+            didInitialContext={didInitialContext}
+            setDidInitialContext={setDidInitialContext}
+            didDocsLoaded={didDocsLoaded}
+            didSessionId={didSessionId}
+            basicDocsRef={basicDocsRef}
+            didContextPrime={didContextPrime}
+            didThreads={didThreads}
+            onManualUpdate={manualUpdate.run}
+            isManualUpdateLoading={manualUpdate.isLoading}
+            syncProgress={manualUpdate.syncProgress}
+            handleDidSubModeSelect={handleDidSubModeSelect}
+            handleQuickThread={handleQuickThread}
+            handleSelectThread={handleSelectThread}
+            handleNewCastThread={handleNewCastThread}
+            handlePartSelected={handlePartSelected}
+            handleLeaveThread={handleLeaveThread}
+            handleDidEndCall={handleDidEndCall}
+            handleDidBackHierarchical={handleDidBackHierarchical}
+            handleGenerateHandbook={handleGenerateHandbook}
+            handleWriteDiary={handleWriteDiary}
+            handleAudioAnalysis={handleAudioAnalysis}
+            handleAutoAnalyze={handleAutoAnalyze}
+            handleDidResearch={handleDidResearch}
+            isDidResearchLoading={isDidResearchLoading}
+            sendMessage={sendMessage}
+            handleKeyDown={handleKeyDown}
+            input={input}
+            setInput={setInput}
+            isLoading={isLoading}
+            isSoapLoading={isSoapLoading}
+            isEnrichingContext={isEnrichingContext}
+            isAudioAnalyzing={isAudioAnalyzing}
+            isFileAnalyzing={isFileAnalyzing}
+            isHandbookLoading={isHandbookLoading}
+            audioRecorder={audioRecorder}
+            attachments={attachments}
+            removeAttachment={removeAttachment}
+            openFilePicker={openFilePicker}
+            captureScreenshot={captureScreenshot}
+            handleFileChange={handleFileChange}
+            fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+            textareaRef={textareaRef}
+            scrollRef={scrollRef}
+            drivePickerOpen={drivePickerOpen}
+            setDrivePickerOpen={setDrivePickerOpen}
+            didLiveSession={didLiveSession}
+            setDidLiveSession={setDidLiveSession}
+            didLiveSessionReady={didLiveSessionReady}
+            setDidLiveSessionReady={setDidLiveSessionReady}
+            didLivePartContext={didLivePartContext}
+            setDidLivePartContext={setDidLivePartContext}
+            navigate={navigate}
+            meetingIdFromUrl={meetingIdFromUrl}
+            setMeetingIdFromUrl={setMeetingIdFromUrl}
+            meetingTherapist={meetingTherapist}
+            setMeetingTherapist={setMeetingTherapist}
+            mode={mode}
+            setMode={setMode}
+          />
         </>
       ) : hubSection === "research" ? (
-        /* Research Section - thread-based UI */
         <>
           {researchFlowState === "thread-list" ? (
             <ScrollArea className="flex-1">
@@ -2142,7 +1475,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </ScrollArea>
           ) : (
             <>
-              {/* Thread indicator */}
               {activeResearchThread && (
                 <div className="border-b border-border bg-card/30">
                   <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
@@ -2212,9 +1544,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           )}
         </>
       ) : (
-        /* Hana Section - MainModeToggle (Chat uses new HanaChat, Report stays) */
         <>
-          {/* Main Mode Toggle */}
           <div className="border-b border-border bg-card/30">
             <div className="max-w-4xl mx-auto px-4 py-3">
               <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
