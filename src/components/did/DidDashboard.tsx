@@ -235,6 +235,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
 
         <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
 
+        <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+
         <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
