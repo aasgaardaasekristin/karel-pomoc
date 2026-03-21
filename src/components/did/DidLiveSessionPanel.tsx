@@ -443,8 +443,22 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           </Button>
         </div>
 
-        {/* Audio recorder strip */}
+        {/* Audio & Image tools strip */}
         <div className="mt-3 flex items-center gap-2 flex-wrap">
+          {/* Camera button */}
+          <Button variant="outline" size="sm" onClick={imageUpload.openFilePicker} className="gap-1.5 h-8 text-xs">
+            <Camera className="w-3.5 h-3.5" /> Fotka
+          </Button>
+          <input
+            ref={imageUpload.fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            onChange={imageUpload.handleFileChange}
+            className="hidden"
+          />
+
+          {/* Audio recorder */}
           {recorder.state === "idle" && (
             <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
               <Mic className="w-3.5 h-3.5" /> Nahrávat
@@ -488,10 +502,39 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           )}
           {isAudioAnalyzing && (
             <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje…
+              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje audio…
+            </span>
+          )}
+          {isImageAnalyzing && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje obrázek…
             </span>
           )}
         </div>
+
+        {/* Image preview strip */}
+        {imageUpload.pendingImages.length > 0 && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {imageUpload.pendingImages.map((img, i) => (
+              <div key={i} className="relative group">
+                <img src={img.dataUrl} alt={img.name} className="h-16 w-16 object-cover rounded-md border border-border" />
+                <button
+                  onClick={() => imageUpload.removeImage(i)}
+                  className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            <Button size="sm" onClick={handleImageAnalysis} disabled={isImageAnalyzing} className="h-8 text-xs gap-1.5">
+              {isImageAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+              Analyzovat obrázek
+            </Button>
+            <Button variant="ghost" size="sm" onClick={imageUpload.clearImages} className="h-8 text-xs">
+              Zahodit
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Messages */}
