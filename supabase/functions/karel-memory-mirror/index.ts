@@ -1093,6 +1093,11 @@ Deno.serve(async (req) => {
 
         const knownPartNames = (registryRes.data || []).map((p: any) => p.part_name || p.display_name);
 
+        // Collect DID thread IDs (sub_mode='cast') for marking as processed after completion
+        const didThreadIds = (didThreadsRes.data || [])
+          .filter((t: any) => t.sub_mode === "cast")
+          .map((t: any) => t.id);
+
         await sb.from("karel_memory_logs").update({
           summary: `Harvest: ${threadDigests.length} vláken, ${totalChars} znaků`,
           updated_at: new Date().toISOString(),
@@ -1111,6 +1116,7 @@ Deno.serve(async (req) => {
               registry: registryRes.data || [],
               episodes: episodesRes.data || [],
               knownPartNames,
+              didThreadIds,
               startTime: Date.now(),
             },
           },
