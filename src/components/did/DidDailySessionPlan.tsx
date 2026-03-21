@@ -159,20 +159,102 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     generatePlan(prefSelectedPart, prefDetail.trim() || undefined);
   };
 
-  const updatePlanStatus = useCallback(async (newStatus: string) => {
+  // ═══ SESSION START: create did_part_sessions + update registry ═══
+  const startSession = useCallback(async () => {
+    if (!plan) return;
+    try {
+      // 1) Create session record in did_part_sessions
+      const { error: sessErr } = await supabase
+        .from("did_part_sessions")
+        .insert({
+          part_name: plan.selected_part,
+          therapist: plan.therapist || "hanka",
+          session_type: "planned",
+          session_date: plan.plan_date,
+          karel_notes: `Plán sezení (urgency ${plan.urgency_score}):\n${plan.plan_markdown.slice(0, 2000)}`,
+        });
+      if (sessErr) console.error("Failed to insert session:", sessErr);
+
+      // 2) Update registry last_seen_at for the part
+      await supabase
+        .from("did_part_registry")
+        .update({ last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .ilike("part_name", plan.selected_part);
+
+      // 3) Update plan status
+      await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ status: "in_progress", updated_at: new Date().toISOString() })
+        .eq("id", plan.id);
+
+      setPlan(prev => prev ? { ...prev, status: "in_progress" } : null);
+      toast.success(`Sezení s ${plan.selected_part} zahájeno — záznam vytvořen`);
+    } catch (e: any) {
+      toast.error("Nepodařilo se zahájit sezení");
+      console.error(e);
+    }
+  }, [plan]);
+
+  // ═══ SESSION END: finalize session, queue Drive write, update registry ═══
+  const endSession = useCallback(async () => {
+    if (!plan) return;
+    try {
+      // 1) Find today's session record and update it
+      const { data: sessionRow } = await supabase
+        .from("did_part_sessions")
+        .select("id")
+        .eq("part_name", plan.selected_part)
+        .eq("session_date", plan.plan_date)
+        .eq("session_type", "planned")
+        .maybeSingle();
+
+      if (sessionRow) {
+        await supabase
+          .from("did_part_sessions")
+          .update({
+            karel_therapist_feedback: `Sezení dokončeno dle plánu (urgency ${plan.urgency_score}).`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", sessionRow.id);
+      }
+
+      // 2) Queue Drive write — intervention record to 06_INTERVENCE
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      const driveContent = `## Záznam sezení — ${today}\n**Část:** ${plan.selected_part}\n**Naléhavost:** ${plan.urgency_score}\n**Terapeutka:** ${plan.therapist}\n\n### Plán sezení\n${plan.plan_markdown}\n\n---\n*Záznam vytvořen automaticky při ukončení sezení.*`;
+
+      await supabase
+        .from("did_pending_drive_writes")
+        .insert({
+          target_document: `06_INTERVENCE/${today}_${plan.selected_part}`,
+          content: driveContent,
+          write_type: "create",
+          priority: "high",
+        });
+
+      // 3) Update plan status
+      await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ status: "done", updated_at: new Date().toISOString() })
+        .eq("id", plan.id);
+
+      setPlan(prev => prev ? { ...prev, status: "done" } : null);
+      toast.success(`Sezení s ${plan.selected_part} ukončeno — záznam odeslán na Drive`);
+    } catch (e: any) {
+      toast.error("Nepodařilo se ukončit sezení");
+      console.error(e);
+    }
+  }, [plan]);
+
+  // ═══ REVERT STATUS ═══
+  const revertStatus = useCallback(async () => {
     if (!plan) return;
     try {
       await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update({ status: "generated", updated_at: new Date().toISOString() })
         .eq("id", plan.id);
-      setPlan(prev => prev ? { ...prev, status: newStatus } : null);
-      const labels: Record<string, string> = {
-        in_progress: "Sezení zahájeno",
-        done: "Sezení dokončeno",
-        generated: "Stav vrácen na Naplánováno",
-      };
-      toast.success(labels[newStatus] || `Stav: ${newStatus}`);
+      setPlan(prev => prev ? { ...prev, status: "generated" } : null);
+      toast.success("Stav vrácen na Naplánováno");
     } catch (e: any) {
       toast.error("Nepodařilo se změnit stav");
     }
@@ -371,7 +453,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => updatePlanStatus("in_progress")}
+                  onClick={startSession}
                   className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
                 >
                   <Play className="mr-1 h-2.5 w-2.5" /> Zahájit sezení
@@ -381,7 +463,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => updatePlanStatus("done")}
+                  onClick={endSession}
                   className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10"
                 >
                   <Square className="mr-1 h-2.5 w-2.5" /> Ukončit sezení
@@ -391,7 +473,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => updatePlanStatus("generated")}
+                  onClick={revertStatus}
                   className="h-6 px-2 text-[10px] text-muted-foreground"
                 >
                   ↩ Vrátit
