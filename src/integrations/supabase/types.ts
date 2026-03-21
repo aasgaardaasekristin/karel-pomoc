@@ -428,6 +428,57 @@ export type Database = {
           },
         ]
       }
+      did_daily_session_plans: {
+        Row: {
+          created_at: string
+          distributed_drive: boolean
+          distributed_email: boolean
+          id: string
+          plan_date: string
+          plan_html: string
+          plan_markdown: string
+          selected_part: string
+          status: string
+          therapist: string
+          updated_at: string
+          urgency_breakdown: Json
+          urgency_score: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          distributed_drive?: boolean
+          distributed_email?: boolean
+          id?: string
+          plan_date?: string
+          plan_html?: string
+          plan_markdown?: string
+          selected_part: string
+          status?: string
+          therapist?: string
+          updated_at?: string
+          urgency_breakdown?: Json
+          urgency_score?: number
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          distributed_drive?: boolean
+          distributed_email?: boolean
+          id?: string
+          plan_date?: string
+          plan_html?: string
+          plan_markdown?: string
+          selected_part?: string
+          status?: string
+          therapist?: string
+          updated_at?: string
+          urgency_breakdown?: Json
+          urgency_score?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_kartoteka_health: {
         Row: {
           created_at: string
