@@ -266,6 +266,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
           <DidPulseCheck refreshTrigger={refreshTrigger} />
         </div>
 
+        <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+
         <div className="mb-4">
           <DidColleagueView refreshTrigger={refreshTrigger} />
         </div>

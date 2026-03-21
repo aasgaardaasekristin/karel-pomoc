@@ -129,6 +129,7 @@ const DidColleagueView = ({ refreshTrigger }: { refreshTrigger: number }) => {
               Celkem splněno: {hanka.done + kata.done} z {hanka.total + kata.total} úkolů
             </div>
           )}
+          <DidColleagueSessionsSection refreshTrigger={refreshTrigger} />
         </div>
       )}
     </div>
