@@ -205,6 +205,54 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     }
   };
 
+  // Image analysis
+  const handleImageAnalysis = async () => {
+    if (isImageAnalyzing || imageUpload.pendingImages.length === 0) return;
+    setIsImageAnalyzing(true);
+    try {
+      const img = imageUpload.pendingImages[0];
+      imageSegmentCountRef.current += 1;
+      const segNum = imageSegmentCountRef.current;
+
+      const chatContext = messages.slice(-6).map(m =>
+        `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
+      ).join("\n");
+
+      const headers = await getAuthHeaders();
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            fileBase64: img.dataUrl,
+            fileName: img.name,
+            mode: "did-live-session",
+            chatContext,
+            extraContext: `DID část: ${partName}, Terapeutka: ${therapistName}. Analyzuj obrázek v kontextu živého sezení — zaměř se na emoční výraz, kresbu, neverbální signály, známky distresu nebo switchingu.`,
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error("Chyba při analýze obrázku");
+      const { analysis } = await response.json();
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      setMessages(prev => [
+        ...prev,
+        { role: "user", content: `📷 *[Obrázek #${segNum}: ${img.name}]*` },
+        { role: "assistant", content: analysis },
+      ]);
+      imageUpload.clearImages();
+      toast.success(`Obrázek #${segNum} analyzován`);
+    } catch (error) {
+      console.error("Image analysis error:", error);
+      toast.error("Chyba při analýze obrázku");
+    } finally {
+      setIsImageAnalyzing(false);
+    }
+  };
+
   // End session — generate analysis + save to did_part_sessions
   const handleEndSession = async () => {
     if (messages.length < 2) {
