@@ -140,7 +140,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       setPrevSession((other as PreviousSession) || null);
     };
     loadPrev();
-  }, [plan?.selected_part]);
+  }, [plan?.selected_part, plan?.therapist]);
 
   const loadRegistryParts = useCallback(async () => {
     const { data } = await supabase
