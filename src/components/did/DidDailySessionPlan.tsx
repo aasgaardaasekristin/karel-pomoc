@@ -309,6 +309,21 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     );
   }
 
+  // ═══ LIVE SESSION ACTIVE → show DidLiveSessionPanel ═══
+  if (liveSessionActive && plan) {
+    return (
+      <div className="mb-4 rounded-lg border border-border/70 bg-card/38 backdrop-blur-sm overflow-hidden" style={{ minHeight: "60vh" }}>
+        <DidLiveSessionPanel
+          partName={plan.selected_part}
+          therapistName={plan.therapist === "kata" || plan.therapist === "Káťa" ? "Káťa" : "Hanka"}
+          contextBrief={plan.plan_markdown}
+          onEnd={handleLiveSessionEnd}
+          onBack={() => setLiveSessionActive(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
