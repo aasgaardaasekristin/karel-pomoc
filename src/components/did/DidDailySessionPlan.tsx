@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, PenLine, MessageSquare } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, PenLine, MessageSquare, Play, Square, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -158,6 +158,25 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     setPrefDialogOpen(false);
     generatePlan(prefSelectedPart, prefDetail.trim() || undefined);
   };
+
+  const updatePlanStatus = useCallback(async (newStatus: string) => {
+    if (!plan) return;
+    try {
+      await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", plan.id);
+      setPlan(prev => prev ? { ...prev, status: newStatus } : null);
+      const labels: Record<string, string> = {
+        in_progress: "Sezení zahájeno",
+        done: "Sezení dokončeno",
+        generated: "Stav vrácen na Naplánováno",
+      };
+      toast.success(labels[newStatus] || `Stav: ${newStatus}`);
+    } catch (e: any) {
+      toast.error("Nepodařilo se změnit stav");
+    }
+  }, [plan]);
 
   if (loading) {
     return (
@@ -330,7 +349,55 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
               ))}
             </div>
 
-            <div className="flex gap-1.5 mb-2">
+            {/* ═══ STATUS INDICATOR + LIFECYCLE BUTTONS ═══ */}
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              {plan.status === "generated" && (
+                <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
+                  <Clock className="mr-1 h-2.5 w-2.5" /> Naplánováno
+                </Badge>
+              )}
+              {plan.status === "in_progress" && (
+                <Badge className="text-[10px] h-5 px-1.5 bg-primary/20 text-primary border border-primary/30">
+                  <Play className="mr-1 h-2.5 w-2.5" /> Probíhá
+                </Badge>
+              )}
+              {plan.status === "done" && (
+                <Badge className="text-[10px] h-5 px-1.5 bg-green-500/20 text-green-700 border border-green-500/30">
+                  <CheckCircle2 className="mr-1 h-2.5 w-2.5" /> Dokončeno
+                </Badge>
+              )}
+
+              {plan.status === "generated" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updatePlanStatus("in_progress")}
+                  className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  <Play className="mr-1 h-2.5 w-2.5" /> Zahájit sezení
+                </Button>
+              )}
+              {plan.status === "in_progress" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updatePlanStatus("done")}
+                  className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10"
+                >
+                  <Square className="mr-1 h-2.5 w-2.5" /> Ukončit sezení
+                </Button>
+              )}
+              {plan.status === "done" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => updatePlanStatus("generated")}
+                  className="h-6 px-2 text-[10px] text-muted-foreground"
+                >
+                  ↩ Vrátit
+                </Button>
+              )}
+
               {plan.distributed_drive && (
                 <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Drive</Badge>
               )}
