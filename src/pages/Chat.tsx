@@ -51,76 +51,12 @@ import DidRegistryOverview from "@/components/did/DidRegistryOverview";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
 import { useTheme } from "@/contexts/ThemeContext";
-
-type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
-type HubSection = "did" | "hana" | "research" | null;
-
-// localStorage helpers
-const STORAGE_KEY_PREFIX = "karel_chat_";
-const ACTIVE_MODE_KEY = "karel_active_mode";
-const DID_DOCS_LOADED_KEY = "karel_did_docs_loaded";
-const DID_SESSION_ID_KEY = "karel_did_session_id";
-const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
-
-const CAST_GREETINGS = [
-  "Hej! 😊 Jak se dneska máš? Co nového?",
-  "Čau! Co se ti dneska honí hlavou?",
-  "Ahoj! 🌟 Povídej, na co máš teď chuť?",
-  "Jé, ahoj! Jak se ti daří? Co bys dneska chtěl/a?",
-  "Hezky, že jsi tady! Jakou náladu máš právě teď?",
-  "Ahoj ahoj! Co hezkého nebo těžkého dneska přišlo?",
-  "Čau! Už jsem se těšil/a, až si zase popovídáme. Co je nového?",
-];
-
-const getRandomCastGreeting = () => {
-  if (CAST_GREETINGS.length === 1) return CAST_GREETINGS[0];
-  try {
-    const lastIndexRaw = localStorage.getItem(LAST_CAST_GREETING_INDEX_KEY);
-    const lastIndex = lastIndexRaw ? Number(lastIndexRaw) : -1;
-    let nextIndex = Math.floor(Math.random() * CAST_GREETINGS.length);
-    if (nextIndex === lastIndex) nextIndex = (nextIndex + 1) % CAST_GREETINGS.length;
-    localStorage.setItem(LAST_CAST_GREETING_INDEX_KEY, String(nextIndex));
-    return CAST_GREETINGS[nextIndex];
-  } catch {
-    return CAST_GREETINGS[Math.floor(Math.random() * CAST_GREETINGS.length)];
-  }
-};
-
-const saveMessages = (mode: string, messages: { role: string; content: string }[]) => {
-  try {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify({ _mode: mode, messages }));
-  } catch {}
-};
-const loadMessages = (mode: string) => {
-  try {
-    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${mode}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "_mode" in parsed) {
-      if (parsed._mode !== mode) {
-        localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
-        return null;
-      }
-      return parsed.messages;
-    }
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
-    return null;
-  } catch { return null; }
-};
-const clearMessages = (mode: string) => {
-  localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
-};
-
-const handleApiError = (response: Response) => {
-  if (response.status === 429) throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
-  if (response.status === 402) throw new Error("Karel je momentálně nedostupný – pravděpodobně došly AI kredity.");
-  throw new Error("Něco se pokazilo. Zkus to znovu.");
-};
-
-// DID flow states
-type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting" | "live-session" | "did-kartoteka";
-
-const HANA_PIN_KEY = "karel_hana_pin_verified";
+import {
+  type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
+  STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY,
+  getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
+  parseSSEStream, WELCOME_MESSAGES,
+} from "@/lib/chatHelpers";
 
 const Chat = () => {
   const {
