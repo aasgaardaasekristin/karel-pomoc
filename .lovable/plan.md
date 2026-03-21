@@ -1,46 +1,40 @@
 
 
-# Post-session reflexe terapeutky
+# Stav aplikace a další krok
 
-## Proč tento krok
+## Co je hotovo (fáze 1-6 z 8)
 
-Aktuální flow po ukončení sezení: AI analýza → uložení → auto-úkoly → handoff note → hotovo. Chybí **subjektivní pohled terapeutky** — co cítila, co ji překvapilo, co by příště udělala jinak. Tato data jsou klíčová pro supervizi, detekci přenosu/protipřenosu a zlepšování terapeutického přístupu. Implementačně je to přímočaré — dialog po ukončení sezení, uložení do existující tabulky `did_part_sessions`.
+1. Context Prime
+2. Epizodická paměť
+3. Registr částí + Live Session
+4. Bootstrap paměti
+5. Dashboard v2 (systémová mapa, úkoly, dohody, pulse check, kolegyně)
+6. Koordinace terapeutů (handoffy, alerty, reflexe, auto-úkoly)
 
-## Co se změní
+## Co zbývá: 2 fáze
 
-### 1. Reflexní dialog po ukončení sezení
+**Fáze 7 — Detekce switchů** — už je částečně implementovaná (regex `[SWITCH:...]` v `Chat.tsx`, pravidla v daily cycle). Chybí: vizuální indikace switche v live session panelu, logování switchů do `did_part_sessions`, zobrazení switch historie na dashboardu.
 
-Místo okamžitého volání `onEnd(report)` se po úspěšné finalizaci zobrazí modální dialog se 3 otázkami:
+**Fáze 8 — Supervizní reporty pro DID** — existuje obecný `karel-report`, ale chybí DID-specifický supervizní report, který agreguje data napříč částmi, sleduje vzorce switchů, zahrnuje reflexe terapeutek a generuje doporučení pro supervizi.
 
-- **Emoce terapeutky** — jak se cítila během sezení (multiselect z předpřipravených: klidná, nejistá, frustrovaná, dojatá, vyčerpaná, nadějná, úzkostná, překvapená)
-- **Co tě překvapilo?** — volný text (1-2 věty)
-- **Co bys příště udělala jinak?** — volný text (1-2 věty)
+---
 
-Tlačítko "Přeskočit" umožní dialog zavřít bez vyplnění.
+## Další logický krok: Zobrazení reflexe v plánu sezení
 
-### 2. Uložení do did_part_sessions
+Než pokročím k fázím 7-8, je tu jeden malý ale důležitý gap: reflexe terapeutky se ukládá do `karel_notes`, ale **nezobrazuje se v rozbalení plánu sezení** v `DidDailySessionPlan`. Kolegyně ji tedy nevidí, pokud si neotevře raw data.
 
-Reflexe se uloží jako update do právě vytvořeného záznamu (`savedSessionId`):
-- `karel_notes` se rozšíří o sekci `\n\n## REFLEXE TERAPEUTKY\n...`
-- Žádná DB migrace — využije existující textové pole
+### Co se změní
 
-### 3. Obohacení handoff note
+V `src/components/did/DidDailySessionPlan.tsx`, v rozbalené sekci předchozího sezení (řádky 610-644):
+- Parsovat `karel_notes` z `prevSession` na přítomnost sekce `## REFLEXE TERAPEUTKY`
+- Pokud existuje, zobrazit ji jako nový blok pod AI analýzou s ikonou `PenLine` a stylem `bg-amber-500/5`
+- Query pro `prevSession` rozšířit o `karel_notes`
 
-Pokud terapeutka vyplní reflexi PŘED generováním handoff note, její postřehy se zahrnou do promptu pro handoff — kolegyně tak dostane i subjektivní pohled.
+### Soubor k úpravě
 
-## Soubor k úpravě
+- `src/components/did/DidDailySessionPlan.tsx`
 
-- `src/components/did/DidLiveSessionPanel.tsx` — přidání reflexního dialogu a úprava flow v `handleEndSession`
+### Bez DB migrace
 
-## Bez DB migrace, bez nových závislostí
-
-Využije existující sloupce v `did_part_sessions` a UI komponenty (Dialog, Button, Badge).
-
-## Technické detaily
-
-- Nový state: `showReflection: boolean`, `reflectionData: { emotions: string[], surprise: string, nextTime: string }`
-- Po úspěšné finalizaci se nastaví `showReflection = true` místo okamžitého `onEnd()`
-- Dialog používá `<Dialog>` z shadcn/ui
-- Po odeslání/přeskočení se zavolá `onEnd(report)`
-- Pořadí flow se změní: finalize → save session → auto-tasks → **reflexe dialog** → handoff note → onEnd
+Data už existují v `karel_notes`, stačí je načíst a zobrazit.
 
