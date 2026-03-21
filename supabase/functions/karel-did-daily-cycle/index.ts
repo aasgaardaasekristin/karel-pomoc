@@ -2958,11 +2958,12 @@ Datum: ${dateStr}` },
         const centerFolder = rootChildren.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
         if (centerFolder) {
           centrumFolderId = centerFolder.id;
-          const centrumDocNames = ["05_Operativni_Plan", "05_Terapeuticky_Plan_Aktualni", "00_Aktualni_Dashboard", "04_Mapa_Vztahu", "06_Strategicky_Vyhled", "03_Geografie_Vnitrniho_Sveta"];
+          // Flat docs in CENTRUM (Dashboard, Index, Instrukce, Geografie, Mapa)
+          const flatDocNames = ["00_Aktualni_Dashboard", "01_Index_Vsech_Casti", "02_Instrukce", "03_Vnitrni_Svet", "04_Mapa_Vztahu"];
           const centerFiles = await listFilesInFolder(token, centerFolder.id);
-          for (const docName of centrumDocNames) {
+          for (const docName of flatDocNames) {
             const canonical = canonicalText(docName);
-            const file = centerFiles.find(f => canonicalText(f.name).includes(canonical) || f.name.includes(docName));
+            const file = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && (canonicalText(f.name).includes(canonical) || f.name.includes(docName)));
             if (file) {
               try {
                 const content = await readFileContent(token, file.id);
@@ -2971,43 +2972,69 @@ Datum: ${dateStr}` },
               } catch {}
             }
           }
-          // Load 06_Strategicky_Vyhled as a single document (no longer a folder of agreements)
-          const strategicFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && (canonicalText(f.name).includes("strategick") || canonicalText(f.name).includes("06strategick")));
-          if (strategicFile) {
+          
+          // Read DID_Therapist_Tasks sheet if present
+          const tasksSheet = centerFiles.find(f => f.mimeType === DRIVE_SHEET_MIME && /therapist.?task/i.test(f.name));
+          if (tasksSheet) {
             try {
-              const content = await readFileContent(token, strategicFile.id);
-              const trimmed = content.length > 3000 ? content.slice(0, 3000) + "…" : content;
-              centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${strategicFile.name} ===\n${trimmed}\n`;
-              console.log(`[daily-cycle] Loaded 06_Strategicky_Vyhled (${content.length} chars)`);
+              const exportRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${tasksSheet.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (exportRes.ok) {
+                const csv = await exportRes.text();
+                const trimmed = csv.length > 2000 ? csv.slice(0, 2000) + "…" : csv;
+                centrumDocsContext += `\n=== DID_Therapist_Tasks (Drive Sheet) ===\n${trimmed}\n`;
+              }
             } catch {}
           }
-          // Fallback: also check old 06_Terapeuticke_Dohody folder for backward compatibility
-          if (!strategicFile) {
-            const dohodyCandidates = centerFiles.filter(f => canonicalText(f.name).includes("terapeutick") && canonicalText(f.name).includes("dohod"));
-            if (dohodyCandidates.length > 0) {
-              for (const d of dohodyCandidates.slice(0, 1)) {
-                if (d.mimeType === DRIVE_FOLDER_MIME) {
-                  const subFiles = await listFilesInFolder(token, d.id);
-                  let totalDohodaChars = 0;
-                  const MAX_DOHODA_CHARS = 12000;
-                  for (const sf of subFiles.sort((a, b) => b.name.localeCompare(a.name))) {
-                    if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
-                    try {
-                      const content = await readFileContent(token, sf.id);
-                      const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
-                      centrumDocsContext += `\n=== LEGACY DOHODA: ${sf.name} ===\n${trimmed}\n`;
-                      totalDohodaChars += trimmed.length;
-                    } catch {}
-                  }
-                } else {
-                  try {
-                    const content = await readFileContent(token, d.id);
-                    centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC: ${d.name} ===\n${content.length > 2000 ? content.slice(0, 2000) + "…" : content}\n`;
-                  } catch {}
-                }
-              }
+          
+          // Read docs from 05_PLAN subfolder
+          const planFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+          if (planFolder) {
+            const planFiles = await listFilesInFolder(token, planFolder.id);
+            for (const pf of planFiles) {
+              if (pf.mimeType === DRIVE_FOLDER_MIME) continue;
+              try {
+                const content = await readFileContent(token, pf.id);
+                const trimmed = content.length > 3000 ? content.slice(0, 3000) + "…" : content;
+                centrumDocsContext += `\n=== EXISTUJÍCÍ CENTRUM DOC (05_PLAN): ${pf.name} ===\n${trimmed}\n`;
+              } catch {}
+            }
+            console.log(`[daily-cycle] Loaded 05_PLAN subfolder docs`);
+          }
+          
+          // Read last 5 interventions from 06_INTERVENCE
+          const interFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^06.*intervenc/i.test(f.name) || canonicalText(f.name).includes("intervenc")));
+          if (interFolder) {
+            const interFiles = await listFilesInFolder(token, interFolder.id);
+            const sorted = interFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME).sort((a, b) => b.name.localeCompare(a.name)).slice(0, 5);
+            for (const sf of sorted) {
+              try {
+                const content = await readFileContent(token, sf.id);
+                const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
+                centrumDocsContext += `\n=== INTERVENCE: ${sf.name} ===\n${trimmed}\n`;
+              } catch {}
             }
           }
+          
+          // Read last 3 agreements from 07_DOHODY
+          const dohodaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^07/.test(f.name.trim()) || canonicalText(f.name).includes("dohod")));
+          if (dohodaFolder) {
+            const dohodaFiles = await listFilesInFolder(token, dohodaFolder.id);
+            let totalDohodaChars = 0;
+            const MAX_DOHODA_CHARS = 6000;
+            for (const sf of dohodaFiles.sort((a, b) => b.name.localeCompare(a.name))) {
+              if (totalDohodaChars >= MAX_DOHODA_CHARS) break;
+              try {
+                const content = await readFileContent(token, sf.id);
+                const trimmed = content.length > 2000 ? content.slice(0, 2000) + "…" : content;
+                centrumDocsContext += `\n=== DOHODA: ${sf.name} ===\n${trimmed}\n`;
+                totalDohodaChars += trimmed.length;
+              } catch {}
+            }
+          }
+          
           if (centrumDocsContext) console.log(`[daily-cycle] Loaded CENTRUM docs context (${centrumDocsContext.length} chars)`);
         }
       } catch (e) { console.warn("Failed to load CENTRUM docs for dedup:", e); }

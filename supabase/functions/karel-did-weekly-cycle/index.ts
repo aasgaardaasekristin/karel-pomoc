@@ -351,18 +351,53 @@ async function phaseGather(sb: any, cycleId: string, userId: string) {
     await heartbeat(sb, cycleId, `Načteno ${cardNames.length} karet celkem`);
     console.log(`[weekly] Archive cards done: ${cardNames.length} total`);
 
-    // ── Step 3: Centrum documents ──
+    // ── Step 3: Centrum documents (flat + subfolders) ──
     if (centrumFolderId) {
       const centerFiles = await listFilesInFolder(token, centrumFolderId);
       for (const file of centerFiles) {
         if (file.mimeType === DRIVE_FOLDER_MIME) {
-          if (canonicalText(file.name).includes("dohod")) {
+          const cn = canonicalText(file.name);
+          // 07_DOHODY (or legacy dohod pattern)
+          if (/^07/.test(file.name.trim()) || cn.includes("dohod")) {
             dohodaFolderId = file.id;
             const dohodaFiles = await listFilesInFolder(token, file.id);
             for (const df of dohodaFiles) {
               try {
                 const content = await readFileContent(token, df.id);
                 agreementsContent += `\n=== DOHODA: ${df.name} ===\n${truncate(content, MAX_AGREEMENT_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          // 05_PLAN — read both docs as centrum docs
+          if (/^05.*plan/i.test(file.name) || cn.includes("05plan")) {
+            const planFiles = await listFilesInFolder(token, file.id);
+            for (const pf of planFiles) {
+              if (pf.mimeType === DRIVE_FOLDER_MIME) continue;
+              try {
+                const content = await readFileContent(token, pf.id);
+                centrumDocsContent += `\n=== CENTRUM (05_PLAN): ${pf.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          // 06_INTERVENCE — read last N interventions
+          if (/^06.*intervenc/i.test(file.name) || cn.includes("intervenc")) {
+            const interFiles = await listFilesInFolder(token, file.id);
+            const sorted = interFiles.filter(f => f.mimeType !== DRIVE_FOLDER_MIME).sort((a, b) => b.name.localeCompare(a.name)).slice(0, 5);
+            for (const sf of sorted) {
+              try {
+                const content = await readFileContent(token, sf.id);
+                centrumDocsContent += `\n=== INTERVENCE: ${sf.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
+              } catch {}
+            }
+          }
+          // 09_KNIHOVNA — read as context
+          if (/^09.*knihovn/i.test(file.name) || cn.includes("knihovn")) {
+            const libFiles = await listFilesInFolder(token, file.id);
+            for (const lf of libFiles.slice(0, 5)) {
+              if (lf.mimeType === DRIVE_FOLDER_MIME) continue;
+              try {
+                const content = await readFileContent(token, lf.id);
+                centrumDocsContent += `\n=== KNIHOVNA: ${lf.name} ===\n${truncate(content, MAX_CENTRUM_CHARS)}\n`;
               } catch {}
             }
           }
@@ -714,10 +749,23 @@ async function phaseDistribute(sb: any, cycleId: string) {
       const strategicSection = analysisText.match(/\[STRATEGICKY_VYHLED\]([\s\S]*?)\[\/STRATEGICKY_VYHLED\]/)?.[1]?.trim();
       if (strategicSection) {
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
-        let stratFile = centerFiles.find((f: any) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+        // Look in 05_PLAN subfolder first
+        const planFolder = centerFiles.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+        let stratFile: any = null;
+        if (planFolder) {
+          const planFiles = await listFilesInFolder(token, planFolder.id);
+          stratFile = planFiles.find((f: any) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+        }
+        // Fallback: flat in CENTRUM
+        if (!stratFile) {
+          stratFile = centerFiles.find((f: any) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+        }
         if (stratFile) {
           await updateFileById(token, stratFile.id, `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${strategicSection}`, stratFile.mimeType);
           cardsUpdated.push("06_Strategicky_Vyhled");
+        } else if (planFolder) {
+          await createFileInFolder(token, "06_Strategicky_Vyhled", `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${strategicSection}`, planFolder.id);
+          cardsUpdated.push("06_Strategicky_Vyhled (vytvořen v 05_PLAN)");
         } else {
           await createFileInFolder(token, "06_Strategicky_Vyhled", `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${strategicSection}`, centrumFolderId);
           cardsUpdated.push("06_Strategicky_Vyhled (vytvořen)");
@@ -761,12 +809,12 @@ async function phaseDistribute(sb: any, cycleId: string) {
           let agreementsFolderId = dohodaFolderId;
           if (!agreementsFolderId) {
             const centerChildren = await listFilesInFolder(token, centrumFolderId);
-            const existingFolder = centerChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+            const existingFolder = centerChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && (/^07/.test(f.name.trim()) || canonicalText(f.name).includes("dohod")));
             if (existingFolder) agreementsFolderId = existingFolder.id;
             else {
               const folderRes = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
                 method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ name: "06_Terapeuticke_Dohody", parents: [centrumFolderId], mimeType: DRIVE_FOLDER_MIME }),
+                body: JSON.stringify({ name: "07_DOHODY", parents: [centrumFolderId], mimeType: DRIVE_FOLDER_MIME }),
               });
               const folderData = await folderRes.json();
               agreementsFolderId = folderData.id;
@@ -793,10 +841,23 @@ async function phaseDistribute(sb: any, cycleId: string) {
         try {
           const docCanonical = canonicalText(docName);
           if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
-            const planFile = centerFiles.find((f: any) => {
-              const fc = canonicalText(f.name);
-              return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
-            });
+            // Look in 05_PLAN subfolder first
+            const planSubfolder = centerFiles.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+            let planFile: any = null;
+            if (planSubfolder) {
+              const planFiles = await listFilesInFolder(token, planSubfolder.id);
+              planFile = planFiles.find((f: any) => {
+                const fc = canonicalText(f.name);
+                return (fc.includes("operativn") && fc.includes("plan")) || fc.includes("05operativni");
+              });
+            }
+            // Fallback: flat in CENTRUM
+            if (!planFile) {
+              planFile = centerFiles.find((f: any) => {
+                const fc = canonicalText(f.name);
+                return f.mimeType !== DRIVE_FOLDER_MIME && ((fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan")));
+              });
+            }
             if (planFile) {
               await updateFileById(token, planFile.id, `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${newContent}`, planFile.mimeType);
               cardsUpdated.push("05_Operativni_Plan");

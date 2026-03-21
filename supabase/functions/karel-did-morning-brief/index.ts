@@ -115,19 +115,53 @@ serve(async (req) => {
       .order("completed_at", { ascending: false })
       .limit(1);
 
-    // Read Drive: 05_Operativni_Plan for today's priorities
+    // Read Drive: 05_PLAN/05_Operativni_Plan for today's priorities + DID_Therapist_Tasks
     let operativniPlan = "";
+    let therapistTasksFromDrive = "";
     try {
       const token = await getAccessToken();
       const kartotekaId = await findFolder(token, "kartoteka_DID");
       if (kartotekaId) {
         const folders = await listFilesInFolder(token, kartotekaId);
-        const centrumFolder = folders.find(f => f.name.includes("00_CENTRUM"));
+        const centrumFolder = folders.find(f => f.name.includes("00_CENTRUM") || /^00/.test(f.name));
         if (centrumFolder) {
           const centrumFiles = await listFilesInFolder(token, centrumFolder.id);
-          const opFile = centrumFiles.find(f => f.name.includes("05_Operativni"));
-          if (opFile) {
-            operativniPlan = truncate(await readFileContent(token, opFile.id), 3000);
+          
+          // Find 05_PLAN subfolder, then look for 05_Operativni_Plan inside it
+          const planFolder = centrumFiles.find(f => 
+            f.mimeType === "application/vnd.google-apps.folder" && 
+            (/^05.*plan/i.test(f.name) || f.name.includes("05_PLAN"))
+          );
+          if (planFolder) {
+            const planFiles = await listFilesInFolder(token, planFolder.id);
+            const opFile = planFiles.find(f => f.name.includes("05_Operativni"));
+            if (opFile) {
+              operativniPlan = truncate(await readFileContent(token, opFile.id), 3000);
+            }
+          }
+          // Fallback: try flat in CENTRUM (legacy)
+          if (!operativniPlan) {
+            const opFileLegacy = centrumFiles.find(f => f.name.includes("05_Operativni"));
+            if (opFileLegacy) {
+              operativniPlan = truncate(await readFileContent(token, opFileLegacy.id), 3000);
+            }
+          }
+          
+          // Read DID_Therapist_Tasks sheet if present
+          const tasksSheet = centrumFiles.find(f => 
+            f.mimeType === "application/vnd.google-apps.spreadsheet" && 
+            /therapist.?task/i.test(f.name)
+          );
+          if (tasksSheet) {
+            try {
+              const exportRes = await fetch(
+                `https://www.googleapis.com/drive/v3/files/${tasksSheet.id}/export?mimeType=text/csv&supportsAllDrives=true`,
+                { headers: { Authorization: `Bearer ${token}` } }
+              );
+              if (exportRes.ok) {
+                therapistTasksFromDrive = truncate(await exportRes.text(), 2000);
+              }
+            } catch {}
           }
         }
       }
@@ -195,6 +229,9 @@ ${recentActivity || "(žádná)"}
 
 OPERATIVNÍ PLÁN:
 ${operativniPlan || "(nedostupný)"}
+
+ÚKOLY TERAPEUTEK Z DRIVE:
+${therapistTasksFromDrive || "(nedostupné)"}
 
 MOTIVAČNÍ PROFIL ${therapist.toUpperCase()}:
 ${profileInfo}

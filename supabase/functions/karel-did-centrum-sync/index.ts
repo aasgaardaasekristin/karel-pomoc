@@ -294,6 +294,22 @@ Deno.serve(async (req) => {
         } else {
           driveResult = "Dokument 'Dashboard' nenalezen v 00_CENTRUM";
         }
+        
+        // Update DID_Therapist_Tasks sheet if present
+        try {
+          const tasksSheet = await findDoc(driveToken, "Therapist_Tasks", centrumDoc);
+          if (tasksSheet) {
+            // Build CSV-like content for the sheet
+            const taskLines = tasks.map(t => 
+              `${t.task}\t${t.assigned_to}\t${t.status}\t${t.priority || "normal"}\t${t.status_hanka}\t${t.status_kata}\t${t.due_date || ""}`
+            );
+            const tasksContent = `Úkol\tPřiřazeno\tStatus\tPriorita\tHanka\tKáťa\tTermín\n${taskLines.join("\n")}`;
+            await overwriteDoc(driveToken, tasksSheet.id, tasksContent);
+            driveResult += ` + DID_Therapist_Tasks aktualizován`;
+          }
+        } catch (e) {
+          console.warn("[centrum-sync] DID_Therapist_Tasks update failed:", e);
+        }
       } else {
         driveResult = "Složka 00_CENTRUM nenalezena";
       }
