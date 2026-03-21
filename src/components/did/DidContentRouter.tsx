@@ -77,7 +77,7 @@ export interface DidContentRouterProps {
   syncProgress: SyncProgress | null;
 
   // Handlers (all useCallback-wrapped)
-  handleDidSubModeSelect: (subMode: DidSubMode) => void;
+  handleDidSubModeSelect: (subMode: any) => void;
   handleQuickThread: (threadId: string, partName: string) => Promise<void>;
   handleSelectThread: (thread: DidThread) => Promise<void>;
   handleNewCastThread: () => void;
