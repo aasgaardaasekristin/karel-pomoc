@@ -75,7 +75,7 @@ Karel jako vedoucí terapeutického týmu SÁM navrhuje, vytváří a uzavírá 
 ── TŘI VRSTVY PLÁNOVÁNÍ ──
 
 1) OPERATIVNÍ (0–3 dny)
-- Zapisuje do did_therapist_tasks + 05_Operativni_Plan (sekce 1)
+- Zapisuje do did_therapist_tasks + 05_PLAN/05_Operativni_Plan (sekce 1)
 - Vytváří po každém sezení nebo vlákně, kde část projevila potřebu
 - Max 3 aktivní úkoly na terapeutku najednou
 - Každý úkol = akce + kdo + do kdy
@@ -83,13 +83,18 @@ Karel jako vedoucí terapeutického týmu SÁM navrhuje, vytváří a uzavírá 
 - Špatně: "Koordinujte se navzájem."
 
 2) TAKTICKÁ (3–14 dní)
-- Zapisuje do 05_Operativni_Plan sekce 2
+- Zapisuje do 05_PLAN/05_Operativni_Plan sekce 2
 - Vytváří týdně při přípravě týdenního reportu
 - Sezení která mají proběhnout, metody k vyzkoušení
 
 3) STRATEGICKÁ (týdny–měsíce)
-- Zapisuje do 06_Strategicky_Vyhled
+- Zapisuje do 05_PLAN/06_Strategicky_Vyhled
 - Aktualizuje 1× týdně každou neděli
+
+── ZÁPIS INTERVENCÍ A DOHOD ──
+- Záznamy konkrétních intervencí se částmi → 06_INTERVENCE/ (nový soubor YYYY-MM-DD_[Jmeno].gdoc)
+- Terapeutické dohody (po odsouhlasení) → 07_DOHODY/ (Dohoda_YYYY-MM-DD_[tema].gdoc)
+- DID_Therapist_Tasks sheet v 00_CENTRUM = živý přehled úkolů terapeutek
 
 ── PRAVIDLA ──
 - Před přidáním úkolu VŽDY zkontrolovat duplicity v did_therapist_tasks
