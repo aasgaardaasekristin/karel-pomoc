@@ -442,6 +442,11 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
       // Save to did_part_sessions
       let savedSessionId: string | null = null;
       try {
+        // Build switch log text for notes
+        const switchLogText = switchLog.length > 0
+          ? `\n\n## SWITCH LOG\n${switchLog.map(s => `- ${s.time}: ${s.from} → ${s.to}`).join("\n")}`
+          : "";
+
         const { data: insertedRow } = await supabase.from("did_part_sessions").insert({
           part_name: partName,
           therapist: therapistName,
@@ -451,7 +456,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           methods_effectiveness: effectiveness,
           tasks_assigned: tasksList,
           audio_analysis: audioAnalyses.join("\n---\n") || "",
-          karel_notes: report,
+          karel_notes: report + switchLogText,
           karel_therapist_feedback: therapistFeedback,
         }).select("id").single();
         savedSessionId = insertedRow?.id || null;
