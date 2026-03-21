@@ -293,6 +293,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
           <DidSwitchHistory refreshTrigger={refreshTrigger} />
         </ErrorBoundary>
 
+        <ErrorBoundary fallbackTitle="Pohled kolegyně selhal">
           <div className="mb-4">
             <DidColleagueView refreshTrigger={refreshTrigger} />
           </div>
