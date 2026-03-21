@@ -463,7 +463,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => updatePlanStatus("done")}
+                  onClick={endSession}
                   className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10"
                 >
                   <Square className="mr-1 h-2.5 w-2.5" /> Ukončit sezení
