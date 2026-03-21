@@ -787,6 +787,18 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
             </Button>
           </div>
         )}
+
+        {/* Switch history strip */}
+        {switchLog.length > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+            <Shuffle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
+            {switchLog.map((s, i) => (
+              <Badge key={i} variant="outline" className="text-[9px] h-5 border-amber-500/30 text-amber-700 dark:text-amber-400 bg-amber-500/5">
+                {s.time} {s.from} → {s.to}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Messages */}
