@@ -490,7 +490,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           )}
           {recorder.state === "paused" && (
             <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
-              <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)}</span>
+              <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)} / {formatDuration(recorder.maxDuration)}</span>
               <Button variant="ghost" size="sm" onClick={recorder.resumeRecording} className="h-7 w-7 p-0">
                 <Play className="w-3.5 h-3.5" />
               </Button>
