@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -49,6 +50,8 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [registryParts, setRegistryParts] = useState<{ part_name: string; status: string }[]>([]);
+  const [overrideOpen, setOverrideOpen] = useState(false);
 
   const loadTodayPlan = useCallback(async () => {
     setLoading(true);
@@ -70,7 +73,18 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   useEffect(() => { loadTodayPlan(); }, [loadTodayPlan, refreshTrigger]);
 
-  const generatePlan = useCallback(async () => {
+  const loadRegistryParts = useCallback(async () => {
+    const { data } = await supabase
+      .from("did_part_registry")
+      .select("part_name, status")
+      .in("status", ["active", "sleeping"])
+      .order("part_name");
+    setRegistryParts(data || []);
+  }, []);
+
+  useEffect(() => { loadRegistryParts(); }, [loadRegistryParts]);
+
+  const generatePlan = useCallback(async (forcePart?: string) => {
     setGenerating(true);
     setGenStep(0);
 
@@ -86,7 +100,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       const headers = await getAuthHeaders();
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-auto-session-plan`,
-        { method: "POST", headers, body: JSON.stringify({}) }
+        { method: "POST", headers, body: JSON.stringify(forcePart ? { forcePart } : {}) }
       );
       const data = await resp.json();
       clearInterval(stepTimer);
@@ -127,24 +141,103 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         </h4>
         <div className="flex items-center gap-1.5">
           {!plan && !generating && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={generatePlan}
-              className="h-7 px-2 text-[10px]"
-            >
-              <Zap className="mr-1 h-3 w-3" /> Vygenerovat
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => generatePlan()}
+                className="h-7 px-2 text-[10px]"
+              >
+                <Zap className="mr-1 h-3 w-3" /> Vygenerovat
+              </Button>
+              <Popover open={overrideOpen} onOpenChange={setOverrideOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-[10px]"
+                  >
+                    <UserRoundCog className="mr-1 h-3 w-3" />
+                    Určit část
+                    <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1.5" align="end">
+                  <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
+                    Přepsat automatický výběr:
+                  </p>
+                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                    {registryParts.map((p) => (
+                      <button
+                        key={p.part_name}
+                        onClick={() => {
+                          setOverrideOpen(false);
+                          generatePlan(p.part_name);
+                        }}
+                        className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                          p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
+                        }`} />
+                        {p.part_name}
+                        <span className="text-[9px] text-muted-foreground ml-auto">
+                          {p.status === "active" ? "aktivní" : "spící"}
+                        </span>
+                      </button>
+                    ))}
+                    {registryParts.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground px-2 py-1">Žádné části v registru</p>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </>
           )}
           {plan && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-              className="h-7 px-2 text-[10px]"
-            >
-              {expanded ? "Sbalit" : "Rozbalit"}
-            </Button>
+            <>
+              <Popover open={overrideOpen} onOpenChange={setOverrideOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
+                    <UserRoundCog className="mr-1 h-3 w-3" />
+                    Přegenerovat
+                    <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1.5" align="end">
+                  <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
+                    Vyber část (nahradí stávající plán):
+                  </p>
+                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                    {registryParts.map((p) => (
+                      <button
+                        key={p.part_name}
+                        onClick={() => {
+                          setOverrideOpen(false);
+                          generatePlan(p.part_name);
+                        }}
+                        className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                          p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
+                        }`} />
+                        {p.part_name}
+                        <span className="text-[9px] text-muted-foreground ml-auto">
+                          {p.status === "active" ? "aktivní" : "spící"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+                className="h-7 px-2 text-[10px]"
+              >
+                {expanded ? "Sbalit" : "Rozbalit"}
+              </Button>
+            </>
           )}
         </div>
       </div>
