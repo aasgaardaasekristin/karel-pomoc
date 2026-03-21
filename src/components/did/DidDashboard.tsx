@@ -13,6 +13,7 @@ import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
+import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 
 interface PartActivity {
