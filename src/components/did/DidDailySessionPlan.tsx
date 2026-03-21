@@ -159,6 +159,25 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     generatePlan(prefSelectedPart, prefDetail.trim() || undefined);
   };
 
+  const updatePlanStatus = useCallback(async (newStatus: string) => {
+    if (!plan) return;
+    try {
+      await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", plan.id);
+      setPlan(prev => prev ? { ...prev, status: newStatus } : null);
+      const labels: Record<string, string> = {
+        in_progress: "Sezení zahájeno",
+        done: "Sezení dokončeno",
+        generated: "Stav vrácen na Naplánováno",
+      };
+      toast.success(labels[newStatus] || `Stav: ${newStatus}`);
+    } catch (e: any) {
+      toast.error("Nepodařilo se změnit stav");
+    }
+  }, [plan]);
+
   if (loading) {
     return (
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm">
