@@ -16,6 +16,7 @@ import DidColleagueView from "./DidColleagueView";
 import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface PartActivity {
   name: string;

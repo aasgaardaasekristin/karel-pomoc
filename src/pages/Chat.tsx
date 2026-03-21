@@ -1769,7 +1769,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     if (didFlowState === "terapeut" && !didSubMode) {
       return (
         <ScrollArea className="flex-1">
-          <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
+          <ErrorBoundary fallbackTitle="Dashboard selhal">
+            <DidDashboard onManualUpdate={handleManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
+          </ErrorBoundary>
           <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
             <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
             <div className="space-y-2">
