@@ -277,6 +277,15 @@ serve(async (req) => {
       dataBlock += `\n\n═══ POSLEDNÍ MĚSÍČNÍ ANALÝZA ═══\n${monthlySummary.slice(0, 3000)}`;
     }
 
+    // Session plan (auto-generated at 13:50)
+    if (todaySessionPlan) {
+      const bp = todaySessionPlan.urgency_breakdown || {};
+      const bpStr = Object.entries(bp).map(([k, v]) => `${k}(+${v})`).join(", ");
+      dataBlock += `\n\n🎯 ═══ AUTOMATICKÝ PLÁN SEZENÍ NA DNES ═══\n`;
+      dataBlock += `Vybraná část: ${todaySessionPlan.selected_part} | Naléhavost: ${todaySessionPlan.urgency_score} | Důvody: ${bpStr}\n`;
+      dataBlock += `\n${(todaySessionPlan.plan_markdown || "").slice(0, 4000)}`;
+    }
+
     // Motivation profiles
     const formatProfile = (p: any) => {
       if (!p) return "Žádný profil zatím.";
