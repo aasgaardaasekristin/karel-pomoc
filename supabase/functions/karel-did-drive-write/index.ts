@@ -686,9 +686,9 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════
-    // MODE C: "update-therapy-plan" - 05_Terapeuticky_Plan
-    // Location: 00_CENTRUM/
-    // Method: Find existing → append/update
+    // MODE C: "update-therapy-plan" - 05_PLAN/05_Operativni_Plan
+    // Location: 00_CENTRUM/05_PLAN/
+    // Method: Find subfolder → find doc → append/update
     // ═══════════════════════════════════════════════════════
     if (body.mode === "update-therapy-plan") {
       const { content } = body;
@@ -705,11 +705,24 @@ serve(async (req) => {
         });
       }
 
-      const doc = await findDocumentByPattern(token, centerFolderId, [
-        "05_Terapeuticky_Plan_Aktualni", "Terapeuticky_Plan", "05_Terapeuticky",
-      ]);
+      // Look inside 05_PLAN subfolder first
+      const centerFiles = await listFilesInFolder(token, centerFolderId);
+      const planFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+      
+      let doc: Awaited<ReturnType<typeof findDocumentByPattern>> = null;
+      if (planFolder) {
+        doc = await findDocumentByPattern(token, planFolder.id, [
+          "05_Operativni_Plan", "Operativni_Plan", "05_Operativni",
+        ]);
+      }
+      // Fallback: search flat in CENTRUM (legacy)
       if (!doc) {
-        return new Response(JSON.stringify({ error: "Therapy plan document not found in 00_CENTRUM" }), {
+        doc = await findDocumentByPattern(token, centerFolderId, [
+          "05_Operativni_Plan", "05_Terapeuticky_Plan_Aktualni", "Terapeuticky_Plan", "05_Terapeuticky",
+        ]);
+      }
+      if (!doc) {
+        return new Response(JSON.stringify({ error: "05_Operativni_Plan not found in 05_PLAN/ or 00_CENTRUM" }), {
           status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
