@@ -1904,23 +1904,25 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
       // Step 3: Live session panel
       return (
-        <DidLiveSessionPanel
-          partName={didLiveSession.partName}
-          therapistName={didLiveSession.therapistName}
-          contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
-          onEnd={(summary) => {
-            toast.success("DID sezení zpracováno");
-            setDidLiveSession(null);
-            setDidLiveSessionReady(false);
-            setDidLivePartContext("");
-            setDidSubMode("mamka");
-            setDidFlowState("chat");
-            setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
-          }}
-          onBack={() => {
-            setDidLiveSessionReady(false);
-          }}
-        />
+        <ErrorBoundary fallbackTitle="Live session panel selhal">
+          <DidLiveSessionPanel
+            partName={didLiveSession.partName}
+            therapistName={didLiveSession.therapistName}
+            contextBrief={didLivePartContext || didContextPrime.primeCache || didInitialContext || undefined}
+            onEnd={(summary) => {
+              toast.success("DID sezení zpracováno");
+              setDidLiveSession(null);
+              setDidLiveSessionReady(false);
+              setDidLivePartContext("");
+              setDidSubMode("mamka");
+              setDidFlowState("chat");
+              setMessages([{ role: "assistant", content: `Sezení s **${didLiveSession.partName}** dokončeno.\n\n${summary}` }]);
+            }}
+            onBack={() => {
+              setDidLiveSessionReady(false);
+            }}
+          />
+        </ErrorBoundary>
       );
     }
 

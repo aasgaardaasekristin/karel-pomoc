@@ -236,9 +236,13 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
           />
         </div>
 
-        <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
+        <ErrorBoundary fallbackTitle="Přehled systému selhal">
+          <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
+        </ErrorBoundary>
 
-        <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+        <ErrorBoundary fallbackTitle="Denní plán selhal">
+          <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
 
         <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
           <div className="flex items-center justify-between mb-3">
@@ -253,28 +257,42 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
               </Badge>
             )}
           </div>
-          <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
+          <ErrorBoundary fallbackTitle="Task board selhal">
+            <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
+          </ErrorBoundary>
         </div>
 
-        <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
-          <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
-        </div>
+        <ErrorBoundary fallbackTitle="Dohody selhaly">
+          <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+            <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
+          </div>
+        </ErrorBoundary>
 
-        <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
-          <DidMonthlyPanel refreshTrigger={refreshTrigger} />
-        </div>
+        <ErrorBoundary fallbackTitle="Měsíční panel selhal">
+          <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+            <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+          </div>
+        </ErrorBoundary>
 
-        <div className="mb-4">
-          <DidPulseCheck refreshTrigger={refreshTrigger} />
-        </div>
+        <ErrorBoundary fallbackTitle="Pulse check selhal">
+          <div className="mb-4">
+            <DidPulseCheck refreshTrigger={refreshTrigger} />
+          </div>
+        </ErrorBoundary>
 
-        <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+        <ErrorBoundary fallbackTitle="Koordinační upozornění selhala">
+          <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
 
-        <DidSupervisionReport refreshTrigger={refreshTrigger} />
+        <ErrorBoundary fallbackTitle="Supervizní report selhal">
+          <DidSupervisionReport refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
 
-        <div className="mb-4">
-          <DidColleagueView refreshTrigger={refreshTrigger} />
-        </div>
+        <ErrorBoundary fallbackTitle="Pohled kolegyně selhal">
+          <div className="mb-4">
+            <DidColleagueView refreshTrigger={refreshTrigger} />
+          </div>
+        </ErrorBoundary>
 
         {/* DidRegistryOverview and DidKartotekaHealth moved to DidSprava tabs */}
 
