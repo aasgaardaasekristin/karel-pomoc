@@ -16,6 +16,7 @@ import DidColleagueView from "./DidColleagueView";
 import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
+import DidSwitchHistory from "./DidSwitchHistory";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface PartActivity {
@@ -286,6 +287,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
 
         <ErrorBoundary fallbackTitle="Supervizní report selhal">
           <DidSupervisionReport refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
+
+        <ErrorBoundary fallbackTitle="Switch historie selhala">
+          <DidSwitchHistory refreshTrigger={refreshTrigger} />
         </ErrorBoundary>
 
         <ErrorBoundary fallbackTitle="Pohled kolegyně selhal">
