@@ -603,17 +603,27 @@ serve(async (req) => {
         console.log(`[update-card-sections] Creating new card for "${partName}" in ${target.pathLabel}`);
       }
 
-      // Merge: APPEND to existing sections, NEVER overwrite
+      // Merge: support REPLACE/ROTATE/APPEND modes per section
+      const sectionModes: Record<string, string> = body.sectionModes || {};
       const updatedKeys: string[] = [];
       for (const [letter, newContent] of Object.entries(newSections)) {
         const ul = letter.toUpperCase();
         if (!SECTION_ORDER.includes(ul)) continue;
         const existing = existingSections[ul] || "";
+        const mode = (sectionModes[ul] || "APPEND").toUpperCase();
         const timestamped = `[${dateStr}] ${newContent}`;
-        if (existing && existing !== "(zatím prázdné)") {
-          existingSections[ul] = existing + "\n\n" + timestamped;
-        } else {
+
+        if (mode === "REPLACE" || mode === "ROTATE") {
+          // Full section replacement – AI already generated complete content
           existingSections[ul] = timestamped;
+          console.log(`[update-card-sections] ${mode} section ${ul} for "${partName}" (${String(newContent).length} chars)`);
+        } else {
+          // Default APPEND
+          if (existing && existing !== "(zatím prázdné)") {
+            existingSections[ul] = existing + "\n\n" + timestamped;
+          } else {
+            existingSections[ul] = timestamped;
+          }
         }
         updatedKeys.push(ul);
       }
