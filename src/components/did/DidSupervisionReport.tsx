@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ClipboardCheck, Loader2, FileText, Shuffle, PenLine, ListChecks, ChevronDown, ChevronUp } from "lucide-react";
+import { ClipboardCheck, Loader2, FileText, Shuffle, PenLine, ListChecks, ChevronDown, ChevronUp, History } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
@@ -23,6 +24,14 @@ interface ReportMeta {
   };
 }
 
+interface SavedReport {
+  id: string;
+  period_days: number;
+  report_markdown: string;
+  meta_json: ReportMeta;
+  created_at: string;
+}
+
 interface Props {
   refreshTrigger: number;
 }
@@ -33,9 +42,24 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
   const [meta, setMeta] = useState<ReportMeta | null>(null);
   const [period, setPeriod] = useState("14");
   const [expanded, setExpanded] = useState(false);
+  const [pastReports, setPastReports] = useState<SavedReport[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedPastId, setSelectedPastId] = useState<string | null>(null);
+
+  const loadPastReports = useCallback(async () => {
+    const { data } = await supabase
+      .from("did_supervision_reports")
+      .select("id, period_days, report_markdown, meta_json, created_at")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    if (data) setPastReports(data as unknown as SavedReport[]);
+  }, []);
+
+  useEffect(() => { loadPastReports(); }, [loadPastReports, refreshTrigger]);
 
   const generateReport = async () => {
     setIsGenerating(true);
+    setSelectedPastId(null);
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -52,13 +76,22 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
       setReport(data.report);
       setMeta(data.meta);
       setExpanded(true);
-      toast.success("Supervizní report vygenerován");
+      toast.success("Supervizní report vygenerován a uložen");
+      loadPastReports();
     } catch (error) {
       console.error("Supervision report error:", error);
       toast.error("Nepodařilo se vygenerovat report");
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const showPastReport = (r: SavedReport) => {
+    setReport(r.report_markdown);
+    setMeta(r.meta_json);
+    setExpanded(true);
+    setSelectedPastId(r.id);
+    setShowHistory(false);
   };
 
   const copyReport = () => {
@@ -76,6 +109,17 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
           Supervizní report
         </h4>
         <div className="flex items-center gap-2">
+          {pastReports.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowHistory(!showHistory)}
+              className="h-7 text-[10px] gap-1 text-muted-foreground"
+            >
+              <History className="w-3 h-3" />
+              {pastReports.length}
+            </Button>
+          )}
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="h-7 text-[10px] w-[100px]">
               <SelectValue />
@@ -97,6 +141,30 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
           </Button>
         </div>
       </div>
+
+      {showHistory && pastReports.length > 0 && (
+        <div className="mb-3 rounded-md border border-border/50 bg-background/40 p-2 space-y-1">
+          <p className="text-[10px] text-muted-foreground font-medium mb-1">Historie reportů</p>
+          {pastReports.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => showPastReport(r)}
+              className={`w-full text-left rounded px-2 py-1.5 text-[10px] transition-colors flex items-center justify-between ${
+                selectedPastId === r.id
+                  ? "bg-primary/10 text-primary"
+                  : "hover:bg-muted/50 text-foreground"
+              }`}
+            >
+              <span>
+                {new Date(r.created_at).toLocaleDateString("cs-CZ")} — {r.period_days}d
+              </span>
+              <span className="text-muted-foreground">
+                {r.meta_json?.sessionCount || "?"} sezení
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {meta && (
         <div className="flex flex-wrap gap-1.5 mb-2">
@@ -142,6 +210,9 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
             >
               📋 Kopírovat
             </Button>
+            {selectedPastId && (
+              <span className="text-[9px] text-muted-foreground ml-auto">Historický report</span>
+            )}
           </div>
 
           {expanded && (
