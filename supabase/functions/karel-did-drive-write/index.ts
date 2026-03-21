@@ -948,9 +948,197 @@ serve(async (req) => {
       });
     }
 
+    // ═══════════════════════════════════════════════════════
+    // MODE I: "sync-therapist-tasks" - Sync DB tasks → Drive Sheet
+    // Location: 00_CENTRUM/DID_Therapist_Tasks
+    // ID format: INT-YYYY-MM-DD-X00 (X = first letter of alter)
+    // ═══════════════════════════════════════════════════════
+    if (body.mode === "sync-therapist-tasks") {
+      const centerFolderId = registry?.centerFolderId;
+      if (!centerFolderId) {
+        return new Response(JSON.stringify({ error: "00_CENTRUM folder not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Read tasks from DB
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: { Authorization: req.headers.get("Authorization")! } },
+      });
+
+      const { data: tasks, error: tasksErr } = await supabase
+        .from("did_therapist_tasks")
+        .select("*")
+        .in("status", ["pending", "in_progress", "not_started", "completed", "archived"])
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (tasksErr) {
+        return new Response(JSON.stringify({ error: `DB read failed: ${tasksErr.message}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Generate INT-YYYY-MM-DD-X00 IDs
+      const generateTaskId = (task: any, index: number): string => {
+        const created = new Date(task.created_at);
+        const yyyy = created.getFullYear();
+        const mm = String(created.getMonth() + 1).padStart(2, "0");
+        const dd = String(created.getDate()).padStart(2, "0");
+        // X = first letter of the alter/part name from task text or assigned_to
+        const partHint = (task.category || task.task || "").trim();
+        const firstLetter = partHint.charAt(0).toUpperCase() || "X";
+        const seq = String(index).padStart(2, "0");
+        return `INT-${yyyy}-${mm}-${dd}-${firstLetter}${seq}`;
+      };
+
+      // Map priority to emoji
+      const priorityEmoji = (p: string): string => {
+        switch ((p || "normal").toLowerCase()) {
+          case "high": case "urgent": case "vysoka": return "🔴 vysoká";
+          case "medium": case "normal": case "stredni": return "🟡 střední";
+          case "low": case "nizka": return "🟢 nízká";
+          default: return "🟡 střední";
+        }
+      };
+
+      // Map status
+      const statusLabel = (s: string): string => {
+        switch (s) {
+          case "pending": return "Čeká";
+          case "in_progress": return "Probíhá";
+          case "completed": return "Splněno";
+          case "not_started": return "Nezahájeno";
+          case "archived": return "Archivováno";
+          default: return s;
+        }
+      };
+
+      const formatDateShort = (d: string | null): string => {
+        if (!d) return "";
+        try { return new Date(d).toLocaleDateString("cs-CZ"); } catch { return d; }
+      };
+
+      // Build sheet rows: header + data
+      // Columns: ID, CAST_ALTER, KDO, UKOL, ZDROJ_ODKAZ, DO_KDY, STATUS, PRIORITA, POZNAMKA, DATUM_VYTVORENI, DATUM_SPLNENI
+      const headerRow = [
+        "ID", "CAST_ALTER", "KDO", "UKOL", "ZDROJ_ODKAZ",
+        "DO_KDY", "STATUS", "PRIORITA", "POZNAMKA", "DATUM_VYTVORENI", "DATUM_SPLNENI",
+      ];
+
+      // Group tasks by date for sequential numbering
+      const dateCounters: Record<string, number> = {};
+      const dataRows = (tasks || []).map((task: any) => {
+        const created = new Date(task.created_at);
+        const dateKey = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}`;
+        const partHint = (task.category || task.task || "").trim();
+        const firstLetter = partHint.charAt(0).toUpperCase() || "X";
+        const counterKey = `${dateKey}-${firstLetter}`;
+        dateCounters[counterKey] = (dateCounters[counterKey] || 0) + 1;
+        const seq = String(dateCounters[counterKey]).padStart(2, "0");
+        const taskId = `INT-${dateKey}-${firstLetter}${seq}`;
+
+        return [
+          taskId,
+          task.category || "",
+          task.assigned_to || "",
+          task.task || "",
+          task.source_agreement || "",
+          formatDateShort(task.due_date),
+          statusLabel(task.status),
+          priorityEmoji(task.priority),
+          task.note || "",
+          formatDateShort(task.created_at),
+          formatDateShort(task.completed_at),
+        ];
+      });
+
+      // Find the DID_Therapist_Tasks sheet in CENTRUM
+      const centerFiles = await listFilesInFolder(token, centerFolderId);
+      const tasksSheet = centerFiles.find(f =>
+        f.mimeType === DRIVE_SHEET_MIME &&
+        (canonicalText(f.name).includes("therapisttask") || canonicalText(f.name).includes("didtherapisttask"))
+      );
+
+      if (!tasksSheet) {
+        // Fallback: search by broader pattern
+        const fallback = centerFiles.find(f =>
+          f.mimeType === DRIVE_SHEET_MIME &&
+          canonicalText(f.name).includes("task")
+        );
+        if (!fallback) {
+          return new Response(JSON.stringify({ error: "DID_Therapist_Tasks sheet not found in 00_CENTRUM" }), {
+            status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        // Use fallback
+        Object.assign(tasksSheet || {}, fallback);
+      }
+
+      const targetSheet = tasksSheet!;
+
+      // Get first sheet name
+      let sheetTitle = "Hlavní";
+      try {
+        const metaRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}?fields=sheets.properties.title`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          sheetTitle = metaData.sheets?.[0]?.properties?.title || "Hlavní";
+        }
+      } catch {}
+
+      // Clear existing data and write new
+      const allRows = [headerRow, ...dataRows];
+      const escapedTitle = `'${sheetTitle.replace(/'/g, "''")}'`;
+      const range = `${escapedTitle}!A1:K${allRows.length + 1}`;
+
+      // Clear the sheet first
+      await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}/values/${encodeURIComponent(`${escapedTitle}!A:K`)}:clear`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }
+      );
+
+      // Write all rows
+      const writeRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+        {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ values: allRows }),
+        }
+      );
+
+      if (!writeRes.ok) {
+        const errText = await writeRes.text();
+        return new Response(JSON.stringify({ error: `Sheet write failed: ${errText}` }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`[sync-therapist-tasks] ✅ Synced ${dataRows.length} tasks to ${targetSheet.name}`);
+
+      return new Response(JSON.stringify({
+        success: true,
+        tasksCount: dataRows.length,
+        sheetName: targetSheet.name,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ═══ No valid mode ═══
     return new Response(JSON.stringify({
-      error: "Invalid mode. Supported: update-card-sections, update-dashboard, update-therapy-plan, update-relations, update-line-card, update-strategic-outlook, write-intervention, write-agreement",
+      error: "Invalid mode. Supported: update-card-sections, update-dashboard, update-therapy-plan, update-relations, update-line-card, update-strategic-outlook, write-intervention, write-agreement, sync-therapist-tasks",
     }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

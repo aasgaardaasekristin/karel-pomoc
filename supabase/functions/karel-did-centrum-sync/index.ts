@@ -292,23 +292,28 @@ Deno.serve(async (req) => {
           await overwriteDoc(driveToken, dashDoc.id, dashboardContent);
           driveResult = `Přepsán: ${dashDoc.name}`;
         } else {
-          driveResult = "Dokument 'Dashboard' nenalezen v 00_CENTRUM";
+        driveResult = "Dokument 'Dashboard' nenalezen v 00_CENTRUM";
         }
         
-        // Update DID_Therapist_Tasks sheet if present
+        // Sync DID_Therapist_Tasks via drive-write MODE I
         try {
-          const tasksSheet = await findDoc(driveToken, "Therapist_Tasks", centrumDoc);
-          if (tasksSheet) {
-            // Build CSV-like content for the sheet
-            const taskLines = tasks.map(t => 
-              `${t.task}\t${t.assigned_to}\t${t.status}\t${t.priority || "normal"}\t${t.status_hanka}\t${t.status_kata}\t${t.due_date || ""}`
-            );
-            const tasksContent = `Úkol\tPřiřazeno\tStatus\tPriorita\tHanka\tKáťa\tTermín\n${taskLines.join("\n")}`;
-            await overwriteDoc(driveToken, tasksSheet.id, tasksContent);
-            driveResult += ` + DID_Therapist_Tasks aktualizován`;
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const syncRes = await fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+            method: "POST",
+            headers: {
+              Authorization: authHeader!,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ mode: "sync-therapist-tasks" }),
+          });
+          if (syncRes.ok) {
+            const syncData = await syncRes.json();
+            driveResult += ` + DID_Therapist_Tasks synced (${syncData.tasksCount} tasks)`;
+          } else {
+            console.warn("[centrum-sync] Task sync failed:", await syncRes.text());
           }
         } catch (e) {
-          console.warn("[centrum-sync] DID_Therapist_Tasks update failed:", e);
+          console.warn("[centrum-sync] Task sync error:", e);
         }
       } else {
         driveResult = "Složka 00_CENTRUM nenalezena";
