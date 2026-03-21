@@ -192,7 +192,8 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         .eq("id", plan.id);
 
       setPlan(prev => prev ? { ...prev, status: "in_progress" } : null);
-      toast.success(`Sezení s ${plan.selected_part} zahájeno — záznam vytvořen`);
+      setLiveSessionActive(true);
+      toast.success(`Sezení s ${plan.selected_part} zahájeno — Karel je připraven asistovat`);
     } catch (e: any) {
       toast.error("Nepodařilo se zahájit sezení");
       console.error(e);
