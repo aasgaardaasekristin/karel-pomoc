@@ -630,6 +630,7 @@ async function runMirrorBatchStep(params: {
 
                 const therapistFolder = await findFolder(token, therapist, didSubfolder);
                 if (!therapistFolder) continue;
+                const dateStr = new Date().toISOString().slice(0, 10);
 
                 // Find SITUACNI_ANALYZA document
                 const situacniDoc = await findDoc(token, "SITUACNI_ANALYZA", therapistFolder);
