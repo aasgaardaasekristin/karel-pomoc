@@ -208,18 +208,25 @@ Piš česky, profesionálně, klinicky přesně. Buď konkrétní — odkazuj na
     const aiData = await aiResponse.json();
     const report = aiData.choices?.[0]?.message?.content || "Report nebyl vygenerován.";
 
+    const meta = {
+      periodDays,
+      sessionCount: sessions.length,
+      partCount: Object.keys(partSessionCounts).length,
+      switchCount: switchData.reduce((a, s) => a + s.switches.length, 0),
+      reflectionCount: reflections.length,
+      taskStats,
+    };
+
+    // Persist report to DB
+    await supabase.from("did_supervision_reports").insert({
+      user_id: user.id,
+      period_days: periodDays,
+      report_markdown: report,
+      meta_json: meta,
+    });
+
     return new Response(
-      JSON.stringify({
-        report,
-        meta: {
-          periodDays,
-          sessionCount: sessions.length,
-          partCount: Object.keys(partSessionCounts).length,
-          switchCount: switchData.reduce((a, s) => a + s.switches.length, 0),
-          reflectionCount: reflections.length,
-          taskStats,
-        },
-      }),
+      JSON.stringify({ report, meta }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
