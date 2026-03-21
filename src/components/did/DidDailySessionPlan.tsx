@@ -29,6 +29,7 @@ interface PreviousSession {
   session_date: string;
   ai_analysis: string | null;
   handoff_note: string | null;
+  karel_notes: string | null;
 }
 
 interface Props {
