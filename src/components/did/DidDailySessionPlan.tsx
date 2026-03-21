@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
