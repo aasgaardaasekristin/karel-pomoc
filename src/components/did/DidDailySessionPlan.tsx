@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, PenLine } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, PenLine, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -54,6 +56,12 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [customPartName, setCustomPartName] = useState("");
 
+  // Preference dialog state
+  const [prefDialogOpen, setPrefDialogOpen] = useState(false);
+  const [prefSelectedPart, setPrefSelectedPart] = useState("");
+  const [prefStep, setPrefStep] = useState<"ask" | "detail">("ask");
+  const [prefDetail, setPrefDetail] = useState("");
+
   const loadTodayPlan = useCallback(async () => {
     setLoading(true);
     try {
@@ -85,27 +93,30 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   useEffect(() => { loadRegistryParts(); }, [loadRegistryParts]);
 
-  const generatePlan = useCallback(async (forcePart?: string) => {
+  const generatePlan = useCallback(async (forcePart?: string, therapistContext?: string) => {
     setGenerating(true);
     setGenStep(0);
 
-    // Simulate step progression while waiting for the actual call
     const stepTimer = setInterval(() => {
       setGenStep(prev => {
         if (prev < GENERATION_STEPS.length - 1) return prev + 1;
         return prev;
       });
-    }, 4500); // ~4.5s per step, total ~22s for 5 steps
+    }, 4500);
 
     try {
       const headers = await getAuthHeaders();
+      const body: Record<string, string> = {};
+      if (forcePart) body.forcePart = forcePart;
+      if (therapistContext) body.therapistContext = therapistContext;
+
       const resp = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-auto-session-plan`,
-        { method: "POST", headers, body: JSON.stringify(forcePart ? { forcePart } : {}) }
+        { method: "POST", headers, body: JSON.stringify(body) }
       );
       const data = await resp.json();
       clearInterval(stepTimer);
-      setGenStep(GENERATION_STEPS.length); // done
+      setGenStep(GENERATION_STEPS.length);
 
       if (!resp.ok) throw new Error(data.error || "Generování selhalo");
       if (data.skipped) {
@@ -123,6 +134,31 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     }
   }, [loadTodayPlan]);
 
+  // Called when therapist picks a part from the popover
+  const handlePartSelected = (partName: string) => {
+    setOverrideOpen(false);
+    setCustomPartName("");
+    setPrefSelectedPart(partName);
+    setPrefStep("ask");
+    setPrefDetail("");
+    setPrefDialogOpen(true);
+  };
+
+  // Preference dialog actions
+  const handleNoPreference = () => {
+    setPrefDialogOpen(false);
+    generatePlan(prefSelectedPart);
+  };
+
+  const handleWantToSpecify = () => {
+    setPrefStep("detail");
+  };
+
+  const handleSubmitWithContext = () => {
+    setPrefDialogOpen(false);
+    generatePlan(prefSelectedPart, prefDetail.trim() || undefined);
+  };
+
   if (loading) {
     return (
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm">
@@ -134,196 +170,272 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   }
 
   return (
-    <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-          <Target className="w-3.5 h-3.5 text-primary" />
-          Plán sezení na dnes
-        </h4>
-        <div className="flex items-center gap-1.5">
-          {!generating && (
-            <>
-              {!plan && (
+    <>
+      <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
+            <Target className="w-3.5 h-3.5 text-primary" />
+            Plán sezení na dnes
+          </h4>
+          <div className="flex items-center gap-1.5">
+            {!generating && (
+              <>
+                {!plan && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => generatePlan()}
+                    className="h-7 px-2 text-[10px]"
+                  >
+                    <Zap className="mr-1 h-3 w-3" /> Vygenerovat
+                  </Button>
+                )}
+                <Popover open={overrideOpen} onOpenChange={(open) => { setOverrideOpen(open); if (!open) setCustomPartName(""); }}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
+                      <UserRoundCog className="mr-1 h-3 w-3" />
+                      {plan ? "Přegenerovat" : "Určit část"}
+                      <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-52 p-1.5" align="end">
+                    <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
+                      {plan ? "Nahradí stávající plán:" : "Přepsat automatický výběr:"}
+                    </p>
+                    <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
+                      {registryParts.map((p) => (
+                        <button
+                          key={p.part_name}
+                          onClick={() => handlePartSelected(p.part_name)}
+                          className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                            p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
+                          }`} />
+                          {p.part_name}
+                          <span className="text-[9px] text-muted-foreground ml-auto">
+                            {p.status === "active" ? "aktivní" : "spící"}
+                          </span>
+                        </button>
+                      ))}
+                      {registryParts.length === 0 && (
+                        <p className="text-[10px] text-muted-foreground px-2 py-1">Žádné části v registru</p>
+                      )}
+                    </div>
+                    <div className="border-t border-border/60 pt-2 px-1">
+                      <p className="text-[9px] text-muted-foreground mb-1 flex items-center gap-1">
+                        <PenLine className="h-2.5 w-2.5" /> Nebo napiš jméno:
+                      </p>
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const name = customPartName.trim();
+                          if (!name) return;
+                          handlePartSelected(name);
+                        }}
+                        className="flex gap-1"
+                      >
+                        <input
+                          type="text"
+                          value={customPartName}
+                          onChange={(e) => setCustomPartName(e.target.value)}
+                          placeholder="Jméno části…"
+                          className="flex-1 h-7 rounded border border-border/70 bg-background px-2 text-[11px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                        />
+                        <Button
+                          type="submit"
+                          variant="secondary"
+                          size="sm"
+                          className="h-7 px-2 text-[10px]"
+                          disabled={!customPartName.trim()}
+                        >
+                          <Zap className="h-3 w-3" />
+                        </Button>
+                      </form>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+                {plan && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setExpanded(!expanded)}
+                    className="h-7 px-2 text-[10px]"
+                  >
+                    {expanded ? "Sbalit" : "Rozbalit"}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ═══ GENERATION PROGRESS ═══ */}
+        {generating && (
+          <div className="space-y-2 py-1">
+            <Progress
+              value={((genStep + 1) / GENERATION_STEPS.length) * 100}
+              className="h-1.5"
+            />
+            <div className="space-y-1">
+              {GENERATION_STEPS.map((step, i) => {
+                const StepIcon = step.icon;
+                const isDone = i < genStep;
+                const isCurrent = i === genStep;
+                return (
+                  <div
+                    key={step.key}
+                    className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${
+                      isDone
+                        ? "text-primary/70"
+                        : isCurrent
+                        ? "text-foreground font-medium"
+                        : "text-muted-foreground/50"
+                    }`}
+                  >
+                    {isDone ? (
+                      <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />
+                    ) : isCurrent ? (
+                      <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                    ) : (
+                      <StepIcon className="h-3 w-3 shrink-0" />
+                    )}
+                    {step.label}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {!plan && !generating && (
+          <p className="text-[11px] text-muted-foreground">
+            Automatický plán se generuje ve 13:50. Můžeš ho vygenerovat i ručně.
+          </p>
+        )}
+
+        {plan && (
+          <div>
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-semibold">
+                {plan.selected_part}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] h-5 px-1.5">
+                Naléhavost: {plan.urgency_score}
+              </Badge>
+              {Object.entries(plan.urgency_breakdown || {}).map(([key, val]) => (
+                <Badge key={key} variant="outline" className="text-[9px] h-4 px-1">
+                  {urgencyLabels[key] || key} +{val as number}
+                </Badge>
+              ))}
+            </div>
+
+            <div className="flex gap-1.5 mb-2">
+              {plan.distributed_drive && (
+                <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Drive</Badge>
+              )}
+              {plan.distributed_email && (
+                <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Email</Badge>
+              )}
+            </div>
+
+            {expanded && (
+              <div className="mt-2 rounded-md border border-border/60 bg-background/40 p-3 max-h-[400px] overflow-y-auto">
+                <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">
+                  {plan.plan_markdown}
+                </p>
+              </div>
+            )}
+
+            {!expanded && (
+              <p className="text-[11px] text-muted-foreground line-clamp-2">
+                {plan.plan_markdown.slice(0, 150)}...
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ═══ THERAPIST PREFERENCE DIALOG ═══ */}
+      <Dialog open={prefDialogOpen} onOpenChange={setPrefDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-sm">
+              <MessageSquare className="h-4 w-4 text-primary" />
+              Příprava sezení: {prefSelectedPart}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Karel se ptá, zda máš vlastní impulz pro dnešní sezení.
+            </DialogDescription>
+          </DialogHeader>
+
+          {prefStep === "ask" && (
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-foreground">
+                Máš nějaké konkrétní téma, motiv nebo situaci, kterou bys chtěl/a na dnešním sezení s <strong>{prefSelectedPart}</strong> zpracovat?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Např. noční děsy, ranní situace, konkrétní konflikt, emoční stav…
+              </p>
+              <div className="flex gap-2 pt-1">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => generatePlan()}
-                  className="h-7 px-2 text-[10px]"
+                  onClick={handleNoPreference}
+                  className="flex-1 text-xs"
                 >
-                  <Zap className="mr-1 h-3 w-3" /> Vygenerovat
+                  Nemám preference — Karel ať rozhodne
                 </Button>
-              )}
-              <Popover open={overrideOpen} onOpenChange={(open) => { setOverrideOpen(open); if (!open) setCustomPartName(""); }}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
-                    <UserRoundCog className="mr-1 h-3 w-3" />
-                    {plan ? "Přegenerovat" : "Určit část"}
-                    <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-52 p-1.5" align="end">
-                  <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
-                    {plan ? "Nahradí stávající plán:" : "Přepsat automatický výběr:"}
-                  </p>
-                  <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
-                    {registryParts.map((p) => (
-                      <button
-                        key={p.part_name}
-                        onClick={() => {
-                          setOverrideOpen(false);
-                          setCustomPartName("");
-                          generatePlan(p.part_name);
-                        }}
-                        className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                          p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
-                        }`} />
-                        {p.part_name}
-                        <span className="text-[9px] text-muted-foreground ml-auto">
-                          {p.status === "active" ? "aktivní" : "spící"}
-                        </span>
-                      </button>
-                    ))}
-                    {registryParts.length === 0 && (
-                      <p className="text-[10px] text-muted-foreground px-2 py-1">Žádné části v registru</p>
-                    )}
-                  </div>
-                  <div className="border-t border-border/60 pt-2 px-1">
-                    <p className="text-[9px] text-muted-foreground mb-1 flex items-center gap-1">
-                      <PenLine className="h-2.5 w-2.5" /> Nebo napiš jméno:
-                    </p>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const name = customPartName.trim();
-                        if (!name) return;
-                        setOverrideOpen(false);
-                        setCustomPartName("");
-                        generatePlan(name);
-                      }}
-                      className="flex gap-1"
-                    >
-                      <input
-                        type="text"
-                        value={customPartName}
-                        onChange={(e) => setCustomPartName(e.target.value)}
-                        placeholder="Jméno části…"
-                        className="flex-1 h-7 rounded border border-border/70 bg-background px-2 text-[11px] placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
-                      />
-                      <Button
-                        type="submit"
-                        variant="secondary"
-                        size="sm"
-                        className="h-7 px-2 text-[10px]"
-                        disabled={!customPartName.trim()}
-                      >
-                        <Zap className="h-3 w-3" />
-                      </Button>
-                    </form>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {plan && (
                 <Button
-                  variant="ghost"
+                  variant="default"
                   size="sm"
-                  onClick={() => setExpanded(!expanded)}
-                  className="h-7 px-2 text-[10px]"
+                  onClick={handleWantToSpecify}
+                  className="flex-1 text-xs"
                 >
-                  {expanded ? "Sbalit" : "Rozbalit"}
+                  Ano, chci upřesnit
                 </Button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* ═══ GENERATION PROGRESS ═══ */}
-      {generating && (
-        <div className="space-y-2 py-1">
-          <Progress
-            value={((genStep + 1) / GENERATION_STEPS.length) * 100}
-            className="h-1.5"
-          />
-          <div className="space-y-1">
-            {GENERATION_STEPS.map((step, i) => {
-              const StepIcon = step.icon;
-              const isDone = i < genStep;
-              const isCurrent = i === genStep;
-              return (
-                <div
-                  key={step.key}
-                  className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${
-                    isDone
-                      ? "text-primary/70"
-                      : isCurrent
-                      ? "text-foreground font-medium"
-                      : "text-muted-foreground/50"
-                  }`}
-                >
-                  {isDone ? (
-                    <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />
-                  ) : isCurrent ? (
-                    <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
-                  ) : (
-                    <StepIcon className="h-3 w-3 shrink-0" />
-                  )}
-                  {step.label}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {!plan && !generating && (
-        <p className="text-[11px] text-muted-foreground">
-          Automatický plán se generuje ve 13:50. Můžeš ho vygenerovat i ručně.
-        </p>
-      )}
-
-      {plan && (
-        <div>
-          <div className="flex flex-wrap items-center gap-1.5 mb-2">
-            <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-semibold">
-              {plan.selected_part}
-            </Badge>
-            <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-              Naléhavost: {plan.urgency_score}
-            </Badge>
-            {Object.entries(plan.urgency_breakdown || {}).map(([key, val]) => (
-              <Badge key={key} variant="outline" className="text-[9px] h-4 px-1">
-                {urgencyLabels[key] || key} +{val as number}
-              </Badge>
-            ))}
-          </div>
-
-          <div className="flex gap-1.5 mb-2">
-            {plan.distributed_drive && (
-              <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Drive</Badge>
-            )}
-            {plan.distributed_email && (
-              <Badge variant="secondary" className="text-[8px] h-4 px-1">✓ Email</Badge>
-            )}
-          </div>
-
-          {expanded && (
-            <div className="mt-2 rounded-md border border-border/60 bg-background/40 p-3 max-h-[400px] overflow-y-auto">
-              <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">
-                {plan.plan_markdown}
-              </p>
+              </div>
             </div>
           )}
 
-          {!expanded && (
-            <p className="text-[11px] text-muted-foreground line-clamp-2">
-              {plan.plan_markdown.slice(0, 150)}...
-            </p>
+          {prefStep === "detail" && (
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-foreground">
+                Popiš situaci, téma nebo kontext, který chceš do plánu sezení s <strong>{prefSelectedPart}</strong> zahrnout:
+              </p>
+              <Textarea
+                value={prefDetail}
+                onChange={(e) => setPrefDetail(e.target.value)}
+                placeholder={`Např.: Dnes ráno ${prefSelectedPart} plakal/a ze spaní, budila jsem ho/ji, ale nemohl/a se probudit. Celé dopoledne byl/a plačtivý/á a velmi skleslý/á…`}
+                className="min-h-[120px] text-sm resize-none"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Karel tyto informace zakomponuje jako prioritní vstup do plánu sezení. Pokud nic nenapíšeš, Karel se zařídí podle standardního programu.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleNoPreference}
+                  className="text-xs"
+                >
+                  Přeskočit
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSubmitWithContext}
+                  className="flex-1 text-xs"
+                >
+                  <Send className="mr-1 h-3 w-3" />
+                  Vygenerovat s kontextem
+                </Button>
+              </div>
+            </div>
           )}
-        </div>
-      )}
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
