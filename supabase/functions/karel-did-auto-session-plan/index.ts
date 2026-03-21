@@ -462,6 +462,7 @@ ${perplexityResult || "(nedostupná)"}`;
 
     // ═══ SAVE TO DB ═══
     const { error: insertErr } = await sb.from("did_daily_session_plans").insert({
+      user_id: userId,
       plan_date: todayPrague,
       selected_part: selectedPart.partName,
       urgency_score: selectedPart.score,
