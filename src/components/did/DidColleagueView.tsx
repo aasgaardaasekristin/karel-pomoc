@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Users, ChevronDown, ChevronUp, TrendingUp, Trophy, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import DidColleagueSessionsSection from "./DidColleagueSessionsSection";
 import { supabase } from "@/integrations/supabase/client";
 
 interface TaskSummary {
