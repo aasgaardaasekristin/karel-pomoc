@@ -24,6 +24,13 @@ interface SessionPlan {
   distributed_email: boolean;
 }
 
+interface PreviousSession {
+  therapist: string;
+  session_date: string;
+  ai_analysis: string | null;
+  handoff_note: string | null;
+}
+
 interface Props {
   refreshTrigger: number;
 }
