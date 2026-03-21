@@ -294,11 +294,12 @@ async function persistMirrorJob(params: {
 
 async function finalizeMirrorJob(params: {
   sb: any;
+  userId: string;
   jobId: string;
   payload: any;
   state: MirrorState;
 }) {
-  const { sb, jobId, payload, state } = params;
+  const { sb, userId, jobId, payload, state } = params;
   const {
     startTime,
     lastMirrorTime,
@@ -310,6 +311,38 @@ async function finalizeMirrorJob(params: {
 
   const totalTime = Date.now() - startTime;
   const synthesisSum = extractedInfo?.synthesis_summary || `Mirror: ${state.dbUpdates.length} DB, ${state.driveUpdates.length} Drive`;
+
+  // ═══ KROK A: Mark processed DID threads (sub_mode='cast') ═══
+  const didThreadIds: string[] = payload.didThreadIds || [];
+  if (didThreadIds.length > 0) {
+    const now = new Date().toISOString();
+    const { error: markError } = await sb.from("did_threads")
+      .update({ is_processed: true, processed_at: now })
+      .in("id", didThreadIds)
+      .eq("user_id", userId);
+    if (markError) {
+      console.warn(`[mirror] Failed to mark ${didThreadIds.length} threads as processed:`, markError.message);
+    } else {
+      console.log(`[mirror] Marked ${didThreadIds.length} DID threads as processed`);
+      state.dbUpdates.push(`threads_marked:${didThreadIds.length}`);
+    }
+  }
+
+  // ═══ KROK C: Auto-trigger task sync (fire-and-forget) ═══
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl && serviceRoleKey) {
+      fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({ mode: "sync-therapist-tasks" }),
+      }).then(r => console.log(`[mirror] Task sync triggered: ${r.status}`))
+        .catch(e => console.warn("[mirror] Task sync trigger failed:", e));
+    }
+  } catch (e) {
+    console.warn("[mirror] Task sync trigger error:", e);
+  }
 
   await sb.from("karel_memory_logs").update({
     log_type: "mirror_done",
@@ -333,12 +366,13 @@ async function finalizeMirrorJob(params: {
       pass1_urgent: pass1Data?.urgent_signals || [],
       newPartsCreated: extractedInfo?.kartoteka_did?.new_parts?.length || 0,
       newTasksCreated: extractedInfo?.new_tasks?.length || 0,
+      threadsMarkedProcessed: didThreadIds.length,
       dbUpdates: state.dbUpdates,
       driveUpdates: state.driveUpdates,
     },
   }).eq("id", jobId);
 
-  console.log(`[mirror-batch] DONE in ${totalTime}ms. DB:${state.dbUpdates.length} Drive:${state.driveUpdates.length}`);
+  console.log(`[mirror-batch] DONE in ${totalTime}ms. DB:${state.dbUpdates.length} Drive:${state.driveUpdates.length} Threads marked:${didThreadIds.length}`);
 }
 
 async function runMirrorBatchStep(params: {
@@ -893,7 +927,7 @@ Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověřen
       return { status: "processing", phase: "drive_clients", summary: `Záloha klientů ${state.clientUpdateIndex}/${clientUpdates.length}`, progress: getMirrorProgress(payload, state) };
     }
 
-    await finalizeMirrorJob({ sb, jobId, payload, state });
+    await finalizeMirrorJob({ sb, userId, jobId, payload, state });
     return { status: "done", phase: "done", summary: extractedInfo?.synthesis_summary || "Zrcadlení dokončeno", progress: getMirrorProgress(payload, state) };
   } catch (bgError) {
     console.error("[mirror-batch] Error:", bgError);
@@ -1093,6 +1127,11 @@ Deno.serve(async (req) => {
 
         const knownPartNames = (registryRes.data || []).map((p: any) => p.part_name || p.display_name);
 
+        // Collect DID thread IDs (sub_mode='cast') for marking as processed after completion
+        const didThreadIds = (didThreadsRes.data || [])
+          .filter((t: any) => t.sub_mode === "cast")
+          .map((t: any) => t.id);
+
         await sb.from("karel_memory_logs").update({
           summary: `Harvest: ${threadDigests.length} vláken, ${totalChars} znaků`,
           updated_at: new Date().toISOString(),
@@ -1111,6 +1150,7 @@ Deno.serve(async (req) => {
               registry: registryRes.data || [],
               episodes: episodesRes.data || [],
               knownPartNames,
+              didThreadIds,
               startTime: Date.now(),
             },
           },
@@ -1338,6 +1378,53 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
 
         console.log(`[mirror] Pass2: ${(extractedInfo.kartoteka_did?.new_parts || []).length} new parts, ${(extractedInfo.new_tasks || []).length} tasks`);
 
+        // ═══ KROK B: Perplexity per-part research (Section D) ═══
+        const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+        const partUpdatesForResearch = Object.keys(extractedInfo?.kartoteka_did?.part_updates || {});
+        if (PERPLEXITY_API_KEY && partUpdatesForResearch.length > 0) {
+          console.log(`[mirror] Starting Perplexity research for ${partUpdatesForResearch.length} parts`);
+          for (const partName of partUpdatesForResearch.slice(0, 5)) {
+            try {
+              const partInfo = registry.find((p: any) => p.part_name === partName);
+              const age = partInfo?.age_estimate || "";
+              const triggers = (partInfo?.known_triggers || []).join(", ");
+              const query = `DID terapeutické metody pro dětskou část "${partName}"${age ? ` (věk cca ${age})` : ""}. ${triggers ? `Triggery: ${triggers}.` : ""} Stabilizační techniky BEZ dechových cvičení (epilepsie). Hrová terapie, IFS, EMDR, senzorická integrace, art therapy.`;
+
+              const perplexityRes = await fetch("https://api.perplexity.ai/chat/completions", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${PERPLEXITY_API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "sonar-pro",
+                  messages: [
+                    { role: "system", content: "Jsi odborný výzkumník DID terapie pro děti. Vrať praktické techniky s odkazy. Odpovídej v češtině. NIKDY nenavrhuj dechová cvičení (epilepsie!)." },
+                    { role: "user", content: query },
+                  ],
+                  search_recency_filter: "year",
+                }),
+                signal: AbortSignal.timeout(15000),
+              });
+
+              if (perplexityRes.ok) {
+                const perplexityData = await perplexityRes.json();
+                const researchContent = perplexityData.choices?.[0]?.message?.content || "";
+                const citations = perplexityData.citations || [];
+                if (researchContent) {
+                  // Inject into section D of the part's card update
+                  const existingContent = extractedInfo.kartoteka_did.part_updates[partName] || "";
+                  const dateStr = new Date().toISOString().slice(0, 10);
+                  const researchBlock = `\n[SEKCE:D:REPLACE] === Rešerše ${dateStr} ===\n${researchContent.slice(0, 3000)}${citations.length > 0 ? `\n\nZdroje:\n${citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}` : ""}`;
+                  extractedInfo.kartoteka_did.part_updates[partName] = existingContent + researchBlock;
+                  console.log(`[mirror] Perplexity research added for ${partName} (${researchContent.length} chars)`);
+                }
+              } else {
+                console.warn(`[mirror] Perplexity failed for ${partName}: ${perplexityRes.status}`);
+              }
+            } catch (e) {
+              console.warn(`[mirror] Perplexity research error for ${partName}:`, e instanceof Error ? e.message : e);
+            }
+          }
+        }
+
         // Build final payload for batch writes
         const payload = {
           startTime: harvest.startTime || Date.now(),
@@ -1353,6 +1440,7 @@ geography_notes a relationships_notes: pouze NOVÉ poznatky (appendují se) — 
           activeTasks: harvest.activeTasks || [],
           registry: harvest.registry || [],
           episodes: harvest.episodes || [],
+          didThreadIds: harvest.didThreadIds || [],
         };
 
         await sb.from("karel_memory_logs").update({
