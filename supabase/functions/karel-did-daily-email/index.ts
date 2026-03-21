@@ -184,8 +184,9 @@ serve(async (req) => {
     const pulseChecks = pulseRes.data || [];
     const profiles = profilesRes.data || [];
     const taskFeedback = feedbackRes.data || [];
+    const todaySessionPlan = sessionPlanRes.data || null;
 
-    console.log(`[daily-email] Data: ${threads.length} threads, ${conversations.length} convs, ${hanaConvs.length} hana, ${researchThreads.length} research, ${registry.length} registry, ${tasks.length} tasks, ${meetings.length} meetings, ${episodes.length} episodes`);
+    console.log(`[daily-email] Data: ${threads.length} threads, ${conversations.length} convs, ${hanaConvs.length} hana, ${researchThreads.length} research, ${registry.length} registry, ${tasks.length} tasks, ${meetings.length} meetings, ${episodes.length} episodes, sessionPlan: ${todaySessionPlan ? "yes" : "no"}`);
 
     // ═══ SPLIT THREADS: yesterday afternoon/evening vs today ═══
     const now = new Date();
