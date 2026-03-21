@@ -1,38 +1,41 @@
 
 
-# Vizuální vyčištění DidDailySessionPlan
+# Auto-generování úkolů po ukončení sezení
 
-## Problémy (ze screenshotů)
+## Proč právě tento krok
 
-1. **Zbytečné badges** — "Naléhavost: 99", "therapist_override +99", "✓ Drive", "✓ Email" zabírají místo a jsou pro terapeutku irelevantní. Urgency breakdown badges (řádky 506-510) zobrazují interní klíče scoringu.
+Session finalizace v `DidLiveSessionPanel` už **parsuje sekci `## ÚKOLY`** z AI reportu (řádky 386-388) a ukládá je jako JSON do `did_part_sessions.tasks_assigned`. Ale **nikdy je nepropíše do `did_therapist_tasks`** — úkoly existují v zápisu, ale neobjeví se na nástěnce. Terapeutky je musí ručně přepisovat. Tohle je jasný gap, který uzavře smyčku: sezení → analýza → handoff → úkoly na nástěnce.
 
-2. **Nejednotné písmo tlačítek** — "Probíhá" badge, "Otevřít live asistenci", "Ukončit sezení" mají různé velikosti (`text-[10px]`, `h-6`, `h-5`). Některá mají ikony, jiná ne.
+## Plán
 
-3. **Rozbalený plán** — surový markdown s `##`, `###`, `*` a `---` se renderuje jako plain text (`whitespace-pre-line`), což vypadá neprofesionálně. Chybí skutečné formátování.
+### 1. Rozšířit parsování úkolů v handleEndSession
 
-## Plán oprav
+Aktuální kód parsuje jen textové řádky. Upravit prompt v sekci `## ÚKOLY` tak, aby Karel vracal strukturovaný formát:
+```
+- [hanka|kata|both] [today|tomorrow|longterm] Konkrétní úkol
+```
 
-### 1. Odstranit technické badges (řádky 499-511, 572-577)
-- **Ponechat**: jméno části (selected_part) jako hlavní badge
-- **Skrýt**: Naléhavost score, urgency_breakdown items, "✓ Drive", "✓ Email"
-- Naléhavost zachovat jen jako subtle indicator (malá tečka — zelená/oranžová/červená podle hodnoty)
+Parsovat tyto řádky na objekty `{ task, assignee, category }`.
 
-### 2. Sjednotit tlačítka (řádky 514-578)
-- Všechna tlačítka: `h-7 text-[11px]` jednotně
-- Status badge + akční tlačítka na jednom řádku, konzistentní gap
-- Odstranit duplikátní ikony u badges vs. tlačítek
+### 2. Automatický insert do did_therapist_tasks
 
-### 3. Markdown rendering (řádky 580-586)
-- Nahradit `whitespace-pre-line` skutečným markdown parserem
-- Použít `dangerouslySetInnerHTML` s jednoduchým regex-based formátováním:
-  - `## ` → `<h3>`, `### ` → `<h4>`
-  - `* **text**` → tučný list item
-  - `---` → `<hr>`
-- Obalit do prose-like třídy s Tailwind typografií
+Po uložení session (řádky 390-409) přidat blok, který:
+- Pro každý parsovaný úkol provede dedup check (stejně jako v `TaskSuggestButtons.tsx` — ilike na prvních 30 znaků)
+- Pokud úkol neexistuje, insertne do `did_therapist_tasks` s:
+  - `task`, `assigned_to`, `category`
+  - `source_agreement: "Sezení s [partName]"`
+  - `priority` odvozená z category (today=high, tomorrow=normal, longterm=low)
+  - `detail_instruction` s kontextem ze sezení
 
-### Soubor k úpravě
-- `src/components/did/DidDailySessionPlan.tsx` — jediný soubor
+### 3. Toast s počtem vytvořených úkolů
 
-### Žádné nové závislosti
-Jednoduchý regex markdown parser inline, žádná knihovna.
+Po insertu zobrazit toast: "Vytvořeno X úkolů na nástěnce".
+
+## Soubor k úpravě
+
+- `src/components/did/DidLiveSessionPanel.tsx` — jediný soubor
+
+## Bez nových závislostí, bez DB migrace
+
+Využívá existující tabulku `did_therapist_tasks` a existující parsovací logiku. Prompt se mírně upraví pro strukturovanější výstup.
 
