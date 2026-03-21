@@ -280,9 +280,11 @@ serve(async (req) => {
   try {
     // Parse request body for therapist override
     let forcePart: string | null = null;
+    let therapistContext: string | null = null;
     try {
       const body = await req.json();
       forcePart = body?.forcePart || null;
+      therapistContext = body?.therapistContext || null;
     } catch { /* empty body is fine */ }
 
     // Check if plan already exists for today
