@@ -473,7 +473,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => updatePlanStatus("generated")}
+                  onClick={revertStatus}
                   className="h-6 px-2 text-[10px] text-muted-foreground"
                 >
                   ↩ Vrátit
