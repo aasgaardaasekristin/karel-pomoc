@@ -133,15 +133,21 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="mt-3 flex items-center text-xs text-muted-foreground">
-          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám Karlův přehled...
-        </div>
-      ) : (
-        <div className="mt-3 rounded-md border border-border/60 bg-background/40 p-3">
-          <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">{overview}</p>
+      {(loading || refreshing) && (
+        <div className="w-full mt-3 h-1 rounded-full bg-primary/10 overflow-hidden">
+          <div className="h-full w-1/4 rounded-full bg-primary/60 animate-indeterminate-progress" />
         </div>
       )}
+
+      {loading && !overview ? (
+        <div className="mt-2 flex items-center text-xs text-muted-foreground">
+          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám Karlův přehled...
+        </div>
+      ) : overview ? (
+        <div className={`mt-2 rounded-md border border-border/60 bg-background/40 p-3 ${refreshing ? "opacity-60" : ""}`}>
+          <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">{overview}</p>
+        </div>
+      ) : null}
     </section>
   );
 };
