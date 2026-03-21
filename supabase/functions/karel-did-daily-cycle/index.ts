@@ -1442,6 +1442,9 @@ async function updateCardSections(
     existingSections = {};
   }
 
+  // Accept optional sectionModes parameter for REPLACE/ROTATE support
+  const sectionModes: Record<string, string> = (options as any)?.sectionModes || {};
+  
   const updatedKeys: string[] = [];
   let dedupSkips = 0;
   let semanticDedupSkips = 0;
@@ -1449,8 +1452,24 @@ async function updateCardSections(
     const ul = letter.toUpperCase();
     if (!SECTION_ORDER.includes(ul)) continue;
     const existing = existingSections[ul] || "";
+    const mode = sectionModes[ul] || "APPEND";
     
-    // KHASH dedup: compute hash of new content, skip if already present in existing section
+    // REPLACE mode: AI generated the complete section, replace entirely
+    if (mode === "REPLACE" || mode === "ROTATE") {
+      const hash = contentHash(newContent.trim());
+      // Even for REPLACE, check if content is identical to avoid unnecessary writes
+      if (existing && hasKhash(existing, hash)) {
+        console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" (REPLACE mode) – hash ${hash} already present`);
+        dedupSkips++;
+        continue;
+      }
+      existingSections[ul] = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
+      updatedKeys.push(ul);
+      console.log(`[updateCardSections] ${mode} section ${ul} for "${partName}" (${newContent.length} chars)`);
+      continue;
+    }
+    
+    // APPEND mode (default): standard behavior
     const hash = contentHash(newContent.trim());
     if (existing && hasKhash(existing, hash)) {
       console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" – hash ${hash} already present`);
