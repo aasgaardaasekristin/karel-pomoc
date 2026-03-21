@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Target, Loader2, RefreshCw, Zap } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -24,19 +25,29 @@ interface Props {
 }
 
 const urgencyLabels: Record<string, string> = {
-  crisis: "Krize",
+  crisis: "🔴 Krize",
   nightmares_flashbacks: "Noční můry",
   emotional_dysregulation: "Emoční dysregulace",
   pending_tasks: "Nedokončené úkoly",
-  recent_activity: "Nedávná aktivita",
+  fading_alert: "⚠️ Odmlčení",
+  active_3d: "Aktivní",
   dormant_7d: "Neaktivní >7d",
   fallback_oldest: "Nejdéle neviděn",
 };
+
+const GENERATION_STEPS = [
+  { key: "data", label: "Sběr dat z registru", icon: Search },
+  { key: "scoring", label: "Výpočet naléhavosti", icon: Target },
+  { key: "research", label: "Perplexity rešerše", icon: Brain },
+  { key: "ai", label: "Generování plánu (AI)", icon: FileText },
+  { key: "save", label: "Ukládání a distribuce", icon: Send },
+];
 
 const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [plan, setPlan] = useState<SessionPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [genStep, setGenStep] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
   const loadTodayPlan = useCallback(async () => {
@@ -61,6 +72,16 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   const generatePlan = useCallback(async () => {
     setGenerating(true);
+    setGenStep(0);
+
+    // Simulate step progression while waiting for the actual call
+    const stepTimer = setInterval(() => {
+      setGenStep(prev => {
+        if (prev < GENERATION_STEPS.length - 1) return prev + 1;
+        return prev;
+      });
+    }, 4500); // ~4.5s per step, total ~22s for 5 steps
+
     try {
       const headers = await getAuthHeaders();
       const resp = await fetch(
@@ -68,6 +89,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         { method: "POST", headers, body: JSON.stringify({}) }
       );
       const data = await resp.json();
+      clearInterval(stepTimer);
+      setGenStep(GENERATION_STEPS.length); // done
+
       if (!resp.ok) throw new Error(data.error || "Generování selhalo");
       if (data.skipped) {
         toast.info("Plán na dnes už existuje");
@@ -76,9 +100,11 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       }
       await loadTodayPlan();
     } catch (e: any) {
+      clearInterval(stepTimer);
       toast.error(e.message || "Generování plánu selhalo");
     } finally {
       setGenerating(false);
+      setGenStep(0);
     }
   }, [loadTodayPlan]);
 
@@ -100,19 +126,14 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           Plán sezení na dnes
         </h4>
         <div className="flex items-center gap-1.5">
-          {!plan && (
+          {!plan && !generating && (
             <Button
               variant="outline"
               size="sm"
               onClick={generatePlan}
-              disabled={generating}
               className="h-7 px-2 text-[10px]"
             >
-              {generating ? (
-                <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Generuji...</>
-              ) : (
-                <><Zap className="mr-1 h-3 w-3" /> Vygenerovat</>
-              )}
+              <Zap className="mr-1 h-3 w-3" /> Vygenerovat
             </Button>
           )}
           {plan && (
@@ -128,11 +149,51 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         </div>
       </div>
 
-      {!plan ? (
+      {/* ═══ GENERATION PROGRESS ═══ */}
+      {generating && (
+        <div className="space-y-2 py-1">
+          <Progress
+            value={((genStep + 1) / GENERATION_STEPS.length) * 100}
+            className="h-1.5"
+          />
+          <div className="space-y-1">
+            {GENERATION_STEPS.map((step, i) => {
+              const StepIcon = step.icon;
+              const isDone = i < genStep;
+              const isCurrent = i === genStep;
+              return (
+                <div
+                  key={step.key}
+                  className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${
+                    isDone
+                      ? "text-primary/70"
+                      : isCurrent
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground/50"
+                  }`}
+                >
+                  {isDone ? (
+                    <CheckCircle2 className="h-3 w-3 text-primary shrink-0" />
+                  ) : isCurrent ? (
+                    <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />
+                  ) : (
+                    <StepIcon className="h-3 w-3 shrink-0" />
+                  )}
+                  {step.label}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!plan && !generating && (
         <p className="text-[11px] text-muted-foreground">
           Automatický plán se generuje ve 13:50. Můžeš ho vygenerovat i ručně.
         </p>
-      ) : (
+      )}
+
+      {plan && (
         <div>
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-semibold">
