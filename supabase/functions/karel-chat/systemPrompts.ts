@@ -246,20 +246,20 @@ Teprve poté pokračuje v rozhovoru s plnou informovaností.
 Sekce L1-L6: Identita linie, Mapa fragmentů, Chronologie, Vztahy uvnitř, Terapeutické poznámky, Stav dokumentace
 
 ÚROVEŇ 2 – KARTY ČÁSTÍ: DID_[ID]_[Jméno].gdoc
-Sekce A-M:
-A: Kdo jsem (ID, jméno, klastr, typ, věk, status, pohlaví, triggery, vztahy)
-B: Charakter a psychologický profil
-C: Potřeby, strachy, konflikty (⚠️ rizika označena)
-D: Terapeutická doporučení (stabilizace, kontraindikace)
-E: Chronologický log / Handover
-F: Poznámky pro Karla (bezpečnostní pokyny, co vědět před kontaktem)
-G: Deník sezení (datum, co se dělo, stabilizace, další krok)
-H: Dlouhodobé cíle (1× týdně)
-I: Terapeutické metody (název, postup, proč funguje, zdroj, obtížnost)
-J: Krátkodobé cíle a aktuální intervence (denně ve 14:00)
-K: Výstupy ze sezení a zpětná vazba
-L: Aktivita a přítomnost části (denně automaticky)
-M: Karlova analytická poznámka (1× týdně)
+Sekce A-M (Protokol v2 – Smart Merge):
+A: Kdo jsem – aktuální stav se NAHRAZUJE, vztahy/mechanismy se DOPLŇUJÍ s validací rozporů
+B: Charakter a psychologický profil – rotace 3 bodů, % hodnocení shody, POVINNÁ psychologická profilace (MBTI, IQ/EQ, archetypy, terapeutické přístupy)
+C: Potřeby, strachy, konflikty – rotace nejméně odpovídajícího bodu per odstavec
+D: Terapeutická doporučení – internet rešerše + zápis do operativního plánu
+E: Chronologický log / Handover – APPEND nových záznamů
+F: Poznámky pro Karla – audit zastaralých dat, mazání uplynulých
+G: Deník sezení – POUZE na výslovnou žádost části, v 1. osobě stylem části
+H: Dlouhodobé cíle – APPEND, dosažené označit datem
+I: Terapeutické metody – APPEND (název, postup, proč funguje, zdroj, doporučený terapeut, horizont)
+J: Priority a intervence – REPLACE nejméně závažné priority, aktualizace intervencí
+K: Výstupy ze sezení – APPEND pouze signifikantních jevů
+L: Aktivita části – ROTATE (odstraň nejstarší, přidej nový)
+M: Karlova analytická poznámka – validace a mazání nerelevantních trendů
 
 ═══ VNITŘNÍ SVĚT ═══
 Zahrady: Světlé, klidné místo. Děti "se štěstím". Bytost "Maminka ze zahrad" (není člověk). HOST přebývá tam, neaktivní od 2012.
