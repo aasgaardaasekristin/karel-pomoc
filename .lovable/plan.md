@@ -1,51 +1,33 @@
 
+# Implementováno: 4-listový DID_Therapist_Tasks
 
-# Chybějící fáze – 3 mezery k doplnění
+## Co bylo uděláno
 
-## 1. Mirror neoznačuje vlákna jako zpracovaná
+### 1. DB migrace
+- Přidán sloupec `task_tier` (text, NOT NULL, default 'operative') do `did_therapist_tasks`
+- Povolené hodnoty: 'operative', 'tactical', 'strategic'
 
-**Problem:** `karel-memory-mirror` (tlačítko „Aktualizovat kartotéku") zpracuje vlákna a zapíše do karet, ale **neoznačí je jako `is_processed=true`**. To znamená, že stejná vlákna budou znovu zpracována při dalším spuštění – a také znovu v `daily-cycle`.
+### 2. MODE I v `karel-did-drive-write` – přepsáno na 4 listy
+- **Operativní**: ID, KOMU, ÚKOL, DETAIL, PRIORITA, STAV, DATUM, DEADLINE, ČÁST, POZNÁMKA
+- **Taktické**: ID, KOMU, ÚKOL, METODA_TECHNIKA, DEADLINE, ČÁST, ZDROJ, STAV
+- **Strategické**: ID, CÍL, ČÁST, METODA, OBZOR, STAV, POSLEDNÍ_AKTUALIZACE
+- **Archiv**: ID, KOMU, ÚKOL, STAV, DATUM_VYTVORENI, DATUM_SPLNENI, POZNÁMKA
 
-Pouze `daily-cycle` má logiku pro marking (`is_processed: true, processed_at: ...`), ale Mirror ji nemá.
+### 3. Auto-archivace
+- Operative tasks s status != in_progress starší 14 dní → automaticky přesunuty do Archiv + DB update
 
-**Fix:** Na konec Mirror jobu přidat označení zpracovaných vláken (`did_threads` update `is_processed=true`) pro vlákna sub_mode='cast', která byla zahrnuta do analýzy.
+### 4. Legacy sheet cleanup
+- Po zápisu do 4 nových listů se staré listy (Hlavní, Legenda, Rezerva) automaticky smažou
 
----
-
-## 2. Mirror nespouští Perplexity rešerši per-část (Sekce D)
-
-**Problem:** Požadavek říká: „Karel prohledá internet a najde vhodné terapeutické techniky pro danou část." Mirror ale nemá žádný Perplexity/sonar call. Rešerše existuje pouze v `reformat-cards` (jednorázová) a `daily-cycle` (ale tam je obecná, ne per-část).
-
-**Fix:** Po AI Pass 2 (který generuje card updates) přidat per-část Perplexity volání:
-- Query: `"DID terapeutické metody pro [jméno části] – [hlavní téma z vlákna]"`
-- Výsledek injektovat do sekce D a do `[CENTRUM:05_Operativni_Plan]` bloků
-- Použít stávající Perplexity API key
-
----
-
-## 3. Mirror netriggeruje task sync po dokončení
-
-**Problem:** Požadavek říká, že po denním cyklu se automaticky spustí synchronizace úkolů do Drive sheetu. Mirror (manuální spuštění) ale `sync-therapist-tasks` nevolá.
-
-**Fix:** Na konec Mirror jobu přidat fetch na `karel-did-drive-write` s mode `sync-therapist-tasks`, stejně jako to dělá `centrum-sync`.
+### 5. Weekly-cycle task_tier
+- `insertTask` v weekly-cycle nyní přijímá `tier` parametr (default 'tactical')
 
 ---
 
-## Technické kroky
+# Další kroky (dosud neimplementované)
 
-### Krok A: Mirror – marking processed threads
-V `karel-memory-mirror/index.ts`, po úspěšném zápisu karet:
-- Sebrat ID všech zpracovaných `cast` vláken
-- `supabase.from("did_threads").update({ is_processed: true, processed_at: now }).in("id", threadIds)`
-
-### Krok B: Mirror – Perplexity per-část rešerše
-V `karel-memory-mirror/index.ts`, po AI Pass 2:
-- Pro každou část, které se card update týká, zavolat Perplexity sonar s cíleným dotazem
-- Výsledek přidat do sekce D obsahu karty před zápisem na Drive
-- Timeoutovat na 15s per volání, fail-safe (skip on error)
-
-### Krok C: Mirror – auto task sync
-Na konec `karel-memory-mirror/index.ts`:
-- Fetch `karel-did-drive-write` s `{ mode: "sync-therapist-tasks" }`
-- Fire-and-forget (nekritické, log warning on fail)
-
+1. **Auto denní plán sezení 14:00** (cron + skóre naléhavosti + výběr části)
+2. **Follow-up cyklus** (2h check + 24h timeout + zpětná vazba)
+3. **Poradenský mód** (auto-switch při probíhajícím sezení)
+4. **Mirror doladění** (pending záznamy do karet, urgentní notifikace)
+5. **UI „Karlův přehled"** (připnuté karty sezení se stavy)
