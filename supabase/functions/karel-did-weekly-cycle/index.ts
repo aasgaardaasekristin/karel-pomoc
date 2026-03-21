@@ -688,7 +688,7 @@ async function phaseDistribute(sb: any, cycleId: string) {
   const { data: existingTasks } = await sb.from("did_therapist_tasks").select("task, assigned_to").eq("user_id", userId);
   const existingTaskKeys = new Set((existingTasks || []).map((t: any) => `${t.task.trim().toLowerCase()}|${t.assigned_to}`));
 
-  const insertTask = async (task: string, assignee: string, source: string, priority: string, origin: string) => {
+  const insertTask = async (task: string, assignee: string, source: string, priority: string, origin: string, tier: string = "tactical") => {
     const key = `${task.trim().toLowerCase()}|${assignee}`;
     if (existingTaskKeys.has(key)) return false;
     existingTaskKeys.add(key);
@@ -698,6 +698,7 @@ async function phaseDistribute(sb: any, cycleId: string) {
       detail_instruction: detailInstruction,
       priority: priority.trim() || "normal", note: `${origin} ${dateStr}`,
       user_id: userId, status_hanka: "not_started", status_kata: "not_started",
+      task_tier: tier,
     });
     if (error) { console.error("[weekly] Task insert error:", error); return false; }
     return true;
