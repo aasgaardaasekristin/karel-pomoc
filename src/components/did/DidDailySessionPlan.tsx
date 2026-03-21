@@ -194,14 +194,50 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
             </>
           )}
           {plan && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-              className="h-7 px-2 text-[10px]"
-            >
-              {expanded ? "Sbalit" : "Rozbalit"}
-            </Button>
+            <>
+              <Popover open={overrideOpen} onOpenChange={setOverrideOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
+                    <UserRoundCog className="mr-1 h-3 w-3" />
+                    Přegenerovat
+                    <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-48 p-1.5" align="end">
+                  <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
+                    Vyber část (nahradí stávající plán):
+                  </p>
+                  <div className="max-h-48 overflow-y-auto space-y-0.5">
+                    {registryParts.map((p) => (
+                      <button
+                        key={p.part_name}
+                        onClick={() => {
+                          setOverrideOpen(false);
+                          generatePlan(p.part_name);
+                        }}
+                        className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
+                      >
+                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                          p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
+                        }`} />
+                        {p.part_name}
+                        <span className="text-[9px] text-muted-foreground ml-auto">
+                          {p.status === "active" ? "aktivní" : "spící"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+                className="h-7 px-2 text-[10px]"
+              >
+                {expanded ? "Sbalit" : "Rozbalit"}
+              </Button>
+            </>
           )}
         </div>
       </div>
