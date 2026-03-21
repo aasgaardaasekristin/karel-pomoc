@@ -297,27 +297,29 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
         {/* DidRegistryOverview and DidKartotekaHealth moved to DidSprava tabs */}
 
         {!loading && parts.length > 0 && (
-          <DidSystemMap
-            parts={parts}
-            activeThreads={activeThreads}
-            onQuickThread={onQuickThread}
-            onDeletePart={async (partName) => {
-              const { error } = await supabase
-                .from("did_threads")
-                .delete()
-                .eq("part_name", partName)
-                .eq("sub_mode", "cast");
+          <ErrorBoundary fallbackTitle="Mapa systému selhala">
+            <DidSystemMap
+              parts={parts}
+              activeThreads={activeThreads}
+              onQuickThread={onQuickThread}
+              onDeletePart={async (partName) => {
+                const { error } = await supabase
+                  .from("did_threads")
+                  .delete()
+                  .eq("part_name", partName)
+                  .eq("sub_mode", "cast");
 
-              if (error) {
-                toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
-                return;
-              }
+                if (error) {
+                  toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
+                  return;
+                }
 
-              toast.success(`Vlákna pro „${partName}" smazána z mapy`);
-              setParts((prev) => prev.filter((part) => part.name !== partName));
-              setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
-            }}
-          />
+                toast.success(`Vlákna pro „${partName}" smazána z mapy`);
+                setParts((prev) => prev.filter((part) => part.name !== partName));
+                setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
+              }}
+            />
+          </ErrorBoundary>
         )}
 
         {warningParts.length > 0 && (
