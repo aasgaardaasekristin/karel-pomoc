@@ -149,6 +149,7 @@ serve(async (req) => {
       weeklyRes, monthlyRes,
       sessionsRes, crisisRes, episodesRes,
       pulseRes, profilesRes, feedbackRes,
+      sessionPlanRes,
     ] = await Promise.all([
       sb.from("did_threads").select("*").gte("last_activity_at", cutoff24h),
       sb.from("did_conversations").select("*").gte("saved_at", cutoff24h),
@@ -165,6 +166,7 @@ serve(async (req) => {
       sb.from("did_pulse_checks").select("respondent, team_feeling, priority_clarity, karel_feedback, week_start, created_at").gte("created_at", weekAgo),
       sb.from("did_motivation_profiles").select("*"),
       sb.from("did_task_feedback").select("*").gte("created_at", cutoff24h),
+      (sb as any).from("did_daily_session_plans").select("selected_part, urgency_score, urgency_breakdown, plan_markdown, therapist").eq("plan_date", reportDatePrague).maybeSingle(),
     ]);
 
     const threads = threadsRes.data || [];
