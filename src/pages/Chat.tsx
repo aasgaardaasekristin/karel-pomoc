@@ -2128,60 +2128,45 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         </ScrollArea>
 
         {/* Input Area */}
-        <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-          <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-            <div className="flex gap-2 sm:gap-3 items-end relative">
-              <UniversalAttachmentBar
-                attachments={attachments} onRemove={removeAttachment}
-                onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-                onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-                disabled={isLoading || isSoapLoading}
-                fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-              />
-              <Textarea
-                ref={textareaRef} value={input}
-                onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="Napiš svou zprávu..."
-                className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
-                disabled={isLoading || isSoapLoading}
-              />
-              <Button
-                onClick={sendMessage}
-                disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
-              >
-                {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-              </Button>
-            </div>
-            {/* Action buttons row */}
-            <div className="flex items-center gap-2 flex-wrap mt-2">
-              <AudioRecordButton
-                state={audioRecorder.state} duration={audioRecorder.duration}
-                maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
-                isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
-                onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
-                onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
-              />
-            </div>
-            {messages.length > 1 && (
-              <DidActionButtons
-                subMode={didSubMode}
-                onEndCall={handleDidEndCall}
-                onManualUpdate={handleManualUpdate}
-                onLeaveThread={(didSubMode === "cast" || didSubMode === "mamka" || didSubMode === "kata") && activeThread ? handleLeaveThread : undefined}
-                onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
-                onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
-                isUpdateLoading={isManualUpdateLoading}
-                isHandbookLoading={isHandbookLoading}
-                disabled={isLoading}
-              />
-            )}
-            <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
-              Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
-            </p>
+        <ChatInputArea
+          input={input} setInput={setInput}
+          onSend={sendMessage} onKeyDown={handleKeyDown}
+          isLoading={isLoading} disabled={isSoapLoading}
+          isAnalyzing={isFileAnalyzing}
+          attachments={attachments}
+          onRemoveAttachment={removeAttachment}
+          onOpenFilePicker={openFilePicker}
+          onCaptureScreenshot={captureScreenshot}
+          onOpenDrivePicker={() => setDrivePickerOpen(true)}
+          onAutoAnalyze={handleAutoAnalyze}
+          fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+          onFileChange={handleFileChange}
+          textareaRef={textareaRef}
+          footerText="Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči."
+        >
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <AudioRecordButton
+              state={audioRecorder.state} duration={audioRecorder.duration}
+              maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
+              isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
+              onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
+              onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
+            />
           </div>
-        </div>
+          {messages.length > 1 && (
+            <DidActionButtons
+              subMode={didSubMode}
+              onEndCall={handleDidEndCall}
+              onManualUpdate={handleManualUpdate}
+              onLeaveThread={(didSubMode === "cast" || didSubMode === "mamka" || didSubMode === "kata") && activeThread ? handleLeaveThread : undefined}
+              onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
+              onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
+              isUpdateLoading={isManualUpdateLoading}
+              isHandbookLoading={isHandbookLoading}
+              disabled={isLoading}
+            />
+          )}
+        </ChatInputArea>
       </>
     );
   };
