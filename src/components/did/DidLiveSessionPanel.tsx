@@ -187,6 +187,14 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
           }
         }
       }
+
+      // Detect switch in final response
+      if (assistantContent) {
+        const cleaned = detectSwitch(assistantContent);
+        if (cleaned !== assistantContent) {
+          setMessages([...updatedMessages, { role: "assistant", content: cleaned }]);
+        }
+      }
     } catch (error) {
       console.error("DID Live session error:", error);
       toast.error("Chyba při komunikaci s Karlem");
