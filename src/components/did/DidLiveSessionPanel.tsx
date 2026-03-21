@@ -305,10 +305,12 @@ Pro každou metodu: fungovala (✅), částečně (⚠️), nefungovala (❌) + 
 Karlovo hodnocení práce ${therapistName} — co udělala dobře, co příště zlepšit, konkrétní rady.
 
 ## ÚKOLY
-Konkrétní úkoly pro tým (kdo, co, kdy):
-- Pro ${therapistName}: ...
-- Pro druhou terapeutku: ...
-- Pro Karla: ...
+Konkrétní úkoly pro tým. KAŽDÝ ÚKOL na zvláštní řádek v tomto PŘESNÉM formátu:
+- [hanka|kata|both] [today|tomorrow|longterm] Popis úkolu
+Příklady:
+- [hanka] [today] Zavolat škole ohledně IVP
+- [kata] [tomorrow] Připravit relaxační karty pro příští sezení
+- [both] [longterm] Domluvit společnou supervizi k switchování
 
 ## DOPORUČENÍ_PŘÍŠTĚ
 Co dělat na příštím sezení, jaké metody zkusit, na co si dát pozor.
