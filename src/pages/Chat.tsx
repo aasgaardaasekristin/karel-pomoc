@@ -733,13 +733,7 @@ const Chat = () => {
     }
   }, [searchParams, hubSection]);
 
-  if (!authChecked) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-transparent">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  // authChecked guard moved after all hooks (see below line ~1317)
 
   // ── DID-specific handlers ──
 
