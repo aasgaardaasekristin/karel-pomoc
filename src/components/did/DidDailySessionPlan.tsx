@@ -52,6 +52,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [expanded, setExpanded] = useState(false);
   const [registryParts, setRegistryParts] = useState<{ part_name: string; status: string }[]>([]);
   const [overrideOpen, setOverrideOpen] = useState(false);
+  const [customPartName, setCustomPartName] = useState("");
 
   const loadTodayPlan = useCallback(async () => {
     setLoading(true);
