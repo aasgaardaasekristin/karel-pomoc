@@ -371,6 +371,9 @@ NIKDY nezadávej úkoly pro dormantní/spící části!
 ▸ Úroveň spolupráce, kde to vázne, co jde dobře
 ▸ Co Káťa splnila, co zbývá
 
+${todaySessionPlan ? `<h3>🎯 PLÁN SEZENÍ NA DNES:</h3>
+Shrň klíčové body automaticky generovaného plánu sezení (část, co dělat, na co dát pozor). Pokud je úkol pro Káťu, zdůrazni formát A/B (zjednodušená varianta).` : ""}
+
 Podpis: "Karel"
 
 Tón: profesionální, věcný. Nesdílej Hančiny osobní informace.
