@@ -388,8 +388,9 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
       const tasksList = tasksText.split("\n").map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean);
 
       // Save to did_part_sessions
+      let savedSessionId: string | null = null;
       try {
-        await supabase.from("did_part_sessions").insert({
+        const { data: insertedRow } = await supabase.from("did_part_sessions").insert({
           part_name: partName,
           therapist: therapistName,
           session_type: "live",
@@ -400,10 +401,80 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           audio_analysis: audioAnalyses.join("\n---\n") || "",
           karel_notes: report,
           karel_therapist_feedback: therapistFeedback,
-        });
+        }).select("id").single();
+        savedSessionId = insertedRow?.id || null;
         console.log("Session saved to did_part_sessions");
       } catch (saveErr) {
         console.error("Failed to save session:", saveErr);
+      }
+
+      // Generate handoff note for colleague
+      if (savedSessionId && report) {
+        try {
+          const otherTherapist = therapistName === "Hanka" ? "Káťa" : "Hanka";
+          const handoffPrompt = `Na základě tohoto zápisu ze sezení s DID částí "${partName}" (vedla ${therapistName}) napiš STRUČNÉ předání pro kolegyni ${otherTherapist}.
+
+Formát: 3-5 bullet pointů zaměřených na to, co ${otherTherapist} POTŘEBUJE VĚDĚT:
+- Aktuální emoční stav části
+- Co fungovalo / nefungovalo  
+- Na co si dát pozor příště
+- Případné úkoly nebo doporučení
+
+ZÁPIS:
+${report.slice(0, 3000)}
+
+Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani závěr.`;
+
+          const handoffHeaders = await getAuthHeaders();
+          const handoffResp = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
+            {
+              method: "POST",
+              headers: handoffHeaders,
+              body: JSON.stringify({
+                messages: [{ role: "user", content: handoffPrompt }],
+                mode: "supervision",
+              }),
+            }
+          );
+
+          if (handoffResp.ok && handoffResp.body) {
+            const hReader = handoffResp.body.getReader();
+            const hDecoder = new TextDecoder();
+            let hBuffer = "";
+            let handoffNote = "";
+
+            while (true) {
+              const { done, value } = await hReader.read();
+              if (done) break;
+              hBuffer += hDecoder.decode(value, { stream: true });
+              let idx: number;
+              while ((idx = hBuffer.indexOf("\n")) !== -1) {
+                let line = hBuffer.slice(0, idx);
+                hBuffer = hBuffer.slice(idx + 1);
+                if (line.endsWith("\r")) line = line.slice(0, -1);
+                if (!line.startsWith("data: ")) continue;
+                const json = line.slice(6).trim();
+                if (json === "[DONE]") break;
+                try {
+                  const parsed = JSON.parse(json);
+                  const content = parsed.choices?.[0]?.delta?.content;
+                  if (content) handoffNote += content;
+                } catch { break; }
+              }
+            }
+
+            if (handoffNote.trim()) {
+              await supabase
+                .from("did_part_sessions")
+                .update({ handoff_note: handoffNote.trim() } as any)
+                .eq("id", savedSessionId);
+              console.log("Handoff note saved");
+            }
+          }
+        } catch (handoffErr) {
+          console.error("Failed to generate handoff note:", handoffErr);
+        }
       }
 
       // Update part registry with latest contact
