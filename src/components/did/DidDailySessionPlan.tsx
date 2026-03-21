@@ -123,17 +123,24 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   useEffect(() => {
     if (!plan?.selected_part) { setPrevSession(null); return; }
     const loadPrev = async () => {
-      const { data } = await supabase
+      // Load last session from the OTHER therapist for handoff context
+      const currentTherapist = (plan.therapist || "hanka").toLowerCase();
+      // Filter out both case variants of current therapist
+      let query = supabase
         .from("did_part_sessions")
         .select("therapist, session_date, ai_analysis, handoff_note")
         .eq("part_name", plan.selected_part)
         .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      setPrevSession((data as PreviousSession) || null);
+        .limit(10);
+      const { data: rows } = await query;
+      // Find first session by the OTHER therapist
+      const other = (rows || []).find(r =>
+        r.therapist?.toLowerCase() !== currentTherapist
+      );
+      setPrevSession((other as PreviousSession) || null);
     };
     loadPrev();
-  }, [plan?.selected_part]);
+  }, [plan?.selected_part, plan?.therapist]);
 
   const loadRegistryParts = useCallback(async () => {
     const { data } = await supabase
@@ -624,10 +631,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                           AI analýza sezení
                         </span>
                         <div
-                          className="text-[10px] leading-4 text-muted-foreground whitespace-pre-wrap"
-                        >
-                          {prevSession.ai_analysis}
-                        </div>
+                          className="text-[10px] leading-4 text-muted-foreground"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(prevSession.ai_analysis) }}
+                        />
                       </div>
                     )}
 
