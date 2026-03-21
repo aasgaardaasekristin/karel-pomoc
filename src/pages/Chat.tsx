@@ -2333,34 +2333,21 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 </div>
               </ScrollArea>
 
-              <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-                <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  <div className="flex gap-2 sm:gap-3 items-end relative">
-                    <UniversalAttachmentBar
-                      attachments={attachments} onRemove={removeAttachment}
-                      onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-                      onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-                      disabled={isLoading || isSoapLoading}
-                      fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                      onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-                    />
-                    <Textarea
-                      ref={textareaRef} value={input}
-                      onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                      placeholder="Napiš svou zprávu..."
-                      className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
-                      disabled={isLoading || isSoapLoading}
-                    />
-                    <Button
-                      onClick={sendMessage}
-                      disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                      size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
-                    >
-                      {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <ChatInputArea
+                input={input} setInput={setInput}
+                onSend={sendMessage} onKeyDown={handleKeyDown}
+                isLoading={isLoading} disabled={isSoapLoading}
+                isAnalyzing={isFileAnalyzing}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
+                onOpenFilePicker={openFilePicker}
+                onCaptureScreenshot={captureScreenshot}
+                onOpenDrivePicker={() => setDrivePickerOpen(true)}
+                onAutoAnalyze={handleAutoAnalyze}
+                fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                onFileChange={handleFileChange}
+                textareaRef={textareaRef}
+              />
             </>
           )}
         </>

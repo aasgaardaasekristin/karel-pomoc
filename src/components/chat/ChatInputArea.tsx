@@ -13,7 +13,7 @@ interface ChatInputAreaProps {
   disabled?: boolean;
   isAnalyzing: boolean;
   attachments: any[];
-  onRemoveAttachment: (i: number) => void;
+  onRemoveAttachment: (id: string) => void;
   onOpenFilePicker: () => void;
   onCaptureScreenshot: () => void;
   onOpenDrivePicker: () => void;
