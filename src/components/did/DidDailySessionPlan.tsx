@@ -129,7 +129,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       // Filter out both case variants of current therapist
       let query = supabase
         .from("did_part_sessions")
-        .select("therapist, session_date, ai_analysis, handoff_note")
+        .select("therapist, session_date, ai_analysis, handoff_note, karel_notes")
         .eq("part_name", plan.selected_part)
         .order("created_at", { ascending: false })
         .limit(10);
