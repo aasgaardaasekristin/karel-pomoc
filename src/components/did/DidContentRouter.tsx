@@ -47,8 +47,8 @@ export interface DidContentRouterProps {
   // Flow
   didFlowState: DidFlowState;
   setDidFlowState: React.Dispatch<React.SetStateAction<DidFlowState>>;
-  didSubMode: DidSubMode | null;
-  setDidSubMode: React.Dispatch<React.SetStateAction<DidSubMode | null>>;
+  didSubMode: DidSubMode;
+  setDidSubMode: React.Dispatch<React.SetStateAction<any>>;
 
   // Data
   activeThread: DidThread | null;
