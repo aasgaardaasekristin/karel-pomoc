@@ -1,40 +1,37 @@
 
 
-# Stav aplikace a další krok
+# Krok 2: Error Boundaries kolem DID panelů
 
-## Co je hotovo (fáze 1-6 z 8)
+## Problém
+Pád jedné komponenty (např. DidSystemOverview) shodí celý dashboard. React nemá defaultní error handling pro renderovací chyby.
 
-1. Context Prime
-2. Epizodická paměť
-3. Registr částí + Live Session
-4. Bootstrap paměti
-5. Dashboard v2 (systémová mapa, úkoly, dohody, pulse check, kolegyně)
-6. Koordinace terapeutů (handoffy, alerty, reflexe, auto-úkoly)
+## Řešení
 
-## Co zbývá: 2 fáze
+### 1. Nová komponenta `src/components/ErrorBoundary.tsx`
+- Generic React class component (error boundaries vyžadují class component)
+- UI: zaoblený box s ikonou varování, text "Něco se pokazilo", detail chyby (collapsed), tlačítko "Zkusit znovu" (reset error state)
+- Props: `fallbackTitle?: string` pro kontext ("Panel přehledu selhal" apod.)
 
-**Fáze 7 — Detekce switchů** — už je částečně implementovaná (regex `[SWITCH:...]` v `Chat.tsx`, pravidla v daily cycle). Chybí: vizuální indikace switche v live session panelu, logování switchů do `did_part_sessions`, zobrazení switch historie na dashboardu.
+### 2. Úprava `src/components/did/DidDashboard.tsx`
+Obalit každý hlavní panel Error Boundary:
+- `DidSystemOverview`
+- `DidDailySessionPlan`
+- `DidTherapistTaskBoard` (celý wrapper s úkoly)
+- `DidAgreementsPanel`
+- `DidMonthlyPanel`
+- `DidPulseCheck`
+- `DidCoordinationAlerts`
+- `DidSupervisionReport`
+- `DidColleagueView`
+- `DidSystemMap`
 
-**Fáze 8 — Supervizní reporty pro DID** — existuje obecný `karel-report`, ale chybí DID-specifický supervizní report, který agreguje data napříč částmi, sleduje vzorce switchů, zahrnuje reflexe terapeutek a generuje doporučení pro supervizi.
+### 3. Úprava `src/pages/Chat.tsx`
+Obalit `DidLiveSessionPanel` (~řádek 1904) a `DidDashboard` Error Boundary.
 
----
+### Soubory
+- `src/components/ErrorBoundary.tsx` (nový)
+- `src/components/did/DidDashboard.tsx` (úprava — wrappy)
+- `src/pages/Chat.tsx` (úprava — 2 wrappy)
 
-## Další logický krok: Zobrazení reflexe v plánu sezení
-
-Než pokročím k fázím 7-8, je tu jeden malý ale důležitý gap: reflexe terapeutky se ukládá do `karel_notes`, ale **nezobrazuje se v rozbalení plánu sezení** v `DidDailySessionPlan`. Kolegyně ji tedy nevidí, pokud si neotevře raw data.
-
-### Co se změní
-
-V `src/components/did/DidDailySessionPlan.tsx`, v rozbalené sekci předchozího sezení (řádky 610-644):
-- Parsovat `karel_notes` z `prevSession` na přítomnost sekce `## REFLEXE TERAPEUTKY`
-- Pokud existuje, zobrazit ji jako nový blok pod AI analýzou s ikonou `PenLine` a stylem `bg-amber-500/5`
-- Query pro `prevSession` rozšířit o `karel_notes`
-
-### Soubor k úpravě
-
-- `src/components/did/DidDailySessionPlan.tsx`
-
-### Bez DB migrace
-
-Data už existují v `karel_notes`, stačí je načíst a zobrazit.
+Bez DB migrace. Čistě frontend změna.
 
