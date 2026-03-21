@@ -6,6 +6,8 @@ import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera,
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import { useImageUpload } from "@/hooks/useImageUpload";
@@ -45,6 +47,20 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
   const imageSegmentCountRef = useRef(0);
+
+  // Reflection dialog state
+  const [showReflection, setShowReflection] = useState(false);
+  const [reflectionEmotions, setReflectionEmotions] = useState<string[]>([]);
+  const [reflectionSurprise, setReflectionSurprise] = useState("");
+  const [reflectionNextTime, setReflectionNextTime] = useState("");
+  const [pendingReport, setPendingReport] = useState("");
+  const [pendingSavedSessionId, setPendingSavedSessionId] = useState<string | null>(null);
+  const [isSavingReflection, setIsSavingReflection] = useState(false);
+
+  const EMOTION_OPTIONS = [
+    "klidná", "nejistá", "frustrovaná", "dojatá",
+    "vyčerpaná", "nadějná", "úzkostná", "překvapená",
+  ];
 
   // Auto-greet
   useEffect(() => {
@@ -458,74 +474,6 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
         console.error("Failed to auto-create tasks:", taskErr);
       }
 
-      if (savedSessionId && report) {
-        try {
-          const otherTherapist = therapistName === "Hanka" ? "Káťa" : "Hanka";
-          const handoffPrompt = `Na základě tohoto zápisu ze sezení s DID částí "${partName}" (vedla ${therapistName}) napiš STRUČNÉ předání pro kolegyni ${otherTherapist}.
-
-Formát: 3-5 bullet pointů zaměřených na to, co ${otherTherapist} POTŘEBUJE VĚDĚT:
-- Aktuální emoční stav části
-- Co fungovalo / nefungovalo  
-- Na co si dát pozor příště
-- Případné úkoly nebo doporučení
-
-ZÁPIS:
-${report.slice(0, 3000)}
-
-Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani závěr.`;
-
-          const handoffHeaders = await getAuthHeaders();
-          const handoffResp = await fetch(
-            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
-            {
-              method: "POST",
-              headers: handoffHeaders,
-              body: JSON.stringify({
-                messages: [{ role: "user", content: handoffPrompt }],
-                mode: "supervision",
-              }),
-            }
-          );
-
-          if (handoffResp.ok && handoffResp.body) {
-            const hReader = handoffResp.body.getReader();
-            const hDecoder = new TextDecoder();
-            let hBuffer = "";
-            let handoffNote = "";
-
-            while (true) {
-              const { done, value } = await hReader.read();
-              if (done) break;
-              hBuffer += hDecoder.decode(value, { stream: true });
-              let idx: number;
-              while ((idx = hBuffer.indexOf("\n")) !== -1) {
-                let line = hBuffer.slice(0, idx);
-                hBuffer = hBuffer.slice(idx + 1);
-                if (line.endsWith("\r")) line = line.slice(0, -1);
-                if (!line.startsWith("data: ")) continue;
-                const json = line.slice(6).trim();
-                if (json === "[DONE]") break;
-                try {
-                  const parsed = JSON.parse(json);
-                  const content = parsed.choices?.[0]?.delta?.content;
-                  if (content) handoffNote += content;
-                } catch { break; }
-              }
-            }
-
-            if (handoffNote.trim()) {
-              await supabase
-                .from("did_part_sessions")
-                .update({ handoff_note: handoffNote.trim() } as any)
-                .eq("id", savedSessionId);
-              console.log("Handoff note saved");
-            }
-          }
-        } catch (handoffErr) {
-          console.error("Failed to generate handoff note:", handoffErr);
-        }
-      }
-
       // Update part registry with latest contact
       try {
         await supabase.from("did_part_registry").update({
@@ -534,14 +482,136 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
         }).eq("part_name", partName);
       } catch {}
 
-      toast.success("Sezení uloženo a analyzováno");
-      onEnd(report || "Zápis nebyl vygenerován.");
+      // Show reflection dialog instead of immediately finishing
+      setPendingReport(report);
+      setPendingSavedSessionId(savedSessionId);
+      setIsFinishing(false);
+      setShowReflection(true);
     } catch (error) {
       console.error("DID Live session finalize error:", error);
       toast.error("Chyba při zpracování sezení");
-    } finally {
       setIsFinishing(false);
     }
+  };
+
+  const toggleEmotion = (emotion: string) => {
+    setReflectionEmotions(prev =>
+      prev.includes(emotion) ? prev.filter(e => e !== emotion) : [...prev, emotion]
+    );
+  };
+
+  const finishAfterReflection = async (skipped: boolean) => {
+    setIsSavingReflection(true);
+    const report = pendingReport;
+    const savedSessionId = pendingSavedSessionId;
+
+    // Build reflection text
+    let reflectionText = "";
+    if (!skipped && (reflectionEmotions.length > 0 || reflectionSurprise.trim() || reflectionNextTime.trim())) {
+      reflectionText = `\n\n## REFLEXE TERAPEUTKY`;
+      if (reflectionEmotions.length > 0) {
+        reflectionText += `\n**Emoce během sezení:** ${reflectionEmotions.join(", ")}`;
+      }
+      if (reflectionSurprise.trim()) {
+        reflectionText += `\n**Co mě překvapilo:** ${reflectionSurprise.trim()}`;
+      }
+      if (reflectionNextTime.trim()) {
+        reflectionText += `\n**Co bych příště udělala jinak:** ${reflectionNextTime.trim()}`;
+      }
+
+      // Save reflection to karel_notes
+      if (savedSessionId) {
+        try {
+          const { data: currentSession } = await supabase
+            .from("did_part_sessions")
+            .select("karel_notes")
+            .eq("id", savedSessionId)
+            .single();
+          const updatedNotes = (currentSession?.karel_notes || "") + reflectionText;
+          await supabase
+            .from("did_part_sessions")
+            .update({ karel_notes: updatedNotes } as any)
+            .eq("id", savedSessionId);
+        } catch (err) {
+          console.error("Failed to save reflection:", err);
+        }
+      }
+    }
+
+    // Generate handoff note (with reflection context if available)
+    if (savedSessionId && report) {
+      try {
+        const otherTherapist = therapistName === "Hanka" ? "Káťa" : "Hanka";
+        const handoffPrompt = `Na základě tohoto zápisu ze sezení s DID částí "${partName}" (vedla ${therapistName}) napiš STRUČNÉ předání pro kolegyni ${otherTherapist}.
+
+Formát: 3-5 bullet pointů zaměřených na to, co ${otherTherapist} POTŘEBUJE VĚDĚT:
+- Aktuální emoční stav části
+- Co fungovalo / nefungovalo  
+- Na co si dát pozor příště
+- Případné úkoly nebo doporučení
+${reflectionText ? `\nSUBJEKTIVNÍ REFLEXE TERAPEUTKY:\n${reflectionText}\n\nZahrň postřehy terapeutky do předání — kolegyně ocení subjektivní pohled.` : ""}
+
+ZÁPIS:
+${report.slice(0, 3000)}
+
+Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani závěr.`;
+
+        const handoffHeaders = await getAuthHeaders();
+        const handoffResp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
+          {
+            method: "POST",
+            headers: handoffHeaders,
+            body: JSON.stringify({
+              messages: [{ role: "user", content: handoffPrompt }],
+              mode: "supervision",
+            }),
+          }
+        );
+
+        if (handoffResp.ok && handoffResp.body) {
+          const hReader = handoffResp.body.getReader();
+          const hDecoder = new TextDecoder();
+          let hBuffer = "";
+          let handoffNote = "";
+
+          while (true) {
+            const { done, value } = await hReader.read();
+            if (done) break;
+            hBuffer += hDecoder.decode(value, { stream: true });
+            let idx: number;
+            while ((idx = hBuffer.indexOf("\n")) !== -1) {
+              let line = hBuffer.slice(0, idx);
+              hBuffer = hBuffer.slice(idx + 1);
+              if (line.endsWith("\r")) line = line.slice(0, -1);
+              if (!line.startsWith("data: ")) continue;
+              const json = line.slice(6).trim();
+              if (json === "[DONE]") break;
+              try {
+                const parsed = JSON.parse(json);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) handoffNote += content;
+              } catch { break; }
+            }
+          }
+
+          if (handoffNote.trim()) {
+            await supabase
+              .from("did_part_sessions")
+              .update({ handoff_note: handoffNote.trim() } as any)
+              .eq("id", savedSessionId);
+            console.log("Handoff note saved");
+          }
+        }
+      } catch (handoffErr) {
+        console.error("Failed to generate handoff note:", handoffErr);
+      }
+    }
+
+    setShowReflection(false);
+    setIsSavingReflection(false);
+    toast.success("Sezení uloženo a analyzováno");
+    onEnd(report || "Zápis nebyl vygenerován.");
   };
 
   return (
@@ -725,6 +795,77 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
           </div>
         </div>
       )}
+
+      {/* Reflection Dialog */}
+      <Dialog open={showReflection} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-base">Reflexe po sezení</DialogTitle>
+            <DialogDescription className="text-xs">
+              Jak ses cítila během sezení s {partName}? (nepovinné)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Emotions multiselect */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Emoce během sezení</p>
+              <div className="flex flex-wrap gap-1.5">
+                {EMOTION_OPTIONS.map(emotion => (
+                  <Badge
+                    key={emotion}
+                    variant={reflectionEmotions.includes(emotion) ? "default" : "outline"}
+                    className="cursor-pointer text-xs"
+                    onClick={() => toggleEmotion(emotion)}
+                  >
+                    {emotion}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Surprise */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Co tě překvapilo?</p>
+              <Textarea
+                value={reflectionSurprise}
+                onChange={e => setReflectionSurprise(e.target.value)}
+                placeholder="1-2 věty…"
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            {/* Next time */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Co bys příště udělala jinak?</p>
+              <Textarea
+                value={reflectionNextTime}
+                onChange={e => setReflectionNextTime(e.target.value)}
+                placeholder="1-2 věty…"
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => finishAfterReflection(true)}
+                disabled={isSavingReflection}
+              >
+                Přeskočit
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => finishAfterReflection(false)}
+                disabled={isSavingReflection}
+              >
+                {isSavingReflection ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                Uložit reflexi
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
