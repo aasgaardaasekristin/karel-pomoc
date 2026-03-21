@@ -305,10 +305,12 @@ Pro každou metodu: fungovala (✅), částečně (⚠️), nefungovala (❌) + 
 Karlovo hodnocení práce ${therapistName} — co udělala dobře, co příště zlepšit, konkrétní rady.
 
 ## ÚKOLY
-Konkrétní úkoly pro tým (kdo, co, kdy):
-- Pro ${therapistName}: ...
-- Pro druhou terapeutku: ...
-- Pro Karla: ...
+Konkrétní úkoly pro tým. KAŽDÝ ÚKOL na zvláštní řádek v tomto PŘESNÉM formátu:
+- [hanka|kata|both] [today|tomorrow|longterm] Popis úkolu
+Příklady:
+- [hanka] [today] Zavolat škole ohledně IVP
+- [kata] [tomorrow] Připravit relaxační karty pro příští sezení
+- [both] [longterm] Domluvit společnou supervizi k switchování
 
 ## DOPORUČENÍ_PŘÍŠTĚ
 Co dělat na příštím sezení, jaké metody zkusit, na co si dát pozor.
@@ -408,7 +410,54 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
         console.error("Failed to save session:", saveErr);
       }
 
-      // Generate handoff note for colleague
+      // === Auto-generate tasks on the board ===
+      try {
+        const structuredTaskRegex = /^-\s*\[(hanka|kata|both)\]\s*\[(today|tomorrow|longterm)\]\s*(.+)/gmi;
+        const parsedTasks: { task: string; assignee: "hanka" | "kata" | "both"; category: string }[] = [];
+        let tMatch;
+        while ((tMatch = structuredTaskRegex.exec(tasksText)) !== null) {
+          const assignee = tMatch[1].toLowerCase() as "hanka" | "kata" | "both";
+          const category = tMatch[2].toLowerCase();
+          const task = tMatch[3].trim();
+          if (task && ["hanka", "kata", "both"].includes(assignee) && ["today", "tomorrow", "longterm"].includes(category)) {
+            parsedTasks.push({ task, assignee, category });
+          }
+        }
+
+        let createdCount = 0;
+        for (const pt of parsedTasks) {
+          const normalized = pt.task.toLowerCase().replace(/\s+/g, " ").trim();
+          const { data: existing } = await supabase
+            .from("did_therapist_tasks")
+            .select("id")
+            .neq("status", "done")
+            .neq("status", "archived")
+            .ilike("task", `%${normalized.slice(0, 30)}%`)
+            .limit(1);
+
+          if (existing && existing.length > 0) continue;
+
+          const { error } = await supabase.from("did_therapist_tasks").insert({
+            task: pt.task,
+            assigned_to: pt.assignee,
+            category: pt.category,
+            status: "pending",
+            status_hanka: "not_started",
+            status_kata: "not_started",
+            source_agreement: `Sezení s ${partName}`,
+            priority: pt.category === "today" ? "high" : pt.category === "tomorrow" ? "normal" : "low",
+            detail_instruction: `Co udělat: ${pt.task}\nKontext: Ze sezení s ${partName} (${therapistName}, ${new Date().toLocaleDateString("cs-CZ")})\nDalší krok: Udělej první konkrétní krok a zapiš krátký update.`,
+          });
+          if (!error) createdCount++;
+        }
+
+        if (createdCount > 0) {
+          toast.success(`Vytvořeno ${createdCount} ${createdCount === 1 ? "úkol" : createdCount < 5 ? "úkoly" : "úkolů"} na nástěnce`);
+        }
+      } catch (taskErr) {
+        console.error("Failed to auto-create tasks:", taskErr);
+      }
+
       if (savedSessionId && report) {
         try {
           const otherTherapist = therapistName === "Hanka" ? "Káťa" : "Hanka";
