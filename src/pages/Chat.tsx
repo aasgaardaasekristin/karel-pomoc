@@ -1,12 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
+import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
-import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
+import ChatInputArea from "@/components/chat/ChatInputArea";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,76 +51,12 @@ import DidRegistryOverview from "@/components/did/DidRegistryOverview";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming";
 import { useTheme } from "@/contexts/ThemeContext";
-
-type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "research";
-type HubSection = "did" | "hana" | "research" | null;
-
-// localStorage helpers
-const STORAGE_KEY_PREFIX = "karel_chat_";
-const ACTIVE_MODE_KEY = "karel_active_mode";
-const DID_DOCS_LOADED_KEY = "karel_did_docs_loaded";
-const DID_SESSION_ID_KEY = "karel_did_session_id";
-const LAST_CAST_GREETING_INDEX_KEY = "karel_last_cast_greeting_index";
-
-const CAST_GREETINGS = [
-  "Hej! 😊 Jak se dneska máš? Co nového?",
-  "Čau! Co se ti dneska honí hlavou?",
-  "Ahoj! 🌟 Povídej, na co máš teď chuť?",
-  "Jé, ahoj! Jak se ti daří? Co bys dneska chtěl/a?",
-  "Hezky, že jsi tady! Jakou náladu máš právě teď?",
-  "Ahoj ahoj! Co hezkého nebo těžkého dneska přišlo?",
-  "Čau! Už jsem se těšil/a, až si zase popovídáme. Co je nového?",
-];
-
-const getRandomCastGreeting = () => {
-  if (CAST_GREETINGS.length === 1) return CAST_GREETINGS[0];
-  try {
-    const lastIndexRaw = localStorage.getItem(LAST_CAST_GREETING_INDEX_KEY);
-    const lastIndex = lastIndexRaw ? Number(lastIndexRaw) : -1;
-    let nextIndex = Math.floor(Math.random() * CAST_GREETINGS.length);
-    if (nextIndex === lastIndex) nextIndex = (nextIndex + 1) % CAST_GREETINGS.length;
-    localStorage.setItem(LAST_CAST_GREETING_INDEX_KEY, String(nextIndex));
-    return CAST_GREETINGS[nextIndex];
-  } catch {
-    return CAST_GREETINGS[Math.floor(Math.random() * CAST_GREETINGS.length)];
-  }
-};
-
-const saveMessages = (mode: string, messages: { role: string; content: string }[]) => {
-  try {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${mode}`, JSON.stringify({ _mode: mode, messages }));
-  } catch {}
-};
-const loadMessages = (mode: string) => {
-  try {
-    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${mode}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === "object" && "_mode" in parsed) {
-      if (parsed._mode !== mode) {
-        localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
-        return null;
-      }
-      return parsed.messages;
-    }
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
-    return null;
-  } catch { return null; }
-};
-const clearMessages = (mode: string) => {
-  localStorage.removeItem(`${STORAGE_KEY_PREFIX}${mode}`);
-};
-
-const handleApiError = (response: Response) => {
-  if (response.status === 429) throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
-  if (response.status === 402) throw new Error("Karel je momentálně nedostupný – pravděpodobně došly AI kredity.");
-  throw new Error("Něco se pokazilo. Zkus to znovu.");
-};
-
-// DID flow states
-type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threads" | "dashboard" | "submode-select" | "thread-list" | "part-identify" | "chat" | "loading" | "meeting" | "live-session" | "did-kartoteka";
-
-const HANA_PIN_KEY = "karel_hana_pin_verified";
+import {
+  type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
+  STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY,
+  getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
+  parseSSEStream, WELCOME_MESSAGES,
+} from "@/lib/chatHelpers";
 
 const Chat = () => {
   const {
@@ -180,7 +115,6 @@ const Chat = () => {
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   // Research thread state
-  type ResearchFlowState = "thread-list" | "new-topic" | "chat";
   const [researchFlowState, setResearchFlowState] = useState<ResearchFlowState>("thread-list");
   const [activeResearchThread, setActiveResearchThread] = useState<ResearchThread | null>(null);
   const researchThreads = useResearchThreads();
@@ -404,13 +338,7 @@ const Chat = () => {
 
   // Welcome message when mode changes
   useEffect(() => {
-    const welcomeMessages: Record<ConversationMode, string> = {
-      debrief: "Hani, jsem tady. Pojď, sedni si ke mně k ohni. Pracovní den končí a já ti držím prostor, abys mohla odložit vše, co v tobě zůstalo. Jak se právě teď cítíš?",
-      supervision: "Haničko, jsem připraven s tebou pracovat. Která postava z tvé praxe tě teď zaměstnává? Můžeme reflektovat, trénovat, nebo ti nabídnu strukturovaný zápis - co potřebuješ?",
-      safety: "Hani, pojďme společně a věcně projít to, co tě znepokojuje. Jsem tu jako tvůj partner - projdeme hranice, postup i dokumentaci. Na čem pracujeme?",
-      childcare: "",
-      research: "🔬 Haničko, jsem připraven prohledat internet pro tebe. Řekni mi, co tě zajímá – nové metody, testy, odborné články, trendy v psychoterapii, techniky pro práci s dětmi... Stačí popsat téma nebo situaci a já najdu relevantní zdroje.",
-    };
+    const welcomeMessages = WELCOME_MESSAGES;
 
     if (mode !== "childcare") {
       setDidSubMode(null);
@@ -980,30 +908,7 @@ const Chat = () => {
         });
         
         if (response.ok && response.body) {
-          // Read the streamed response to completion to extract research context
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-          let researchContent = "";
-          let buffer = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let idx: number;
-            while ((idx = buffer.indexOf("\n")) !== -1) {
-              let line = buffer.slice(0, idx);
-              buffer = buffer.slice(idx + 1);
-              if (line.endsWith("\r")) line = line.slice(0, -1);
-              if (!line.startsWith("data: ")) continue;
-              const jsonStr = line.slice(6).trim();
-              if (jsonStr === "[DONE]") break;
-              try {
-                const parsed = JSON.parse(jsonStr);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) researchContent += content;
-              } catch {}
-            }
-          }
+          const researchContent = await parseSSEStream(response.body, () => {});
           if (researchContent) {
             setDidInitialContext(prev => prev + "\n\n[Předběžný výzkum k tématu]\n" + researchContent.slice(0, 3000));
           }
@@ -1199,37 +1104,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       });
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantContent += content;
-              setMessages(prev => {
-                const n = [...prev];
-                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
-                return n;
-              });
-            }
-          } catch { buffer = line + "\n" + buffer; break; }
-        }
-      }
+      assistantContent = await parseSSEStream(response.body, (content) => {
+        setMessages(prev => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content };
+          return n;
+        });
+      });
       toast.success("Výzkum dokončen");
     } catch (error) {
       console.error("DID Research error:", error);
@@ -1591,37 +1473,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       clearTimeout(timeout);
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantContent += content;
-              setMessages((prev) => {
-                const n = [...prev];
-                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
-                return n;
-              });
-            }
-          } catch { buffer = line + "\n" + buffer; break; }
-        }
-      }
+      assistantContent = await parseSSEStream(response.body, (content) => {
+        setMessages((prev) => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content };
+          return n;
+        });
+      });
 
       // ═══ SWITCH DETECTION: If Karel detects a switch, update the thread part_name ═══
       if (activeThread && didSubMode === "cast" && assistantContent) {
@@ -2129,60 +1988,45 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         </ScrollArea>
 
         {/* Input Area */}
-        <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-          <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-            <div className="flex gap-2 sm:gap-3 items-end relative">
-              <UniversalAttachmentBar
-                attachments={attachments} onRemove={removeAttachment}
-                onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-                onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-                disabled={isLoading || isSoapLoading}
-                fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-              />
-              <Textarea
-                ref={textareaRef} value={input}
-                onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                placeholder="Napiš svou zprávu..."
-                className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
-                disabled={isLoading || isSoapLoading}
-              />
-              <Button
-                onClick={sendMessage}
-                disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
-              >
-                {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-              </Button>
-            </div>
-            {/* Action buttons row */}
-            <div className="flex items-center gap-2 flex-wrap mt-2">
-              <AudioRecordButton
-                state={audioRecorder.state} duration={audioRecorder.duration}
-                maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
-                isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
-                onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
-                onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
-              />
-            </div>
-            {messages.length > 1 && (
-              <DidActionButtons
-                subMode={didSubMode}
-                onEndCall={handleDidEndCall}
-                onManualUpdate={handleManualUpdate}
-                onLeaveThread={(didSubMode === "cast" || didSubMode === "mamka" || didSubMode === "kata") && activeThread ? handleLeaveThread : undefined}
-                onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
-                onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
-                isUpdateLoading={isManualUpdateLoading}
-                isHandbookLoading={isHandbookLoading}
-                disabled={isLoading}
-              />
-            )}
-            <p className="text-xs text-muted-foreground mt-1.5 sm:mt-2 text-center">
-              Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči.
-            </p>
+        <ChatInputArea
+          input={input} setInput={setInput}
+          onSend={sendMessage} onKeyDown={handleKeyDown}
+          isLoading={isLoading} disabled={isSoapLoading}
+          isAnalyzing={isFileAnalyzing}
+          attachments={attachments}
+          onRemoveAttachment={removeAttachment}
+          onOpenFilePicker={openFilePicker}
+          onCaptureScreenshot={captureScreenshot}
+          onOpenDrivePicker={() => setDrivePickerOpen(true)}
+          onAutoAnalyze={handleAutoAnalyze}
+          fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+          onFileChange={handleFileChange}
+          textareaRef={textareaRef}
+          footerText="Soukromé temenos. Konverzace zůstává jen v tvém prohlížeči."
+        >
+          <div className="flex items-center gap-2 flex-wrap mt-2">
+            <AudioRecordButton
+              state={audioRecorder.state} duration={audioRecorder.duration}
+              maxDuration={audioRecorder.maxDuration} audioUrl={audioRecorder.audioUrl}
+              isAnalyzing={isAudioAnalyzing} onStart={audioRecorder.startRecording}
+              onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
+              onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
+            />
           </div>
-        </div>
+          {messages.length > 1 && (
+            <DidActionButtons
+              subMode={didSubMode}
+              onEndCall={handleDidEndCall}
+              onManualUpdate={handleManualUpdate}
+              onLeaveThread={(didSubMode === "cast" || didSubMode === "mamka" || didSubMode === "kata") && activeThread ? handleLeaveThread : undefined}
+              onGenerateHandbook={didSubMode === "kata" ? handleGenerateHandbook : undefined}
+              onWriteDiary={didSubMode === "cast" && activeThread ? handleWriteDiary : undefined}
+              isUpdateLoading={isManualUpdateLoading}
+              isHandbookLoading={isHandbookLoading}
+              disabled={isLoading}
+            />
+          )}
+        </ChatInputArea>
       </>
     );
   };
@@ -2349,34 +2193,21 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 </div>
               </ScrollArea>
 
-              <div className="border-t border-border bg-card/50 backdrop-blur-sm">
-                <div className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4">
-                  <div className="flex gap-2 sm:gap-3 items-end relative">
-                    <UniversalAttachmentBar
-                      attachments={attachments} onRemove={removeAttachment}
-                      onOpenFilePicker={openFilePicker} onCaptureScreenshot={captureScreenshot}
-                      onOpenDrivePicker={() => setDrivePickerOpen(true)} onAutoAnalyze={handleAutoAnalyze}
-                      disabled={isLoading || isSoapLoading}
-                      fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
-                      onFileChange={handleFileChange} isAnalyzing={isFileAnalyzing}
-                    />
-                    <Textarea
-                      ref={textareaRef} value={input}
-                      onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-                      placeholder="Napiš svou zprávu..."
-                      className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
-                      disabled={isLoading || isSoapLoading}
-                    />
-                    <Button
-                      onClick={sendMessage}
-                      disabled={(!input.trim() && attachments.length === 0) || isLoading || isSoapLoading}
-                      size="icon" className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
-                    >
-                      {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <ChatInputArea
+                input={input} setInput={setInput}
+                onSend={sendMessage} onKeyDown={handleKeyDown}
+                isLoading={isLoading} disabled={isSoapLoading}
+                isAnalyzing={isFileAnalyzing}
+                attachments={attachments}
+                onRemoveAttachment={removeAttachment}
+                onOpenFilePicker={openFilePicker}
+                onCaptureScreenshot={captureScreenshot}
+                onOpenDrivePicker={() => setDrivePickerOpen(true)}
+                onAutoAnalyze={handleAutoAnalyze}
+                fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+                onFileChange={handleFileChange}
+                textareaRef={textareaRef}
+              />
             </>
           )}
         </>
