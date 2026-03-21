@@ -951,6 +951,7 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     // MODE I: "sync-therapist-tasks" - Sync DB tasks → Drive Sheet
     // Location: 00_CENTRUM/DID_Therapist_Tasks
+    // 4 listy: Operativní, Taktické, Strategické, Archiv
     // ID format: INT-YYYY-MM-DD-X00 (X = first letter of alter)
     // ═══════════════════════════════════════════════════════
     if (body.mode === "sync-therapist-tasks") {
@@ -972,9 +973,8 @@ serve(async (req) => {
       const { data: tasks, error: tasksErr } = await supabase
         .from("did_therapist_tasks")
         .select("*")
-        .in("status", ["pending", "in_progress", "not_started", "completed", "archived"])
         .order("created_at", { ascending: false })
-        .limit(200);
+        .limit(500);
 
       if (tasksErr) {
         return new Response(JSON.stringify({ error: `DB read failed: ${tasksErr.message}` }), {
@@ -982,20 +982,11 @@ serve(async (req) => {
         });
       }
 
-      // Generate INT-YYYY-MM-DD-X00 IDs
-      const generateTaskId = (task: any, index: number): string => {
-        const created = new Date(task.created_at);
-        const yyyy = created.getFullYear();
-        const mm = String(created.getMonth() + 1).padStart(2, "0");
-        const dd = String(created.getDate()).padStart(2, "0");
-        // X = first letter of the alter/part name from task text or assigned_to
-        const partHint = (task.category || task.task || "").trim();
-        const firstLetter = partHint.charAt(0).toUpperCase() || "X";
-        const seq = String(index).padStart(2, "0");
-        return `INT-${yyyy}-${mm}-${dd}-${firstLetter}${seq}`;
-      };
+      const allTasks = tasks || [];
+      const now = Date.now();
+      const FOURTEEN_DAYS = 14 * 24 * 60 * 60 * 1000;
 
-      // Map priority to emoji
+      // ── Helpers ──
       const priorityEmoji = (p: string): string => {
         switch ((p || "normal").toLowerCase()) {
           case "high": case "urgent": case "vysoka": return "🔴 vysoká";
@@ -1004,132 +995,227 @@ serve(async (req) => {
           default: return "🟡 střední";
         }
       };
-
-      // Map status
       const statusLabel = (s: string): string => {
         switch (s) {
           case "pending": return "Čeká";
           case "in_progress": return "Probíhá";
-          case "completed": return "Splněno";
+          case "completed": return "✅ Splněno";
           case "not_started": return "Nezahájeno";
           case "archived": return "Archivováno";
+          case "done": return "✅ Hotovo";
           default: return s;
         }
       };
-
       const formatDateShort = (d: string | null): string => {
         if (!d) return "";
         try { return new Date(d).toLocaleDateString("cs-CZ"); } catch { return d; }
       };
-
-      // Build sheet rows: header + data
-      // Columns: ID, CAST_ALTER, KDO, UKOL, ZDROJ_ODKAZ, DO_KDY, STATUS, PRIORITA, POZNAMKA, DATUM_VYTVORENI, DATUM_SPLNENI
-      const headerRow = [
-        "ID", "CAST_ALTER", "KDO", "UKOL", "ZDROJ_ODKAZ",
-        "DO_KDY", "STATUS", "PRIORITA", "POZNAMKA", "DATUM_VYTVORENI", "DATUM_SPLNENI",
-      ];
-
-      // Group tasks by date for sequential numbering
       const dateCounters: Record<string, number> = {};
-      const dataRows = (tasks || []).map((task: any) => {
+      const makeTaskId = (task: any): string => {
         const created = new Date(task.created_at);
         const dateKey = `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}`;
         const partHint = (task.category || task.task || "").trim();
         const firstLetter = partHint.charAt(0).toUpperCase() || "X";
         const counterKey = `${dateKey}-${firstLetter}`;
         dateCounters[counterKey] = (dateCounters[counterKey] || 0) + 1;
-        const seq = String(dateCounters[counterKey]).padStart(2, "0");
-        const taskId = `INT-${dateKey}-${firstLetter}${seq}`;
+        return `INT-${dateKey}-${firstLetter}${String(dateCounters[counterKey]).padStart(2, "0")}`;
+      };
 
-        return [
-          taskId,
-          task.category || "",
-          task.assigned_to || "",
-          task.task || "",
-          task.source_agreement || "",
-          formatDateShort(task.due_date),
-          statusLabel(task.status),
-          priorityEmoji(task.priority),
-          task.note || "",
-          formatDateShort(task.created_at),
-          formatDateShort(task.completed_at),
-        ];
-      });
+      // ── Classify tasks into 4 tiers ──
+      const operativeTasks: any[] = [];
+      const tacticalTasks: any[] = [];
+      const strategicTasks: any[] = [];
+      const archiveTasks: any[] = [];
+      const autoArchiveIds: string[] = []; // IDs to auto-archive in DB
 
-      // Find the DID_Therapist_Tasks sheet in CENTRUM
+      for (const t of allTasks) {
+        const tier = t.task_tier || "operative";
+        const isCompleted = ["completed", "done", "archived"].includes(t.status);
+        const createdAge = now - new Date(t.created_at).getTime();
+        const isOld = createdAge > FOURTEEN_DAYS;
+
+        // Completed or archived → Archiv
+        if (isCompleted) {
+          archiveTasks.push(t);
+          continue;
+        }
+
+        // Operative tasks older than 14 days → auto-archive
+        if (tier === "operative" && isOld && !["in_progress"].includes(t.status)) {
+          archiveTasks.push(t);
+          autoArchiveIds.push(t.id);
+          continue;
+        }
+
+        // Route by tier
+        if (tier === "strategic") {
+          strategicTasks.push(t);
+        } else if (tier === "tactical") {
+          tacticalTasks.push(t);
+        } else {
+          operativeTasks.push(t);
+        }
+      }
+
+      // ── Auto-archive in DB ──
+      if (autoArchiveIds.length > 0) {
+        await supabase
+          .from("did_therapist_tasks")
+          .update({ status: "archived", completed_at: new Date().toISOString(), completed_note: "Auto-archivováno (>14 dní v Operativní)" })
+          .in("id", autoArchiveIds);
+        console.log(`[sync-tasks] Auto-archived ${autoArchiveIds.length} tasks older than 14 days`);
+      }
+
+      // ── Build rows for each sheet ──
+      // Sheet 1: Operativní – ID, Komu, Úkol, Detail, Priorita, Stav, Datum, Deadline, Část, Poznámka
+      const opHeader = ["ID", "KOMU", "ÚKOL", "DETAIL", "PRIORITA", "STAV", "DATUM", "DEADLINE", "ČÁST", "POZNÁMKA"];
+      const opRows = operativeTasks.map(t => [
+        makeTaskId(t), t.assigned_to || "", t.task || "",
+        t.detail_instruction || t.source_agreement || "",
+        priorityEmoji(t.priority), statusLabel(t.status),
+        formatDateShort(t.created_at), formatDateShort(t.due_date),
+        t.category || "", t.note || "",
+      ]);
+
+      // Sheet 2: Taktické – ID, Komu, Úkol, Metoda/technika, Deadline, Část, Zdroj, Stav
+      const tacHeader = ["ID", "KOMU", "ÚKOL", "METODA_TECHNIKA", "DEADLINE", "ČÁST", "ZDROJ", "STAV"];
+      const tacRows = tacticalTasks.map(t => [
+        makeTaskId(t), t.assigned_to || "", t.task || "",
+        t.detail_instruction || "",
+        formatDateShort(t.due_date), t.category || "",
+        t.source_agreement || "", statusLabel(t.status),
+      ]);
+
+      // Sheet 3: Strategické – ID, Cíl, Část, Metoda, Obzor, Stav, Poslední aktualizace
+      const strHeader = ["ID", "CÍL", "ČÁST", "METODA", "OBZOR", "STAV", "POSLEDNÍ_AKTUALIZACE"];
+      const strRows = strategicTasks.map(t => [
+        makeTaskId(t), t.task || "", t.category || "",
+        t.detail_instruction || "",
+        t.due_date ? formatDateShort(t.due_date) : "dlouhodobě",
+        statusLabel(t.status), formatDateShort(t.updated_at),
+      ]);
+
+      // Sheet 4: Archiv – ID, Komu, Úkol, Stav, Datum vytvoření, Datum splnění, Poznámka
+      const arcHeader = ["ID", "KOMU", "ÚKOL", "STAV", "DATUM_VYTVORENI", "DATUM_SPLNENI", "POZNÁMKA"];
+      const arcRows = archiveTasks.map(t => [
+        makeTaskId(t), t.assigned_to || "", t.task || "",
+        statusLabel(t.status), formatDateShort(t.created_at),
+        formatDateShort(t.completed_at), t.completed_note || t.note || "",
+      ]);
+
+      // ── Find the DID_Therapist_Tasks spreadsheet ──
       const centerFiles = await listFilesInFolder(token, centerFolderId);
-      const tasksSheet = centerFiles.find(f =>
+      let targetSheet = centerFiles.find(f =>
         f.mimeType === DRIVE_SHEET_MIME &&
         (canonicalText(f.name).includes("therapisttask") || canonicalText(f.name).includes("didtherapisttask"))
       );
-
-      if (!tasksSheet) {
-        // Fallback: search by broader pattern
-        const fallback = centerFiles.find(f =>
-          f.mimeType === DRIVE_SHEET_MIME &&
-          canonicalText(f.name).includes("task")
+      if (!targetSheet) {
+        targetSheet = centerFiles.find(f =>
+          f.mimeType === DRIVE_SHEET_MIME && canonicalText(f.name).includes("task")
         );
-        if (!fallback) {
-          return new Response(JSON.stringify({ error: "DID_Therapist_Tasks sheet not found in 00_CENTRUM" }), {
-            status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        // Use fallback
-        Object.assign(tasksSheet || {}, fallback);
       }
-
-      const targetSheet = tasksSheet!;
-
-      // Get first sheet name
-      let sheetTitle = "Hlavní";
-      try {
-        const metaRes = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}?fields=sheets.properties.title`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (metaRes.ok) {
-          const metaData = await metaRes.json();
-          sheetTitle = metaData.sheets?.[0]?.properties?.title || "Hlavní";
-        }
-      } catch {}
-
-      // Clear existing data and write new
-      const allRows = [headerRow, ...dataRows];
-      const escapedTitle = `'${sheetTitle.replace(/'/g, "''")}'`;
-      const range = `${escapedTitle}!A1:K${allRows.length + 1}`;
-
-      // Clear the sheet first
-      await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}/values/${encodeURIComponent(`${escapedTitle}!A:K`)}:clear`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        }
-      );
-
-      // Write all rows
-      const writeRes = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
-        {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ values: allRows }),
-        }
-      );
-
-      if (!writeRes.ok) {
-        const errText = await writeRes.text();
-        return new Response(JSON.stringify({ error: `Sheet write failed: ${errText}` }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      if (!targetSheet) {
+        return new Response(JSON.stringify({ error: "DID_Therapist_Tasks sheet not found in 00_CENTRUM" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      console.log(`[sync-therapist-tasks] ✅ Synced ${dataRows.length} tasks to ${targetSheet.name}`);
+      // ── Ensure 4 sheets exist ──
+      const SHEET_NAMES = ["Operativní", "Taktické", "Strategické", "Archiv"];
+      const metaRes = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}?fields=sheets.properties(sheetId,title)`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      let existingSheets: Array<{ sheetId: number; title: string }> = [];
+      if (metaRes.ok) {
+        const metaData = await metaRes.json();
+        existingSheets = (metaData.sheets || []).map((s: any) => s.properties);
+      }
+      const existingTitles = new Set(existingSheets.map(s => s.title));
+
+      // Create missing sheets
+      const addRequests: any[] = [];
+      for (const name of SHEET_NAMES) {
+        if (!existingTitles.has(name)) {
+          addRequests.push({ addSheet: { properties: { title: name } } });
+        }
+      }
+      if (addRequests.length > 0) {
+        const addRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}:batchUpdate`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ requests: addRequests }),
+          }
+        );
+        if (!addRes.ok) console.warn(`[sync-tasks] Failed to add sheets: ${await addRes.text()}`);
+        else console.log(`[sync-tasks] Created ${addRequests.length} new sheets`);
+      }
+
+      // ── Write data to each sheet ──
+      const writeSheet = async (sheetName: string, header: string[], rows: any[][]): Promise<void> => {
+        const escaped = `'${sheetName.replace(/'/g, "''")}'`;
+        const maxCols = String.fromCharCode(64 + header.length); // A=65, so col count maps to letter
+        const colLetter = header.length <= 26 ? String.fromCharCode(64 + header.length) : "Z";
+
+        // Clear
+        await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet!.id}/values/${encodeURIComponent(`${escaped}!A:${colLetter}`)}:clear`,
+          { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({}) }
+        );
+
+        // Write
+        const allRows = [header, ...rows];
+        const range = `${escaped}!A1:${colLetter}${allRows.length}`;
+        const writeRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet!.id}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`,
+          { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ values: allRows }) }
+        );
+        if (!writeRes.ok) console.error(`[sync-tasks] Write to ${sheetName} failed: ${await writeRes.text()}`);
+      };
+
+      // Write all 4 sheets in parallel
+      await Promise.all([
+        writeSheet("Operativní", opHeader, opRows),
+        writeSheet("Taktické", tacHeader, tacRows),
+        writeSheet("Strategické", strHeader, strRows),
+        writeSheet("Archiv", arcHeader, arcRows),
+      ]);
+
+      // ── Delete old legacy sheets (Hlavní, Legenda, Rezerva) if 4 new ones exist ──
+      try {
+        const refreshMeta = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}?fields=sheets.properties(sheetId,title)`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (refreshMeta.ok) {
+          const refreshData = await refreshMeta.json();
+          const allSheets = (refreshData.sheets || []).map((s: any) => s.properties);
+          const newTitles = new Set(SHEET_NAMES);
+          const toDelete = allSheets.filter((s: any) => !newTitles.has(s.title));
+          if (toDelete.length > 0 && allSheets.length > toDelete.length) {
+            const delRequests = toDelete.map((s: any) => ({ deleteSheet: { sheetId: s.sheetId } }));
+            await fetch(
+              `https://sheets.googleapis.com/v4/spreadsheets/${targetSheet.id}:batchUpdate`,
+              { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ requests: delRequests }) }
+            );
+            console.log(`[sync-tasks] Deleted ${toDelete.length} legacy sheets: ${toDelete.map((s: any) => s.title).join(", ")}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[sync-tasks] Legacy sheet cleanup failed (non-critical):`, e);
+      }
+
+      console.log(`[sync-therapist-tasks] ✅ Synced to 4 sheets: Op=${opRows.length}, Tac=${tacRows.length}, Str=${strRows.length}, Arc=${arcRows.length}`);
 
       return new Response(JSON.stringify({
         success: true,
-        tasksCount: dataRows.length,
+        operativeCount: opRows.length,
+        tacticalCount: tacRows.length,
+        strategicCount: strRows.length,
+        archiveCount: arcRows.length,
+        autoArchived: autoArchiveIds.length,
         sheetName: targetSheet.name,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

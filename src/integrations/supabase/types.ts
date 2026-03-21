@@ -1028,6 +1028,7 @@ export type Database = {
           status_hanka: string
           status_kata: string
           task: string
+          task_tier: string
           updated_at: string
           user_id: string
         }
@@ -1048,6 +1049,7 @@ export type Database = {
           status_hanka?: string
           status_kata?: string
           task: string
+          task_tier?: string
           updated_at?: string
           user_id?: string
         }
@@ -1068,6 +1070,7 @@ export type Database = {
           status_hanka?: string
           status_kata?: string
           task?: string
+          task_tier?: string
           updated_at?: string
           user_id?: string
         }
