@@ -73,7 +73,18 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   useEffect(() => { loadTodayPlan(); }, [loadTodayPlan, refreshTrigger]);
 
-  const generatePlan = useCallback(async () => {
+  const loadRegistryParts = useCallback(async () => {
+    const { data } = await supabase
+      .from("did_part_registry")
+      .select("part_name, status")
+      .in("status", ["active", "sleeping"])
+      .order("part_name");
+    setRegistryParts(data || []);
+  }, []);
+
+  useEffect(() => { loadRegistryParts(); }, [loadRegistryParts]);
+
+  const generatePlan = useCallback(async (forcePart?: string) => {
     setGenerating(true);
     setGenStep(0);
 
