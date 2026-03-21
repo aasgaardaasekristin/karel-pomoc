@@ -294,11 +294,12 @@ async function persistMirrorJob(params: {
 
 async function finalizeMirrorJob(params: {
   sb: any;
+  userId: string;
   jobId: string;
   payload: any;
   state: MirrorState;
 }) {
-  const { sb, jobId, payload, state } = params;
+  const { sb, userId, jobId, payload, state } = params;
   const {
     startTime,
     lastMirrorTime,
@@ -310,6 +311,38 @@ async function finalizeMirrorJob(params: {
 
   const totalTime = Date.now() - startTime;
   const synthesisSum = extractedInfo?.synthesis_summary || `Mirror: ${state.dbUpdates.length} DB, ${state.driveUpdates.length} Drive`;
+
+  // ═══ KROK A: Mark processed DID threads (sub_mode='cast') ═══
+  const didThreadIds: string[] = payload.didThreadIds || [];
+  if (didThreadIds.length > 0) {
+    const now = new Date().toISOString();
+    const { error: markError } = await sb.from("did_threads")
+      .update({ is_processed: true, processed_at: now })
+      .in("id", didThreadIds)
+      .eq("user_id", userId);
+    if (markError) {
+      console.warn(`[mirror] Failed to mark ${didThreadIds.length} threads as processed:`, markError.message);
+    } else {
+      console.log(`[mirror] Marked ${didThreadIds.length} DID threads as processed`);
+      state.dbUpdates.push(`threads_marked:${didThreadIds.length}`);
+    }
+  }
+
+  // ═══ KROK C: Auto-trigger task sync (fire-and-forget) ═══
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (supabaseUrl && serviceRoleKey) {
+      fetch(`${supabaseUrl}/functions/v1/karel-did-drive-write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${serviceRoleKey}` },
+        body: JSON.stringify({ mode: "sync-therapist-tasks" }),
+      }).then(r => console.log(`[mirror] Task sync triggered: ${r.status}`))
+        .catch(e => console.warn("[mirror] Task sync trigger failed:", e));
+    }
+  } catch (e) {
+    console.warn("[mirror] Task sync trigger error:", e);
+  }
 
   await sb.from("karel_memory_logs").update({
     log_type: "mirror_done",
@@ -333,12 +366,13 @@ async function finalizeMirrorJob(params: {
       pass1_urgent: pass1Data?.urgent_signals || [],
       newPartsCreated: extractedInfo?.kartoteka_did?.new_parts?.length || 0,
       newTasksCreated: extractedInfo?.new_tasks?.length || 0,
+      threadsMarkedProcessed: didThreadIds.length,
       dbUpdates: state.dbUpdates,
       driveUpdates: state.driveUpdates,
     },
   }).eq("id", jobId);
 
-  console.log(`[mirror-batch] DONE in ${totalTime}ms. DB:${state.dbUpdates.length} Drive:${state.driveUpdates.length}`);
+  console.log(`[mirror-batch] DONE in ${totalTime}ms. DB:${state.dbUpdates.length} Drive:${state.driveUpdates.length} Threads marked:${didThreadIds.length}`);
 }
 
 async function runMirrorBatchStep(params: {
