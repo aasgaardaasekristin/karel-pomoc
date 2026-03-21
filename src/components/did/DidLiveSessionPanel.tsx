@@ -795,6 +795,77 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
           </div>
         </div>
       )}
+
+      {/* Reflection Dialog */}
+      <Dialog open={showReflection} onOpenChange={() => {}}>
+        <DialogContent className="sm:max-w-md" onPointerDownOutside={e => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-base">Reflexe po sezení</DialogTitle>
+            <DialogDescription className="text-xs">
+              Jak ses cítila během sezení s {partName}? (nepovinné)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Emotions multiselect */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Emoce během sezení</p>
+              <div className="flex flex-wrap gap-1.5">
+                {EMOTION_OPTIONS.map(emotion => (
+                  <Badge
+                    key={emotion}
+                    variant={reflectionEmotions.includes(emotion) ? "default" : "outline"}
+                    className="cursor-pointer text-xs"
+                    onClick={() => toggleEmotion(emotion)}
+                  >
+                    {emotion}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Surprise */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Co tě překvapilo?</p>
+              <Textarea
+                value={reflectionSurprise}
+                onChange={e => setReflectionSurprise(e.target.value)}
+                placeholder="1-2 věty…"
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            {/* Next time */}
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-1">Co bys příště udělala jinak?</p>
+              <Textarea
+                value={reflectionNextTime}
+                onChange={e => setReflectionNextTime(e.target.value)}
+                placeholder="1-2 věty…"
+                className="min-h-[60px] text-sm"
+              />
+            </div>
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => finishAfterReflection(true)}
+                disabled={isSavingReflection}
+              >
+                Přeskočit
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => finishAfterReflection(false)}
+                disabled={isSavingReflection}
+              >
+                {isSavingReflection ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+                Uložit reflexi
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
