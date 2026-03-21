@@ -149,6 +149,7 @@ serve(async (req) => {
       weeklyRes, monthlyRes,
       sessionsRes, crisisRes, episodesRes,
       pulseRes, profilesRes, feedbackRes,
+      sessionPlanRes,
     ] = await Promise.all([
       sb.from("did_threads").select("*").gte("last_activity_at", cutoff24h),
       sb.from("did_conversations").select("*").gte("saved_at", cutoff24h),
@@ -165,6 +166,7 @@ serve(async (req) => {
       sb.from("did_pulse_checks").select("respondent, team_feeling, priority_clarity, karel_feedback, week_start, created_at").gte("created_at", weekAgo),
       sb.from("did_motivation_profiles").select("*"),
       sb.from("did_task_feedback").select("*").gte("created_at", cutoff24h),
+      (sb as any).from("did_daily_session_plans").select("selected_part, urgency_score, urgency_breakdown, plan_markdown, therapist").eq("plan_date", reportDatePrague).maybeSingle(),
     ]);
 
     const threads = threadsRes.data || [];
@@ -182,8 +184,9 @@ serve(async (req) => {
     const pulseChecks = pulseRes.data || [];
     const profiles = profilesRes.data || [];
     const taskFeedback = feedbackRes.data || [];
+    const todaySessionPlan = sessionPlanRes.data || null;
 
-    console.log(`[daily-email] Data: ${threads.length} threads, ${conversations.length} convs, ${hanaConvs.length} hana, ${researchThreads.length} research, ${registry.length} registry, ${tasks.length} tasks, ${meetings.length} meetings, ${episodes.length} episodes`);
+    console.log(`[daily-email] Data: ${threads.length} threads, ${conversations.length} convs, ${hanaConvs.length} hana, ${researchThreads.length} research, ${registry.length} registry, ${tasks.length} tasks, ${meetings.length} meetings, ${episodes.length} episodes, sessionPlan: ${todaySessionPlan ? "yes" : "no"}`);
 
     // ═══ SPLIT THREADS: yesterday afternoon/evening vs today ═══
     const now = new Date();
@@ -274,6 +277,15 @@ serve(async (req) => {
       dataBlock += `\n\n═══ POSLEDNÍ MĚSÍČNÍ ANALÝZA ═══\n${monthlySummary.slice(0, 3000)}`;
     }
 
+    // Session plan (auto-generated at 13:50)
+    if (todaySessionPlan) {
+      const bp = todaySessionPlan.urgency_breakdown || {};
+      const bpStr = Object.entries(bp).map(([k, v]) => `${k}(+${v})`).join(", ");
+      dataBlock += `\n\n🎯 ═══ AUTOMATICKÝ PLÁN SEZENÍ NA DNES ═══\n`;
+      dataBlock += `Vybraná část: ${todaySessionPlan.selected_part} | Naléhavost: ${todaySessionPlan.urgency_score} | Důvody: ${bpStr}\n`;
+      dataBlock += `\n${(todaySessionPlan.plan_markdown || "").slice(0, 4000)}`;
+    }
+
     // Motivation profiles
     const formatProfile = (p: any) => {
       if (!p) return "Žádný profil zatím.";
@@ -320,6 +332,9 @@ Co je potřeba probrat s Káťou
 ▸ Úroveň spolupráce, kde to vázne, co jde dobře
 ▸ Přímé otázky ohledně konkrétních zaseklých úkolů
 
+${todaySessionPlan ? `<h3>🎯 PLÁN SEZENÍ NA DNES:</h3>
+Součástí dat je automaticky vygenerovaný plán sezení. ZAHRŇ ho do briefingu jako vlastní sekci s klíčovými body plánu (část, cíl, aktivity, na co dát pozor). Neopisuj celý plán, shrň klíčové body.` : ""}
+
 ${weeklySummary ? "<h3>📊 STŘEDNĚDOBÝ KONTEXT (z týdenní analýzy):</h3>\nKlíčové body z poslední týdenní analýzy relevantní pro dnešek." : ""}
 
 Podpis: "Karel – vedoucí DID terapeutického týmu"
@@ -355,6 +370,9 @@ NIKDY nezadávej úkoly pro dormantní/spící části!
 <h3>📋 HODNOCENÍ SPOLUPRÁCE:</h3>
 ▸ Úroveň spolupráce, kde to vázne, co jde dobře
 ▸ Co Káťa splnila, co zbývá
+
+${todaySessionPlan ? `<h3>🎯 PLÁN SEZENÍ NA DNES:</h3>
+Shrň klíčové body automaticky generovaného plánu sezení (část, co dělat, na co dát pozor). Pokud je úkol pro Káťu, zdůrazni formát A/B (zjednodušená varianta).` : ""}
 
 Podpis: "Karel"
 

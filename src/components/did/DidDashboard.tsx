@@ -6,6 +6,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
+import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
@@ -233,6 +234,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
         </div>
 
         <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
+
+        <DidDailySessionPlan refreshTrigger={refreshTrigger} />
 
         <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
           <div className="flex items-center justify-between mb-3">
