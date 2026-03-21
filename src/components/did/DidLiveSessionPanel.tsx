@@ -40,8 +40,11 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recorder = useSessionAudioRecorder();
+  const imageUpload = useImageUpload();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
+  const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
+  const imageSegmentCountRef = useRef(0);
 
   // Auto-greet
   useEffect(() => {
