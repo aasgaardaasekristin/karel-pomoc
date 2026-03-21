@@ -15,6 +15,7 @@ import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
+import DidSupervisionReport from "./DidSupervisionReport";
 
 interface PartActivity {
   name: string;
