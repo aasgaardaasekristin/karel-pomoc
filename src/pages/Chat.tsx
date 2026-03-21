@@ -1308,6 +1308,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     return { label: "← Hub", action: () => navigate("/hub") };
   };
 
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-transparent">
       {/* Header */}
