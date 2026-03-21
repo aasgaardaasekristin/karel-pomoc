@@ -13,6 +13,7 @@ import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidMonthlyPanel from "./DidMonthlyPanel";
 import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
+import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 
 interface PartActivity {
@@ -264,6 +265,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
         <div className="mb-4">
           <DidPulseCheck refreshTrigger={refreshTrigger} />
         </div>
+
+        <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
 
         <div className="mb-4">
           <DidColleagueView refreshTrigger={refreshTrigger} />

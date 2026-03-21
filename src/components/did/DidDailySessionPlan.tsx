@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, PenLine, MessageSquare, Play, Square, Clock } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -22,6 +22,13 @@ interface SessionPlan {
   status: string;
   distributed_drive: boolean;
   distributed_email: boolean;
+}
+
+interface PreviousSession {
+  therapist: string;
+  session_date: string;
+  ai_analysis: string | null;
+  handoff_note: string | null;
 }
 
 interface Props {
@@ -56,6 +63,8 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [registryParts, setRegistryParts] = useState<{ part_name: string; status: string }[]>([]);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [customPartName, setCustomPartName] = useState("");
+  const [prevSession, setPrevSession] = useState<PreviousSession | null>(null);
+  const [prevSessionExpanded, setPrevSessionExpanded] = useState(false);
 
   // Preference dialog state
   const [prefDialogOpen, setPrefDialogOpen] = useState(false);
@@ -85,6 +94,22 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   }, []);
 
   useEffect(() => { loadTodayPlan(); }, [loadTodayPlan, refreshTrigger]);
+
+  // Load previous session for current plan's part
+  useEffect(() => {
+    if (!plan?.selected_part) { setPrevSession(null); return; }
+    const loadPrev = async () => {
+      const { data } = await supabase
+        .from("did_part_sessions")
+        .select("therapist, session_date, ai_analysis, handoff_note")
+        .eq("part_name", plan.selected_part)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      setPrevSession((data as PreviousSession) || null);
+    };
+    loadPrev();
+  }, [plan?.selected_part]);
 
   const loadRegistryParts = useCallback(async () => {
     const { data } = await supabase
@@ -562,8 +587,37 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
             {!expanded && (
               <p className="text-[11px] text-muted-foreground line-clamp-2">
-                {plan.plan_markdown.slice(0, 150)}...
+              {plan.plan_markdown.slice(0, 150)}...
               </p>
+            )}
+
+            {/* Previous session context */}
+            {prevSession && (
+              <div className="mt-3 pt-3 border-t border-border/30">
+                <button
+                  onClick={() => setPrevSessionExpanded(!prevSessionExpanded)}
+                  className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+                >
+                  <FileText className="w-3 h-3" />
+                  Poslední sezení s {plan.selected_part} — {prevSession.therapist}, {prevSession.session_date}
+                  {prevSessionExpanded ? <ChevronUp className="w-2.5 h-2.5 ml-auto" /> : <ChevronDown className="w-2.5 h-2.5 ml-auto" />}
+                </button>
+                {prevSessionExpanded && (
+                  <div className="mt-2 space-y-2">
+                    {prevSession.handoff_note && prevSession.handoff_note.trim() && (
+                      <div className="rounded bg-primary/5 border border-primary/15 p-2">
+                        <span className="text-[9px] font-medium text-primary block mb-1">📋 Předání pro kolegyni</span>
+                        <p className="text-[10px] text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
+                      </div>
+                    )}
+                    {prevSession.ai_analysis && (
+                      <div className="text-[10px] text-muted-foreground whitespace-pre-wrap max-h-32 overflow-y-auto">
+                        {prevSession.ai_analysis.slice(0, 500)}{prevSession.ai_analysis.length > 500 ? "…" : ""}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

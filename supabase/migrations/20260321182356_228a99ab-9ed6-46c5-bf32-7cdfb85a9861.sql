@@ -1,0 +1,1 @@
+ALTER TABLE public.did_part_sessions ADD COLUMN IF NOT EXISTS handoff_note text DEFAULT '';
