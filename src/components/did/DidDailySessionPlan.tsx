@@ -627,10 +627,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                           AI analýza sezení
                         </span>
                         <div
-                          className="text-[10px] leading-4 text-muted-foreground whitespace-pre-wrap"
-                        >
-                          {prevSession.ai_analysis}
-                        </div>
+                          className="text-[10px] leading-4 text-muted-foreground"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(prevSession.ai_analysis) }}
+                        />
                       </div>
                     )}
 
