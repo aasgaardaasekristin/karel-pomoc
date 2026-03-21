@@ -6,6 +6,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
+import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
