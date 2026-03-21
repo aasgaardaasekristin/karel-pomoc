@@ -278,13 +278,20 @@ serve(async (req) => {
   }
 
   try {
+    // Parse request body for therapist override
+    let forcePart: string | null = null;
+    try {
+      const body = await req.json();
+      forcePart = body?.forcePart || null;
+    } catch { /* empty body is fine */ }
+
     // Check if plan already exists for today
     const { data: existingPlan } = await sb.from("did_daily_session_plans")
       .select("id")
       .eq("plan_date", todayPrague)
       .maybeSingle();
 
-    if (existingPlan) {
+    if (existingPlan && !forcePart) {
       console.log(`[auto-session-plan] Plan already exists for ${todayPrague}, skipping.`);
       return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -293,10 +300,11 @@ serve(async (req) => {
 
     // ═══ GATHER DATA ═══
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff3d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [registryRes, threads24hRes, crisisRes, tasksRes, sessionsRes, profileRes] = await Promise.all([
+    const [registryRes, threads3dRes, threads24hRes, crisisRes, tasksRes, sessionsRes, profileRes] = await Promise.all([
       sb.from("did_part_registry").select("*"),
+      sb.from("did_threads").select("part_name, sub_mode, last_activity_at, messages").gte("last_activity_at", cutoff3d),
       sb.from("did_threads").select("part_name, sub_mode, last_activity_at, messages").gte("last_activity_at", cutoff24h),
       sb.from("crisis_briefs").select("scenario, raw_brief, risk_score").gte("created_at", cutoff24h),
       sb.from("did_therapist_tasks").select("task, category, status, assigned_to, status_hanka, status_kata").in("status", ["pending", "not_started", "in_progress"]),
@@ -305,6 +313,7 @@ serve(async (req) => {
     ]);
 
     const registry = registryRes.data || [];
+    const threads3d = threads3dRes.data || [];
     const threads24h = threads24hRes.data || [];
     const crisisBriefs = crisisRes.data || [];
     const pendingTasks = tasksRes.data || [];
@@ -324,22 +333,42 @@ serve(async (req) => {
       return (Date.now() - lastSeen) < 48 * 60 * 60 * 1000;
     });
 
-    // ═══ CALCULATE URGENCY SCORES ═══
-    const scores = calculateUrgencyScores(registry, threads24h, crisisBriefs, pendingTasks, sessions);
-    console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}`).join(", ")}`);
+    // ═══ THERAPIST OVERRIDE ═══
+    let selectedPart: UrgencyResult;
+    if (forcePart) {
+      const partExists = registry.find(p => p.part_name.toLowerCase() === forcePart!.toLowerCase());
+      if (!partExists) {
+        return new Response(JSON.stringify({ error: `Část "${forcePart}" nenalezena v registru` }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      selectedPart = {
+        partName: partExists.part_name,
+        score: 99,
+        breakdown: { therapist_override: 99 },
+        tier: "override",
+      };
+      console.log(`[auto-session-plan] Therapist override: ${partExists.part_name}`);
+    } else {
+      // ═══ CALCULATE URGENCY SCORES v2 ═══
+      const scores = calculateUrgencyScores(registry, threads3d, threads24h, crisisBriefs, pendingTasks, sessions);
+      console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
 
-    const selectedPart = scores[0];
-    if (!selectedPart || selectedPart.score === 0) {
-      // If no urgency, pick the part with oldest last_seen_at
-      const oldest = [...registry].sort((a, b) => {
-        const aTime = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
-        const bTime = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
-        return aTime - bTime;
-      })[0];
-      if (oldest) {
-        selectedPart.partName = oldest.part_name;
-        selectedPart.score = 0.5;
-        selectedPart.breakdown = { fallback_oldest: 0.5 };
+      selectedPart = scores[0];
+      if (!selectedPart || selectedPart.score === 0) {
+        const oldest = [...registry].sort((a, b) => {
+          const aTime = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+          const bTime = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+          return aTime - bTime;
+        })[0];
+        if (oldest) {
+          selectedPart = {
+            partName: oldest.part_name,
+            score: 0.5,
+            breakdown: { fallback_oldest: 0.5 },
+            tier: "sleeping",
+          };
+        }
       }
     }
 
