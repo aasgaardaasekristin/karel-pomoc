@@ -448,7 +448,7 @@ Formát: Markdown, česky. Začni ## 🛡️ Stabilizační plán sezení (60 mi
 
 Vybraná část: "${selectedPart.partName}" (skóre naléhavosti: ${selectedPart.score}, tier: ${selectedPart.tier})
 Důvody výběru: ${Object.entries(selectedPart.breakdown).map(([k, v]) => `${k}: +${v}`).join(", ")}
-${selectedPart.tier === "fading" ? `\n🔶 FADING ALERT: Část "${selectedPart.partName}" byla aktivní v posledních 3 dnech, ale posledních 24h se ODMLČELA. Plán musí zohlednit možné důvody odmlčení a strategii jemného obnovení kontaktu.\n` : ""}${selectedPart.tier === "sleeping" ? `\n⚠️ DORMANCY GUARD: Část "${selectedPart.partName}" je SPÍCÍ/DORMANTNÍ (status: ${partReg?.status}). Plán MUSÍ začít AKTIVAČNÍ STRATEGIÍ. Nepředpokládej okamžitou responzivitu.\n` : ""}${selectedPart.tier === "override" ? `\n✅ THERAPIST OVERRIDE: Terapeutka explicitně zvolila "${selectedPart.partName}" pro dnešní sezení.\n` : ""}
+${selectedPart.tier === "fading" ? `\n🔶 FADING ALERT: Část "${selectedPart.partName}" byla aktivní v posledních 3 dnech, ale posledních 24h se ODMLČELA. Plán musí zohlednit možné důvody odmlčení a strategii jemného obnovení kontaktu.\n` : ""}${selectedPart.tier === "sleeping" ? `\n⚠️ DORMANCY GUARD: Část "${selectedPart.partName}" je SPÍCÍ/DORMANTNÍ (status: ${partReg?.status}). Plán MUSÍ začít AKTIVAČNÍ STRATEGIÍ. Nepředpokládej okamžitou responzivitu.\n` : ""}${selectedPart.tier === "override" ? `\n✅ THERAPIST OVERRIDE: Terapeutka explicitně zvolila "${selectedPart.partName}" pro dnešní sezení.\n` : ""}${therapistContext ? `\n🗣️ PREFERENCE TERAPEUTKY: Terapeutka poskytla konkrétní kontext a témata, která si přeje na sezení zpracovat:\n"${therapistContext}"\n\nTato témata a podněty mají NEJVYŠŠÍ PRIORITU při sestavování plánu sezení. Zakomponuj je do hlavního cíle a aktivit. Přizpůsob celý plán tak, aby reflektoval aktuální situaci popsanou terapeutkou.\n` : ""}
 
 PRAVIDLA:
 - NIKDY nepoužívej dechová cvičení — klientka má epilepsii
@@ -456,7 +456,7 @@ PRAVIDLA:
 - Navrhuj kreativní techniky (arteterapie, sandplay, IFS, narativní techniky, imaginace)
 - Pro spící části: aktivační strategie → test přítomnosti → alternativní plán
 - Formát A/B: Pokud je to pro Káťu, připrav i zjednodušenou variantu
-
+${therapistContext ? `- Zohledni preference a kontext terapeutky jako PRIMÁRNÍ vstup pro plánování sezení\n` : ""}
 Formát: Markdown, česky.
 ## 🎯 Automatický plán sezení: ${selectedPart.partName} (60 min)
 ### Datum: ${todayPrague}
