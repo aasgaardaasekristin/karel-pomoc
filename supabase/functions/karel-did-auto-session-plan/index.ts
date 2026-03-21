@@ -298,6 +298,12 @@ serve(async (req) => {
       });
     }
 
+    // Delete old plan if therapist override
+    if (existingPlan && forcePart) {
+      console.log(`[auto-session-plan] Therapist override: deleting existing plan for ${todayPrague}`);
+      await sb.from("did_daily_session_plans").delete().eq("id", existingPlan.id);
+    }
+
     // ═══ GATHER DATA ═══
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const cutoff3d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
