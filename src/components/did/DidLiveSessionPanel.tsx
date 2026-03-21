@@ -210,13 +210,21 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
     if (isImageAnalyzing || imageUpload.pendingImages.length === 0) return;
     setIsImageAnalyzing(true);
     try {
-      const img = imageUpload.pendingImages[0];
+      const images = [...imageUpload.pendingImages];
       imageSegmentCountRef.current += 1;
       const segNum = imageSegmentCountRef.current;
 
       const chatContext = messages.slice(-6).map(m =>
         `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content.slice(0, 200) : "(multimodal)"}`
       ).join("\n");
+
+      const attachments = images.map(img => ({
+        dataUrl: img.dataUrl,
+        name: img.name,
+        category: "image" as const,
+        type: img.name.match(/\.png$/i) ? "image/png" : "image/jpeg",
+        size: 0,
+      }));
 
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -225,11 +233,10 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
           method: "POST",
           headers,
           body: JSON.stringify({
-            fileBase64: img.dataUrl,
-            fileName: img.name,
-            mode: "did-live-session",
+            attachments,
+            mode: "childcare",
             chatContext,
-            extraContext: `DID část: ${partName}, Terapeutka: ${therapistName}. Analyzuj obrázek v kontextu živého sezení — zaměř se na emoční výraz, kresbu, neverbální signály, známky distresu nebo switchingu.`,
+            userPrompt: `DID část: ${partName}, Terapeutka: ${therapistName}. Analyzuj ${images.length > 1 ? `${images.length} obrázků` : "obrázek"} v kontextu živého sezení — zaměř se na emoční výraz, kresbu, neverbální signály, známky distresu nebo switchingu.`,
           }),
         }
       );
@@ -238,9 +245,13 @@ ${contextBrief ? `KONTEXT Z KARTOTÉKY:\n${contextBrief.slice(0, 3000)}\n` : ""}
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
 
+      const label = images.length > 1
+        ? `📷 *[${images.length} obrázků #${segNum}: ${images.map(i => i.name).join(", ")}]*`
+        : `📷 *[Obrázek #${segNum}: ${images[0].name}]*`;
+
       setMessages(prev => [
         ...prev,
-        { role: "user", content: `📷 *[Obrázek #${segNum}: ${img.name}]*` },
+        { role: "user", content: label },
         { role: "assistant", content: analysis },
       ]);
       imageUpload.clearImages();
@@ -467,7 +478,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           {recorder.state === "recording" && (
             <div className="flex items-center gap-2 bg-destructive/5 rounded-lg px-3 py-1.5">
               <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
-              <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)}</span>
+              <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)} / {formatDuration(recorder.maxDuration)}</span>
               <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-1.5 w-20" />
               <Button variant="ghost" size="sm" onClick={recorder.pauseRecording} className="h-7 w-7 p-0">
                 <Pause className="w-3.5 h-3.5" />
@@ -479,7 +490,7 @@ Piš jako Karel — osobně, angažovaně, profesionálně. Buď konkrétní.`;
           )}
           {recorder.state === "paused" && (
             <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
-              <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)}</span>
+              <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)} / {formatDuration(recorder.maxDuration)}</span>
               <Button variant="ghost" size="sm" onClick={recorder.resumeRecording} className="h-7 w-7 p-0">
                 <Play className="w-3.5 h-3.5" />
               </Button>
