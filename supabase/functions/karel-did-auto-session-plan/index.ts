@@ -333,6 +333,10 @@ serve(async (req) => {
       return (Date.now() - lastSeen) < 48 * 60 * 60 * 1000;
     });
 
+    // ═══ CALCULATE URGENCY SCORES v2 ═══
+    const scores = calculateUrgencyScores(registry, threads3d, threads24h, crisisBriefs, pendingTasks, sessions);
+    console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
+
     // ═══ THERAPIST OVERRIDE ═══
     let selectedPart: UrgencyResult;
     if (forcePart) {
@@ -350,10 +354,6 @@ serve(async (req) => {
       };
       console.log(`[auto-session-plan] Therapist override: ${partExists.part_name}`);
     } else {
-      // ═══ CALCULATE URGENCY SCORES v2 ═══
-      const scores = calculateUrgencyScores(registry, threads3d, threads24h, crisisBriefs, pendingTasks, sessions);
-      console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
-
       selectedPart = scores[0];
       if (!selectedPart || selectedPart.score === 0) {
         const oldest = [...registry].sort((a, b) => {
