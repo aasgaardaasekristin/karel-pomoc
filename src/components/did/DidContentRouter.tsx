@@ -25,7 +25,8 @@ import ChatMessage from "@/components/ChatMessage";
 import type { DidThread } from "@/hooks/useDidThreads";
 import type { DidFlowState } from "@/lib/chatHelpers";
 import type { SyncProgress } from "@/hooks/useManualUpdate";
-import type { DidSubMode } from "@/components/did/DidSubModeSelector";
+
+type DidSubMode = "mamka" | "cast" | "kata" | "form" | "freetext" | "general" | "research" | null;
 import type { ConversationMode } from "@/lib/chatHelpers";
 
 const LoadingSkeleton = () => (
