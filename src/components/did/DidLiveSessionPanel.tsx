@@ -51,7 +51,9 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
     if (messages.length === 0) {
       const greeting = `${therapistName === "Káťa" ? "Káťo" : "Hani"}, jsem tu s tebou na živém sezení s **${partName}**. 🎯
 
-Piš mi, co ${partName} říká nebo dělá, a já ti v reálném čase poradím jak reagovat. Můžeš také zapnout nahrávání.
+Piš mi, co ${partName} říká nebo dělá, a já ti v reálném čase poradím jak reagovat. Můžeš také:
+- 🎙️ **Nahrát audio** — analyzuji tón, emoce, switching
+- 📷 **Vyfotit obrázek** — kresbu, výraz, situaci — okamžitě zanalyzuji
 
 ${contextBrief ? `📋 *Mám nastudovaný kontext – vím, kde jsme naposledy skončili.*` : ""}
 
