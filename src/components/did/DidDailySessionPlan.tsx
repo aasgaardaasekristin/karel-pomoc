@@ -517,6 +517,16 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => setLiveSessionActive(true)}
+                  className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
+                >
+                  <Play className="mr-1 h-2.5 w-2.5" /> Otevřít live asistenci
+                </Button>
+              )}
+              {plan.status === "in_progress" && (
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={endSession}
                   className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10"
                 >
