@@ -624,10 +624,52 @@ serve(async (req) => {
 
         const reads: Promise<void>[] = [];
 
-        // 00_CENTRUM
+        // 00_CENTRUM (flat docs + subfolders)
         const centrumId = await findFolder(token, "00_CENTRUM", kartotekaId);
         if (centrumId) {
           reads.push(readFolderDocs(token, centrumId, 8, 3000).then(d => { driveData["CENTRUM"] = d; }));
+          
+          // Read subfolders: 05_PLAN, 07_DOHODY, 06_INTERVENCE
+          reads.push((async () => {
+            try {
+              const centrumChildren = await listDocsInFolder(token, centrumId, 50);
+              // listDocsInFolder excludes folders, so we need listSubfolders
+              const subfolders = await listSubfolders(token, centrumId);
+              
+              // 05_PLAN — read all docs
+              const planFolder = subfolders.find(f => /^05.*plan/i.test(f.name) || f.name.includes("05_PLAN"));
+              if (planFolder) {
+                const planDocs = await readFolderDocs(token, planFolder.id, 5, 3000);
+                driveData["PLAN"] = planDocs;
+              }
+              
+              // 07_DOHODY — read last 3
+              const dohodaFolder = subfolders.find(f => /^07/.test(f.name) || /dohod/i.test(f.name));
+              if (dohodaFolder) {
+                const dohodaDocs = await listDocsInFolder(token, dohodaFolder.id, 20);
+                const sorted = dohodaDocs.sort((a, b) => b.name.localeCompare(a.name)).slice(0, 3);
+                const dohodaData: Record<string, string> = {};
+                await Promise.all(sorted.map(async (doc) => {
+                  try { dohodaData[doc.name] = await readDoc(token, doc.id, 2000); } catch {}
+                }));
+                driveData["DOHODY"] = dohodaData;
+              }
+              
+              // 06_INTERVENCE — read last 5
+              const interFolder = subfolders.find(f => /^06.*intervenc/i.test(f.name) || /intervenc/i.test(f.name));
+              if (interFolder) {
+                const interDocs = await listDocsInFolder(token, interFolder.id, 20);
+                const sorted = interDocs.sort((a, b) => b.name.localeCompare(a.name)).slice(0, 5);
+                const interData: Record<string, string> = {};
+                await Promise.all(sorted.map(async (doc) => {
+                  try { interData[doc.name] = await readDoc(token, doc.id, 2000); } catch {}
+                }));
+                driveData["INTERVENCE"] = interData;
+              }
+            } catch (e) {
+              console.warn("[did-context-prime] Subfolder read error:", e);
+            }
+          })());
         }
 
         // Load registry alias map from Drive (authoritative identity source)

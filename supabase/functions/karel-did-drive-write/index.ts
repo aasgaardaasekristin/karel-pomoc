@@ -809,8 +809,8 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════
-    // MODE F: "update-strategic-outlook" - Update 06_Strategicky_Vyhled
-    // Location: 00_CENTRUM/06_Strategicky_Vyhled (single document)
+    // MODE F: "update-strategic-outlook" - 05_PLAN/06_Strategicky_Vyhled
+    // Location: 00_CENTRUM/05_PLAN/
     // ═══════════════════════════════════════════════════════
     if (body.mode === "update-strategic-outlook") {
       const { content, fullRewrite } = body;
@@ -827,21 +827,32 @@ serve(async (req) => {
         });
       }
 
-      const doc = await findDocumentByPattern(token, centerFolderId, [
-        "06_Strategicky_Vyhled", "06_Strategicky", "Strategicky_Vyhled",
-      ]);
+      // Look inside 05_PLAN subfolder first
+      const centerFiles = await listFilesInFolder(token, centerFolderId);
+      const planFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+      
+      let doc: Awaited<ReturnType<typeof findDocumentByPattern>> = null;
+      if (planFolder) {
+        doc = await findDocumentByPattern(token, planFolder.id, [
+          "06_Strategicky_Vyhled", "06_Strategicky", "Strategicky_Vyhled",
+        ]);
+      }
+      // Fallback: search flat in CENTRUM (legacy)
       if (!doc) {
-        return new Response(JSON.stringify({ error: "06_Strategicky_Vyhled not found in 00_CENTRUM" }), {
+        doc = await findDocumentByPattern(token, centerFolderId, [
+          "06_Strategicky_Vyhled", "06_Strategicky", "Strategicky_Vyhled",
+        ]);
+      }
+      if (!doc) {
+        return new Response(JSON.stringify({ error: "06_Strategicky_Vyhled not found in 05_PLAN/ or 00_CENTRUM" }), {
           status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (fullRewrite) {
-        // Weekly cycle does full rewrite
         const fullContent = `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${content}`;
         await updateFileById(token, doc.fileId, fullContent, doc.mimeType);
       } else {
-        // Daily/monthly cycle appends
         const appendedContent = doc.content + `\n\n[${dateStr}]\n${content}`;
         await updateFileById(token, doc.fileId, appendedContent, doc.mimeType);
       }
@@ -851,9 +862,85 @@ serve(async (req) => {
       });
     }
 
+    // ═══════════════════════════════════════════════════════
+    // MODE G: "write-intervention" - Create new doc in 06_INTERVENCE/
+    // Location: 00_CENTRUM/06_INTERVENCE/
+    // ═══════════════════════════════════════════════════════
+    if (body.mode === "write-intervention") {
+      const { partName, content } = body;
+      if (!partName || !content) {
+        return new Response(JSON.stringify({ error: "partName and content required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const centerFolderId = registry?.centerFolderId;
+      if (!centerFolderId) {
+        return new Response(JSON.stringify({ error: "00_CENTRUM folder not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const centerFiles = await listFilesInFolder(token, centerFolderId);
+      const interFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^06.*intervenc/i.test(f.name) || canonicalText(f.name).includes("intervenc")));
+      if (!interFolder) {
+        return new Response(JSON.stringify({ error: "06_INTERVENCE folder not found in 00_CENTRUM" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const safeName = partName.replace(/[^a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9_-]/g, "_").slice(0, 40);
+      const fileName = `${dateStr}_${safeName}`;
+      const fullContent = `ZÁZNAM INTERVENCE\nDatum: ${dateStr}\nČást: ${partName}\n\n${content}`;
+      const created = await createFileInFolder(token, fileName, fullContent, interFolder.id);
+      console.log(`[write-intervention] Created ${fileName} in 06_INTERVENCE`);
+
+      return new Response(JSON.stringify({ success: true, fileName, fileId: created.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // MODE H: "write-agreement" - Create new doc in 07_DOHODY/
+    // Location: 00_CENTRUM/07_DOHODY/
+    // ═══════════════════════════════════════════════════════
+    if (body.mode === "write-agreement") {
+      const { title, content } = body;
+      if (!title || !content) {
+        return new Response(JSON.stringify({ error: "title and content required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const centerFolderId = registry?.centerFolderId;
+      if (!centerFolderId) {
+        return new Response(JSON.stringify({ error: "00_CENTRUM folder not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const centerFiles = await listFilesInFolder(token, centerFolderId);
+      const agFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && (/^07/.test(f.name.trim()) || canonicalText(f.name).includes("dohod")));
+      if (!agFolder) {
+        return new Response(JSON.stringify({ error: "07_DOHODY folder not found in 00_CENTRUM" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const safeTitle = title.replace(/[^a-zA-ZáčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ0-9_-]/g, "_").slice(0, 40);
+      const fileName = `Dohoda_${dateStr}_${safeTitle}`;
+      const fullContent = `TERAPEUTICKÁ DOHODA\nDatum: ${dateStr}\n\n${title}\n${"=".repeat(40)}\n\n${content}`;
+      const created = await createFileInFolder(token, fileName, fullContent, agFolder.id);
+      console.log(`[write-agreement] Created ${fileName} in 07_DOHODY`);
+
+      return new Response(JSON.stringify({ success: true, fileName, fileId: created.id }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ═══ No valid mode ═══
     return new Response(JSON.stringify({
-      error: "Invalid mode. Supported: update-card-sections, update-dashboard, update-therapy-plan, update-relations, update-line-card, update-strategic-outlook",
+      error: "Invalid mode. Supported: update-card-sections, update-dashboard, update-therapy-plan, update-relations, update-line-card, update-strategic-outlook, write-intervention, write-agreement",
     }), {
       status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

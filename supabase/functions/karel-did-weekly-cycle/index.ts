@@ -809,12 +809,12 @@ async function phaseDistribute(sb: any, cycleId: string) {
           let agreementsFolderId = dohodaFolderId;
           if (!agreementsFolderId) {
             const centerChildren = await listFilesInFolder(token, centrumFolderId);
-            const existingFolder = centerChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("dohod"));
+            const existingFolder = centerChildren.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && (/^07/.test(f.name.trim()) || canonicalText(f.name).includes("dohod")));
             if (existingFolder) agreementsFolderId = existingFolder.id;
             else {
               const folderRes = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true", {
                 method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                body: JSON.stringify({ name: "06_Terapeuticke_Dohody", parents: [centrumFolderId], mimeType: DRIVE_FOLDER_MIME }),
+                body: JSON.stringify({ name: "07_DOHODY", parents: [centrumFolderId], mimeType: DRIVE_FOLDER_MIME }),
               });
               const folderData = await folderRes.json();
               agreementsFolderId = folderData.id;
