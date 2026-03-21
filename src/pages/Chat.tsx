@@ -1127,37 +1127,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       });
       if (!response.ok) handleApiError(response);
       if (!response.body) throw new Error("Žádná odpověď");
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       setMessages(prev => [...prev, { role: "assistant", content: "" }]);
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
-            if (content) {
-              assistantContent += content;
-              setMessages(prev => {
-                const n = [...prev];
-                if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
-                return n;
-              });
-            }
-          } catch { buffer = line + "\n" + buffer; break; }
-        }
-      }
+      assistantContent = await parseSSEStream(response.body, (content) => {
+        setMessages(prev => {
+          const n = [...prev];
+          if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content };
+          return n;
+        });
+      });
       toast.success("Výzkum dokončen");
     } catch (error) {
       console.error("DID Research error:", error);
