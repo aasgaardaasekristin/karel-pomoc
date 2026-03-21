@@ -48,6 +48,20 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const audioSegmentCountRef = useRef(0);
   const imageSegmentCountRef = useRef(0);
 
+  // Reflection dialog state
+  const [showReflection, setShowReflection] = useState(false);
+  const [reflectionEmotions, setReflectionEmotions] = useState<string[]>([]);
+  const [reflectionSurprise, setReflectionSurprise] = useState("");
+  const [reflectionNextTime, setReflectionNextTime] = useState("");
+  const [pendingReport, setPendingReport] = useState("");
+  const [pendingSavedSessionId, setPendingSavedSessionId] = useState<string | null>(null);
+  const [isSavingReflection, setIsSavingReflection] = useState(false);
+
+  const EMOTION_OPTIONS = [
+    "klidná", "nejistá", "frustrovaná", "dojatá",
+    "vyčerpaná", "nadějná", "úzkostná", "překvapená",
+  ];
+
   // Auto-greet
   useEffect(() => {
     if (messages.length === 0) {
