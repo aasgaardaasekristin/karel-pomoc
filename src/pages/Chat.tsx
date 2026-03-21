@@ -115,7 +115,6 @@ const Chat = () => {
   const [reformatProgress, setReformatProgress] = useState<{ current: number; total: number; currentName: string } | null>(null);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
   // Research thread state
-  type ResearchFlowState = "thread-list" | "new-topic" | "chat";
   const [researchFlowState, setResearchFlowState] = useState<ResearchFlowState>("thread-list");
   const [activeResearchThread, setActiveResearchThread] = useState<ResearchThread | null>(null);
   const researchThreads = useResearchThreads();
