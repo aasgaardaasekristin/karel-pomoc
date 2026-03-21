@@ -656,18 +656,30 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border bg-card/50">
+      <div className={`px-4 py-3 border-b border-border bg-card/50 transition-colors duration-500 ${switchFlash ? "bg-amber-500/10" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Button variant="ghost" size="icon" onClick={onBack} className="h-8 w-8 shrink-0">
               <ArrowLeft className="w-4 h-4" />
             </Button>
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-colors duration-500 ${switchFlash ? "bg-amber-500/20" : "bg-primary/10"}`}>
               <span className="text-sm">🧩</span>
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-foreground">Live DID sezení</h3>
-              <p className="text-xs text-muted-foreground truncate">{partName} • {therapistName}</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Live DID sezení</h3>
+                {switchLog.length > 0 && (
+                  <Badge variant="outline" className="text-[9px] gap-0.5 h-4 border-amber-500/40 text-amber-700 dark:text-amber-400">
+                    <Shuffle className="w-2.5 h-2.5" />
+                    {switchLog.length}× switch
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                <span className={`font-medium ${switchFlash ? "text-amber-600 dark:text-amber-400" : ""}`}>{activePart}</span>
+                {activePart !== partName && <span className="text-muted-foreground/60"> (start: {partName})</span>}
+                {" • "}{therapistName}
+              </p>
             </div>
           </div>
           <Button
