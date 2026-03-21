@@ -453,7 +453,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => updatePlanStatus("in_progress")}
+                  onClick={startSession}
                   className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10"
                 >
                   <Play className="mr-1 h-2.5 w-2.5" /> Zahájit sezení
