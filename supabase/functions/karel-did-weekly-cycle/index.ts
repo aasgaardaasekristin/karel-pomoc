@@ -749,10 +749,23 @@ async function phaseDistribute(sb: any, cycleId: string) {
       const strategicSection = analysisText.match(/\[STRATEGICKY_VYHLED\]([\s\S]*?)\[\/STRATEGICKY_VYHLED\]/)?.[1]?.trim();
       if (strategicSection) {
         const centerFiles = await listFilesInFolder(token, centrumFolderId);
-        let stratFile = centerFiles.find((f: any) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+        // Look in 05_PLAN subfolder first
+        const planFolder = centerFiles.find((f: any) => f.mimeType === DRIVE_FOLDER_MIME && (/^05.*plan/i.test(f.name) || canonicalText(f.name).includes("05plan")));
+        let stratFile: any = null;
+        if (planFolder) {
+          const planFiles = await listFilesInFolder(token, planFolder.id);
+          stratFile = planFiles.find((f: any) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+        }
+        // Fallback: flat in CENTRUM
+        if (!stratFile) {
+          stratFile = centerFiles.find((f: any) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
+        }
         if (stratFile) {
           await updateFileById(token, stratFile.id, `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr} (týdenní cyklus)\nSprávce: Karel\n\n${strategicSection}`, stratFile.mimeType);
           cardsUpdated.push("06_Strategicky_Vyhled");
+        } else if (planFolder) {
+          await createFileInFolder(token, "06_Strategicky_Vyhled", `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${strategicSection}`, planFolder.id);
+          cardsUpdated.push("06_Strategicky_Vyhled (vytvořen v 05_PLAN)");
         } else {
           await createFileInFolder(token, "06_Strategicky_Vyhled", `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${strategicSection}`, centrumFolderId);
           cardsUpdated.push("06_Strategicky_Vyhled (vytvořen)");
