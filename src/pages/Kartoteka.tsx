@@ -610,7 +610,15 @@ const Kartoteka = () => {
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
                 analysis={cardAnalysis}
-                onStartSession={(plan) => setActivePlan(plan)}
+                onStartSession={(plan) => {
+                  try {
+                    const sessionId = createSession(selectedClient.id, selectedClient.name);
+                    updateSessionPlan(sessionId, plan);
+                    navigate("/chat");
+                  } catch (e: any) {
+                    toast.error(e.message || "Chyba při vytváření sezení");
+                  }
+                }}
               />
             </TabsContent>
 
