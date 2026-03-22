@@ -98,10 +98,12 @@ ${pendingTasksContext}
 
 KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z popisu terapeuta. NEVYMÝŠLEJ si detaily, události ani citáty, které terapeut neřekl. Pokud ti něco chybí, zařaď to do dotazníku.
 
+Pole "summary" MUSÍ obsahovat markdown text s nadpisy ## pro každou sekci BIRP+S. Každá sekce na novém řádku. NEPIŠ prefix "Strukturovaný zápis ve formátu BIRP+S:" — začni rovnou sekcí ## B.
+
 Tvůj výstup MUSÍ být validní JSON v tomto formátu:
 {
   "transcription": "přepis audia, pokud bylo audio, jinak null",
-  "summary": "Strukturovaný zápis ve formátu BIRP+S:\\nB – PREZENTACE KLIENTA: [chování, vzhled, nálada, nonverbální projevy]\\nI – INTERVENCE: [co terapeut dělal, jaké techniky použil]\\nR – ODPOVĚĎ KLIENTA: [jak klient reagoval, co řekl, posun]\\nP – PLÁN: [co příště, zaměření, témata]\\nS – SUPERVIZNÍ POZNÁMKA (Karel): [klinická pozorování, hypotézy, rizika]",
+  "summary": "## B – PREZENTACE KLIENTA\n[chování, vzhled, nálada]\n\n## I – INTERVENCE\n[techniky]\n\n## R – ODPOVĚĎ KLIENTA\n[reakce, posun]\n\n## P – PLÁN\n[zaměření příště]\n\n## S – SUPERVIZNÍ POZNÁMKA (Karel)\n[hypotézy, rizika]",
   "analysis": "analýza v kontextu celkové terapie a předchozích sezení",
   "diagnosticHypothesis": {
     "hypothesis": "diagnostická hypotéza na základě pozorování",

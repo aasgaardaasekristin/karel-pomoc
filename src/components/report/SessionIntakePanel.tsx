@@ -247,7 +247,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             </TabsList>
 
             <TabsContent value="summary" className="prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{result.sessionRecord?.summary || "—"}</ReactMarkdown>
+              <ReactMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</ReactMarkdown>
             </TabsContent>
 
             <TabsContent value="analysis" className="prose prose-sm max-w-none dark:prose-invert">
