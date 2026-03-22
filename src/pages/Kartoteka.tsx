@@ -25,7 +25,6 @@ import {
   MessageSquare,
   LogOut,
   HardDriveDownload,
-  CalendarPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
