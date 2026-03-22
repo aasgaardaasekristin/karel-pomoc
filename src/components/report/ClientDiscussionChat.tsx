@@ -20,6 +20,7 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
+  const [saved, setSaved] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
