@@ -444,7 +444,7 @@ const Kartoteka = () => {
             </div>
 
             {/* ─── KARTA ─── */}
-            <TabsContent value="card" className="space-y-4">
+            <TabsContent value="card" forceMount className={activeTab === "card" ? "space-y-4" : "hidden"}>
               <div className="bg-card rounded-xl border border-border p-4 sm:p-6 space-y-4">
                 {isEditing ? (
                   <>
