@@ -27,6 +27,7 @@ import {
   HardDriveDownload,
 } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
 import ClientDiscussionChat from "@/components/report/ClientDiscussionChat";
 import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
