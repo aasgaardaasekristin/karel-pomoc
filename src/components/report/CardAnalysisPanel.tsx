@@ -637,7 +637,7 @@ const CardAnalysisPanel = ({
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" className="gap-1.5"
               disabled={!modifications.trim() || planState === "saving"}
               onClick={() => {
@@ -646,6 +646,10 @@ const CardAnalysisPanel = ({
                 handleGeneratePlan(mods);
               }}>
               <Edit3 className="w-3.5 h-3.5" /> Požádat o úpravy
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => exportTherapyPlanPdf(clientName, planContent)}>
+              <Download className="w-3.5 h-3.5" /> PDF
             </Button>
             <Button size="sm" className="gap-1.5 flex-1"
               disabled={planState === "saving"}
