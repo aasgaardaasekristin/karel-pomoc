@@ -29,6 +29,10 @@ import { toast } from "sonner";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
 import ClientDiscussionChat from "@/components/report/ClientDiscussionChat";
 import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
+import SessionIntakePanel from "@/components/report/SessionIntakePanel";
+import ClientTasksPanel from "@/components/report/ClientTasksPanel";
+import CardAnalysisPanel from "@/components/report/CardAnalysisPanel";
+import SessionPlanPanel from "@/components/report/SessionPlanPanel";
 type Client = {
   id: string;
   name: string;
@@ -73,6 +77,9 @@ type ClientTask = {
   due_date: string | null;
   result: string;
   notes: string;
+  task_type?: string;
+  priority?: string;
+  answer?: string;
   created_at: string;
 };
 
@@ -90,6 +97,8 @@ const Kartoteka = () => {
   const [newTaskText, setNewTaskText] = useState("");
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [activePlan, setActivePlan] = useState<any>(null);
+  const [cardAnalysis, setCardAnalysis] = useState<any>(null);
 
   const handleBackup = async () => {
     setIsBackingUp(true);
@@ -365,32 +374,43 @@ const Kartoteka = () => {
       <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
           <Tabs defaultValue="card" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <User className="w-3.5 h-3.5 hidden sm:block" />
-                Karta
-              </TabsTrigger>
-              <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <FileText className="w-3.5 h-3.5 hidden sm:block" />
-                Sezení
-                {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
-                Úkoly
-                {tasks.filter(t => t.status !== "done").length > 0 && (
-                  <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
-                Rozhovor
-              </TabsTrigger>
-              <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <CalendarPlus className="w-3.5 h-3.5 hidden sm:block" />
-                Příprava
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto -mx-3 px-3">
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-8 h-auto flex-nowrap">
+                <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <User className="w-3.5 h-3.5 hidden sm:block" />
+                  Karta
+                </TabsTrigger>
+                <TabsTrigger value="intake" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Záznam
+                </TabsTrigger>
+                <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <FileText className="w-3.5 h-3.5 hidden sm:block" />
+                  Sezení
+                  {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
+                  Úkoly
+                  {tasks.filter(t => t.status !== "done").length > 0 && (
+                    <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="analysis" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Analýza
+                </TabsTrigger>
+                <TabsTrigger value="plan" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Plán
+                </TabsTrigger>
+                <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
+                  Rozhovor
+                </TabsTrigger>
+                <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <CalendarPlus className="w-3.5 h-3.5 hidden sm:block" />
+                  Příprava
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* ─── KARTA ─── */}
             <TabsContent value="card" className="space-y-4">
@@ -452,6 +472,15 @@ const Kartoteka = () => {
                   </div>
                 )}
               </div>
+            </TabsContent>
+
+            {/* ─── ZÁZNAM SEZENÍ ─── */}
+            <TabsContent value="intake">
+              <SessionIntakePanel
+                clientId={selectedClient.id}
+                clientName={selectedClient.name}
+                onComplete={() => loadClientDetail(selectedClient)}
+              />
             </TabsContent>
 
             {/* ─── SEZENÍ ─── */}
@@ -530,7 +559,6 @@ const Kartoteka = () => {
                             <p className="text-sm mt-1 whitespace-pre-wrap">{s.notes}</p>
                           </div>
                         )}
-                        {/* PDF export */}
                         <div className="pt-3 border-t border-border">
                           <Button
                             variant="outline"
@@ -555,48 +583,34 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ÚKOLY ─── */}
-            <TabsContent value="tasks" className="space-y-3">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Nový úkol / intervence..."
-                  value={newTaskText}
-                  onChange={(e) => setNewTaskText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") handleAddTask(); }}
-                  className="flex-1"
-                />
-                <Button size="sm" onClick={handleAddTask} disabled={!newTaskText.trim()}>
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
+            <TabsContent value="tasks">
+              <ClientTasksPanel
+                clientId={selectedClient.id}
+                clientName={selectedClient.name}
+                tasks={tasks}
+                onRefresh={() => loadClientDetail(selectedClient)}
+              />
+            </TabsContent>
 
-              {tasks.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ListChecks className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">Zatím žádné úkoly.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {tasks.map((t) => (
-                    <div key={t.id} className={`flex items-start gap-3 p-3 bg-card rounded-lg border border-border ${t.status === "done" ? "opacity-50" : ""}`}>
-                      <button onClick={() => handleToggleTask(t)} className="mt-0.5 shrink-0">
-                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                          t.status === "done" ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30"
-                        }`}>
-                          {t.status === "done" && <span className="text-xs">✓</span>}
-                        </div>
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm ${t.status === "done" ? "line-through" : ""}`}>{t.task}</p>
-                        {t.method && <p className="text-xs text-muted-foreground mt-0.5">Metoda: {t.method}</p>}
-                        {t.due_date && <p className="text-xs text-muted-foreground">Termín: {new Date(t.due_date).toLocaleDateString("cs-CZ")}</p>}
-                      </div>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => handleDeleteTask(t.id)}>
-                        <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* ─── ANALÝZA ─── */}
+            <TabsContent value="analysis">
+              <CardAnalysisPanel
+                clientId={selectedClient.id}
+                clientName={selectedClient.name}
+                onRequestPlan={(analysis) => {
+                  setCardAnalysis(analysis);
+                }}
+              />
+            </TabsContent>
+
+            {/* ─── PLÁN ─── */}
+            <TabsContent value="plan">
+              <SessionPlanPanel
+                clientId={selectedClient.id}
+                clientName={selectedClient.name}
+                analysis={cardAnalysis}
+                onStartSession={(plan) => setActivePlan(plan)}
+              />
             </TabsContent>
 
             {/* ─── ROZHOVOR ─── */}
