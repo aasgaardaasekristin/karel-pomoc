@@ -19,6 +19,19 @@ const formatDuration = (seconds: number) => {
 
 const SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 
+const formatBirps = (raw: string): string => {
+  if (!raw || raw === "—") return raw;
+  if (raw.includes("## B")) return raw;
+  let text = raw.replace(/^Strukturovaný zápis ve formátu BIRP\+S:\s*/i, "");
+  return text
+    .replace(/B\s*[–-]\s*PREZENTACE KLIENTA:?\s*/g, "## B – PREZENTACE KLIENTA\n")
+    .replace(/I\s*[–-]\s*INTERVENCE:?\s*/g, "\n## I – INTERVENCE\n")
+    .replace(/R\s*[–-]\s*ODPOVĚĎ KLIENTA:?\s*/g, "\n## R – ODPOVĚĎ KLIENTA\n")
+    .replace(/P\s*[–-]\s*PLÁN:?\s*/g, "\n## P – PLÁN\n")
+    .replace(/S\s*[–-]\s*SUPERVIZNÍ POZNÁMKA[^:]*:?\s*/g, "\n## S – SUPERVIZNÍ POZNÁMKA (Karel)\n");
+};
+
+
 interface SessionIntakePanelProps {
   clientId: string;
   clientName: string;
