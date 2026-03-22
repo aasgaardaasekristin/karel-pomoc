@@ -254,8 +254,8 @@ const CardAnalysisPanel = ({
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium animate-pulse">{ANALYSIS_STEPS[analysisStep]}</p>
             <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden mt-2">
-              <div className="h-full bg-primary rounded-full" 
-                   style={{ width: "40%", animation: "indeterminate 1.5s ease-in-out infinite" }} />
+              <div className="h-full bg-primary rounded-full animate-indeterminate-progress" 
+                   style={{ width: "40%" }} />
             </div>
           </div>
         </div>
