@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Mic, Keyboard, Send, Loader2, Square, Pause, Play, CheckCircle2 } from "lucide-react";
+import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -17,6 +17,8 @@ const formatDuration = (seconds: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
+const SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+
 interface SessionIntakePanelProps {
   clientId: string;
   clientName: string;
@@ -28,22 +30,68 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
   const [textInput, setTextInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressText, setProgressText] = useState("");
+  const [spinnerChar, setSpinnerChar] = useState("⠋");
   const [result, setResult] = useState<any>(null);
+  const [revisionNote, setRevisionNote] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRevising, setIsRevising] = useState(false);
   const recorder = useSessionAudioRecorder();
+  const startTimeRef = useRef<number>(0);
+  const originalBodyRef = useRef<any>(null);
+
+  // Animated spinner
+  useEffect(() => {
+    if (!isProcessing) return;
+    const id = setInterval(() => {
+      setSpinnerChar(c => {
+        const idx = SPINNER_CHARS.indexOf(c);
+        return SPINNER_CHARS[(idx + 1) % SPINNER_CHARS.length];
+      });
+    }, 100);
+    return () => clearInterval(id);
+  }, [isProcessing]);
+
+  // Progress text based on elapsed time
+  useEffect(() => {
+    if (!isProcessing) return;
+    const isAudio = inputMode === "audio";
+    const id = setInterval(() => {
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      if (elapsed < 3) setProgressText("Přijímám vstup...");
+      else if (elapsed < 8 && isAudio) setProgressText("Přepisuji audio...");
+      else if (elapsed < 18) setProgressText("Analyzuju s kartou klienta...");
+      else if (elapsed < 25) setProgressText("Konzultuji odborné zdroje...");
+      else setProgressText("Sestavuju zápis a doporučení...");
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isProcessing, inputMode]);
+
+  const callIntake = useCallback(async (body: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-session-intake`,
+      { method: "POST", headers, body: JSON.stringify(body) }
+    );
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Chyba ${res.status}`);
+    }
+    return res.json();
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     setIsProcessing(true);
-    setProgressText("Karel zpracovává sezení…");
+    startTimeRef.current = Date.now();
+    setProgressText("Přijímám vstup...");
 
     try {
-      let body: any = {
+      const body: any = {
         clientId,
         sessionDate: new Date().toISOString().split("T")[0],
         therapistName: "Hanka",
       };
 
       if (inputMode === "audio") {
-        setProgressText("Kóduju audio…");
         const base64 = await recorder.getBase64();
         if (!base64) throw new Error("Žádná nahrávka");
         body.inputType = "audio";
@@ -54,53 +102,119 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         body.textInput = textInput;
       }
 
-      setProgressText("Analyzuji s AI…");
-      const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-session-intake`,
-        { method: "POST", headers, body: JSON.stringify(body) }
-      );
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Chyba ${res.status}`);
-      }
-
-      const data = await res.json();
+      originalBodyRef.current = body;
+      const data = await callIntake(body);
       setResult(data);
-      toast.success(`Zápis sezení č. ${data.sessionNumber} vytvořen`);
     } catch (err: any) {
       console.error("Session intake error:", err);
       toast.error(err.message || "Chyba při zpracování");
     } finally {
       setIsProcessing(false);
-      setProgressText("");
     }
-  }, [clientId, inputMode, textInput, recorder]);
+  }, [clientId, inputMode, textInput, recorder, callIntake]);
+
+  const handleRevision = useCallback(async () => {
+    if (!revisionNote.trim()) { toast.error("Napiš co chceš změnit"); return; }
+    setIsRevising(true);
+    setIsProcessing(true);
+    startTimeRef.current = Date.now();
+    setProgressText("Přijímám vstup...");
+
+    try {
+      const body = { ...originalBodyRef.current, revisionRequest: revisionNote };
+      const data = await callIntake(body);
+      setResult(data);
+      setRevisionNote("");
+    } catch (err: any) {
+      toast.error(err.message || "Chyba při přepracování");
+    } finally {
+      setIsProcessing(false);
+      setIsRevising(false);
+    }
+  }, [revisionNote, callIntake]);
+
+  const saveToDb = useCallback(async () => {
+    if (!result) return;
+    setIsSaving(true);
+
+    try {
+      const rec = result.sessionRecord || {};
+      const { error: sessionError } = await supabase.from("client_sessions").insert({
+        client_id: clientId,
+        session_number: result.sessionNumber,
+        session_date: result.sessionDate || new Date().toISOString().split("T")[0],
+        ai_analysis: rec.summary || "",
+        ai_hypotheses: rec.analysis || "",
+        ai_recommended_methods: (rec.therapeuticRecommendations || []).map((r: any) => `${r.approach}: ${r.reason}`).join("\n"),
+        ai_risk_assessment: rec.diagnosticHypothesis?.hypothesis || "",
+        notes: `Zápis sezení č. ${result.sessionNumber} – Hanka – ${new Date().toLocaleDateString("cs-CZ")}`,
+        report_next_session_goal: (rec.nextSessionFocus || []).join("; "),
+        report_missing_data: (rec.diagnosticHypothesis?.missingData || []).join("; "),
+      });
+      if (sessionError) throw sessionError;
+
+      const allTasks: any[] = [];
+      (result.questionnaire || []).forEach((q: any) => {
+        allTasks.push({
+          client_id: clientId,
+          task: q.question,
+          task_type: "therapist_question",
+          priority: q.priority || "medium",
+          status: "planned",
+          method: q.category || "other",
+        });
+      });
+      (result.clientTasks || []).forEach((t: string) => {
+        allTasks.push({
+          client_id: clientId,
+          task: t,
+          task_type: "client_homework",
+          priority: "medium",
+          status: "planned",
+          for_session: result.sessionNumber + 1,
+        });
+      });
+
+      if (allTasks.length > 0) {
+        const { error: tasksError } = await supabase.from("client_tasks").insert(allTasks);
+        if (tasksError) console.error("Tasks insert error:", tasksError);
+      }
+
+      toast.success(`Sezení č. ${result.sessionNumber} uloženo`);
+      onComplete();
+    } catch (err: any) {
+      console.error("Save error:", err);
+      toast.error("Chyba při ukládání");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [result, clientId, onComplete]);
 
   // ── Processing state ──
   if (isProcessing) {
     return (
       <div className="bg-card rounded-xl border border-border p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <span className="text-lg font-mono text-primary">{spinnerChar}</span>
           <span className="text-sm font-medium text-foreground">{progressText}</span>
         </div>
         <Progress value={65} className="h-2" />
-        <p className="text-xs text-muted-foreground">Obvykle ~15 sekund</p>
+        <p className="text-xs text-muted-foreground">
+          {isRevising ? "Přepracovávám podle tvých instrukcí…" : "Obvykle ~15 sekund"}
+        </p>
       </div>
     );
   }
 
-  // ── Result view ──
+  // ── Result view — Review panel ──
   if (result) {
     return (
       <div className="space-y-4">
         <div className="bg-card rounded-xl border border-border p-4">
           <div className="flex items-center gap-2 mb-3">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <span className="text-lg">✅</span>
             <h3 className="font-semibold text-foreground text-sm">
-              Zápis sezení č. {result.sessionNumber} — {result.sessionDate}
+              Karel sestavil zápis – zkontroluj než uložíš
             </h3>
           </div>
 
@@ -178,7 +292,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
           </Tabs>
         </div>
 
-        {/* Questionnaire */}
+        {/* Questionnaire & tasks preview */}
         {(result.questionnaire?.length > 0 || result.clientTasks?.length > 0) && (
           <div className="bg-card rounded-xl border border-border p-4 space-y-3">
             {result.questionnaire?.length > 0 && (
@@ -202,13 +316,28 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
                 ))}
               </div>
             )}
-            <p className="text-xs text-muted-foreground italic">Dotazník a úkoly byly automaticky uloženy do záložky Úkoly.</p>
           </div>
         )}
 
-        <Button variant="outline" size="sm" onClick={onComplete} className="w-full">
-          Hotovo – zpět na přehled
-        </Button>
+        {/* Revision + Save */}
+        <div className="bg-card rounded-xl border border-border p-4 space-y-3">
+          <p className="text-sm text-muted-foreground">Chceš něco změnit?</p>
+          <Textarea
+            placeholder="Napiš Karlovi co upravit... (volitelné)"
+            value={revisionNote}
+            onChange={(e) => setRevisionNote(e.target.value)}
+            className="min-h-[60px]"
+          />
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleRevision} disabled={!revisionNote.trim() || isSaving} className="gap-1.5 flex-1">
+              <RefreshCw className="w-4 h-4" /> Přepracovat
+            </Button>
+            <Button onClick={saveToDb} disabled={isSaving} className="gap-1.5 flex-1">
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+              Uložit do sezení
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
