@@ -16,7 +16,9 @@ import {
   Bot,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { blobToBase64 } from "@/lib/driveUtils";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
