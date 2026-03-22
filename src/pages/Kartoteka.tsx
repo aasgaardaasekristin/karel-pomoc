@@ -644,8 +644,12 @@ const Kartoteka = () => {
                 sessions={sessions}
                 activePlan={activePlan}
                 pendingTasks={tasks}
+                existingTherapyPlan={selectedClient.therapy_plan}
                 onRequestPlan={(analysis) => {
                   setCardAnalysis(analysis);
+                }}
+                onPlanSaved={(plan) => {
+                  setSelectedClient(prev => prev ? { ...prev, therapy_plan: plan } : prev);
                 }}
               />
             </TabsContent>
