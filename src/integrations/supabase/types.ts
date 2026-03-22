@@ -195,6 +195,7 @@ export type Database = {
           name: string
           notes: string | null
           referral_source: string | null
+          therapy_plan: string | null
           therapy_type: string | null
           updated_at: string
           user_id: string
@@ -210,6 +211,7 @@ export type Database = {
           name: string
           notes?: string | null
           referral_source?: string | null
+          therapy_plan?: string | null
           therapy_type?: string | null
           updated_at?: string
           user_id?: string
@@ -225,6 +227,7 @@ export type Database = {
           name?: string
           notes?: string | null
           referral_source?: string | null
+          therapy_plan?: string | null
           therapy_type?: string | null
           updated_at?: string
           user_id?: string
