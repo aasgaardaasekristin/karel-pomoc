@@ -106,6 +106,7 @@ ${client.referral_source ? `Zdroj doporučení: ${client.referral_source}` : ""}
 ${client.key_history ? `Anamnéza: ${client.key_history}` : ""}
 ${client.family_context ? `Rodinný kontext: ${client.family_context}` : ""}
 ${client.notes ? `Poznámky: ${client.notes}` : ""}
+${client.therapy_plan ? `\nTERAPEUTICKÝ PLÁN PROCESU:\n${client.therapy_plan.slice(0, 1000)}` : ""}
 
 SEZENÍ (${sessions.length}):
 ${sessionsContext || "(žádná)"}
