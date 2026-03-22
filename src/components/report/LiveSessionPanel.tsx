@@ -137,7 +137,8 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
   🎮 Další krok (co udělat/zeptat se)
 - Pokud dostaneš audio analýzu, reaguj na zjištění z hlasu (tenze, emoce).
 - Pokud dostaneš analýzu obrázku/kresby, reaguj na zjištění a doporuč další postup.
-- Buď direktivní a konkrétní. Žádné filozofování.`;
+- Buď direktivní a konkrétní. Žádné filozofování.
+- DŮLEŽITÉ FORMÁTOVÁNÍ: Všechny přímé rady co má terapeut říct klientovi a tvé okamžité reakce/doporučení (co má terapeut UDĚLAT nebo ŘÍCT) piš TUČNĚ pomocí **bold** markdown. Ostatní text (kontext, pozorování) piš normálně.`;
   }, [clientName, caseSummary, sessionMode, sessionPlan, customTopic]);
 
   // ── Shared streaming helper ──
