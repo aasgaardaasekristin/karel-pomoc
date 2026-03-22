@@ -194,17 +194,64 @@ const CardAnalysisPanel = ({
         .eq("id", clientId);
       if (error) throw new Error(error.message);
 
-      // Drive backup fire-and-forget
+      // Drive backup fire-and-forget — generate PDF base64 first
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        supabase.functions.invoke("karel-session-drive-backup", {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-          body: {
-            mode: "therapy-plan",
-            clientId,
-            content: planContent,
-          },
-        }).catch(() => {});
+        (async () => {
+          try {
+            const { default: jsPDF } = await import("jspdf");
+            const doc = new jsPDF({ unit: "mm", format: "a4" });
+            
+            // Try loading font
+            try {
+              const fontRes = await fetch("/fonts/Roboto-Regular.ttf");
+              if (fontRes.ok) {
+                const buf = await fontRes.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                let binary = "";
+                for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+                doc.addFileToVFS("Roboto-Regular.ttf", btoa(binary));
+                doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+                doc.setFont("Roboto");
+              }
+            } catch {}
+
+            const pageW = doc.internal.pageSize.getWidth();
+            const pageH = doc.internal.pageSize.getHeight();
+            const margin = 15;
+            const maxW = pageW - margin * 2;
+            let y = margin;
+            const checkPage = (needed: number) => { if (y + needed > pageH - margin) { doc.addPage(); y = margin; } };
+
+            doc.setFontSize(14); doc.setTextColor(40, 40, 40);
+            doc.text("Terapeutický plán procesu", margin, y); y += 7;
+            doc.setFontSize(11); doc.text(clientName, margin, y); y += 5;
+            doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+            doc.text(`Vygenerováno: ${new Date().toLocaleDateString("cs-CZ")}`, margin, y); y += 8;
+            doc.line(margin, y, pageW - margin, y); y += 6;
+
+            for (const line of planContent.split("\n")) {
+              const t = line.trim();
+              if (!t) { y += 3; continue; }
+              if (t.startsWith("# ")) { checkPage(12); doc.setFontSize(13); doc.setTextColor(30,30,30); const w = doc.splitTextToSize(t.replace(/^#+\s*/,""), maxW); for (const l of w) { checkPage(6); doc.text(l, margin, y); y += 6; } y += 2; }
+              else if (t.startsWith("## ")) { checkPage(10); y += 3; doc.setFontSize(11); doc.setTextColor(50,50,50); const w = doc.splitTextToSize(t.replace(/^#+\s*/,""), maxW); for (const l of w) { checkPage(5.5); doc.text(l, margin, y); y += 5.5; } y += 2; }
+              else if (t.startsWith("### ")) { checkPage(8); y += 2; doc.setFontSize(10); doc.setTextColor(60,60,60); const w = doc.splitTextToSize(t.replace(/^#+\s*/,""), maxW); for (const l of w) { checkPage(5); doc.text(l, margin, y); y += 5; } y += 1; }
+              else if (t.startsWith("- ") || t.startsWith("* ")) { doc.setFontSize(9); doc.setTextColor(40,40,40); const b = doc.splitTextToSize(`• ${t.replace(/^[-*]\s*/,"")}`, maxW-4); for (const l of b) { checkPage(4.5); doc.text(l, margin+2, y); y += 4.5; } }
+              else { doc.setFontSize(9); doc.setTextColor(40,40,40); const w = doc.splitTextToSize(t.replace(/\*\*/g,""), maxW); for (const l of w) { checkPage(4.5); doc.text(l, margin, y); y += 4.5; } }
+            }
+
+            const safeDate = new Date().toISOString().slice(0, 10);
+            const pdfBase64 = doc.output("datauristring").split(",")[1];
+            const fileName = `Plan_procesu_${clientName.replace(/\s+/g, "_")}_${safeDate}.pdf`;
+
+            await supabase.functions.invoke("karel-session-drive-backup", {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+              body: { pdfBase64, fileName, clientId, folder: "Plany" },
+            });
+          } catch (e) {
+            console.error("Drive backup failed:", e);
+          }
+        })();
       }
 
       onPlanSaved?.(planContent);
