@@ -13,6 +13,7 @@ export interface SessionWorkspace {
   triageData: TriageData | null;
   status: "active" | "report-ready" | "archived";
   createdAt: number;
+  sessionPlan?: any;
 }
 
 const DEFAULT_FORM: ReportFormData = {
@@ -50,6 +51,7 @@ interface ActiveSessionsContextType {
   updateReportText: (id: string, text: string) => void;
   updateTriageData: (id: string, data: TriageData | null) => void;
   updateStatus: (id: string, status: SessionWorkspace["status"]) => void;
+  updateSessionPlan: (id: string, plan: any) => void;
 }
 
 const ActiveSessionsContext = createContext<ActiveSessionsContextType | undefined>(undefined);
@@ -161,6 +163,10 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
     updateSession(id, s => ({ ...s, status }));
   }, [updateSession]);
 
+  const updateSessionPlan = useCallback((id: string, plan: any) => {
+    updateSession(id, s => ({ ...s, sessionPlan: plan }));
+  }, [updateSession]);
+
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
 
   return (
@@ -177,6 +183,7 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
       updateReportText,
       updateTriageData,
       updateStatus,
+      updateSessionPlan,
     }}>
       {children}
     </ActiveSessionsContext.Provider>

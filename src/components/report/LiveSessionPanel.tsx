@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ImagePlus } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ImagePlus, ClipboardList } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -14,6 +16,7 @@ import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 
 type Message = { role: "user" | "assistant"; content: string };
+type SessionMode = "plan" | "modify" | "custom" | "free";
 
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
@@ -41,16 +44,36 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   const { pendingImages, fileInputRef, openFilePicker, handleFileChange, clearImages } = useImageUpload();
   const [imageAnalysisType, setImageAnalysisType] = useState("Kresba klienta");
   const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
+  const [sessionMode, setSessionMode] = useState<SessionMode | null>(null);
+  const [customTopic, setCustomTopic] = useState("");
+  const [modeConfirmed, setModeConfirmed] = useState(false);
 
   const messages = activeSession?.chatMessages ?? [];
+  const sessionPlan = activeSession?.sessionPlan;
+  const hasPlan = !!sessionPlan;
 
-  // Auto-greet
+  // Auto-greet after mode confirmed
   useEffect(() => {
-    if (activeSession && messages.length === 0) {
-      const greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPiš mi, co klient říká nebo dělá, a já ti v reálném čase poradím jak reagovat. Můžeš také zapnout nahrávání a já budu analyzovat audio segmenty.\n\n*Začni kdykoliv – jsem připravený.*`;
+    if (activeSession && messages.length === 0 && modeConfirmed && sessionMode) {
+      let greeting = "";
+      switch (sessionMode) {
+        case "plan":
+          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPracujeme **podle připraveného plánu**. Budu tě provádět jednotlivými fázemi.\n\n*Začni kdykoliv – jsem připravený.*`;
+          break;
+        case "modify":
+          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nMáme plán, ale upravíme ho podle tvého zadání: "${customTopic}"\n\n*Začni kdykoliv – jsem připravený.*`;
+          break;
+        case "custom":
+          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nDnes se zaměříme na: **${customTopic}**\n\n*Začni kdykoliv – jsem připravený.*`;
+          break;
+        case "free":
+        default:
+          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPiš mi, co klient říká nebo dělá, a já ti v reálném čase poradím jak reagovat.\n\n*Začni kdykoliv – jsem připravený.*`;
+          break;
+      }
       updateChatMessages(activeSession.id, [{ role: "assistant", content: greeting }]);
     }
-  }, [activeSession?.id]);
+  }, [modeConfirmed]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -59,11 +82,20 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   }, [messages]);
 
   const buildContext = useCallback(() => {
+    let planContext = "";
+    if (sessionMode === "plan" && sessionPlan) {
+      planContext = `\n═══ PLÁN SEZENÍ ═══\n${typeof sessionPlan === "string" ? sessionPlan : JSON.stringify(sessionPlan, null, 2)}\n\nŘIĎ SE PLÁNEM – naviguj terapeuta podle fází výše.\n`;
+    } else if (sessionMode === "modify" && sessionPlan && customTopic) {
+      planContext = `\n═══ UPRAVENÝ PLÁN ═══\nPůvodní plán: ${typeof sessionPlan === "string" ? sessionPlan : JSON.stringify(sessionPlan, null, 2)}\nÚprava terapeuta: ${customTopic}\n\nPřizpůsob plán podle úpravy terapeuta.\n`;
+    } else if (sessionMode === "custom" && customTopic) {
+      planContext = `\n═══ VLASTNÍ TÉMA ═══\nTerapeut zadal: ${customTopic}\nZaměř se na toto téma.\n`;
+    }
+
     return `═══ LIVE SEZENÍ S KLIENTEM ═══
 Klient: ${clientName}
 Čas: ${new Date().toISOString()}
 
-${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
+${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
 ═══ INSTRUKCE ═══
 - Jsi Karel, klinický supervizor PŘÍTOMNÝ na živém sezení.
 - Terapeut ti píše, co klient říká/dělá, nebo posílá audio segmenty.
@@ -74,7 +106,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
   🎮 Další krok (co udělat/zeptat se)
 - Pokud dostaneš audio analýzu, reaguj na zjištění z hlasu (tenze, emoce).
 - Buď direktivní a konkrétní. Žádné filozofování.`;
-  }, [clientName, caseSummary]);
+  }, [clientName, caseSummary, sessionMode, sessionPlan, customTopic]);
 
   const sendMessage = async () => {
     if ((!input.trim()) || isLoading) return;
@@ -227,6 +259,76 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
     }
   };
 
+  // Mode selection dialog
+  if (messages.length === 0 && !modeConfirmed) {
+    const handleConfirm = () => {
+      if (!sessionMode) return;
+      if ((sessionMode === "modify" || sessionMode === "custom") && !customTopic.trim()) return;
+      setModeConfirmed(true);
+    };
+
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="w-full max-w-md space-y-6">
+          <div className="text-center space-y-2">
+            <ClipboardList className="w-10 h-10 text-primary mx-auto" />
+            <h3 className="text-lg font-semibold text-foreground">Jak chceš vést sezení?</h3>
+            <p className="text-sm text-muted-foreground">Zvol režim pro sezení s {clientName}</p>
+          </div>
+          <RadioGroup
+            value={sessionMode ?? ""}
+            onValueChange={(v) => setSessionMode(v as SessionMode)}
+            className="space-y-3"
+          >
+            <label className={`flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50 ${!hasPlan ? "opacity-50 pointer-events-none" : ""}`}>
+              <RadioGroupItem value="plan" id="mode-plan" disabled={!hasPlan} className="mt-0.5" />
+              <div>
+                <Label htmlFor="mode-plan" className="font-medium cursor-pointer">Podle návrhu</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Karel tě provede připraveným plánem fázi po fázi</p>
+              </div>
+            </label>
+            <label className={`flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50 ${!hasPlan ? "opacity-50 pointer-events-none" : ""}`}>
+              <RadioGroupItem value="modify" id="mode-modify" disabled={!hasPlan} className="mt-0.5" />
+              <div className="flex-1">
+                <Label htmlFor="mode-modify" className="font-medium cursor-pointer">Upravit návrh</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Plán jako základ, ale s tvými úpravami</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50">
+              <RadioGroupItem value="custom" id="mode-custom" className="mt-0.5" />
+              <div>
+                <Label htmlFor="mode-custom" className="font-medium cursor-pointer">Vlastní téma</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Zadej téma, na které se chceš zaměřit</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50">
+              <RadioGroupItem value="free" id="mode-free" className="mt-0.5" />
+              <div>
+                <Label htmlFor="mode-free" className="font-medium cursor-pointer">Volná asistence</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Karel reaguje na to, co přijde</p>
+              </div>
+            </label>
+          </RadioGroup>
+          {sessionMode && (sessionMode === "modify" || sessionMode === "custom") && (
+            <Textarea
+              value={customTopic}
+              onChange={e => setCustomTopic(e.target.value)}
+              placeholder={sessionMode === "modify" ? "Jak chceš plán upravit?" : "Na co se chceš zaměřit?"}
+              className="min-h-[80px] text-sm"
+            />
+          )}
+          <Button
+            className="w-full"
+            disabled={!sessionMode || ((sessionMode === "modify" || sessionMode === "custom") && !customTopic.trim())}
+            onClick={handleConfirm}
+          >
+            Začít sezení
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
@@ -332,7 +434,6 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
               className="hidden"
               onChange={async (e) => {
                 handleFileChange(e);
-                // Wait for state update then analyze
                 const file = e.target.files?.[0];
                 if (!file) return;
                 setIsImageAnalyzing(true);
