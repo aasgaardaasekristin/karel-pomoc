@@ -119,17 +119,25 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
   }, []);
 
   const removeSession = useCallback((id: string) => {
-    const next = sessions.filter(s => s.id !== id);
-    persist(next);
-    if (activeSessionId === id) {
-      const newActive = next.length > 0 ? next[0].id : null;
-      setActiveSessionId(newActive);
-      try {
-        if (newActive) localStorage.setItem(ACTIVE_KEY, newActive);
-        else localStorage.removeItem(ACTIVE_KEY);
-      } catch {}
-    }
-  }, [sessions, activeSessionId, persist]);
+    persist(prev => {
+      const next = prev.filter(s => s.id !== id);
+      return next;
+    });
+    setActiveSessionId(prev => {
+      if (prev === id) {
+        // We need to read current sessions to find a replacement
+        const stored = loadSessions();
+        const remaining = stored.filter(s => s.id !== id);
+        const newActive = remaining.length > 0 ? remaining[0].id : null;
+        try {
+          if (newActive) localStorage.setItem(ACTIVE_KEY, newActive);
+          else localStorage.removeItem(ACTIVE_KEY);
+        } catch {}
+        return newActive;
+      }
+      return prev;
+    });
+  }, [persist]);
 
   const setActiveSessionFn = useCallback((id: string) => {
     setActiveSessionId(id);
