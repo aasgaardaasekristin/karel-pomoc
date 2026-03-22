@@ -33,6 +33,7 @@ import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
 import SessionIntakePanel from "@/components/report/SessionIntakePanel";
 import ClientTasksPanel from "@/components/report/ClientTasksPanel";
 import CardAnalysisPanel from "@/components/report/CardAnalysisPanel";
+import LiveSessionPanel from "@/components/report/LiveSessionPanel";
 
 type Client = {
   id: string;
