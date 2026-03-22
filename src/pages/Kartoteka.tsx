@@ -29,6 +29,10 @@ import { toast } from "sonner";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
 import ClientDiscussionChat from "@/components/report/ClientDiscussionChat";
 import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
+import SessionIntakePanel from "@/components/report/SessionIntakePanel";
+import ClientTasksPanel from "@/components/report/ClientTasksPanel";
+import CardAnalysisPanel from "@/components/report/CardAnalysisPanel";
+import SessionPlanPanel from "@/components/report/SessionPlanPanel";
 type Client = {
   id: string;
   name: string;
