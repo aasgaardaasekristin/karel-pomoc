@@ -233,7 +233,7 @@ const Chat = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });
       else {
-        if (!hubSection) {
+        if (!hubSection && !activeSession) {
           navigate("/hub", { replace: true });
           return;
         }
