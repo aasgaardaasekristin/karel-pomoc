@@ -51,6 +51,7 @@ interface ActiveSessionsContextType {
   updateReportText: (id: string, text: string) => void;
   updateTriageData: (id: string, data: TriageData | null) => void;
   updateStatus: (id: string, status: SessionWorkspace["status"]) => void;
+  updateSessionPlan: (id: string, plan: any) => void;
 }
 
 const ActiveSessionsContext = createContext<ActiveSessionsContextType | undefined>(undefined);
