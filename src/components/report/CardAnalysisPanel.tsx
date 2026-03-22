@@ -209,7 +209,7 @@ const CardAnalysisPanel = ({
               <div className="max-w-xs mx-auto">
                 <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
                   <div className="h-full bg-primary rounded-full animate-indeterminate-progress" 
-                       style={{ width: "40%", animation: "indeterminate 1.5s ease-in-out infinite" }} />
+                       style={{ width: "40%" }} />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Může to trvat 15-30 sekund</p>
