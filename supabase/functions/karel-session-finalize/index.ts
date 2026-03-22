@@ -39,6 +39,8 @@ serve(async (req) => {
 
     const prompt = `Jsi Karel, klinický supervizor. Právě skončilo sezení s klientem. Na základě přepisu chatu z live sezení vytvoř PROFESIONÁLNÍ ZÁPIS ZE SEZENÍ v češtině.
 
+KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z přepisu live sezení níže. NEVYMÝŠLEJ si nic, co v přepisu není. Pokud v přepisu něco chybí, napiš "nebylo zaznamenáno" – NIKDY nefabuluj.
+
 KLIENT: ${clientName}
 ${client?.diagnosis ? `Diagnóza: ${client.diagnosis}` : ""}
 ${client?.therapy_type ? `Typ terapie: ${client.therapy_type}` : ""}
