@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
+import { blobToBase64 } from "@/lib/driveUtils";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
