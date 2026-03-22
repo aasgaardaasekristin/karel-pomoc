@@ -57,7 +57,7 @@ interface ActiveSessionsContextType {
 
 const ActiveSessionsContext = createContext<ActiveSessionsContextType | undefined>(undefined);
 
-const MAX_SESSIONS = 5;
+const MAX_SESSIONS = 50;
 const STORAGE_KEY = "karel_active_sessions";
 const ACTIVE_KEY = "karel_active_session_id";
 
