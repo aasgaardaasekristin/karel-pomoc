@@ -515,8 +515,8 @@ const CardAnalysisPanel = ({
             <p className="text-sm font-medium animate-pulse">{PLAN_STEPS[planStep]}</p>
           </div>
           <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full"
-                 style={{ width: "40%", animation: "indeterminate 1.5s ease-in-out infinite" }} />
+            <div className="h-full bg-primary rounded-full animate-indeterminate-progress"
+                 style={{ width: "40%" }} />
           </div>
           {planContent && (
             <div className="mt-3 max-h-60 overflow-y-auto bg-background/50 rounded-lg p-3 prose prose-sm max-w-none dark:prose-invert">
