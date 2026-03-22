@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
-import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -35,7 +34,7 @@ interface LiveSessionPanelProps {
 }
 
 const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: LiveSessionPanelProps) => {
-  const { activeSession, activeSessionId, updateChatMessages } = useActiveSessions();
+  const { activeSession, activeSessionId, updateChatMessages, sessions, createSession, setActiveSession } = useActiveSessions();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -44,40 +43,68 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   const recorder = useSessionAudioRecorder();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
-  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, clearImages } = useImageUpload();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageAnalysisType, setImageAnalysisType] = useState("Kresba klienta");
   const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
   const [sessionMode, setSessionMode] = useState<SessionMode | null>(null);
   const [customTopic, setCustomTopic] = useState("");
   const [modeConfirmed, setModeConfirmed] = useState(false);
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
+  const greetingSentRef = useRef(false);
 
-  const messages = activeSession?.chatMessages ?? [];
-  const sessionPlan = activeSession?.sessionPlan;
+  // Self-heal: ensure activeSession matches this clientId
+  const resolvedSessionId = (() => {
+    if (activeSession?.clientId === clientId) return activeSessionId;
+    const match = sessions.find(s => s.clientId === clientId);
+    return match?.id ?? null;
+  })();
+
+  useEffect(() => {
+    if (activeSession?.clientId === clientId) return;
+    const match = sessions.find(s => s.clientId === clientId);
+    if (match) {
+      console.log("[LiveSessionPanel] Self-heal: activating existing session for client", clientId);
+      setActiveSession(match.id);
+    } else {
+      console.log("[LiveSessionPanel] Self-heal: creating session for client", clientId);
+      createSession(clientId, clientName);
+    }
+  }, [clientId, activeSession?.clientId, sessions, setActiveSession, createSession, clientName]);
+
+  const resolvedSession = activeSession?.clientId === clientId ? activeSession : sessions.find(s => s.clientId === clientId) ?? null;
+  const messages = resolvedSession?.chatMessages ?? [];
+  const sessionPlan = resolvedSession?.sessionPlan;
   const hasPlan = !!sessionPlan;
+
+  // Debug mount log
+  useEffect(() => {
+    console.log("[LiveSessionPanel] state", { activeSessionId, resolvedSessionId, hasSession: !!resolvedSession, modeConfirmed, messagesLen: messages.length });
+  }, [activeSessionId, resolvedSessionId, resolvedSession, modeConfirmed, messages.length]);
 
   // Auto-greet after mode confirmed
   useEffect(() => {
-    if (activeSession && messages.length === 0 && modeConfirmed && sessionMode) {
-      let greeting = "";
-      switch (sessionMode) {
-        case "plan":
-          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPracujeme **podle připraveného plánu**. Budu tě provádět jednotlivými fázemi.\n\n*Začni kdykoliv – jsem připravený.*`;
-          break;
-        case "modify":
-          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nMáme plán, ale upravíme ho podle tvého zadání: "${customTopic}"\n\n*Začni kdykoliv – jsem připravený.*`;
-          break;
-        case "custom":
-          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nDnes se zaměříme na: **${customTopic}**\n\n*Začni kdykoliv – jsem připravený.*`;
-          break;
-        case "free":
-        default:
-          greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPiš mi, co klient říká nebo dělá, a já ti v reálném čase poradím jak reagovat.\n\n*Začni kdykoliv – jsem připravený.*`;
-          break;
-      }
-      updateChatMessages(activeSession.id, [{ role: "assistant", content: greeting }]);
+    if (!resolvedSessionId || !modeConfirmed || !sessionMode) return;
+    if (messages.length > 0 || greetingSentRef.current) return;
+    greetingSentRef.current = true;
+
+    let greeting = "";
+    switch (sessionMode) {
+      case "plan":
+        greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPracujeme **podle připraveného plánu**. Budu tě provádět jednotlivými fázemi.\n\n*Začni kdykoliv – jsem připravený.*`;
+        break;
+      case "modify":
+        greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nMáme plán, ale upravíme ho podle tvého zadání: "${customTopic}"\n\n*Začni kdykoliv – jsem připravený.*`;
+        break;
+      case "custom":
+        greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nDnes se zaměříme na: **${customTopic}**\n\n*Začni kdykoliv – jsem připravený.*`;
+        break;
+      case "free":
+      default:
+        greeting = `Hani, jsem tu s tebou na sezení s **${clientName}**. 🎯\n\nPiš mi, co klient říká nebo dělá, a já ti v reálném čase poradím jak reagovat.\n\n*Začni kdykoliv – jsem připravený.*`;
+        break;
     }
-  }, [modeConfirmed]);
+    updateChatMessages(resolvedSessionId, [{ role: "assistant", content: greeting }]);
+  }, [modeConfirmed, resolvedSessionId, sessionMode, messages.length, clientName, customTopic, updateChatMessages]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -109,19 +136,13 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
   ⚠️ Rizika/varování (pokud relevantní)
   🎮 Další krok (co udělat/zeptat se)
 - Pokud dostaneš audio analýzu, reaguj na zjištění z hlasu (tenze, emoce).
+- Pokud dostaneš analýzu obrázku/kresby, reaguj na zjištění a doporuč další postup.
 - Buď direktivní a konkrétní. Žádné filozofování.`;
   }, [clientName, caseSummary, sessionMode, sessionPlan, customTopic]);
 
-  const sendMessage = async () => {
-    console.log("[LiveSessionPanel] sendMessage called", { input: input.trim(), isLoading, activeSessionId, activeSessionExists: !!activeSession });
-    if ((!input.trim()) || isLoading) return;
-    const userMessage = input.trim();
-    setInput("");
-
-    const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
-    updateChatMessages(activeSessionId!, updatedMessages);
+  // ── Shared streaming helper ──
+  const requestLiveReply = useCallback(async (messagesForAI: Message[], sessionId: string) => {
     setIsLoading(true);
-
     let assistantContent = "";
     try {
       const headers = await getAuthHeaders();
@@ -131,7 +152,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
           method: "POST",
           headers,
           body: JSON.stringify({
-            messages: updatedMessages,
+            messages: messagesForAI,
             mode: "supervision",
             didInitialContext: buildContext(),
           }),
@@ -142,8 +163,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      const withAssistant = [...updatedMessages, { role: "assistant" as const, content: "" }];
-      updateChatMessages(activeSessionId!, withAssistant);
+      updateChatMessages(sessionId, [...messagesForAI, { role: "assistant" as const, content: "" }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -162,7 +182,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             const content = parsed.choices?.[0]?.delta?.content;
             if (content) {
               assistantContent += content;
-              updateChatMessages(activeSessionId!, [...updatedMessages, { role: "assistant" as const, content: assistantContent }]);
+              updateChatMessages(sessionId, [...messagesForAI, { role: "assistant" as const, content: assistantContent }]);
             }
           } catch {
             buffer = line + "\n" + buffer;
@@ -171,18 +191,40 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         }
       }
     } catch (error) {
-      console.error("Live session error:", error);
+      console.error("[LiveSessionPanel] requestLiveReply error:", error);
       toast.error("Chyba při komunikaci s Karlem");
-      if (!assistantContent) updateChatMessages(activeSessionId!, messages);
+      if (!assistantContent) updateChatMessages(sessionId, messagesForAI);
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
+  }, [buildContext, updateChatMessages]);
+
+  // ── Send text message ──
+  const sendMessage = async () => {
+    console.log("[LiveSessionPanel] sendMessage called", { input: input.trim(), isLoading, resolvedSessionId });
+    if (!input.trim() || isLoading) return;
+
+    if (!resolvedSessionId) {
+      console.error("[LiveSessionPanel] No resolvedSessionId!", { activeSessionId, clientId, sessionsCount: sessions.length });
+      toast.error("Chyba: session nebyla aktivována. Zkus znovu otevřít záložku Asistence.");
+      return;
+    }
+
+    const userMessage = input.trim();
+    setInput("");
+    const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
+    updateChatMessages(resolvedSessionId, updatedMessages);
+    await requestLiveReply(updatedMessages, resolvedSessionId);
   };
 
-  // Audio segment analysis
+  // ── Audio segment analysis ──
   const handleAudioSegmentAnalysis = async () => {
     if (isAudioAnalyzing) return;
+    if (!resolvedSessionId) {
+      toast.error("Chyba: session nebyla aktivována");
+      return;
+    }
     setIsAudioAnalyzing(true);
     try {
       const base64 = await recorder.getBase64();
@@ -210,23 +252,94 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         }
       );
 
-      if (!response.ok) throw new Error("Chyba při analýze");
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error("[LiveSessionPanel] Audio analysis API error:", response.status, errText);
+        throw new Error("Chyba při analýze");
+      }
       const { analysis } = await response.json();
       if (!analysis) throw new Error("Prázdná analýza");
 
-      const updatedMessages = [
+      const updatedMessages: Message[] = [
         ...messages,
-        { role: "user" as const, content: `🎙️ *[Audio segment #${segNum} – ${formatDuration(recorder.duration)}]*` },
-        { role: "assistant" as const, content: analysis },
+        { role: "user", content: `🎙️ *[Audio segment #${segNum} – ${formatDuration(recorder.duration)}]*\n\n**Analýza nahrávky:**\n${analysis}` },
       ];
-      updateChatMessages(activeSessionId!, updatedMessages);
+      updateChatMessages(resolvedSessionId, updatedMessages);
       recorder.reset();
       toast.success(`Audio segment #${segNum} analyzován`);
+
+      // Karel follows up with live advice
+      await requestLiveReply(updatedMessages, resolvedSessionId);
     } catch (error) {
       console.error("Audio analysis error:", error);
       toast.error("Chyba při analýze audia");
     } finally {
       setIsAudioAnalyzing(false);
+    }
+  };
+
+  // ── Image analysis handler ──
+  const handleImageAnalysis = async (file: File) => {
+    if (!resolvedSessionId) {
+      toast.error("Chyba: session nebyla aktivována");
+      return;
+    }
+    setIsImageAnalyzing(true);
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
+      const chatContext = messages.slice(-10).map(m =>
+        `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
+      ).join("\n");
+
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            attachments: [{
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              dataUrl,
+              category: "image",
+            }],
+            mode: "supervision",
+            chatContext,
+            userPrompt: `Toto je ${imageAnalysisType} KLIENTA (ne terapeuta). Analyzuj v kontextu live sezení.`,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("[LiveSessionPanel] Image analysis API error:", res.status, errText);
+        throw new Error("Chyba při analýze");
+      }
+      const data = await res.json();
+      const analysis = data.analysis || data.response || "";
+      if (!analysis) throw new Error("Prázdná analýza");
+
+      const updatedMsgs: Message[] = [
+        ...messages,
+        { role: "user", content: `🖼️ *[${imageAnalysisType}: ${file.name}]*\n\n**Analýza obrázku:**\n${analysis}` },
+      ];
+      updateChatMessages(resolvedSessionId, updatedMsgs);
+      toast.success(`${imageAnalysisType} analyzována`);
+
+      // Karel follows up with live advice
+      await requestLiveReply(updatedMsgs, resolvedSessionId);
+    } catch (err) {
+      console.error("Image analysis error:", err);
+      toast.error("Chyba při analýze obrázku");
+    } finally {
+      setIsImageAnalyzing(false);
     }
   };
 
@@ -500,7 +613,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             <Button
               variant="outline"
               size="sm"
-              onClick={openFilePicker}
+              onClick={() => fileInputRef.current?.click()}
               disabled={isImageAnalyzing}
               className="gap-1.5 h-8 text-xs"
             >
@@ -512,56 +625,11 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
               className="hidden"
-              onChange={async (e) => {
-                handleFileChange(e);
+              onChange={(e) => {
                 const file = e.target.files?.[0];
+                if (fileInputRef.current) fileInputRef.current.value = "";
                 if (!file) return;
-                setIsImageAnalyzing(true);
-                try {
-                  const reader = new FileReader();
-                  const dataUrl = await new Promise<string>((resolve) => {
-                    reader.onload = () => resolve(reader.result as string);
-                    reader.readAsDataURL(file);
-                  });
-
-                  const chatContext = messages.slice(-10).map(m =>
-                    `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
-                  ).join("\n");
-
-                  const headers = await getAuthHeaders();
-                  const res = await fetch(
-                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
-                    {
-                      method: "POST",
-                      headers,
-                      body: JSON.stringify({
-                        attachments: [{ name: file.name, type: file.type, data: dataUrl }],
-                        mode: "supervision",
-                        chatContext,
-                        userPrompt: `Toto je ${imageAnalysisType} KLIENTA (ne terapeuta). Analyzuj v kontextu live sezení.`,
-                      }),
-                    }
-                  );
-
-                  if (!res.ok) throw new Error("Chyba při analýze");
-                  const data = await res.json();
-                  const analysis = data.analysis || data.response || "";
-                  if (!analysis) throw new Error("Prázdná analýza");
-
-                  const updatedMsgs = [
-                    ...messages,
-                    { role: "user" as const, content: `🖼️ *[${imageAnalysisType}: ${file.name}]*` },
-                    { role: "assistant" as const, content: analysis },
-                  ];
-                  updateChatMessages(activeSessionId!, updatedMsgs);
-                  clearImages();
-                  toast.success(`${imageAnalysisType} analyzována`);
-                } catch (err) {
-                  console.error("Image analysis error:", err);
-                  toast.error("Chyba při analýze obrázku");
-                } finally {
-                  setIsImageAnalyzing(false);
-                }
+                handleImageAnalysis(file);
               }}
             />
           </div>
