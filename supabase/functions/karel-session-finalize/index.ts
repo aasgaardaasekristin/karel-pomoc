@@ -7,6 +7,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+function parseTasks(text: string, heading: string): { task: string; priority: string }[] {
+  const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const section = text.match(new RegExp(`${escaped}\\n([\\s\\S]*?)(?=\\n###|$)`));
+  if (!section) return [];
+  return [...section[1].matchAll(/- (?:\[(HIGH|MEDIUM|LOW)\] )?(.+)/gi)]
+    .map(m => ({ task: m[2].trim(), priority: (m[1] || "medium").toLowerCase() }));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -86,7 +94,7 @@ Vytvoř zápis v tomto formátu:
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${LOVABLE_API_KEY}\`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -106,15 +114,7 @@ Vytvoř zápis v tomto formátu:
     const aiData = await aiRes.json();
     const report = aiData.choices?.[0]?.message?.content || "";
 
-    // Parse tasks from report
-    function parseTasks(text: string, heading: string): { task: string; priority: string }[] {
-      const escaped = heading.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
-      const section = text.match(new RegExp(\`\${escaped}\\\\n([\\\\s\\\\S]*?)(?=\\\\n###|$)\`));
-      if (!section) return [];
-      return [...section[1].matchAll(/- (?:\\[(HIGH|MEDIUM|LOW)\\] )?(.+)/gi)]
-        .map(m => ({ task: m[2].trim(), priority: (m[1] || "medium").toLowerCase() }));
-    }
-
+    // Parse and insert tasks
     const therapistTasks = parseTasks(report, "### Úkoly pro terapeuta");
     const clientTasks = parseTasks(report, "### Úkoly pro klienta");
     const nextSession = (count ?? 0) + 2;
@@ -148,7 +148,7 @@ Vytvoř zápis v tomto formátu:
       session_number: (count ?? 0) + 1,
       ai_analysis: report,
       ai_hypotheses: chatTranscript,
-      notes: \`Live sezení s Karlem – \${new Date().toLocaleDateString("cs-CZ")}\`,
+      notes: `Live sezení s Karlem – ${new Date().toLocaleDateString("cs-CZ")}`,
     });
 
     if (insertError) console.error("Insert error:", insertError);
