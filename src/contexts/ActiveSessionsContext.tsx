@@ -183,6 +183,7 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
       updateReportText,
       updateTriageData,
       updateStatus,
+      updateSessionPlan,
     }}>
       {children}
     </ActiveSessionsContext.Provider>
