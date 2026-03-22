@@ -30,7 +30,7 @@ serve(async (req) => {
     // Fetch client data
     const [clientRes, sessionsRes, tasksRes] = await Promise.all([
       supabase.from("clients").select("*").eq("id", clientId).single(),
-      supabase.from("client_sessions").select("*").eq("client_id", clientId).order("session_date", { ascending: false }).limit(15),
+      supabase.from("client_sessions").select("*").eq("client_id", clientId).order("session_date", { ascending: false }).limit(10),
       supabase.from("client_tasks").select("*").eq("client_id", clientId),
     ]);
 
@@ -52,7 +52,7 @@ serve(async (req) => {
     ].filter(Boolean).join("\n");
 
     const sessionsContext = sessions.slice(0, 10).map((s: any, i: number) =>
-      `--- Sezení ${sessions.length - i} (${s.session_date}) ---\n${s.ai_analysis?.slice(0, 400) || s.notes || "(bez záznamu)"}`
+      `--- Sezení ${sessions.length - i} (${s.session_date}) ---\n${(s.ai_analysis || s.notes || "(bez záznamu)").slice(0, 400)}`
     ).join("\n\n");
 
     const tasksContext = tasks.map((t: any) =>
@@ -61,7 +61,7 @@ serve(async (req) => {
 
     const existingPlan = client.therapy_plan || "";
 
-    // Perplexity research (optional)
+    // Perplexity research (optional, reduced timeout)
     let researchInsights = "";
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     if (PERPLEXITY_API_KEY && client.diagnosis) {
@@ -78,7 +78,7 @@ serve(async (req) => {
               ],
             }),
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 25000)),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 15000)),
         ]) as Response;
         if (pplxRes.ok) {
           const d = await pplxRes.json();
@@ -91,9 +91,11 @@ serve(async (req) => {
 
     const isModification = !!modifications && existingPlan;
 
+    const therapistIdentity = `\nDŮLEŽITÉ: Terapeutka se jmenuje HANIČKA (Hanka). Oslovuj ji „Hani" nebo „Haničko". NIKDY ji neoslovuj jménem klienta. Klient a terapeutka jsou dvě různé osoby.\n`;
+
     const systemPrompt = isModification
       ? `Jsi Karel, klinický supervizor s 30letou praxí. Terapeut požádal o úpravu existujícího terapeutického plánu procesu.
-
+${therapistIdentity}
 EXISTUJÍCÍ PLÁN:
 ${existingPlan.slice(0, 3000)}
 
@@ -112,7 +114,7 @@ ${researchInsights ? `\nRESEARCH INSIGHTS:\n${researchInsights.slice(0, 2000)}` 
 
 Uprav plán podle požadavků terapeuta. Zachovej strukturu. Vrať POUZE markdown text upraveného plánu.`
       : `Jsi Karel, klinický supervizor s 30letou praxí. Na základě kompletní karty klienta sestav CELKOVÝ TERAPEUTICKÝ PLÁN PROCESU – dlouhodobý odborný plán psychoterapie.
-
+${therapistIdentity}
 ${clientContext}
 
 SEZENÍ (${sessions.length}):
@@ -164,21 +166,44 @@ Sestav plán v tomto formátu (markdown):
 
 Vrať POUZE markdown text plánu, nic jiného.`;
 
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: isModification ? "Uprav plán podle požadavků." : "Sestav celkový terapeutický plán procesu." },
-        ],
-        stream: true,
-      }),
-    });
+    // AI call with retry (2 attempts)
+    let aiRes: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-pro",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: isModification ? "Uprav plán podle požadavků." : "Sestav celkový terapeutický plán procesu." },
+            ],
+            stream: true,
+          }),
+        });
+        if (aiRes.ok || aiRes.status === 429 || aiRes.status === 402) break;
+        // Retry on 5xx
+        if (aiRes.status >= 500 && attempt < 1) {
+          console.error(`AI gateway ${aiRes.status}, retrying in 2s...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+      } catch (fetchErr) {
+        if (attempt < 1) {
+          console.error("AI fetch error, retrying:", fetchErr);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        throw fetchErr;
+      }
+      break;
+    }
+
+    if (!aiRes) throw new Error("AI gateway unreachable");
 
     if (!aiRes.ok) {
       if (aiRes.status === 429) return new Response(JSON.stringify({ error: "Rate limit" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });

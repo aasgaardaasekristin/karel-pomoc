@@ -102,25 +102,44 @@ const CardAnalysisPanel = ({
     }
   };
 
-  const handleGeneratePlan = async (mods?: string) => {
+  const handleGeneratePlan = async (mods?: string, retryCount = 0) => {
     setPlanState("generating");
     setPlanStep(0);
     setPlanContent("");
 
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-therapy-process-plan`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            clientId,
-            cardAnalysis: result,
-            modifications: mods || undefined,
-          }),
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+      let res: Response;
+      try {
+        res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-therapy-process-plan`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              clientId,
+              cardAnalysis: result,
+              modifications: mods || undefined,
+            }),
+            signal: controller.signal,
+          }
+        );
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        // Auto-retry once on network error
+        if (retryCount < 1 && (fetchErr.name === "TypeError" || fetchErr.name === "AbortError")) {
+          toast.info("Opakuji požadavek...");
+          await new Promise(r => setTimeout(r, 2000));
+          return handleGeneratePlan(mods, retryCount + 1);
         }
-      );
+        throw new Error(fetchErr.name === "AbortError"
+          ? "Sestavování plánu trvá příliš dlouho — zkuste to znovu"
+          : "Chyba připojení — zkuste to znovu");
+      }
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
