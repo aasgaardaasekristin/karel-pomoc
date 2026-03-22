@@ -245,6 +245,8 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             clientName,
             chatMessages: messages,
             caseSummary,
+            sessionPlan: sessionMode === "plan" ? sessionPlan : null,
+            sessionMode: sessionMode || "free",
           }),
         }
       );
