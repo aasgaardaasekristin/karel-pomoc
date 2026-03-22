@@ -646,7 +646,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ANALÝZA ─── */}
-            <TabsContent value="analysis">
+            <TabsContent value="analysis" forceMount className={activeTab === "analysis" ? "" : "hidden"}>
               <CardAnalysisPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
