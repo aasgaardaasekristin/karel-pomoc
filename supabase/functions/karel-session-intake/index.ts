@@ -23,7 +23,7 @@ serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
 
-    const { clientId, inputType, textInput, audioBase64, sessionDate, therapistName } = await req.json();
+    const { clientId, inputType, textInput, audioBase64, sessionDate, therapistName, revisionRequest } = await req.json();
     if (!clientId) throw new Error("clientId required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -74,6 +74,11 @@ serve(async (req) => {
       });
     }
 
+    // Append revision instructions if present
+    if (revisionRequest) {
+      userContent.push({ type: "text", text: `\n\nINSTRUKCE K ÚPRAVĚ: ${revisionRequest}` });
+    }
+
     const systemPrompt = `Jsi Karel, klinický supervizor. Terapeutka ti posílá popis toho, co proběhlo na sezení s klientem. Tvým úkolem je vytvořit strukturovaný zápis ze sezení.
 ${emptyCardWarning}
 
@@ -96,7 +101,7 @@ KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z popisu terapeuta. NEVYMÝŠLEJ si det
 Tvůj výstup MUSÍ být validní JSON v tomto formátu:
 {
   "transcription": "přepis audia, pokud bylo audio, jinak null",
-  "summary": "strukturovaný zápis ze sezení (3-5 odstavců)",
+  "summary": "Strukturovaný zápis ve formátu BIRP+S:\\nB – PREZENTACE KLIENTA: [chování, vzhled, nálada, nonverbální projevy]\\nI – INTERVENCE: [co terapeut dělal, jaké techniky použil]\\nR – ODPOVĚĎ KLIENTA: [jak klient reagoval, co řekl, posun]\\nP – PLÁN: [co příště, zaměření, témata]\\nS – SUPERVIZNÍ POZNÁMKA (Karel): [klinická pozorování, hypotézy, rizika]",
   "analysis": "analýza v kontextu celkové terapie a předchozích sezení",
   "diagnosticHypothesis": {
     "hypothesis": "diagnostická hypotéza na základě pozorování",
@@ -152,7 +157,6 @@ Tvůj výstup MUSÍ být validní JSON v tomto formátu:
       const jsonStr = rawContent.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       parsed = JSON.parse(jsonStr);
     } catch {
-      // If JSON parsing fails, return raw as summary
       parsed = {
         summary: rawContent,
         analysis: "",
@@ -164,47 +168,7 @@ Tvůj výstup MUSÍ být validní JSON v tomto formátu:
       };
     }
 
-    // Save session to DB
-    const { error: sessionError } = await supabase.from("client_sessions").insert({
-      client_id: clientId,
-      session_number: sessionNumber,
-      session_date: sessionDate || new Date().toISOString().split("T")[0],
-      ai_analysis: parsed.summary || "",
-      ai_hypotheses: parsed.analysis || "",
-      ai_recommended_methods: (parsed.therapeuticRecommendations || []).map((r: any) => `${r.approach}: ${r.reason}`).join("\n"),
-      ai_risk_assessment: parsed.diagnosticHypothesis?.hypothesis || "",
-      notes: `Zápis sezení č. ${sessionNumber} – ${therapistName || "terapeut"} – ${new Date().toLocaleDateString("cs-CZ")}`,
-      report_next_session_goal: (parsed.nextSessionFocus || []).join("; "),
-      report_missing_data: (parsed.diagnosticHypothesis?.missingData || []).join("; "),
-    });
-
-    if (sessionError) console.error("Session insert error:", sessionError);
-
-    // Save questionnaire items as client_tasks
-    const questionnaireTasks = (parsed.questionnaire || []).map((q: any) => ({
-      client_id: clientId,
-      task: q.question,
-      task_type: "therapist_question",
-      priority: q.priority || "medium",
-      status: "planned",
-      method: q.category || "other",
-    }));
-
-    // Save client homework tasks
-    const homeworkTasks = (parsed.clientTasks || []).map((t: string) => ({
-      client_id: clientId,
-      task: t,
-      task_type: "client_homework",
-      priority: "medium",
-      status: "planned",
-    }));
-
-    const allNewTasks = [...questionnaireTasks, ...homeworkTasks];
-    if (allNewTasks.length > 0) {
-      const { error: tasksError } = await supabase.from("client_tasks").insert(allNewTasks);
-      if (tasksError) console.error("Tasks insert error:", tasksError);
-    }
-
+    // Return AI result — DB save is handled by the frontend after review
     return new Response(JSON.stringify({
       sessionNumber,
       sessionDate: sessionDate || new Date().toISOString().split("T")[0],

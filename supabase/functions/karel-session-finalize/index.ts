@@ -64,26 +64,24 @@ Vytvoř zápis v tomto formátu:
 **Klient:** ${clientName}
 **Číslo sezení:** ${(count ?? 0) + 1}
 
-### Průběh sezení
-(Co se dělo, hlavní témata, reakce klienta)
+B – PREZENTACE KLIENTA
+(Chování, vzhled, nálada, nonverbální projevy klienta)
 
-### Klíčová pozorování
-(Co Karel zaznamenal – neverbální signály, emoční dynamika, přenosy)
+I – INTERVENCE
+(Co terapeut dělal, jaké techniky použil)
 
-### Použité intervence
-(Jaké metody/techniky byly použity)
+R – ODPOVĚĎ KLIENTA
+(Jak klient reagoval, co řekl, posun)
 
-### Rizika a varování
-(Pokud byla identifikována)
+P – PLÁN
+(Co příště, zaměření, témata)
 
-### Doporučení pro příští sezení
-- **Návrh struktury** (60 min): rozložení času
-- **Metody a pomůcky**: co připravit
-- **Klíčové otázky**: na co se zaměřit
-- **Co zjistit příště**: co ověřit
+S – SUPERVIZNÍ POZNÁMKA (Karel)
+(Klinická pozorování, hypotézy, rizika, postřehy supervizora)
 
-### Karlovy poznámky
-(Vlastní postřehy supervizora – co šlo dobře, co zlepšit)
+DIAGNOSTICKÁ HYPOTÉZA: [diagnóza nebo "k ověření"]
+JISTOTA: [nízká/střední/vysoká]
+RIZIKA: [identifikovaná rizika]
 
 ### Úkoly pro terapeuta
 - [HIGH/MEDIUM/LOW] popis úkolu (co ověřit, zjistit, připravit)
