@@ -16,7 +16,9 @@ import {
   Bot,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { blobToBase64 } from "@/lib/driveUtils";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
@@ -129,10 +131,36 @@ const ClientSessionPrepPanel = ({
     }
   };
 
-  const handleApprove = () => {
+  const handleApprove = async () => {
     setPrepState("approved");
     setApprovedAt(new Date().toISOString());
     onPlanApproved?.(plan);
+
+    // Fire-and-forget: backup plan PDF to Drive
+    try {
+      const el = document.getElementById("session-plan-printable");
+      if (el) {
+        const canvas = await html2canvas(el, { scale: 2 });
+        const pdf = new jsPDF("p", "mm", "a4");
+        const w = pdf.internal.pageSize.getWidth();
+        const h = (canvas.height * w) / canvas.width;
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, w, h);
+        const blob = new Blob([pdf.output("arraybuffer")], { type: "application/pdf" });
+        const base64 = await blobToBase64(blob);
+        const today = new Date().toISOString().split("T")[0];
+        const nextNum = sessionNumber ?? (sessions?.length ? sessions.length + 1 : 1);
+        supabase.functions.invoke("karel-session-drive-backup", {
+          body: {
+            pdfBase64: base64,
+            fileName: `Plan_${nextNum}_${clientId}_${today}.pdf`,
+            clientId,
+            folder: "Plany",
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("Plan backup failed:", e);
+    }
   };
 
   const handleDelete = () => {

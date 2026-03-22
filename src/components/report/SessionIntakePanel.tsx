@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
+import { blobToBase64 } from "@/lib/driveUtils";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
@@ -194,6 +196,39 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
       }
 
       toast.success(`Sezení č. ${result.sessionNumber} uloženo`);
+
+      // Fire-and-forget Drive backup
+      try {
+        const sessionDate = result.sessionDate || new Date().toISOString().split("T")[0];
+        const blob = await generateSessionReportBlob(clientName, {
+          session_number: result.sessionNumber,
+          session_date: sessionDate,
+          report_context: "",
+          report_key_theme: "",
+          report_therapist_emotions: [],
+          report_transference: "",
+          report_risks: [],
+          report_missing_data: (rec.diagnosticHypothesis?.missingData || []).join("; "),
+          report_interventions_tried: (rec.therapeuticRecommendations || []).map((r: any) => `${r.approach}: ${r.reason}`).join("\n"),
+          report_next_session_goal: (rec.nextSessionFocus || []).join("; "),
+          ai_analysis: rec.summary || "",
+          voice_analysis: "",
+          notes: rec.analysis || "",
+        });
+        const base64 = await blobToBase64(blob);
+        const today = new Date().toISOString().split("T")[0];
+        supabase.functions.invoke("karel-session-drive-backup", {
+          body: {
+            pdfBase64: base64,
+            fileName: `Zapis_${result.sessionNumber}_${clientId}_${today}.pdf`,
+            clientId,
+            folder: "Sezeni",
+          },
+        });
+      } catch (e) {
+        console.warn("Drive backup failed:", e);
+      }
+
       onComplete();
     } catch (err: any) {
       console.error("Save error:", err);

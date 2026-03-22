@@ -9,6 +9,8 @@ import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ImagePlus, Clipboa
 import { Badge } from "@/components/ui/badge";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
+import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
+import { blobToBase64 } from "@/lib/driveUtils";
 import { toast } from "sonner";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import ChatMessage from "@/components/ChatMessage";
@@ -254,6 +256,38 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
 
       if (!response.ok) throw new Error("Chyba při finalizaci");
       const { report } = await response.json();
+
+      // Fire-and-forget Drive backup
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const blob = await generateSessionReportBlob(clientName, {
+          session_number: null,
+          session_date: today,
+          report_context: "",
+          report_key_theme: "",
+          report_therapist_emotions: [],
+          report_transference: "",
+          report_risks: [],
+          report_missing_data: "",
+          report_interventions_tried: "",
+          report_next_session_goal: "",
+          ai_analysis: report || "",
+          voice_analysis: "",
+          notes: "",
+        });
+        const base64 = await blobToBase64(blob);
+        supabase.functions.invoke("karel-session-drive-backup", {
+          body: {
+            pdfBase64: base64,
+            fileName: `Asistence_${clientId}_${today}.pdf`,
+            clientId,
+            folder: "Asistence",
+          },
+        });
+      } catch (e) {
+        console.warn("Assistance backup failed:", e);
+      }
+
       onEndSession(report || "Zápis nebyl vygenerován.");
     } catch (error) {
       console.error("Finalize error:", error);
