@@ -77,6 +77,9 @@ type ClientTask = {
   due_date: string | null;
   result: string;
   notes: string;
+  task_type?: string;
+  priority?: string;
+  answer?: string;
   created_at: string;
 };
 
