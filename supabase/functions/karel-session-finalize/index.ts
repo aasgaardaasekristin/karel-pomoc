@@ -45,6 +45,13 @@ serve(async (req) => {
       .map((m: any) => `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`)
       .join("\n\n");
 
+    const planContext = sessionPlan
+      ? `\n\nPLÁN SEZENÍ KTERÝ BYL POUŽIT:\nCíl: ${sessionPlan.sessionGoal || "neuvedeno"}\nFáze: ${
+          (sessionPlan.phases || []).map((p: any) => `${p.timeRange || ""} ${p.name}: ${p.technique || ""}`).join(", ")
+        }`
+      : "";
+    const modeLabel = `\nForma asistence: ${sessionMode || "volná"}`;
+
     const prompt = `Jsi Karel, klinický supervizor. Právě skončilo sezení s klientem. Na základě přepisu chatu z live sezení vytvoř PROFESIONÁLNÍ ZÁPIS ZE SEZENÍ v češtině.
 
 KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z přepisu live sezení níže. NEVYMÝŠLEJ si nic, co v přepisu není. Pokud v přepisu něco chybí, napiš "nebylo zaznamenáno" – NIKDY nefabuluj.
@@ -52,7 +59,7 @@ KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z přepisu live sezení níže. NEVYMÝ
 KLIENT: ${clientName}
 ${client?.diagnosis ? `Diagnóza: ${client.diagnosis}` : ""}
 ${client?.therapy_type ? `Typ terapie: ${client.therapy_type}` : ""}
-${caseSummary ? `\nSHRNUTÍ PŘÍPADU:\n${caseSummary}` : ""}
+${caseSummary ? `\nSHRNUTÍ PŘÍPADU:\n${caseSummary}` : ""}${planContext}${modeLabel}
 
 PŘEPIS LIVE SEZENÍ:
 ${chatTranscript}

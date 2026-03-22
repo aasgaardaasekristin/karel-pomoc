@@ -339,7 +339,42 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0 relative">
+      {/* Phase banner */}
+      {sessionMode === "plan" && sessionPlan?.phases && (
+        <div className="px-4 py-2 bg-primary/5 border-b border-border flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0">
+            <Badge variant="outline" className="text-xs shrink-0">
+              Fáze {currentPhaseIndex + 1}/{sessionPlan.phases.length}
+            </Badge>
+            <span className="text-sm font-medium text-foreground truncate">
+              {sessionPlan.phases[currentPhaseIndex]?.name}
+            </span>
+            {sessionPlan.phases[currentPhaseIndex]?.timeRange && (
+              <Badge variant="secondary" className="text-[10px] shrink-0">
+                {sessionPlan.phases[currentPhaseIndex].timeRange}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {currentPhaseIndex < sessionPlan.phases.length - 1 && (
+              <span className="text-xs text-muted-foreground hidden sm:inline">
+                Příští: {sessionPlan.phases[currentPhaseIndex + 1]?.name}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs gap-1"
+              disabled={currentPhaseIndex >= sessionPlan.phases.length - 1}
+              onClick={() => setCurrentPhaseIndex(i => Math.min(i + 1, sessionPlan.phases.length - 1))}
+            >
+              → Další fáze
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-card/50">
         <div className="flex items-center justify-between gap-3">

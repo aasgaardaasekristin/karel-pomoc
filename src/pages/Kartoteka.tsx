@@ -633,12 +633,24 @@ const Kartoteka = () => {
                   try {
                     const sessionId = createSession(selectedClient.id, selectedClient.name);
                     updateSessionPlan(sessionId, plan);
-                    sessionStorage.setItem("karel_hub_section", "hana");
-                    setMainMode("report");
-                    navigate("/chat");
+                    setActiveTab("assistance");
                   } catch (e: any) {
                     toast.error(e.message || "Chyba při vytváření sezení");
                   }
+                }}
+              />
+            </TabsContent>
+
+            {/* ─── ASISTENCE ─── */}
+            <TabsContent value="assistance">
+              <LiveSessionPanel
+                clientId={selectedClient.id}
+                clientName={selectedClient.name}
+                caseSummary={null}
+                onEndSession={() => {
+                  loadClientDetail(selectedClient);
+                  setActiveTab("sessions");
+                  toast.success("Zápis sezení uložen do záložky Sezení");
                 }}
               />
             </TabsContent>
