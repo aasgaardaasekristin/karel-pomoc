@@ -13,6 +13,7 @@ export interface SessionWorkspace {
   triageData: TriageData | null;
   status: "active" | "report-ready" | "archived";
   createdAt: number;
+  sessionPlan?: any;
 }
 
 const DEFAULT_FORM: ReportFormData = {
