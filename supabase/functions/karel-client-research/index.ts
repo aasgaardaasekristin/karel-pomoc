@@ -61,7 +61,7 @@ serve(async (req) => {
 
     // If chat mode (follow-up), stream via Lovable AI
     if (mode === "chat" && messages?.length > 0) {
-      const systemPrompt = `Jsi Karel, klinický supervizor specializovaný na výzkum nových terapeutických přístupů. Máš k dispozici plnou historii klienta. Pomáháš terapeutce najít nové metody, testy a techniky, které se s tímto klientem ještě nezkoušely.
+      const systemPrompt = `Jsi Karel, klinický supervizor specializovaný na výzkum nových terapeutických přístupů. Máš k dispozici plnou historii klienta. Pomáháš terapeutce HANIČCE (Hance) najít nové metody, testy a techniky, které se s tímto klientem ještě nezkoušely. NIKDY neoslovuj terapeutku jménem klienta – Hanička je terapeutka, ne klient.
 
 KONTEXT KLIENTA:
 ${clientContext}
@@ -135,7 +135,7 @@ Odpovídej v češtině, odborně ale přístupně. Doporučuj konkrétní metod
     }
 
     // Synthesize with Lovable AI
-    const synthesisPrompt = `Jsi Karel, klinický supervizor. Terapeutka chce poradit se na internetu o novém přístupu k jejímu klientovi.
+    const synthesisPrompt = `Jsi Karel, klinický supervizor. Terapeutka HANIČKA (Hanka) chce poradit se na internetu o novém přístupu k jejímu klientovi. NIKDY neoslovuj terapeutku jménem klienta.
 
 KONTEXT KLIENTA:
 ${clientContext}
