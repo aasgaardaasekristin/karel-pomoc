@@ -63,10 +63,7 @@ function section(doc: jsPDF, label: string, value: string | null | undefined, x:
   return y;
 }
 
-export async function exportSessionReportPdf(
-  clientName: string,
-  session: SessionData,
-): Promise<void> {
+async function buildSessionDoc(clientName: string, session: SessionData): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pw = doc.internal.pageSize.getWidth();
   const m = 15;
@@ -156,6 +153,22 @@ export async function exportSessionReportPdf(
     doc.text(`Karel · Report sezení · ${clientName} · Strana ${i}/${totalPages}`, pw / 2, doc.internal.pageSize.getHeight() - 8, { align: "center" });
   }
 
+  return doc;
+}
+
+export async function exportSessionReportPdf(
+  clientName: string,
+  session: SessionData,
+): Promise<void> {
+  const doc = await buildSessionDoc(clientName, session);
   const safeName = clientName.replace(/[^a-zA-Z0-9áčďéěíňóřšťúůýžÁČĎÉĚÍŇÓŘŠŤÚŮÝŽ ]/g, "").replace(/\s+/g, "_");
   doc.save(`Report_${safeName}_${session.session_date}.pdf`);
+}
+
+export async function generateSessionReportBlob(
+  clientName: string,
+  session: SessionData,
+): Promise<Blob> {
+  const doc = await buildSessionDoc(clientName, session);
+  return doc.output("blob");
 }
