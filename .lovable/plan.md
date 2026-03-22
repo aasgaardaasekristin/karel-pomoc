@@ -1,46 +1,74 @@
 
 
-# Fix: BIRP+S vizuální formátování
+# FÁZE 2 — Záložka „Připravit sezení" + předsezení briefing
 
-## Problém
-AI vrací summary jako jednořádkový text "Strukturovaný zápis ve formátu BIRP+S: B – PREZENTACE KLIENTA: ..." — vizuálně nepřehledné.
+5 souborů, ~355 řádků, 1 smazání, závislost: jspdf + html2canvas.
 
-## Řešení — 2 změny
+## 1. Smazat `src/components/report/SessionPlanPanel.tsx`
 
-### 1. `supabase/functions/karel-session-intake/index.ts` (ř. 99-104)
+## 2. `src/pages/Kartoteka.tsx` (~15 řádků)
 
-Nahradit stávající instrukci za:
-- Přidat explicitní větu: `Pole "summary" MUSÍ obsahovat markdown text s nadpisy ## pro každou sekci BIRP+S. Každá sekce na novém řádku. NEPIŠ prefix "Strukturovaný zápis ve formátu BIRP+S:" — začni rovnou sekcí ## B.`
-- Změnit JSON ukázku `summary` na:
-```
-"summary": "## B – PREZENTACE KLIENTA\n[chování, vzhled, nálada]\n\n## I – INTERVENCE\n[techniky]\n\n## R – ODPOVĚĎ KLIENTA\n[reakce, posun]\n\n## P – PLÁN\n[zaměření příště]\n\n## S – SUPERVIZNÍ POZNÁMKA (Karel)\n[hypotézy, rizika]"
-```
+- Odstranit import `SessionPlanPanel` a tab `plan`
+- Přejmenovat tab `prep` → `Připravit sezení`
+- `sm:grid-cols-8` → `sm:grid-cols-7`
+- Předat do `ClientSessionPrepPanel`: `sessions`, `onPlanApproved`, `onPlanDeleted`, `onStartSession`
+- Předat do `CardAnalysisPanel`: `sessions`, `activePlan`, `pendingTasks`
 
-### 2. `src/components/report/SessionIntakePanel.tsx` (ř. 20-21)
+## 3. `src/components/report/ClientSessionPrepPanel.tsx` (~300 řádků — kompletní přepis)
 
-Přidat `formatBirps` helper funkci hned za `SPINNER_CHARS`:
+- **PrepState**: `idle` | `generating` | `review` | `approved`
+- **idle**: Mód A (Karel sám) + Mód B (vlastní požadavek textarea)
+- **generating**: progress indikátor (spinner + timed messages 0-4s/4-10s/10-20s/20s+)
+- **review**: plan display (`id="session-plan-printable"`), phases cards (⏱ badge, technika, Řekni:, Všímej si:, Pomůcky:, Fallback:), `whyThisPlan` details, modification textarea, [🔄 Přepracovat] [📄 PDF] [✅ Schválit]
+- **approved**: read-only plan + [📄 PDF] [▶ Zahájit asistenci] + 🗑️ delete
+- **PDF**: jspdf + html2canvas from `#session-plan-printable`
+- `originalRequestRef = useRef<any>(null)`
 
+## 4. `supabase/functions/karel-session-plan/index.ts` — beze změn (ověřeno)
+
+## 5. `src/components/report/CardAnalysisPanel.tsx` (~60 řádků)
+
+### Nové props
 ```typescript
-const formatBirps = (raw: string): string => {
-  if (!raw || raw === "—") return raw;
-  if (raw.includes("## B")) return raw; // already formatted
-  let text = raw.replace(/^Strukturovaný zápis ve formátu BIRP\+S:\s*/i, "");
-  return text
-    .replace(/B\s*[–-]\s*PREZENTACE KLIENTA:?\s*/g, "## B – PREZENTACE KLIENTA\n")
-    .replace(/I\s*[–-]\s*INTERVENCE:?\s*/g, "\n## I – INTERVENCE\n")
-    .replace(/R\s*[–-]\s*ODPOVĚĎ KLIENTA:?\s*/g, "\n## R – ODPOVĚĎ KLIENTA\n")
-    .replace(/P\s*[–-]\s*PLÁN:?\s*/g, "\n## P – PLÁN\n")
-    .replace(/S\s*[–-]\s*SUPERVIZNÍ POZNÁMKA[^:]*:?\s*/g, "\n## S – SUPERVIZNÍ POZNÁMKA (Karel)\n");
-};
+interface CardAnalysisPanelProps {
+  clientId: string;
+  clientName: string;
+  sessions?: any[];
+  activePlan?: any;
+  pendingTasks?: any[];
+  onRequestPlan?: (analysis: any) => void;
+}
 ```
 
-Na ř. 237 změnit rendering:
-```tsx
-<ReactMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</ReactMarkdown>
+### Sekce PŘEHLED PŘED SEZENÍM (pod stávající analýzou, před tlačítka)
+
+Sestaveno z existujících dat, žádné AI volání:
+
+| Sekce | Zdroj |
+|---|---|
+| KDO JE KLIENT | `result.clientProfile` (první 2 věty) |
+| SEZENÍ CELKEM + poslední datum | `sessionsCount` + `sessions?.[0]?.session_date` |
+| **MINULÉ SEZENÍ – SHRNUTÍ** | `sessions?.[0]?.ai_analysis` — max 3 věty (`.split('.').slice(0,3).join('.')`) |
+| DIAGNOSTICKÁ HYPOTÉZA | `result.diagnosticHypothesis.primary` + confidence badge |
+| VHODNÉ TECHNIKY | `result.nextSessionRecommendations.suggestedTechniques` |
+| CHYBĚJÍCÍ DATA | `result.dataGaps` |
+| **OTEVŘENÉ ÚKOLY** | `pendingTasks?.filter(t => t.status !== 'done')` — 🔴 high / 🟡 medium / 🟢 low + 📝 client_homework |
+| **PLÁN SEZENÍ** | `activePlan` ? `✅ Schválen [▶ Zahájit] [📋 Zobrazit]` : `⬜ Nevygenerován [📋 Sestavit plán]` |
+
+## Závislosti
+
+```bash
+npm install jspdf html2canvas
 ```
 
-## Výsledek
-- Nové generace: AI vrací markdown s `##` nadpisy → ReactMarkdown renderuje sekce vizuálně
-- Staré/fallback: `formatBirps()` regex rozseká jednořádkový text na sekce s nadpisy
-- Žádná DB migrace, 2 soubory, ~15 řádků
+## Souhrn
+
+| Soubor | Akce | ~Řádky |
+|---|---|---|
+| `SessionPlanPanel.tsx` | SMAZAT | -170 |
+| `Kartoteka.tsx` | UPRAVIT | ~15 |
+| `ClientSessionPrepPanel.tsx` | PŘEPSAT | ~300 |
+| `CardAnalysisPanel.tsx` | DOPLNIT | ~60 |
+
+Žádná DB migrace.
 
