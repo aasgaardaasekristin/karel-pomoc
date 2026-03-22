@@ -389,9 +389,9 @@ const Kartoteka = () => {
 
       <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
-          <Tabs defaultValue="card" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
             <div className="overflow-x-auto -mx-3 px-3">
-              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-7 h-auto flex-nowrap">
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-8 h-auto flex-nowrap">
                 <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   <User className="w-3.5 h-3.5 hidden sm:block" />
                   Karta
@@ -416,6 +416,9 @@ const Kartoteka = () => {
                 </TabsTrigger>
                 <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   Připravit sezení
+                </TabsTrigger>
+                <TabsTrigger value="assistance" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Asistence
                 </TabsTrigger>
                 <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
