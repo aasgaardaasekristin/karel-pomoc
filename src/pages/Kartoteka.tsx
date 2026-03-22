@@ -596,18 +596,23 @@ const Kartoteka = () => {
               <CardAnalysisPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
+                sessions={sessions}
+                activePlan={activePlan}
+                pendingTasks={tasks}
                 onRequestPlan={(analysis) => {
                   setCardAnalysis(analysis);
                 }}
               />
             </TabsContent>
 
-            {/* ─── PLÁN ─── */}
-            <TabsContent value="plan">
-              <SessionPlanPanel
+            {/* ─── PŘIPRAVIT SEZENÍ ─── */}
+            <TabsContent value="prep">
+              <ClientSessionPrepPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
-                analysis={cardAnalysis}
+                sessions={sessions}
+                onPlanApproved={(plan) => setActivePlan(plan)}
+                onPlanDeleted={() => setActivePlan(null)}
                 onStartSession={(plan) => {
                   try {
                     const sessionId = createSession(selectedClient.id, selectedClient.name);
@@ -625,11 +630,6 @@ const Kartoteka = () => {
             {/* ─── ROZHOVOR ─── */}
             <TabsContent value="discussion">
               <ClientDiscussionChat clientId={selectedClient.id} clientName={selectedClient.name} />
-            </TabsContent>
-
-            {/* ─── PŘÍPRAVA NA SEZENÍ ─── */}
-            <TabsContent value="prep">
-              <ClientSessionPrepPanel clientId={selectedClient.id} clientName={selectedClient.name} />
             </TabsContent>
           </Tabs>
         </div>

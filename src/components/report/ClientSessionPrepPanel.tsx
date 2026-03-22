@@ -1,173 +1,244 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, CalendarPlus, BookOpen, RefreshCw, Save, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import {
+  Loader2,
+  BookOpen,
+  RefreshCw,
+  CheckCircle2,
+  Trash2,
+  FileDown,
+  Play,
+  Pencil,
+  Bot,
+} from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
-import { supabase } from "@/integrations/supabase/client";
-import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 interface ClientSessionPrepPanelProps {
   clientId: string;
   clientName: string;
+  sessions?: any[];
+  onPlanApproved?: (plan: any) => void;
+  onPlanDeleted?: () => void;
+  onStartSession?: (plan: any) => void;
 }
 
-type PrepStatus = "form" | "generating" | "ready";
+type PrepState = "idle" | "generating" | "review" | "approved";
 
-const ClientSessionPrepPanel = ({ clientId, clientName }: ClientSessionPrepPanelProps) => {
-  const [status, setStatus] = useState<PrepStatus>("form");
-  const [duration, setDuration] = useState("60");
-  const [additionalInfo, setAdditionalInfo] = useState("");
-  const [focusArea, setFocusArea] = useState("");
-  const [prepResult, setPrepResult] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+const SPINNER_CHARS = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
 
-  // Streaming state
-  const [streamContent, setStreamContent] = useState("");
+const PROGRESS_MESSAGES = [
+  { until: 4000, text: "Čtu kartu klienta..." },
+  { until: 10000, text: "Analyzuju předchozí sezení..." },
+  { until: 20000, text: "Konzultuji odborné zdroje..." },
+  { until: Infinity, text: "Sestavuju plán sezení..." },
+];
 
-  const handleGenerate = async () => {
-    setStatus("generating");
-    setStreamContent("");
-    setPrepResult("");
+const phaseColors: Record<string, string> = {
+  "Zahájení": "bg-blue-500/10 border-blue-500/20",
+  "Hlavní téma": "bg-orange-500/10 border-orange-500/20",
+  "Aktivita": "bg-green-500/10 border-green-500/20",
+  "Zpracování": "bg-purple-500/10 border-purple-500/20",
+  "Uzavření": "bg-muted/30 border-border",
+};
+
+const ClientSessionPrepPanel = ({
+  clientId,
+  clientName,
+  sessions,
+  onPlanApproved,
+  onPlanDeleted,
+  onStartSession,
+}: ClientSessionPrepPanelProps) => {
+  const [prepState, setPrepState] = useState<PrepState>("idle");
+  const [prepMode, setPrepMode] = useState<"auto" | "custom" | null>(null);
+  const [customRequest, setCustomRequest] = useState("");
+  const [modificationNote, setModificationNote] = useState("");
+  const [plan, setPlan] = useState<any>(null);
+  const [sessionNumber, setSessionNumber] = useState<number | null>(null);
+  const [approvedAt, setApprovedAt] = useState<string | null>(null);
+  const originalRequestRef = useRef<any>(null);
+
+  // Progress animation
+  const [spinnerChar, setSpinnerChar] = useState(SPINNER_CHARS[0]);
+  const [progressText, setProgressText] = useState("");
+  const [progressValue, setProgressValue] = useState(0);
+  const startTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (prepState !== "generating") return;
+
+    const spinnerInterval = setInterval(() => {
+      setSpinnerChar((prev) => {
+        const idx = SPINNER_CHARS.indexOf(prev);
+        return SPINNER_CHARS[(idx + 1) % SPINNER_CHARS.length];
+      });
+    }, 100);
+
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const msg = PROGRESS_MESSAGES.find((m) => elapsed < m.until);
+      setProgressText(msg?.text || "Sestavuju plán sezení...");
+      setProgressValue(Math.min(95, (elapsed / 30000) * 100));
+    }, 1000);
+
+    return () => {
+      clearInterval(spinnerInterval);
+      clearInterval(progressInterval);
+    };
+  }, [prepState]);
+
+  const handleGenerate = async (modifications?: string) => {
+    setPrepState("generating");
+    setModificationNote("");
+    startTimeRef.current = Date.now();
+    setProgressValue(0);
+    setProgressText(PROGRESS_MESSAGES[0].text);
 
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-client-session-prep`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          clientId,
-          clientName,
-          duration: parseInt(duration) || 60,
-          additionalInfo: additionalInfo.trim(),
-          focusArea: focusArea.trim(),
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Chyba ${res.status}`);
-      }
-
-      if (!res.body) throw new Error("No stream body");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        let newlineIdx: number;
-        while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIdx);
-          buffer = buffer.slice(newlineIdx + 1);
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (!line.startsWith("data: ")) continue;
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
-              setStreamContent(fullContent);
-            }
-          } catch { /* partial */ }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-session-plan`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            clientId,
+            customRequest: originalRequestRef.current?.customRequest || undefined,
+            modificationsRequested: modifications || undefined,
+          }),
         }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Chyba ${res.status}`);
       }
-
-      setPrepResult(fullContent);
-      setStatus("ready");
+      const data = await res.json();
+      setPlan(data.plan);
+      setSessionNumber(data.sessionNumber);
+      setPrepState("review");
     } catch (e: any) {
-      toast.error(e.message || "Nepodařilo se vygenerovat přípravu");
-      setStatus("form");
+      toast.error(e.message || "Chyba při generování plánu");
+      setPrepState("idle");
     }
   };
 
-  const handleSave = async () => {
-    if (!prepResult) return;
-    setIsSaving(true);
+  const handleApprove = () => {
+    setPrepState("approved");
+    setApprovedAt(new Date().toISOString());
+    onPlanApproved?.(plan);
+  };
+
+  const handleDelete = () => {
+    if (window.confirm("Smazat schválený plán?")) {
+      setPlan(null);
+      setPrepState("idle");
+      setApprovedAt(null);
+      setPrepMode(null);
+      onPlanDeleted?.();
+    }
+  };
+
+  const handleRework = () => {
+    handleGenerate(modificationNote);
+  };
+
+  const handleExportPdf = async () => {
+    const el = document.getElementById("session-plan-printable");
+    if (!el) return;
     try {
-      const { error } = await supabase.from("client_sessions").insert({
-        client_id: clientId,
-        session_date: new Date().toISOString().split("T")[0],
-        ai_recommended_methods: prepResult,
-        notes: `Příprava na sezení (${duration} min)${focusArea ? ` – zaměření: ${focusArea}` : ""}`,
-      });
-      if (error) throw error;
-      setSaved(true);
-      toast.success("Příprava uložena do záznamu klienta");
-    } catch (e: any) {
-      toast.error("Nepodařilo se uložit přípravu");
-    } finally {
-      setIsSaving(false);
+      const canvas = await html2canvas(el, { scale: 2 });
+      const pdf = new jsPDF("p", "mm", "a4");
+      const w = pdf.internal.pageSize.getWidth();
+      const h = (canvas.height * w) / canvas.width;
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, w, h);
+      const date = new Date().toISOString().split("T")[0];
+      pdf.save(`Plan_sezeni_${sessionNumber}_${clientName}_${date}.pdf`);
+      toast.success("PDF exportováno");
+    } catch {
+      toast.error("Chyba při exportu PDF");
     }
   };
 
-  useEffect(() => {
-    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [streamContent]);
+  const nextSessionNum = sessionNumber ?? (sessions?.length ? sessions.length + 1 : 1);
 
-  // ─── FORM ───
-  if (status === "form") {
+  // ─── IDLE ───
+  if (prepState === "idle") {
     return (
       <ScrollArea className="flex-1">
-        <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+        <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
           <div className="text-center space-y-2">
-            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
-              <CalendarPlus className="w-7 h-7 text-primary" />
-            </div>
-            <h3 className="text-lg font-serif font-semibold">Připravit sezení pro {clientName}</h3>
-            <p className="text-sm text-muted-foreground">
-              Karel prostuduje kartu klienta, historii sezení a vyhledá nejlepší strategie na míru.
-            </p>
+            <h3 className="text-lg font-serif font-semibold">
+              Připravit sezení č. {nextSessionNum} – {clientName}
+            </h3>
           </div>
 
-          <div className="bg-card border border-border rounded-xl p-5 space-y-4">
-            <div className="space-y-1.5">
-              <Label className="text-sm">Délka sezení (minuty)</Label>
-              <Input
-                type="number"
-                value={duration}
-                onChange={(e) => setDuration(e.target.value)}
-                min={15}
-                max={120}
-                className="h-10"
-              />
+          {/* Mód A */}
+          <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Bot className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Karel připraví sám</p>
+                <p className="text-xs text-muted-foreground">
+                  Prostuduje kartu, sezení, úkoly a internet
+                </p>
+              </div>
             </div>
+            <Button
+              className="w-full h-11 gap-2"
+              onClick={() => {
+                originalRequestRef.current = { clientId, mode: "auto" };
+                setPrepMode("auto");
+                handleGenerate();
+              }}
+            >
+              <BookOpen className="w-4 h-4" />
+              Spustit
+            </Button>
+          </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-sm">Na co se chceš zaměřit? (volitelné)</Label>
-              <Textarea
-                value={focusArea}
-                onChange={(e) => setFocusArea(e.target.value)}
-                placeholder="Např. práce s agresí, separační úzkost, nácvik sociálních dovedností…"
-                className="min-h-[60px] text-sm"
-              />
+          {/* Mód B */}
+          <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-accent/50 flex items-center justify-center shrink-0">
+                <Pencil className="w-5 h-5 text-foreground" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold">Zadám vlastní požadavek</p>
+                <p className="text-xs text-muted-foreground">
+                  Specifikuj zaměření, metody nebo kontext
+                </p>
+              </div>
             </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-sm">Nové informace / změna okolností (volitelné)</Label>
-              <Textarea
-                value={additionalInfo}
-                onChange={(e) => setAdditionalInfo(e.target.value)}
-                placeholder="Např. rodiče se rozchází, změna školy, nový lék…"
-                className="min-h-[60px] text-sm"
-              />
-            </div>
-
-            <Button className="w-full h-12 gap-2 text-base" onClick={handleGenerate}>
-              <BookOpen className="w-5 h-5" />
-              Připravit sezení
+            <Textarea
+              value={customRequest}
+              onChange={(e) => setCustomRequest(e.target.value)}
+              placeholder="Např. včera se pohádal s manželkou, zapracovat do sezení. Metody 1 a 3 fungovaly dobře…"
+              className="min-h-[80px] text-sm"
+            />
+            <Button
+              className="w-full h-11 gap-2"
+              disabled={!customRequest.trim()}
+              onClick={() => {
+                originalRequestRef.current = {
+                  clientId,
+                  mode: "custom",
+                  customRequest: customRequest.trim(),
+                };
+                setPrepMode("custom");
+                handleGenerate();
+              }}
+            >
+              <BookOpen className="w-4 h-4" />
+              Vygenerovat
             </Button>
           </div>
         </div>
@@ -175,54 +246,199 @@ const ClientSessionPrepPanel = ({ clientId, clientName }: ClientSessionPrepPanel
     );
   }
 
-  // ─── GENERATING / READY ───
-  const content = status === "generating" ? streamContent : prepResult;
+  // ─── GENERATING ───
+  if (prepState === "generating") {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-6">
+        <div className="text-4xl font-mono text-primary">{spinnerChar}</div>
+        <p className="text-sm text-muted-foreground">{progressText}</p>
+        <Progress value={progressValue} className="w-64 h-2" />
+      </div>
+    );
+  }
+
+  // ─── PLAN DISPLAY (shared between review & approved) ───
+  const isApproved = prepState === "approved";
 
   return (
     <div className="flex flex-col h-[calc(100vh-200px)]">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {status === "generating" ? (
-            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-          ) : (
+          {isApproved ? (
             <CheckCircle2 className="w-4 h-4 text-primary" />
+          ) : (
+            <Loader2 className="w-4 h-4 text-primary" />
           )}
           <span className="text-sm font-medium">
-            {status === "generating" ? "Karel připravuje sezení…" : `Příprava pro ${clientName}`}
+            {isApproved
+              ? `✅ Plán sezení č. ${sessionNumber} – schváleno ${approvedAt ? new Date(approvedAt).toLocaleDateString("cs-CZ") : ""}`
+              : `Návrh sezení č. ${sessionNumber} – ke schválení`}
           </span>
         </div>
-        {status === "ready" && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={() => { setStatus("form"); setPrepResult(""); setSaved(false); }}
-            >
-              <RefreshCw className="w-3 h-3" />
-              Nová příprava
-            </Button>
-            <Button
-              size="sm"
-              className="h-8 gap-1.5 text-xs"
-              onClick={handleSave}
-              disabled={isSaving || saved}
-            >
-              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <CheckCircle2 className="w-3 h-3" /> : <Save className="w-3 h-3" />}
-              {saved ? "Uloženo" : "Uložit do karty"}
-            </Button>
-          </div>
+        {isApproved && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleDelete}>
+            <Trash2 className="w-4 h-4 text-destructive" />
+          </Button>
         )}
       </div>
 
       {/* Content */}
       <ScrollArea className="flex-1 px-4 py-4">
-        <div className="max-w-2xl mx-auto">
-          <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:my-1.5 [&>h2]:mt-4 [&>h2]:mb-2 [&>h3]:mt-3 [&>h3]:mb-1 [&>ul]:my-1 [&>ol]:my-1">
-            <ReactMarkdown>{content || "Načítání…"}</ReactMarkdown>
+        <div className="max-w-2xl mx-auto space-y-4">
+          <div id="session-plan-printable" className="space-y-4">
+            {/* Session Goal */}
+            {plan?.sessionGoal && (
+              <div className="bg-primary/5 border border-primary/20 rounded-xl p-4">
+                <p className="text-xs text-muted-foreground mb-1">Cíl sezení</p>
+                <p className="text-sm font-semibold">{plan.sessionGoal}</p>
+              </div>
+            )}
+
+            {/* Phases */}
+            {(plan?.phases || []).map((phase: any, i: number) => (
+              <div
+                key={i}
+                className={`rounded-xl border p-4 space-y-2.5 ${phaseColors[phase.name] || "bg-muted/20 border-border"}`}
+              >
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-[10px] tabular-nums shrink-0">
+                    ⏱ {phase.timeStart}–{phase.timeEnd}
+                  </Badge>
+                  <span className="text-sm font-semibold">{phase.name}</span>
+                </div>
+
+                {phase.technique && (
+                  <p className="text-xs text-muted-foreground">
+                    Technika: <span className="text-foreground">{phase.technique}</span>
+                  </p>
+                )}
+
+                {(phase.howToStart || phase.clientInstruction || phase.closingPhrase) && (
+                  <div className="bg-background/60 rounded-lg p-3">
+                    <p className="text-xs text-muted-foreground mb-0.5">Řekni:</p>
+                    <p className="text-sm italic">
+                      "{phase.howToStart || phase.clientInstruction || phase.closingPhrase}"
+                    </p>
+                  </div>
+                )}
+
+                {phase.procedure?.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Postup:</p>
+                    {phase.procedure.map((s: string, j: number) => (
+                      <p key={j} className="text-xs">
+                        {j + 1}. {s}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {phase.supplies?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    <span className="text-xs text-muted-foreground">Pomůcky:</span>
+                    {phase.supplies.map((s: string, j: number) => (
+                      <Badge key={j} variant="outline" className="text-[10px]">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                {phase.watchFor?.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    👀 Všímej si: {phase.watchFor.join(", ")}
+                  </p>
+                )}
+
+                {phase.fallback && (
+                  <p className="text-xs text-muted-foreground">
+                    🔄 Fallback: {phase.fallback}
+                  </p>
+                )}
+
+                {phase.questions?.length > 0 && (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-0.5">Otázky:</p>
+                    {phase.questions.map((q: string, j: number) => (
+                      <p key={j} className="text-xs">
+                        ❓ {q}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                {phase.homeworkForClient && (
+                  <p className="text-xs">📝 Domácí úkol: {phase.homeworkForClient}</p>
+                )}
+              </div>
+            ))}
+
+            {/* Why this plan */}
+            {plan?.whyThisPlan && (
+              <details className="bg-muted/20 rounded-xl border border-border">
+                <summary className="px-4 py-3 text-xs font-medium cursor-pointer text-muted-foreground hover:text-foreground transition-colors">
+                  Proč tento plán?
+                </summary>
+                <div className="px-4 pb-3">
+                  <p className="text-sm">{plan.whyThisPlan}</p>
+                </div>
+              </details>
+            )}
           </div>
-          <div ref={scrollRef} />
+
+          {/* Review controls */}
+          {!isApproved && (
+            <div className="space-y-3 pt-2">
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  Máš připomínky nebo požadavky na změnu?
+                </p>
+                <Textarea
+                  value={modificationNote}
+                  onChange={(e) => setModificationNote(e.target.value)}
+                  placeholder="Metodu 2 změň na… / Aktivitu zkrať…"
+                  className="min-h-[60px] text-sm"
+                />
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleRework}
+                  disabled={!modificationNote.trim()}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Přepracovat
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPdf}>
+                  <FileDown className="w-3.5 h-3.5" />
+                  Export PDF
+                </Button>
+                <Button size="sm" className="gap-1.5 ml-auto" onClick={handleApprove}>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Schválit
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Approved controls */}
+          {isApproved && (
+            <div className="flex gap-2 flex-wrap pt-2">
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportPdf}>
+                <FileDown className="w-3.5 h-3.5" />
+                Export PDF
+              </Button>
+              {onStartSession && (
+                <Button size="sm" className="gap-1.5 ml-auto" onClick={() => onStartSession(plan)}>
+                  <Play className="w-3.5 h-3.5" />
+                  Zahájit asistenci
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>
