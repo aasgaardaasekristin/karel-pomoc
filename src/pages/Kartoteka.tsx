@@ -496,6 +496,20 @@ const Kartoteka = () => {
                     <CardField label="Klíčová anamnéza" value={selectedClient.key_history} multiline />
                     <CardField label="Rodinný kontext" value={selectedClient.family_context} multiline />
                     <CardField label="Poznámky" value={selectedClient.notes} multiline />
+                    {selectedClient.therapy_plan && (
+                      <div className="pt-3 border-t border-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-muted-foreground">TERAPEUTICKÝ PLÁN PROCESU</p>
+                          <Button variant="outline" size="sm" className="h-6 text-[10px] gap-1 px-2"
+                            onClick={() => setActiveTab("analysis")}>
+                            <Edit3 className="w-3 h-3" /> Aktualizovat
+                          </Button>
+                        </div>
+                        <div className="prose prose-sm max-w-none dark:prose-invert bg-secondary/20 rounded-lg p-3">
+                          <ReactMarkdown>{selectedClient.therapy_plan}</ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
                     {!selectedClient.diagnosis && !selectedClient.therapy_type && !selectedClient.key_history && (
                       <p className="text-sm text-muted-foreground italic">Karta zatím není vyplněna. Klikni „Upravit" pro doplnění údajů.</p>
                     )}
