@@ -94,6 +94,8 @@ const Kartoteka = () => {
   const [newTaskText, setNewTaskText] = useState("");
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [activePlan, setActivePlan] = useState<any>(null);
+  const [cardAnalysis, setCardAnalysis] = useState<any>(null);
 
   const handleBackup = async () => {
     setIsBackingUp(true);
