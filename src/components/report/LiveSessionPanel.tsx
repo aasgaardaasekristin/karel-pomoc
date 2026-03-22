@@ -2,13 +2,15 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ImagePlus } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import ChatMessage from "@/components/ChatMessage";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
+import { useImageUpload } from "@/hooks/useImageUpload";
 import { Progress } from "@/components/ui/progress";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -36,6 +38,9 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   const recorder = useSessionAudioRecorder();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
+  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, clearImages } = useImageUpload();
+  const [imageAnalysisType, setImageAnalysisType] = useState("Kresba klienta");
+  const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
 
   const messages = activeSession?.chatMessages ?? [];
 
@@ -297,6 +302,88 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}
               <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje…
             </span>
           )}
+
+          {/* Image analysis */}
+          <div className="flex items-center gap-2 ml-auto">
+            <Select value={imageAnalysisType} onValueChange={setImageAnalysisType}>
+              <SelectTrigger className="h-8 w-[140px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Kresba klienta">Kresba klienta</SelectItem>
+                <SelectItem value="Rukopis klienta">Rukopis klienta</SelectItem>
+                <SelectItem value="Foto výrazu">Foto výrazu</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openFilePicker}
+              disabled={isImageAnalyzing}
+              className="gap-1.5 h-8 text-xs"
+            >
+              {isImageAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+              Foto
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={async (e) => {
+                handleFileChange(e);
+                // Wait for state update then analyze
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setIsImageAnalyzing(true);
+                try {
+                  const reader = new FileReader();
+                  const dataUrl = await new Promise<string>((resolve) => {
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.readAsDataURL(file);
+                  });
+
+                  const chatContext = messages.slice(-10).map(m =>
+                    `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${typeof m.content === "string" ? m.content : "(multimodal)"}`
+                  ).join("\n");
+
+                  const headers = await getAuthHeaders();
+                  const res = await fetch(
+                    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`,
+                    {
+                      method: "POST",
+                      headers,
+                      body: JSON.stringify({
+                        attachments: [{ name: file.name, type: file.type, data: dataUrl }],
+                        mode: "supervision",
+                        chatContext,
+                        userPrompt: `Toto je ${imageAnalysisType} KLIENTA (ne terapeuta). Analyzuj v kontextu live sezení.`,
+                      }),
+                    }
+                  );
+
+                  if (!res.ok) throw new Error("Chyba při analýze");
+                  const data = await res.json();
+                  const analysis = data.analysis || data.response || "";
+                  if (!analysis) throw new Error("Prázdná analýza");
+
+                  const updatedMsgs = [
+                    ...messages,
+                    { role: "user" as const, content: `🖼️ *[${imageAnalysisType}: ${file.name}]*` },
+                    { role: "assistant" as const, content: analysis },
+                  ];
+                  updateChatMessages(activeSessionId!, updatedMsgs);
+                  clearImages();
+                  toast.success(`${imageAnalysisType} analyzována`);
+                } catch (err) {
+                  console.error("Image analysis error:", err);
+                  toast.error("Chyba při analýze obrázku");
+                } finally {
+                  setIsImageAnalyzing(false);
+                }
+              }}
+            />
+          </div>
         </div>
       </div>
 

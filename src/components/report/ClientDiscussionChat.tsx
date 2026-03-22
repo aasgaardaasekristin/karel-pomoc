@@ -2,8 +2,9 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Send, MessageSquare } from "lucide-react";
+import { Loader2, Send, MessageSquare, Save, Check } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
+import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 
@@ -19,6 +20,7 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoaded, setInitialLoaded] = useState(false);
+  const [saved, setSaved] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -135,9 +137,40 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
     <div className="flex flex-col h-[calc(100vh-200px)] bg-card rounded-xl border border-border overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-card/50">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">Porada o klientovi: {clientName}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium">Porada o klientovi: {clientName}</span>
+          </div>
+          {messages.length > 0 && !isLoading && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saved}
+              className="gap-1.5 h-8 text-xs"
+              onClick={async () => {
+                try {
+                  const fullTranscript = messages.map(m =>
+                    `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`
+                  ).join("\n\n");
+                  const { error } = await supabase.from("client_sessions").insert({
+                    client_id: clientId,
+                    notes: "Supervizní konzultace s Karlem",
+                    ai_analysis: fullTranscript,
+                  });
+                  if (error) throw error;
+                  setSaved(true);
+                  toast.success("Konzultace uložena do kartotéky");
+                } catch (e: any) {
+                  toast.error("Nepodařilo se uložit konzultaci");
+                  console.error(e);
+                }
+              }}
+            >
+              {saved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+              {saved ? "Uloženo" : "Uložit"}
+            </Button>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">Karel analyzoval kartu klienta a historii sezení</p>
       </div>

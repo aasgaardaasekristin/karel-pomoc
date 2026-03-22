@@ -41,6 +41,12 @@ serve(async (req) => {
     const sessions = sessionsRes.data || [];
     const activeTasks = tasksRes.data || [];
 
+    // Soft guard — warning for empty cards
+    const isCardEmpty = !client?.diagnosis && !client?.key_history && !client?.family_context && !client?.notes;
+    const emptyCardWarning = (sessions.length === 0 && isCardEmpty)
+      ? "\n\n⚠️ UPOZORNĚNÍ: Karta klienta je prázdná a nemáš žádná předchozí sezení. Generuješ POUZE obecný plán. Řekni terapeutce, že plán bude přesnější po doplnění karty."
+      : "";
+
     // Build client context
     const clientContext = [
       `KLIENT: ${clientName}`,
@@ -163,7 +169,11 @@ Zahrň:
 - Diagnostické metody schovej do přirozených aktivit přiměřených věku
 - Buď KONKRÉTNÍ – ne obecné rady, ale přesné pokyny co říct, co udělat
 - Pokud máš málo informací, řekni to a navrhni, co zjistit
-- Oslovuj Haničku přímo: "Hani, začni tím, že..."`;
+- Oslovuj Haničku přímo: "Hani, začni tím, že..."${emptyCardWarning}
+
+KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z dat, která máš k dispozici.
+NIKDY si nevymýšlej historii sezení, diagnózy ani události, které nejsou v datech.
+Pokud ti něco chybí, řekni to otevřeně.`;
 
     const userPrompt = [
       clientContext,

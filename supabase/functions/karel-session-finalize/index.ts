@@ -39,6 +39,8 @@ serve(async (req) => {
 
     const prompt = `Jsi Karel, klinický supervizor. Právě skončilo sezení s klientem. Na základě přepisu chatu z live sezení vytvoř PROFESIONÁLNÍ ZÁPIS ZE SEZENÍ v češtině.
 
+KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z přepisu live sezení níže. NEVYMÝŠLEJ si nic, co v přepisu není. Pokud v přepisu něco chybí, napiš "nebylo zaznamenáno" – NIKDY nefabuluj.
+
 KLIENT: ${clientName}
 ${client?.diagnosis ? `Diagnóza: ${client.diagnosis}` : ""}
 ${client?.therapy_type ? `Typ terapie: ${client.therapy_type}` : ""}
@@ -84,7 +86,7 @@ Vytvoř zápis v tomto formátu:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi klinický supervizor Karel. Piš profesionálně, odborně, v češtině. Zápis musí být praktický a užitečný pro příští sezení." },
+          { role: "system", content: "Jsi klinický supervizor Karel. Piš profesionálně, odborně, v češtině. Zápis musí být praktický a užitečný pro příští sezení. NIKDY si nevymýšlej události, které nejsou v přepisu." },
           { role: "user", content: prompt },
         ],
       }),
