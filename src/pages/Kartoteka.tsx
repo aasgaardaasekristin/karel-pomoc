@@ -696,7 +696,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ROZHOVOR ─── */}
-            <TabsContent value="discussion">
+            <TabsContent value="discussion" forceMount className={activeTab === "discussion" ? "" : "hidden"}>
               <ClientDiscussionChat clientId={selectedClient.id} clientName={selectedClient.name} />
             </TabsContent>
           </Tabs>
