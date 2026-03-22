@@ -9,7 +9,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import jsPDF from "jspdf";
+import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
 interface CardAnalysisPanelProps {
   clientId: string;
