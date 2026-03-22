@@ -163,6 +163,10 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
     updateSession(id, s => ({ ...s, status }));
   }, [updateSession]);
 
+  const updateSessionPlan = useCallback((id: string, plan: any) => {
+    updateSession(id, s => ({ ...s, sessionPlan: plan }));
+  }, [updateSession]);
+
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null;
 
   return (
