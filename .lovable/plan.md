@@ -1,52 +1,25 @@
 
 
-# FÁZE 3 — Záložka „Asistence" v Kartotéce
+# Fix: Session plan JSON parsing
 
-3 soubory, ~65 řádků, žádná DB migrace, žádné nové závislosti.
+## Problem
+In `supabase/functions/karel-session-plan/index.ts` (lines 139-144), the current regex-based stripping is fragile. It uses two sequential `replace()` calls that fail when the AI wraps the JSON in markdown with surrounding text (e.g., "Here's the plan:\n```json\n{...}\n```").
 
-## 1. `src/pages/Kartoteka.tsx` (~20 řádků)
+## Fix
+Replace lines 138-144 in `supabase/functions/karel-session-plan/index.ts`:
 
-- Import `LiveSessionPanel`
-- Přidat stav `activeTab` pro controlled Tabs
-- `sm:grid-cols-7` → `sm:grid-cols-8`
-- Přidat TabsTrigger `assistance` + TabsContent s `LiveSessionPanel`
-- **handleTabChange** s auto-createSession:
-  ```typescript
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    if (value === "assistance" && selectedClient) {
-      const existingSession = sessions?.find(s => s.clientId === selectedClient.id);
-      if (!existingSession) {
-        const sessionId = createSession(selectedClient.id, selectedClient.name);
-        if (activePlan) updateSessionPlan(sessionId, activePlan);
-      }
-    }
-  };
-  ```
-- `<Tabs value={activeTab} onValueChange={handleTabChange}>`
-- onStartSession z ClientSessionPrepPanel → `setActiveTab("assistance")` + createSession + updateSessionPlan
-- onEndSession → `fetchSessions()` + `setActiveTab("sessions")` + toast
+```typescript
+let plan: any;
+try {
+  // Try to extract JSON from markdown code block first
+  const match = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const clean = match ? match[1].trim() : rawContent.trim();
+  plan = JSON.parse(clean);
+} catch (e) {
+  console.error("Failed to parse session plan JSON. Raw AI response:", rawContent);
+  plan = { sessionGoal: "Plán nebyl vygenerován ve správném formátu", phases: [], whyThisPlan: rawContent };
+}
+```
 
-## 2. `src/components/report/LiveSessionPanel.tsx` (~35 řádků)
-
-- Nový state: `currentPhaseIndex` (useState(0))
-- **Fázový banner** nad chatem (sessionMode === "plan"):
-  - Název fáze, timeRange badge, "→ Další fáze" button
-- Rozšířit `handleEndSession` body: přidat `sessionPlan` a `sessionMode`
-- Přidat variantu bez plánu v mode selection dialogu (info text)
-
-## 3. `supabase/functions/karel-session-finalize/index.ts` (~10 řádků)
-
-- Rozšířit destructuring: `sessionPlan`, `sessionMode`
-- Přidat `planContext` + `modeLabel` do system promptu
-
-## Souhrn
-
-| Soubor | Akce | ~Řádky |
-|---|---|---|
-| `Kartoteka.tsx` | UPRAVIT | ~20 |
-| `LiveSessionPanel.tsx` | DOPLNIT | ~35 |
-| `karel-session-finalize/index.ts` | DOPLNIT | ~10 |
-
-Žádná DB migrace. Žádné nové závislosti.
+**One file changed, ~3 lines modified.** The regex properly captures content between ` ```json ` and ` ``` ` delimiters, falling back to raw content if no code block is found. Failed parses now log the raw response for debugging.
 
