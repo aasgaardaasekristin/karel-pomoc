@@ -47,6 +47,7 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   const [sessionMode, setSessionMode] = useState<SessionMode | null>(null);
   const [customTopic, setCustomTopic] = useState("");
   const [modeConfirmed, setModeConfirmed] = useState(false);
+  const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
 
   const messages = activeSession?.chatMessages ?? [];
   const sessionPlan = activeSession?.sessionPlan;
