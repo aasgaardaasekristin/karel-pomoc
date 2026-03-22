@@ -374,32 +374,43 @@ const Kartoteka = () => {
       <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
           <Tabs defaultValue="card" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-5">
-              <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <User className="w-3.5 h-3.5 hidden sm:block" />
-                Karta
-              </TabsTrigger>
-              <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <FileText className="w-3.5 h-3.5 hidden sm:block" />
-                Sezení
-                {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
-              </TabsTrigger>
-              <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
-                Úkoly
-                {tasks.filter(t => t.status !== "done").length > 0 && (
-                  <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
-                Rozhovor
-              </TabsTrigger>
-              <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-1 sm:px-3">
-                <CalendarPlus className="w-3.5 h-3.5 hidden sm:block" />
-                Příprava
-              </TabsTrigger>
-            </TabsList>
+            <div className="overflow-x-auto -mx-3 px-3">
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-8 h-auto flex-nowrap">
+                <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <User className="w-3.5 h-3.5 hidden sm:block" />
+                  Karta
+                </TabsTrigger>
+                <TabsTrigger value="intake" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Záznam
+                </TabsTrigger>
+                <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <FileText className="w-3.5 h-3.5 hidden sm:block" />
+                  Sezení
+                  {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
+                  Úkoly
+                  {tasks.filter(t => t.status !== "done").length > 0 && (
+                    <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="analysis" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Analýza
+                </TabsTrigger>
+                <TabsTrigger value="plan" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Plán
+                </TabsTrigger>
+                <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
+                  Rozhovor
+                </TabsTrigger>
+                <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <CalendarPlus className="w-3.5 h-3.5 hidden sm:block" />
+                  Příprava
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             {/* ─── KARTA ─── */}
             <TabsContent value="card" className="space-y-4">
