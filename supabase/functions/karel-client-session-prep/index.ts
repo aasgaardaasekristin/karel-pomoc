@@ -41,6 +41,12 @@ serve(async (req) => {
     const sessions = sessionsRes.data || [];
     const activeTasks = tasksRes.data || [];
 
+    // Soft guard — warning for empty cards
+    const isCardEmpty = !client?.diagnosis && !client?.key_history && !client?.family_context && !client?.notes;
+    const emptyCardWarning = (sessions.length === 0 && isCardEmpty)
+      ? "\n\n⚠️ UPOZORNĚNÍ: Karta klienta je prázdná a nemáš žádná předchozí sezení. Generuješ POUZE obecný plán. Řekni terapeutce, že plán bude přesnější po doplnění karty."
+      : "";
+
     // Build client context
     const clientContext = [
       `KLIENT: ${clientName}`,
