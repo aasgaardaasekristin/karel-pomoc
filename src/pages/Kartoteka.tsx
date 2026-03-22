@@ -537,7 +537,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── SEZENÍ ─── */}
-            <TabsContent value="sessions" className="space-y-3">
+            <TabsContent value="sessions" forceMount className={activeTab === "sessions" ? "space-y-3" : "hidden"}>
               {sessions.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
