@@ -150,9 +150,8 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
   }, []);
 
   const updateSession = useCallback((id: string, updater: (s: SessionWorkspace) => SessionWorkspace) => {
-    const next = sessions.map(s => s.id === id ? updater(s) : s);
-    persist(next);
-  }, [sessions, persist]);
+    persist(prev => prev.map(s => s.id === id ? updater(s) : s));
+  }, [persist]);
 
   const updateFormData = useCallback((id: string, data: Partial<ReportFormData>) => {
     updateSession(id, s => ({ ...s, formData: { ...s.formData, ...data } }));
