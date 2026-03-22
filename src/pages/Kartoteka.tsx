@@ -501,21 +501,26 @@ const Kartoteka = () => {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSaveAndBackup}
+              disabled={isSavingCard}
+              className="h-8 px-2 sm:px-3"
+              title="Uložit kartu a zálohovat na Drive"
+            >
+              {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" /> : <Save className="w-3.5 h-3.5 sm:mr-1" />}
+              <span className="hidden sm:inline">{isSavingCard ? "Ukládám..." : "Uložit"}</span>
+            </Button>
             {!isEditing ? (
               <Button variant="outline" size="sm" onClick={() => { setIsEditing(true); setEditData(selectedClient); }} className="h-8">
                 <Edit3 className="w-3.5 h-3.5 sm:mr-1" />
                 <span className="hidden sm:inline">Upravit</span>
               </Button>
             ) : (
-              <>
-                <Button size="sm" onClick={handleSaveClient} className="h-8">
-                  <Save className="w-3.5 h-3.5 sm:mr-1" />
-                  <span className="hidden sm:inline">Uložit</span>
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="h-8">
-                  <X className="w-3.5 h-3.5" />
-                </Button>
-              </>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)} className="h-8">
+                <X className="w-3.5 h-3.5" />
+              </Button>
             )}
             <Button variant="destructive" size="sm" onClick={() => handleDeleteClient(selectedClient.id)} className="h-8">
               <Trash2 className="w-3.5 h-3.5" />
