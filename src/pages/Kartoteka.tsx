@@ -444,7 +444,7 @@ const Kartoteka = () => {
             </div>
 
             {/* ─── KARTA ─── */}
-            <TabsContent value="card" className="space-y-4">
+            <TabsContent value="card" forceMount className={activeTab === "card" ? "space-y-4" : "hidden"}>
               <div className="bg-card rounded-xl border border-border p-4 sm:p-6 space-y-4">
                 {isEditing ? (
                   <>
@@ -528,7 +528,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ZÁZNAM SEZENÍ ─── */}
-            <TabsContent value="intake">
+            <TabsContent value="intake" forceMount className={activeTab === "intake" ? "" : "hidden"}>
               <SessionIntakePanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
@@ -537,7 +537,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── SEZENÍ ─── */}
-            <TabsContent value="sessions" className="space-y-3">
+            <TabsContent value="sessions" forceMount className={activeTab === "sessions" ? "space-y-3" : "hidden"}>
               {sessions.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -636,7 +636,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ÚKOLY ─── */}
-            <TabsContent value="tasks">
+            <TabsContent value="tasks" forceMount className={activeTab === "tasks" ? "" : "hidden"}>
               <ClientTasksPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
@@ -646,7 +646,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ANALÝZA ─── */}
-            <TabsContent value="analysis">
+            <TabsContent value="analysis" forceMount className={activeTab === "analysis" ? "" : "hidden"}>
               <CardAnalysisPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
@@ -664,7 +664,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── PŘIPRAVIT SEZENÍ ─── */}
-            <TabsContent value="prep">
+            <TabsContent value="prep" forceMount className={activeTab === "prep" ? "" : "hidden"}>
               <ClientSessionPrepPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
@@ -672,19 +672,17 @@ const Kartoteka = () => {
                 onPlanApproved={(plan) => setActivePlan(plan)}
                 onPlanDeleted={() => setActivePlan(null)}
                 onStartSession={(plan) => {
-                  try {
-                    const sessionId = createSession(selectedClient.id, selectedClient.name);
+                  const sessionId = createSession(selectedClient.id, selectedClient.name);
+                  if (sessionId) {
                     updateSessionPlan(sessionId, plan);
                     setActiveTab("assistance");
-                  } catch (e: any) {
-                    toast.error(e.message || "Chyba při vytváření sezení");
                   }
                 }}
               />
             </TabsContent>
 
             {/* ─── ASISTENCE ─── */}
-            <TabsContent value="assistance">
+            <TabsContent value="assistance" forceMount className={activeTab === "assistance" ? "" : "hidden"}>
               <LiveSessionPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
@@ -698,7 +696,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ROZHOVOR ─── */}
-            <TabsContent value="discussion">
+            <TabsContent value="discussion" forceMount className={activeTab === "discussion" ? "" : "hidden"}>
               <ClientDiscussionChat clientId={selectedClient.id} clientName={selectedClient.name} />
             </TabsContent>
           </Tabs>

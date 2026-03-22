@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { toast } from "sonner";
 import { ReportFormData, TriageData } from "@/components/ReportForm";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -56,7 +57,7 @@ interface ActiveSessionsContextType {
 
 const ActiveSessionsContext = createContext<ActiveSessionsContextType | undefined>(undefined);
 
-const MAX_SESSIONS = 5;
+const MAX_SESSIONS = 50;
 const STORAGE_KEY = "karel_active_sessions";
 const ACTIVE_KEY = "karel_active_session_id";
 
@@ -94,7 +95,10 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
         return prev;
       }
       if (prev.length >= MAX_SESSIONS) {
-        throw new Error("Maximálně 5 rozpracovaných sezení. Ukonči jedno z nich.");
+        console.warn("Limit rozpracovaných sezení dosažen:", prev.length);
+        toast.warning("Příliš mnoho otevřených sezení – ukonči některé z nich");
+        resultId = "";
+        return prev;
       }
       const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
       resultId = id;
@@ -113,8 +117,10 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
       saveSessions(next);
       return next;
     });
-    setActiveSessionId(resultId);
-    try { localStorage.setItem(ACTIVE_KEY, resultId); } catch {}
+    if (resultId) {
+      setActiveSessionId(resultId);
+      try { localStorage.setItem(ACTIVE_KEY, resultId); } catch {}
+    }
     return resultId;
   }, []);
 
