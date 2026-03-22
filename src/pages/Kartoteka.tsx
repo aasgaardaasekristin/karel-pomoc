@@ -618,6 +618,7 @@ const Kartoteka = () => {
                     const sessionId = createSession(selectedClient.id, selectedClient.name);
                     updateSessionPlan(sessionId, plan);
                     sessionStorage.setItem("karel_hub_section", "hana");
+                    setMainMode("report");
                     navigate("/chat");
                   } catch (e: any) {
                     toast.error(e.message || "Chyba při vytváření sezení");
