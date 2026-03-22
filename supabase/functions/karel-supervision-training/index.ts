@@ -37,13 +37,21 @@ serve(async (req) => {
     const client = clientRes.data;
     const sessions = sessionsRes.data || [];
 
+    // Anti-hallucination guard
+    const isCardEmpty = !client?.diagnosis && !client?.key_history && !client?.family_context && !client?.notes;
+    if (sessions.length === 0 && isCardEmpty && mode !== "chat") {
+      return new Response(JSON.stringify({
+        response: `Hani, klient **${clientName}** má v kartotéce prázdnou kartu a žádná sezení.\n\nNemám dost informací pro realistickou simulaci klienta. Nejdřív doplň kartu (diagnóza, anamnéza, kontext) – pak ti připravím tréninkové sezení.`
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const sessionHistory = sessions.slice(0, 10).map((s, i) => {
       return [
         `Sezení ${sessions.length - i}: ${s.report_key_theme || "bez tématu"}`,
         s.report_context?.slice(0, 200),
         s.ai_analysis?.slice(0, 400),
       ].filter(Boolean).join(" | ");
-    }).join("\n");
+    }).join("\n") || "(žádná sezení)";
 
     const systemPrompt = `Jsi SIMULACE KLIENTA pro tréninkové účely. Hraješ roli klienta "${clientName}" na základě následujících informací:
 

@@ -86,7 +86,7 @@ Vytvoř zápis v tomto formátu:
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi klinický supervizor Karel. Piš profesionálně, odborně, v češtině. Zápis musí být praktický a užitečný pro příští sezení." },
+          { role: "system", content: "Jsi klinický supervizor Karel. Piš profesionálně, odborně, v češtině. Zápis musí být praktický a užitečný pro příští sezení. NIKDY si nevymýšlej události, které nejsou v přepisu." },
           { role: "user", content: prompt },
         ],
       }),

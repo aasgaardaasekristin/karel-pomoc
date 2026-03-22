@@ -38,6 +38,14 @@ serve(async (req) => {
     const client = clientRes.data;
     const sessions = sessionsRes.data || [];
 
+    // Anti-hallucination guard
+    const isCardEmpty = !client?.diagnosis && !client?.key_history && !client?.family_context && !client?.notes;
+    if (sessions.length === 0 && isCardEmpty && mode !== "chat") {
+      return new Response(JSON.stringify({
+        response: `Hani, klient **${clientName}** má v kartotéce prázdnou kartu a žádná sezení.\n\nBez diagnózy a historie nemám co zkoumat. Nejdřív doplň kartu – pak ti najdu relevantní metody a přístupy.`
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const clientContext = [
       client?.name ? `Klient: ${client.name}` : `Klient: ${clientName}`,
       client?.age ? `Věk: ${client.age}` : null,

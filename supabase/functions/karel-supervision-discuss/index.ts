@@ -78,7 +78,13 @@ HISTORIE SEZENÍ:
 ${fullHistory}
 
 POSLEDNÍ ZÁPIS:
-${sessionReport?.slice(0, 2000) || "Nedostupný"}`;
+${sessionReport?.slice(0, 2000) || "Nedostupný"}
+
+KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z dat, která máš k dispozici výše.
+Pokud nemáš záznamy ze sezení, NEPIŠ o průběhu sezení.
+Pokud nemáš diagnózu, NESPECULUJ o diagnóze.
+NIKDY si nevymýšlej historii, intervence ani události, které nejsou v datech.
+Pokud ti něco chybí, řekni to otevřeně.`;
 
     // Chat mode - stream
     if (mode === "chat" && messages?.length > 0) {

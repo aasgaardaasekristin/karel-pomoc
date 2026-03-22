@@ -169,7 +169,11 @@ Zahrň:
 - Diagnostické metody schovej do přirozených aktivit přiměřených věku
 - Buď KONKRÉTNÍ – ne obecné rady, ale přesné pokyny co říct, co udělat
 - Pokud máš málo informací, řekni to a navrhni, co zjistit
-- Oslovuj Haničku přímo: "Hani, začni tím, že..."`;
+- Oslovuj Haničku přímo: "Hani, začni tím, že..."${emptyCardWarning}
+
+KRITICKÉ PRAVIDLO: Vycházej VÝHRADNĚ z dat, která máš k dispozici.
+NIKDY si nevymýšlej historii sezení, diagnózy ani události, které nejsou v datech.
+Pokud ti něco chybí, řekni to otevřeně.`;
 
     const userPrompt = [
       clientContext,

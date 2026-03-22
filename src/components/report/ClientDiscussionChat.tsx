@@ -137,9 +137,40 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
     <div className="flex flex-col h-[calc(100vh-200px)] bg-card rounded-xl border border-border overflow-hidden">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-card/50">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-primary" />
-          <span className="text-sm font-medium">Porada o klientovi: {clientName}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium">Porada o klientovi: {clientName}</span>
+          </div>
+          {messages.length > 0 && !isLoading && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={saved}
+              className="gap-1.5 h-8 text-xs"
+              onClick={async () => {
+                try {
+                  const fullTranscript = messages.map(m =>
+                    `${m.role === "user" ? "TERAPEUT" : "KAREL"}: ${m.content}`
+                  ).join("\n\n");
+                  const { error } = await supabase.from("client_sessions").insert({
+                    client_id: clientId,
+                    notes: "Supervizní konzultace s Karlem",
+                    ai_analysis: fullTranscript,
+                  });
+                  if (error) throw error;
+                  setSaved(true);
+                  toast.success("Konzultace uložena do kartotéky");
+                } catch (e: any) {
+                  toast.error("Nepodařilo se uložit konzultaci");
+                  console.error(e);
+                }
+              }}
+            >
+              {saved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+              {saved ? "Uloženo" : "Uložit"}
+            </Button>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">Karel analyzoval kartu klienta a historii sezení</p>
       </div>
