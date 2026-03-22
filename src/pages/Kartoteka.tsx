@@ -46,6 +46,7 @@ type Client = {
   key_history: string;
   family_context: string;
   notes: string;
+  therapy_plan: string;
   created_at: string;
   updated_at: string;
 };
