@@ -1,29 +1,26 @@
 
 
-# Oprava "Failed to fetch" u sestavení plánu procesu
+# Oprava crash limitu sezení + persistentní data v Kartotéce
 
-## Analýza problému
-Edge funkce `karel-therapy-process-plan` padá s "Failed to fetch" — pravděpodobně timeout. Funkce provádí:
-1. 3 DB dotazy (klient, sezení, úkoly)
-2. Perplexity research (až 25s timeout)
-3. Gemini 2.5 Pro streaming s velkým systémovým promptem
+## Problém 1: Crash aplikace (bílá obrazovka)
+`ActiveSessionsContext.tsx` řádek 87: `throw new Error(...)` uvnitř `setSessions` callbacku způsobí unhandled exception → bílá obrazovka.
 
-Celkový čas snadno překročí default timeout edge funkce. Navíc klient nemá retry logiku ani timeout handling.
+## Problém 2: Data se ztrácejí při přepínání záložek
+Radix Tabs ve výchozím nastavení **odmontovává** neaktivní `TabsContent`. Všechna vygenerovaná data (analýza, plán procesu, příprava sezení, rozhovor) žijí v lokálním stavu komponent → přepnutí záložky = ztráta všeho.
 
 ## Změny
 
-### 1. Edge funkce `karel-therapy-process-plan/index.ts`
-- Zkrátit Perplexity timeout z 25s na 15s
-- Přidat retry (2 pokusy) pro AI gateway volání s 2s prodlevou
-- Zkrátit `sessionsContext` limit (10 sezení × 400 znaků max)
-- Přidat `DŮLEŽITÉ: Terapeutka se jmenuje HANIČKA` do system promptu (konsistence s card-analysis)
+### 1. `ActiveSessionsContext.tsx` — soft handling
+- Limit z 5 → 50
+- Místo `throw new Error(...)` → `console.warn()` + `toast()` + `return prev`
+- Vrátit ID existující session nebo prázdný string (bez crash)
 
-### 2. Klient `CardAnalysisPanel.tsx`
-- Přidat `AbortController` s 120s timeout na fetch volání
-- Přidat retry logiku (1 automatický retry při "Failed to fetch")
-- Lepší error zpráva: "Sestavování plánu trvá příliš dlouho, zkuste to znovu"
+### 2. `Kartoteka.tsx` — forceMount na záložky
+- Přidat `forceMount` na všechny `TabsContent` komponenty
+- Obalit je `div` s `className={activeTab === "X" ? "" : "hidden"}` — obsah zůstane v DOM ale skrytý
+- Tím se zachová veškerý stav komponent (analýza, plán, chat, příprava) i při přepínání záložek
 
 ## Soubory
-- **Editovaný**: `supabase/functions/karel-therapy-process-plan/index.ts`
-- **Editovaný**: `src/components/report/CardAnalysisPanel.tsx`
+- **`src/contexts/ActiveSessionsContext.tsx`** — limit + soft error
+- **`src/pages/Kartoteka.tsx`** — forceMount + hidden pattern
 
