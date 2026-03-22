@@ -135,7 +135,7 @@ Odpovídej v češtině, odborně ale přístupně. Doporučuj konkrétní metod
     }
 
     // Synthesize with Lovable AI
-    const synthesisPrompt = `Jsi Karel, klinický supervizor. Terapeutka chce poradit se na internetu o novém přístupu k jejímu klientovi.
+    const synthesisPrompt = `Jsi Karel, klinický supervizor. Terapeutka HANIČKA (Hanka) chce poradit se na internetu o novém přístupu k jejímu klientovi. NIKDY neoslovuj terapeutku jménem klienta.
 
 KONTEXT KLIENTA:
 ${clientContext}

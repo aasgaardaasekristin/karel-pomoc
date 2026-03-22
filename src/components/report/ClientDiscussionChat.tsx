@@ -179,9 +179,13 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
       <ScrollArea className="flex-1 px-4 py-3">
         <div className="space-y-4 max-w-2xl mx-auto">
           {messages.length === 0 && isLoading && (
-            <div className="flex items-center gap-3 py-8 justify-center">
-              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
               <span className="text-sm text-muted-foreground">Karel studuje kartu klienta…</span>
+              <div className="w-48 h-1.5 bg-secondary rounded-full overflow-hidden">
+                <div className="h-full bg-primary rounded-full animate-indeterminate-progress" style={{ width: "40%" }} />
+              </div>
+              <span className="text-xs text-muted-foreground">Může to trvat 10–20 sekund</span>
             </div>
           )}
           {messages.map((msg, i) => (
