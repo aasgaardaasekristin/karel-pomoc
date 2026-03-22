@@ -25,7 +25,6 @@ import {
   MessageSquare,
   LogOut,
   HardDriveDownload,
-  CalendarPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
@@ -34,7 +33,7 @@ import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
 import SessionIntakePanel from "@/components/report/SessionIntakePanel";
 import ClientTasksPanel from "@/components/report/ClientTasksPanel";
 import CardAnalysisPanel from "@/components/report/CardAnalysisPanel";
-import SessionPlanPanel from "@/components/report/SessionPlanPanel";
+
 type Client = {
   id: string;
   name: string;
@@ -379,7 +378,7 @@ const Kartoteka = () => {
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
           <Tabs defaultValue="card" className="space-y-4">
             <div className="overflow-x-auto -mx-3 px-3">
-              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-8 h-auto flex-nowrap">
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-7 h-auto flex-nowrap">
                 <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   <User className="w-3.5 h-3.5 hidden sm:block" />
                   Karta
@@ -402,16 +401,12 @@ const Kartoteka = () => {
                 <TabsTrigger value="analysis" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   Analýza
                 </TabsTrigger>
-                <TabsTrigger value="plan" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  Plán
+                <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Připravit sezení
                 </TabsTrigger>
                 <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
                   Rozhovor
-                </TabsTrigger>
-                <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  <CalendarPlus className="w-3.5 h-3.5 hidden sm:block" />
-                  Příprava
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -601,18 +596,23 @@ const Kartoteka = () => {
               <CardAnalysisPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
+                sessions={sessions}
+                activePlan={activePlan}
+                pendingTasks={tasks}
                 onRequestPlan={(analysis) => {
                   setCardAnalysis(analysis);
                 }}
               />
             </TabsContent>
 
-            {/* ─── PLÁN ─── */}
-            <TabsContent value="plan">
-              <SessionPlanPanel
+            {/* ─── PŘIPRAVIT SEZENÍ ─── */}
+            <TabsContent value="prep">
+              <ClientSessionPrepPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
-                analysis={cardAnalysis}
+                sessions={sessions}
+                onPlanApproved={(plan) => setActivePlan(plan)}
+                onPlanDeleted={() => setActivePlan(null)}
                 onStartSession={(plan) => {
                   try {
                     const sessionId = createSession(selectedClient.id, selectedClient.name);
@@ -630,11 +630,6 @@ const Kartoteka = () => {
             {/* ─── ROZHOVOR ─── */}
             <TabsContent value="discussion">
               <ClientDiscussionChat clientId={selectedClient.id} clientName={selectedClient.name} />
-            </TabsContent>
-
-            {/* ─── PŘÍPRAVA NA SEZENÍ ─── */}
-            <TabsContent value="prep">
-              <ClientSessionPrepPanel clientId={selectedClient.id} clientName={selectedClient.name} />
             </TabsContent>
           </Tabs>
         </div>
