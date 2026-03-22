@@ -528,7 +528,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ZÁZNAM SEZENÍ ─── */}
-            <TabsContent value="intake">
+            <TabsContent value="intake" forceMount className={activeTab === "intake" ? "" : "hidden"}>
               <SessionIntakePanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
