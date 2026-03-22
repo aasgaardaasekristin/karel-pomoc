@@ -37,6 +37,14 @@ serve(async (req) => {
     const client = clientRes.data;
     const sessions = sessionsRes.data || [];
 
+    // Anti-hallucination guard
+    const isCardEmpty = !client?.diagnosis && !client?.key_history && !client?.family_context && !client?.notes;
+    if (sessions.length === 0 && isCardEmpty && mode !== "chat") {
+      return new Response(JSON.stringify({
+        response: `Hani, klient **${clientName}** má v kartotéce zatím prázdnou kartu a žádná sezení.\n\nNemám z čeho analyzovat. Nejdřív doplň kartu (diagnóza, anamnéza, kontext) nebo proveď první sezení – pak ti dám podrobnou zpětnou vazbu.`
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     const fullHistory = sessions.slice(0, 15).map((s, i) => {
       return [
         `--- Sezení ${sessions.length - i} (${s.session_date}) ---`,
@@ -46,7 +54,7 @@ serve(async (req) => {
         s.report_interventions_tried ? `Intervence: ${s.report_interventions_tried}` : null,
         s.report_risks?.length ? `Rizika: ${s.report_risks.join(", ")}` : null,
       ].filter(Boolean).join("\n");
-    }).join("\n\n");
+    }).join("\n\n") || "(žádná sezení)";
 
     const systemPrompt = `Jsi Karel, zkušený klinický supervizor s 30letou praxí. Terapeutka Hanka tě žádá o odbornou konzultaci k jejímu klientovi. Tvá role:
 
