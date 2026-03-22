@@ -137,7 +137,8 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
   🎮 Další krok (co udělat/zeptat se)
 - Pokud dostaneš audio analýzu, reaguj na zjištění z hlasu (tenze, emoce).
 - Pokud dostaneš analýzu obrázku/kresby, reaguj na zjištění a doporuč další postup.
-- Buď direktivní a konkrétní. Žádné filozofování.`;
+- Buď direktivní a konkrétní. Žádné filozofování.
+- DŮLEŽITÉ FORMÁTOVÁNÍ: Všechny přímé rady co má terapeut říct klientovi a tvé okamžité reakce/doporučení (co má terapeut UDĚLAT nebo ŘÍCT) piš TUČNĚ pomocí **bold** markdown. Ostatní text (kontext, pozorování) piš normálně.`;
   }, [clientName, caseSummary, sessionMode, sessionPlan, customTopic]);
 
   // ── Shared streaming helper ──
@@ -592,15 +593,28 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               </Button>
             </div>
           )}
+          {/* Audio analysis progress */}
           {isAudioAnalyzing && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin" /> Karel analyzuje…
-            </span>
+            <div className="w-full mt-2 space-y-1.5 bg-muted/30 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Karel analyzuje audio nahrávku…</span>
+              </div>
+              <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                <div className="h-full w-full bg-primary rounded-full animate-indeterminate-progress" />
+              </div>
+            </div>
           )}
 
-          {/* Image analysis */}
+          {/* Image analysis controls */}
           <div className="flex items-center gap-2 ml-auto">
-            <Select value={imageAnalysisType} onValueChange={setImageAnalysisType}>
+            <Select
+              value={imageAnalysisType}
+              onValueChange={(v) => {
+                setImageAnalysisType(v);
+                setTimeout(() => fileInputRef.current?.click(), 100);
+              }}
+            >
               <SelectTrigger className="h-8 w-[140px] text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -618,7 +632,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               className="gap-1.5 h-8 text-xs"
             >
               {isImageAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
-              Foto
+              Nahrát
             </Button>
             <input
               ref={fileInputRef}
@@ -633,6 +647,18 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               }}
             />
           </div>
+          {/* Image analysis progress */}
+          {isImageAnalyzing && (
+            <div className="w-full mt-2 space-y-1.5 bg-muted/30 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Karel analyzuje {imageAnalysisType.toLowerCase()}…</span>
+              </div>
+              <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                <div className="h-full w-full bg-primary rounded-full animate-indeterminate-progress" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
