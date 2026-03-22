@@ -102,7 +102,7 @@ serve(async (req) => {
       throw new Error("Missing required fields: pdfBase64, fileName, clientId, folder");
     }
 
-    const validFolders = ["Sezeni", "Plany", "Asistence"];
+    const validFolders = ["Sezeni", "Plany", "Asistence", "Karta"];
     if (!validFolders.includes(folder)) {
       throw new Error(`Invalid folder: ${folder}. Must be one of: ${validFolders.join(", ")}`);
     }
