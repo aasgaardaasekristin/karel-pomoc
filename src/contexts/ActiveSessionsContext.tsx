@@ -77,9 +77,12 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
     try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
   });
 
-  const persist = useCallback((next: SessionWorkspace[]) => {
-    setSessions(next);
-    saveSessions(next);
+  const persist = useCallback((updater: (prev: SessionWorkspace[]) => SessionWorkspace[]) => {
+    setSessions(prev => {
+      const next = updater(prev);
+      saveSessions(next);
+      return next;
+    });
   }, []);
 
   const createSession = useCallback((clientId: string, clientName: string) => {
