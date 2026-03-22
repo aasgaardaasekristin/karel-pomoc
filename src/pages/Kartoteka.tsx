@@ -109,7 +109,9 @@ const Kartoteka = () => {
     setActiveTab(value);
     if (value === "assistance" && selectedClient) {
       const existingSession = activeSessions?.find(s => s.clientId === selectedClient.id);
-      if (!existingSession) {
+      if (existingSession) {
+        setActiveSession(existingSession.id);
+      } else {
         const sessionId = createSession(selectedClient.id, selectedClient.name);
         if (activePlan) updateSessionPlan(sessionId, activePlan);
       }
