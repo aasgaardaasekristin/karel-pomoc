@@ -636,7 +636,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ÚKOLY ─── */}
-            <TabsContent value="tasks">
+            <TabsContent value="tasks" forceMount className={activeTab === "tasks" ? "" : "hidden"}>
               <ClientTasksPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
