@@ -38,6 +38,9 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   const recorder = useSessionAudioRecorder();
   const [isAudioAnalyzing, setIsAudioAnalyzing] = useState(false);
   const audioSegmentCountRef = useRef(0);
+  const { pendingImages, fileInputRef, openFilePicker, handleFileChange, clearImages } = useImageUpload();
+  const [imageAnalysisType, setImageAnalysisType] = useState("Kresba klienta");
+  const [isImageAnalyzing, setIsImageAnalyzing] = useState(false);
 
   const messages = activeSession?.chatMessages ?? [];
 
