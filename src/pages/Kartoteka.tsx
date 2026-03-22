@@ -682,7 +682,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── ASISTENCE ─── */}
-            <TabsContent value="assistance">
+            <TabsContent value="assistance" forceMount className={activeTab === "assistance" ? "" : "hidden"}>
               <LiveSessionPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
