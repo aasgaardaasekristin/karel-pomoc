@@ -572,10 +572,10 @@ const CardAnalysisPanel = ({
       )}
 
       {planState === "saved" && (
-        <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 flex items-center gap-3">
-          <Check className="w-5 h-5 text-green-600 shrink-0" />
+        <div className="bg-primary/10 border border-primary/30 rounded-xl p-4 flex items-center gap-3">
+          <Check className="w-5 h-5 text-primary shrink-0" />
           <div>
-            <p className="text-sm font-medium text-green-700 dark:text-green-400">Plán uložen do karty klienta</p>
+            <p className="text-sm font-medium text-foreground">Plán uložen do karty klienta</p>
             <p className="text-xs text-muted-foreground">Záloha na Drive probíhá na pozadí</p>
           </div>
         </div>
