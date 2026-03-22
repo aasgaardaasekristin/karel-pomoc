@@ -33,6 +33,7 @@ import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
 import SessionIntakePanel from "@/components/report/SessionIntakePanel";
 import ClientTasksPanel from "@/components/report/ClientTasksPanel";
 import CardAnalysisPanel from "@/components/report/CardAnalysisPanel";
+import LiveSessionPanel from "@/components/report/LiveSessionPanel";
 
 type Client = {
   id: string;
@@ -86,7 +87,7 @@ type ClientTask = {
 
 const Kartoteka = () => {
   const navigate = useNavigate();
-  const { createSession, updateSessionPlan } = useActiveSessions();
+  const { createSession, updateSessionPlan, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -102,6 +103,18 @@ const Kartoteka = () => {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [activePlan, setActivePlan] = useState<any>(null);
   const [cardAnalysis, setCardAnalysis] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState("card");
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === "assistance" && selectedClient) {
+      const existingSession = activeSessions?.find(s => s.clientId === selectedClient.id);
+      if (!existingSession) {
+        const sessionId = createSession(selectedClient.id, selectedClient.name);
+        if (activePlan) updateSessionPlan(sessionId, activePlan);
+      }
+    }
+  };
 
   const handleBackup = async () => {
     setIsBackingUp(true);
@@ -376,9 +389,9 @@ const Kartoteka = () => {
 
       <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
-          <Tabs defaultValue="card" className="space-y-4">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
             <div className="overflow-x-auto -mx-3 px-3">
-              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-7 h-auto flex-nowrap">
+              <TabsList className="inline-flex w-auto min-w-full sm:grid sm:grid-cols-8 h-auto flex-nowrap">
                 <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   <User className="w-3.5 h-3.5 hidden sm:block" />
                   Karta
@@ -403,6 +416,9 @@ const Kartoteka = () => {
                 </TabsTrigger>
                 <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   Připravit sezení
+                </TabsTrigger>
+                <TabsTrigger value="assistance" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  Asistence
                 </TabsTrigger>
                 <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                   <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
@@ -617,12 +633,24 @@ const Kartoteka = () => {
                   try {
                     const sessionId = createSession(selectedClient.id, selectedClient.name);
                     updateSessionPlan(sessionId, plan);
-                    sessionStorage.setItem("karel_hub_section", "hana");
-                    setMainMode("report");
-                    navigate("/chat");
+                    setActiveTab("assistance");
                   } catch (e: any) {
                     toast.error(e.message || "Chyba při vytváření sezení");
                   }
+                }}
+              />
+            </TabsContent>
+
+            {/* ─── ASISTENCE ─── */}
+            <TabsContent value="assistance">
+              <LiveSessionPanel
+                clientId={selectedClient.id}
+                clientName={selectedClient.name}
+                caseSummary={null}
+                onEndSession={() => {
+                  loadClientDetail(selectedClient);
+                  setActiveTab("sessions");
+                  toast.success("Zápis sezení uložen do záložky Sezení");
                 }}
               />
             </TabsContent>
