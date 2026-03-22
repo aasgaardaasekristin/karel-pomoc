@@ -87,7 +87,7 @@ type ClientTask = {
 
 const Kartoteka = () => {
   const navigate = useNavigate();
-  const { createSession, updateSessionPlan, sessions: activeSessions } = useActiveSessions();
+  const { createSession, updateSessionPlan, setActiveSession, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
