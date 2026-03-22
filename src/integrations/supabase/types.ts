@@ -123,41 +123,53 @@ export type Database = {
       }
       client_tasks: {
         Row: {
+          answer: string | null
           client_id: string
           created_at: string
           due_date: string | null
+          for_session: number | null
           id: string
           method: string | null
           notes: string | null
+          priority: string
           result: string | null
           status: string
           task: string
+          task_type: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          answer?: string | null
           client_id: string
           created_at?: string
           due_date?: string | null
+          for_session?: number | null
           id?: string
           method?: string | null
           notes?: string | null
+          priority?: string
           result?: string | null
           status?: string
           task: string
+          task_type?: string
           updated_at?: string
           user_id?: string
         }
         Update: {
+          answer?: string | null
           client_id?: string
           created_at?: string
           due_date?: string | null
+          for_session?: number | null
           id?: string
           method?: string | null
           notes?: string | null
+          priority?: string
           result?: string | null
           status?: string
           task?: string
+          task_type?: string
           updated_at?: string
           user_id?: string
         }
