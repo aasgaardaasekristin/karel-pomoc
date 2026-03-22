@@ -87,7 +87,7 @@ type ClientTask = {
 
 const Kartoteka = () => {
   const navigate = useNavigate();
-  const { createSession, updateSessionPlan } = useActiveSessions();
+  const { createSession, updateSessionPlan, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -103,6 +103,18 @@ const Kartoteka = () => {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [activePlan, setActivePlan] = useState<any>(null);
   const [cardAnalysis, setCardAnalysis] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState("card");
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value);
+    if (value === "assistance" && selectedClient) {
+      const existingSession = activeSessions?.find(s => s.clientId === selectedClient.id);
+      if (!existingSession) {
+        const sessionId = createSession(selectedClient.id, selectedClient.name);
+        if (activePlan) updateSessionPlan(sessionId, activePlan);
+      }
+    }
+  };
 
   const handleBackup = async () => {
     setIsBackingUp(true);
