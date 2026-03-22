@@ -75,12 +75,18 @@ Vytvoř zápis v tomto formátu:
 - **Co zjistit příště**: co ověřit
 
 ### Karlovy poznámky
-(Vlastní postřehy supervizora – co šlo dobře, co zlepšit)`;
+(Vlastní postřehy supervizora – co šlo dobře, co zlepšit)
+
+### Úkoly pro terapeuta
+- [HIGH/MEDIUM/LOW] popis úkolu (co ověřit, zjistit, připravit)
+
+### Úkoly pro klienta
+- popis domácího úkolu nebo cvičení`;
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: \`Bearer \${LOVABLE_API_KEY}\`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -100,18 +106,54 @@ Vytvoř zápis v tomto formátu:
     const aiData = await aiRes.json();
     const report = aiData.choices?.[0]?.message?.content || "";
 
-    // Save to kartoteka
+    // Parse tasks from report
+    function parseTasks(text: string, heading: string): { task: string; priority: string }[] {
+      const escaped = heading.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
+      const section = text.match(new RegExp(\`\${escaped}\\\\n([\\\\s\\\\S]*?)(?=\\\\n###|$)\`));
+      if (!section) return [];
+      return [...section[1].matchAll(/- (?:\\[(HIGH|MEDIUM|LOW)\\] )?(.+)/gi)]
+        .map(m => ({ task: m[2].trim(), priority: (m[1] || "medium").toLowerCase() }));
+    }
+
+    const therapistTasks = parseTasks(report, "### Úkoly pro terapeuta");
+    const clientTasks = parseTasks(report, "### Úkoly pro klienta");
+    const nextSession = (count ?? 0) + 2;
+
+    if (therapistTasks.length + clientTasks.length > 0) {
+      const taskRows = [
+        ...therapistTasks.map(t => ({
+          client_id: clientId,
+          task: t.task,
+          task_type: "therapist_question",
+          priority: t.priority,
+          for_session: nextSession,
+          status: "planned",
+        })),
+        ...clientTasks.map(t => ({
+          client_id: clientId,
+          task: t.task,
+          task_type: "client_homework",
+          priority: t.priority,
+          for_session: nextSession,
+          status: "planned",
+        })),
+      ];
+      const { error: taskError } = await supabase.from("client_tasks").insert(taskRows);
+      if (taskError) console.error("Task insert error:", taskError);
+    }
+
+    // Save session to kartoteka
     const { error: insertError } = await supabase.from("client_sessions").insert({
       client_id: clientId,
       session_number: (count ?? 0) + 1,
       ai_analysis: report,
       ai_hypotheses: chatTranscript,
-      notes: `Live sezení s Karlem – ${new Date().toLocaleDateString("cs-CZ")}`,
+      notes: \`Live sezení s Karlem – \${new Date().toLocaleDateString("cs-CZ")}\`,
     });
 
     if (insertError) console.error("Insert error:", insertError);
 
-    return new Response(JSON.stringify({ report }), {
+    return new Response(JSON.stringify({ report, tasks: [...therapistTasks, ...clientTasks] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
