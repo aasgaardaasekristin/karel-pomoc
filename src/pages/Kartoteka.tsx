@@ -664,7 +664,7 @@ const Kartoteka = () => {
             </TabsContent>
 
             {/* ─── PŘIPRAVIT SEZENÍ ─── */}
-            <TabsContent value="prep">
+            <TabsContent value="prep" forceMount className={activeTab === "prep" ? "" : "hidden"}>
               <ClientSessionPrepPanel
                 clientId={selectedClient.id}
                 clientName={selectedClient.name}
@@ -672,12 +672,10 @@ const Kartoteka = () => {
                 onPlanApproved={(plan) => setActivePlan(plan)}
                 onPlanDeleted={() => setActivePlan(null)}
                 onStartSession={(plan) => {
-                  try {
-                    const sessionId = createSession(selectedClient.id, selectedClient.name);
+                  const sessionId = createSession(selectedClient.id, selectedClient.name);
+                  if (sessionId) {
                     updateSessionPlan(sessionId, plan);
                     setActiveTab("assistance");
-                  } catch (e: any) {
-                    toast.error(e.message || "Chyba při vytváření sezení");
                   }
                 }}
               />
