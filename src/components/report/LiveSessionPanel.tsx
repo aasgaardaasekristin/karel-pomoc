@@ -278,6 +278,12 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             <h3 className="text-lg font-semibold text-foreground">Jak chceš vést sezení?</h3>
             <p className="text-sm text-muted-foreground">Zvol režim pro sezení s {clientName}</p>
           </div>
+          {!hasPlan && (
+            <div className="text-center text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+              <p>Pro <strong>{clientName}</strong> nemáš připravené sezení.</p>
+              <p className="text-xs mt-1">Vyber „Vlastní téma" nebo „Volná asistence".</p>
+            </div>
+          )}
           <RadioGroup
             value={sessionMode ?? ""}
             onValueChange={(v) => setSessionMode(v as SessionMode)}
