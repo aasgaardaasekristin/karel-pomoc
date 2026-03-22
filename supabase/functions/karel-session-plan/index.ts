@@ -137,9 +137,11 @@ Vrať validní JSON:
 
     let plan: any;
     try {
-      const jsonStr = rawContent.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      plan = JSON.parse(jsonStr);
-    } catch {
+      const match = rawContent.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const clean = (match ? match[1] : rawContent).trim();
+      plan = JSON.parse(clean);
+    } catch (e) {
+      console.error("Failed to parse session plan JSON. Raw AI response:", rawContent);
       plan = { sessionGoal: "Plán nebyl vygenerován ve správném formátu", phases: [], whyThisPlan: rawContent };
     }
 
