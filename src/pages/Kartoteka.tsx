@@ -162,6 +162,18 @@ const Kartoteka = () => {
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
 
+  // Sync active session when switching clients while assistance tab is open
+  useEffect(() => {
+    if (activeTab !== "assistance" || !selectedClient) return;
+    const existingSession = activeSessions?.find(s => s.clientId === selectedClient.id);
+    if (existingSession) {
+      setActiveSession(existingSession.id);
+    } else {
+      const sessionId = createSession(selectedClient.id, selectedClient.name);
+      if (activePlan) updateSessionPlan(sessionId, activePlan);
+    }
+  }, [selectedClient?.id, activeTab]);
+
   // Fetch client detail
   const loadClientDetail = useCallback(async (client: Client) => {
     setSelectedClient(client);

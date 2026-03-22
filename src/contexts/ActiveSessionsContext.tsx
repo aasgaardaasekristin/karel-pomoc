@@ -77,56 +77,67 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
     try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
   });
 
-  const persist = useCallback((next: SessionWorkspace[]) => {
-    setSessions(next);
-    saveSessions(next);
+  const persist = useCallback((updater: (prev: SessionWorkspace[]) => SessionWorkspace[]) => {
+    setSessions(prev => {
+      const next = updater(prev);
+      saveSessions(next);
+      return next;
+    });
   }, []);
 
   const createSession = useCallback((clientId: string, clientName: string) => {
-    // Check if session for this client already exists
-    const existing = sessions.find(s => s.clientId === clientId);
-    if (existing) {
-      setActiveSessionId(existing.id);
-      try { localStorage.setItem(ACTIVE_KEY, existing.id); } catch {}
-      return existing.id;
-    }
-
-    if (sessions.length >= MAX_SESSIONS) {
-      throw new Error("Maximálně 5 rozpracovaných sezení. Ukonči jedno z nich.");
-    }
-
-    const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const newSession: SessionWorkspace = {
-      id,
-      clientId,
-      clientName,
-      formData: { ...DEFAULT_FORM, contactFullName: clientName },
-      chatMessages: [],
-      reportText: "",
-      triageData: null,
-      status: "active",
-      createdAt: Date.now(),
-    };
-
-    const next = [...sessions, newSession];
-    persist(next);
-    setActiveSessionId(id);
-    try { localStorage.setItem(ACTIVE_KEY, id); } catch {}
-    return id;
-  }, [sessions, persist]);
+    let resultId = "";
+    setSessions(prev => {
+      const existing = prev.find(s => s.clientId === clientId);
+      if (existing) {
+        resultId = existing.id;
+        return prev;
+      }
+      if (prev.length >= MAX_SESSIONS) {
+        throw new Error("Maximálně 5 rozpracovaných sezení. Ukonči jedno z nich.");
+      }
+      const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      resultId = id;
+      const newSession: SessionWorkspace = {
+        id,
+        clientId,
+        clientName,
+        formData: { ...DEFAULT_FORM, contactFullName: clientName },
+        chatMessages: [],
+        reportText: "",
+        triageData: null,
+        status: "active",
+        createdAt: Date.now(),
+      };
+      const next = [...prev, newSession];
+      saveSessions(next);
+      return next;
+    });
+    setActiveSessionId(resultId);
+    try { localStorage.setItem(ACTIVE_KEY, resultId); } catch {}
+    return resultId;
+  }, []);
 
   const removeSession = useCallback((id: string) => {
-    const next = sessions.filter(s => s.id !== id);
-    persist(next);
-    if (activeSessionId === id) {
-      const newActive = next.length > 0 ? next[0].id : null;
-      setActiveSessionId(newActive);
-      try {
-        if (newActive) localStorage.setItem(ACTIVE_KEY, newActive);
-        else localStorage.removeItem(ACTIVE_KEY);
-      } catch {}
-    }
-  }, [sessions, activeSessionId, persist]);
+    persist(prev => {
+      const next = prev.filter(s => s.id !== id);
+      return next;
+    });
+    setActiveSessionId(prev => {
+      if (prev === id) {
+        // We need to read current sessions to find a replacement
+        const stored = loadSessions();
+        const remaining = stored.filter(s => s.id !== id);
+        const newActive = remaining.length > 0 ? remaining[0].id : null;
+        try {
+          if (newActive) localStorage.setItem(ACTIVE_KEY, newActive);
+          else localStorage.removeItem(ACTIVE_KEY);
+        } catch {}
+        return newActive;
+      }
+      return prev;
+    });
+  }, [persist]);
 
   const setActiveSessionFn = useCallback((id: string) => {
     setActiveSessionId(id);
@@ -139,9 +150,8 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
   }, []);
 
   const updateSession = useCallback((id: string, updater: (s: SessionWorkspace) => SessionWorkspace) => {
-    const next = sessions.map(s => s.id === id ? updater(s) : s);
-    persist(next);
-  }, [sessions, persist]);
+    persist(prev => prev.map(s => s.id === id ? updater(s) : s));
+  }, [persist]);
 
   const updateFormData = useCallback((id: string, data: Partial<ReportFormData>) => {
     updateSession(id, s => ({ ...s, formData: { ...s.formData, ...data } }));
