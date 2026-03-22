@@ -86,37 +86,37 @@ export const ActiveSessionsProvider = ({ children }: { children: ReactNode }) =>
   }, []);
 
   const createSession = useCallback((clientId: string, clientName: string) => {
-    // Check if session for this client already exists
-    const existing = sessions.find(s => s.clientId === clientId);
-    if (existing) {
-      setActiveSessionId(existing.id);
-      try { localStorage.setItem(ACTIVE_KEY, existing.id); } catch {}
-      return existing.id;
-    }
-
-    if (sessions.length >= MAX_SESSIONS) {
-      throw new Error("Maximálně 5 rozpracovaných sezení. Ukonči jedno z nich.");
-    }
-
-    const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const newSession: SessionWorkspace = {
-      id,
-      clientId,
-      clientName,
-      formData: { ...DEFAULT_FORM, contactFullName: clientName },
-      chatMessages: [],
-      reportText: "",
-      triageData: null,
-      status: "active",
-      createdAt: Date.now(),
-    };
-
-    const next = [...sessions, newSession];
-    persist(next);
-    setActiveSessionId(id);
-    try { localStorage.setItem(ACTIVE_KEY, id); } catch {}
-    return id;
-  }, [sessions, persist]);
+    let resultId = "";
+    setSessions(prev => {
+      const existing = prev.find(s => s.clientId === clientId);
+      if (existing) {
+        resultId = existing.id;
+        return prev;
+      }
+      if (prev.length >= MAX_SESSIONS) {
+        throw new Error("Maximálně 5 rozpracovaných sezení. Ukonči jedno z nich.");
+      }
+      const id = `session-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      resultId = id;
+      const newSession: SessionWorkspace = {
+        id,
+        clientId,
+        clientName,
+        formData: { ...DEFAULT_FORM, contactFullName: clientName },
+        chatMessages: [],
+        reportText: "",
+        triageData: null,
+        status: "active",
+        createdAt: Date.now(),
+      };
+      const next = [...prev, newSession];
+      saveSessions(next);
+      return next;
+    });
+    setActiveSessionId(resultId);
+    try { localStorage.setItem(ACTIVE_KEY, resultId); } catch {}
+    return resultId;
+  }, []);
 
   const removeSession = useCallback((id: string) => {
     const next = sessions.filter(s => s.id !== id);
