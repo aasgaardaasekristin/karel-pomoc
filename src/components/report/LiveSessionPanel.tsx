@@ -113,6 +113,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
   }, [clientName, caseSummary, sessionMode, sessionPlan, customTopic]);
 
   const sendMessage = async () => {
+    console.log("[LiveSessionPanel] sendMessage called", { input: input.trim(), isLoading, activeSessionId, activeSessionExists: !!activeSession });
     if ((!input.trim()) || isLoading) return;
     const userMessage = input.trim();
     setInput("");
