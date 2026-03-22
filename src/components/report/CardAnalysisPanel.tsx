@@ -4,11 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Search, ClipboardList, Eye, Check, Edit3 } from "lucide-react";
+import { Loader2, Search, ClipboardList, Eye, Check, Edit3, Download } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
+import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
 interface CardAnalysisPanelProps {
   clientId: string;
@@ -36,6 +37,7 @@ const PLAN_STEPS = [
 ];
 
 type PlanState = "idle" | "generating" | "review" | "saving" | "saved";
+
 
 const CardAnalysisPanel = ({
   clientId,
@@ -547,7 +549,7 @@ const CardAnalysisPanel = ({
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm" className="gap-1.5"
               disabled={!modifications.trim() || planState === "saving"}
               onClick={() => {
@@ -556,6 +558,10 @@ const CardAnalysisPanel = ({
                 handleGeneratePlan(mods);
               }}>
               <Edit3 className="w-3.5 h-3.5" /> Požádat o úpravy
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => exportTherapyPlanPdf(clientName, planContent)}>
+              <Download className="w-3.5 h-3.5" /> PDF
             </Button>
             <Button size="sm" className="gap-1.5 flex-1"
               disabled={planState === "saving"}
@@ -574,10 +580,14 @@ const CardAnalysisPanel = ({
       {planState === "saved" && (
         <div className="bg-primary/10 border border-primary/30 rounded-xl p-4 flex items-center gap-3">
           <Check className="w-5 h-5 text-primary shrink-0" />
-          <div>
+          <div className="flex-1">
             <p className="text-sm font-medium text-foreground">Plán uložen do karty klienta</p>
             <p className="text-xs text-muted-foreground">Záloha na Drive probíhá na pozadí</p>
           </div>
+          <Button variant="outline" size="sm" className="gap-1.5 shrink-0"
+            onClick={() => exportTherapyPlanPdf(clientName, planContent)}>
+            <Download className="w-3.5 h-3.5" /> PDF
+          </Button>
         </div>
       )}
 
