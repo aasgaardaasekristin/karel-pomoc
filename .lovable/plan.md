@@ -1,65 +1,55 @@
 
 
-# Část 1: Implementace — Anti-halucinační guardy + Uložení konzultací + Image upload
+# Sprint 3: Výběrový dialog + Auto-insert úkolů
 
-Plán byl schválen. Všechna ověření prošla. Zde je přesný implementační plán.
+## Verified findings
 
-## 7 souborů ke změně
+**for_session calculation**: In `karel-session-finalize`, `count` is fetched at line 34 (BEFORE insert at line 104). So `count` = number of previous sessions, current session = `count + 1`, tasks for next session = `count + 2`. The original `(count ?? 0) + 2` is correct.
 
-### A1. `supabase/functions/karel-supervision-discuss/index.ts`
-**Ř. 38–51**: Po `const sessions = ...` vložit guard:
-```typescript
-const isCardEmpty = !client?.diagnosis && !client?.key_history && !client?.family_context && !client?.notes;
-if (sessions.length === 0 && isCardEmpty && mode !== "chat") {
-  return new Response(JSON.stringify({
-    response: `Hani, klient **${clientName}** má v kartotéce zatím prázdnou kartu a žádná sezení.\n\nNemám z čeho analyzovat...`
-  }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-```
-`fullHistory` fallback: `|| "(žádná sezení)"`
+**createSession** returns `string` (session ID) -- confirmed from context code.
 
-**Ř. 73**: Do system promptu přidat KRITICKÉ PRAVIDLO (5 řádků anti-halucinační instrukce).
+## 4 files to change
 
-### A2. `supabase/functions/karel-client-research/index.ts`
-**Ř. 38–41**: Stejný guard → "Bez diagnózy a historie nemám co zkoumat..."
+### 1. `src/contexts/ActiveSessionsContext.tsx`
+- Add `sessionPlan?: any` to `SessionWorkspace` interface (after line 14)
+- Add `updateSessionPlan: (id: string, plan: any) => void` to context type interface
+- Add implementation using existing `updateSession` helper
+- Add to provider value
 
-### A3. `supabase/functions/karel-supervision-training/index.ts`
-**Ř. 37–48**: Stejný guard → "Nemám dost informací pro simulaci klienta..."
-`sessionHistory` fallback: `|| "(žádná sezení)"`
+### 2. `src/pages/Kartoteka.tsx`
+- Import `useActiveSessions`
+- In SessionPlanPanel's `onStartSession` callback: call `createSession(clientId, clientName)` then `updateSessionPlan(id, plan)` then `navigate("/chat")`
 
-### A4. `supabase/functions/karel-client-session-prep/index.ts`
-**Ř. 40–43**: Soft guard — `emptyCardWarning` string přidaný do system promptu.
-**Ř. 165–166**: Přidat KRITICKÉ PRAVIDLO + `${emptyCardWarning}`.
+### 3. `src/components/report/LiveSessionPanel.tsx`
+- Add `sessionMode` state: `"plan" | "modify" | "custom" | "free" | null` (null = show dialog)
+- Read `activeSession?.sessionPlan` from context
+- When `messages.length === 0 && sessionMode === null`: render selection dialog (4 radio options, "Podle navrhu" disabled if no plan)
+- On mode selection: set `sessionMode`, trigger greeting with mode-specific text
+- In `buildContext()` (the part that constructs chat context for the edge function): if `sessionMode === "plan"`, append plan phases
+- Add `customTopic` state for "modify" and "custom" modes with textarea
 
-### A5. `supabase/functions/karel-session-finalize/index.ts`
-**Ř. 40**: Do promptu přidat: "Vycházej VÝHRADNĚ z přepisu live sezení. NEVYMÝŠLEJ si nic, co v přepisu není."
-**Ř. 87**: System message rozšířit o anti-halucinační instrukci.
+### 4. `supabase/functions/karel-session-finalize/index.ts`
+- Add two new sections to the prompt template (after line 77):
+  ```
+  ### Ukoly pro terapeuta
+  - [HIGH/MEDIUM/LOW] popis
+  
+  ### Ukoly pro klienta
+  - popis
+  ```
+- After getting `report` (line 101), parse tasks with escaped regex:
+  ```typescript
+  function parseTasks(text: string, heading: string) {
+    const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const section = text.match(new RegExp(`${escaped}\\n([\\s\\S]*?)(?=\\n###|$)`));
+    if (!section) return [];
+    return [...section[1].matchAll(/- (?:\[(HIGH|MEDIUM|LOW)\] )?(.+)/gi)]
+      .map(m => ({ task: m[2].trim(), priority: (m[1] || "medium").toLowerCase() }));
+  }
+  ```
+- Insert tasks into `client_tasks` with `for_session: (count ?? 0) + 2` (correct -- count is pre-insert)
+- Only insert if tasks array is non-empty
+- Return `{ report, tasks }` (backward compatible)
 
-### B1. `src/components/report/ClientDiscussionChat.tsx`
-- Import `supabase`, `Save` icon
-- Přidat stav `saved` (boolean)
-- Do headeru (ř. 137–143) přidat tlačítko "Uložit konzultaci":
-  - Viditelné: `messages.length > 0 && !isLoading`
-  - onClick: insert do `client_sessions` s `notes: "Supervizní konzultace s Karlem"`, `ai_analysis: fullTranscript`
-  - Po uložení: `setSaved(true)`, toast, tlačítko → "✓ Uloženo" (disabled)
-
-### C1. `src/components/report/LiveSessionPanel.tsx`
-- Import `useImageUpload`, `ImageUploadButton`, `ImagePlus`, `Select`
-- Přidat stavy: `imageAnalysisType` ("Kresba klienta" | "Rukopis klienta" | "Foto výrazu"), `isImageAnalyzing`
-- Do audio recorder strip (ř. 253–300) přidat za audio sekci:
-  - Select pro typ analýzy
-  - Image upload tlačítko
-- Handler `handleImageAnalysis`:
-  - `chatContext` z `messages.map(m => \`${m.role}: ${m.content}\`).join("\n")` — messages mají `{role, content}` interface ✅
-  - Volání `karel-analyze-file` s `{ attachments: [{name, type, data}], mode: "supervision", chatContext, userPrompt: "Toto je ${imageAnalysisType} KLIENTA (ne terapeuta). Analyzuj v kontextu live sezení." }`
-  - Výsledek jako assistant zpráva v chatu
-
-## Technické detaily
-
-- `mode` je extrahována na ř. 26 ve všech edge funkcích ✅
-- `ai_analysis` sloupec existuje v `client_sessions` ✅
-- `karel-analyze-file` přijímá `{ attachments, mode, chatContext, userPrompt }` ✅
-- Messages v LiveSessionPanel mají `{role: string, content: string}` interface ✅
-
-Celkem ~114 řádků, 7 souborů, žádné DB migrace.
+## Estimated: ~120 lines across 4 files, no DB migration
 
