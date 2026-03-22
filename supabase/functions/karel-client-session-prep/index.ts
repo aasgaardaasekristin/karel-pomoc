@@ -57,6 +57,7 @@ serve(async (req) => {
       client?.key_history ? `Klíčová anamnéza: ${client.key_history}` : null,
       client?.family_context ? `Rodinný kontext: ${client.family_context}` : null,
       client?.notes ? `Poznámky: ${client.notes}` : null,
+      client?.therapy_plan ? `Terapeutický plán procesu: ${client.therapy_plan.slice(0, 1000)}` : null,
     ].filter(Boolean).join("\n");
 
     const sessionsContext = sessions.slice(0, 8).map((s, i) => {
