@@ -52,6 +52,8 @@ const urgencyLabels: Record<string, string> = {
   dormant_7d: "Neaktivní >7d",
   fallback_oldest: "Nejdéle neviděn",
   therapist_override: "✅ Terapeutka",
+  overdue_escalation: "🔴 Odložený plán",
+  recent_session: "↩ Nedávné sezení",
 };
 
 const GENERATION_STEPS = [
