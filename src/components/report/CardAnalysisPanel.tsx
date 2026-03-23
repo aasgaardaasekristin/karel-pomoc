@@ -105,7 +105,33 @@ const CardAnalysisPanel = ({
     }
   };
 
-  const handleGeneratePlan = async (mods?: string, retryCount = 0) => {
+  const handleSaveToCard = async () => {
+    if (!result) return;
+    setIsSavingToCard(true);
+    try {
+      const { count } = await supabase
+        .from("client_analyses" as any)
+        .select("*", { count: "exact", head: true })
+        .eq("client_id", clientId);
+      const { error } = await supabase.from("client_analyses" as any).insert({
+        client_id: clientId,
+        content: JSON.stringify(result),
+        summary: (result.clientProfile || "").slice(0, 200),
+        version: (count ?? 0) + 1,
+        sessions_count: sessionsCount,
+      });
+      if (error) throw error;
+      setSavedToCard(true);
+      toast.success("Analýza uložena do karty");
+    } catch (e: any) {
+      toast.error("Nepodařilo se uložit analýzu");
+      console.error(e);
+    } finally {
+      setIsSavingToCard(false);
+    }
+  };
+
+
     setPlanState("generating");
     setPlanStep(0);
     setPlanContent("");
