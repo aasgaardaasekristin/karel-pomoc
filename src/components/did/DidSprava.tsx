@@ -3,10 +3,8 @@ import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Tras
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
+import ThemeEditorDialog from "@/components/ThemeEditorDialog";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
 import DidReportDiagnostics from "./DidReportDiagnostics";
