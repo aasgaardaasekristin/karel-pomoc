@@ -33,8 +33,11 @@ interface LiveSessionPanelProps {
   onEndSession: (sessionReport: string) => void;
 }
 
+type DbPrep = { id: string; session_number: number | null; created_at: string; plan: any; approved_at: string | null; notes: string | null };
+type ModifyPhase = "pick" | "editing" | "generating" | "reviewing" | null;
+
 const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: LiveSessionPanelProps) => {
-  const { activeSession, activeSessionId, updateChatMessages, sessions, createSession, setActiveSession } = useActiveSessions();
+  const { activeSession, activeSessionId, updateChatMessages, updateSessionPlan, sessions, createSession, setActiveSession } = useActiveSessions();
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
@@ -51,6 +54,35 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
   const [modeConfirmed, setModeConfirmed] = useState(false);
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0);
   const greetingSentRef = useRef(false);
+
+  // DB preparations state
+  const [dbPreps, setDbPreps] = useState<DbPrep[]>([]);
+  const [dbPrepsLoading, setDbPrepsLoading] = useState(true);
+  const [selectedPrepId, setSelectedPrepId] = useState<string | null>(null);
+  const [modifyPhase, setModifyPhase] = useState<ModifyPhase>(null);
+  const [modifyRequest, setModifyRequest] = useState("");
+  const [modifiedPlan, setModifiedPlan] = useState<any>(null);
+  const [isGeneratingModification, setIsGeneratingModification] = useState(false);
+
+  // Fetch saved preparations from DB
+  useEffect(() => {
+    const fetchPreps = async () => {
+      setDbPrepsLoading(true);
+      try {
+        const { data } = await supabase
+          .from("session_preparations" as any)
+          .select("id, session_number, created_at, plan, approved_at, notes")
+          .eq("client_id", clientId)
+          .order("created_at", { ascending: false });
+        setDbPreps((data as DbPrep[] | null) ?? []);
+      } catch (e) {
+        console.warn("[LiveSessionPanel] Failed to fetch preps:", e);
+      } finally {
+        setDbPrepsLoading(false);
+      }
+    };
+    fetchPreps();
+  }, [clientId]);
 
   // Self-heal: ensure activeSession matches this clientId
   const resolvedSessionId = (() => {
