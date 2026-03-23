@@ -406,7 +406,33 @@ serve(async (req) => {
 
     // ═══ CALCULATE URGENCY SCORES v2 ═══
     const scores = calculateUrgencyScores(registry, threads3d, threads24h, crisisBriefs, pendingTasks, sessions);
-    console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
+
+    // ═══ PRIORITY 1: Apply overdue escalation bonus ═══
+    for (const s of scores) {
+      const bonus = overduePartBonus.get(s.partName) || 0;
+      if (bonus > 0) {
+        s.score += bonus;
+        s.breakdown["overdue_escalation"] = bonus;
+      }
+    }
+
+    // ═══ PRIORITY 3: Apply 48h repetition penalty ═══
+    for (const s of scores) {
+      if (recentPartNames48h.has(s.partName)) {
+        s.score -= 5;
+        s.breakdown["recent_session"] = -5;
+      }
+    }
+
+    // Re-sort after bonuses/penalties
+    scores.sort((a, b) => {
+      const tierOrder: Record<string, number> = { fading: 0, active: 1, sleeping: 2, override: -1 };
+      const tierDiff = (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
+      if (tierDiff !== 0) return tierDiff;
+      return b.score - a.score;
+    });
+
+    console.log(`[auto-session-plan] Scores (after bonuses): ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
 
     // ═══ PART SELECTION ═══
     let selectedPart: UrgencyResult;
