@@ -45,6 +45,40 @@ serve(async (req) => {
       }
     }
 
+    // ═══ SUPERVISION FAST-PATH ═══
+    // Skip all heavy operations (Drive, Perplexity, tasks) for live session supervision mode
+    if (mode === "supervision") {
+      console.log("[karel-chat] Supervision fast-path: skipping Drive/Perplexity/tasks");
+      // Go straight to AI gateway with system prompt + didInitialContext (already injected above)
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages.map((m: any) => Array.isArray(m.content) ? { role: m.role, content: m.content } : m),
+          ],
+          stream: true,
+        }),
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limits exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        if (response.status === 402) return new Response(JSON.stringify({ error: "Payment required" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        const text = await response.text();
+        console.error("AI gateway error (supervision):", response.status, text);
+        return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      return new Response(response.body, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+
     // ═══ RUNTIME INJECTION: Pending therapist tasks + Karel's Insight + Dashboard deductions ═══
     if (mode === "childcare" && (didSubMode === "mamka" || didSubMode === "kata")) {
       try {
