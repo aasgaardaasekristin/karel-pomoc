@@ -485,6 +485,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       applyTemporaryTheme,
       restoreGlobalTheme,
       getPersonaPrefs,
+      setLocalMode,
     }}>
       {children}
     </ThemeContext.Provider>
