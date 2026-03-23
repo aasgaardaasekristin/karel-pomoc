@@ -1197,7 +1197,7 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  return <RichMarkdown className="mt-1" children={cleanAnalysis} />;
+  return <RichMarkdown className="mt-1">{cleanAnalysis || "Analýza není k dispozici"}</RichMarkdown>;
 };
 
 export default Kartoteka;
