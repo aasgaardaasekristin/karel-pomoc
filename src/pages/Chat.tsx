@@ -527,7 +527,23 @@ const Chat = () => {
     saveMessages(mode, conv.messages);
   }, [loadConversation, setDidSubMode, setDidInitialContext, setMessages, mode]);
 
-  const { applyPreset: applyThemePreset, prefs: themePrefs, applyTemporaryTheme, restoreGlobalTheme, getPersonaPrefs } = useTheme();
+  const {
+    applyPreset: applyThemePreset,
+    prefs: themePrefs,
+    applyTemporaryTheme,
+    restoreGlobalTheme,
+    getPersonaPrefs,
+    setContextKey,
+  } = useTheme();
+
+  useEffect(() => {
+    if (mainMode === "report") {
+      setContextKey(activeSession ? `report_client_${activeSession.clientId}` : "report_session_selector");
+      return;
+    }
+
+    setContextKey("global");
+  }, [mainMode, activeSession?.clientId, setContextKey]);
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
