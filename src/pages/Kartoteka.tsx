@@ -1210,8 +1210,8 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
   } catch {
     try {
       const cleaned = analysis
-        .replace(/^```json\n?/, "")
-        .replace(/```$/, "")
+        .replace(/^```(?:json)?\s*\n?/, "")
+        .replace(/\n?```\s*$/, "")
         .trim();
       parsed = JSON.parse(cleaned);
       if (typeof parsed === "string") {
