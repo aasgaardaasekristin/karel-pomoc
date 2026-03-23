@@ -3,6 +3,7 @@ import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import { useChatContext } from "@/contexts/ChatContext";
 import { Button } from "@/components/ui/button";
@@ -154,7 +155,9 @@ const Kartoteka = () => {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
-      if (res.error || !res.data?.success) {
+      if (handleDriveError(res)) {
+        // Drive auth error shown via toast
+      } else if (res.error || !res.data?.success) {
         toast.error(res.data?.error || "Záloha selhala");
       } else {
         toast.success(res.data.message);
@@ -379,7 +382,7 @@ const Kartoteka = () => {
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
       }).then(res => {
-        if (res.error || !res.data?.success) {
+        if (!handleDriveError(res) && (res.error || !res.data?.success)) {
           console.warn("Drive backup failed:", res.data?.error || res.error);
         }
       });

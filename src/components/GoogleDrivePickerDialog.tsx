@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, FileText, Download, Search, Link2 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import type { PendingAttachment } from "@/hooks/useUniversalUpload";
 
 interface DriveFile {
@@ -78,6 +79,10 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
       );
       if (!resp.ok) {
         const errBody = await resp.text();
+        if (/invalid_grant|expired|revoked/i.test(errBody)) {
+          handleDriveError({ data: { error: errBody } });
+          return;
+        }
         console.error("Drive list error:", resp.status, errBody);
         throw new Error(`Chyba ${resp.status}`);
       }
@@ -109,6 +114,10 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
       );
       if (!resp.ok) {
         const errBody = await resp.text();
+        if (/invalid_grant|expired|revoked/i.test(errBody)) {
+          handleDriveError({ data: { error: errBody } });
+          return;
+        }
         console.error("Drive download error:", resp.status, errBody);
         throw new Error(`Chyba ${resp.status}`);
       }

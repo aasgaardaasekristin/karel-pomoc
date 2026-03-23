@@ -8,6 +8,7 @@ import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2, Che
 import { supabase } from "@/integrations/supabase/client";
 import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
 import { blobToBase64 } from "@/lib/driveUtils";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
@@ -234,7 +235,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             clientId,
             folder: "Sezeni",
           },
-        });
+        }).then(res => handleDriveError(res));
       } catch (e) {
         console.warn("Drive backup failed:", e);
       }

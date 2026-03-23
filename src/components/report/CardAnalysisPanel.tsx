@@ -8,6 +8,7 @@ import { Loader2, Search, ClipboardList, Eye, Check, Edit3, Download, Save } fro
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
@@ -317,10 +318,11 @@ const CardAnalysisPanel = ({
             const pdfBase64 = doc.output("datauristring").split(",")[1];
             const fileName = `Plan_procesu_${clientName.replace(/\s+/g, "_")}_${safeDate}.pdf`;
 
-            await supabase.functions.invoke("karel-session-drive-backup", {
+            const driveRes = await supabase.functions.invoke("karel-session-drive-backup", {
               headers: { Authorization: `Bearer ${session.access_token}` },
               body: { pdfBase64, fileName, clientId, folder: "Plany" },
             });
+            handleDriveError(driveRes);
           } catch (e) {
             console.error("Drive backup failed:", e);
           }
