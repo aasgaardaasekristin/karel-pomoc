@@ -569,7 +569,7 @@ const Kartoteka = () => {
           <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <ThemeQuickButton />
+                <ThemeQuickButton storageKey={kartotekaStorageKey} />
                 <TabsList className="inline-flex w-auto flex-1 h-auto flex-nowrap sm:grid sm:grid-cols-4">
                   <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                     <User className="w-3.5 h-3.5 hidden sm:block" />
