@@ -56,6 +56,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
   const recorder = useSessionAudioRecorder();
   const startTimeRef = useRef<number>(0);
   const originalBodyRef = useRef<any>(null);
+  const mediaUploadRef = useRef<SessionMediaUploadHandle>(null);
 
   // Animated spinner
   useEffect(() => {
