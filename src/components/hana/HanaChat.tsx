@@ -37,7 +37,7 @@ const handleApiError = async (response: Response) => {
   throw new Error(backendError || "Něco se pokazilo. Zkus to znovu.");
 };
 
-const HanaChat = () => {
+const HanaChatInner = () => {
   const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
