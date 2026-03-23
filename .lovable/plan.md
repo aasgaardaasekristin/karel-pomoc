@@ -1,27 +1,21 @@
 
 
-# Oprava formátu analýz v Kartě
+# Oprava: Uložená analýza se nezobrazí v záložce Karta
 
 ## Příčina
-Edge funkce `karel-card-analysis` vrací odpověď, kde `clientProfile` obsahuje konverzační text + celý JSON v markdown bloku (````json ... ````). Kód v `CardAnalysisPanel.tsx` pracuje s `result` objektem správně (po parsování v edge funkci), ale při ukládání do DB se celý result serializuje přes `JSON.stringify(result)` — jenže `result.clientProfile` už obsahuje ten surový text s embedded JSONem.
+`CardAnalysisPanel` uloží analýzu do DB, ale `clientAnalyses` state v `Kartoteka.tsx` se neaktualizuje — načte se jen při `selectClient()`. Po uložení se stav v paměti nezmění, takže v záložce Karta nic nepřibude, dokud uživatel znovu nevybere klienta.
 
-Výsledek: v Kartotéce `JSON.parse(a.content)` projde, ale `parsed.clientProfile` obsahuje obrovský text se závorkami a JSON bloky. Sekce Diagnostika a Co příště jsou prázdné, protože skutečná data jsou zanořená v tom stringovém poli `clientProfile`.
+## Řešení
 
-## Řešení — dvě opravy
+### 1. `CardAnalysisPanel.tsx` — přidat callback `onAnalysisSaved`
+- Přidat nový prop `onAnalysisSaved?: (analysis: any) => void`
+- Po úspěšném insertu zavolat `onAnalysisSaved` s uloženým objektem (včetně `id`, `created_at`, `version`, `content`, `sessions_count`)
 
-### 1. `Kartoteka.tsx` — robustní parsování + tabový formát
-- Při parsování `a.content` přidat fallback: pokud `parsed.clientProfile` obsahuje ````json```` blok, extrahovat z něj JSON a přeparsovat
-- Nahradit současný accordion obsah (řádky 712-785) za **stejné Tabs** jako v `CardAnalysisPanel.tsx`:
-  - `Profil | Diagnostika | Co příště`
-  - Identický rendering: primární hypotéza s Badge jistoty, diferenciální dg jako Badge, podpůrné důkazy jako bullet list, zaměření, techniky, testy, otázky
-- Zachovat hlavičku accordionu s číslem, datem, počtem sezení a tlačítkem smazat
-
-### 2. `CardAnalysisPanel.tsx` — čistší ukládání
-- V `handleSaveToCard` před `JSON.stringify(result)` ověřit, zda `result.clientProfile` obsahuje embedded JSON blok
-- Pokud ano, extrahovat čistý JSON a uložit ten místo surového textu
-- Tím se zajistí, že nové analýzy se uloží čistě
+### 2. `Kartoteka.tsx` — propojit callback a refreshnout state
+- Předat `CardAnalysisPanel` nový prop `onAnalysisSaved`
+- V handleru přidat novou analýzu do `clientAnalyses` state na začátek pole
 
 ## Soubory
-- `src/pages/Kartoteka.tsx` — parsování + tabový UI
-- `src/components/report/CardAnalysisPanel.tsx` — sanitizace před uložením
+- `src/components/report/CardAnalysisPanel.tsx` — nový prop + volání callbacku
+- `src/pages/Kartoteka.tsx` — předání callbacku a update stavu
 
