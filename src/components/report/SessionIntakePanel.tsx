@@ -511,6 +511,21 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
           )}
         </div>
       )}
+
+      {/* Media upload section — visible in text & audio modes */}
+      {inputMode !== "choose" && (
+        <SessionMediaUpload
+          clientId={clientId}
+          sessionDate={new Date().toISOString().split("T")[0]}
+          onMediaContext={setMediaContext}
+        />
+      )}
+
+      {mediaContext && (
+        <div className="p-2 bg-muted/30 rounded-lg">
+          <p className="text-xs text-muted-foreground">✅ Média přidána do kontextu záznamu</p>
+        </div>
+      )}
     </div>
   );
 };
