@@ -20,6 +20,7 @@ interface CardAnalysisPanelProps {
   onRequestPlan?: (analysis: any) => void;
   existingTherapyPlan?: string;
   onPlanSaved?: (plan: string) => void;
+  onAnalysisSaved?: (analysis: any) => void;
 }
 
 const ANALYSIS_STEPS = [
