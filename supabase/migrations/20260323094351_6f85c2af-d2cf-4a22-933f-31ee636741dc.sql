@@ -1,0 +1,1 @@
+ALTER TABLE client_analyses ADD COLUMN sessions_count INT;

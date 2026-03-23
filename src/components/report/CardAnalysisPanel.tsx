@@ -109,6 +109,7 @@ const CardAnalysisPanel = ({
               content: JSON.stringify(data.result),
               summary: (data.result.clientProfile || "").slice(0, 200),
               version: (count ?? 0) + 1,
+              sessions_count: data.sessionsCount || 0,
             });
           } catch (e) {
             console.warn("Failed to persist analysis:", e);

@@ -47,6 +47,7 @@ export type Database = {
           content: string
           created_at: string | null
           id: string
+          sessions_count: number | null
           summary: string | null
           user_id: string
           version: number | null
@@ -56,6 +57,7 @@ export type Database = {
           content: string
           created_at?: string | null
           id?: string
+          sessions_count?: number | null
           summary?: string | null
           user_id?: string
           version?: number | null
@@ -65,6 +67,7 @@ export type Database = {
           content?: string
           created_at?: string | null
           id?: string
+          sessions_count?: number | null
           summary?: string | null
           user_id?: string
           version?: number | null
