@@ -99,7 +99,7 @@ const Kartoteka = () => {
   const navigate = useNavigate();
   const { createSession, updateSessionPlan, setActiveSession, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
-  const { setContextKey } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [sessions, setSessions] = useState<ClientSession[]>([]);
