@@ -1,4 +1,5 @@
 import jsPDF from "jspdf";
+import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
 
 interface SessionData {
   session_number: number | null;
