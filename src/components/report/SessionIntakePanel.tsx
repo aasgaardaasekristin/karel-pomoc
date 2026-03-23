@@ -324,8 +324,8 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
               <RichMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</RichMarkdown>
             </TabsContent>
 
-            <TabsContent value="analysis" className="prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{result.sessionRecord?.analysis || "—"}</ReactMarkdown>
+            <TabsContent value="analysis">
+              <RichMarkdown>{result.sessionRecord?.analysis || "—"}</RichMarkdown>
             </TabsContent>
 
             <TabsContent value="diagnosis" className="space-y-3">

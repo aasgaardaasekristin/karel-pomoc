@@ -674,8 +674,8 @@ const CardAnalysisPanel = ({
             <Badge variant="outline" className="text-xs">K revizi</Badge>
           </div>
 
-          <div className="max-h-96 overflow-y-auto bg-background/50 rounded-lg p-4 prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{planContent}</ReactMarkdown>
+          <div className="max-h-96 overflow-y-auto bg-background/50 rounded-lg p-4">
+            <RichMarkdown>{planContent}</RichMarkdown>
           </div>
 
           <div className="space-y-2">

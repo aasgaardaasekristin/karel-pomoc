@@ -169,9 +169,7 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Zápis ze sezení – {clientName}</h2>
             <div className="bg-card border border-border rounded-lg p-4">
-              <div className="prose prose-sm max-w-none text-foreground/90">
-                <ReactMarkdown>{sessionReport}</ReactMarkdown>
-              </div>
+              <RichMarkdown>{sessionReport}</RichMarkdown>
             </div>
           </div>
 
