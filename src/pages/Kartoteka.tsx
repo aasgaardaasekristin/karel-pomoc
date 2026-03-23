@@ -1221,17 +1221,10 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
     tryParseJson(analysis) ??
     tryParseJson(stripped);
 
-  // If JSON is malformed (e.g. unescaped quotes), try to extract summary via regex
+  // If JSON is malformed, use shared parser for clean markdown fallback
   if (!parsed || typeof parsed !== "object") {
-    const summaryMatch = stripped.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:analysis|diagnosticHypothesis|therapeuticRecommendations|nextSessionFocus|questionnaire|clientTasks)")/);
-    if (summaryMatch) {
-      const rawSummary = summaryMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
-      return (
-        <RichMarkdown>{rawSummary}</RichMarkdown>
-      );
-    }
     return (
-      <RichMarkdown>{stripped}</RichMarkdown>
+      <RichMarkdown>{parseAiAnalysis(analysis)}</RichMarkdown>
     );
   }
 

@@ -73,7 +73,8 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
         setCaseSummary(`${clientName} – ${sessions.length} sezení v kartotéce.`);
         const last = sessions[0];
         if (last?.ai_analysis) {
-          setLastSessionSummary(last.ai_analysis.slice(0, 300) + (last.ai_analysis.length > 300 ? "…" : ""));
+          const cleanAnalysis = parseAiAnalysis(last.ai_analysis);
+          setLastSessionSummary(cleanAnalysis.slice(0, 300) + (cleanAnalysis.length > 300 ? "…" : ""));
         }
       } else {
         const data = await res.json();

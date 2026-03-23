@@ -122,7 +122,7 @@ async function buildSessionDoc(clientName: string, session: SessionData): Promis
     y += 6;
     doc.setFontSize(9);
     doc.setTextColor(40, 40, 40);
-    y = wrapped(doc, session.ai_analysis, m, y, maxW, 4.5);
+    y = wrapped(doc, parseAiAnalysis(session.ai_analysis), m, y, maxW, 4.5);
     y += 4;
   }
 
