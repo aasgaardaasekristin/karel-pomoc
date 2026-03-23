@@ -415,8 +415,8 @@ const CardAnalysisPanel = ({
             <TabsTrigger value="next" className="text-xs">Co příště</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile" className="prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{result.clientProfile || "—"}</ReactMarkdown>
+          <TabsContent value="profile">
+            <RichMarkdown>{result.clientProfile || "—"}</RichMarkdown>
             {result.therapeuticProgress && (
               <div className="mt-3 space-y-2 not-prose">
                 {result.therapeuticProgress.whatWorks?.length > 0 && (
