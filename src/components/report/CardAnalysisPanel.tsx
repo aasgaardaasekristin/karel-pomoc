@@ -660,8 +660,8 @@ const CardAnalysisPanel = ({
                  style={{ width: "40%" }} />
           </div>
           {planContent && (
-            <div className="mt-3 max-h-60 overflow-y-auto bg-background/50 rounded-lg p-3 prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{planContent}</ReactMarkdown>
+            <div className="mt-3 max-h-60 overflow-y-auto bg-background/50 rounded-lg p-3">
+              <RichMarkdown>{planContent}</RichMarkdown>
             </div>
           )}
         </div>
