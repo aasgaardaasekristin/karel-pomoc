@@ -1215,6 +1215,16 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
         <ReactMarkdown>{parsed.summary}</ReactMarkdown>
       </div>
 
+      {/* Analysis context */}
+      {parsed.analysis && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Analýza v kontextu terapie</span>
+          <div className="prose prose-sm max-w-none dark:prose-invert mt-1">
+            <ReactMarkdown>{parsed.analysis}</ReactMarkdown>
+          </div>
+        </div>
+      )}
+
       {/* Diagnostic hypothesis */}
       {parsed.diagnosticHypothesis && (
         <div>
