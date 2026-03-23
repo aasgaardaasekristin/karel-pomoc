@@ -305,96 +305,32 @@ const Kartoteka = () => {
         fetchClients();
       }
 
-      // 2. Generate PDF
-      const { default: jsPDF } = await import("jspdf");
-      const doc = new jsPDF({ unit: "mm", format: "a4" });
-      const margin = 15;
-      let y = 20;
-      const pageW = doc.internal.pageSize.getWidth() - 2 * margin;
-
-      doc.setFontSize(16);
-      doc.text(`Karta klienta: ${clientData.name}`, margin, y);
-      y += 10;
-
-      doc.setFontSize(10);
-      doc.text(`Datum exportu: ${new Date().toLocaleDateString("cs-CZ")}`, margin, y);
-      y += 8;
-
-      const fields: [string, string | null | undefined][] = [
-        ["Věk", clientData.age ? `${clientData.age} let` : null],
-        ["Pohlaví", clientData.gender],
-        ["Diagnóza", clientData.diagnosis],
-        ["Typ terapie", clientData.therapy_type],
-        ["Zdroj doporučení", clientData.referral_source],
-        ["Klíčová anamnéza", clientData.key_history],
-        ["Rodinný kontext", clientData.family_context],
-        ["Poznámky", clientData.notes],
-      ];
-
-      doc.setFontSize(11);
-      for (const [label, value] of fields) {
-        if (!value) continue;
-        if (y > 270) { doc.addPage(); y = 20; }
-        doc.setFont("helvetica", "bold");
-        doc.text(`${label}:`, margin, y);
-        y += 5;
-        doc.setFont("helvetica", "normal");
-        const lines = doc.splitTextToSize(value, pageW);
-        for (const line of lines) {
-          if (y > 280) { doc.addPage(); y = 20; }
-          doc.text(line, margin, y);
-          y += 5;
-        }
-        y += 3;
-      }
-
-      // Add therapy plan if exists
-      if (clientData.therapy_plan) {
-        if (y > 250) { doc.addPage(); y = 20; }
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(13);
-        doc.text("Terapeutický plán procesu", margin, y);
-        y += 7;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        const planLines = doc.splitTextToSize(clientData.therapy_plan, pageW);
-        for (const line of planLines) {
-          if (y > 280) { doc.addPage(); y = 20; }
-          doc.text(line, margin, y);
-          y += 4.5;
-        }
-      }
-
-      const pdfBlob = doc.output("blob");
-      const { blobToBase64 } = await import("@/lib/driveUtils");
-      const pdfBase64 = await blobToBase64(pdfBlob);
-
-      // 3. Backup to Drive
+      // 2. Sync to Google Docs
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        toast.warning("Uloženo do DB, ale nelze zálohovat – nejsi přihlášen/a");
+        toast.warning("Uloženo do DB, ale nelze synchronizovat – nejsi přihlášen/a");
         setIsSavingCard(false);
         return;
       }
 
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const fileName = `Karta_${clientData.name.replace(/\s+/g, "_")}_${dateStr}.pdf`;
-
-      supabase.functions.invoke("karel-session-drive-backup", {
-        body: {
-          pdfBase64,
-          fileName,
-          clientId: clientData.id,
-          folder: "Karta",
-        },
+      const res = await supabase.functions.invoke("karel-gdocs-sync", {
+        body: { clientId: clientData.id },
         headers: { Authorization: `Bearer ${session.access_token}` },
-      }).then(res => {
-        if (!handleDriveError(res) && (res.error || !res.data?.success)) {
-          console.warn("Drive backup failed:", res.data?.error || res.error);
-        }
       });
 
-      toast.success("Karta uložena a zálohována na Drive");
+      if (handleDriveError(res)) {
+        // Drive auth error shown via toast
+      } else if (res.error || !res.data?.success) {
+        toast.warning("Uloženo do DB, ale synchronizace s Drive selhala");
+        console.warn("GDocs sync failed:", res.data?.error || res.error);
+      } else {
+        // Update local state with drive_doc_url from response
+        const result = res.data.results?.[0];
+        if (result?.docUrl) {
+          setSelectedClient(prev => prev ? { ...prev, drive_doc_id: result.docId, drive_doc_url: result.docUrl } : prev);
+        }
+        toast.success("Karta uložena a synchronizována s Google Docs ✅");
+      }
     } catch (e: any) {
       console.error("Save & backup error:", e);
       toast.error(e.message || "Chyba při ukládání");
