@@ -1,54 +1,70 @@
 
 
-# Implementace: Vzhled tlačítko všude + připravená pozadí
+# Per-context theme isolation
 
-## Nové soubory
+## Overview
+Replace the current `persona`-based theme keying with a granular `context_key` system so each view (DID therapist, Hana thread, client card, etc.) gets independent appearance settings.
 
-### 1. `src/components/ThemeEditorDialog.tsx`
-Extrakce theme editoru z `DidSprava.tsx` řádky 239-449 do samostatné Dialog komponenty. Přidání sekce **Připravená pozadí** (8 Unsplash obrázků) před "Nahrát vlastní":
-- Žádné (reset), Les, Jezero, Hory, Louka, Mlha, Západ slunce, Textura
-- Grid 2×4, thumbnaily 80×60px, klik = okamžitá aplikace do draftu
-- Zachová draft pattern, ColorPicker helper, celou existující logiku
+## 1. Database migration
 
-### 2. `src/components/ThemeQuickButton.tsx`
-Reusable tlačítko `<Palette />` s `min-w-[44px] min-h-[44px]` touch target. Otevírá `ThemeEditorDialog`. Props: `className?`.
+```sql
+-- Add context_key column, defaulting existing rows to use persona value
+ALTER TABLE user_theme_preferences 
+  ADD COLUMN IF NOT EXISTS context_key TEXT NOT NULL DEFAULT 'global';
 
-## Úpravy existujících souborů
+-- Migrate existing data: copy persona values into context_key
+UPDATE user_theme_preferences SET context_key = persona WHERE context_key = 'global' AND persona != 'default';
 
-### 3. `src/components/did/DidSprava.tsx`
-- Záložka "theme" (ř. 239-449): nahradit za `<ThemeEditorDialog />` embed (inline bez vlastního Dialog wrapperu)
-- Zachovat ToolButton, ColorPicker jako lokální helpery (ColorPicker se přesune do ThemeEditorDialog)
-
-### 4. `src/components/hana/HanaChat.tsx` (ř. ~717)
-- Přidat `<ThemeQuickButton />` vedle Správa popover v toolbaru
-
-### 5. `src/pages/Kartoteka.tsx` (ř. ~555)
-- Přidat `<ThemeQuickButton />` vedle TabsList
-
-### 6. `src/components/report/LiveSessionPanel.tsx`
-- Přidat `<ThemeQuickButton />` do action toolbaru
-
-### 7. `src/components/did/DidContentRouter.tsx` (ř. ~505)
-- Přidat `<ThemeQuickButton />` vedle existujícího "Můj vzhled" (pro dospělé terapeut vlákna)
-
-## Unsplash pozadí (bez API klíče)
+-- Drop old unique constraint and create new one
+ALTER TABLE user_theme_preferences 
+  DROP CONSTRAINT IF EXISTS user_theme_preferences_user_id_persona_key;
+ALTER TABLE user_theme_preferences
+  ADD CONSTRAINT user_theme_preferences_user_context_key UNIQUE (user_id, context_key);
 ```
-https://images.unsplash.com/photo-1448375240586-882707db888b?w=1920&q=80  (les)
-https://images.unsplash.com/photo-1439853949127-fa647821eba0?w=1920&q=80  (jezero)
-https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80  (hory)
-https://images.unsplash.com/photo-1500534314263-0869cef6150a?w=1920&q=80  (louka)
-https://images.unsplash.com/photo-1485236715568-ddc5ee6ca227?w=1920&q=80  (mlha)
-https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=1920&q=80  (západ)
-https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=1920&q=80  (textura)
-```
-Thumbnaily: `?w=200&q=60` verze stejných URL.
 
-## Soubory (7)
-1. **Nový**: `src/components/ThemeEditorDialog.tsx`
-2. **Nový**: `src/components/ThemeQuickButton.tsx`
-3. **Upravit**: `src/components/did/DidSprava.tsx`
-4. **Upravit**: `src/components/hana/HanaChat.tsx`
-5. **Upravit**: `src/pages/Kartoteka.tsx`
-6. **Upravit**: `src/components/report/LiveSessionPanel.tsx`
-7. **Upravit**: `src/components/did/DidContentRouter.tsx`
+## 2. ThemeContext.tsx refactor
+
+Replace `currentPersona` with `currentContextKey`:
+- State: `currentContextKey: string` (default `"global"`)
+- `setContextKey(key: string)` — loads prefs from cache or DB for that key
+- Cache: `Map<string, ThemePrefs>` for instant switching
+- `loadPrefs` queries by `context_key` instead of `persona`
+- `updatePrefs` upserts with `context_key` on conflict `user_id,context_key`
+- **Fallback**: if no record for context_key, load `"global"` prefs as base
+- Keep `persona` field in DB rows (set to context_key for backward compat)
+- Keep `applyTemporaryTheme` / `restoreGlobalTheme` unchanged
+
+Interface changes:
+```
+currentContextKey: string
+setContextKey: (key: string) => void
+```
+
+## 3. Context key assignments
+
+| View | context_key | Set where |
+|---|---|---|
+| Hub / main menu | `"global"` | Hub.tsx useEffect |
+| DID Kateřina | `"did_katerina"` | DidContentRouter (therapist=mamka) |
+| DID Kids thread | `"did_kids_{threadId}"` | DidContentRouter (thread select) |
+| Hana mode | `"hana"` | HanaChat init |
+| Hana thread | `"hana_thread_{threadId}"` | HanaChat thread select |
+| Kartoteka client | `"kartoteka_client_{clientId}"` | Kartoteka selectClient |
+
+## 4. Files to change
+
+1. **Migration** — add `context_key` column, new unique constraint
+2. **src/contexts/ThemeContext.tsx** — replace persona-based logic with context_key
+3. **src/pages/Hub.tsx** — `setContextKey("global")` on mount
+4. **src/components/hana/HanaChat.tsx** — `setContextKey` on init/thread change
+5. **src/pages/Kartoteka.tsx** — `setContextKey` on client select
+6. **src/components/did/DidContentRouter.tsx** — `setContextKey` per therapist/thread
+
+## 5. What stays unchanged
+
+- ThemeEditorDialog UI and draft pattern
+- ThemeQuickButton component
+- CSS variable derivation logic
+- RLS policies (context_key is just a text column, same user_id check)
+- Preset backgrounds feature
 
