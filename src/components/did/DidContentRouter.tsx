@@ -603,4 +603,23 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   );
 };
 
+const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const didSubMode = props.didSubMode;
+  const activeThread = props.activeThread;
+
+  const didStorageKey = (() => {
+    if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
+    if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
+    if (didSubMode === "cast") return "theme_did_kids";
+    return "theme_did_entry";
+  })();
+
+  return (
+    <ThemeStorageKeyProvider value={didStorageKey}>
+      <DidContentRouterInner {...props} />
+    </ThemeStorageKeyProvider>
+  );
+};
+
 export default React.memo(DidContentRouter);
