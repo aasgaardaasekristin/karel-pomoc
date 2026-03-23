@@ -245,6 +245,35 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
     }
   }, [result, clientId, onComplete]);
 
+  // ── Session completed state ──
+  if (sessionCompleted) {
+    const handleNewSession = () => {
+      setSessionCompleted(false);
+      setResult(null);
+      setTextInput("");
+      setMediaContext("");
+      setInputMode("choose");
+      setRevisionNote("");
+    };
+    return (
+      <div className="bg-card rounded-xl border border-border p-6 space-y-4 text-center">
+        <CheckCircle className="w-12 h-12 text-primary mx-auto" />
+        <h3 className="text-lg font-semibold text-foreground">Záznam uložen a analyzován</h3>
+        <p className="text-sm text-muted-foreground">
+          Sezení č. {result?.sessionNumber} pro {clientName} bylo úspěšně zpracováno.
+        </p>
+        <div className="flex gap-3 justify-center pt-2">
+          <Button variant="outline" onClick={handleNewSession} className="gap-1.5">
+            <RotateCcw className="w-4 h-4" /> Zaznamenat nové sezení
+          </Button>
+          <Button onClick={onComplete} className="gap-1.5">
+            <ArrowLeft className="w-4 h-4" /> Zpět na přehled klienta
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Processing state ──
   if (isProcessing) {
     return (
