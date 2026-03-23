@@ -120,6 +120,10 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         body.textInput = textInput;
       }
 
+      if (mediaContext) {
+        body.mediaContext = mediaContext;
+      }
+
       originalBodyRef.current = body;
       const data = await callIntake(body);
       setResult(data);
