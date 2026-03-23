@@ -37,7 +37,7 @@ const handleApiError = async (response: Response) => {
 };
 
 const HanaChat = () => {
-  const { setContextKey } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
