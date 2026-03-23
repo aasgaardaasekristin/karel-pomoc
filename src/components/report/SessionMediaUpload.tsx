@@ -265,7 +265,7 @@ Formuluj jako terapeuticky relevantní pozorování.`
                   </div>
                   {item.uploading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                   {item.analyzing && <Badge variant="secondary" className="text-[10px]">Analyzuji…</Badge>}
-                  {item.analysis && <FileCheck className="w-3.5 h-3.5 text-green-600" />}
+                  {item.analysis && <FileCheck className="w-3.5 h-3.5 text-primary" />}
                   {item.error && <Badge variant="destructive" className="text-[10px]">Chyba</Badge>}
                   <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => removeItem(item.id)}>
                     <X className="w-3 h-3" />
