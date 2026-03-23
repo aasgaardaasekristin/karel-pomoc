@@ -1202,9 +1202,25 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
             <div className="flex flex-wrap gap-1.5 mt-1">
               {parsed.diagnosticHypothesis.map((h: any, i: number) => (
                 <Badge key={i} variant="secondary" className="text-xs">
-                  {typeof h === "string" ? h : `${h.hypothesis || h.label || h} (${h.confidence ?? ""}%)`}
+                  {typeof h === "string" ? h : `${h.hypothesis || h.label} (${h.confidence ?? ""})`}
                 </Badge>
               ))}
+            </div>
+          ) : typeof parsed.diagnosticHypothesis === "object" ? (
+            <div className="mt-1">
+              <Badge variant="secondary" className="text-xs">
+                {parsed.diagnosticHypothesis.hypothesis} ({parsed.diagnosticHypothesis.confidence})
+              </Badge>
+              {Array.isArray(parsed.diagnosticHypothesis.missingData) && parsed.diagnosticHypothesis.missingData.length > 0 && (
+                <div className="mt-1.5">
+                  <span className="text-xs text-muted-foreground">Chybějící data:</span>
+                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
+                    {parsed.diagnosticHypothesis.missingData.map((d: string, i: number) => (
+                      <li key={i} className="text-xs text-muted-foreground">{d}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm mt-0.5">{String(parsed.diagnosticHypothesis)}</p>
@@ -1216,9 +1232,16 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
       {Array.isArray(parsed.therapeuticRecommendations) && parsed.therapeuticRecommendations.length > 0 && (
         <div>
           <span className="text-xs font-medium text-muted-foreground">Doporučení</span>
-          <ul className="list-disc list-inside mt-1 space-y-0.5">
-            {parsed.therapeuticRecommendations.map((r: string, i: number) => (
-              <li key={i} className="text-sm">{r}</li>
+          <ul className="mt-1 space-y-1.5">
+            {parsed.therapeuticRecommendations.map((r: any, i: number) => (
+              <li key={i} className="text-sm">
+                {typeof r === "string" ? r : (
+                  <>
+                    <span className="font-medium">{r.approach}</span>
+                    {r.reason && <span className="text-muted-foreground text-xs block">{r.reason}</span>}
+                  </>
+                )}
+              </li>
             ))}
           </ul>
         </div>
@@ -1241,8 +1264,11 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
         <div>
           <span className="text-xs font-medium text-muted-foreground">Doplňující otázky</span>
           <ol className="list-decimal list-inside mt-1 space-y-0.5">
-            {parsed.questionnaire.map((q: string, i: number) => (
-              <li key={i} className="text-sm">{q}</li>
+            {parsed.questionnaire.map((q: any, i: number) => (
+              <li key={i} className="text-sm">
+                {typeof q === "string" ? q : q.question || JSON.stringify(q)}
+                {q.priority && <Badge variant="outline" className="text-[10px] ml-1.5 py-0">{q.priority}</Badge>}
+              </li>
             ))}
           </ol>
         </div>
