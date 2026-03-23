@@ -82,7 +82,11 @@ const CardAnalysisPanel = ({
     return () => clearInterval(interval);
   }, [planState]);
 
+  // Capture clientId at analysis start to prevent race conditions
+  const analysisClientIdRef = useRef<string>(clientId);
+
   const handleAnalyze = async () => {
+    analysisClientIdRef.current = clientId;
     setIsLoading(true);
     setAnalysisStep(0);
     try {
