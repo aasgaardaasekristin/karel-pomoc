@@ -688,9 +688,27 @@ const Kartoteka = () => {
                       const sessionsLabel = a.sessions_count != null ? ` (${a.sessions_count} sezení)` : "";
                       return (
                         <AccordionItem key={a.id} value={a.id}>
-                          <AccordionTrigger className="text-sm py-2">
-                            Analýza č. {a.version} – {new Date(a.created_at).toLocaleDateString("cs-CZ")}{sessionsLabel}
-                          </AccordionTrigger>
+                          <div className="flex items-center">
+                            <AccordionTrigger className="text-sm py-2 flex-1">
+                              Analýza č. {a.version} – {new Date(a.created_at).toLocaleDateString("cs-CZ")}{sessionsLabel}
+                            </AccordionTrigger>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm("Opravdu smazat tuto analýzu?")) {
+                                  supabase.from("client_analyses" as any).delete().eq("id", a.id).then(() => {
+                                    setClientAnalyses((prev: any[]) => prev.filter((x: any) => x.id !== a.id));
+                                    toast.success("Analýza smazána");
+                                  });
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
                           <AccordionContent className="space-y-4">
                             {/* Profil */}
                             <div>
