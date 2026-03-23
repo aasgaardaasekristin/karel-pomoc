@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2 } from "lucide-react";
+import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2, CheckCircle, RotateCcw, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
 import { blobToBase64 } from "@/lib/driveUtils";
@@ -12,6 +12,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import ReactMarkdown from "react-markdown";
+import SessionMediaUpload from "./SessionMediaUpload";
 
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
