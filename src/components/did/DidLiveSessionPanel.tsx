@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle } from "lucide-react";
+import { Send, Loader2, Square, Mic, Pause, Play, StopCircle, ArrowLeft, Camera, X, Shuffle, CheckCircle, RotateCcw } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -61,6 +61,8 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [pendingReport, setPendingReport] = useState("");
   const [pendingSavedSessionId, setPendingSavedSessionId] = useState<string | null>(null);
   const [isSavingReflection, setIsSavingReflection] = useState(false);
+  const [sessionCompleted, setSessionCompleted] = useState(false);
+  const [completedReport, setCompletedReport] = useState("");
 
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
@@ -650,8 +652,45 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setShowReflection(false);
     setIsSavingReflection(false);
     toast.success("Sezení uloženo a analyzováno");
-    onEnd(report || "Zápis nebyl vygenerován.");
+
+    // Set completed state + reset all session states
+    setCompletedReport(report || "Zápis nebyl vygenerován.");
+    setMessages([]);
+    setInput("");
+    setSwitchLog([]);
+    setActivePart(partName);
+    audioSegmentCountRef.current = 0;
+    imageSegmentCountRef.current = 0;
+    setSessionCompleted(true);
   };
+
+  // ── Session completed screen ──
+  if (sessionCompleted) {
+    const handleNewSession = () => {
+      setSessionCompleted(false);
+      setCompletedReport("");
+      // messages are already [], auto-greet will fire
+    };
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="bg-card rounded-xl border border-border p-8 space-y-4 text-center max-w-md w-full">
+          <CheckCircle className="w-14 h-14 text-primary mx-auto" />
+          <h3 className="text-lg font-semibold text-foreground">Sezení ukončeno a analyzováno</h3>
+          <p className="text-sm text-muted-foreground">
+            Sezení s <span className="font-medium">{partName}</span> ({therapistName}) bylo úspěšně zpracováno a uloženo.
+          </p>
+          <div className="flex gap-3 justify-center pt-2">
+            <Button variant="outline" onClick={handleNewSession} className="gap-1.5">
+              <RotateCcw className="w-4 h-4" /> Zahájit nové sezení
+            </Button>
+            <Button onClick={() => onEnd(completedReport)} className="gap-1.5">
+              <ArrowLeft className="w-4 h-4" /> Zpět na přehled
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
