@@ -435,11 +435,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [userId, currentContextKey]);
 
   const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
-    if (!savedPrefsRef.current) {
-      savedPrefsRef.current = prefs;
-    }
-    setPrefs((prev) => ({ ...prev, ...config }));
-  }, [prefs]);
+    setPrefs((prev) => {
+      if (!savedPrefsRef.current) savedPrefsRef.current = prev;
+      return { ...prev, ...config };
+    });
+  }, []);
 
   const restoreGlobalTheme = useCallback(() => {
     if (savedPrefsRef.current) {
