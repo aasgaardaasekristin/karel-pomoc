@@ -134,6 +134,21 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
 
         updateItem(item.id, { analyzing: false, analysis });
 
+        // Auto-aggregate and push media context
+        setItems(prev => {
+          const updated = prev.map(it => it.id === item.id ? { ...it, analysis } : it);
+          const completed = updated.filter(i => i.analysis && !i.error);
+          if (completed.length > 0) {
+            const sections = completed.map(ci => {
+              const label = ci.type === "audio" ? "🎙 Audio nahrávka" :
+                            ci.type === "handwriting" ? "✍️ Grafologická analýza" : "🖼 Vizuální záznam";
+              return `### ${label}: ${ci.file.name}\n${ci.analysis}`;
+            });
+            onMediaContext(sections.join("\n\n---\n\n"));
+          }
+          return updated;
+        });
+
         await supabase.from("session_media" as any).insert({
           client_id: clientId,
           session_date: sessionDate,
