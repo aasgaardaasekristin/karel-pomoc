@@ -218,8 +218,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <BookOpen className="w-3 h-3 text-emerald-500" /> Metody a přístupy
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["METODY_A_PRISTUPY"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["METODY_A_PRISTUPY"]}</RichMarkdown>
             </div>
           </div>
         )}
