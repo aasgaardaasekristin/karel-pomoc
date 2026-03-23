@@ -198,7 +198,7 @@ const ClientSessionPrepPanel = ({
             clientId,
             folder: "Plany",
           },
-        });
+        }).then(res => handleDriveError(res));
       }
     } catch (e) {
       console.warn("Plan backup failed:", e);
