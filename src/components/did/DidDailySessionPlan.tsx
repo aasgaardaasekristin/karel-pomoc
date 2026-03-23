@@ -682,8 +682,15 @@ const PlanCard = ({
   prevSession,
   isArchived,
 }: PlanCardProps) => {
-  const leadLabel = plan.session_lead === "kata" ? "Káťa" : "Hanka";
-  const formatLabel = plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+  const leadLabel = plan.session_lead === "obe" ? "Hanka + Káťa" : plan.session_lead === "kata" ? "Káťa" : "Hanka";
+  const formatLabel = plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+
+  // Overdue calculation using Prague timezone
+  const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+  const isOverdue = plan.status === "generated" && plan.plan_date < todayPrague;
+  const overdueDays = isOverdue
+    ? Math.floor((new Date(todayPrague).getTime() - new Date(plan.plan_date).getTime()) / (24 * 60 * 60 * 1000))
+    : 0;
 
   return (
     <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${
