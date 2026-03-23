@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { handleDriveError } from "@/lib/driveErrorHandler";
 import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
+import { parseCardAnalysis } from "@/lib/parseCardAnalysis";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import { useChatContext } from "@/contexts/ChatContext";
 import { Button } from "@/components/ui/button";
@@ -713,28 +714,7 @@ const Kartoteka = () => {
                 ) : (
                   <Accordion type="single" collapsible defaultValue={clientAnalyses[0]?.id}>
                     {clientAnalyses.map((a: any) => {
-                      let parsed: any = null;
-                      try {
-                        parsed = JSON.parse(a.content);
-                        // Fix: if clientProfile contains embedded JSON block, extract it
-                        if (typeof parsed?.clientProfile === "string" && parsed.clientProfile.includes("```json")) {
-                          const match = parsed.clientProfile.match(/```json\s*([\s\S]*?)```/);
-                          if (match) {
-                            try {
-                              const embedded = JSON.parse(match[1].trim());
-                              const prefix = parsed.clientProfile.slice(0, parsed.clientProfile.indexOf("```json")).trim();
-                              parsed = {
-                                ...parsed,
-                                clientProfile: embedded.clientProfile || prefix,
-                                diagnosticHypothesis: embedded.diagnosticHypothesis || parsed.diagnosticHypothesis,
-                                therapeuticProgress: embedded.therapeuticProgress || parsed.therapeuticProgress,
-                                nextSessionRecommendations: embedded.nextSessionRecommendations || parsed.nextSessionRecommendations,
-                                dataGaps: embedded.dataGaps || parsed.dataGaps,
-                              };
-                            } catch {}
-                          }
-                        }
-                      } catch {}
+                      const parsed = parseCardAnalysis(a.content);
                       const sessionsLabel = a.sessions_count != null ? ` (${a.sessions_count} sezení)` : "";
                       return (
                         <AccordionItem key={a.id} value={a.id}>
@@ -768,8 +748,8 @@ const Kartoteka = () => {
                               </TabsList>
 
                               <TabsContent value="profile">
-                                <RichMarkdown>{parsed?.clientProfile || a.content}</RichMarkdown>
-                                {parsed?.therapeuticProgress && (
+                                <RichMarkdown>{parsed.clientProfile}</RichMarkdown>
+                                {parsed.therapeuticProgress && (
                                   <div className="mt-3 space-y-2 not-prose">
                                     {parsed.therapeuticProgress.whatWorks?.length > 0 && (
                                       <div>
