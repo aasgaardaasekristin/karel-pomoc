@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
