@@ -26,24 +26,6 @@ interface Props {
   onSelectPart?: (partName: string) => void;
 }
 
-const PERSONA_LABELS: Record<string, string> = {
-  default: "Výchozí",
-  hanka: "Hanička 🌸",
-  kata: "Káťa 🦋",
-};
-
-const RADIUS_OPTIONS = [
-  { value: "sharp", label: "Ostré", icon: "◻" },
-  { value: "normal", label: "Normální", icon: "▢" },
-  { value: "round", label: "Kulaté", icon: "⬭" },
-  { value: "pill", label: "Pilulka", icon: "⏺" },
-] as const;
-
-const BUBBLE_OPTIONS = [
-  { value: "rounded", label: "Kulaté" },
-  { value: "square", label: "Hranaté" },
-  { value: "minimal", label: "Minimální" },
-] as const;
 
 const DidSprava = ({
   onBootstrap,
