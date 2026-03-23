@@ -193,18 +193,13 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
       setItems(prev => prev.filter(i => i.id !== id));
     }, [items]);
 
-    const completedAnalyses = items.filter(i => i.analysis && !i.error);
-
-    const handleAddToRecord = useCallback(() => {
-      if (completedAnalyses.length === 0) return;
-      const sections = completedAnalyses.map(item => {
-        const label = item.type === "audio" ? "🎙 Audio nahrávka" :
-                      item.type === "handwriting" ? "✍️ Grafologická analýza" : "🖼 Vizuální záznam";
-        return `### ${label}: ${item.file.name}\n${item.analysis}`;
+    const toggleExpanded = useCallback((id: string) => {
+      setExpandedItems(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
       });
-      onMediaContext(sections.join("\n\n---\n\n"));
-      toast.success(`${completedAnalyses.length} analýz přidáno do záznamu`);
-    }, [completedAnalyses, onMediaContext]);
+    }, []);
 
     // Hidden file inputs
     const hiddenInputs = (
