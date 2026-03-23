@@ -8,6 +8,7 @@ import { Loader2, Search, ClipboardList, Eye, Check, Edit3, Download, Save } fro
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
