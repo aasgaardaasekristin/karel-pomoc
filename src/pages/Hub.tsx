@@ -5,6 +5,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Users, Heart, LogOut, Leaf, ArrowLeft, KeyRound, Search } from "lucide-react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -148,10 +149,13 @@ const Hub = () => {
             <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground">Karel</h1>
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Supervizní partner a tandem-terapeut</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
-            <LogOut className="w-4 h-4 sm:mr-2" />
-            <span className="hidden sm:inline">Odejít</span>
-          </Button>
+          <div className="flex items-center gap-1">
+            <ThemeQuickButton />
+            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
+              <LogOut className="w-4 h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Odejít</span>
+            </Button>
+          </div>
         </div>
       </header>
 

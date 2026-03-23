@@ -3,6 +3,7 @@ import { ArrowLeft, Lock, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 const CORRECT_PIN = "0126";
 
@@ -30,11 +31,12 @@ const DidPinEntry = ({ therapistName, onSuccess, onBack }: Props) => {
 
   return (
     <div className="max-w-sm mx-auto py-12 px-4">
-      <div className="flex justify-center mb-6">
+      <div className="flex items-center justify-between mb-6">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-1" />
           Zpět
         </Button>
+        <ThemeQuickButton />
       </div>
 
       <div className="text-center mb-8">

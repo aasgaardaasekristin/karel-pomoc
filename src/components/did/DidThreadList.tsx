@@ -2,6 +2,7 @@ import { MessageCircle, Clock, Globe, Trash2, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DidThread } from "@/hooks/useDidThreads";
 import { KIDS_PRESETS } from "@/components/did/DidKidsThemeEditor";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 interface Props {
   threads: DidThread[];
@@ -46,9 +47,12 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
           <MessageCircle className="w-4 h-4" />
           Aktivní vlákna částí
         </h3>
-        <Button variant="outline" size="sm" onClick={onNewThread} className="h-8 text-xs">
-          + Nové vlákno
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <ThemeQuickButton />
+          <Button variant="outline" size="sm" onClick={onNewThread} className="h-8 text-xs">
+            + Nové vlákno
+          </Button>
+        </div>
       </div>
 
       {threads.length === 0 ? (

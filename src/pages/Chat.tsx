@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LogOut, Loader2, FileText, RotateCcw, FolderOpen, GraduationCap, RefreshCw } from "lucide-react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversalUpload";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import ChatInputArea from "@/components/chat/ChatInputArea";
@@ -1447,6 +1448,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         <>
           {researchFlowState === "thread-list" ? (
             <ScrollArea className="flex-1">
+              <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 flex justify-end">
+                <ThemeQuickButton />
+              </div>
               <ResearchThreadList
                 threads={researchThreads.threads}
                 loading={researchThreads.loading}
@@ -1486,6 +1490,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                       <span className="text-xs text-muted-foreground ml-2">({activeResearchThread.createdBy})</span>
                     </div>
                     <div className="flex items-center gap-2">
+                      <ThemeQuickButton />
                       <Button
                         variant="outline"
                         size="sm"
