@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock } from "lucide-react";
+import { Target, Loader2, Zap, CheckCircle2, Search, Brain, FileText, Send, UserRoundCog, ChevronDown, ChevronUp, PenLine, MessageSquare, Play, Square, Clock, Trash2, RefreshCw, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -22,6 +22,11 @@ interface SessionPlan {
   status: string;
   distributed_drive: boolean;
   distributed_email: boolean;
+  generated_by: string;
+  completed_at: string | null;
+  session_lead: string;
+  session_format: string;
+  created_at?: string;
 }
 
 interface PreviousSession {
@@ -45,10 +50,11 @@ const urgencyLabels: Record<string, string> = {
   active_3d: "Aktivní",
   dormant_7d: "Neaktivní >7d",
   fallback_oldest: "Nejdéle neviděn",
+  therapist_override: "✅ Terapeutka",
 };
 
 const GENERATION_STEPS = [
-  { key: "data", label: "Sběr dat z registru", icon: Search },
+  { key: "data", label: "Sběr dat z registru + kartotéky", icon: Search },
   { key: "scoring", label: "Výpočet naléhavosti", icon: Target },
   { key: "research", label: "Perplexity rešerše", icon: Brain },
   { key: "ai", label: "Generování plánu (AI)", icon: FileText },
@@ -60,18 +66,14 @@ const renderMarkdown = (md: string): string => {
   return md
     .split('\n')
     .map(line => {
-      // Headings
       if (line.startsWith('### ')) return `<h4 class="font-serif font-semibold text-xs mt-3 mb-1 text-foreground">${line.slice(4)}</h4>`;
       if (line.startsWith('## ')) return `<h3 class="font-serif font-semibold text-[13px] mt-4 mb-1.5 text-foreground">${line.slice(3)}</h3>`;
-      // Horizontal rule
       if (line.trim() === '---') return '<hr class="my-2 border-border/40" />';
-      // List items
       if (/^\s*[\*\-]\s/.test(line)) {
         const content = line.replace(/^\s*[\*\-]\s/, '');
         const formatted = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         return `<li class="ml-3 mb-0.5 list-disc list-inside">${formatted}</li>`;
       }
-      // Bold in regular text
       const formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
       if (line.trim() === '') return '<div class="h-1.5"></div>';
       return `<p class="mb-0.5">${formatted}</p>`;
@@ -80,16 +82,15 @@ const renderMarkdown = (md: string): string => {
 };
 
 const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
-  const [plan, setPlan] = useState<SessionPlan | null>(null);
+  const [plans, setPlans] = useState<SessionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [genStep, setGenStep] = useState(0);
-  const [expanded, setExpanded] = useState(false);
+  const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
   const [registryParts, setRegistryParts] = useState<{ part_name: string; status: string }[]>([]);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [customPartName, setCustomPartName] = useState("");
   const [prevSession, setPrevSession] = useState<PreviousSession | null>(null);
-  const [_prevSessionExpanded, _setPrevSessionExpanded] = useState(false); // kept for hook order
 
   // Preference dialog state
   const [prefDialogOpen, setPrefDialogOpen] = useState(false);
@@ -100,7 +101,10 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   // Live session state
   const [liveSessionActive, setLiveSessionActive] = useState(false);
 
-  const loadTodayPlan = useCallback(async () => {
+  // First pending plan (for live session)
+  const firstPendingPlan = plans.find(p => p.status === "generated" || p.status === "in_progress") || null;
+
+  const loadTodayPlans = useCallback(async () => {
     setLoading(true);
     try {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
@@ -108,25 +112,24 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         .from("did_daily_session_plans")
         .select("*")
         .eq("plan_date", today)
-        .maybeSingle();
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      setPlan(data || null);
+      setPlans(data || []);
     } catch (e) {
-      console.error("Failed to load session plan:", e);
+      console.error("Failed to load session plans:", e);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadTodayPlan(); }, [loadTodayPlan, refreshTrigger]);
+  useEffect(() => { loadTodayPlans(); }, [loadTodayPlans, refreshTrigger]);
 
-  // Load previous session for current plan's part
+  // Load previous session for first pending plan
   useEffect(() => {
+    const plan = firstPendingPlan;
     if (!plan?.selected_part) { setPrevSession(null); return; }
     const loadPrev = async () => {
-      // Load last session from the OTHER therapist for handoff context
       const currentTherapist = (plan.therapist || "hanka").toLowerCase();
-      // Filter out both case variants of current therapist
       let query = supabase
         .from("did_part_sessions")
         .select("therapist, session_date, ai_analysis, handoff_note, karel_notes")
@@ -134,14 +137,13 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         .order("created_at", { ascending: false })
         .limit(10);
       const { data: rows } = await query;
-      // Find first session by the OTHER therapist
       const other = (rows || []).find(r =>
         r.therapist?.toLowerCase() !== currentTherapist
       );
       setPrevSession((other as PreviousSession) || null);
     };
     loadPrev();
-  }, [plan?.selected_part, plan?.therapist]);
+  }, [firstPendingPlan?.selected_part, firstPendingPlan?.therapist]);
 
   const loadRegistryParts = useCallback(async () => {
     const { data } = await supabase
@@ -181,11 +183,14 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
       if (!resp.ok) throw new Error(data.error || "Generování selhalo");
       if (data.skipped) {
-        toast.info("Plán na dnes už existuje");
+        toast.info("Automatický plán na dnes už existuje");
+      } else if (data.reason === "no_active_parts") {
+        toast.info("Žádná aktivní/komunikující část — plán nevygenerován");
       } else {
-        toast.success(`Plán vygenerován pro ${data.selectedPart} (naléhavost ${data.urgencyScore})`);
+        const leadLabel = data.sessionLead === "kata" ? "Káťa" : "Hanka";
+        toast.success(`Plán vygenerován pro ${data.selectedPart} (VEDE: ${leadLabel})`);
       }
-      await loadTodayPlan();
+      await loadTodayPlans();
     } catch (e: any) {
       clearInterval(stepTimer);
       toast.error(e.message || "Generování plánu selhalo");
@@ -193,7 +198,36 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       setGenerating(false);
       setGenStep(0);
     }
-  }, [loadTodayPlan]);
+  }, [loadTodayPlans]);
+
+  // ═══ MARK AS DONE ═══
+  const markDone = useCallback(async (planId: string) => {
+    try {
+      await (supabase as any)
+        .from("did_daily_session_plans")
+        .update({ status: "done", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", planId);
+      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: "done", completed_at: new Date().toISOString() } : p));
+      toast.success("Plán označen jako splněný");
+    } catch (e) {
+      toast.error("Nepodařilo se označit plán");
+    }
+  }, []);
+
+  // ═══ DELETE PLAN ═══
+  const deletePlan = useCallback(async (planId: string) => {
+    if (!window.confirm("Opravdu smazat tento plán? Tato akce je nevratná.")) return;
+    try {
+      await (supabase as any)
+        .from("did_daily_session_plans")
+        .delete()
+        .eq("id", planId);
+      setPlans(prev => prev.filter(p => p.id !== planId));
+      toast.success("Plán smazán");
+    } catch (e) {
+      toast.error("Nepodařilo se smazat plán");
+    }
+  }, []);
 
   // Called when therapist picks a part from the popover
   const handlePartSelected = (partName: string) => {
@@ -220,48 +254,42 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     generatePlan(prefSelectedPart, prefDetail.trim() || undefined);
   };
 
-  // ═══ SESSION START: create did_part_sessions + update registry ═══
-  const startSession = useCallback(async () => {
-    if (!plan) return;
+  // ═══ SESSION START ═══
+  const startSession = useCallback(async (plan: SessionPlan) => {
     try {
-      // 1) Create session record in did_part_sessions
       const { error: sessErr } = await supabase
         .from("did_part_sessions")
         .insert({
           part_name: plan.selected_part,
-          therapist: plan.therapist || "hanka",
+          therapist: plan.session_lead || plan.therapist || "hanka",
           session_type: "planned",
           session_date: plan.plan_date,
           karel_notes: `Plán sezení (urgency ${plan.urgency_score}):\n${plan.plan_markdown.slice(0, 2000)}`,
         });
       if (sessErr) console.error("Failed to insert session:", sessErr);
 
-      // 2) Update registry last_seen_at for the part
       await supabase
         .from("did_part_registry")
         .update({ last_seen_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .ilike("part_name", plan.selected_part);
 
-      // 3) Update plan status
       await (supabase as any)
         .from("did_daily_session_plans")
         .update({ status: "in_progress", updated_at: new Date().toISOString() })
         .eq("id", plan.id);
 
-      setPlan(prev => prev ? { ...prev, status: "in_progress" } : null);
+      setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "in_progress" } : p));
       setLiveSessionActive(true);
-      toast.success(`Sezení s ${plan.selected_part} zahájeno — Karel je připraven asistovat`);
+      toast.success(`Sezení s ${plan.selected_part} zahájeno`);
     } catch (e: any) {
       toast.error("Nepodařilo se zahájit sezení");
       console.error(e);
     }
-  }, [plan]);
+  }, []);
 
-  // ═══ SESSION END: finalize session, queue Drive write, update registry ═══
-  const endSession = useCallback(async () => {
-    if (!plan) return;
+  // ═══ SESSION END ═══
+  const endSession = useCallback(async (plan: SessionPlan) => {
     try {
-      // 1) Find today's session record and update it
       const { data: sessionRow } = await supabase
         .from("did_part_sessions")
         .select("id")
@@ -280,9 +308,8 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           .eq("id", sessionRow.id);
       }
 
-      // 2) Queue Drive write — intervention record to 06_INTERVENCE
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-      const driveContent = `## Záznam sezení — ${today}\n**Část:** ${plan.selected_part}\n**Naléhavost:** ${plan.urgency_score}\n**Terapeutka:** ${plan.therapist}\n\n### Plán sezení\n${plan.plan_markdown}\n\n---\n*Záznam vytvořen automaticky při ukončení sezení.*`;
+      const driveContent = `## Záznam sezení — ${today}\n**Část:** ${plan.selected_part}\n**Naléhavost:** ${plan.urgency_score}\n**Terapeutka:** ${plan.session_lead === "kata" ? "Káťa" : "Hanka"} (${plan.session_format})\n\n### Plán sezení\n${plan.plan_markdown}\n\n---\n*Záznam vytvořen automaticky při ukončení sezení.*`;
 
       await supabase
         .from("did_pending_drive_writes")
@@ -293,42 +320,40 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           priority: "high",
         });
 
-      // 3) Update plan status
       await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ status: "done", updated_at: new Date().toISOString() })
+        .update({ status: "done", completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq("id", plan.id);
 
-      setPlan(prev => prev ? { ...prev, status: "done" } : null);
+      setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "done", completed_at: new Date().toISOString() } : p));
       toast.success(`Sezení s ${plan.selected_part} ukončeno — záznam odeslán na Drive`);
     } catch (e: any) {
       toast.error("Nepodařilo se ukončit sezení");
       console.error(e);
     }
-  }, [plan]);
+  }, []);
 
   // ═══ REVERT STATUS ═══
-  const revertStatus = useCallback(async () => {
-    if (!plan) return;
+  const revertStatus = useCallback(async (plan: SessionPlan) => {
     try {
       await (supabase as any)
         .from("did_daily_session_plans")
-        .update({ status: "generated", updated_at: new Date().toISOString() })
+        .update({ status: "generated", completed_at: null, updated_at: new Date().toISOString() })
         .eq("id", plan.id);
-      setPlan(prev => prev ? { ...prev, status: "generated" } : null);
+      setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, status: "generated", completed_at: null } : p));
       setLiveSessionActive(false);
       toast.success("Stav vrácen na Naplánováno");
     } catch (e: any) {
       toast.error("Nepodařilo se změnit stav");
     }
-  }, [plan]);
+  }, []);
 
   // ═══ LIVE SESSION END HANDLER ═══
   const handleLiveSessionEnd = useCallback(async (summary: string) => {
     setLiveSessionActive(false);
+    const plan = firstPendingPlan;
     if (!plan) return;
 
-    // Save AI analysis to session record
     try {
       const { data: sessionRow } = await supabase
         .from("did_part_sessions")
@@ -352,34 +377,37 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       console.error("Failed to save AI analysis:", e);
     }
 
-    // Run existing endSession logic (Drive write + status update)
-    await endSession();
-  }, [plan, endSession]);
+    await endSession(plan);
+  }, [firstPendingPlan, endSession]);
 
   if (loading) {
     return (
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm">
         <div className="flex items-center text-xs text-muted-foreground">
-          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám plán sezení...
+          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám plány sezení...
         </div>
       </div>
     );
   }
 
   // ═══ LIVE SESSION ACTIVE → show DidLiveSessionPanel ═══
-  if (liveSessionActive && plan) {
+  if (liveSessionActive && firstPendingPlan) {
     return (
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 backdrop-blur-sm overflow-hidden" style={{ minHeight: "60vh" }}>
         <DidLiveSessionPanel
-          partName={plan.selected_part}
-          therapistName={plan.therapist === "kata" || plan.therapist === "Káťa" ? "Káťa" : "Hanka"}
-          contextBrief={plan.plan_markdown}
+          partName={firstPendingPlan.selected_part}
+          therapistName={firstPendingPlan.session_lead === "kata" ? "Káťa" : "Hanka"}
+          contextBrief={firstPendingPlan.plan_markdown}
           onEnd={handleLiveSessionEnd}
           onBack={() => setLiveSessionActive(false)}
         />
       </div>
     );
   }
+
+  // Split plans into pending and archived
+  const pendingPlans = plans.filter(p => p.status === "generated" || p.status === "in_progress");
+  const archivedPlans = plans.filter(p => p.status === "done" || p.status === "skipped");
 
   return (
     <>
@@ -392,27 +420,25 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           <div className="flex items-center gap-1.5">
             {!generating && (
               <>
-                {!plan && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => generatePlan()}
-                    className="h-7 px-2 text-[10px]"
-                  >
-                    <Zap className="mr-1 h-3 w-3" /> Vygenerovat
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => generatePlan()}
+                  className="h-7 px-2 text-[10px]"
+                >
+                  <Plus className="mr-1 h-3 w-3" /> Nový plán
+                </Button>
                 <Popover open={overrideOpen} onOpenChange={(open) => { setOverrideOpen(open); if (!open) setCustomPartName(""); }}>
                   <PopoverTrigger asChild>
                     <Button variant="outline" size="sm" className="h-7 px-2 text-[10px]">
                       <UserRoundCog className="mr-1 h-3 w-3" />
-                      {plan ? "Přegenerovat" : "Určit část"}
+                      Určit část
                       <ChevronDown className="ml-0.5 h-2.5 w-2.5" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-52 p-1.5" align="end">
                     <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
-                      {plan ? "Nahradí stávající plán:" : "Přepsat automatický výběr:"}
+                      Vygenerovat plán pro konkrétní část:
                     </p>
                     <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
                       {registryParts.map((p) => (
@@ -467,16 +493,6 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                     </div>
                   </PopoverContent>
                 </Popover>
-                {plan && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setExpanded(!expanded)}
-                    className="h-7 px-2 text-[10px]"
-                  >
-                    {expanded ? "Sbalit" : "Rozbalit"}
-                  </Button>
-                )}
               </>
             )}
           </div>
@@ -520,154 +536,51 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           </div>
         )}
 
-        {!plan && !generating && (
+        {plans.length === 0 && !generating && (
           <p className="text-[11px] text-muted-foreground">
-            Automatický plán se generuje ve 13:50. Můžeš ho vygenerovat i ručně.
+            Automatický plán se generuje v 6:00. Můžeš ho vygenerovat i ručně.
           </p>
         )}
 
-        {plan && (
-          <div>
-            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              <Badge variant="secondary" className="text-[11px] h-5 px-2 font-semibold">
-                {plan.selected_part}
-              </Badge>
-              <span className={`h-2 w-2 rounded-full shrink-0 ${
-                plan.urgency_score >= 70 ? "bg-destructive" : plan.urgency_score >= 40 ? "bg-amber-500" : "bg-primary"
-              }`} title={`Naléhavost: ${plan.urgency_score}`} />
+        {/* ═══ PENDING PLANS ═══ */}
+        {pendingPlans.map((plan) => (
+          <PlanCard
+            key={plan.id}
+            plan={plan}
+            isExpanded={expandedPlanId === plan.id}
+            onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+            onStartSession={() => startSession(plan)}
+            onEndSession={() => endSession(plan)}
+            onRevert={() => revertStatus(plan)}
+            onMarkDone={() => markDone(plan.id)}
+            onDelete={() => deletePlan(plan.id)}
+            onRegenerate={() => handlePartSelected(plan.selected_part)}
+            onOpenLive={() => setLiveSessionActive(true)}
+            prevSession={plan.id === firstPendingPlan?.id ? prevSession : null}
+          />
+        ))}
 
-              {plan.status === "generated" && (
-                <Badge variant="outline" className="text-[11px] h-5 px-2 border-amber-500/50 text-amber-600">
-                  <Clock className="mr-1 h-3 w-3" /> Naplánováno
-                </Badge>
-              )}
-              {plan.status === "in_progress" && (
-                <Badge className="text-[11px] h-5 px-2 bg-primary/20 text-primary border border-primary/30">
-                  <Play className="mr-1 h-3 w-3" /> Probíhá
-                </Badge>
-              )}
-              {plan.status === "done" && (
-                <Badge className="text-[11px] h-5 px-2 bg-green-500/20 text-green-700 border border-green-500/30">
-                  <CheckCircle2 className="mr-1 h-3 w-3" /> Dokončeno
-                </Badge>
-              )}
-            </div>
-
-            {/* ═══ LIFECYCLE BUTTONS ═══ */}
-            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-              {plan.status === "generated" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={startSession}
-                  className="h-7 px-2.5 text-[11px] border-primary/40 text-primary hover:bg-primary/10"
-                >
-                  <Play className="mr-1 h-3 w-3" /> Zahájit sezení
-                </Button>
-              )}
-              {plan.status === "in_progress" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setLiveSessionActive(true)}
-                  className="h-7 px-2.5 text-[11px] border-primary/40 text-primary hover:bg-primary/10"
-                >
-                  <Play className="mr-1 h-3 w-3" /> Otevřít live asistenci
-                </Button>
-              )}
-              {plan.status === "in_progress" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={endSession}
-                  className="h-7 px-2.5 text-[11px] border-green-500/40 text-green-700 hover:bg-green-500/10"
-                >
-                  <Square className="mr-1 h-3 w-3" /> Ukončit sezení
-                </Button>
-              )}
-              {plan.status === "done" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={revertStatus}
-                  className="h-7 px-2.5 text-[11px] text-muted-foreground"
-                >
-                  ↩ Vrátit
-                </Button>
-              )}
-            </div>
-
-            {expanded && (
-              <div className="mt-2 space-y-3 max-h-[500px] overflow-y-auto">
-                {/* Session plan */}
-                <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
-                  <div
-                    className="text-[11px] leading-5 text-foreground"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
-                  />
-                </div>
-
-                {/* Previous session: handoff + AI analysis inline */}
-                {prevSession && (
-                  <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2.5">
-                    <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-                      <FileText className="w-3 h-3 text-primary" />
-                      Poslední sezení — {prevSession.therapist}, {prevSession.session_date}
-                    </div>
-
-                    {prevSession.handoff_note && prevSession.handoff_note.trim() && (
-                      <div className="rounded-md bg-primary/5 border border-primary/15 p-2.5">
-                        <span className="text-[9px] font-medium text-primary flex items-center gap-1 mb-1">
-                          <MessageSquare className="w-2.5 h-2.5" />
-                          Předání pro kolegyni
-                        </span>
-                        <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
-                      </div>
-                    )}
-
-                    {prevSession.ai_analysis && prevSession.ai_analysis.trim() && (
-                      <div>
-                        <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-1 mb-1">
-                          <Brain className="w-2.5 h-2.5" />
-                          AI analýza sezení
-                        </span>
-                        <div
-                          className="text-[10px] leading-4 text-muted-foreground"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(prevSession.ai_analysis) }}
-                        />
-                      </div>
-                    )}
-
-                    {(() => {
-                      const notes = prevSession.karel_notes || "";
-                      const refIdx = notes.indexOf("## REFLEXE TERAPEUTKY");
-                      if (refIdx === -1) return null;
-                      const refText = notes.slice(refIdx + "## REFLEXE TERAPEUTKY".length).trim();
-                      if (!refText) return null;
-                      return (
-                        <div className="rounded-md bg-amber-500/5 border border-amber-500/15 p-2.5">
-                          <span className="text-[9px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1">
-                            <PenLine className="w-2.5 h-2.5" />
-                            Reflexe terapeutky
-                          </span>
-                          <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{refText}</p>
-                        </div>
-                      );
-                    })()}
-
-                    {!prevSession.handoff_note?.trim() && !prevSession.ai_analysis?.trim() && (
-                      <p className="text-[10px] text-muted-foreground/60 italic">Bez detailů z minulého sezení.</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!expanded && (
-              <p className="text-[11px] text-muted-foreground line-clamp-2">
-              {plan.plan_markdown.replace(/[#*\-]/g, '').slice(0, 150)}…
-              </p>
-            )}
+        {/* ═══ ARCHIVED PLANS (done/skipped) ═══ */}
+        {archivedPlans.length > 0 && (
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-wider">Archiv</p>
+            {archivedPlans.map((plan) => (
+              <PlanCard
+                key={plan.id}
+                plan={plan}
+                isExpanded={expandedPlanId === plan.id}
+                onToggleExpand={() => setExpandedPlanId(expandedPlanId === plan.id ? null : plan.id)}
+                onStartSession={() => {}}
+                onEndSession={() => {}}
+                onRevert={() => revertStatus(plan)}
+                onMarkDone={() => {}}
+                onDelete={() => deletePlan(plan.id)}
+                onRegenerate={() => handlePartSelected(plan.selected_part)}
+                onOpenLive={() => {}}
+                prevSession={null}
+                isArchived
+              />
+            ))}
           </div>
         )}
       </div>
@@ -694,20 +607,10 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 Např. noční děsy, ranní situace, konkrétní konflikt, emoční stav…
               </p>
               <div className="flex gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNoPreference}
-                  className="flex-1 text-xs"
-                >
+                <Button variant="outline" size="sm" onClick={handleNoPreference} className="flex-1 text-xs">
                   Nemám preference — Karel ať rozhodne
                 </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleWantToSpecify}
-                  className="flex-1 text-xs"
-                >
+                <Button variant="default" size="sm" onClick={handleWantToSpecify} className="flex-1 text-xs">
                   Ano, chci upřesnit
                 </Button>
               </div>
@@ -722,27 +625,17 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
               <Textarea
                 value={prefDetail}
                 onChange={(e) => setPrefDetail(e.target.value)}
-                placeholder={`Např.: Dnes ráno ${prefSelectedPart} plakal/a ze spaní, budila jsem ho/ji, ale nemohl/a se probudit. Celé dopoledne byl/a plačtivý/á a velmi skleslý/á…`}
+                placeholder={`Např.: Dnes ráno ${prefSelectedPart} plakal/a ze spaní…`}
                 className="min-h-[120px] text-sm resize-none"
               />
               <p className="text-[10px] text-muted-foreground">
-                Karel tyto informace zakomponuje jako prioritní vstup do plánu sezení. Pokud nic nenapíšeš, Karel se zařídí podle standardního programu.
+                Karel tyto informace zakomponuje jako prioritní vstup do plánu sezení.
               </p>
               <div className="flex gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNoPreference}
-                  className="text-xs"
-                >
+                <Button variant="outline" size="sm" onClick={handleNoPreference} className="text-xs">
                   Přeskočit
                 </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={handleSubmitWithContext}
-                  className="flex-1 text-xs"
-                >
+                <Button variant="default" size="sm" onClick={handleSubmitWithContext} className="flex-1 text-xs">
                   <Send className="mr-1 h-3 w-3" />
                   Vygenerovat s kontextem
                 </Button>
@@ -752,6 +645,203 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         </DialogContent>
       </Dialog>
     </>
+  );
+};
+
+// ═══ PLAN CARD COMPONENT ═══
+interface PlanCardProps {
+  plan: SessionPlan;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onStartSession: () => void;
+  onEndSession: () => void;
+  onRevert: () => void;
+  onMarkDone: () => void;
+  onDelete: () => void;
+  onRegenerate: () => void;
+  onOpenLive: () => void;
+  prevSession: PreviousSession | null;
+  isArchived?: boolean;
+}
+
+const PlanCard = ({
+  plan,
+  isExpanded,
+  onToggleExpand,
+  onStartSession,
+  onEndSession,
+  onRevert,
+  onMarkDone,
+  onDelete,
+  onRegenerate,
+  onOpenLive,
+  prevSession,
+  isArchived,
+}: PlanCardProps) => {
+  const leadLabel = plan.session_lead === "kata" ? "Káťa" : "Hanka";
+  const formatLabel = plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+
+  return (
+    <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${
+      isArchived
+        ? "border-border/40 bg-muted/20 opacity-70"
+        : "border-border/60 bg-background/40"
+    }`}>
+      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+        <Badge variant="secondary" className="text-[11px] h-5 px-2 font-semibold">
+          {plan.selected_part}
+        </Badge>
+        <span className={`h-2 w-2 rounded-full shrink-0 ${
+          plan.urgency_score >= 8 ? "bg-destructive" : plan.urgency_score >= 4 ? "bg-amber-500" : "bg-primary"
+        }`} title={`Naléhavost: ${plan.urgency_score}`} />
+
+        {/* Session lead badge */}
+        <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-primary/30 text-primary">
+          VEDE: {leadLabel} ({formatLabel})
+        </Badge>
+
+        {/* Generated by badge */}
+        {plan.generated_by === "auto" && (
+          <Badge variant="outline" className="text-[9px] h-4 px-1 border-muted-foreground/30 text-muted-foreground">
+            auto
+          </Badge>
+        )}
+
+        {/* Status badges */}
+        {plan.status === "generated" && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
+            <Clock className="mr-0.5 h-2.5 w-2.5" /> Čeká
+          </Badge>
+        )}
+        {plan.status === "in_progress" && (
+          <Badge className="text-[10px] h-5 px-1.5 bg-primary/20 text-primary border border-primary/30">
+            <Play className="mr-0.5 h-2.5 w-2.5" /> Probíhá
+          </Badge>
+        )}
+        {plan.status === "done" && (
+          <Badge className="text-[10px] h-5 px-1.5 bg-green-500/20 text-green-700 border border-green-500/30">
+            <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
+          </Badge>
+        )}
+        {plan.status === "skipped" && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-muted-foreground/30 text-muted-foreground">
+            Přeskočeno
+          </Badge>
+        )}
+
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-6 px-1.5 text-[10px]">
+            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* ═══ ACTION BUTTONS ═══ */}
+      <div className="flex flex-wrap items-center gap-1 mb-1.5">
+        {plan.status === "generated" && !isArchived && (
+          <>
+            <Button variant="outline" size="sm" onClick={onStartSession} className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10">
+              <Play className="mr-0.5 h-2.5 w-2.5" /> Zahájit
+            </Button>
+            <Button variant="outline" size="sm" onClick={onMarkDone} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
+              <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
+            </Button>
+          </>
+        )}
+        {plan.status === "in_progress" && !isArchived && (
+          <>
+            <Button variant="outline" size="sm" onClick={onOpenLive} className="h-6 px-2 text-[10px] border-primary/40 text-primary hover:bg-primary/10">
+              <Play className="mr-0.5 h-2.5 w-2.5" /> Live
+            </Button>
+            <Button variant="outline" size="sm" onClick={onEndSession} className="h-6 px-2 text-[10px] border-green-500/40 text-green-700 hover:bg-green-500/10">
+              <Square className="mr-0.5 h-2.5 w-2.5" /> Ukončit
+            </Button>
+          </>
+        )}
+        {plan.status === "done" && (
+          <Button variant="ghost" size="sm" onClick={onRevert} className="h-6 px-2 text-[10px] text-muted-foreground">
+            ↩ Vrátit
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[10px] text-muted-foreground">
+          <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Přegenerovat
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[10px] text-destructive/70 hover:text-destructive">
+          <Trash2 className="mr-0.5 h-2.5 w-2.5" /> Smazat
+        </Button>
+      </div>
+
+      {/* ═══ EXPANDED CONTENT ═══ */}
+      {isExpanded && (
+        <div className="mt-2 space-y-3 max-h-[500px] overflow-y-auto">
+          <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
+            <div
+              className="text-[11px] leading-5 text-foreground"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
+            />
+          </div>
+
+          {prevSession && (
+            <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+                <FileText className="w-3 h-3 text-primary" />
+                Poslední sezení — {prevSession.therapist}, {prevSession.session_date}
+              </div>
+
+              {prevSession.handoff_note && prevSession.handoff_note.trim() && (
+                <div className="rounded-md bg-primary/5 border border-primary/15 p-2.5">
+                  <span className="text-[9px] font-medium text-primary flex items-center gap-1 mb-1">
+                    <MessageSquare className="w-2.5 h-2.5" />
+                    Předání pro kolegyni
+                  </span>
+                  <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
+                </div>
+              )}
+
+              {prevSession.ai_analysis && prevSession.ai_analysis.trim() && (
+                <div>
+                  <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                    <Brain className="w-2.5 h-2.5" />
+                    AI analýza sezení
+                  </span>
+                  <div
+                    className="text-[10px] leading-4 text-muted-foreground"
+                    dangerouslySetInnerHTML={{ __html: renderMarkdown(prevSession.ai_analysis) }}
+                  />
+                </div>
+              )}
+
+              {(() => {
+                const notes = prevSession.karel_notes || "";
+                const refIdx = notes.indexOf("## REFLEXE TERAPEUTKY");
+                if (refIdx === -1) return null;
+                const refText = notes.slice(refIdx + "## REFLEXE TERAPEUTKY".length).trim();
+                if (!refText) return null;
+                return (
+                  <div className="rounded-md bg-amber-500/5 border border-amber-500/15 p-2.5">
+                    <span className="text-[9px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1">
+                      <PenLine className="w-2.5 h-2.5" />
+                      Reflexe terapeutky
+                    </span>
+                    <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{refText}</p>
+                  </div>
+                );
+              })()}
+
+              {!prevSession.handoff_note?.trim() && !prevSession.ai_analysis?.trim() && (
+                <p className="text-[10px] text-muted-foreground/60 italic">Bez detailů z minulého sezení.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isExpanded && (
+        <p className="text-[10px] text-muted-foreground line-clamp-1">
+          {plan.plan_markdown.replace(/[#*\-]/g, '').slice(0, 100)}…
+        </p>
+      )}
+    </div>
   );
 };
 

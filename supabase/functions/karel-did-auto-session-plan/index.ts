@@ -5,23 +5,16 @@ import { corsHeaders } from "../_shared/auth.ts";
 /**
  * karel-did-auto-session-plan
  * 
- * Automatic daily session plan generator (triggered at 13:50 CET by cron).
+ * Automatic daily session plan generator (triggered at 5:00 UTC / ~6:00 CET by cron).
  * 
  * 1. Calculates URGENCY SCORE for each part in registry
- * 2. Selects the top-scoring part
- * 3. Generates a 60min session plan via AI
- * 4. Stores in did_daily_session_plans
- * 5. Writes to Drive (05_PLAN/05_Operativni_Plan)
- * 6. Creates operative task in did_therapist_tasks
- * 
- * Urgency scoring (from system instructions):
- *   Krizový stav (crisis brief 24h):       +5
- *   Noční můry / flashbacky (tags):        +4
- *   Emoční dysregulace (intensity ≥4):     +3
- *   Nedokončený úkol z minulého sezení:    +2
- *   Nedávná aktivita (24h):                +2
- *   Spící část >7 dní neaktivní:           +1
- *   48h žádná část aktivní (stabilizace):  special
+ * 2. STRICTLY filters out sleeping/dormant parts from auto-selection
+ * 3. Reads part card + 00_CENTRUM documents from Drive
+ * 4. Perplexity research based on diagnosis/needs
+ * 5. Generates 60min session plan via AI with VEDE: Hanka/Káťa
+ * 6. Stores in did_daily_session_plans (queue — INSERT, never DELETE old)
+ * 7. Writes to Drive (05_PLAN/05_Operativni_Plan)
+ * 8. Creates operative task in did_therapist_tasks
  */
 
 // ═══ OAuth2 + Drive helpers ═══
@@ -57,7 +50,16 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
   return data.files || [];
 }
 
-async function readFileContent(token: string, fileId: string): Promise<string> {
+async function readFileContent(token: string, fileId: string, mimeType?: string): Promise<string> {
+  const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
+  const isGoogleWorkspace = mimeType?.startsWith("application/vnd.google-apps.");
+
+  if (isGoogleDoc || isGoogleWorkspace) {
+    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!exportRes.ok) throw new Error(`Cannot export doc ${fileId}`);
+    return await exportRes.text();
+  }
+
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
@@ -68,7 +70,6 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
 }
 
 async function appendToGoogleDoc(token: string, fileId: string, text: string): Promise<void> {
-  // Get current doc length
   const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, { headers: { Authorization: `Bearer ${token}` } });
   if (!docRes.ok) throw new Error(`Cannot read doc ${fileId}`);
   const doc = await docRes.json();
@@ -91,12 +92,6 @@ function getPragueDate(): string {
 }
 
 // ═══ Urgency scoring v2 ═══
-// Priority tiers:
-//   1. FADING: was active (cast thread) in last 3d but silent last 24h → highest (+6)
-//   2. ACTIVE: has cast thread in last 3d → high (+4)
-//   3. SLEEPING: no cast thread in 3d → allowed but lower (+1 max from dormancy)
-//   Therapist override bypasses all scoring.
-
 interface UrgencyResult {
   partName: string;
   score: number;
@@ -106,8 +101,8 @@ interface UrgencyResult {
 
 function calculateUrgencyScores(
   registry: any[],
-  threads3d: any[],   // cast threads from last 3 days
-  threads24h: any[],  // cast threads from last 24h
+  threads3d: any[],
+  threads24h: any[],
   crisisBriefs24h: any[],
   pendingTasks: any[],
   sessions: any[],
@@ -115,7 +110,6 @@ function calculateUrgencyScores(
   const now = Date.now();
   const DAY = 24 * 60 * 60 * 1000;
 
-  // Crisis briefs mentioning parts
   const crisisPartNames = new Set<string>();
   for (const brief of crisisBriefs24h) {
     for (const part of registry) {
@@ -126,19 +120,16 @@ function calculateUrgencyScores(
     }
   }
 
-  // Direct activity (cast mode) in last 3 days
   const activeParts3d = new Set<string>();
   for (const t of threads3d) {
     if (t.sub_mode === "cast") activeParts3d.add(t.part_name);
   }
 
-  // Direct activity (cast mode) in last 24h
   const activeParts24h = new Set<string>();
   for (const t of threads24h) {
     if (t.sub_mode === "cast") activeParts24h.add(t.part_name);
   }
 
-  // Pending tasks by part
   const tasksByPart = new Map<string, number>();
   for (const t of pendingTasks) {
     const cat = t.category || "";
@@ -156,22 +147,17 @@ function calculateUrgencyScores(
     const wasActive3d = activeParts3d.has(part.part_name);
     const isActive24h = activeParts24h.has(part.part_name);
 
-    // Determine tier
     let tier: "fading" | "active" | "sleeping";
     if (wasActive3d && !isActive24h) {
       tier = "fading";
-      // FADING: was active in 3d, silent now → HIGHEST priority
       breakdown["fading_alert"] = 6;
       score += 6;
     } else if (wasActive3d) {
       tier = "active";
-      // ACTIVE: currently communicating
       breakdown["active_3d"] = 4;
       score += 4;
     } else {
       tier = "sleeping";
-      // SLEEPING: no direct activity in 3d
-      // Still allowed but much lower base
       const lastSeen = part.last_seen_at ? new Date(part.last_seen_at).getTime() : 0;
       const daysSinceLastSeen = lastSeen ? (now - lastSeen) / DAY : Infinity;
       if (daysSinceLastSeen > 7) {
@@ -180,13 +166,11 @@ function calculateUrgencyScores(
       }
     }
 
-    // Crisis bonus (any tier)
     if (crisisPartNames.has(part.part_name)) {
       breakdown["crisis"] = 5;
       score += 5;
     }
 
-    // Nightmares/flashbacks
     const triggers = (part.known_triggers || []).map((t: string) => t.toLowerCase());
     const hasNightmares = triggers.some((t: string) => t.includes("noční") || t.includes("flashback") || t.includes("nightmare"));
     const emoState = (part.last_emotional_state || "").toLowerCase();
@@ -195,13 +179,11 @@ function calculateUrgencyScores(
       score += 4;
     }
 
-    // Emotional dysregulation
     if ((part.last_emotional_intensity || 0) >= 4) {
       breakdown["emotional_dysregulation"] = 3;
       score += 3;
     }
 
-    // Pending tasks
     if ((tasksByPart.get(part.part_name) || 0) > 0) {
       breakdown["pending_tasks"] = 2;
       score += 2;
@@ -209,7 +191,6 @@ function calculateUrgencyScores(
 
     return { partName: part.part_name, score, breakdown, tier };
   }).sort((a, b) => {
-    // Sort by tier priority first, then score
     const tierOrder = { fading: 0, active: 1, sleeping: 2, override: -1 };
     const tierDiff = tierOrder[a.tier] - tierOrder[b.tier];
     if (tierDiff !== 0) return tierDiff;
@@ -245,10 +226,49 @@ async function searchPerplexity(query: string): Promise<string> {
   }
 }
 
+// ═══ Read 00_CENTRUM key documents ═══
+async function readCentrumDocuments(token: string, centrumFolderId: string): Promise<string> {
+  const centrumFiles = await listFilesInFolder(token, centrumFolderId);
+  const keyDocs = ["00_Aktualni_Dashboard", "01_Index_Vsech_Casti", "02_Instrukce", "04_Mapa_Vztahu"];
+  const results: string[] = [];
+
+  for (const docKey of keyDocs) {
+    const file = centrumFiles.find(f =>
+      canonicalText(f.name).includes(canonicalText(docKey)) &&
+      f.mimeType !== "application/vnd.google-apps.folder"
+    );
+    if (file) {
+      try {
+        const content = await readFileContent(token, file.id, file.mimeType);
+        results.push(`### ${file.name}\n${truncate(content, 1500)}`);
+      } catch (e) {
+        console.warn(`[auto-session-plan] Failed to read ${file.name}:`, e);
+      }
+    }
+  }
+
+  return results.join("\n\n");
+}
+
+// ═══ Parse session_lead from AI response ═══
+function parseSessionLead(markdown: string): { lead: string; format: string } {
+  // Look for VEDE: HANKA or VEDE: KÁŤA patterns
+  const vedeMatch = markdown.match(/VEDE:\s*(HANKA|KÁŤA|KATA|Hanka|Káťa|Kata)/i);
+  if (!vedeMatch) return { lead: "hanka", format: "osobně" };
+
+  const name = vedeMatch[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (name === "kata" || name === "katka") {
+    // Try to find format
+    const formatMatch = markdown.match(/VEDE:\s*(?:KÁŤA|KATA|Káťa|Kata)\s*\(([^)]+)\)/i);
+    const format = formatMatch?.[1]?.toLowerCase().trim() || "chat";
+    return { lead: "kata", format };
+  }
+  return { lead: "hanka", format: "osobně" };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-  // Accept cron (service_role/anon) and manual (authenticated)
   const authHeader = req.headers.get("Authorization") || "";
   const isCron = req.headers.get("user-agent")?.includes("pg_net") ||
     authHeader.includes(Deno.env.get("SUPABASE_ANON_KEY") || "___none___");
@@ -262,7 +282,6 @@ serve(async (req) => {
 
   const todayPrague = getPragueDate();
 
-  // Get user_id - from auth or fallback to first registry user
   let userId: string | null = null;
   if (!isCron) {
     const token = authHeader.replace("Bearer ", "");
@@ -278,7 +297,6 @@ serve(async (req) => {
   }
 
   try {
-    // Parse request body for therapist override
     let forcePart: string | null = null;
     let therapistContext: string | null = null;
     try {
@@ -287,24 +305,22 @@ serve(async (req) => {
       therapistContext = body?.therapistContext || null;
     } catch { /* empty body is fine */ }
 
-    // Check if plan already exists for today
-    const { data: existingPlan } = await sb.from("did_daily_session_plans")
-      .select("id")
-      .eq("plan_date", todayPrague)
-      .maybeSingle();
+    // ═══ CHECK EXISTING AUTO PLAN (only block auto, not manual) ═══
+    if (!forcePart) {
+      const { data: autoPlans } = await sb.from("did_daily_session_plans")
+        .select("id, generated_by")
+        .eq("plan_date", todayPrague)
+        .eq("generated_by", "auto");
 
-    if (existingPlan && !forcePart) {
-      console.log(`[auto-session-plan] Plan already exists for ${todayPrague}, skipping.`);
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (autoPlans && autoPlans.length > 0) {
+        console.log(`[auto-session-plan] Auto plan already exists for ${todayPrague}, skipping.`);
+        return new Response(JSON.stringify({ success: true, skipped: true, reason: "plan_exists" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // Delete old plan if therapist override
-    if (existingPlan && forcePart) {
-      console.log(`[auto-session-plan] Therapist override: deleting existing plan for ${todayPrague}`);
-      await sb.from("did_daily_session_plans").delete().eq("id", existingPlan.id);
-    }
+    // NOTE: Manual override (forcePart) always INSERTs a new plan, never deletes old ones
 
     // ═══ GATHER DATA ═══
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -345,41 +361,45 @@ serve(async (req) => {
     const scores = calculateUrgencyScores(registry, threads3d, threads24h, crisisBriefs, pendingTasks, sessions);
     console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
 
-    // ═══ THERAPIST OVERRIDE ═══
+    // ═══ PART SELECTION ═══
     let selectedPart: UrgencyResult;
+    let selectedTier: string;
+
     if (forcePart) {
-      // Try case-insensitive match, also try canonical (no diacritics)
+      // THERAPIST OVERRIDE — allows any part including sleeping
       const forceCanon = canonicalText(forcePart);
       const partExists = registry.find(p =>
         p.part_name.toLowerCase() === forcePart!.toLowerCase() ||
         canonicalText(p.part_name) === forceCanon
       );
       const resolvedName = partExists ? partExists.part_name : forcePart;
+      const partReg = partExists;
+      selectedTier = partReg?.status === "active" || partReg?.status === "aktivní" ? "active" : "sleeping";
       selectedPart = {
         partName: resolvedName,
         score: 99,
         breakdown: { therapist_override: 99 },
         tier: "override",
       };
-      console.log(`[auto-session-plan] Therapist override: ${resolvedName}${partExists ? "" : " (not in registry, custom name)"}`);
-
+      console.log(`[auto-session-plan] Therapist override: ${resolvedName}`);
     } else {
-      selectedPart = scores[0];
-      if (!selectedPart || selectedPart.score === 0) {
-        const oldest = [...registry].sort((a, b) => {
-          const aTime = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
-          const bTime = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
-          return aTime - bTime;
-        })[0];
-        if (oldest) {
-          selectedPart = {
-            partName: oldest.part_name,
-            score: 0.5,
-            breakdown: { fallback_oldest: 0.5 },
-            tier: "sleeping",
-          };
-        }
+      // ═══ STRICT TIER FILTERING — EXCLUDE sleeping/dormant from auto-selection ═══
+      const activeParts = scores.filter(s => s.tier !== "sleeping");
+
+      if (activeParts.length === 0) {
+        // NO active/communicating parts → do NOT generate plan
+        console.log("[auto-session-plan] Žádná aktivní/komunikující část nenalezena pro dnešek. Plán nebude vygenerován.");
+        return new Response(JSON.stringify({
+          success: false,
+          reason: "no_active_parts",
+          message: "Žádná aktivní/komunikující část nenalezena pro dnešek.",
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
+
+      selectedPart = activeParts[0];
+      selectedTier = selectedPart.tier;
     }
 
     const partReg = registry.find(p => p.part_name === selectedPart.partName);
@@ -388,40 +408,52 @@ serve(async (req) => {
     // Recent sessions for this part
     const partSessions = sessions.filter(s => s.part_name === selectedPart.partName).slice(0, 3);
 
-    // ═══ PERPLEXITY RESEARCH ═══
-    const perplexityResult = await searchPerplexity(
-      `Nejlepší terapeutické techniky pro práci s DID alter "${selectedPart.partName}"${isDormant ? " (spící/dormantní část - aktivační strategie)" : ""}. Doporuč kreativní a efektivní aktivity pro 60minutové sezení. Trauma-informed přístupy, IFS, arteterapie, narativní techniky.`
-    );
-
-    // ═══ READ DRIVE DATA ═══
+    // ═══ READ DRIVE DATA — Part card + 00_CENTRUM documents ═══
     let partCard = "";
     let operativePlan = "";
+    let centrumDocs = "";
     try {
       const token = await getAccessToken();
       const kartotekaId = await findFolder(token, "kartoteka_DID");
       if (kartotekaId) {
         const folders = await listFilesInFolder(token, kartotekaId);
+
+        // Read part card from 01_AKTIVNI_FRAGMENTY
         const aktivniFolder = folders.find(f => f.name.includes("01_AKTIVNI") || f.name.includes("AKTIVNI"));
         if (aktivniFolder) {
           const cards = await listFilesInFolder(token, aktivniFolder.id);
           const match = cards.find(c => canonicalText(c.name).includes(canonicalText(selectedPart.partName)));
-          if (match) partCard = truncate(await readFileContent(token, match.id), 4000);
+          if (match) partCard = truncate(await readFileContent(token, match.id, match.mimeType), 4000);
         }
-        // Read operative plan
+
+        // Read 00_CENTRUM documents (Dashboard, Index, Instrukce, Mapa vztahů)
         const centrumFolder = folders.find(f => f.name.includes("00_CENTRUM"));
         if (centrumFolder) {
+          // Read key CENTRUM documents
+          centrumDocs = await readCentrumDocuments(token, centrumFolder.id);
+
+          // Read operative plan from 05_PLAN subfolder
           const centrumFiles = await listFilesInFolder(token, centrumFolder.id);
           const planFolder = centrumFiles.find(f => f.name.includes("05_PLAN") && f.mimeType?.includes("folder"));
           if (planFolder) {
             const planFiles = await listFilesInFolder(token, planFolder.id);
             const opPlan = planFiles.find(f => f.name.includes("05_Operativni") || f.name.includes("05A_"));
-            if (opPlan) operativePlan = truncate(await readFileContent(token, opPlan.id), 2000);
+            if (opPlan) operativePlan = truncate(await readFileContent(token, opPlan.id, opPlan.mimeType), 2000);
           }
         }
       }
     } catch (e) {
       console.warn("[auto-session-plan] Drive read failed:", e);
     }
+
+    // ═══ PERPLEXITY RESEARCH — enriched with part-specific diagnosis/needs ═══
+    const partNeeds = partReg
+      ? `Část "${selectedPart.partName}", věk: ${partReg.age_estimate || "neznámý"}, role: ${partReg.role_in_system || "neznámá"}, emoční stav: ${partReg.last_emotional_state || "neznámý"}, triggery: ${(partReg.known_triggers || []).join(", ") || "žádné"}`
+      : `Část "${selectedPart.partName}"`;
+
+    const perplexityResult = await searchPerplexity(
+      `Evidence-based terapeutické techniky pro práci s DID alter: ${partNeeds}.${isDormant ? " Část je spící/dormantní — aktivační strategie." : ""} Doporuč kreativní a efektivní aktivity pro 60minutové sezení. Trauma-informed přístupy, IFS, arteterapie, narativní techniky. Bez dechových cvičení (epilepsie).`
+    );
 
     // ═══ GOALS BLOCK ═══
     const goalsBlock = sysProfile ? `
@@ -435,6 +467,15 @@ RIZIKA: ${(sysProfile.risk_factors || []).join(", ")}` : "";
     const stabilizationMode = !anyActive48h;
 
     // ═══ AI GENERATION ═══
+    const sessionLeadInstruction = `
+VŽDY na začátku plánu uveď na prvním řádku:
+**VEDE:** HANKA (osobně) nebo KÁŤA (distančně: chat/video/telefon/SMS)
+
+Pravidla pro výběr vedoucí:
+- Trauma, krize, emocionální témata, regresivní práce → VEDE: HANKA (osobně)
+- Kognitivní práce, check-in, úkoly, edukace, monitoring → VEDE: KÁŤA (distančně: chat)
+- Pokud obojí, navrhni obě varianty s doporučením`;
+
     const systemPrompt = stabilizationMode
       ? `Jsi Karel, vedoucí DID terapeutického týmu. Žádná část nebyla aktivní 48 hodin.
 Sestav UDRŽOVACÍ / STABILIZAČNÍ plán sezení (60 min). Zaměř se na:
@@ -444,6 +485,8 @@ Sestav UDRŽOVACÍ / STABILIZAČNÍ plán sezení (60 min). Zaměř se na:
 - Monitoring a prevenci
 
 NIKDY nepoužívej dechová cvičení. Klientka má epilepsii.
+
+${sessionLeadInstruction}
 
 Formát: Markdown, česky. Začni ## 🛡️ Stabilizační plán sezení (60 min)`
       : `Jsi Karel, top-tier AI terapeut pro DID. Automaticky sestavuješ DENNÍ PLÁN SEZENÍ.
@@ -459,6 +502,8 @@ PRAVIDLA:
 - Pro spící části: aktivační strategie → test přítomnosti → alternativní plán
 - Formát A/B: Pokud je to pro Káťu, připrav i zjednodušenou variantu
 ${therapistContext ? `- Zohledni preference a kontext terapeutky jako PRIMÁRNÍ vstup pro plánování sezení\n` : ""}
+${sessionLeadInstruction}
+
 Formát: Markdown, česky.
 ## 🎯 Automatický plán sezení: ${selectedPart.partName} (60 min)
 ### Datum: ${todayPrague}
@@ -473,7 +518,10 @@ Formát: Markdown, česky.
 
     const userContent = `
 ═══ KARTA ČÁSTI ═══
-${partCard || "(karta nedostupná)"}
+${partCard || "(karta nedostupná — NELZE generovat plán na míru bez karty, udělej maximum z ostatních zdrojů)"}
+
+═══ 00_CENTRUM DOKUMENTY ═══
+${centrumDocs || "(nedostupné)"}
 
 ═══ OPERATIVNÍ PLÁN ═══
 ${operativePlan || "(nedostupný)"}
@@ -514,6 +562,9 @@ ${perplexityResult || "(nedostupná)"}`;
     const planMarkdown = aiData.choices?.[0]?.message?.content || "";
     if (!planMarkdown) throw new Error("AI returned empty plan");
 
+    // ═══ PARSE SESSION LEAD ═══
+    const { lead: sessionLead, format: sessionFormat } = parseSessionLead(planMarkdown);
+
     // ═══ CONVERT TO HTML ═══
     const planHtml = planMarkdown
       .replace(/^## (.+)$/gm, "<h2>$1</h2>")
@@ -522,7 +573,8 @@ ${perplexityResult || "(nedostupná)"}`;
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\n/g, "<br>");
 
-    // ═══ SAVE TO DB ═══
+    // ═══ SAVE TO DB (INSERT — never delete old plans) ═══
+    const generatedBy = forcePart ? "manual" : "auto";
     const { error: insertErr } = await sb.from("did_daily_session_plans").insert({
       user_id: userId,
       plan_date: todayPrague,
@@ -531,30 +583,33 @@ ${perplexityResult || "(nedostupná)"}`;
       urgency_breakdown: selectedPart.breakdown,
       plan_markdown: planMarkdown,
       plan_html: planHtml,
-      therapist: "hanka",
+      therapist: sessionLead,
       status: "generated",
+      generated_by: generatedBy,
+      part_tier: selectedTier || selectedPart.tier,
+      session_lead: sessionLead,
+      session_format: sessionFormat,
     });
 
     if (insertErr) {
       console.error("[auto-session-plan] DB insert failed:", insertErr);
-      // Might be duplicate
-      if ((insertErr as any).code !== "23505") throw insertErr;
+      throw insertErr;
     }
 
     // ═══ CREATE OPERATIVE TASK ═══
-    const taskText = `Sezení s ${selectedPart.partName} (auto-plán ${todayPrague})`;
+    const taskText = `Sezení s ${selectedPart.partName} (${generatedBy === "auto" ? "auto-plán" : "manuální plán"} ${todayPrague})`;
     const { data: existingTask } = await sb.from("did_therapist_tasks")
       .select("id")
       .ilike("task", `%${selectedPart.partName}%`)
-      .ilike("task", "%auto-plán%")
+      .ilike("task", "%plán%")
       .eq("status", "pending")
       .maybeSingle();
 
     if (!existingTask) {
       await sb.from("did_therapist_tasks").insert({
         task: taskText,
-        detail_instruction: `Karel automaticky vybral část "${selectedPart.partName}" na základě skóre naléhavosti ${selectedPart.score}. Důvody: ${Object.entries(selectedPart.breakdown).map(([k, v]) => `${k}(+${v})`).join(", ")}. Plán sezení je k dispozici v dashboardu.`,
-        assigned_to: "hanka",
+        detail_instruction: `Karel ${generatedBy === "auto" ? "automaticky" : "na žádost terapeutky"} vybral část "${selectedPart.partName}" na základě skóre naléhavosti ${selectedPart.score}. VEDE: ${sessionLead === "kata" ? "Káťa" : "Hanka"} (${sessionFormat}). Důvody: ${Object.entries(selectedPart.breakdown).map(([k, v]) => `${k}(+${v})`).join(", ")}.`,
+        assigned_to: sessionLead === "kata" ? "kata" : "hanka",
         priority: selectedPart.score >= 5 ? "high" : selectedPart.score >= 3 ? "normal" : "low",
         task_tier: "operative",
         status: "pending",
@@ -577,12 +632,21 @@ ${perplexityResult || "(nedostupná)"}`;
             const planFiles = await listFilesInFolder(token, planFolder.id);
             const opPlan = planFiles.find(f => f.name.includes("05_Operativni") || f.name.includes("05A_"));
             if (opPlan) {
-              const header = `\n\n══════════════════════════════════════\n🎯 AUTOMATICKÝ PLÁN SEZENÍ — ${todayPrague}\nČást: ${selectedPart.partName} | Naléhavost: ${selectedPart.score}\n══════════════════════════════════════\n`;
+              const header = `\n\n══════════════════════════════════════\n🎯 ${generatedBy === "auto" ? "AUTOMATICKÝ" : "MANUÁLNÍ"} PLÁN SEZENÍ — ${todayPrague}\nČást: ${selectedPart.partName} | Naléhavost: ${selectedPart.score} | VEDE: ${sessionLead === "kata" ? "Káťa" : "Hanka"} (${sessionFormat})\n══════════════════════════════════════\n`;
               await appendToGoogleDoc(token, opPlan.id, header + planMarkdown);
-              // Mark distributed
-              await sb.from("did_daily_session_plans")
-                .update({ distributed_drive: true })
-                .eq("plan_date", todayPrague);
+              // Mark distributed — update the newest plan for today
+              const { data: latestPlan } = await sb.from("did_daily_session_plans")
+                .select("id")
+                .eq("plan_date", todayPrague)
+                .eq("selected_part", selectedPart.partName)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+              if (latestPlan) {
+                await sb.from("did_daily_session_plans")
+                  .update({ distributed_drive: true })
+                  .eq("id", latestPlan.id);
+              }
               console.log("[auto-session-plan] Written to Drive.");
             }
           }
@@ -592,7 +656,7 @@ ${perplexityResult || "(nedostupná)"}`;
       console.warn("[auto-session-plan] Drive write failed:", e);
     }
 
-    console.log(`[auto-session-plan] Plan generated for ${selectedPart.partName} (score=${selectedPart.score})`);
+    console.log(`[auto-session-plan] Plan generated for ${selectedPart.partName} (score=${selectedPart.score}, lead=${sessionLead})`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -600,6 +664,9 @@ ${perplexityResult || "(nedostupná)"}`;
       urgencyScore: selectedPart.score,
       breakdown: selectedPart.breakdown,
       stabilizationMode,
+      sessionLead,
+      sessionFormat,
+      generatedBy,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
