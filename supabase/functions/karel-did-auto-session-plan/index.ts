@@ -542,12 +542,17 @@ RIZIKA: ${(sysProfile.risk_factors || []).join(", ")}` : "";
     // ═══ AI GENERATION ═══
     const sessionLeadInstruction = `
 VŽDY na začátku plánu uveď na prvním řádku:
-**VEDE:** HANKA (osobně) nebo KÁŤA (distančně: chat/video/telefon/SMS)
+**VEDE:** HANKA (osobně) nebo KÁŤA (distančně: chat/video/telefon/SMS) nebo HANKA + KÁŤA (kombinované)
 
 Pravidla pro výběr vedoucí:
 - Trauma, krize, emocionální témata, regresivní práce → VEDE: HANKA (osobně)
 - Kognitivní práce, check-in, úkoly, edukace, monitoring → VEDE: KÁŤA (distančně: chat)
-- Pokud obojí, navrhni obě varianty s doporučením`;
+- Pokud obojí, uveď: **VEDE:** HANKA + KÁŤA (kombinované)
+  a vygeneruj sekci:
+  ## 🤝 Předávací zpráva Hanka → Káťa
+  **HANKA vede (osobně, ___ min):** [co konkrétně udělat] [na co si dát pozor]
+  **Předat Káťe:** [klíčové body ze sezení] [emoční stav části na konci]
+  **KÁŤA navazuje (distančně – chat/video/telefon, ___ min):** [konkrétní otázky k položení] [úkoly k zadání]`;
 
     const systemPrompt = stabilizationMode
       ? `Jsi Karel, vedoucí DID terapeutického týmu. Žádná část nebyla aktivní 48 hodin.

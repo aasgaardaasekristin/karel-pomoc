@@ -26,6 +26,7 @@ interface SessionPlan {
   completed_at: string | null;
   session_lead: string;
   session_format: string;
+  overdue_days: number;
   created_at?: string;
 }
 
