@@ -542,15 +542,15 @@ const Chat = () => {
       return;
     }
     // DID and Hana modes manage their own context keys in child components
-    if (mainMode === "did" || mainMode === "hana") return;
+    if (hubSection === "did" || hubSection === "hana") return;
 
-    if (mainMode === "research") {
+    if (hubSection === "research") {
       setContextKey(activeResearchThread ? `research_thread_${activeResearchThread.id}` : "research");
       return;
     }
 
     setContextKey("global");
-  }, [mainMode, activeSession?.clientId, activeResearchThread?.id, setContextKey]);
+  }, [mainMode, hubSection, activeSession?.clientId, activeResearchThread?.id, setContextKey]);
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
