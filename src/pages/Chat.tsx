@@ -42,6 +42,7 @@ import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming"
 import { useTheme } from "@/contexts/ThemeContext";
 import { useManualUpdate } from "@/hooks/useManualUpdate";
 import DidContentRouter from "@/components/did/DidContentRouter";
+import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY,
@@ -533,24 +534,30 @@ const Chat = () => {
     applyTemporaryTheme,
     restoreGlobalTheme,
     getPersonaPrefs,
-    setContextKey,
   } = useTheme();
 
-  useEffect(() => {
+  // Compute localStorage storageKey for this screen
+  const chatStorageKey = (() => {
     if (mainMode === "report") {
-      setContextKey(activeSession ? `report_client_${activeSession.clientId}` : "report_session_selector");
-      return;
+      return activeSession ? `theme_report_${activeSession.clientId}` : "theme_report";
     }
-    // DID and Hana modes manage their own context keys in child components
-    if (hubSection === "did" || hubSection === "hana") return;
-
     if (hubSection === "research") {
-      setContextKey(activeResearchThread ? `research_thread_${activeResearchThread.id}` : "research");
-      return;
+      return activeResearchThread ? `theme_research_${activeResearchThread.id}` : "theme_research";
     }
+    // DID and Hana manage their own storageKey in child components
+    if (hubSection === "did" || hubSection === "hana") return null;
+    return "theme_global";
+  })();
 
-    setContextKey("global");
-  }, [mainMode, hubSection, activeSession?.clientId, activeResearchThread?.id, setContextKey]);
+  // Load/restore theme from localStorage for non-child-managed modes
+  useEffect(() => {
+    if (!chatStorageKey) return;
+    const saved = localStorage.getItem(chatStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [chatStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
@@ -1341,6 +1348,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
   }
 
   return (
+    <ThemeStorageKeyProvider value={chatStorageKey || undefined}>
     <div className="min-h-screen flex flex-col bg-transparent">
       {/* Header */}
       <header className="border-b border-border/70 bg-card/36 backdrop-blur-md sticky top-0 z-10">
@@ -1387,7 +1395,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <ThemeQuickButton />
+            <ThemeQuickButton storageKey={chatStorageKey || undefined} />
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
             </Button>
@@ -1473,7 +1481,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           {researchFlowState === "thread-list" ? (
             <ScrollArea className="flex-1">
               <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 flex justify-end">
-                <ThemeQuickButton />
+                <ThemeQuickButton storageKey={chatStorageKey || undefined} />
               </div>
               <ResearchThreadList
                 threads={researchThreads.threads}
@@ -1514,7 +1522,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                       <span className="text-xs text-muted-foreground ml-2">({activeResearchThread.createdBy})</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <ThemeQuickButton />
+                      <ThemeQuickButton storageKey={chatStorageKey || undefined} />
                       <Button
                         variant="outline"
                         size="sm"
@@ -1633,6 +1641,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       {studyMaterial && <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />}
       <GoogleDrivePickerDialog open={drivePickerOpen} onClose={() => setDrivePickerOpen(false)} onFileSelected={addAttachment} />
     </div>
+    </ThemeStorageKeyProvider>
   );
 };
 

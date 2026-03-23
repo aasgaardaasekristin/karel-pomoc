@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
+import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -135,8 +136,8 @@ export interface DidContentRouterProps {
   setMode: React.Dispatch<React.SetStateAction<ConversationMode>>;
 }
 
-const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
-  const { setContextKey } = useTheme();
+const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const {
     didFlowState, setDidFlowState, didSubMode, setDidSubMode,
     activeThread, setActiveThread, messages, setMessages,
@@ -159,18 +160,22 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
     meetingTherapist, setMeetingTherapist, mode, setMode,
   } = props;
 
-  // Set theme context based on DID sub-mode and active thread
+  // Compute localStorage storageKey based on DID sub-mode and active thread
+  const didStorageKey = (() => {
+    if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
+    if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
+    if (didSubMode === "cast") return "theme_did_kids";
+    return "theme_did_entry";
+  })();
+
+  // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
-    if (didSubMode === "mamka" || didSubMode === "kata") {
-      setContextKey("did_katerina");
-    } else if (didSubMode === "cast" && activeThread) {
-      setContextKey(`did_kids_${activeThread.id}`);
-    } else if (didSubMode === "cast") {
-      setContextKey("did_kids");
-    } else {
-      setContextKey("did_entry");
+    const saved = localStorage.getItem(didStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-  }, [didSubMode, activeThread?.id, setContextKey]);
+    return () => { restoreGlobalTheme(); };
+  }, [didStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {
@@ -252,7 +257,7 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
             <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
               ← Zpět
             </Button>
-            <ThemeQuickButton />
+            <ThemeQuickButton storageKey={didStorageKey} />
           </div>
         </div>
       </ScrollArea>
@@ -527,7 +532,7 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
                 )}
                 {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
               </span>
-              <ThemeQuickButton />
+              <ThemeQuickButton storageKey={didStorageKey} />
               <DidKidsThemeEditor
                 partName={activeThread.partName}
                 threadId={activeThread.id}
@@ -595,6 +600,25 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
         )}
       </ChatInputArea>
     </>
+  );
+};
+
+const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const didSubMode = props.didSubMode;
+  const activeThread = props.activeThread;
+
+  const didStorageKey = (() => {
+    if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
+    if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
+    if (didSubMode === "cast") return "theme_did_kids";
+    return "theme_did_entry";
+  })();
+
+  return (
+    <ThemeStorageKeyProvider value={didStorageKey}>
+      <DidContentRouterInner {...props} />
+    </ThemeStorageKeyProvider>
   );
 };
 

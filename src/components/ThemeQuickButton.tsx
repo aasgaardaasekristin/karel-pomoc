@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ThemeEditorDialog from "@/components/ThemeEditorDialog";
+import { useThemeStorageKey } from "@/contexts/ThemeStorageKeyContext";
 
 const screenButtonOwners = new Map<string, symbol>();
 
@@ -12,9 +13,13 @@ const getScreenScope = () => {
 
 interface ThemeQuickButtonProps {
   className?: string;
+  storageKey?: string;
 }
 
-const ThemeQuickButton = ({ className = "" }: ThemeQuickButtonProps) => {
+const ThemeQuickButton = ({ className = "", storageKey: propStorageKey }: ThemeQuickButtonProps) => {
+  const contextStorageKey = useThemeStorageKey();
+  const resolvedStorageKey = propStorageKey ?? contextStorageKey;
+
   const [open, setOpen] = useState(false);
   const owner = useMemo(() => Symbol("theme-quick-button"), []);
   const scope = getScreenScope();
@@ -51,7 +56,7 @@ const ThemeQuickButton = ({ className = "" }: ThemeQuickButtonProps) => {
         <Palette className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Vzhled</span>
       </Button>
-      <ThemeEditorDialog open={open} onOpenChange={setOpen} />
+      <ThemeEditorDialog open={open} onOpenChange={setOpen} storageKey={resolvedStorageKey} />
     </>
   );
 };

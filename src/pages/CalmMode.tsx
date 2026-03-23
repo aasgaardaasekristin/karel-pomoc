@@ -7,9 +7,19 @@ import { ArrowLeft, Leaf } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
 import CalmChat from "@/components/calm/CalmChat";
 
+const THEME_STORAGE_KEY = "theme_zklidneni";
+
 const CalmMode = () => {
-  const { setContextKey } = useTheme();
-  useEffect(() => { setContextKey("zklidneni"); }, [setContextKey]);
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+
+  useEffect(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [applyTemporaryTheme, restoreGlobalTheme]);
+
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
   const navigate = useNavigate();
 
@@ -27,7 +37,6 @@ const CalmMode = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -42,11 +51,10 @@ const CalmMode = () => {
               <p className="text-xs text-muted-foreground">Krátký průvodce pro chvíle, kdy to potřebuješ</p>
             </div>
           </div>
-          <ThemeQuickButton />
+          <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
         </div>
       </header>
 
-      {/* Content */}
       {scenario ? (
         <CalmChat scenario={scenario} onEnd={handleEnd} />
       ) : (

@@ -11,17 +11,26 @@ import { Loader2 } from "lucide-react";
 
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
+const THEME_STORAGE_KEY = "theme_hub";
 
 const Hub = () => {
   const navigate = useNavigate();
-  const { setContextKey } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const [authChecked, setAuthChecked] = useState(false);
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
 
+  // Load theme from localStorage on mount, restore on unmount
   useEffect(() => {
-    setContextKey("hub");
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [applyTemporaryTheme, restoreGlobalTheme]);
+
+  useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });
@@ -150,7 +159,7 @@ const Hub = () => {
             <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Supervizní partner a tandem-terapeut</p>
           </div>
           <div className="flex items-center gap-1">
-            <ThemeQuickButton />
+            <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
               <LogOut className="w-4 h-4 sm:mr-2" />
               <span className="hidden sm:inline">Odejít</span>

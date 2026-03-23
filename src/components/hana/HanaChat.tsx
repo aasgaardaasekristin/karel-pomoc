@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
+import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { Button } from "@/components/ui/button";
 import hanaWelcomeImg from "@/assets/hana-welcome.png";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,8 +37,8 @@ const handleApiError = async (response: Response) => {
   throw new Error(backendError || "Něco se pokazilo. Zkus to znovu.");
 };
 
-const HanaChat = () => {
-  const { setContextKey } = useTheme();
+const HanaChatInner = () => {
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
@@ -115,19 +116,17 @@ const HanaChat = () => {
     return { id: newConv.id, welcomeMessages };
   }, []);
 
-  // Set theme context for Hana mode
-  useEffect(() => {
-    setContextKey("hana");
-  }, [setContextKey]);
+  // Compute localStorage storageKey based on active conversation
+  const hanaStorageKey = conversationId ? `theme_hana_${conversationId}` : "theme_hana";
 
-  // Update theme context when switching threads
+  // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
-    if (conversationId) {
-      setContextKey(`hana_thread_${conversationId}`);
-    } else {
-      setContextKey("hana");
+    const saved = localStorage.getItem(hanaStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-  }, [conversationId, setContextKey]);
+    return () => { restoreGlobalTheme(); };
+  }, [hanaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {
@@ -732,7 +731,7 @@ const HanaChat = () => {
       {/* Toolbar with Správa + Vlákna */}
       <div className="border-b border-border bg-background/60 backdrop-blur-sm">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 flex items-center justify-end gap-2">
-          <ThemeQuickButton />
+          <ThemeQuickButton storageKey={hanaStorageKey} />
           <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 rounded-xl text-muted-foreground">
@@ -911,6 +910,16 @@ const HanaChat = () => {
         </DialogContent>
       </Dialog>
     </>
+  );
+};
+
+const HanaChat = () => {
+  // We need conversationId to compute the key, but it's internal state.
+  // Use a simple wrapper that provides the base key; HanaChatInner will override via prop when conversationId changes.
+  return (
+    <ThemeStorageKeyProvider value="theme_hana">
+      <HanaChatInner />
+    </ThemeStorageKeyProvider>
   );
 };
 

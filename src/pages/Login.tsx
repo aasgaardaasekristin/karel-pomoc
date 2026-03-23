@@ -8,16 +8,24 @@ import { Lock, Heart, Leaf, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+const THEME_STORAGE_KEY = "theme_login";
+
 const Login = () => {
-  const { setContextKey } = useTheme();
-  useEffect(() => { setContextKey("login"); }, [setContextKey]);
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+
+  useEffect(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [applyTemporaryTheme, restoreGlobalTheme]);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  // Registration disabled — private app for therapist only
   const navigate = useNavigate();
 
-  // Redirect if already authenticated
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -50,17 +58,15 @@ const Login = () => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="mb-4 flex justify-end">
-          <ThemeQuickButton />
+          <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
         </div>
         <div className="login-card text-center">
-          {/* Logo / Icon */}
           <div className="mb-6 flex justify-center">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
               <Heart className="w-8 h-8 text-primary" />
             </div>
           </div>
 
-          {/* Title */}
           <h1 className="text-3xl font-serif font-semibold text-foreground mb-2">
             Karel
           </h1>
@@ -68,7 +74,6 @@ const Login = () => {
             Supervizní mentor pro psychoterapeuty
           </p>
 
-          {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -105,15 +110,11 @@ const Login = () => {
             </Button>
           </form>
 
-          {/* Registration removed — private app */}
-
-          {/* Footer note */}
           <p className="mt-6 text-xs text-muted-foreground">
             Soukromá aplikace pro profesionální supervizi a péči
           </p>
         </div>
 
-        {/* Calm Mode Entry - separate from login */}
         <div className="mt-6 text-center">
           <a
             href="/zklidneni"

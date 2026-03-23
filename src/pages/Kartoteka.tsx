@@ -99,7 +99,7 @@ const Kartoteka = () => {
   const navigate = useNavigate();
   const { createSession, updateSessionPlan, setActiveSession, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
-  const { setContextKey } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [sessions, setSessions] = useState<ClientSession[]>([]);
@@ -118,14 +118,17 @@ const Kartoteka = () => {
   const [clientAnalyses, setClientAnalyses] = useState<any[]>([]);
   const [sessionMaterials, setSessionMaterials] = useState<any[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  // Set theme context per selected client
+  // Compute localStorage storageKey based on selected client
+  const kartotekaStorageKey = selectedClient ? `theme_kartoteka_${selectedClient.id}` : "theme_kartoteka";
+
+  // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
-    if (selectedClient) {
-      setContextKey(`kartoteka_client_${selectedClient.id}`);
-    } else {
-      setContextKey("kartoteka");
+    const saved = localStorage.getItem(kartotekaStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-  }, [selectedClient?.id, setContextKey]);
+    return () => { restoreGlobalTheme(); };
+  }, [kartotekaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
@@ -566,7 +569,7 @@ const Kartoteka = () => {
           <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <ThemeQuickButton />
+                <ThemeQuickButton storageKey={kartotekaStorageKey} />
                 <TabsList className="inline-flex w-auto flex-1 h-auto flex-nowrap sm:grid sm:grid-cols-4">
                   <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                     <User className="w-3.5 h-3.5 hidden sm:block" />
