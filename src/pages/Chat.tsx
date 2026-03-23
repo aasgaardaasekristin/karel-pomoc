@@ -1203,10 +1203,13 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       const headers = await getAuthHeaders();
       const isResearch = mode === "research" || (mode === "childcare" && didSubMode === "research");
       const endpoint = isResearch ? "karel-research" : "karel-chat";
-      const recentMessages = [...messages.slice(-30), { role: "user", content: userContent }];
-      const trimmedContext = didInitialContext && didInitialContext.length > 80000
-        ? didInitialContext.slice(0, 80000) + "\n[...kontext zkrácen...]"
+      const recentMessages = [...messages.slice(-20), { role: "user", content: userContent }];
+      const trimmedContext = didInitialContext && didInitialContext.length > 8000
+        ? didInitialContext.slice(-8000)
         : didInitialContext;
+      const trimmedPrimeCache = didContextPrime.primeCache && didContextPrime.primeCache.length > 2000
+        ? didContextPrime.primeCache.slice(-2000)
+        : didContextPrime.primeCache;
       const body = isResearch
         ? { query: userMessage, conversationHistory: messages.slice(-20), createdBy: activeResearchThread?.createdBy || "Hana" }
         : {
@@ -1214,7 +1217,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             mode,
             ...(mode === "childcare" && trimmedContext ? { didInitialContext: trimmedContext } : {}),
             ...(mode === "childcare" && didSubMode ? { didSubMode } : {}),
-            ...(mode === "childcare" && didContextPrime.primeCache ? { didContextPrimeCache: didContextPrime.primeCache } : {}),
+            ...(mode === "childcare" && trimmedPrimeCache ? { didContextPrimeCache: trimmedPrimeCache } : {}),
             ...(mode === "childcare" && activeThread ? { didPartName: activeThread.partName, didThreadLabel: activeThread.threadLabel, didEnteredName: activeThread.enteredName } : {}),
           };
       const controller = new AbortController();

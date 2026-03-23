@@ -465,6 +465,7 @@ async function saveEpisodeInBackground(
       }),
     });
 
+    clearTimeout(bgTimeout);
     if (!buildResponse.ok) {
       console.error("Episode build failed:", buildResponse.status);
       return;
