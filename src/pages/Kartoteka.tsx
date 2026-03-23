@@ -789,6 +789,14 @@ const Kartoteka = () => {
                         {s.report_key_theme && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{s.report_key_theme}</p>
                         )}
+                        {(() => {
+                          const matCount = sessionMaterials.filter((m: any) => m.session_id === s.id).length;
+                          return matCount > 0 ? (
+                            <span className="text-xs text-primary flex items-center gap-0.5 mt-0.5">
+                              <Paperclip className="w-3 h-3" /> Materiály ({matCount})
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expandedSession === s.id ? "rotate-90" : ""}`} />
                     </button>
