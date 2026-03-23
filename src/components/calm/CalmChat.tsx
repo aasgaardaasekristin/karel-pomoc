@@ -6,7 +6,7 @@ import { Send, Loader2, Phone, ShieldAlert, HeartHandshake } from "lucide-react"
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
 import ImageUploadButton from "@/components/ImageUploadButton";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import type { CalmScenario } from "./ScenarioSelector";
 import { useCrisisSupervision } from "@/contexts/CrisisSupervisionContext";
 import type { CrisisImprint, DiagnosticProfile } from "@/types/crisisImprint";
