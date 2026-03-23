@@ -169,12 +169,15 @@ DOSTUPNÉ EPIZODY (vyber 3-7 nejrelevantnějších podle shody v tématu, účas
 ${episodeSummaries || "(žádné epizody zatím)"}`;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         messages: [
@@ -207,6 +210,7 @@ Vrať POUZE validní JSON (bez markdown bloků):
         temperature: 0.1,
       }),
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       console.error("Analysis call failed:", response.status);
@@ -232,8 +236,12 @@ Vrať POUZE validní JSON (bez markdown bloků):
       };
     }
     return getDefaultAnalysis(lastUserMsg);
-  } catch (e) {
-    console.error("Analysis error:", e);
+  } catch (e: any) {
+    if (e?.name === "AbortError") {
+      console.warn("Analysis timed out after 8s, using default");
+    } else {
+      console.error("Analysis error:", e);
+    }
     return getDefaultAnalysis(lastUserMsg);
   }
 }
@@ -425,12 +433,15 @@ async function saveEpisodeInBackground(
     const sb = getServiceClient();
     
     // Build episode from the exchange
+    const bgController = new AbortController();
+    const bgTimeout = setTimeout(() => bgController.abort(), 10000);
     const buildResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
         "Content-Type": "application/json",
       },
+      signal: bgController.signal,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         messages: [
@@ -454,6 +465,7 @@ async function saveEpisodeInBackground(
       }),
     });
 
+    clearTimeout(bgTimeout);
     if (!buildResponse.ok) {
       console.error("Episode build failed:", buildResponse.status);
       return;
@@ -523,16 +535,17 @@ serve(async (req) => {
 
     const sb = getServiceClient();
 
-    // ═══ STEP 1: Load memory + Analyze (parallel) ═══
-    const [episodes, strategies, entities, patterns, relations] = await Promise.all([
-      loadRecentEpisodes(sb, user.id),
-      loadStrategies(sb, user.id),
-      loadSemanticEntities(sb, user.id),
-      loadSemanticPatterns(sb, user.id),
-      loadSemanticRelations(sb, user.id),
+    // ═══ STEP 1: Load memory + Analyze (PARALLEL) ═══
+    const [[episodes, strategies, entities, patterns, relations], analysis] = await Promise.all([
+      Promise.all([
+        loadRecentEpisodes(sb, user.id),
+        loadStrategies(sb, user.id),
+        loadSemanticEntities(sb, user.id),
+        loadSemanticPatterns(sb, user.id),
+        loadSemanticRelations(sb, user.id),
+      ]),
+      analyzeInput(messages, [], LOVABLE_API_KEY),
     ]);
-
-    const analysis = await analyzeInput(messages, episodes, LOVABLE_API_KEY);
     console.log(`Analysis: domain=${analysis.domain}, state=${analysis.hana_state}, intensity=${analysis.emotional_intensity}, tags=${analysis.tags.join(",")}`);
 
     // ═══ STEP 2: Build situation cache + prompt ═══
