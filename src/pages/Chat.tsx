@@ -1448,6 +1448,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         <>
           {researchFlowState === "thread-list" ? (
             <ScrollArea className="flex-1">
+              <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 flex justify-end">
+                <ThemeQuickButton />
+              </div>
               <ResearchThreadList
                 threads={researchThreads.threads}
                 loading={researchThreads.loading}
