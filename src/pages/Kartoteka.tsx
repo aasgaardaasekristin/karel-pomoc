@@ -1197,32 +1197,34 @@ const parseAnalysisJson = (text: string): Record<string, any> | null => {
   return null;
 };
 
+const tryParseJson = (text: string): any => {
+  try {
+    const p = JSON.parse(text);
+    return typeof p === "string" ? JSON.parse(p) : p;
+  } catch {
+    return null;
+  }
+};
+
 const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
   if (!analysis) return null;
 
-  let parsed: any = null;
+  const stripped = analysis
+    .replace(/^```(?:json)?\s*\n?/, "")
+    .replace(/\n?```\s*$/, "")
+    .trim();
 
-  try {
-    parsed = JSON.parse(analysis);
-    if (typeof parsed === "string") {
-      parsed = JSON.parse(parsed);
-    }
-  } catch {
-    try {
-      const cleaned = analysis
-        .replace(/^```(?:json)?\s*\n?/, "")
-        .replace(/\n?```\s*$/, "")
-        .trim();
-      parsed = JSON.parse(cleaned);
-      if (typeof parsed === "string") {
-        parsed = JSON.parse(parsed);
-      }
-    } catch {
-      return <ReactMarkdown>{analysis}</ReactMarkdown>;
-    }
+  let parsed: any =
+    tryParseJson(analysis) ??
+    tryParseJson(stripped);
+
+  if (!parsed || typeof parsed !== "object") {
+    return (
+      <div className="prose prose-sm max-w-none dark:prose-invert">
+        <ReactMarkdown>{stripped}</ReactMarkdown>
+      </div>
+    );
   }
-
-  if (!parsed || typeof parsed !== "object") return <ReactMarkdown>{analysis}</ReactMarkdown>;
 
   const record =
     parsed.sessionRecord && typeof parsed.sessionRecord === "object"
