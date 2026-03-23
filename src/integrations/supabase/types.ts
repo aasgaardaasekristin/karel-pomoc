@@ -41,6 +41,44 @@ export type Database = {
         }
         Relationships: []
       }
+      client_analyses: {
+        Row: {
+          client_id: string
+          content: string
+          created_at: string | null
+          id: string
+          summary: string | null
+          user_id: string
+          version: number | null
+        }
+        Insert: {
+          client_id: string
+          content: string
+          created_at?: string | null
+          id?: string
+          summary?: string | null
+          user_id?: string
+          version?: number | null
+        }
+        Update: {
+          client_id?: string
+          content?: string
+          created_at?: string | null
+          id?: string
+          summary?: string | null
+          user_id?: string
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_analyses_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_sessions: {
         Row: {
           ai_analysis: string | null
@@ -1636,6 +1674,104 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      session_materials: {
+        Row: {
+          analysis: string | null
+          client_id: string
+          created_at: string | null
+          id: string
+          label: string | null
+          material_type: string
+          session_id: string | null
+          session_number: number | null
+          storage_url: string
+          tags: string[] | null
+          user_id: string
+        }
+        Insert: {
+          analysis?: string | null
+          client_id: string
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          material_type: string
+          session_id?: string | null
+          session_number?: number | null
+          storage_url: string
+          tags?: string[] | null
+          user_id?: string
+        }
+        Update: {
+          analysis?: string | null
+          client_id?: string
+          created_at?: string | null
+          id?: string
+          label?: string | null
+          material_type?: string
+          session_id?: string | null
+          session_number?: number | null
+          storage_url?: string
+          tags?: string[] | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_materials_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_materials_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "client_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_preparations: {
+        Row: {
+          approved_at: string | null
+          client_id: string
+          created_at: string | null
+          id: string
+          notes: string | null
+          plan: Json
+          session_number: number | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          client_id: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          plan: Json
+          session_number?: number | null
+          user_id?: string
+        }
+        Update: {
+          approved_at?: string | null
+          client_id?: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          plan?: Json
+          session_number?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_preparations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_theme_preferences: {
         Row: {
