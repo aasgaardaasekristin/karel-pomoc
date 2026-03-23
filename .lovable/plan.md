@@ -1,93 +1,82 @@
 
 
-# Oprava race condition: localStorage vs DB v ThemeContext
+# Oprava pomalosti chatu – DID & Hana
 
-## Problém
-`ThemeContext.tsx` řádek 301-303 — `useEffect` vždy volá `loadPrefsForContext()` při změně `currentContextKey`. Tato DB query vrátí data asynchronně a zavolá `setPrefs()`, čímž **přepíše** téma, které stránka právě aplikovala přes `applyTemporaryTheme()` z localStorage.
+## A) `karel-hana-chat/index.ts` – paralelizace analyzeInput
 
-## Řešení — localMode flag
+**Problém:** `analyzeInput()` (řádek 535) blokuje 1-3s před streamem. Přitom výsledek analýzy slouží hlavně pro: 1) filtrování epizod/strategií do situation cache, 2) background episode save.
 
-### 1. `src/contexts/ThemeContext.tsx`
-
-**Přidat stav:**
-```typescript
-const [localMode, setLocalModeState] = useState<string | null>(null);
-```
-
-**Přidat do interface + provider:**
-```typescript
-setLocalMode: (key: string | null) => void;
-```
-
-**Upravit useEffect (řádek 301-303):**
-- Pokud `localMode !== null` → přeskočit DB load
-- Přidat cancellation flag pro async race
+**Řešení:** Spustit analýzu PARALELNĚ s DB queries (Promise.all), ne sekvenčně po nich. Analýza a DB load jsou nezávislé.
 
 ```typescript
-useEffect(() => {
-  if (localMode !== null) return; // stránka řídí téma sama
-  let cancelled = false;
-  (async () => {
-    await loadPrefsForContext(currentContextKey);
-    // loadPrefsForContext already calls setPrefs internally,
-    // but we need the cancelled check inside it
-  })();
-  return () => { cancelled = true; };
-}, [currentContextKey, loadPrefsForContext, localMode]);
+// PŘED (sekvenční):
+const [episodes, ...] = await Promise.all([...DB queries...]);
+const analysis = await analyzeInput(messages, episodes, key); // BLOKUJE
+
+// PO (paralelní):
+const [dbResults, analysis] = await Promise.all([
+  Promise.all([loadEpisodes, loadStrategies, ...]),
+  analyzeInput(messages, [], key),  // episodes nepotřebuje pro klasifikaci
+]);
 ```
 
-**Upravit `loadPrefsForContext`** — přijmout optional `signal` nebo přidat cancelled ref aby async result nepřepsal stav po unmount.
+Navíc přidat **AbortController s 8s timeout** na analyzeInput fetch + fallback na `getDefaultAnalysis()` při timeout.
 
-**Upravit `applyTemporaryTheme`** (řádek 403-408) — opravit stale closure:
-```typescript
-const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
-  setPrefs((prev) => {
-    if (!savedPrefsRef.current) savedPrefsRef.current = prev;
-    return { ...prev, ...config };
-  });
-}, []); // no deps needed — uses functional updater
-```
+**Soubor:** `supabase/functions/karel-hana-chat/index.ts` řádky 526-536
 
-### 2. Všechny stránky s `THEME_STORAGE_KEY` (6 souborů)
+## B) `Chat.tsx` – zkrátit didInitialContext
 
-Přidat `setLocalMode` do destrukturingu `useTheme()` a zavolat v existujícím useEffectu:
+**Problém:** `didInitialContext` limit je 80000 chars (řádek 1207), což je ~90k tokenů.
+
+**Řešení:** Změnit limit z 80000 na 8000 chars. Zkrátit `didContextPrimeCache` na max 2000 chars.
+
+**Soubor:** `src/pages/Chat.tsx` řádky 1207-1217
 
 ```typescript
-const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
+// Změnit 80000 → 8000
+const trimmedContext = didInitialContext && didInitialContext.length > 8000
+  ? didInitialContext.slice(-8000)  // zachovat KONEC (novější data)
+  : didInitialContext;
 
-useEffect(() => {
-  setLocalMode(THEME_STORAGE_KEY);
-  const saved = localStorage.getItem(THEME_STORAGE_KEY);
-  if (saved) {
-    try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
-  }
-  return () => {
-    setLocalMode(null);
-    restoreGlobalTheme();
-  };
-}, []);
+// Přidat trim pro primeCache
+const trimmedPrimeCache = didContextPrime.primeCache && didContextPrime.primeCache.length > 2000
+  ? didContextPrime.primeCache.slice(-2000)
+  : didContextPrime.primeCache;
 ```
 
-**Soubory:**
-- `src/pages/Hub.tsx`
-- `src/pages/Login.tsx`
-- `src/pages/Pomoc.tsx`
-- `src/pages/Zklidneni.tsx`
-- `src/pages/CalmMode.tsx`
-- `src/pages/NotFound.tsx`
+## C) `Chat.tsx` – zprávy 30 → 20
 
-### 3. DID + Hana komponenty
+**Řešení:** Řádek 1206: `messages.slice(-30)` → `messages.slice(-20)`
 
-Zkontrolovat `DidContentRouter.tsx` a `HanaChat.tsx` — pokud mají vlastní localStorage useEffect, přidat `setLocalMode` stejným způsobem.
+**Soubor:** `src/pages/Chat.tsx` řádek 1206
+
+## D) `karel-hana-chat` – timeout na fetch volání
+
+Přidat AbortController s 10s timeout na:
+1. `analyzeInput()` – fetch na řádku ~150 (AI gateway call)
+2. `saveEpisodeInBackground()` – fetch na řádku ~450 (AI gateway call)
+
+```typescript
+const controller = new AbortController();
+const timeout = setTimeout(() => controller.abort(), 10000);
+try {
+  const response = await fetch(url, { ...opts, signal: controller.signal });
+  clearTimeout(timeout);
+} catch (e) {
+  clearTimeout(timeout);
+  if (e.name === 'AbortError') return getDefaultAnalysis(msg);
+  throw e;
+}
+```
+
+**Soubor:** `supabase/functions/karel-hana-chat/index.ts` funkce `analyzeInput` + `saveEpisodeInBackground`
 
 ## Soubory k úpravě
-1. `src/contexts/ThemeContext.tsx` — localMode state + guard v useEffect + fix applyTemporaryTheme closure
-2. `src/pages/Hub.tsx` — setLocalMode
-3. `src/pages/Login.tsx` — setLocalMode
-4. `src/pages/Pomoc.tsx` — setLocalMode
-5. `src/pages/Zklidneni.tsx` — setLocalMode
-6. `src/pages/CalmMode.tsx` — setLocalMode
-7. `src/pages/NotFound.tsx` — setLocalMode
-8. `src/components/did/DidContentRouter.tsx` — setLocalMode (pokud má localStorage)
-9. `src/components/hana/HanaChat.tsx` — setLocalMode (pokud má localStorage)
+1. `supabase/functions/karel-hana-chat/index.ts` – paralelizace + timeouty
+2. `src/pages/Chat.tsx` – context trim + message limit
+
+## Co se NEMĚNÍ
+- DID mamka/kata flow
+- Kvalita odpovědí (analýza stále běží, jen paralelně)
+- Background saveEpisode logika (jen přidán timeout)
 
