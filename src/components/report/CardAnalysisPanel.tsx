@@ -131,7 +131,7 @@ const CardAnalysisPanel = ({
     }
   };
 
-
+  const handleGeneratePlan = async (mods?: string, retryCount = 0) => {
     setPlanState("generating");
     setPlanStep(0);
     setPlanContent("");
