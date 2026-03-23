@@ -1025,7 +1025,7 @@ const Kartoteka = () => {
                         {s.ai_analysis && (
                           <div className="pt-2 border-t border-border">
                             <span className="text-muted-foreground text-xs">AI analýza:</span>
-                            <p className="text-sm mt-1 whitespace-pre-wrap">{s.ai_analysis}</p>
+                            <SessionAnalysisView analysis={s.ai_analysis} />
                           </div>
                         )}
                         {s.voice_analysis && (
