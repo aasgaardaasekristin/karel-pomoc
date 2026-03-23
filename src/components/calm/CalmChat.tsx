@@ -6,7 +6,7 @@ import { Send, Loader2, Phone, ShieldAlert, HeartHandshake } from "lucide-react"
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
 import ImageUploadButton from "@/components/ImageUploadButton";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import type { CalmScenario } from "./ScenarioSelector";
 import { useCrisisSupervision } from "@/contexts/CrisisSupervisionContext";
 import type { CrisisImprint, DiagnosticProfile } from "@/types/crisisImprint";
@@ -340,17 +340,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] ${msg.role === "user" ? "chat-message-user" : "chat-message-assistant"}`}>
-                <div className="prose prose-sm max-w-none text-foreground prose-a:text-primary prose-a:underline prose-a:font-medium">
-                  <ReactMarkdown
-                    components={{
-                      a: ({ href, children }) => (
-                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline font-medium hover:text-primary/80">
-                          {children}
-                        </a>
-                      ),
-                    }}
-                  >{msg.content}</ReactMarkdown>
-                </div>
+              <RichMarkdown>{msg.content}</RichMarkdown>
               </div>
             </div>
           ))}

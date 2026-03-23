@@ -35,7 +35,7 @@ import {
   Eye,
 } from "lucide-react";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import { exportSessionReportPdf } from "@/lib/sessionPdfExport";
 import ClientDiscussionChat from "@/components/report/ClientDiscussionChat";
 import ClientSessionPrepPanel from "@/components/report/ClientSessionPrepPanel";
@@ -686,8 +686,8 @@ const Kartoteka = () => {
                             </Button>
                           </div>
                         </div>
-                        <div className="prose prose-sm max-w-none dark:prose-invert bg-secondary/20 rounded-lg p-3">
-                          <ReactMarkdown>{selectedClient.therapy_plan}</ReactMarkdown>
+                        <div className="bg-secondary/20 rounded-lg p-3">
+                          <RichMarkdown>{selectedClient.therapy_plan}</RichMarkdown>
                         </div>
                       </div>
                     )}
@@ -763,8 +763,8 @@ const Kartoteka = () => {
                                 <TabsTrigger value="next" className="text-xs">Co příště</TabsTrigger>
                               </TabsList>
 
-                              <TabsContent value="profile" className="prose prose-sm max-w-none dark:prose-invert">
-                                <ReactMarkdown>{parsed?.clientProfile || a.content}</ReactMarkdown>
+                              <TabsContent value="profile">
+                                <RichMarkdown>{parsed?.clientProfile || a.content}</RichMarkdown>
                                 {parsed?.therapeuticProgress && (
                                   <div className="mt-3 space-y-2 not-prose">
                                     {parsed.therapeuticProgress.whatWorks?.length > 0 && (
@@ -1224,15 +1224,11 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
     if (summaryMatch) {
       const rawSummary = summaryMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
       return (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown>{rawSummary}</ReactMarkdown>
-        </div>
+        <RichMarkdown>{rawSummary}</RichMarkdown>
       );
     }
     return (
-      <div className="prose prose-sm max-w-none dark:prose-invert">
-        <ReactMarkdown>{stripped}</ReactMarkdown>
-      </div>
+      <RichMarkdown>{stripped}</RichMarkdown>
     );
   }
 
@@ -1264,9 +1260,7 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
   return (
     <div className="space-y-4 text-sm">
       {summary && (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown>{summary}</ReactMarkdown>
-        </div>
+        <RichMarkdown>{summary}</RichMarkdown>
       )}
       {analysis2 && (
         <div className="bg-muted/30 rounded p-3">

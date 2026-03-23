@@ -7,7 +7,7 @@ import { Send, Loader2, Globe, MessageSquare, GraduationCap, ArrowLeft, Trophy }
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ChatMessage from "@/components/ChatMessage";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 type Message = { role: "user" | "assistant"; content: string };
 type PostSessionMode = null | "research" | "discuss" | "training";
@@ -169,9 +169,7 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Zápis ze sezení – {clientName}</h2>
             <div className="bg-card border border-border rounded-lg p-4">
-              <div className="prose prose-sm max-w-none text-foreground/90">
-                <ReactMarkdown>{sessionReport}</ReactMarkdown>
-              </div>
+              <RichMarkdown>{sessionReport}</RichMarkdown>
             </div>
           </div>
 

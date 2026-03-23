@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Copy, Download, FileText, FileCode, Globe } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface ReportOutputProps {
   report: string;
@@ -37,8 +37,8 @@ const ReportOutput = ({ report, onCopy, onDownload }: ReportOutputProps) => {
         Soubor se stáhne pouze do tohoto počítače. Nic se nikam neodesílá.
       </p>
 
-      <div className="prose prose-sm max-w-none text-foreground prose-headings:text-foreground prose-headings:font-serif prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 bg-secondary/30 rounded-lg p-4">
-        <ReactMarkdown>{report}</ReactMarkdown>
+      <div className="bg-secondary/30 rounded-lg p-4">
+        <RichMarkdown>{report}</RichMarkdown>
       </div>
     </div>
   );

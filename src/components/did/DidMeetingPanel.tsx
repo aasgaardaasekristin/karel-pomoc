@@ -8,7 +8,7 @@ import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface Meeting {
   id: string;
@@ -368,8 +368,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
                     {new Date(m.timestamp).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
-                <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                <div className="text-sm text-foreground/90">
+                  <RichMarkdown>{m.content}</RichMarkdown>
                 </div>
               </div>
             );
@@ -382,8 +382,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
             <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-2">
               <CheckCircle2 className="w-4 h-4 text-green-600" /> Výstup porady
             </h4>
-            <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown>{activeMeeting.outcome_summary}</ReactMarkdown>
+            <div className="text-sm text-foreground/90">
+              <RichMarkdown>{activeMeeting.outcome_summary}</RichMarkdown>
             </div>
             {Array.isArray(activeMeeting.outcome_tasks) && activeMeeting.outcome_tasks.length > 0 && (
               <div className="mt-3 pt-3 border-t border-green-500/20">

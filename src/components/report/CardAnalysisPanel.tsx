@@ -8,7 +8,7 @@ import { Loader2, Search, ClipboardList, Eye, Check, Edit3, Download, Save } fro
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
 interface CardAnalysisPanelProps {
@@ -415,8 +415,8 @@ const CardAnalysisPanel = ({
             <TabsTrigger value="next" className="text-xs">Co příště</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile" className="prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{result.clientProfile || "—"}</ReactMarkdown>
+          <TabsContent value="profile">
+            <RichMarkdown>{result.clientProfile || "—"}</RichMarkdown>
             {result.therapeuticProgress && (
               <div className="mt-3 space-y-2 not-prose">
                 {result.therapeuticProgress.whatWorks?.length > 0 && (
@@ -660,8 +660,8 @@ const CardAnalysisPanel = ({
                  style={{ width: "40%" }} />
           </div>
           {planContent && (
-            <div className="mt-3 max-h-60 overflow-y-auto bg-background/50 rounded-lg p-3 prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{planContent}</ReactMarkdown>
+            <div className="mt-3 max-h-60 overflow-y-auto bg-background/50 rounded-lg p-3">
+              <RichMarkdown>{planContent}</RichMarkdown>
             </div>
           )}
         </div>
@@ -674,8 +674,8 @@ const CardAnalysisPanel = ({
             <Badge variant="outline" className="text-xs">K revizi</Badge>
           </div>
 
-          <div className="max-h-96 overflow-y-auto bg-background/50 rounded-lg p-4 prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{planContent}</ReactMarkdown>
+          <div className="max-h-96 overflow-y-auto bg-background/50 rounded-lg p-4">
+            <RichMarkdown>{planContent}</RichMarkdown>
           </div>
 
           <div className="space-y-2">

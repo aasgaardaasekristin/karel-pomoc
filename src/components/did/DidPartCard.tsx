@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface Props {
   partName: string;
@@ -170,8 +170,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-primary/80 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3 h-3" /> Karlovo shrnutí
             </h3>
-            <div className="text-[13px] text-foreground/90 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["KARLOVO_SHRNUTÍ"]}</ReactMarkdown>
+            <div className="text-[13px] text-foreground/90 leading-relaxed">
+              <RichMarkdown>{summary["KARLOVO_SHRNUTÍ"]}</RichMarkdown>
             </div>
           </div>
         )}
@@ -182,8 +182,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Calendar className="w-3 h-3 text-primary/70" /> Poslední kontakt
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["POSLEDNI_KONTAKT"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["POSLEDNI_KONTAKT"]}</RichMarkdown>
             </div>
           </div>
         )}
@@ -194,8 +194,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Eye className="w-3 h-3" /> Terapeutický profil
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["TERAPEUTICKÝ_PROFIL"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["TERAPEUTICKÝ_PROFIL"]}</RichMarkdown>
             </div>
           </div>
         )}
@@ -206,8 +206,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Target className="w-3 h-3 text-primary" /> Cíle
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["CÍLE"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["CÍLE"]}</RichMarkdown>
             </div>
           </div>
         )}
@@ -218,8 +218,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <BookOpen className="w-3 h-3 text-emerald-500" /> Metody a přístupy
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["METODY_A_PRISTUPY"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["METODY_A_PRISTUPY"]}</RichMarkdown>
             </div>
           </div>
         )}
@@ -230,8 +230,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Lightbulb className="w-3 h-3 text-amber-500" /> Navržené nové metody
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["NAVRZENE_METODY"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["NAVRZENE_METODY"]}</RichMarkdown>
             </div>
           </div>
         )}
@@ -320,8 +320,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-primary/80 uppercase tracking-wider flex items-center gap-1.5">
               <Star className="w-3 h-3 text-primary" /> Karlovy poznatky
             </h3>
-            <div className="text-[12px] text-foreground/85 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["KARLOVY_POZNATKY"]}</ReactMarkdown>
+            <div className="text-[12px] text-foreground/85 leading-relaxed">
+              <RichMarkdown compact>{summary["KARLOVY_POZNATKY"]}</RichMarkdown>
             </div>
           </div>
         )}

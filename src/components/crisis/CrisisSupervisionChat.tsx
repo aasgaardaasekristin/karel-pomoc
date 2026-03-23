@@ -6,7 +6,7 @@ import { Send, Loader2, HeartHandshake, ListChecks } from "lucide-react";
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
 import ImageUploadButton from "@/components/ImageUploadButton";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import type { DbCrisisBrief } from "./types";
 
 type Message = { role: "user" | "assistant"; content: string };
@@ -277,9 +277,7 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
                 ? "bg-[hsl(var(--chat-user))] rounded-br-sm" 
                 : "bg-[hsl(var(--chat-assistant))] rounded-bl-sm"
             }`}>
-              <div className="prose prose-sm max-w-none text-foreground">
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
-              </div>
+              <RichMarkdown>{msg.content}</RichMarkdown>
             </div>
           </div>
         ))}
@@ -295,9 +293,7 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
 
       {summary !== null && (
         <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
-          <div className="prose prose-sm max-w-none text-foreground">
-            <ReactMarkdown>{summary || "Generuji shrnutí..."}</ReactMarkdown>
-          </div>
+          <RichMarkdown>{summary || "Generuji shrnutí..."}</RichMarkdown>
         </div>
       )}
 

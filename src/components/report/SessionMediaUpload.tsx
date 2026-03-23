@@ -6,7 +6,7 @@ import { X, Loader2, FileCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 const AUDIO_ACCEPT = ".mp3,.mp4,.m4a,.wav,.ogg,.webm,.aac";
 const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.heic,.webp";
@@ -246,10 +246,10 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
               {(item.uploading || item.analyzing) && <Progress value={item.uploading ? 40 : 80} className="h-1" />}
               {item.analysis && (
                 <div className="mt-2">
-                  <div className="text-xs prose prose-sm max-w-none dark:prose-invert">
-                    <ReactMarkdown>
+                  <div className="text-xs">
+                    <RichMarkdown compact>
                       {expandedItems.has(item.id) ? item.analysis : (item.analysis.length > 500 ? item.analysis.slice(0, 500) + "…" : item.analysis)}
-                    </ReactMarkdown>
+                    </RichMarkdown>
                   </div>
                   {item.analysis.length > 500 && (
                     <Button variant="ghost" size="sm" className="h-6 text-[10px] mt-1 text-muted-foreground" onClick={() => toggleExpanded(item.id)}>

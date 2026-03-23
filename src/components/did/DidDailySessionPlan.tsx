@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import DidLiveSessionPanel from "./DidLiveSessionPanel";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface SessionPlan {
   id: string;
@@ -64,25 +64,7 @@ const GENERATION_STEPS = [
   { key: "save", label: "Ukládání a distribuce", icon: Send },
 ];
 
-/** Simple markdown → HTML for session plan rendering */
-const renderMarkdown = (md: string): string => {
-  return md
-    .split('\n')
-    .map(line => {
-      if (line.startsWith('### ')) return `<h4 class="font-serif font-semibold text-xs mt-3 mb-1 text-foreground">${line.slice(4)}</h4>`;
-      if (line.startsWith('## ')) return `<h3 class="font-serif font-semibold text-[13px] mt-4 mb-1.5 text-foreground">${line.slice(3)}</h3>`;
-      if (line.trim() === '---') return '<hr class="my-2 border-border/40" />';
-      if (/^\s*[\*\-]\s/.test(line)) {
-        const content = line.replace(/^\s*[\*\-]\s/, '');
-        const formatted = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        return `<li class="ml-3 mb-0.5 list-disc list-inside">${formatted}</li>`;
-      }
-      const formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-      if (line.trim() === '') return '<div class="h-1.5"></div>';
-      return `<p class="mb-0.5">${formatted}</p>`;
-    })
-    .join('');
-};
+import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
 const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [plans, setPlans] = useState<SessionPlan[]>([]);
@@ -793,10 +775,7 @@ const PlanCard = ({
       {isExpanded && (
         <div className="mt-2 space-y-3 max-h-[500px] overflow-y-auto">
           <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
-            <div
-              className="text-[11px] leading-5 text-foreground"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
-            />
+            <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
           </div>
 
           {prevSession && (
@@ -822,10 +801,9 @@ const PlanCard = ({
                     <Brain className="w-2.5 h-2.5" />
                     AI analýza sezení
                   </span>
-                  <div
-                    className="text-[10px] leading-4 text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(prevSession.ai_analysis) }}
-                  />
+                  <div className="text-[10px] leading-4 text-muted-foreground">
+                    <RichMarkdown compact>{prevSession.ai_analysis}</RichMarkdown>
+                  </div>
                 </div>
               )}
 

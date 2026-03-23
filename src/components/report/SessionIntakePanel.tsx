@@ -11,7 +11,7 @@ import { blobToBase64 } from "@/lib/driveUtils";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import SessionMediaUpload, { type SessionMediaUploadHandle } from "./SessionMediaUpload";
 
 const formatDuration = (seconds: number) => {
@@ -320,12 +320,12 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
               <TabsTrigger value="recommendations" className="text-xs">Doporučení</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="summary" className="prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</ReactMarkdown>
+            <TabsContent value="summary">
+              <RichMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</RichMarkdown>
             </TabsContent>
 
-            <TabsContent value="analysis" className="prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{result.sessionRecord?.analysis || "—"}</ReactMarkdown>
+            <TabsContent value="analysis">
+              <RichMarkdown>{result.sessionRecord?.analysis || "—"}</RichMarkdown>
             </TabsContent>
 
             <TabsContent value="diagnosis" className="space-y-3">

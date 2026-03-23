@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Loader2, ClipboardList, Search } from "lucide-react";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 const DidSessionPrep = () => {
   const [open, setOpen] = useState(false);
@@ -164,18 +164,8 @@ const DidSessionPrep = () => {
             )}
 
             {briefing && (
-              <div className="prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed">
-                <ReactMarkdown
-                  components={{
-                    h2: ({ children }) => <h2 className="text-sm font-semibold text-foreground mt-3 mb-1.5 first:mt-0">{children}</h2>,
-                    h3: ({ children }) => <h3 className="text-xs font-medium text-foreground mt-2 mb-1">{children}</h3>,
-                    p: ({ children }) => <p className="text-muted-foreground mb-2 leading-relaxed">{children}</p>,
-                    strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
-                    li: ({ children }) => <li className="text-muted-foreground ml-3">{children}</li>,
-                  }}
-                >
-                  {briefing}
-                </ReactMarkdown>
+              <div className="text-[11px] leading-relaxed">
+                <RichMarkdown compact>{briefing}</RichMarkdown>
                 {loading && <Loader2 className="w-3 h-3 animate-spin text-primary inline-block ml-1" />}
               </div>
             )}
