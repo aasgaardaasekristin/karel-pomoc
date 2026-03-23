@@ -6,7 +6,7 @@ import { Send, Loader2, HeartHandshake, ListChecks } from "lucide-react";
 import { useImageUpload, buildMultimodalContent } from "@/hooks/useImageUpload";
 import ImageUploadButton from "@/components/ImageUploadButton";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import type { DbCrisisBrief } from "./types";
 
 type Message = { role: "user" | "assistant"; content: string };
