@@ -219,6 +219,8 @@ interface ThemeContextValue {
   applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
   restoreGlobalTheme: () => void;
   getPersonaPrefs: (persona: string) => Promise<ThemePrefs>;
+  /** When set, DB load/save is skipped — page manages theme via localStorage */
+  setLocalMode: (key: string | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
