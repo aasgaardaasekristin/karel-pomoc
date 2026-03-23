@@ -53,6 +53,8 @@ const CardAnalysisPanel = ({
   const [analysisStep, setAnalysisStep] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [sessionsCount, setSessionsCount] = useState(0);
+  const [savedToCard, setSavedToCard] = useState(false);
+  const [isSavingToCard, setIsSavingToCard] = useState(false);
 
   // Plan state
   const [planState, setPlanState] = useState<PlanState>("idle");
