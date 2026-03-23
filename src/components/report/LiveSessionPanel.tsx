@@ -74,7 +74,7 @@ const LiveSessionPanel = ({ clientId, clientName, caseSummary, onEndSession }: L
           .select("id, session_number, created_at, plan, approved_at, notes")
           .eq("client_id", clientId)
           .order("created_at", { ascending: false });
-        setDbPreps((data as DbPrep[] | null) ?? []);
+        setDbPreps((data as unknown as DbPrep[] | null) ?? []);
       } catch (e) {
         console.warn("[LiveSessionPanel] Failed to fetch preps:", e);
       } finally {
