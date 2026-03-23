@@ -23,7 +23,7 @@ serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
 
-    const { clientId, inputType, textInput, audioBase64, sessionDate, therapistName, revisionRequest } = await req.json();
+    const { clientId, inputType, textInput, audioBase64, sessionDate, therapistName, revisionRequest, mediaContext } = await req.json();
     if (!clientId) throw new Error("clientId required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");

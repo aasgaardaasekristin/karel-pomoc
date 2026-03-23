@@ -236,7 +236,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         console.warn("Drive backup failed:", e);
       }
 
-      onComplete();
+      setSessionCompleted(true);
     } catch (err: any) {
       console.error("Save error:", err);
       toast.error("Chyba při ukládání");
