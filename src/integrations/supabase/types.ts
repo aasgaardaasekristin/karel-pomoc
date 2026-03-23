@@ -486,14 +486,19 @@ export type Database = {
       }
       did_daily_session_plans: {
         Row: {
+          completed_at: string | null
           created_at: string
           distributed_drive: boolean
           distributed_email: boolean
+          generated_by: string
           id: string
+          part_tier: string
           plan_date: string
           plan_html: string
           plan_markdown: string
           selected_part: string
+          session_format: string
+          session_lead: string
           status: string
           therapist: string
           updated_at: string
@@ -502,14 +507,19 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          completed_at?: string | null
           created_at?: string
           distributed_drive?: boolean
           distributed_email?: boolean
+          generated_by?: string
           id?: string
+          part_tier?: string
           plan_date?: string
           plan_html?: string
           plan_markdown?: string
           selected_part: string
+          session_format?: string
+          session_lead?: string
           status?: string
           therapist?: string
           updated_at?: string
@@ -518,14 +528,19 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          completed_at?: string | null
           created_at?: string
           distributed_drive?: boolean
           distributed_email?: boolean
+          generated_by?: string
           id?: string
+          part_tier?: string
           plan_date?: string
           plan_html?: string
           plan_markdown?: string
           selected_part?: string
+          session_format?: string
+          session_lead?: string
           status?: string
           therapist?: string
           updated_at?: string
