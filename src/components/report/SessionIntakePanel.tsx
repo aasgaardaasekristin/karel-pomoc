@@ -519,7 +519,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             <div className="space-y-3">
               {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="w-full h-10" />}
               <div className="flex gap-2">
-                <Button onClick={handleSubmit} className="gap-1.5">
+                <Button onClick={() => handleSubmit()} className="gap-1.5">
                   <Send className="w-4 h-4" /> Odeslat Karlovi
                 </Button>
                 <Button variant="ghost" size="sm" onClick={recorder.discardRecording}>Zahodit</Button>
