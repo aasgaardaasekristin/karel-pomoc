@@ -158,3 +158,6 @@ verify_jwt = false
 
 [functions.karel-did-auto-session-plan]
 verify_jwt = false
+
+[functions.karel-gdocs-sync]
+verify_jwt = false

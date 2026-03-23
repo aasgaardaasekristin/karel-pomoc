@@ -91,6 +91,7 @@ export type Database = {
           client_id: string
           created_at: string
           id: string
+          material_ids: string[] | null
           notes: string | null
           report_context: string | null
           report_interventions_tried: string | null
@@ -114,6 +115,7 @@ export type Database = {
           client_id: string
           created_at?: string
           id?: string
+          material_ids?: string[] | null
           notes?: string | null
           report_context?: string | null
           report_interventions_tried?: string | null
@@ -137,6 +139,7 @@ export type Database = {
           client_id?: string
           created_at?: string
           id?: string
+          material_ids?: string[] | null
           notes?: string | null
           report_context?: string | null
           report_interventions_tried?: string | null
@@ -229,6 +232,8 @@ export type Database = {
           age: number | null
           created_at: string
           diagnosis: string | null
+          drive_doc_id: string | null
+          drive_doc_url: string | null
           family_context: string | null
           gender: string | null
           id: string
@@ -245,6 +250,8 @@ export type Database = {
           age?: number | null
           created_at?: string
           diagnosis?: string | null
+          drive_doc_id?: string | null
+          drive_doc_url?: string | null
           family_context?: string | null
           gender?: string | null
           id?: string
@@ -261,6 +268,8 @@ export type Database = {
           age?: number | null
           created_at?: string
           diagnosis?: string | null
+          drive_doc_id?: string | null
+          drive_doc_url?: string | null
           family_context?: string | null
           gender?: string | null
           id?: string
@@ -1823,6 +1832,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "session_preparations_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      session_preps: {
+        Row: {
+          client_id: string
+          created_at: string
+          id: string
+          plan_content: string
+          session_number: number | null
+          user_id: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          id?: string
+          plan_content?: string
+          session_number?: number | null
+          user_id?: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          id?: string
+          plan_content?: string
+          session_number?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_preps_client_id_fkey"
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
