@@ -118,14 +118,17 @@ const Kartoteka = () => {
   const [clientAnalyses, setClientAnalyses] = useState<any[]>([]);
   const [sessionMaterials, setSessionMaterials] = useState<any[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  // Set theme context per selected client
+  // Compute localStorage storageKey based on selected client
+  const kartotekaStorageKey = selectedClient ? `theme_kartoteka_${selectedClient.id}` : "theme_kartoteka";
+
+  // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
-    if (selectedClient) {
-      setContextKey(`kartoteka_client_${selectedClient.id}`);
-    } else {
-      setContextKey("kartoteka");
+    const saved = localStorage.getItem(kartotekaStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-  }, [selectedClient?.id, setContextKey]);
+    return () => { restoreGlobalTheme(); };
+  }, [kartotekaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
