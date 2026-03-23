@@ -23,12 +23,13 @@ const Hub = () => {
 
   // Load theme from localStorage on mount, restore on unmount
   useEffect(() => {
+    setLocalMode(THEME_STORAGE_KEY);
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
