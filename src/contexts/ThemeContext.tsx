@@ -50,7 +50,7 @@ const PRESETS: Record<string, Partial<ThemePrefs>> = {
   ice: { primary_color: "200 26% 52%", accent_color: "186 20% 74%" },
 };
 
-const DEFAULT_PREFS: ThemePrefs = {
+export const DEFAULT_PREFS: ThemePrefs = {
   persona: "default",
   primary_color: "154 24% 38%",
   accent_color: "20 42% 70%",
