@@ -337,7 +337,7 @@ const Kartoteka = () => {
         // Update local state with drive_doc_url from response
         const result = res.data.results?.[0];
         if (result?.docUrl) {
-          setSelectedClient(prev => prev ? { ...prev, drive_doc_id: result.docId, drive_doc_url: result.docUrl } : prev);
+          setSelectedClient(prev => prev ? { ...prev, drive_doc_id: result.docId, drive_doc_url: result.docUrl, drive_last_synced_at: result.drive_last_synced_at } : prev);
         }
         toast.success("Karta uložena a synchronizována s Google Docs ✅");
       }
