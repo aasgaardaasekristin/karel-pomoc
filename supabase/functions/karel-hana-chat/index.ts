@@ -433,12 +433,15 @@ async function saveEpisodeInBackground(
     const sb = getServiceClient();
     
     // Build episode from the exchange
+    const bgController = new AbortController();
+    const bgTimeout = setTimeout(() => bgController.abort(), 10000);
     const buildResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
         "Content-Type": "application/json",
       },
+      signal: bgController.signal,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         messages: [
