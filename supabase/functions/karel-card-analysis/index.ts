@@ -167,11 +167,34 @@ Vrať validní JSON:
     const rawContent = aiData.choices?.[0]?.message?.content || "";
 
     let result: any;
+    const fallbackResult = { clientProfile: "Analýza není k dispozici", diagnosticHypothesis: { primary: "", differential: [], confidence: "low", supportingEvidence: [], sources: [] }, therapeuticProgress: { whatWorks: [], whatDoesntWork: [], clientDynamics: "" }, nextSessionRecommendations: { focus: [], suggestedTechniques: [], diagnosticTests: [], thingsToAsk: [] }, dataGaps: [] };
     try {
-      const jsonStr = rawContent.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      result = JSON.parse(jsonStr);
+      // Strip markdown fences
+      const stripped = rawContent.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
+      result = JSON.parse(stripped);
     } catch {
-      result = { clientProfile: rawContent, diagnosticHypothesis: { primary: "", differential: [], confidence: "low", supportingEvidence: [], sources: [] }, therapeuticProgress: { whatWorks: [], whatDoesntWork: [], clientDynamics: "" }, nextSessionRecommendations: { focus: [], suggestedTechniques: [], diagnosticTests: [], thingsToAsk: [] }, dataGaps: [] };
+      // Try extracting JSON object from mixed text (AI sometimes wraps JSON in conversational text)
+      try {
+        const firstBrace = rawContent.indexOf("{");
+        const lastBrace = rawContent.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          result = JSON.parse(rawContent.slice(firstBrace, lastBrace + 1));
+        } else {
+          result = fallbackResult;
+        }
+      } catch {
+        // Try embedded ```json block
+        const embeddedMatch = rawContent.match(/```json\s*([\s\S]*?)```/);
+        if (embeddedMatch) {
+          try {
+            result = JSON.parse(embeddedMatch[1].trim());
+          } catch {
+            result = fallbackResult;
+          }
+        } else {
+          result = fallbackResult;
+        }
+      }
     }
 
     return new Response(JSON.stringify({ result, sessionsCount: sessions.length }), {

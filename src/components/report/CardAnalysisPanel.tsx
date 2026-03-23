@@ -115,25 +115,9 @@ const CardAnalysisPanel = ({
   };
 
   const sanitizeAnalysisResult = (r: any) => {
-    const clean = { ...r };
-    if (typeof clean.clientProfile === "string") {
-      const embeddedMatch = clean.clientProfile.match(/```json\s*([\s\S]*?)```/);
-      if (embeddedMatch) {
-        try {
-          const embedded = JSON.parse(embeddedMatch[1].trim());
-          const prefix = clean.clientProfile.slice(0, clean.clientProfile.indexOf("```json")).trim();
-          clean.clientProfile = embedded.clientProfile || prefix || clean.clientProfile;
-          if (embedded.diagnosticHypothesis) clean.diagnosticHypothesis = embedded.diagnosticHypothesis;
-          if (embedded.therapeuticProgress) clean.therapeuticProgress = embedded.therapeuticProgress;
-          if (embedded.nextSessionRecommendations) clean.nextSessionRecommendations = embedded.nextSessionRecommendations;
-          if (embedded.dataGaps) clean.dataGaps = embedded.dataGaps;
-        } catch {}
-      }
-
-      clean.clientProfile = parseAiAnalysis(clean.clientProfile);
-    }
-
-    return clean;
+    // If r is already a parsed object from the edge function, normalize it
+    const serialized = typeof r === "string" ? r : JSON.stringify(r);
+    return parseCardAnalysis(serialized);
   };
 
   const handleSaveToCard = async () => {

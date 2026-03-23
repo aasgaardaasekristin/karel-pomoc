@@ -747,8 +747,8 @@ const Kartoteka = () => {
                               </TabsList>
 
                               <TabsContent value="profile">
-                                <RichMarkdown>{parsed?.clientProfile || a.content}</RichMarkdown>
-                                {parsed?.therapeuticProgress && (
+                                <RichMarkdown>{parsed.clientProfile}</RichMarkdown>
+                                {parsed.therapeuticProgress && (
                                   <div className="mt-3 space-y-2 not-prose">
                                     {parsed.therapeuticProgress.whatWorks?.length > 0 && (
                                       <div>
