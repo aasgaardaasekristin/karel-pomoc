@@ -9,6 +9,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { handleDriveError } from "@/lib/driveErrorHandler";
+import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
@@ -574,7 +575,7 @@ const CardAnalysisPanel = ({
         {lastSession?.ai_analysis && (
           <div>
             <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">MINULÉ SEZENÍ – SHRNUTÍ</p>
-            <p className="text-sm">{truncateSentences(lastSession.ai_analysis, 3)}</p>
+            <p className="text-sm">{truncateSentences(parseAiAnalysis(lastSession.ai_analysis), 3)}</p>
           </div>
         )}
 
