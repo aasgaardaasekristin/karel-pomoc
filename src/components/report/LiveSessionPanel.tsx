@@ -188,6 +188,8 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
 
     try {
       const headers = await getAuthHeaders();
+      // Truncate to last 16 messages to reduce latency
+      const truncatedMessages = messagesForAI.slice(-16);
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-chat`,
         {
@@ -195,8 +197,8 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
           headers,
           signal: controller.signal,
           body: JSON.stringify({
-            messages: messagesForAI,
-            mode: "supervision",
+            messages: truncatedMessages,
+            mode: "live-session",
             didInitialContext: buildContext(),
           }),
         }
