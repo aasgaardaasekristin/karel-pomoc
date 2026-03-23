@@ -1348,6 +1348,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
   }
 
   return (
+    <ThemeStorageKeyProvider value={chatStorageKey || undefined}>
     <div className="min-h-screen flex flex-col bg-transparent">
       {/* Header */}
       <header className="border-b border-border/70 bg-card/36 backdrop-blur-md sticky top-0 z-10">
