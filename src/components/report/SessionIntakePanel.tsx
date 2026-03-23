@@ -320,8 +320,8 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
               <TabsTrigger value="recommendations" className="text-xs">Doporučení</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="summary" className="prose prose-sm max-w-none dark:prose-invert">
-              <ReactMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</ReactMarkdown>
+            <TabsContent value="summary">
+              <RichMarkdown>{formatBirps(result.sessionRecord?.summary || "—")}</RichMarkdown>
             </TabsContent>
 
             <TabsContent value="analysis" className="prose prose-sm max-w-none dark:prose-invert">
