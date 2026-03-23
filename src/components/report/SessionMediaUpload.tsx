@@ -274,7 +274,7 @@ Formuluj jako terapeuticky relevantní pozorování.`
                 {(item.uploading || item.analyzing) && <Progress value={item.uploading ? 40 : 80} className="h-1" />}
                 {item.analysis && (
                   <div className="mt-2 text-xs prose prose-sm max-w-none dark:prose-invert max-h-32 overflow-y-auto">
-                    <ReactMarkdown>{item.analysis.slice(0, 500)}{item.analysis.length > 500 ? "…" : ""}</ReactMarkdown>
+                    <ReactMarkdown>{item.analysis.length > 500 ? item.analysis.slice(0, 500) + "…" : item.analysis}</ReactMarkdown>
                   </div>
                 )}
                 {item.error && <p className="text-xs text-destructive mt-1">{item.error}</p>}
