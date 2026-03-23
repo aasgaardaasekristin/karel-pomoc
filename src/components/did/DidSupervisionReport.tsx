@@ -7,7 +7,7 @@ import { ClipboardCheck, Loader2, FileText, Shuffle, PenLine, ListChecks, Chevro
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface ReportMeta {
   periodDays: number;
