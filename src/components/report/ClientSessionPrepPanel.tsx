@@ -14,6 +14,7 @@ import {
   Play,
   Pencil,
   Bot,
+  RotateCcw,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,6 +51,14 @@ const phaseColors: Record<string, string> = {
   "Uzavření": "bg-muted/30 border-border",
 };
 
+type SavedPrep = {
+  id: string;
+  session_number: number | null;
+  created_at: string;
+  plan: any;
+  approved_at: string | null;
+};
+
 const ClientSessionPrepPanel = ({
   clientId,
   clientName,
@@ -66,6 +75,24 @@ const ClientSessionPrepPanel = ({
   const [sessionNumber, setSessionNumber] = useState<number | null>(null);
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
   const originalRequestRef = useRef<any>(null);
+
+  // Saved preparations
+  const [savedPreps, setSavedPreps] = useState<SavedPrep[]>([]);
+  const [loadingPreps, setLoadingPreps] = useState(false);
+
+  useEffect(() => {
+    const fetchPreps = async () => {
+      setLoadingPreps(true);
+      const { data } = await supabase
+        .from("session_preparations" as any)
+        .select("id, session_number, created_at, plan, approved_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      if (data) setSavedPreps(data as any);
+      setLoadingPreps(false);
+    };
+    fetchPreps();
+  }, [clientId]);
 
   // Progress animation
   const [spinnerChar, setSpinnerChar] = useState(SPINNER_CHARS[0]);
@@ -133,8 +160,22 @@ const ClientSessionPrepPanel = ({
 
   const handleApprove = async () => {
     setPrepState("approved");
-    setApprovedAt(new Date().toISOString());
+    const now = new Date().toISOString();
+    setApprovedAt(now);
     onPlanApproved?.(plan);
+
+    // Persist to DB
+    try {
+      const { data: inserted } = await supabase.from("session_preparations" as any).insert({
+        client_id: clientId,
+        session_number: sessionNumber,
+        plan,
+        approved_at: now,
+      }).select("id, session_number, created_at, plan, approved_at").single();
+      if (inserted) setSavedPreps(prev => [inserted as any, ...prev]);
+    } catch (e) {
+      console.warn("Failed to persist preparation:", e);
+    }
 
     // Fire-and-forget: backup plan PDF to Drive
     try {
@@ -161,6 +202,20 @@ const ClientSessionPrepPanel = ({
     } catch (e) {
       console.warn("Plan backup failed:", e);
     }
+  };
+
+  const handleDeletePrep = async (prepId: string) => {
+    if (!window.confirm("Smazat tuto přípravu?")) return;
+    await supabase.from("session_preparations" as any).delete().eq("id", prepId);
+    setSavedPreps(prev => prev.filter(p => p.id !== prepId));
+    toast.success("Příprava smazána");
+  };
+
+  const handleLoadPrep = (prep: SavedPrep) => {
+    setPlan(prep.plan);
+    setSessionNumber(prep.session_number);
+    setPrepState("review");
+    toast.success("Příprava načtena");
   };
 
   const handleDelete = () => {
@@ -269,6 +324,31 @@ const ClientSessionPrepPanel = ({
               Vygenerovat
             </Button>
           </div>
+
+          {/* Saved preparations */}
+          {savedPreps.length > 0 && (
+            <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+              <p className="text-sm font-semibold">Uložené přípravy</p>
+              <div className="space-y-2">
+                {savedPreps.map((prep) => (
+                  <div key={prep.id} className="flex items-center gap-2 p-2.5 bg-secondary/30 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        Příprava na sezení č. {prep.session_number ?? "?"} – {new Date(prep.created_at).toLocaleDateString("cs-CZ")}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => handleLoadPrep(prep)}>
+                      <RotateCcw className="w-3 h-3" />
+                      Použít
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => handleDeletePrep(prep.id)}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
     );

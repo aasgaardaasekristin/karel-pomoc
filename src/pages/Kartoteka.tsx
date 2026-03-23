@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   ArrowLeft,
   Plus,
@@ -25,6 +27,10 @@ import {
   MessageSquare,
   LogOut,
   HardDriveDownload,
+  Search,
+  Image as ImageIcon,
+  Paperclip,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
@@ -106,7 +112,9 @@ const Kartoteka = () => {
   const [activePlan, setActivePlan] = useState<any>(null);
   const [cardAnalysis, setCardAnalysis] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("card");
-
+  const [clientAnalyses, setClientAnalyses] = useState<any[]>([]);
+  const [sessionMaterials, setSessionMaterials] = useState<any[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     if (value === "assistance" && selectedClient) {
@@ -181,7 +189,7 @@ const Kartoteka = () => {
     setSelectedClient(client);
     setIsEditing(false);
 
-    const [sessionsRes, tasksRes] = await Promise.all([
+    const [sessionsRes, tasksRes, analysesRes, materialsRes] = await Promise.all([
       supabase
         .from("client_sessions")
         .select("*")
@@ -192,10 +200,22 @@ const Kartoteka = () => {
         .select("*")
         .eq("client_id", client.id)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("client_analyses" as any)
+        .select("*")
+        .eq("client_id", client.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("session_materials" as any)
+        .select("*")
+        .eq("client_id", client.id)
+        .order("created_at", { ascending: false }),
     ]);
 
     if (sessionsRes.data) setSessions(sessionsRes.data as ClientSession[]);
     if (tasksRes.data) setTasks(tasksRes.data as ClientTask[]);
+    if (analysesRes.data) setClientAnalyses(analysesRes.data as any[]);
+    if (materialsRes.data) setSessionMaterials(materialsRes.data as any[]);
   }, []);
 
   // Create client
@@ -651,6 +671,86 @@ const Kartoteka = () => {
                   </div>
                 )}
               </div>
+
+              {/* Analýzy karty */}
+              {clientAnalyses.length > 0 && (
+                <div className="bg-card rounded-xl border border-border p-4 sm:p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Search className="w-4 h-4 text-muted-foreground" />
+                    <h4 className="text-sm font-semibold">Analýzy karty ({clientAnalyses.length})</h4>
+                  </div>
+                  <Accordion type="single" collapsible defaultValue={clientAnalyses[0]?.id}>
+                    {clientAnalyses.map((a: any) => (
+                      <AccordionItem key={a.id} value={a.id}>
+                        <AccordionTrigger className="text-sm py-2">
+                          Analýza č. {a.version} – {new Date(a.created_at).toLocaleDateString("cs-CZ")}
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          {a.summary && (
+                            <p className="text-xs text-muted-foreground mb-2 italic">{a.summary}</p>
+                          )}
+                          <div className="prose prose-sm max-w-none dark:prose-invert">
+                            {(() => {
+                              try {
+                                const parsed = JSON.parse(a.content);
+                                return <ReactMarkdown>{parsed.clientProfile || a.content}</ReactMarkdown>;
+                              } catch {
+                                return <ReactMarkdown>{a.content}</ReactMarkdown>;
+                              }
+                            })()}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                </div>
+              )}
+
+              {/* Materiály ze sezení */}
+              {sessionMaterials.length > 0 && (
+                <div className="bg-card rounded-xl border border-border p-4 sm:p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                    <h4 className="text-sm font-semibold">Materiály ze sezení ({sessionMaterials.length})</h4>
+                  </div>
+                  <div className="space-y-2">
+                    {sessionMaterials.map((m: any) => (
+                      <div key={m.id} className="flex items-center gap-3 p-2.5 bg-secondary/20 rounded-lg">
+                        <div className="w-8 h-8 rounded bg-muted flex items-center justify-center shrink-0">
+                          {m.material_type === "drawing" ? "🎨" : m.material_type === "handwriting" ? "✍️" : m.material_type === "document" ? "📄" : "📷"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate">{m.label || "Materiál"}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(m.created_at).toLocaleDateString("cs-CZ")}</p>
+                        </div>
+                        <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => setLightboxUrl(m.storage_url)}>
+                          <Eye className="w-3 h-3" />
+                          Zobrazit
+                        </Button>
+                        {m.analysis && (
+                          <details className="shrink-0">
+                            <summary className="text-xs text-primary cursor-pointer">Analýza</summary>
+                            <div className="absolute z-10 bg-card border border-border rounded-lg p-3 shadow-lg max-w-xs mt-1 right-0">
+                              <p className="text-xs whitespace-pre-wrap">{m.analysis}</p>
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lightbox dialog */}
+              <Dialog open={!!lightboxUrl} onOpenChange={() => setLightboxUrl(null)}>
+                <DialogContent className="max-w-3xl">
+                  <DialogTitle>Materiál</DialogTitle>
+                  <DialogDescription className="sr-only">Náhled nahraného materiálu</DialogDescription>
+                  {lightboxUrl && (
+                    <img src={lightboxUrl} alt="Materiál" className="w-full rounded-lg" />
+                  )}
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             {/* ─── ZÁZNAM SEZENÍ ─── */}
@@ -689,6 +789,14 @@ const Kartoteka = () => {
                         {s.report_key_theme && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">{s.report_key_theme}</p>
                         )}
+                        {(() => {
+                          const matCount = sessionMaterials.filter((m: any) => m.session_id === s.id).length;
+                          return matCount > 0 ? (
+                            <span className="text-xs text-primary flex items-center gap-0.5 mt-0.5">
+                              <Paperclip className="w-3 h-3" /> Materiály ({matCount})
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${expandedSession === s.id ? "rotate-90" : ""}`} />
                     </button>
