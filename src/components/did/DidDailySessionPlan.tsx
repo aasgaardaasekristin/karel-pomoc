@@ -718,6 +718,13 @@ const PlanCard = ({
           </Badge>
         )}
 
+        {/* Overdue badge */}
+        {isOverdue && overdueDays >= 2 && (
+          <Badge className="text-[10px] h-5 px-1.5 bg-destructive/20 text-destructive border border-destructive/30">
+            🔴 Čeká {overdueDays} {overdueDays >= 5 ? "dní" : overdueDays >= 2 ? "dny" : "den"}
+          </Badge>
+        )}
+
         {/* Status badges */}
         {plan.status === "generated" && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
