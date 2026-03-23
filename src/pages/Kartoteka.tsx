@@ -1162,19 +1162,18 @@ const SessionField = ({ label, value }: { label: string; value: string }) => {
 };
 
 const parseAnalysisJson = (text: string): Record<string, any> | null => {
-  try {
-    return JSON.parse(text);
-  } catch {
-    if (text.trimStart().startsWith("{") || text.includes("```json")) {
-      const cleaned = text.replace(/^```json\n?/, "").replace(/```$/, "").trim();
-      try {
-        return JSON.parse(cleaned);
-      } catch {
-        return null;
-      }
-    }
-    return null;
+  const tryParse = (s: string) => {
+    try { return JSON.parse(s); } catch { return null; }
+  };
+  let result = tryParse(text);
+  if (result) return result;
+  // Strip code fences and retry
+  const cleaned = text.replace(/^[\s]*```json\s*\n?/i, "").replace(/\n?```[\s]*$/i, "").trim();
+  if (cleaned !== text) {
+    result = tryParse(cleaned);
+    if (result) return result;
   }
+  return null;
 };
 
 const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
