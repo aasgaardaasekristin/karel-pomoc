@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import hanaWelcomeImg from "@/assets/hana-welcome.png";
 import { Textarea } from "@/components/ui/textarea";
