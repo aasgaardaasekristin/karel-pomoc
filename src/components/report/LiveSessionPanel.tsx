@@ -841,140 +841,16 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         </div>
       )}
 
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border bg-card/50">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-sm">🎯</span>
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-foreground">Karel – live sezení</h3>
-              <p className="text-xs text-muted-foreground truncate">{clientName}</p>
-            </div>
+      {/* Header — clean, minimal */}
+      <div className="px-4 py-2.5 border-b border-border bg-card/50">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+            <span className="text-sm">🎯</span>
           </div>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={handleEndSession}
-            disabled={isFinishing || messages.length < 2}
-            className="gap-1.5 text-xs h-9 shrink-0"
-          >
-            {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Ukončit a zpracovat</span>
-            <span className="sm:hidden">Ukončit</span>
-          </Button>
-        </div>
-
-        {/* Audio recorder strip */}
-        <div className="mt-3 flex items-center gap-2 flex-wrap">
-          {recorder.state === "idle" && (
-            <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
-              <Mic className="w-3.5 h-3.5" /> Nahrávat
-            </Button>
-          )}
-          {recorder.state === "recording" && (
-            <div className="flex items-center gap-2 bg-destructive/5 rounded-lg px-3 py-1.5">
-              <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
-              <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)}</span>
-              <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-1.5 w-20" />
-              <Button variant="ghost" size="sm" onClick={recorder.pauseRecording} className="h-7 w-7 p-0">
-                <Pause className="w-3.5 h-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
-                <Square className="w-3 h-3" />
-              </Button>
-            </div>
-          )}
-          {recorder.state === "paused" && (
-            <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
-              <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)}</span>
-              <Button variant="ghost" size="sm" onClick={recorder.resumeRecording} className="h-7 w-7 p-0">
-                <Play className="w-3.5 h-3.5" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
-                <Square className="w-3 h-3" />
-              </Button>
-            </div>
-          )}
-          {recorder.state === "recorded" && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[180px]" />}
-              <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-8 text-xs gap-1.5">
-                {isAudioAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                Analyzovat
-              </Button>
-              <Button variant="ghost" size="sm" onClick={recorder.discardRecording} className="h-8 text-xs">
-                Zahodit
-              </Button>
-            </div>
-          )}
-          {/* Audio analysis progress */}
-          {isAudioAnalyzing && (
-            <div className="w-full mt-2 space-y-1.5 bg-muted/30 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                <span className="text-xs text-muted-foreground">Karel analyzuje audio nahrávku…</span>
-              </div>
-              <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                <div className="h-full w-full bg-primary rounded-full animate-indeterminate-progress" />
-              </div>
-            </div>
-          )}
-
-          {/* Image analysis controls */}
-          <div className="flex items-center gap-2 ml-auto">
-            <Select
-              value={imageAnalysisType}
-              onValueChange={(v) => {
-                setImageAnalysisType(v);
-                setTimeout(() => fileInputRef.current?.click(), 100);
-              }}
-            >
-              <SelectTrigger className="h-8 w-[140px] text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Kresba klienta">Kresba klienta</SelectItem>
-                <SelectItem value="Rukopis klienta">Rukopis klienta</SelectItem>
-                <SelectItem value="Foto výrazu">Foto výrazu</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isImageAnalyzing}
-              className="gap-1.5 h-8 text-xs"
-            >
-              {isImageAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
-              Nahrát
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (fileInputRef.current) fileInputRef.current.value = "";
-                if (!file) return;
-                handleImageAnalysis(file);
-              }}
-            />
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-foreground">Karel – live sezení</h3>
+            <p className="text-xs text-muted-foreground truncate">{clientName}</p>
           </div>
-          {/* Image analysis progress */}
-          {isImageAnalyzing && (
-            <div className="w-full mt-2 space-y-1.5 bg-muted/30 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                <span className="text-xs text-muted-foreground">Karel analyzuje {imageAnalysisType.toLowerCase()}…</span>
-              </div>
-              <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                <div className="h-full w-full bg-primary rounded-full animate-indeterminate-progress" />
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1000,6 +876,136 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
           )}
         </div>
       </ScrollArea>
+
+      {/* Action toolbar — always visible between chat and input */}
+      <div className="border-t border-border bg-card/50 px-3 sm:px-4 py-2">
+        <div className="max-w-3xl mx-auto">
+          {/* Row 1: Audio controls + Image + End session */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Audio controls */}
+            {recorder.state === "idle" && (
+              <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
+                <Mic className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Nahrávat</span><span className="sm:hidden">🎙</span>
+              </Button>
+            )}
+            {recorder.state === "recording" && (
+              <div className="flex items-center gap-2 bg-destructive/5 rounded-lg px-3 py-1.5">
+                <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
+                <span className="text-xs font-medium text-destructive tabular-nums">{formatDuration(recorder.duration)}</span>
+                <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-1.5 w-20" />
+                <Button variant="ghost" size="sm" onClick={recorder.pauseRecording} className="h-7 w-7 p-0">
+                  <Pause className="w-3.5 h-3.5" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
+                  <Square className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+            {recorder.state === "paused" && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1.5">
+                <span className="text-xs text-muted-foreground">⏸ {formatDuration(recorder.duration)}</span>
+                <Button variant="ghost" size="sm" onClick={recorder.resumeRecording} className="h-7 w-7 p-0">
+                  <Play className="w-3.5 h-3.5" />
+                </Button>
+                <Button variant="ghost" size="sm" onClick={recorder.stopRecording} className="h-7 w-7 p-0">
+                  <Square className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+            {recorder.state === "recorded" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[180px]" />}
+                <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-8 text-xs gap-1.5">
+                  {isAudioAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                  Analyzovat
+                </Button>
+                <Button variant="ghost" size="sm" onClick={recorder.discardRecording} className="h-8 text-xs">
+                  Zahodit
+                </Button>
+              </div>
+            )}
+
+            {/* Image controls — pushed right */}
+            <div className="flex items-center gap-2 ml-auto">
+              <Select
+                value={imageAnalysisType}
+                onValueChange={(v) => {
+                  setImageAnalysisType(v);
+                  setTimeout(() => fileInputRef.current?.click(), 100);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[120px] sm:w-[140px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Kresba klienta">Kresba klienta</SelectItem>
+                  <SelectItem value="Rukopis klienta">Rukopis klienta</SelectItem>
+                  <SelectItem value="Foto výrazu">Foto výrazu</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImageAnalyzing}
+                className="gap-1.5 h-8 text-xs"
+              >
+                {isImageAnalyzing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Nahrát</span>
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                  if (!file) return;
+                  handleImageAnalysis(file);
+                }}
+              />
+
+              {/* End session button */}
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleEndSession}
+                disabled={isFinishing || messages.length < 2}
+                className="gap-1.5 text-xs h-8 shrink-0"
+              >
+                {isFinishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <StopCircle className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">Ukončit</span>
+                <span className="sm:hidden">⏹</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* Progress bars for active analyses */}
+          {isAudioAnalyzing && (
+            <div className="mt-2 space-y-1.5 bg-muted/30 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Karel analyzuje audio nahrávku…</span>
+              </div>
+              <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                <div className="h-full w-full bg-primary rounded-full animate-indeterminate-progress" />
+              </div>
+            </div>
+          )}
+          {isImageAnalyzing && (
+            <div className="mt-2 space-y-1.5 bg-muted/30 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                <span className="text-xs text-muted-foreground">Karel analyzuje {imageAnalysisType.toLowerCase()}…</span>
+              </div>
+              <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                <div className="h-full w-full bg-primary rounded-full animate-indeterminate-progress" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Input */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm">
