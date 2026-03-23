@@ -289,9 +289,12 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
   if (showNewMeeting) {
     return (
       <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4">
-        <Button variant="ghost" size="sm" onClick={() => setShowNewMeeting(false)} className="mb-4">
-          <ArrowLeft className="w-4 h-4 mr-1" /> Zpět na seznam
-        </Button>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowNewMeeting(false)}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Zpět na seznam
+          </Button>
+          <ThemeQuickButton />
+        </div>
 
         <h3 className="text-sm font-semibold text-foreground mb-4">Nová porada</h3>
 
@@ -335,6 +338,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
             <ArrowLeft className="w-4 h-4 mr-1" /> Porady
           </Button>
           <div className="flex items-center gap-2">
+            <ThemeQuickButton />
             {activeMeeting?.hanka_joined_at && <Badge variant="outline" className="text-[10px] h-5 border-pink-500/30 text-pink-600">Hanka ✓</Badge>}
             {activeMeeting?.kata_joined_at && <Badge variant="outline" className="text-[10px] h-5 border-blue-500/30 text-blue-600">Káťa ✓</Badge>}
             {activeMeeting?.status === "finalized" && <Badge className="text-[10px] h-5 bg-green-600">Uzavřená</Badge>}

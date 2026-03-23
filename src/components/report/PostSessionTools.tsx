@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -158,9 +159,12 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
     return (
       <ScrollArea className="flex-1">
         <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5">
-          <Button variant="ghost" size="sm" onClick={onBack} className="gap-1 text-xs h-7">
-            <ArrowLeft className="w-3.5 h-3.5" /> Zpět k výběru klienta
-          </Button>
+          <div className="flex items-center justify-between gap-2">
+            <Button variant="ghost" size="sm" onClick={onBack} className="gap-1 text-xs h-7">
+              <ArrowLeft className="w-3.5 h-3.5" /> Zpět k výběru klienta
+            </Button>
+            <ThemeQuickButton />
+          </div>
 
           <div className="space-y-2">
             <h2 className="text-lg font-semibold text-foreground">Zápis ze sezení – {clientName}</h2>
@@ -222,9 +226,12 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
           <h3 className="text-xs md:text-sm font-semibold text-foreground">{modeLabels[activeMode]}</h3>
           <p className="text-[10px] md:text-xs text-muted-foreground">{clientName}</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => { setActiveMode(null); setMessages([]); }} className="h-7 text-xs">
-          ← Zpět k zápisu
-        </Button>
+        <div className="flex items-center gap-2">
+          <ThemeQuickButton />
+          <Button variant="ghost" size="sm" onClick={() => { setActiveMode(null); setMessages([]); }} className="h-7 text-xs">
+            ← Zpět k zápisu
+          </Button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1" ref={scrollRef}>

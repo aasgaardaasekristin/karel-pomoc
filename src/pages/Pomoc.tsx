@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { Leaf, ArrowLeft, ShieldCheck } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
@@ -75,6 +76,7 @@ const Pomoc = () => {
               <p className="text-xs text-muted-foreground">Krátký průvodce pro chvíle, kdy to potřebuješ</p>
             </div>
           </div>
+          <ThemeQuickButton />
         </div>
       </header>
 

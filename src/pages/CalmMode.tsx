@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Leaf } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
@@ -38,6 +39,7 @@ const CalmMode = () => {
               <p className="text-xs text-muted-foreground">Krátký průvodce pro chvíle, kdy to potřebuješ</p>
             </div>
           </div>
+          <ThemeQuickButton />
         </div>
       </header>
 
