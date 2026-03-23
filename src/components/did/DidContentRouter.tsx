@@ -531,7 +531,7 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
                 )}
                 {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
               </span>
-              <ThemeQuickButton />
+              <ThemeQuickButton storageKey={didStorageKey} />
               <DidKidsThemeEditor
                 partName={activeThread.partName}
                 threadId={activeThread.id}
