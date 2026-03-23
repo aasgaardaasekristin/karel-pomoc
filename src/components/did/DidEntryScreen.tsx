@@ -1,5 +1,6 @@
 import { Users, Stethoscope, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 interface Props {
   onSelectTerapeut: () => void;
