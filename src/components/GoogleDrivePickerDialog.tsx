@@ -79,6 +79,10 @@ const GoogleDrivePickerDialog = ({ open, onClose, onFileSelected }: Props) => {
       );
       if (!resp.ok) {
         const errBody = await resp.text();
+        if (/invalid_grant|expired|revoked/i.test(errBody)) {
+          handleDriveError({ data: { error: errBody } });
+          return;
+        }
         console.error("Drive list error:", resp.status, errBody);
         throw new Error(`Chyba ${resp.status}`);
       }
