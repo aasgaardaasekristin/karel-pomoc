@@ -1207,10 +1207,15 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
   } catch {
     try {
       const cleaned = analysis
-        .replace(/^```json\n?/, "")
-        .replace(/```$/, "")
+        .replace(/^```json\r?\n?/i, "")
+        .replace(/^```\r?\n?/i, "")
+        .replace(/\r?\n?```\s*$/i, "")
         .trim();
       parsed = JSON.parse(cleaned);
+
+      if (typeof parsed === "string") {
+        parsed = JSON.parse(parsed);
+      }
     } catch {
       return (
         <div className="prose prose-sm max-w-none dark:prose-invert">
@@ -1220,7 +1225,7 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
     }
   }
 
-  if (!parsed) {
+  if (!parsed || typeof parsed !== "object") {
     return (
       <div className="prose prose-sm max-w-none dark:prose-invert">
         <ReactMarkdown>{analysis}</ReactMarkdown>
