@@ -219,13 +219,6 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
       <>
         {hiddenInputs}
         <div className="space-y-2">
-          {completedAnalyses.length > 0 && (
-            <div className="flex justify-end">
-              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleAddToRecord}>
-                <Plus className="w-3 h-3" /> Přidat do záznamu ({completedAnalyses.length})
-              </Button>
-            </div>
-          )}
           {items.map(item => (
             <div key={item.id} className="bg-muted/30 rounded-lg p-2">
               <div className="flex items-center gap-2 mb-1">
