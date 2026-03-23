@@ -105,18 +105,40 @@ const CardAnalysisPanel = ({
     }
   };
 
+  const sanitizeResultForSave = (r: any) => {
+    const clean = { ...r };
+    // If clientProfile contains embedded JSON block, extract it
+    if (typeof clean.clientProfile === "string" && clean.clientProfile.includes("```json")) {
+      const match = clean.clientProfile.match(/```json\s*([\s\S]*?)```/);
+      if (match) {
+        try {
+          const embedded = JSON.parse(match[1].trim());
+          // Merge embedded JSON into clean result, keeping conversational prefix as profile text
+          const prefix = clean.clientProfile.slice(0, clean.clientProfile.indexOf("```json")).trim();
+          clean.clientProfile = embedded.clientProfile || prefix || clean.clientProfile;
+          if (embedded.diagnosticHypothesis) clean.diagnosticHypothesis = embedded.diagnosticHypothesis;
+          if (embedded.therapeuticProgress) clean.therapeuticProgress = embedded.therapeuticProgress;
+          if (embedded.nextSessionRecommendations) clean.nextSessionRecommendations = embedded.nextSessionRecommendations;
+          if (embedded.dataGaps) clean.dataGaps = embedded.dataGaps;
+        } catch {}
+      }
+    }
+    return clean;
+  };
+
   const handleSaveToCard = async () => {
     if (!result) return;
     setIsSavingToCard(true);
     try {
+      const cleanResult = sanitizeResultForSave(result);
       const { count } = await supabase
         .from("client_analyses" as any)
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId);
       const { error } = await supabase.from("client_analyses" as any).insert({
         client_id: clientId,
-        content: JSON.stringify(result),
-        summary: (result.clientProfile || "").slice(0, 200),
+        content: JSON.stringify(cleanResult),
+        summary: (cleanResult.clientProfile || "").slice(0, 200),
         version: (count ?? 0) + 1,
         sessions_count: sessionsCount,
       });
