@@ -166,9 +166,9 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
     } else if (didSubMode === "cast" && activeThread) {
       setContextKey(`did_kids_${activeThread.id}`);
     } else if (didSubMode === "cast") {
-      setContextKey("did_katerina");
+      setContextKey("did_kids");
     } else {
-      setContextKey("did_katerina");
+      setContextKey("did_entry");
     }
   }, [didSubMode, activeThread?.id, setContextKey]);
 
