@@ -121,18 +121,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
       {showRetro && retroText && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
           <div className="prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed">
-            <ReactMarkdown
-              components={{
-                h1: ({ children }) => <h1 className="text-sm font-bold text-foreground mt-2 mb-1 first:mt-0">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-xs font-semibold text-foreground mt-2 mb-1">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-[11px] font-medium text-foreground mt-1.5 mb-0.5">{children}</h3>,
-                p: ({ children }) => <p className="text-muted-foreground mb-1.5 leading-relaxed">{children}</p>,
-                strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
-                li: ({ children }) => <li className="text-muted-foreground ml-3 mb-0.5">{children}</li>,
-              }}
-            >
-              {retroText}
-            </ReactMarkdown>
+            <RichMarkdown compact>{retroText}</RichMarkdown>
           </div>
         </div>
       )}
