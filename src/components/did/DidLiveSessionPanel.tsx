@@ -652,7 +652,16 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setShowReflection(false);
     setIsSavingReflection(false);
     toast.success("Sezení uloženo a analyzováno");
-    onEnd(report || "Zápis nebyl vygenerován.");
+
+    // Set completed state + reset all session states
+    setCompletedReport(report || "Zápis nebyl vygenerován.");
+    setMessages([]);
+    setInput("");
+    setSwitchLog([]);
+    setActivePart(partName);
+    audioSegmentCountRef.current = 0;
+    imageSegmentCountRef.current = 0;
+    setSessionCompleted(true);
   };
 
   return (
