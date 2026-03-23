@@ -1,0 +1,330 @@
+import { useState, useRef, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { Mic, Image, PenTool, X, Loader2, Plus, FileCheck } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { getAuthHeaders } from "@/lib/auth";
+import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+
+const AUDIO_ACCEPT = ".mp3,.mp4,.m4a,.wav,.ogg,.webm,.aac";
+const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.heic,.webp";
+const HANDWRITING_ACCEPT = ".jpg,.jpeg,.png,.pdf";
+
+const MAX_AUDIO_SIZE = 100 * 1024 * 1024;
+const MAX_IMAGE_COUNT = 10;
+const MAX_HANDWRITING_COUNT = 5;
+
+interface MediaItem {
+  id: string;
+  file: File;
+  type: "audio" | "image" | "handwriting";
+  preview?: string;
+  uploading: boolean;
+  analyzing: boolean;
+  storagePath?: string;
+  analysis?: string;
+  error?: string;
+}
+
+interface SessionMediaUploadProps {
+  clientId: string;
+  sessionDate: string;
+  onMediaContext: (context: string) => void;
+}
+
+const SessionMediaUpload = ({ clientId, sessionDate, onMediaContext }: SessionMediaUploadProps) => {
+  const [items, setItems] = useState<MediaItem[]>([]);
+  const audioRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLInputElement>(null);
+  const handwritingRef = useRef<HTMLInputElement>(null);
+
+  const updateItem = useCallback((id: string, patch: Partial<MediaItem>) => {
+    setItems(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
+  }, []);
+
+  const uploadToStorage = useCallback(async (file: File, type: string, index: number): Promise<string> => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Nepřihlášen");
+    const ext = file.name.split(".").pop() || "bin";
+    const ts = Date.now();
+    const path = `${clientId}/${sessionDate}/${type}_${index}_${ts}.${ext}`;
+    const { error } = await supabase.storage.from("session-media").upload(path, file, { contentType: file.type });
+    if (error) throw error;
+    return path;
+  }, [clientId, sessionDate]);
+
+  const analyzeImage = useCallback(async (file: File, userPrompt: string): Promise<string> => {
+    const base64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-analyze-file`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        attachments: [{ dataUrl: base64, category: "image", name: file.name, type: file.type, size: file.size }],
+        mode: "supervision",
+        userPrompt,
+      }),
+    });
+    if (!res.ok) throw new Error(`Chyba analýzy: ${res.status}`);
+    const data = await res.json();
+    return data.analysis || "Bez výsledku";
+  }, []);
+
+  const analyzeAudio = useCallback(async (file: File): Promise<string> => {
+    const base64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] || result);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-session-intake`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        clientId,
+        inputType: "audio",
+        audioBase64: base64,
+        sessionDate,
+      }),
+    });
+    if (!res.ok) throw new Error(`Chyba přepisu: ${res.status}`);
+    const data = await res.json();
+    const parts: string[] = [];
+    if (data.transcription) parts.push(`**Přepis:** ${data.transcription}`);
+    if (data.sessionRecord?.summary) parts.push(`**Analýza:** ${data.sessionRecord.summary}`);
+    return parts.join("\n\n") || "Přepis dokončen";
+  }, [clientId, sessionDate]);
+
+  const processItem = useCallback(async (item: MediaItem, index: number) => {
+    updateItem(item.id, { uploading: true });
+    try {
+      const storagePath = await uploadToStorage(item.file, item.type, index);
+      updateItem(item.id, { uploading: false, analyzing: true, storagePath });
+
+      let analysis: string;
+      if (item.type === "audio") {
+        analysis = await analyzeAudio(item.file);
+      } else if (item.type === "handwriting") {
+        analysis = await analyzeImage(item.file,
+          `Analyzuj tento dokument ve dvou vrstvách:
+
+VRSTVA 1 – ANALÝZA OBSAHU:
+Co klient napsal nebo nakreslil? Identifikuj témata, klíčová slova, emoce.
+
+VRSTVA 2 – GRAFOLOGICKÁ ANALÝZA:
+Proveď grafologickou analýzu rukopisu. Analyzuj:
+- Tlak pera (silný/slabý/variabilní)
+- Sklon písma (doprava/doleva/kolmý)
+- Velikost písma (velké/malé/variabilní)
+- Mezery mezi slovy a řádky
+- Tvar písmen (zaoblený/hranatý/smíšený)
+- Spojitost (spojené/nespojené tahy)
+- Pravidelnost (pravidelné/nepravidelné)
+
+Interpretuj co to říká o osobnosti, emočním stavu a psychologických charakteristikách autora.
+Uveď: co je jisté vs. co je hypotéza.
+Formuluj jako terapeuticky relevantní pozorování.`
+        );
+      } else {
+        analysis = await analyzeImage(item.file,
+          "Analyzuj tento obrázek ze sezení. Popiš co vidíš a identifikuj terapeuticky relevantní pozorování — emoce, téma, symbolika."
+        );
+      }
+
+      updateItem(item.id, { analyzing: false, analysis });
+
+      // Save to session_media table
+      await supabase.from("session_media" as any).insert({
+        client_id: clientId,
+        session_date: sessionDate,
+        media_type: item.type,
+        storage_path: storagePath,
+        original_filename: item.file.name,
+        ai_analysis: { text: analysis },
+      });
+    } catch (err: any) {
+      console.error("Media process error:", err);
+      updateItem(item.id, { uploading: false, analyzing: false, error: err.message });
+      toast.error(`Chyba: ${item.file.name}`);
+    }
+  }, [uploadToStorage, analyzeAudio, analyzeImage, updateItem, clientId, sessionDate]);
+
+  const handleFiles = useCallback((files: FileList | null, type: "audio" | "image" | "handwriting") => {
+    if (!files) return;
+    const arr = Array.from(files);
+
+    const existing = items.filter(i => i.type === type).length;
+
+    if (type === "audio" && arr.length > 1) {
+      toast.error("Lze nahrát pouze jeden audio soubor");
+      return;
+    }
+    if (type === "audio" && arr[0]?.size > MAX_AUDIO_SIZE) {
+      toast.error("Audio soubor je příliš velký (max 100 MB)");
+      return;
+    }
+    if (type === "image" && existing + arr.length > MAX_IMAGE_COUNT) {
+      toast.error(`Max ${MAX_IMAGE_COUNT} obrázků`);
+      return;
+    }
+    if (type === "handwriting" && existing + arr.length > MAX_HANDWRITING_COUNT) {
+      toast.error(`Max ${MAX_HANDWRITING_COUNT} souborů rukopisu`);
+      return;
+    }
+
+    const newItems: MediaItem[] = arr.map((file, i) => {
+      const id = `${type}-${Date.now()}-${i}`;
+      const preview = file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined;
+      return { id, file, type, preview, uploading: false, analyzing: false };
+    });
+
+    setItems(prev => [...prev, ...newItems]);
+    newItems.forEach((item, i) => processItem(item, existing + i));
+  }, [items, processItem]);
+
+  const removeItem = useCallback(async (id: string) => {
+    const item = items.find(i => i.id === id);
+    if (item?.storagePath) {
+      await supabase.storage.from("session-media").remove([item.storagePath]);
+    }
+    if (item?.preview) URL.revokeObjectURL(item.preview);
+    setItems(prev => prev.filter(i => i.id !== id));
+  }, [items]);
+
+  const completedAnalyses = items.filter(i => i.analysis && !i.error);
+
+  const handleAddToRecord = useCallback(() => {
+    if (completedAnalyses.length === 0) return;
+    const sections = completedAnalyses.map(item => {
+      const label = item.type === "audio" ? "🎙 Audio nahrávka" :
+                    item.type === "handwriting" ? "✍️ Grafologická analýza" : "🖼 Vizuální záznam";
+      return `### ${label}: ${item.file.name}\n${item.analysis}`;
+    });
+    onMediaContext(sections.join("\n\n---\n\n"));
+    toast.success(`${completedAnalyses.length} analýz přidáno do záznamu`);
+  }, [completedAnalyses, onMediaContext]);
+
+  const UploadCard = ({ icon: Icon, label, desc, accept, type, inputRef, multiple }: {
+    icon: any; label: string; desc: string; accept: string; type: "audio" | "image" | "handwriting";
+    inputRef: React.RefObject<HTMLInputElement>; multiple?: boolean;
+  }) => {
+    const typeItems = items.filter(i => i.type === type);
+    const [dragOver, setDragOver] = useState(false);
+
+    return (
+      <Card
+        className={`p-3 border-dashed transition-colors ${dragOver ? "border-primary bg-primary/5" : "border-border"}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files, type); }}
+      >
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Icon className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium">{label}</span>
+          </div>
+          <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => inputRef.current?.click()}>
+            <Plus className="w-3 h-3" /> Vybrat
+          </Button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept={accept}
+            multiple={multiple}
+            className="hidden"
+            onChange={(e) => { handleFiles(e.target.files, type); if (inputRef.current) inputRef.current.value = ""; }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground mb-2">{desc}</p>
+
+        {typeItems.length > 0 && (
+          <div className="space-y-2">
+            {typeItems.map(item => (
+              <div key={item.id} className="bg-muted/30 rounded-lg p-2">
+                <div className="flex items-center gap-2 mb-1">
+                  {item.preview && (
+                    <img src={item.preview} alt="" className="w-10 h-10 object-cover rounded" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate">{item.file.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {(item.file.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
+                  {item.uploading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+                  {item.analyzing && <Badge variant="secondary" className="text-[10px]">Analyzuji…</Badge>}
+                  {item.analysis && <FileCheck className="w-3.5 h-3.5 text-green-600" />}
+                  {item.error && <Badge variant="destructive" className="text-[10px]">Chyba</Badge>}
+                  <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => removeItem(item.id)}>
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+                {(item.uploading || item.analyzing) && <Progress value={item.uploading ? 40 : 80} className="h-1" />}
+                {item.analysis && (
+                  <div className="mt-2 text-xs prose prose-sm max-w-none dark:prose-invert max-h-32 overflow-y-auto">
+                    <ReactMarkdown>{item.analysis.slice(0, 500)}{item.analysis.length > 500 ? "…" : ""}</ReactMarkdown>
+                  </div>
+                )}
+                {item.error && <p className="text-xs text-destructive mt-1">{item.error}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-foreground">📎 Nahrát média k analýze</h4>
+        {completedAnalyses.length > 0 && (
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleAddToRecord}>
+            <Plus className="w-3 h-3" /> Přidat do záznamu ({completedAnalyses.length})
+          </Button>
+        )}
+      </div>
+
+      <UploadCard
+        icon={Mic}
+        label="🎙 Audio nahrávka"
+        desc="MP3, M4A, WAV · max 100 MB"
+        accept={AUDIO_ACCEPT}
+        type="audio"
+        inputRef={audioRef as React.RefObject<HTMLInputElement>}
+      />
+      <UploadCard
+        icon={Image}
+        label="🖼 Obrázky ze sezení"
+        desc="JPG, PNG · max 10 souborů"
+        accept={IMAGE_ACCEPT}
+        type="image"
+        inputRef={imageRef as React.RefObject<HTMLInputElement>}
+        multiple
+      />
+      <UploadCard
+        icon={PenTool}
+        label="✍️ Rukopis klienta"
+        desc="JPG, PNG, PDF · grafologická analýza"
+        accept={HANDWRITING_ACCEPT}
+        type="handwriting"
+        inputRef={handwritingRef as React.RefObject<HTMLInputElement>}
+        multiple
+      />
+    </div>
+  );
+};
+
+export default SessionMediaUpload;
