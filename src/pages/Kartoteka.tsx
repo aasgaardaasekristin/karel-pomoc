@@ -1260,9 +1260,7 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
   return (
     <div className="space-y-4 text-sm">
       {summary && (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown>{summary}</ReactMarkdown>
-        </div>
+        <RichMarkdown>{summary}</RichMarkdown>
       )}
       {analysis2 && (
         <div className="bg-muted/30 rounded p-3">
