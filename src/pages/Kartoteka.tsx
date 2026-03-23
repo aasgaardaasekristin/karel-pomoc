@@ -112,7 +112,9 @@ const Kartoteka = () => {
   const [activePlan, setActivePlan] = useState<any>(null);
   const [cardAnalysis, setCardAnalysis] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("card");
-
+  const [clientAnalyses, setClientAnalyses] = useState<any[]>([]);
+  const [sessionMaterials, setSessionMaterials] = useState<any[]>([]);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     if (value === "assistance" && selectedClient) {
