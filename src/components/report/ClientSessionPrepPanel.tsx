@@ -14,6 +14,7 @@ import {
   Play,
   Pencil,
   Bot,
+  RotateCcw,
 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,6 +51,14 @@ const phaseColors: Record<string, string> = {
   "Uzavření": "bg-muted/30 border-border",
 };
 
+type SavedPrep = {
+  id: string;
+  session_number: number | null;
+  created_at: string;
+  plan: any;
+  approved_at: string | null;
+};
+
 const ClientSessionPrepPanel = ({
   clientId,
   clientName,
@@ -66,6 +75,24 @@ const ClientSessionPrepPanel = ({
   const [sessionNumber, setSessionNumber] = useState<number | null>(null);
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
   const originalRequestRef = useRef<any>(null);
+
+  // Saved preparations
+  const [savedPreps, setSavedPreps] = useState<SavedPrep[]>([]);
+  const [loadingPreps, setLoadingPreps] = useState(false);
+
+  useEffect(() => {
+    const fetchPreps = async () => {
+      setLoadingPreps(true);
+      const { data } = await supabase
+        .from("session_preparations" as any)
+        .select("id, session_number, created_at, plan, approved_at")
+        .eq("client_id", clientId)
+        .order("created_at", { ascending: false });
+      if (data) setSavedPreps(data as any);
+      setLoadingPreps(false);
+    };
+    fetchPreps();
+  }, [clientId]);
 
   // Progress animation
   const [spinnerChar, setSpinnerChar] = useState(SPINNER_CHARS[0]);
