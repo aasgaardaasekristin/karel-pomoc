@@ -512,14 +512,15 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         </div>
       )}
 
-      {/* Media upload section — visible in text & audio modes */}
-      {inputMode !== "choose" && (
+      {/* Media upload section — always visible */}
+      <div className="border-t border-border pt-4">
+        <p className="text-sm text-muted-foreground mb-3">Nahrát média k analýze (volitelné)</p>
         <SessionMediaUpload
           clientId={clientId}
           sessionDate={new Date().toISOString().split("T")[0]}
           onMediaContext={setMediaContext}
         />
-      )}
+      </div>
 
       {mediaContext && (
         <div className="p-2 bg-muted/30 rounded-lg">
