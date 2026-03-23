@@ -8,7 +8,7 @@ import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface Meeting {
   id: string;
