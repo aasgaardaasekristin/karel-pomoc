@@ -9,6 +9,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { handleDriveError } from "@/lib/driveErrorHandler";
+import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 import { exportTherapyPlanPdf } from "@/lib/therapyPlanPdfExport";
 
