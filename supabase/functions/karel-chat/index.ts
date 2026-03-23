@@ -45,11 +45,13 @@ serve(async (req) => {
       }
     }
 
-    // ═══ SUPERVISION FAST-PATH ═══
-    // Skip all heavy operations (Drive, Perplexity, tasks) for live session supervision mode
-    if (mode === "supervision") {
-      console.log("[karel-chat] Supervision fast-path: skipping Drive/Perplexity/tasks");
-      // Go straight to AI gateway with system prompt + didInitialContext (already injected above)
+    // ═══ FAST-PATH: supervision & live-session ═══
+    // Skip all heavy operations (Drive, Perplexity, tasks) for live modes
+    if (mode === "supervision" || mode === "live-session") {
+      const isLive = mode === "live-session";
+      const fastModel = isLive ? "google/gemini-2.5-flash" : "google/gemini-3-flash-preview";
+      console.log(`[karel-chat] Fast-path (${mode}): model=${fastModel}, skipping Drive/Perplexity/tasks`);
+
       const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -57,7 +59,7 @@ serve(async (req) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: fastModel,
           messages: [
             { role: "system", content: systemPrompt },
             ...messages.map((m: any) => Array.isArray(m.content) ? { role: m.role, content: m.content } : m),
@@ -70,7 +72,7 @@ serve(async (req) => {
         if (response.status === 429) return new Response(JSON.stringify({ error: "Rate limits exceeded" }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         if (response.status === 402) return new Response(JSON.stringify({ error: "Payment required" }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const text = await response.text();
-        console.error("AI gateway error (supervision):", response.status, text);
+        console.error(`AI gateway error (${mode}):`, response.status, text);
         return new Response(JSON.stringify({ error: "AI gateway error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
