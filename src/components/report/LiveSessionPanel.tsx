@@ -989,6 +989,13 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               </div>
             </div>
           )}
+          {!isLoading && lastFailedRef.current && messages[messages.length - 1]?.role === "user" && (
+            <div className="flex justify-start">
+              <Button variant="outline" size="sm" onClick={handleRetry} className="gap-1.5 text-xs">
+                🔄 Zkusit znovu
+              </Button>
+            </div>
+          )}
         </div>
       </ScrollArea>
 
