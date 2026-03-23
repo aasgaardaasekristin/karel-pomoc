@@ -169,12 +169,15 @@ DOSTUPNÉ EPIZODY (vyber 3-7 nejrelevantnějších podle shody v tématu, účas
 ${episodeSummaries || "(žádné epizody zatím)"}`;
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({
         model: "google/gemini-2.5-flash-lite",
         messages: [
@@ -207,6 +210,7 @@ Vrať POUZE validní JSON (bez markdown bloků):
         temperature: 0.1,
       }),
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       console.error("Analysis call failed:", response.status);
