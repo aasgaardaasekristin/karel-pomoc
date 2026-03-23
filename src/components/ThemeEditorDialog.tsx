@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { type ThemePrefs, useTheme, hexToHSL, hslToHex } from "@/contexts/ThemeContext";
+import { type ThemePrefs, useTheme, hexToHSL, hslToHex, DEFAULT_PREFS } from "@/contexts/ThemeContext";
 
 const PERSONA_LABELS: Record<string, string> = {
   default: "Výchozí",
@@ -41,6 +41,7 @@ const PRESET_BACKGROUNDS = [
 interface ThemeEditorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  storageKey?: string;
 }
 
 function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (hsl: string) => void }) {
@@ -61,28 +62,54 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
   );
 }
 
-const ThemeEditorDialog = ({ open, onOpenChange }: ThemeEditorDialogProps) => {
-  const { prefs, presets, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
+function loadFromStorage(key: string): ThemePrefs {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+  } catch {}
+  return { ...DEFAULT_PREFS };
+}
+
+const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialogProps) => {
+  const { prefs, presets, updatePrefs, uploadBackground, currentPersona, setCurrentPersona, applyTemporaryTheme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<ThemePrefs>(prefs);
+
+  // If storageKey is provided, use localStorage; otherwise use DB via context
+  const isLocalMode = !!storageKey;
+
+  const [draft, setDraft] = useState<ThemePrefs>(() =>
+    isLocalMode ? loadFromStorage(storageKey!) : prefs
+  );
 
   useEffect(() => {
-    setDraft(prefs);
-  }, [prefs, currentPersona, open]);
+    if (isLocalMode) {
+      setDraft(loadFromStorage(storageKey!));
+    } else {
+      setDraft(prefs);
+    }
+  }, [prefs, currentPersona, open, storageKey, isLocalMode]);
 
-  const hasPendingChanges = useMemo(() => JSON.stringify(draft) !== JSON.stringify(prefs), [draft, prefs]);
+  const basePrefs = isLocalMode ? loadFromStorage(storageKey!) : prefs;
+  const hasPendingChanges = useMemo(() => JSON.stringify(draft) !== JSON.stringify(basePrefs), [draft, basePrefs]);
 
   const setDraftPartial = (partial: Partial<ThemePrefs>) => {
-    setDraft((prev) => ({ ...prev, ...partial, persona: currentPersona }));
+    setDraft((prev) => ({ ...prev, ...partial, persona: isLocalMode ? (storageKey || "local") : currentPersona }));
   };
 
   const handleApplyTheme = async () => {
     try {
       setSaving(true);
-      await updatePrefs(draft);
-      toast.success("Vzhled použit");
+      if (isLocalMode) {
+        // Save to localStorage and apply immediately
+        localStorage.setItem(storageKey!, JSON.stringify(draft));
+        applyTemporaryTheme(draft);
+        toast.success("Vzhled použit");
+      } else {
+        await updatePrefs(draft);
+        toast.success("Vzhled použit");
+      }
     } catch (error: any) {
       toast.error(error?.message || "Nepodařilo se uložit vzhled");
     } finally {
@@ -91,7 +118,11 @@ const ThemeEditorDialog = ({ open, onOpenChange }: ThemeEditorDialogProps) => {
   };
 
   const handleResetTheme = () => {
-    setDraft(prefs);
+    if (isLocalMode) {
+      setDraft(loadFromStorage(storageKey!));
+    } else {
+      setDraft(prefs);
+    }
     toast.info("Rozpracované změny zrušeny");
   };
 
@@ -122,7 +153,7 @@ const ThemeEditorDialog = ({ open, onOpenChange }: ThemeEditorDialogProps) => {
           <DialogTitle className="text-sm flex items-center gap-2">
             🎨 Nastavení vzhledu
           </DialogTitle>
-          <DialogDescription className="text-xs">Personalizace barev, pozadí a písma pro každou personu zvlášť.</DialogDescription>
+          <DialogDescription className="text-xs">Personalizace barev, pozadí a písma{isLocalMode ? " pro tuto obrazovku" : " pro každou personu zvlášť"}.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -147,23 +178,25 @@ const ThemeEditorDialog = ({ open, onOpenChange }: ThemeEditorDialogProps) => {
             </div>
           </div>
 
-          {/* Persona selector */}
-          <div>
-            <p className="text-xs font-medium text-foreground mb-2">Personalizace pro:</p>
-            <div className="flex gap-1 flex-wrap">
-              {Object.entries(PERSONA_LABELS).map(([key, label]) => (
-                <Button
-                  key={key}
-                  variant={currentPersona === key ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCurrentPersona(key)}
-                  className="h-7 text-[10px] px-2"
-                >
-                  {label}
-                </Button>
-              ))}
+          {/* Persona selector - only in DB mode */}
+          {!isLocalMode && (
+            <div>
+              <p className="text-xs font-medium text-foreground mb-2">Personalizace pro:</p>
+              <div className="flex gap-1 flex-wrap">
+                {Object.entries(PERSONA_LABELS).map(([key, label]) => (
+                  <Button
+                    key={key}
+                    variant={currentPersona === key ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPersona(key)}
+                    className="h-7 text-[10px] px-2"
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Color presets */}
           <div>

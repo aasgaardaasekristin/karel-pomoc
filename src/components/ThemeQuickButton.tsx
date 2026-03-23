@@ -12,9 +12,10 @@ const getScreenScope = () => {
 
 interface ThemeQuickButtonProps {
   className?: string;
+  storageKey?: string;
 }
 
-const ThemeQuickButton = ({ className = "" }: ThemeQuickButtonProps) => {
+const ThemeQuickButton = ({ className = "", storageKey }: ThemeQuickButtonProps) => {
   const [open, setOpen] = useState(false);
   const owner = useMemo(() => Symbol("theme-quick-button"), []);
   const scope = getScreenScope();
@@ -51,7 +52,7 @@ const ThemeQuickButton = ({ className = "" }: ThemeQuickButtonProps) => {
         <Palette className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Vzhled</span>
       </Button>
-      <ThemeEditorDialog open={open} onOpenChange={setOpen} />
+      <ThemeEditorDialog open={open} onOpenChange={setOpen} storageKey={storageKey} />
     </>
   );
 };
