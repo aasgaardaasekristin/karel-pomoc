@@ -684,7 +684,27 @@ const Kartoteka = () => {
                   <Accordion type="single" collapsible defaultValue={clientAnalyses[0]?.id}>
                     {clientAnalyses.map((a: any) => {
                       let parsed: any = null;
-                      try { parsed = JSON.parse(a.content); } catch {}
+                      try {
+                        parsed = JSON.parse(a.content);
+                        // Fix: if clientProfile contains embedded JSON block, extract it
+                        if (typeof parsed?.clientProfile === "string" && parsed.clientProfile.includes("```json")) {
+                          const match = parsed.clientProfile.match(/```json\s*([\s\S]*?)```/);
+                          if (match) {
+                            try {
+                              const embedded = JSON.parse(match[1].trim());
+                              const prefix = parsed.clientProfile.slice(0, parsed.clientProfile.indexOf("```json")).trim();
+                              parsed = {
+                                ...parsed,
+                                clientProfile: embedded.clientProfile || prefix,
+                                diagnosticHypothesis: embedded.diagnosticHypothesis || parsed.diagnosticHypothesis,
+                                therapeuticProgress: embedded.therapeuticProgress || parsed.therapeuticProgress,
+                                nextSessionRecommendations: embedded.nextSessionRecommendations || parsed.nextSessionRecommendations,
+                                dataGaps: embedded.dataGaps || parsed.dataGaps,
+                              };
+                            } catch {}
+                          }
+                        }
+                      } catch {}
                       const sessionsLabel = a.sessions_count != null ? ` (${a.sessions_count} sezení)` : "";
                       return (
                         <AccordionItem key={a.id} value={a.id}>
@@ -709,78 +729,140 @@ const Kartoteka = () => {
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
                           </div>
-                          <AccordionContent className="space-y-4">
-                            {/* Profil */}
-                            <div>
-                              <p className="text-xs font-semibold text-muted-foreground mb-1">📋 Profil</p>
-                              <div className="prose prose-sm max-w-none dark:prose-invert">
+                          <AccordionContent className="space-y-3">
+                            <Tabs defaultValue="profile" className="space-y-3">
+                              <TabsList className="grid w-full grid-cols-3 h-8">
+                                <TabsTrigger value="profile" className="text-xs">Profil</TabsTrigger>
+                                <TabsTrigger value="diagnosis" className="text-xs">Diagnostika</TabsTrigger>
+                                <TabsTrigger value="next" className="text-xs">Co příště</TabsTrigger>
+                              </TabsList>
+
+                              <TabsContent value="profile" className="prose prose-sm max-w-none dark:prose-invert">
                                 <ReactMarkdown>{parsed?.clientProfile || a.content}</ReactMarkdown>
-                              </div>
-                              {parsed?.therapeuticProgress && (
-                                <div className="mt-2 space-y-1 text-sm">
-                                  {parsed.therapeuticProgress.whatWorks?.length > 0 && (
+                                {parsed?.therapeuticProgress && (
+                                  <div className="mt-3 space-y-2 not-prose">
+                                    {parsed.therapeuticProgress.whatWorks?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">✅ Co funguje:</p>
+                                        {parsed.therapeuticProgress.whatWorks.map((w: string, i: number) => (
+                                          <p key={i} className="text-sm">• {w}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {parsed.therapeuticProgress.whatDoesntWork?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">❌ Co nefunguje:</p>
+                                        {parsed.therapeuticProgress.whatDoesntWork.map((w: string, i: number) => (
+                                          <p key={i} className="text-sm">• {w}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {parsed?.therapeuticProgress?.clientDynamics && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Dynamika:</p>
+                                        <p className="text-sm">{parsed.therapeuticProgress.clientDynamics}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </TabsContent>
+
+                              <TabsContent value="diagnosis" className="space-y-3">
+                                {parsed?.diagnosticHypothesis ? (
+                                  <>
                                     <div>
-                                      <p className="text-xs text-muted-foreground">✅ Co funguje:</p>
-                                      {parsed.therapeuticProgress.whatWorks.map((w: string, i: number) => (
-                                        <p key={i} className="text-sm">• {w}</p>
-                                      ))}
+                                      <p className="text-xs text-muted-foreground mb-1">Primární hypotéza:</p>
+                                      <p className="text-sm font-medium">{parsed.diagnosticHypothesis.primary || "—"}</p>
+                                      {parsed.diagnosticHypothesis.confidence && (
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <span className="text-xs text-muted-foreground">Jistota:</span>
+                                          <Badge variant={
+                                            parsed.diagnosticHypothesis.confidence === "high" ? "default" :
+                                            parsed.diagnosticHypothesis.confidence === "medium" ? "secondary" : "outline"
+                                          } className="text-xs">
+                                            {parsed.diagnosticHypothesis.confidence === "high" ? "● Vysoká" :
+                                             parsed.diagnosticHypothesis.confidence === "medium" ? "● Střední" : "○ Nízká"}
+                                          </Badge>
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                  {parsed.therapeuticProgress.whatDoesntWork?.length > 0 && (
-                                    <div>
-                                      <p className="text-xs text-muted-foreground">❌ Co nefunguje:</p>
-                                      {parsed.therapeuticProgress.whatDoesntWork.map((w: string, i: number) => (
-                                        <p key={i} className="text-sm">• {w}</p>
-                                      ))}
-                                    </div>
-                                  )}
+                                    {parsed.diagnosticHypothesis.differential?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Diferenciální dg.:</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {parsed.diagnosticHypothesis.differential.map((d: string, i: number) => (
+                                            <Badge key={i} variant="outline" className="text-xs">{d}</Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {parsed.diagnosticHypothesis.supportingEvidence?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Podpůrné důkazy:</p>
+                                        {parsed.diagnosticHypothesis.supportingEvidence.map((e: string, i: number) => (
+                                          <p key={i} className="text-sm">• {e}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">Diagnostická data nejsou k dispozici.</p>
+                                )}
+                              </TabsContent>
+
+                              <TabsContent value="next" className="space-y-3">
+                                {parsed?.nextSessionRecommendations ? (
+                                  <>
+                                    {parsed.nextSessionRecommendations.focus?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Zaměření:</p>
+                                        {(Array.isArray(parsed.nextSessionRecommendations.focus)
+                                          ? parsed.nextSessionRecommendations.focus
+                                          : [parsed.nextSessionRecommendations.focus]
+                                        ).map((f: string, i: number) => (
+                                          <p key={i} className="text-sm">• {f}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {parsed.nextSessionRecommendations.suggestedTechniques?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Doporučené techniky:</p>
+                                        {parsed.nextSessionRecommendations.suggestedTechniques.map((t: string, i: number) => (
+                                          <p key={i} className="text-sm">• {t}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {parsed.nextSessionRecommendations.diagnosticTests?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Doporučené testy:</p>
+                                        {parsed.nextSessionRecommendations.diagnosticTests.map((t: string, i: number) => (
+                                          <p key={i} className="text-sm">• {t}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                    {parsed.nextSessionRecommendations.thingsToAsk?.length > 0 && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground mb-1">Otázky k položení:</p>
+                                        {parsed.nextSessionRecommendations.thingsToAsk.map((q: string, i: number) => (
+                                          <p key={i} className="text-sm">• {q}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">Doporučení nejsou k dispozici.</p>
+                                )}
+                              </TabsContent>
+                            </Tabs>
+
+                            {parsed?.dataGaps?.length > 0 && (
+                              <div className="border-t border-border pt-2">
+                                <p className="text-xs text-muted-foreground mb-1">📌 Chybějící data:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {parsed.dataGaps.map((g: string, i: number) => (
+                                    <Badge key={i} variant="outline" className="text-xs">{g}</Badge>
+                                  ))}
                                 </div>
-                              )}
-                            </div>
-                            {/* Diagnostika */}
-                            {parsed?.diagnosticHypothesis && (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-1">🔬 Diagnostika</p>
-                                <p className="text-sm"><strong>Primární:</strong> {parsed.diagnosticHypothesis.primary || "—"}</p>
-                                {parsed.diagnosticHypothesis.differential?.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {parsed.diagnosticHypothesis.differential.map((d: string, i: number) => (
-                                      <Badge key={i} variant="outline" className="text-xs">{d}</Badge>
-                                    ))}
-                                  </div>
-                                )}
-                                {parsed.diagnosticHypothesis.supportingEvidence?.length > 0 && (
-                                  <div className="mt-1">
-                                    <p className="text-xs text-muted-foreground">Důkazy:</p>
-                                    {parsed.diagnosticHypothesis.supportingEvidence.map((e: string, i: number) => (
-                                      <p key={i} className="text-sm">• {e}</p>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {/* Co příště */}
-                            {parsed?.nextSessionRecommendations && (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-1">🎯 Co příště</p>
-                                {parsed.nextSessionRecommendations.focus && (
-                                  <p className="text-sm"><strong>Zaměření:</strong> {parsed.nextSessionRecommendations.focus}</p>
-                                )}
-                                {parsed.nextSessionRecommendations.suggestedTechniques?.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {parsed.nextSessionRecommendations.suggestedTechniques.map((t: string, i: number) => (
-                                      <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
-                                    ))}
-                                  </div>
-                                )}
-                                {parsed.nextSessionRecommendations.diagnosticTests?.length > 0 && (
-                                  <div className="mt-1">
-                                    <p className="text-xs text-muted-foreground">Doporučené testy:</p>
-                                    {parsed.nextSessionRecommendations.diagnosticTests.map((t: string, i: number) => (
-                                      <p key={i} className="text-sm">• {t}</p>
-                                    ))}
-                                  </div>
-                                )}
                               </div>
                             )}
                           </AccordionContent>
