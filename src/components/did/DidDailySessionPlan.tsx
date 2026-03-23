@@ -26,6 +26,7 @@ interface SessionPlan {
   completed_at: string | null;
   session_lead: string;
   session_format: string;
+  overdue_days: number;
   created_at?: string;
 }
 
@@ -51,6 +52,8 @@ const urgencyLabels: Record<string, string> = {
   dormant_7d: "Neaktivní >7d",
   fallback_oldest: "Nejdéle neviděn",
   therapist_override: "✅ Terapeutka",
+  overdue_escalation: "🔴 Odložený plán",
+  recent_session: "↩ Nedávné sezení",
 };
 
 const GENERATION_STEPS = [
@@ -108,10 +111,11 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     setLoading(true);
     try {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      // Load today's plans + overdue pending plans from previous days
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
         .select("*")
-        .eq("plan_date", today)
+        .or(`plan_date.eq.${today},and(status.eq.generated,plan_date.lt.${today})`)
         .order("created_at", { ascending: false });
       if (error) throw error;
       setPlans(data || []);
@@ -187,7 +191,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       } else if (data.reason === "no_active_parts") {
         toast.info("Žádná aktivní/komunikující část — plán nevygenerován");
       } else {
-        const leadLabel = data.sessionLead === "kata" ? "Káťa" : "Hanka";
+        const leadLabel = data.sessionLead === "obe" ? "Hanka + Káťa" : data.sessionLead === "kata" ? "Káťa" : "Hanka";
         toast.success(`Plán vygenerován pro ${data.selectedPart} (VEDE: ${leadLabel})`);
       }
       await loadTodayPlans();
@@ -678,8 +682,15 @@ const PlanCard = ({
   prevSession,
   isArchived,
 }: PlanCardProps) => {
-  const leadLabel = plan.session_lead === "kata" ? "Káťa" : "Hanka";
-  const formatLabel = plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+  const leadLabel = plan.session_lead === "obe" ? "Hanka + Káťa" : plan.session_lead === "kata" ? "Káťa" : "Hanka";
+  const formatLabel = plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+
+  // Overdue calculation using Prague timezone
+  const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+  const isOverdue = plan.status === "generated" && plan.plan_date < todayPrague;
+  const overdueDays = isOverdue
+    ? Math.floor((new Date(todayPrague).getTime() - new Date(plan.plan_date).getTime()) / (24 * 60 * 60 * 1000))
+    : 0;
 
   return (
     <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${
@@ -704,6 +715,13 @@ const PlanCard = ({
         {plan.generated_by === "auto" && (
           <Badge variant="outline" className="text-[9px] h-4 px-1 border-muted-foreground/30 text-muted-foreground">
             auto
+          </Badge>
+        )}
+
+        {/* Overdue badge */}
+        {isOverdue && overdueDays >= 2 && (
+          <Badge className="text-[10px] h-5 px-1.5 bg-destructive/20 text-destructive border border-destructive/30">
+            🔴 Čeká {overdueDays} {overdueDays >= 5 ? "dní" : overdueDays >= 2 ? "dny" : "den"}
           </Badge>
         )}
 

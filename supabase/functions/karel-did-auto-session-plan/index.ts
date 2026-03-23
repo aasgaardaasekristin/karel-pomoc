@@ -252,13 +252,16 @@ async function readCentrumDocuments(token: string, centrumFolderId: string): Pro
 
 // ═══ Parse session_lead from AI response ═══
 function parseSessionLead(markdown: string): { lead: string; format: string } {
-  // Look for VEDE: HANKA or VEDE: KÁŤA patterns
-  const vedeMatch = markdown.match(/VEDE:\s*(HANKA|KÁŤA|KATA|Hanka|Káťa|Kata)/i);
+  // Look for VEDE: HANKA + KÁŤA / OBĚ / HANKA / KÁŤA patterns
+  const vedeMatch = markdown.match(/VEDE:\s*(HANKA\s*\+\s*KÁŤA|HANKA\s*\+\s*KATA|OBĚ|OBE|HANKA|KÁŤA|KATA|Hanka\s*\+\s*Káťa|Hanka\s*\+\s*Kata|Hanka|Káťa|Kata)/i);
   if (!vedeMatch) return { lead: "hanka", format: "osobně" };
 
-  const name = vedeMatch[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (name === "kata" || name === "katka") {
-    // Try to find format
+  const raw = vedeMatch[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Check for combined lead
+  if (raw.includes("+") || raw === "obe") {
+    return { lead: "obe", format: "kombinované" };
+  }
+  if (raw === "kata" || raw === "katka") {
     const formatMatch = markdown.match(/VEDE:\s*(?:KÁŤA|KATA|Káťa|Kata)\s*\(([^)]+)\)/i);
     const format = formatMatch?.[1]?.toLowerCase().trim() || "chat";
     return { lead: "kata", format };
@@ -272,6 +275,23 @@ serve(async (req) => {
   const authHeader = req.headers.get("Authorization") || "";
   const isCron = req.headers.get("user-agent")?.includes("pg_net") ||
     authHeader.includes(Deno.env.get("SUPABASE_ANON_KEY") || "___none___");
+
+  // ═══ TIMEZONE GUARD — ensure cron runs only in 5:00–7:00 Prague time ═══
+  if (isCron) {
+    const pragueHour = parseInt(
+      new Date().toLocaleString("en", {
+        timeZone: "Europe/Prague",
+        hour: "numeric",
+        hour12: false,
+      })
+    );
+    if (pragueHour < 5 || pragueHour > 7) {
+      console.log(`[auto-session-plan] Timezone guard: pragueHour=${pragueHour}, skipping.`);
+      return new Response(JSON.stringify({ skipped: true, reason: "outside_window", pragueHour }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const sb = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -322,6 +342,33 @@ serve(async (req) => {
 
     // NOTE: Manual override (forcePart) always INSERTs a new plan, never deletes old ones
 
+    // ═══ PRIORITY 1: OVERDUE ESCALATION — update overdue_days for old pending plans ═══
+    const overduePartBonus = new Map<string, number>();
+    {
+      const { data: overduePlans } = await sb.from("did_daily_session_plans")
+        .select("id, plan_date, selected_part")
+        .eq("status", "generated")
+        .lt("plan_date", todayPrague);
+
+      if (overduePlans?.length) {
+        for (const op of overduePlans) {
+          const days = Math.floor((new Date(todayPrague).getTime() - new Date(op.plan_date).getTime()) / (24 * 60 * 60 * 1000));
+          await sb.from("did_daily_session_plans")
+            .update({ overdue_days: days, updated_at: new Date().toISOString() })
+            .eq("id", op.id);
+          overduePartBonus.set(op.selected_part, (overduePartBonus.get(op.selected_part) || 0) + 3);
+        }
+        console.log(`[auto-session-plan] Overdue escalation: ${overduePlans.length} plans, bonuses: ${JSON.stringify(Object.fromEntries(overduePartBonus))}`);
+      }
+    }
+
+    // ═══ PRIORITY 3: LOAD RECENT SESSIONS (48h) for repetition penalty ═══
+    const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const { data: recentSessions48h } = await sb.from("did_part_sessions")
+      .select("part_name")
+      .gte("session_date", cutoff48h);
+    const recentPartNames48h = new Set((recentSessions48h || []).map((s: any) => s.part_name));
+
     // ═══ GATHER DATA ═══
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const cutoff3d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
@@ -359,7 +406,33 @@ serve(async (req) => {
 
     // ═══ CALCULATE URGENCY SCORES v2 ═══
     const scores = calculateUrgencyScores(registry, threads3d, threads24h, crisisBriefs, pendingTasks, sessions);
-    console.log(`[auto-session-plan] Scores: ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
+
+    // ═══ PRIORITY 1: Apply overdue escalation bonus ═══
+    for (const s of scores) {
+      const bonus = overduePartBonus.get(s.partName) || 0;
+      if (bonus > 0) {
+        s.score += bonus;
+        s.breakdown["overdue_escalation"] = bonus;
+      }
+    }
+
+    // ═══ PRIORITY 3: Apply 48h repetition penalty ═══
+    for (const s of scores) {
+      if (recentPartNames48h.has(s.partName)) {
+        s.score -= 5;
+        s.breakdown["recent_session"] = -5;
+      }
+    }
+
+    // Re-sort after bonuses/penalties
+    scores.sort((a, b) => {
+      const tierOrder: Record<string, number> = { fading: 0, active: 1, sleeping: 2, override: -1 };
+      const tierDiff = (tierOrder[a.tier] ?? 2) - (tierOrder[b.tier] ?? 2);
+      if (tierDiff !== 0) return tierDiff;
+      return b.score - a.score;
+    });
+
+    console.log(`[auto-session-plan] Scores (after bonuses): ${scores.slice(0, 5).map(s => `${s.partName}=${s.score}(${s.tier})`).join(", ")}`);
 
     // ═══ PART SELECTION ═══
     let selectedPart: UrgencyResult;
@@ -469,12 +542,17 @@ RIZIKA: ${(sysProfile.risk_factors || []).join(", ")}` : "";
     // ═══ AI GENERATION ═══
     const sessionLeadInstruction = `
 VŽDY na začátku plánu uveď na prvním řádku:
-**VEDE:** HANKA (osobně) nebo KÁŤA (distančně: chat/video/telefon/SMS)
+**VEDE:** HANKA (osobně) nebo KÁŤA (distančně: chat/video/telefon/SMS) nebo HANKA + KÁŤA (kombinované)
 
 Pravidla pro výběr vedoucí:
 - Trauma, krize, emocionální témata, regresivní práce → VEDE: HANKA (osobně)
 - Kognitivní práce, check-in, úkoly, edukace, monitoring → VEDE: KÁŤA (distančně: chat)
-- Pokud obojí, navrhni obě varianty s doporučením`;
+- Pokud obojí, uveď: **VEDE:** HANKA + KÁŤA (kombinované)
+  a vygeneruj sekci:
+  ## 🤝 Předávací zpráva Hanka → Káťa
+  **HANKA vede (osobně, ___ min):** [co konkrétně udělat] [na co si dát pozor]
+  **Předat Káťe:** [klíčové body ze sezení] [emoční stav části na konci]
+  **KÁŤA navazuje (distančně – chat/video/telefon, ___ min):** [konkrétní otázky k položení] [úkoly k zadání]`;
 
     const systemPrompt = stabilizationMode
       ? `Jsi Karel, vedoucí DID terapeutického týmu. Žádná část nebyla aktivní 48 hodin.
