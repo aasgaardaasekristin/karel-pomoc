@@ -1197,32 +1197,44 @@ const parseAnalysisJson = (text: string): Record<string, any> | null => {
   return null;
 };
 
+const tryParseJson = (text: string): any => {
+  try {
+    const p = JSON.parse(text);
+    return typeof p === "string" ? JSON.parse(p) : p;
+  } catch {
+    return null;
+  }
+};
+
 const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
   if (!analysis) return null;
 
-  let parsed: any = null;
+  const stripped = analysis
+    .replace(/^```(?:json)?\s*\n?/, "")
+    .replace(/\n?```\s*$/, "")
+    .trim();
 
-  try {
-    parsed = JSON.parse(analysis);
-    if (typeof parsed === "string") {
-      parsed = JSON.parse(parsed);
+  let parsed: any =
+    tryParseJson(analysis) ??
+    tryParseJson(stripped);
+
+  // If JSON is malformed (e.g. unescaped quotes), try to extract summary via regex
+  if (!parsed || typeof parsed !== "object") {
+    const summaryMatch = stripped.match(/"summary"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"(?:analysis|diagnosticHypothesis|therapeuticRecommendations|nextSessionFocus|questionnaire|clientTasks)")/);
+    if (summaryMatch) {
+      const rawSummary = summaryMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+      return (
+        <div className="prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown>{rawSummary}</ReactMarkdown>
+        </div>
+      );
     }
-  } catch {
-    try {
-      const cleaned = analysis
-        .replace(/^```(?:json)?\s*\n?/, "")
-        .replace(/\n?```\s*$/, "")
-        .trim();
-      parsed = JSON.parse(cleaned);
-      if (typeof parsed === "string") {
-        parsed = JSON.parse(parsed);
-      }
-    } catch {
-      return <ReactMarkdown>{analysis}</ReactMarkdown>;
-    }
+    return (
+      <div className="prose prose-sm max-w-none dark:prose-invert">
+        <ReactMarkdown>{stripped}</ReactMarkdown>
+      </div>
+    );
   }
-
-  if (!parsed || typeof parsed !== "object") return <ReactMarkdown>{analysis}</ReactMarkdown>;
 
   const record =
     parsed.sessionRecord && typeof parsed.sessionRecord === "object"
