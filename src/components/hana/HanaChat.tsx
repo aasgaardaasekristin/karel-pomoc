@@ -121,12 +121,13 @@ const HanaChatInner = () => {
 
   // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
+    setLocalMode(hanaStorageKey);
     const saved = localStorage.getItem(hanaStorageKey);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [hanaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, [hanaStorageKey]);
 
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {

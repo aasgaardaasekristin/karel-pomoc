@@ -15,7 +15,7 @@ const THEME_STORAGE_KEY = "theme_hub";
 
 const Hub = () => {
   const navigate = useNavigate();
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [authChecked, setAuthChecked] = useState(false);
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pin, setPin] = useState("");

@@ -99,7 +99,7 @@ const Kartoteka = () => {
   const navigate = useNavigate();
   const { createSession, updateSessionPlan, setActiveSession, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [sessions, setSessions] = useState<ClientSession[]>([]);
@@ -123,12 +123,13 @@ const Kartoteka = () => {
 
   // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
+    setLocalMode(kartotekaStorageKey);
     const saved = localStorage.getItem(kartotekaStorageKey);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [kartotekaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, [kartotekaStorageKey]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);

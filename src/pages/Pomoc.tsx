@@ -9,15 +9,16 @@ import CalmChat from "@/components/calm/CalmChat";
 const THEME_STORAGE_KEY = "theme_pomoc";
 
 const Pomoc = () => {
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
 
   useEffect(() => {
+    setLocalMode(THEME_STORAGE_KEY);
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, []);
 
   const [started, setStarted] = useState(false);
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
