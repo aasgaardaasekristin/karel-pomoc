@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Users, Heart, LogOut, Leaf, ArrowLeft, KeyRound, Search } from "lucide-react";
@@ -12,12 +13,14 @@ const HANA_PIN_KEY = "karel_hana_pin_verified";
 
 const Hub = () => {
   const navigate = useNavigate();
+  const { setContextKey } = useTheme();
   const [authChecked, setAuthChecked] = useState(false);
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
 
   useEffect(() => {
+    setContextKey("global");
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });

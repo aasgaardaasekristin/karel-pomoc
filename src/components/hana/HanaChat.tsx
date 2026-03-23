@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import hanaWelcomeImg from "@/assets/hana-welcome.png";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,6 +37,7 @@ const handleApiError = async (response: Response) => {
 };
 
 const HanaChat = () => {
+  const { setContextKey } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
@@ -112,6 +114,20 @@ const HanaChat = () => {
     lastSavedRef.current = JSON.stringify(welcomeMessages);
     return { id: newConv.id, welcomeMessages };
   }, []);
+
+  // Set theme context for Hana mode
+  useEffect(() => {
+    setContextKey("hana");
+  }, [setContextKey]);
+
+  // Update theme context when switching threads
+  useEffect(() => {
+    if (conversationId) {
+      setContextKey(`hana_thread_${conversationId}`);
+    } else {
+      setContextKey("hana");
+    }
+  }, [conversationId, setContextKey]);
 
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {

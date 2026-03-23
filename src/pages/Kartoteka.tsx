@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
@@ -98,6 +99,7 @@ const Kartoteka = () => {
   const navigate = useNavigate();
   const { createSession, updateSessionPlan, setActiveSession, sessions: activeSessions } = useActiveSessions();
   const { setMainMode } = useChatContext();
+  const { setContextKey } = useTheme();
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [sessions, setSessions] = useState<ClientSession[]>([]);
@@ -116,6 +118,15 @@ const Kartoteka = () => {
   const [clientAnalyses, setClientAnalyses] = useState<any[]>([]);
   const [sessionMaterials, setSessionMaterials] = useState<any[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Set theme context per selected client
+  useEffect(() => {
+    if (selectedClient) {
+      setContextKey(`kartoteka_client_${selectedClient.id}`);
+    } else {
+      setContextKey("global");
+    }
+  }, [selectedClient?.id, setContextKey]);
+
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     if (value === "assistance" && selectedClient) {

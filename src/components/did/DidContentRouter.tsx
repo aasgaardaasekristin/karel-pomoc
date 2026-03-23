@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,7 @@ export interface DidContentRouterProps {
 }
 
 const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
+  const { setContextKey } = useTheme();
   const {
     didFlowState, setDidFlowState, didSubMode, setDidSubMode,
     activeThread, setActiveThread, messages, setMessages,
@@ -156,6 +158,19 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
     navigate, meetingIdFromUrl, setMeetingIdFromUrl,
     meetingTherapist, setMeetingTherapist, mode, setMode,
   } = props;
+
+  // Set theme context based on DID sub-mode and active thread
+  useEffect(() => {
+    if (didSubMode === "mamka" || didSubMode === "kata") {
+      setContextKey("did_katerina");
+    } else if (didSubMode === "cast" && activeThread) {
+      setContextKey(`did_kids_${activeThread.id}`);
+    } else if (didSubMode === "cast") {
+      setContextKey("did_katerina");
+    } else {
+      setContextKey("did_katerina");
+    }
+  }, [didSubMode, activeThread?.id, setContextKey]);
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {

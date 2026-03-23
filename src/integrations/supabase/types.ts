@@ -1784,6 +1784,7 @@ export type Database = {
           border_radius: string
           chat_bubble_style: string
           compact_mode: boolean
+          context_key: string
           created_at: string
           dark_mode: boolean
           font_color: string
@@ -1803,6 +1804,7 @@ export type Database = {
           border_radius?: string
           chat_bubble_style?: string
           compact_mode?: boolean
+          context_key?: string
           created_at?: string
           dark_mode?: boolean
           font_color?: string
@@ -1822,6 +1824,7 @@ export type Database = {
           border_radius?: string
           chat_bubble_style?: string
           compact_mode?: boolean
+          context_key?: string
           created_at?: string
           dark_mode?: boolean
           font_color?: string
