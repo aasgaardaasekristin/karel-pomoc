@@ -6,7 +6,7 @@ import { X, Loader2, FileCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 const AUDIO_ACCEPT = ".mp3,.mp4,.m4a,.wav,.ogg,.webm,.aac";
 const IMAGE_ACCEPT = ".jpg,.jpeg,.png,.heic,.webp";
