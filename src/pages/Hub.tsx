@@ -21,7 +21,7 @@ const Hub = () => {
   const [pinError, setPinError] = useState(false);
 
   useEffect(() => {
-    setContextKey("global");
+    setContextKey("hub");
     const checkAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });

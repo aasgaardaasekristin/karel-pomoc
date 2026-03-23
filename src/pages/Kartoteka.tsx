@@ -123,7 +123,7 @@ const Kartoteka = () => {
     if (selectedClient) {
       setContextKey(`kartoteka_client_${selectedClient.id}`);
     } else {
-      setContextKey("global");
+      setContextKey("kartoteka");
     }
   }, [selectedClient?.id, setContextKey]);
 

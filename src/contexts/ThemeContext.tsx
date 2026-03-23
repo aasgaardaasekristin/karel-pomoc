@@ -283,27 +283,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       const parsed = dbRowToPrefs(data, contextKey);
       contextCache.current.set(contextKey, parsed);
       setPrefs(parsed);
-    } else if (contextKey !== "global") {
-      // Fallback: load global prefs as base
-      const globalCached = contextCache.current.get("global");
-      if (globalCached) {
-        setPrefs(globalCached);
-      } else {
-        const { data: globalData } = await supabase
-          .from("user_theme_preferences")
-          .select("*")
-          .eq("context_key", "global")
-          .maybeSingle();
-
-        if (globalData) {
-          const globalPrefs = dbRowToPrefs(globalData, "global");
-          contextCache.current.set("global", globalPrefs);
-          setPrefs(globalPrefs);
-        } else {
-          setPrefs({ ...DEFAULT_PREFS, persona: contextKey });
-        }
-      }
     } else {
+      // No saved prefs for this context → use app defaults (not global)
       setPrefs({ ...DEFAULT_PREFS, persona: contextKey });
     }
 

@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Leaf } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
 import CalmChat from "@/components/calm/CalmChat";
 
 const CalmMode = () => {
+  const { setContextKey } = useTheme();
+  useEffect(() => { setContextKey("zklidneni"); }, [setContextKey]);
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
   const navigate = useNavigate();
 

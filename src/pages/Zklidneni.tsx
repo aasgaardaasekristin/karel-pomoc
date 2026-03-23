@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Leaf, Mail, Loader2, CheckCircle, AlertCircle } from "lucide-react";
@@ -10,6 +11,8 @@ import CalmChat from "@/components/calm/CalmChat";
 type Step = "email" | "sent" | "verifying" | "verified" | "error";
 
 const Zklidneni = () => {
+  const { setContextKey } = useTheme();
+  useEffect(() => { setContextKey("zklidneni"); }, [setContextKey]);
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
 

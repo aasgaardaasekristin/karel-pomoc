@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Leaf, ArrowLeft, ShieldCheck } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
 import CalmChat from "@/components/calm/CalmChat";
 
 const Pomoc = () => {
+  const { setContextKey } = useTheme();
+  useEffect(() => { setContextKey("pomoc"); }, [setContextKey]);
   const [started, setStarted] = useState(false);
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
 
