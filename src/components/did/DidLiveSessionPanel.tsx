@@ -61,6 +61,8 @@ const DidLiveSessionPanel = ({ partName, therapistName, contextBrief, onEnd, onB
   const [pendingReport, setPendingReport] = useState("");
   const [pendingSavedSessionId, setPendingSavedSessionId] = useState<string | null>(null);
   const [isSavingReflection, setIsSavingReflection] = useState(false);
+  const [sessionCompleted, setSessionCompleted] = useState(false);
+  const [completedReport, setCompletedReport] = useState("");
 
   const EMOTION_OPTIONS = [
     "klidná", "nejistá", "frustrovaná", "dojatá",
