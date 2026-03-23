@@ -1,47 +1,25 @@
 
 
-# Urychlení živé asistence — snížení latence
+# Oprava: Audio analýza v živé asistenci — přehledný, bold výstup
 
-## Analýza problému
+## Problém
 
-Aktuální flow posílá při **každé zprávě**:
-1. **Obrovský system prompt** (~4000+ tokenů) — plný `basePrompt` (124 řádků osobnosti Karla) + `supervisionPrompt` — většina je irelevantní pro live asistenci (tréninkové simulace, kvízy, SOAP zápis...)
-2. **Celou historii zpráv** bez limitu — po 10 výměnách to je tisíce tokenů
-3. **buildContext()** — plán sezení posílaný jako `didInitialContext` pokaždé znovu
+Když terapeut pošle audio nahrávku v režimu Asistence, `karel-audio-analysis` nemá prompt pro mode `"live-session"` — spadne na fallback `debrief`, který generuje dlouhý akademický text bez zvýraznění. Terapeut potřebuje okamžitě vidět **co říct klientovi** (bold), ne číst 3 odstavce analýzy.
 
-Výsledek: AI gateway musí zpracovat obrovský input → pomalý time-to-first-token (15-30s).
+## Řešení
 
-## Řešení (3 optimalizace)
+### 1. `karel-audio-analysis/index.ts` — nový `live-session` prompt
 
-### 1. Dedikovaný lehký system prompt pro live asistenci
+Přidat do `MODE_PROMPTS` klíč `"live-session"` s kompaktním promptem:
+- Formát: **Co říct klientovi** (bold, 1-2 věty) → Stručný postřeh z hlasu (2-3 body) → Další krok
+- Max 150 slov, žádné akademické rozbory
+- Terapeuta oslovovat "Hani"
+- Vše bold co je akční instrukce
 
-Místo posílání celého `supervisionPrompt` (basePrompt + supervize + trénink + simulace) vytvořit nový mode `"live-session"` s kompaktním promptem (~800 tokenů místo ~4000):
-- Pouze: kdo jsi, jak odpovídat v live, formátování
-- Žádné: archetypy, tréninkové simulace, kvízy, SOAP, vztah k mamce
+### 2. Žádné změny v LiveSessionPanel
 
-**Soubor:** `supabase/functions/karel-chat/systemPrompts.ts` — přidat `liveSession` prompt
-**Soubor:** `supabase/functions/karel-chat/index.ts` — rozšířit fast-path na `mode === "live-session"`
+Klient už posílá `mode: "live-session"` (řádek 324) — stačí přidat odpovídající prompt na straně edge funkce.
 
-### 2. Omezit historii zpráv na posledních 16
-
-V `LiveSessionPanel.tsx` při volání `requestLiveReply` oříznout `messagesForAI` na posledních 16 zpráv. Starší kontext je zachycen v plánu sezení.
-
-**Soubor:** `src/components/report/LiveSessionPanel.tsx`
-
-### 3. Použít rychlejší model pro live
-
-Přepnout z `gemini-3-flash-preview` na `google/gemini-2.5-flash` pro live asistenci — nižší latence, stále kvalitní výstup pro krátké odpovědi.
-
-**Soubor:** `supabase/functions/karel-chat/index.ts` — v live-session fast-path použít `gemini-2.5-flash`
-
-## Očekávaný efekt
-
-- Snížení input tokenů o ~70% → time-to-first-token z 15-30s na 3-8s
-- Rychlejší model → nižší latence generování
-- Zachování kvality — live prompt je cílený na konkrétní úkol
-
-## Soubory ke změně
-- `supabase/functions/karel-chat/systemPrompts.ts` — nový `liveSession` prompt
-- `supabase/functions/karel-chat/index.ts` — nový mode `"live-session"` ve fast-path, rychlejší model
-- `src/components/report/LiveSessionPanel.tsx` — posílat `mode: "live-session"`, oříznout historii na 16 zpráv
+## Soubory
+- `supabase/functions/karel-audio-analysis/index.ts` — přidat `"live-session"` prompt do `MODE_PROMPTS`
 
