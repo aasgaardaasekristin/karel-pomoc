@@ -324,6 +324,31 @@ const ClientSessionPrepPanel = ({
               Vygenerovat
             </Button>
           </div>
+
+          {/* Saved preparations */}
+          {savedPreps.length > 0 && (
+            <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+              <p className="text-sm font-semibold">Uložené přípravy</p>
+              <div className="space-y-2">
+                {savedPreps.map((prep) => (
+                  <div key={prep.id} className="flex items-center gap-2 p-2.5 bg-secondary/30 rounded-lg">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        Příprava na sezení č. {prep.session_number ?? "?"} – {new Date(prep.created_at).toLocaleDateString("cs-CZ")}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => handleLoadPrep(prep)}>
+                      <RotateCcw className="w-3 h-3" />
+                      Použít
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => handleDeletePrep(prep.id)}>
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
     );

@@ -327,6 +327,35 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
       const analysis = data.analysis || data.response || "";
       if (!analysis) throw new Error("Prázdná analýza");
 
+      // Upload to storage + persist metadata
+      try {
+        const timestamp = Date.now();
+        const storagePath = `${clientId}/${timestamp}_${file.name}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("session-materials")
+          .upload(storagePath, file, { contentType: file.type });
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage
+            .from("session-materials")
+            .getPublicUrl(storagePath);
+          const materialTypeMap: Record<string, string> = {
+            "Kresba klienta": "drawing",
+            "Písmo / rukopis": "handwriting",
+            "Fotografie": "photo",
+            "Dokument": "document",
+          };
+          await supabase.from("session_materials" as any).insert({
+            client_id: clientId,
+            material_type: materialTypeMap[imageAnalysisType] || "photo",
+            label: `${imageAnalysisType} – ${new Date().toLocaleDateString("cs-CZ")}`,
+            storage_url: urlData.publicUrl,
+            analysis,
+          });
+        }
+      } catch (e) {
+        console.warn("Material persistence failed:", e);
+      }
+
       const updatedMsgs: Message[] = [
         ...messages,
         { role: "user", content: `🖼️ *[${imageAnalysisType}: ${file.name}]*\n\n**Analýza obrázku:**\n${analysis}` },
