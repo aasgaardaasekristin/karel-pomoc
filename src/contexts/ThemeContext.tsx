@@ -306,8 +306,35 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const setCurrentPersona = setContextKey;
 
   useEffect(() => {
-    void loadPrefsForContext(currentContextKey);
-  }, [currentContextKey, loadPrefsForContext]);
+    if (localMode !== null) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const origSetPrefs = setPrefs;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled || !user) { setLoading(false); return; }
+      setUserId(user.id);
+      const cached = contextCache.current.get(currentContextKey);
+      if (cached) { if (!cancelled) { origSetPrefs(cached); setLoading(false); } return; }
+      const { data } = await supabase
+        .from("user_theme_preferences")
+        .select("*")
+        .eq("context_key", currentContextKey)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        const parsed = dbRowToPrefs(data, currentContextKey);
+        contextCache.current.set(currentContextKey, parsed);
+        origSetPrefs(parsed);
+      } else {
+        origSetPrefs({ ...DEFAULT_PREFS, persona: currentContextKey });
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [currentContextKey, localMode]);
 
   useEffect(() => {
     const root = document.documentElement;
