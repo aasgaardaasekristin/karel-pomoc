@@ -4,6 +4,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { handleDriveError } from "@/lib/driveErrorHandler";
+import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import { useChatContext } from "@/contexts/ChatContext";
 import { Button } from "@/components/ui/button";
