@@ -553,42 +553,51 @@ const Kartoteka = () => {
       <ScrollArea className="flex-1">
         <div className="max-w-4xl mx-auto px-3 sm:px-4 py-4">
           <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
-            <div className="overflow-x-auto -mx-3 px-3 flex items-center gap-2">
-              <ThemeQuickButton />
-              <TabsList className="inline-flex w-auto min-w-0 flex-1 sm:grid sm:grid-cols-8 h-auto flex-nowrap">
-                <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  <User className="w-3.5 h-3.5 hidden sm:block" />
-                  Karta
-                </TabsTrigger>
-                <TabsTrigger value="intake" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  Záznam
-                </TabsTrigger>
-                <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  <FileText className="w-3.5 h-3.5 hidden sm:block" />
-                  Sezení
-                  {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
-                </TabsTrigger>
-                <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
-                  Úkoly
-                  {tasks.filter(t => t.status !== "done").length > 0 && (
-                    <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="analysis" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  Analýza
-                </TabsTrigger>
-                <TabsTrigger value="prep" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  Připravit sezení
-                </TabsTrigger>
-                <TabsTrigger value="assistance" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  Asistence
-                </TabsTrigger>
-                <TabsTrigger value="discussion" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
-                  <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
-                  Rozhovor
-                </TabsTrigger>
-              </TabsList>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <ThemeQuickButton />
+                <TabsList className="inline-flex w-auto flex-1 h-auto flex-nowrap sm:grid sm:grid-cols-4">
+                  <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                    <User className="w-3.5 h-3.5 hidden sm:block" />
+                    Karta
+                  </TabsTrigger>
+                  <TabsTrigger value="intake" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                    Záznam
+                  </TabsTrigger>
+                  <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                    <FileText className="w-3.5 h-3.5 hidden sm:block" />
+                    Sezení
+                    {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                    <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
+                    Úkoly
+                    {tasks.filter(t => t.status !== "done").length > 0 && (
+                      <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+              <div className="overflow-x-auto -mx-3 px-3 scrollbar-hide">
+                <div className="flex items-center gap-1.5 min-w-max">
+                  <span className="text-[10px] text-muted-foreground/70 shrink-0">Pracovní:</span>
+                  <TabsList className="inline-flex w-auto h-auto flex-nowrap bg-muted/50">
+                    <TabsTrigger value="analysis" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                      Analýza
+                    </TabsTrigger>
+                    <TabsTrigger value="prep" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                      Připravit sezení
+                    </TabsTrigger>
+                    <TabsTrigger value="assistance" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                      Asistence
+                    </TabsTrigger>
+                    <TabsTrigger value="discussion" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                      <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
+                      Rozhovor
+                    </TabsTrigger>
+                  </TabsList>
+                </div>
+              </div>
             </div>
 
             {/* ─── KARTA ─── */}
