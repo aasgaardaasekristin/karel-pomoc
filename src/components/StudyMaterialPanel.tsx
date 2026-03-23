@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { X, Copy, Check, Mail, Loader2 } from "lucide-react";
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import { toast } from "sonner";
 import { getAuthHeaders } from "@/lib/auth";
 
@@ -74,13 +74,7 @@ const StudyMaterialPanel = ({ material, onClose }: Props) => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 min-h-0">
-          <div className="prose prose-sm max-w-none text-foreground
-            prose-headings:text-foreground prose-h1:text-lg prose-h2:text-base prose-h3:text-sm
-            prose-strong:text-foreground prose-em:text-muted-foreground
-            prose-ul:my-2 prose-li:my-0.5
-            prose-hr:border-border">
-            <ReactMarkdown>{material}</ReactMarkdown>
-          </div>
+          <RichMarkdown>{material}</RichMarkdown>
         </div>
       </div>
     </div>

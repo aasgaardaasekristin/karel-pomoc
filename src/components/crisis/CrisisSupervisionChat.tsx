@@ -293,9 +293,7 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
 
       {summary !== null && (
         <div className="p-4 rounded-lg border border-primary/20 bg-primary/5">
-          <div className="prose prose-sm max-w-none text-foreground">
-            <ReactMarkdown>{summary || "Generuji shrnutí..."}</ReactMarkdown>
-          </div>
+          <RichMarkdown>{summary || "Generuji shrnutí..."}</RichMarkdown>
         </div>
       )}
 

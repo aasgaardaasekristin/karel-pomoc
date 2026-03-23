@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import { Copy, Check, Mail, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
@@ -46,19 +46,16 @@ const parseSections = (content: string): { beforeSections: string; sections: Par
     return { beforeSections: content, sections: [] };
   }
 
-  // Everything before the first section marker
   const firstIdx = content.indexOf("<!-- SECTION:");
   const beforeSections = firstIdx > 0 ? content.substring(0, firstIdx).trim() : "";
 
   return { beforeSections, sections };
 };
 
-// Strip HTML comments from display text
 const cleanForDisplay = (text: string): string => {
   return text.replace(/<!-- \/?SECTION:\w+ -->/g, "").trim();
 };
 
-// Strip HTML comments for copying
 const cleanForCopy = (text: string): string => {
   return text.replace(/<!-- \/?SECTION:\w+ -->/g, "").trim();
 };
@@ -168,7 +165,6 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
   const isUser = message.role === "user";
 
   if (isUser) {
-    // Extract images from multimodal content
     const images: string[] = [];
     let textContent = "";
 
@@ -205,34 +201,22 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
     );
   }
 
-  // Parse task suggestions from content
   const { cleanContent: contentWithoutTasks, suggestions: taskSuggestions } = parseTaskSuggestions(message.content);
-
   const { beforeSections, sections } = parseSections(contentWithoutTasks);
 
-  // If no structured sections, use legacy rendering
   if (sections.length === 0) {
     const notebookSection = extractNotebookLMSection(contentWithoutTasks);
     return (
       <div className="flex justify-start">
         <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
-          <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-a:text-primary prose-a:underline prose-a:decoration-primary/50 hover:prose-a:decoration-primary">
-            <ReactMarkdown
-              components={{
-                a: ({ href, children }) => (
-                  <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-                ),
-              }}
-            >{contentWithoutTasks}</ReactMarkdown>
-            {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" />}
-            <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
-          </div>
+          <RichMarkdown>{contentWithoutTasks}</RichMarkdown>
+          {notebookSection && <CopyButton text={notebookSection} label="Kopírovat pro NotebookLM" />}
+          <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
         </div>
       </div>
     );
   }
 
-  // Extract part name from HANDOVER section for email
   const handoverSection = sections.find(s => s.key === "HANDOVER");
   const partNameMatch = handoverSection?.content.match(/S KÝM KAREL MLUVIL:\*?\*?\s*(.+)/);
   const partName = partNameMatch ? partNameMatch[1].trim() : "neznámá část";
@@ -240,46 +224,30 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
   return (
     <div className="flex justify-start">
       <div className="max-w-[92%] sm:max-w-[85%] md:max-w-[75%] chat-message-assistant">
-        <div className="prose prose-sm max-w-none text-foreground prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-a:text-primary prose-a:underline prose-a:decoration-primary/50 hover:prose-a:decoration-primary">
-          {/* Render text before sections (farewell etc.) */}
-          {beforeSections && (
-            <ReactMarkdown
-              components={{
-                a: ({ href, children }) => (
-                  <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-                ),
-              }}
-            >{cleanForDisplay(beforeSections)}</ReactMarkdown>
-          )}
+        {beforeSections && (
+          <RichMarkdown>{cleanForDisplay(beforeSections)}</RichMarkdown>
+        )}
 
-          {/* Render each section with its own copy button */}
-          {sections.map((section) => {
-            const config = SECTION_CONFIG[section.key];
-            if (!config) return null;
+        {sections.map((section) => {
+          const config = SECTION_CONFIG[section.key];
+          if (!config) return null;
 
-            return (
-              <div key={section.key} className="mt-4 p-3 rounded-lg border border-border/50 bg-muted/20">
-                <ReactMarkdown
-                  components={{
-                    a: ({ href, children }) => (
-                      <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-                    ),
-                  }}
-                >{cleanForDisplay(section.content)}</ReactMarkdown>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <CopyButton
-                    text={section.content}
-                    label={`Kopírovat → ${config.target}`}
-                  />
-                  {section.key === "REPORT" && (
-                    <EmailReportButton content={section.content} partName={partName} />
-                  )}
-                </div>
+          return (
+            <div key={section.key} className="mt-4 p-3 rounded-lg border border-border/50 bg-muted/20">
+              <RichMarkdown>{cleanForDisplay(section.content)}</RichMarkdown>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <CopyButton
+                  text={section.content}
+                  label={`Kopírovat → ${config.target}`}
+                />
+                {section.key === "REPORT" && (
+                  <EmailReportButton content={section.content} partName={partName} />
+                )}
               </div>
-            );
-          })}
-          <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
-        </div>
+            </div>
+          );
+        })}
+        <TaskSuggestInline suggestions={taskSuggestions} onTaskAdded={onTaskAdded} />
       </div>
     </div>
   );

@@ -196,9 +196,7 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
                   : "bg-secondary/50 text-foreground"
               }`}>
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none [&>p]:my-1 [&>ul]:my-1 [&>ol]:my-1">
-                    <ReactMarkdown>{msg.content || "…"}</ReactMarkdown>
-                  </div>
+                  <RichMarkdown>{msg.content || "…"}</RichMarkdown>
                 ) : (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 )}

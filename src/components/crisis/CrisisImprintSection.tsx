@@ -48,8 +48,8 @@ const CrisisImprintSection = ({ brief }: { brief: DbCrisisBrief }) => {
 
       {/* Risk overview from AI */}
       {brief.risk_overview && (
-        <div className="p-3 rounded-lg bg-muted/50 border border-border prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown>{brief.risk_overview}</ReactMarkdown>
+        <div className="p-3 rounded-lg bg-muted/50 border border-border">
+          <RichMarkdown>{brief.risk_overview}</RichMarkdown>
         </div>
       )}
 
