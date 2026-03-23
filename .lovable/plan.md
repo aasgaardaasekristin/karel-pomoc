@@ -1,25 +1,27 @@
 
 
-# Tlačítko „Uložit do karty" + mazání analýz
+# Oprava formátu analýz v Kartě
 
-## Problém
-1. Analýza se ukládá automaticky na pozadí — uživatel neví, že se uložila, a nemá kontrolu
-2. V záložce Karta chybí možnost smazat uloženou analýzu
+## Příčina
+Edge funkce `karel-card-analysis` vrací odpověď, kde `clientProfile` obsahuje konverzační text + celý JSON v markdown bloku (````json ... ````). Kód v `CardAnalysisPanel.tsx` pracuje s `result` objektem správně (po parsování v edge funkci), ale při ukládání do DB se celý result serializuje přes `JSON.stringify(result)` — jenže `result.clientProfile` už obsahuje ten surový text s embedded JSONem.
 
-## Řešení
+Výsledek: v Kartotéce `JSON.parse(a.content)` projde, ale `parsed.clientProfile` obsahuje obrovský text se závorkami a JSON bloky. Sekce Diagnostika a Co příště jsou prázdné, protože skutečná data jsou zanořená v tom stringovém poli `clientProfile`.
 
-### 1. `CardAnalysisPanel.tsx` — explicitní tlačítko „Uložit do karty"
-- Odstranit fire-and-forget auto-save z `handleAnalyze` (řádky 99-118)
-- Po vygenerování výsledku zobrazit pod taby tlačítko **„💾 Uložit do karty"**
-- Po kliknutí: insert do `client_analyses`, toast „Analýza uložena do karty", tlačítko se změní na **„✅ Uloženo"** (disabled)
-- Nový state: `savedToCard: boolean` — resetuje se při nové analýze
+## Řešení — dvě opravy
 
-### 2. `Kartoteka.tsx` — tlačítko smazat u každé analýzy
-- V každém accordion itemu (řádek 690-769) přidat do headeru ikonu 🗑 (Trash2)
-- Klik → confirm dialog → `supabase.from("client_analyses").delete().eq("id", a.id)`
-- Po smazání: odebrat z `clientAnalyses` state
+### 1. `Kartoteka.tsx` — robustní parsování + tabový formát
+- Při parsování `a.content` přidat fallback: pokud `parsed.clientProfile` obsahuje ````json```` blok, extrahovat z něj JSON a přeparsovat
+- Nahradit současný accordion obsah (řádky 712-785) za **stejné Tabs** jako v `CardAnalysisPanel.tsx`:
+  - `Profil | Diagnostika | Co příště`
+  - Identický rendering: primární hypotéza s Badge jistoty, diferenciální dg jako Badge, podpůrné důkazy jako bullet list, zaměření, techniky, testy, otázky
+- Zachovat hlavičku accordionu s číslem, datem, počtem sezení a tlačítkem smazat
+
+### 2. `CardAnalysisPanel.tsx` — čistší ukládání
+- V `handleSaveToCard` před `JSON.stringify(result)` ověřit, zda `result.clientProfile` obsahuje embedded JSON blok
+- Pokud ano, extrahovat čistý JSON a uložit ten místo surového textu
+- Tím se zajistí, že nové analýzy se uloží čistě
 
 ## Soubory
-- `src/components/report/CardAnalysisPanel.tsx` — save button místo auto-save
-- `src/pages/Kartoteka.tsx` — delete button u analýz
+- `src/pages/Kartoteka.tsx` — parsování + tabový UI
+- `src/components/report/CardAnalysisPanel.tsx` — sanitizace před uložením
 
