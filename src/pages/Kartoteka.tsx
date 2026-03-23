@@ -72,6 +72,7 @@ const hasUnsyncedChanges = (client: Client): boolean => {
   if (!client.drive_last_synced_at) return true; // ještě nikdy nesyncnuto
   const lastChange = new Date(client.updated_at || client.created_at);
   const lastSync = new Date(client.drive_last_synced_at);
+  if (isNaN(lastChange.getTime()) || isNaN(lastSync.getTime())) return true;
   return lastChange > lastSync;
 };
 
