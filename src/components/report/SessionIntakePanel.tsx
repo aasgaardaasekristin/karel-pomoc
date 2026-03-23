@@ -98,7 +98,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
     return res.json();
   }, []);
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (mediaOnly = false) => {
     setIsProcessing(true);
     startTimeRef.current = Date.now();
     setProgressText("Přijímám vstup...");
@@ -110,19 +110,21 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         therapistName: "Hanka",
       };
 
-      if (inputMode === "audio") {
+      if (mediaOnly) {
+        body.inputType = "text";
+        body.textInput = "Sestav kompletní BIRP+S zápis sezení výhradně na základě přiložených analýz médií. Nevymýšlej žádné detaily které nejsou v analýzách. Pokud něco chybí, uveď to v dotazníku.";
+        body.mediaContext = mediaContext;
+      } else if (inputMode === "audio") {
         const base64 = await recorder.getBase64();
         if (!base64) throw new Error("Žádná nahrávka");
         body.inputType = "audio";
         body.audioBase64 = base64;
+        if (mediaContext) body.mediaContext = mediaContext;
       } else {
         if (!textInput.trim()) { toast.error("Napiš popis sezení"); setIsProcessing(false); return; }
         body.inputType = "text";
         body.textInput = textInput;
-      }
-
-      if (mediaContext) {
-        body.mediaContext = mediaContext;
+        if (mediaContext) body.mediaContext = mediaContext;
       }
 
       originalBodyRef.current = body;
@@ -134,7 +136,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
     } finally {
       setIsProcessing(false);
     }
-  }, [clientId, inputMode, textInput, recorder, callIntake]);
+  }, [clientId, inputMode, textInput, recorder, callIntake, mediaContext]);
 
   const handleRevision = useCallback(async () => {
     if (!revisionNote.trim()) { toast.error("Napiš co chceš změnit"); return; }
