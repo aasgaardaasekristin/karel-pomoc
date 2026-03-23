@@ -436,15 +436,31 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
       </div>
 
       {inputMode === "choose" && (
-        <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 h-20 flex-col gap-2" onClick={() => { setInputMode("audio"); recorder.startRecording(); }}>
-            <Mic className="w-6 h-6" />
-            <span className="text-xs">Namluvit</span>
-          </Button>
-          <Button variant="outline" className="flex-1 h-20 flex-col gap-2" onClick={() => setInputMode("text")}>
-            <Keyboard className="w-6 h-6" />
-            <span className="text-xs">Napsat</span>
-          </Button>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => { setInputMode("audio"); recorder.startRecording(); }}>
+              <Mic className="w-6 h-6" />
+              <span className="text-xs">Namluvit</span>
+            </Button>
+            <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => setInputMode("text")}>
+              <Keyboard className="w-6 h-6" />
+              <span className="text-xs">Napsat</span>
+            </Button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => mediaUploadRef.current?.triggerAudio()}>
+              <FileAudio className="w-6 h-6" />
+              <span className="text-xs text-center leading-tight">Audio nahrávka</span>
+            </Button>
+            <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => mediaUploadRef.current?.triggerImage()}>
+              <Image className="w-6 h-6" />
+              <span className="text-xs text-center leading-tight">Obrázky ze sezení</span>
+            </Button>
+            <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => mediaUploadRef.current?.triggerHandwriting()}>
+              <PenTool className="w-6 h-6" />
+              <span className="text-xs text-center leading-tight">Rukopis / deník</span>
+            </Button>
+          </div>
         </div>
       )}
 
@@ -471,7 +487,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             <div className="flex items-center gap-3 bg-destructive/5 rounded-lg p-3">
               <div className="w-3 h-3 rounded-full bg-destructive animate-pulse" />
               <span className="text-sm font-medium tabular-nums">{formatDuration(recorder.duration)}</span>
-              <Progress value={Math.min((recorder.duration / recorder.maxDuration) * 100, 100)} className="h-2 flex-1" />
+              <Progress value={Math.min((recorder.duration / 900) * 100, 100)} className="h-2 flex-1" />
               <Button variant="ghost" size="sm" onClick={recorder.pauseRecording} className="h-8 w-8 p-0">
                 <Pause className="w-4 h-4" />
               </Button>
@@ -513,15 +529,13 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         </div>
       )}
 
-      {/* Media upload section — always visible */}
-      <div className="border-t border-border pt-4">
-        <p className="text-sm text-muted-foreground mb-3">Nahrát média k analýze (volitelné)</p>
-        <SessionMediaUpload
-          clientId={clientId}
-          sessionDate={new Date().toISOString().split("T")[0]}
-          onMediaContext={setMediaContext}
-        />
-      </div>
+      {/* SessionMediaUpload — hidden inputs + item list */}
+      <SessionMediaUpload
+        ref={mediaUploadRef}
+        clientId={clientId}
+        sessionDate={new Date().toISOString().split("T")[0]}
+        onMediaContext={setMediaContext}
+      />
 
       {mediaContext && (
         <div className="p-2 bg-muted/30 rounded-lg">
