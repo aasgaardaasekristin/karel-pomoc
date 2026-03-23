@@ -23,7 +23,7 @@ serve(async (req) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error("Not authenticated");
 
-    const { clientId, inputType, textInput, audioBase64, sessionDate, therapistName, revisionRequest } = await req.json();
+    const { clientId, inputType, textInput, audioBase64, sessionDate, therapistName, revisionRequest, mediaContext } = await req.json();
     if (!clientId) throw new Error("clientId required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -77,6 +77,11 @@ serve(async (req) => {
     // Append revision instructions if present
     if (revisionRequest) {
       userContent.push({ type: "text", text: `\n\nINSTRUKCE K ÚPRAVĚ: ${revisionRequest}` });
+    }
+
+    // Append media analyses if present
+    if (mediaContext) {
+      userContent.push({ type: "text", text: `\n\n📎 ANALÝZY MÉDIÍ ZE SEZENÍ:\n${mediaContext}` });
     }
 
     const systemPrompt = `Jsi Karel, klinický supervizor. Terapeutka ti posílá popis toho, co proběhlo na sezení s klientem. Tvým úkolem je vytvořit strukturovaný zápis ze sezení.

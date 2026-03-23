@@ -1753,6 +1753,42 @@ export type Database = {
           },
         ]
       }
+      session_media: {
+        Row: {
+          ai_analysis: Json | null
+          client_id: string
+          created_at: string | null
+          id: string
+          media_type: string
+          original_filename: string | null
+          session_date: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          client_id: string
+          created_at?: string | null
+          id?: string
+          media_type: string
+          original_filename?: string | null
+          session_date?: string
+          storage_path: string
+          user_id?: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          client_id?: string
+          created_at?: string | null
+          id?: string
+          media_type?: string
+          original_filename?: string | null
+          session_date?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       session_preparations: {
         Row: {
           approved_at: string | null

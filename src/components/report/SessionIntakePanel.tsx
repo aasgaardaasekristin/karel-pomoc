@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2 } from "lucide-react";
+import { Mic, Keyboard, Send, Square, Pause, Play, RefreshCw, Save, Loader2, CheckCircle, RotateCcw, ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
 import { blobToBase64 } from "@/lib/driveUtils";
@@ -12,6 +12,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
 import ReactMarkdown from "react-markdown";
+import SessionMediaUpload from "./SessionMediaUpload";
 
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
@@ -50,6 +51,8 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
   const [revisionNote, setRevisionNote] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isRevising, setIsRevising] = useState(false);
+  const [sessionCompleted, setSessionCompleted] = useState(false);
+  const [mediaContext, setMediaContext] = useState("");
   const recorder = useSessionAudioRecorder();
   const startTimeRef = useRef<number>(0);
   const originalBodyRef = useRef<any>(null);
@@ -115,6 +118,10 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         if (!textInput.trim()) { toast.error("Napiš popis sezení"); setIsProcessing(false); return; }
         body.inputType = "text";
         body.textInput = textInput;
+      }
+
+      if (mediaContext) {
+        body.mediaContext = mediaContext;
       }
 
       originalBodyRef.current = body;
@@ -229,7 +236,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
         console.warn("Drive backup failed:", e);
       }
 
-      onComplete();
+      setSessionCompleted(true);
     } catch (err: any) {
       console.error("Save error:", err);
       toast.error("Chyba při ukládání");
@@ -237,6 +244,35 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
       setIsSaving(false);
     }
   }, [result, clientId, onComplete]);
+
+  // ── Session completed state ──
+  if (sessionCompleted) {
+    const handleNewSession = () => {
+      setSessionCompleted(false);
+      setResult(null);
+      setTextInput("");
+      setMediaContext("");
+      setInputMode("choose");
+      setRevisionNote("");
+    };
+    return (
+      <div className="bg-card rounded-xl border border-border p-6 space-y-4 text-center">
+        <CheckCircle className="w-12 h-12 text-primary mx-auto" />
+        <h3 className="text-lg font-semibold text-foreground">Záznam uložen a analyzován</h3>
+        <p className="text-sm text-muted-foreground">
+          Sezení č. {result?.sessionNumber} pro {clientName} bylo úspěšně zpracováno.
+        </p>
+        <div className="flex gap-3 justify-center pt-2">
+          <Button variant="outline" onClick={handleNewSession} className="gap-1.5">
+            <RotateCcw className="w-4 h-4" /> Zaznamenat nové sezení
+          </Button>
+          <Button onClick={onComplete} className="gap-1.5">
+            <ArrowLeft className="w-4 h-4" /> Zpět na přehled klienta
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Processing state ──
   if (isProcessing) {
@@ -473,6 +509,21 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
               <Button variant="ghost" size="sm" onClick={() => setInputMode("choose")}>Zpět</Button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Media upload section — visible in text & audio modes */}
+      {inputMode !== "choose" && (
+        <SessionMediaUpload
+          clientId={clientId}
+          sessionDate={new Date().toISOString().split("T")[0]}
+          onMediaContext={setMediaContext}
+        />
+      )}
+
+      {mediaContext && (
+        <div className="p-2 bg-muted/30 rounded-lg">
+          <p className="text-xs text-muted-foreground">✅ Média přidána do kontextu záznamu</p>
         </div>
       )}
     </div>
