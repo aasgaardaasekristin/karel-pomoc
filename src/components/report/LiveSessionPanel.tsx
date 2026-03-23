@@ -12,6 +12,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { generateSessionReportBlob } from "@/lib/sessionPdfExport";
 import { blobToBase64 } from "@/lib/driveUtils";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import { toast } from "sonner";
 import { useActiveSessions } from "@/contexts/ActiveSessionsContext";
 import ChatMessage from "@/components/ChatMessage";
