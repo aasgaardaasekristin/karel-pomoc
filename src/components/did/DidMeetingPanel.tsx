@@ -382,8 +382,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
             <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 mb-2">
               <CheckCircle2 className="w-4 h-4 text-green-600" /> Výstup porady
             </h4>
-            <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none">
-              <ReactMarkdown>{activeMeeting.outcome_summary}</ReactMarkdown>
+            <div className="text-sm text-foreground/90">
+              <RichMarkdown>{activeMeeting.outcome_summary}</RichMarkdown>
             </div>
             {Array.isArray(activeMeeting.outcome_tasks) && activeMeeting.outcome_tasks.length > 0 && (
               <div className="mt-3 pt-3 border-t border-green-500/20">

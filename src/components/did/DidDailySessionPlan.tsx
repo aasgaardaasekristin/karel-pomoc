@@ -801,10 +801,9 @@ const PlanCard = ({
                     <Brain className="w-2.5 h-2.5" />
                     AI analýza sezení
                   </span>
-                  <div
-                    className="text-[10px] leading-4 text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(prevSession.ai_analysis) }}
-                  />
+                  <div className="text-[10px] leading-4 text-muted-foreground">
+                    <RichMarkdown compact>{prevSession.ai_analysis}</RichMarkdown>
+                  </div>
                 </div>
               )}
 

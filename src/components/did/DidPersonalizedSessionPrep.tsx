@@ -285,18 +285,8 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                 ← Začít znovu
               </Button>
             </div>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed border rounded-lg p-3 bg-card/50">
-              <ReactMarkdown
-                components={{
-                  h2: ({ children }) => <h2 className="text-sm font-semibold text-foreground mt-3 mb-1.5 first:mt-0">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-xs font-medium text-foreground mt-2 mb-1">{children}</h3>,
-                  p: ({ children }) => <p className="text-muted-foreground mb-2 leading-relaxed">{children}</p>,
-                  strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
-                  li: ({ children }) => <li className="text-muted-foreground ml-3">{children}</li>,
-                }}
-              >
-                {plan}
-              </ReactMarkdown>
+            <div className="border rounded-lg p-3 bg-card/50">
+              <RichMarkdown compact>{plan}</RichMarkdown>
             </div>
             <div className="border rounded-lg p-3 space-y-2">
               <p className="text-xs font-medium text-foreground flex items-center gap-1.5">

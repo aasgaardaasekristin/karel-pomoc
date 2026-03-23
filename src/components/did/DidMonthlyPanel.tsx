@@ -168,17 +168,8 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
 
             {isExpanded && cycle.report_summary && (
               <div className="px-3 pb-3 border-t border-border/50">
-                <div className="mt-2 prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed">
-                  <ReactMarkdown
-                    components={{
-                      h2: ({ children }) => <h2 className="text-sm font-semibold text-foreground mt-3 mb-1 first:mt-1">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-xs font-medium text-foreground mt-2 mb-0.5">{children}</h3>,
-                      p: ({ children }) => <p className="text-muted-foreground mb-1.5 leading-relaxed">{children}</p>,
-                      strong: ({ children }) => <strong className="text-foreground font-semibold">{children}</strong>,
-                    }}
-                  >
-                    {cycle.report_summary.slice(0, 5000)}
-                  </ReactMarkdown>
+                <div className="mt-2">
+                  <RichMarkdown compact>{cycle.report_summary.slice(0, 5000)}</RichMarkdown>
                 </div>
                 {cards.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-border/30">

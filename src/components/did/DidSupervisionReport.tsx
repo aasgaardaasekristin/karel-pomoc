@@ -218,15 +218,7 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
           {expanded && (
             <ScrollArea className="max-h-[500px]">
               <div className="rounded-md border border-border/60 bg-background/40 p-3">
-                <div className="prose prose-sm max-w-none text-[11px] leading-5 text-foreground
-                  prose-headings:text-foreground prose-headings:font-semibold
-                  prose-h1:text-sm prose-h1:mb-2 prose-h1:mt-0
-                  prose-h2:text-xs prose-h2:mb-1.5 prose-h2:mt-3
-                  prose-p:mb-1.5 prose-p:mt-0
-                  prose-li:my-0.5
-                  prose-strong:text-foreground">
-                  <ReactMarkdown>{report}</ReactMarkdown>
-                </div>
+                <RichMarkdown compact>{report}</RichMarkdown>
               </div>
             </ScrollArea>
           )}
