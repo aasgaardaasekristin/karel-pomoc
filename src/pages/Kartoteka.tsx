@@ -61,8 +61,18 @@ type Client = {
   therapy_plan: string;
   drive_doc_id: string | null;
   drive_doc_url: string | null;
+  drive_last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// Vrací true, pokud má klient v DB novější změny než poslední Drive sync.
+// Používá updated_at/created_at z clients a drive_last_synced_at z posledního karel-gdocs-sync.
+const hasUnsyncedChanges = (client: Client): boolean => {
+  if (!client.drive_last_synced_at) return true; // ještě nikdy nesyncnuto
+  const lastChange = new Date(client.updated_at || client.created_at);
+  const lastSync = new Date(client.drive_last_synced_at);
+  return lastChange > lastSync;
 };
 
 type ClientSession = {
@@ -327,7 +337,7 @@ const Kartoteka = () => {
         // Update local state with drive_doc_url from response
         const result = res.data.results?.[0];
         if (result?.docUrl) {
-          setSelectedClient(prev => prev ? { ...prev, drive_doc_id: result.docId, drive_doc_url: result.docUrl } : prev);
+          setSelectedClient(prev => prev ? { ...prev, drive_doc_id: result.docId, drive_doc_url: result.docUrl, drive_last_synced_at: result.drive_last_synced_at } : prev);
         }
         toast.success("Karta uložena a synchronizována s Google Docs ✅");
       }
@@ -483,17 +493,22 @@ const Kartoteka = () => {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveAndBackup}
-              disabled={isSavingCard}
-              className="h-8 px-2 sm:px-3"
-              title="Uložit kartu a zálohovat na Drive"
-            >
-              {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" /> : <Save className="w-3.5 h-3.5 sm:mr-1" />}
-              <span className="hidden sm:inline">{isSavingCard ? "Ukládám..." : "Uložit"}</span>
-            </Button>
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveAndBackup}
+                disabled={isSavingCard}
+                className="h-8 px-2 sm:px-3"
+                title={hasUnsyncedChanges(selectedClient) ? "Jsou neuložené změny od posledního syncu" : "Uložit kartu a zálohovat na Drive"}
+              >
+                {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" /> : <Save className="w-3.5 h-3.5 sm:mr-1" />}
+                <span className="hidden sm:inline">{isSavingCard ? "Ukládám..." : "Uložit"}</span>
+              </Button>
+              {hasUnsyncedChanges(selectedClient) && !isSavingCard && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 border-2 border-background" />
+              )}
+            </div>
             {!isEditing ? (
               <Button variant="outline" size="sm" onClick={() => { setIsEditing(true); setEditData(selectedClient); }} className="h-8">
                 <Edit3 className="w-3.5 h-3.5 sm:mr-1" />

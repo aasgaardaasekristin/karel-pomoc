@@ -391,11 +391,19 @@ serve(async (req) => {
         const docSections = buildSections(client, sessions, tasks, analyses);
         await writeDocContent(token, docId, docSections);
 
+        // Track sync timestamp
+        const syncedAt = new Date().toISOString();
+        await supabaseAdmin
+          .from("clients")
+          .update({ drive_last_synced_at: syncedAt })
+          .eq("id", client.id);
+
         results.push({
           clientId: client.id,
           clientName: client.name,
           docId,
           docUrl,
+          drive_last_synced_at: syncedAt,
           success: true,
         });
 

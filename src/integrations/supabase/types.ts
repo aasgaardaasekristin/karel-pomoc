@@ -234,6 +234,7 @@ export type Database = {
           diagnosis: string | null
           drive_doc_id: string | null
           drive_doc_url: string | null
+          drive_last_synced_at: string | null
           family_context: string | null
           gender: string | null
           id: string
@@ -252,6 +253,7 @@ export type Database = {
           diagnosis?: string | null
           drive_doc_id?: string | null
           drive_doc_url?: string | null
+          drive_last_synced_at?: string | null
           family_context?: string | null
           gender?: string | null
           id?: string
@@ -270,6 +272,7 @@ export type Database = {
           diagnosis?: string | null
           drive_doc_id?: string | null
           drive_doc_url?: string | null
+          drive_last_synced_at?: string | null
           family_context?: string | null
           gender?: string | null
           id?: string
