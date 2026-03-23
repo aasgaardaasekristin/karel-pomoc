@@ -11,7 +11,7 @@ import { blobToBase64 } from "@/lib/driveUtils";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { useSessionAudioRecorder } from "@/hooks/useSessionAudioRecorder";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import SessionMediaUpload, { type SessionMediaUploadHandle } from "./SessionMediaUpload";
 
 const formatDuration = (seconds: number) => {
