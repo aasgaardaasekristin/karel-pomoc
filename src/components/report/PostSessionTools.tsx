@@ -7,7 +7,7 @@ import { Send, Loader2, Globe, MessageSquare, GraduationCap, ArrowLeft, Trophy }
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import ChatMessage from "@/components/ChatMessage";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 type Message = { role: "user" | "assistant"; content: string };
 type PostSessionMode = null | "research" | "discuss" | "training";
