@@ -191,7 +191,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       } else if (data.reason === "no_active_parts") {
         toast.info("Žádná aktivní/komunikující část — plán nevygenerován");
       } else {
-        const leadLabel = data.sessionLead === "kata" ? "Káťa" : "Hanka";
+        const leadLabel = data.sessionLead === "obe" ? "Hanka + Káťa" : data.sessionLead === "kata" ? "Káťa" : "Hanka";
         toast.success(`Plán vygenerován pro ${data.selectedPart} (VEDE: ${leadLabel})`);
       }
       await loadTodayPlans();
