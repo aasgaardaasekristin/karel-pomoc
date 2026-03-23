@@ -6,6 +6,7 @@ import { Loader2, Users, Play, FileText, CheckCircle2, Circle } from "lucide-rea
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
 
 interface ClientSummaryCardProps {
   clientId: string;
