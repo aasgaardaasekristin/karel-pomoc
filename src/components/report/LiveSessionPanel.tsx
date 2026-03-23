@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -882,6 +883,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         <div className="max-w-3xl mx-auto">
           {/* Row 1: Audio controls + Image + End session */}
           <div className="flex items-center gap-2 flex-wrap">
+            <ThemeQuickButton />
             {/* Audio controls */}
             {recorder.state === "idle" && (
               <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">

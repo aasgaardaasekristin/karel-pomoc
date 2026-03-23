@@ -1,4 +1,5 @@
 import React from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -510,6 +511,7 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
                 )}
                 {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
               </span>
+              <ThemeQuickButton />
               <DidKidsThemeEditor
                 partName={activeThread.partName}
                 threadId={activeThread.id}
