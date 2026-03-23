@@ -6,6 +6,7 @@ import { Loader2, Users, Play, FileText, CheckCircle2, Circle } from "lucide-rea
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { parseAiAnalysis } from "@/lib/parseAiAnalysis";
 
 interface ClientSummaryCardProps {
   clientId: string;
@@ -72,7 +73,8 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
         setCaseSummary(`${clientName} – ${sessions.length} sezení v kartotéce.`);
         const last = sessions[0];
         if (last?.ai_analysis) {
-          setLastSessionSummary(last.ai_analysis.slice(0, 300) + (last.ai_analysis.length > 300 ? "…" : ""));
+          const cleanAnalysis = parseAiAnalysis(last.ai_analysis);
+          setLastSessionSummary(cleanAnalysis.slice(0, 300) + (cleanAnalysis.length > 300 ? "…" : ""));
         }
       } else {
         const data = await res.json();
