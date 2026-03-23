@@ -277,9 +277,7 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
                 ? "bg-[hsl(var(--chat-user))] rounded-br-sm" 
                 : "bg-[hsl(var(--chat-assistant))] rounded-bl-sm"
             }`}>
-              <div className="prose prose-sm max-w-none text-foreground">
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
-              </div>
+              <RichMarkdown>{msg.content}</RichMarkdown>
             </div>
           </div>
         ))}
