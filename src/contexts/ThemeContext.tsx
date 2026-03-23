@@ -256,6 +256,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [userId, setUserId] = useState<string | null>(null);
   const savedPrefsRef = useRef<ThemePrefs | null>(null);
   const contextCache = useRef<Map<string, ThemePrefs>>(new Map());
+  const [localMode, setLocalModeState] = useState<string | null>(null);
+
+  const setLocalMode = useCallback((key: string | null) => {
+    setLocalModeState(key);
+  }, []);
 
   const loadPrefsForContext = useCallback(async (contextKey: string) => {
     const { data: { user } } = await supabase.auth.getUser();
