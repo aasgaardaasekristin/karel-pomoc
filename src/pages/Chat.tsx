@@ -534,6 +534,7 @@ const Chat = () => {
     applyTemporaryTheme,
     restoreGlobalTheme,
     getPersonaPrefs,
+    setLocalMode,
   } = useTheme();
 
   // Compute localStorage storageKey for this screen
@@ -552,12 +553,13 @@ const Chat = () => {
   // Load/restore theme from localStorage for non-child-managed modes
   useEffect(() => {
     if (!chatStorageKey) return;
+    setLocalMode(chatStorageKey);
     const saved = localStorage.getItem(chatStorageKey);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [chatStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, [chatStorageKey]);
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);

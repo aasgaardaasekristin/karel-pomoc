@@ -38,7 +38,7 @@ const handleApiError = async (response: Response) => {
 };
 
 const HanaChatInner = () => {
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
@@ -121,12 +121,13 @@ const HanaChatInner = () => {
 
   // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
+    setLocalMode(hanaStorageKey);
     const saved = localStorage.getItem(hanaStorageKey);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [hanaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, [hanaStorageKey]);
 
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {

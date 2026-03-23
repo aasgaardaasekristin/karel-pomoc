@@ -1,11 +1,22 @@
 import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const THEME_STORAGE_KEY = "theme_global";
 
 const NotFound = () => {
   const location = useLocation();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
+
+  useEffect(() => {
+    setLocalMode(THEME_STORAGE_KEY);
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, []);
 
   useEffect(() => {
     console.error("404 Error: User attempted to access non-existent route:", location.pathname);

@@ -10,15 +10,16 @@ import CalmChat from "@/components/calm/CalmChat";
 const THEME_STORAGE_KEY = "theme_zklidneni";
 
 const CalmMode = () => {
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
 
   useEffect(() => {
+    setLocalMode(THEME_STORAGE_KEY);
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, []);
 
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
   const navigate = useNavigate();

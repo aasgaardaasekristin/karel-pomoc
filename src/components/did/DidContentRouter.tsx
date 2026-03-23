@@ -137,7 +137,7 @@ export interface DidContentRouterProps {
 }
 
 const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const {
     didFlowState, setDidFlowState, didSubMode, setDidSubMode,
     activeThread, setActiveThread, messages, setMessages,
@@ -170,12 +170,13 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
 
   // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
+    setLocalMode(didStorageKey);
     const saved = localStorage.getItem(didStorageKey);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [didStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, [didStorageKey]);
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {

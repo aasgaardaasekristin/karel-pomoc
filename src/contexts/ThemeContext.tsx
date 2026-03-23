@@ -219,6 +219,8 @@ interface ThemeContextValue {
   applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
   restoreGlobalTheme: () => void;
   getPersonaPrefs: (persona: string) => Promise<ThemePrefs>;
+  /** When set, DB load/save is skipped — page manages theme via localStorage */
+  setLocalMode: (key: string | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -254,6 +256,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [userId, setUserId] = useState<string | null>(null);
   const savedPrefsRef = useRef<ThemePrefs | null>(null);
   const contextCache = useRef<Map<string, ThemePrefs>>(new Map());
+  const [localMode, setLocalModeState] = useState<string | null>(null);
+
+  const setLocalMode = useCallback((key: string | null) => {
+    setLocalModeState(key);
+  }, []);
 
   const loadPrefsForContext = useCallback(async (contextKey: string) => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -299,8 +306,35 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const setCurrentPersona = setContextKey;
 
   useEffect(() => {
-    void loadPrefsForContext(currentContextKey);
-  }, [currentContextKey, loadPrefsForContext]);
+    if (localMode !== null) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const origSetPrefs = setPrefs;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (cancelled || !user) { setLoading(false); return; }
+      setUserId(user.id);
+      const cached = contextCache.current.get(currentContextKey);
+      if (cached) { if (!cancelled) { origSetPrefs(cached); setLoading(false); } return; }
+      const { data } = await supabase
+        .from("user_theme_preferences")
+        .select("*")
+        .eq("context_key", currentContextKey)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data) {
+        const parsed = dbRowToPrefs(data, currentContextKey);
+        contextCache.current.set(currentContextKey, parsed);
+        origSetPrefs(parsed);
+      } else {
+        origSetPrefs({ ...DEFAULT_PREFS, persona: currentContextKey });
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [currentContextKey, localMode]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -401,11 +435,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [userId, currentContextKey]);
 
   const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
-    if (!savedPrefsRef.current) {
-      savedPrefsRef.current = prefs;
-    }
-    setPrefs((prev) => ({ ...prev, ...config }));
-  }, [prefs]);
+    setPrefs((prev) => {
+      if (!savedPrefsRef.current) savedPrefsRef.current = prev;
+      return { ...prev, ...config };
+    });
+  }, []);
 
   const restoreGlobalTheme = useCallback(() => {
     if (savedPrefsRef.current) {
@@ -451,6 +485,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       applyTemporaryTheme,
       restoreGlobalTheme,
       getPersonaPrefs,
+      setLocalMode,
     }}>
       {children}
     </ThemeContext.Provider>

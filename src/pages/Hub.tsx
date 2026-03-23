@@ -15,7 +15,7 @@ const THEME_STORAGE_KEY = "theme_hub";
 
 const Hub = () => {
   const navigate = useNavigate();
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [authChecked, setAuthChecked] = useState(false);
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pin, setPin] = useState("");
@@ -23,12 +23,13 @@ const Hub = () => {
 
   // Load theme from localStorage on mount, restore on unmount
   useEffect(() => {
+    setLocalMode(THEME_STORAGE_KEY);
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {

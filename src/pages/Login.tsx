@@ -11,15 +11,16 @@ import { toast } from "sonner";
 const THEME_STORAGE_KEY = "theme_login";
 
 const Login = () => {
-  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
 
   useEffect(() => {
+    setLocalMode(THEME_STORAGE_KEY);
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { restoreGlobalTheme(); };
-  }, [applyTemporaryTheme, restoreGlobalTheme]);
+    return () => { setLocalMode(null); restoreGlobalTheme(); };
+  }, []);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
