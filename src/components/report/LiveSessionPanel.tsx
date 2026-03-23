@@ -882,6 +882,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         <div className="max-w-3xl mx-auto">
           {/* Row 1: Audio controls + Image + End session */}
           <div className="flex items-center gap-2 flex-wrap">
+            <ThemeQuickButton />
             {/* Audio controls */}
             {recorder.state === "idle" && (
               <Button variant="outline" size="sm" onClick={recorder.startRecording} className="gap-1.5 h-8 text-xs">
