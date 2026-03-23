@@ -1,50 +1,55 @@
 
 
-# Přidání ThemeQuickButton na všechna chybějící místa
+# Oprava izolace vzhledu na každé obrazovce
 
 ## Problém
-ThemeQuickButton chybí na mnoha obrazovkách – Hub, DID vstupní obrazovka, DID terapeut dashboard, PIN obrazovky, seznamy vláken (terapeut i Kluci), porady týmu, a celý Research režim.
+V `Chat.tsx` (řádek 539-546) je useEffect, který při jakémkoli režimu kromě "report" nastaví `setContextKey("global")`. Tento efekt běží na úrovni rodiče a **přepisuje** context_key, který si nastavují dětské komponenty (`DidContentRouter`, `HanaChat`). Výsledek: DID a Hana režimy mají vždy "global" téma namísto svého vlastního.
 
-## Plán úprav
+Navíc chybí unikátní context_key pro Research režim, Zklidnění, Pomoc, Kartotéku (bez klienta) a další.
 
-### 1. `src/pages/Hub.tsx`
-Přidat ThemeQuickButton do headeru vedle "Odejít" tlačítka.
+## Plán
 
-### 2. `src/components/did/DidEntryScreen.tsx`
-Přidat ThemeQuickButton vedle "Zpět na výběr režimu" tlačítka.
+### 1. Opravit useEffect v `Chat.tsx` (řádky 539-546)
+Místo fallbacku na `"global"` nastavit context_key podle aktuálního režimu:
 
-### 3. `src/components/did/DidContentRouter.tsx` (terapeut view, ~ř. 200-258)
-Přidat ThemeQuickButton do terapeut dashboard view, vedle "← Zpět" nebo do hlavičky sekce.
+```
+report → report_client_{id} / report_session_selector  (už funguje)
+did    → NEMĚNIT (nechá DidContentRouter řídit vlastní key)
+hana   → NEMĚNIT (nechá HanaChat řídit vlastní key)  
+research → research / research_thread_{id}
+default → "global"
+```
 
-### 4. `src/components/did/DidPinEntry.tsx`
-Přidat ThemeQuickButton vedle "Zpět" tlačítka nahoře.
+Konkrétně: z useEffectu **odstranit** nastavování "global" pro `mainMode === "did"` a pro `mainMode === "hana"`, protože tyto režimy mají vlastní logiku v child komponentách. Pro `research` přidat vlastní key.
 
-### 5. `src/components/did/DidTherapistThreads.tsx`
-Přidat ThemeQuickButton do hlavičky vedle "Příprava na sezení" a "Nové téma".
+### 2. Přidat context_key pro Research režim v `Chat.tsx`
+V useEffectu přidat:
+- `mainMode === "research"` a `activeResearchThread` → `research_thread_{id}`
+- `mainMode === "research"` bez vlákna → `"research"`
 
-### 6. `src/components/did/DidThreadList.tsx`
-Přidat ThemeQuickButton do hlavičky vedle "+ Nové vlákno".
+### 3. Přidat context_key pro Kartotéku bez klienta
+V `Kartoteka.tsx` fallback bez vybraného klienta: `"kartoteka"` místo `"global"`.
 
-### 7. `src/components/did/DidMeetingPanel.tsx`
-Přidat ThemeQuickButton do hlavičky panelu porad.
+### 4. Přidat context_key pro utility stránky
+- `Pomoc.tsx` → `"pomoc"`
+- `Zklidneni.tsx` / `CalmMode.tsx` → `"zklidneni"`
+- `Hub.tsx` → `"hub"` místo `"global"`
+- `Login.tsx` → `"login"`
 
-### 8. `src/pages/Chat.tsx` – Research thread list (~ř. 1448-1461)
-Přidat ThemeQuickButton nad ResearchThreadList.
+### 5. Opravit DidContentRouter fallback
+Řádky 168-171: bez activeThread v režimu "cast" by měl být key `"did_kids"` (ne `"did_katerina"`), a entry screen `"did_entry"`.
 
-### 9. `src/pages/Chat.tsx` – Research chat view (~ř. 1480-1518)
-Přidat ThemeQuickButton do toolbaru vedle "Příručka (PDF)" a "← Vlákna".
+### 6. ThemeContext fallback
+V `loadPrefsForContext`: pokud kontext nemá vlastní uložený vzhled, použije se **výchozí default** (uživatel to tak chce), ne globální.
 
-## Soubory k úpravě (7)
-1. `src/pages/Hub.tsx`
-2. `src/components/did/DidEntryScreen.tsx`
-3. `src/components/did/DidContentRouter.tsx`
-4. `src/components/did/DidPinEntry.tsx`
-5. `src/components/did/DidTherapistThreads.tsx`
-6. `src/components/did/DidThreadList.tsx`
-7. `src/components/did/DidMeetingPanel.tsx`
-8. `src/pages/Chat.tsx`
-
-## Co se NEMĚNÍ
-- ThemeEditorDialog, ThemeQuickButton komponenta, ThemeContext
-- Stávající umístění (HanaChat, Kartoteka, LiveSessionPanel, DID chat view)
+## Soubory k úpravě
+1. `src/pages/Chat.tsx` – useEffect s context_key + research keys
+2. `src/components/did/DidContentRouter.tsx` – granularnější keys
+3. `src/pages/Kartoteka.tsx` – fallback key
+4. `src/pages/Hub.tsx` – "hub" key
+5. `src/pages/Pomoc.tsx` – "pomoc" key  
+6. `src/pages/Zklidneni.tsx` – "zklidneni" key
+7. `src/pages/CalmMode.tsx` – "zklidneni" key
+8. `src/pages/Login.tsx` – "login" key
+9. `src/contexts/ThemeContext.tsx` – fallback na DEFAULT_PREFS místo globálních
 
