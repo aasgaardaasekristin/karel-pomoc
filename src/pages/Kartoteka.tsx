@@ -201,7 +201,7 @@ const Kartoteka = () => {
         .eq("client_id", client.id)
         .order("created_at", { ascending: false }),
       supabase
-        .from("client_analyses" as any)
+        .from("client_analyses")
         .select("*")
         .eq("client_id", client.id)
         .order("created_at", { ascending: false }),
