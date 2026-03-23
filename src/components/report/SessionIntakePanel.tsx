@@ -481,7 +481,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             className="min-h-[150px]"
           />
           <div className="flex gap-2">
-            <Button onClick={handleSubmit} disabled={!textInput.trim()} className="gap-1.5">
+            <Button onClick={() => handleSubmit()} disabled={!textInput.trim()} className="gap-1.5">
               <Send className="w-4 h-4" /> Odeslat Karlovi
             </Button>
             <Button variant="ghost" size="sm" onClick={() => setInputMode("choose")}>Zpět</Button>
