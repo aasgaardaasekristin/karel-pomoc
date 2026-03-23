@@ -775,10 +775,7 @@ const PlanCard = ({
       {isExpanded && (
         <div className="mt-2 space-y-3 max-h-[500px] overflow-y-auto">
           <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
-            <div
-              className="text-[11px] leading-5 text-foreground"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(plan.plan_markdown) }}
-            />
+            <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
           </div>
 
           {prevSession && (
