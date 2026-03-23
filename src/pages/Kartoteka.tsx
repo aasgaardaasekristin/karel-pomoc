@@ -61,7 +61,7 @@ type Client = {
   therapy_plan: string;
   drive_doc_id: string | null;
   drive_doc_url: string | null;
-  drive_last_synced_at: string | null;
+  drive_last_synced_at?: string | null;
   created_at: string;
   updated_at: string;
 };
