@@ -637,6 +637,18 @@ const Kartoteka = () => {
                         </div>
                       </div>
                     )}
+                    {selectedClient.drive_doc_url && (
+                      <div className="pt-3 border-t border-border">
+                        <a
+                          href={selectedClient.drive_doc_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                        >
+                          📄 Otevřít v Google Docs
+                        </a>
+                      </div>
+                    )}
                     {!selectedClient.diagnosis && !selectedClient.therapy_type && !selectedClient.key_history && (
                       <p className="text-sm text-muted-foreground italic">Karta zatím není vyplněna. Klikni „Upravit" pro doplnění údajů.</p>
                     )}
