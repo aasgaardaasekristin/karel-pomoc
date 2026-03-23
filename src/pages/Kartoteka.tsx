@@ -189,7 +189,7 @@ const Kartoteka = () => {
     setSelectedClient(client);
     setIsEditing(false);
 
-    const [sessionsRes, tasksRes] = await Promise.all([
+    const [sessionsRes, tasksRes, analysesRes, materialsRes] = await Promise.all([
       supabase
         .from("client_sessions")
         .select("*")
@@ -200,10 +200,22 @@ const Kartoteka = () => {
         .select("*")
         .eq("client_id", client.id)
         .order("created_at", { ascending: false }),
+      supabase
+        .from("client_analyses" as any)
+        .select("*")
+        .eq("client_id", client.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("session_materials" as any)
+        .select("*")
+        .eq("client_id", client.id)
+        .order("created_at", { ascending: false }),
     ]);
 
     if (sessionsRes.data) setSessions(sessionsRes.data as ClientSession[]);
     if (tasksRes.data) setTasks(tasksRes.data as ClientTask[]);
+    if (analysesRes.data) setClientAnalyses(analysesRes.data as any[]);
+    if (materialsRes.data) setSessionMaterials(materialsRes.data as any[]);
   }, []);
 
   // Create client
