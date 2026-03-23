@@ -1,6 +1,7 @@
 import React, { useEffect } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
+import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { Loader2 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
