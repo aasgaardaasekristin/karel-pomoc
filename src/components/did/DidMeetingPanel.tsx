@@ -213,9 +213,12 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
           <Button variant="ghost" size="sm" onClick={onBack}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Zpět
           </Button>
-          <Button size="sm" onClick={() => setShowNewMeeting(true)}>
-            <Plus className="w-4 h-4 mr-1" /> Nová porada
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <ThemeQuickButton />
+            <Button size="sm" onClick={() => setShowNewMeeting(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Nová porada
+            </Button>
+          </div>
         </div>
 
         <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">

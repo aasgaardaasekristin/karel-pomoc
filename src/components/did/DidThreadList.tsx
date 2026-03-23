@@ -47,9 +47,12 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
           <MessageCircle className="w-4 h-4" />
           Aktivní vlákna částí
         </h3>
-        <Button variant="outline" size="sm" onClick={onNewThread} className="h-8 text-xs">
-          + Nové vlákno
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <ThemeQuickButton />
+          <Button variant="outline" size="sm" onClick={onNewThread} className="h-8 text-xs">
+            + Nové vlákno
+          </Button>
+        </div>
       </div>
 
       {threads.length === 0 ? (

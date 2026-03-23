@@ -1490,6 +1490,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                       <span className="text-xs text-muted-foreground ml-2">({activeResearchThread.createdBy})</span>
                     </div>
                     <div className="flex items-center gap-2">
+                      <ThemeQuickButton />
                       <Button
                         variant="outline"
                         size="sm"

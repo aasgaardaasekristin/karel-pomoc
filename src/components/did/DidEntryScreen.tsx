@@ -11,11 +11,12 @@ interface Props {
 const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
   return (
     <div className="max-w-md mx-auto py-10 px-4">
-      <div className="flex justify-center mb-4">
+      <div className="flex items-center justify-between mb-4">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-1" />
           Zpět na výběr režimu
         </Button>
+        <ThemeQuickButton />
       </div>
       <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-2">
         Kdo teď mluví?

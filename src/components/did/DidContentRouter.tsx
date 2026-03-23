@@ -248,10 +248,11 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
               </div>
             </button>
           </div>
-          <div className="flex justify-center mt-4">
+          <div className="flex items-center justify-center gap-2 mt-4">
             <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
               ← Zpět
             </Button>
+            <ThemeQuickButton />
           </div>
         </div>
       </ScrollArea>

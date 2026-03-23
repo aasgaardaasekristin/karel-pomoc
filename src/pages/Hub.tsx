@@ -5,6 +5,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Users, Heart, LogOut, Leaf, ArrowLeft, KeyRound, Search } from "lucide-react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
