@@ -6,9 +6,19 @@ import { Leaf, ArrowLeft, ShieldCheck } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
 import CalmChat from "@/components/calm/CalmChat";
 
+const THEME_STORAGE_KEY = "theme_pomoc";
+
 const Pomoc = () => {
-  const { setContextKey } = useTheme();
-  useEffect(() => { setContextKey("pomoc"); }, [setContextKey]);
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+
+  useEffect(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [applyTemporaryTheme, restoreGlobalTheme]);
+
   const [started, setStarted] = useState(false);
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
 
@@ -24,7 +34,6 @@ const Pomoc = () => {
     }
   };
 
-  // Landing screen
   if (!started) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
@@ -62,7 +71,6 @@ const Pomoc = () => {
     );
   }
 
-  // Scenario selector or chat
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
@@ -79,7 +87,7 @@ const Pomoc = () => {
               <p className="text-xs text-muted-foreground">Krátký průvodce pro chvíle, kdy to potřebuješ</p>
             </div>
           </div>
-          <ThemeQuickButton />
+          <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
         </div>
       </header>
 

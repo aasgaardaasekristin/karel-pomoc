@@ -2,6 +2,8 @@ import { useLocation } from "react-router-dom";
 import { useEffect } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 
+const THEME_STORAGE_KEY = "theme_global";
+
 const NotFound = () => {
   const location = useLocation();
 
@@ -12,7 +14,7 @@ const NotFound = () => {
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-muted">
       <div className="absolute top-4 right-4">
-        <ThemeQuickButton />
+        <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
       </div>
       <div className="text-center">
         <h1 className="mb-4 text-4xl font-bold">404</h1>

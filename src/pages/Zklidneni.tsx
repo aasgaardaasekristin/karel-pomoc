@@ -10,9 +10,19 @@ import CalmChat from "@/components/calm/CalmChat";
 
 type Step = "email" | "sent" | "verifying" | "verified" | "error";
 
+const THEME_STORAGE_KEY = "theme_zklidneni";
+
 const Zklidneni = () => {
-  const { setContextKey } = useTheme();
-  useEffect(() => { setContextKey("zklidneni"); }, [setContextKey]);
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+
+  useEffect(() => {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [applyTemporaryTheme, restoreGlobalTheme]);
+
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token");
 
@@ -23,7 +33,6 @@ const Zklidneni = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [scenario, setScenario] = useState<CalmScenario | null>(null);
 
-  // Verify token on load
   useEffect(() => {
     if (!token) return;
     
@@ -89,7 +98,6 @@ const Zklidneni = () => {
 
   const handleEnd = () => setScenario(null);
 
-  // Verified user in calm mode
   if (step === "verified" && scenario) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -104,7 +112,7 @@ const Zklidneni = () => {
                 <p className="text-xs text-muted-foreground">Bezpečný prostor pro tebe</p>
               </div>
             </div>
-            <ThemeQuickButton />
+            <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
           </div>
         </header>
         <CalmChat scenario={scenario} onEnd={handleEnd} />
@@ -124,7 +132,7 @@ const Zklidneni = () => {
                 <p className="text-xs text-muted-foreground">Vyber, co teď prožíváš</p>
               </div>
             </div>
-            <ThemeQuickButton />
+            <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
           </div>
         </header>
         <ScenarioSelector onSelect={setScenario} />
@@ -132,11 +140,10 @@ const Zklidneni = () => {
     );
   }
 
-  // Landing page states
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
       <div className="absolute top-4 right-4">
-        <ThemeQuickButton />
+        <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
       </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
