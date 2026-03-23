@@ -173,10 +173,19 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
 - DŮLEŽITÉ FORMÁTOVÁNÍ: Všechny přímé rady co má terapeut říct klientovi a tvé okamžité reakce/doporučení (co má terapeut UDĚLAT nebo ŘÍCT) piš TUČNĚ pomocí **bold** markdown. Ostatní text (kontext, pozorování) piš normálně.`;
   }, [clientName, caseSummary, sessionMode, sessionPlan, customTopic]);
 
-  // ── Shared streaming helper ──
-  const requestLiveReply = useCallback(async (messagesForAI: Message[], sessionId: string) => {
+  // Retry state
+  const lastFailedRef = useRef<{ messages: Message[]; sessionId: string } | null>(null);
+
+  // ── Shared streaming helper with timeout, retry, abort ──
+  const requestLiveReply = useCallback(async (messagesForAI: Message[], sessionId: string, retryCount = 0) => {
     setIsLoading(true);
+    lastFailedRef.current = null;
     let assistantContent = "";
+    const controller = new AbortController();
+    const GLOBAL_TIMEOUT = 90_000;
+    const CHUNK_TIMEOUT = 30_000;
+    const globalTimer = setTimeout(() => controller.abort(), GLOBAL_TIMEOUT);
+
     try {
       const headers = await getAuthHeaders();
       const response = await fetch(
@@ -184,6 +193,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         {
           method: "POST",
           headers,
+          signal: controller.signal,
           body: JSON.stringify({
             messages: messagesForAI,
             mode: "supervision",
@@ -192,14 +202,23 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
         }
       );
 
-      if (!response.ok || !response.body) throw new Error("Chyba");
+      if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`);
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
       updateChatMessages(sessionId, [...messagesForAI, { role: "assistant" as const, content: "" }]);
 
+      const readWithTimeout = (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+        return Promise.race([
+          reader.read(),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("chunk_timeout")), CHUNK_TIMEOUT)
+          ),
+        ]);
+      };
+
       while (true) {
-        const { done, value } = await reader.read();
+        const { done, value } = await readWithTimeout();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         let idx: number;
@@ -223,15 +242,37 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
           }
         }
       }
-    } catch (error) {
-      console.error("[LiveSessionPanel] requestLiveReply error:", error);
-      toast.error("Chyba při komunikaci s Karlem");
-      if (!assistantContent) updateChatMessages(sessionId, messagesForAI);
+    } catch (error: any) {
+      console.error("[LiveSessionPanel] requestLiveReply error:", error?.message || error);
+
+      // If partial content exists, keep it with truncation note
+      if (assistantContent.length > 10) {
+        assistantContent += "\n\n*(odpověď byla přerušena)*";
+        updateChatMessages(sessionId, [...messagesForAI, { role: "assistant" as const, content: assistantContent }]);
+      } else if (retryCount < 1) {
+        // Auto-retry once on network/timeout errors
+        console.log("[LiveSessionPanel] Auto-retry #1");
+        clearTimeout(globalTimer);
+        setIsLoading(false);
+        return requestLiveReply(messagesForAI, sessionId, retryCount + 1);
+      } else {
+        // Final failure — store for manual retry
+        lastFailedRef.current = { messages: messagesForAI, sessionId };
+        toast.error("Karel neodpověděl. Zkus to znovu.");
+        if (!assistantContent) updateChatMessages(sessionId, messagesForAI);
+      }
     } finally {
+      clearTimeout(globalTimer);
       setIsLoading(false);
       textareaRef.current?.focus();
     }
   }, [buildContext, updateChatMessages]);
+
+  const handleRetry = useCallback(() => {
+    if (lastFailedRef.current) {
+      requestLiveReply(lastFailedRef.current.messages, lastFailedRef.current.sessionId);
+    }
+  }, [requestLiveReply]);
 
   // ── Send text message ──
   const sendMessage = async () => {
