@@ -155,19 +155,22 @@ const Kartoteka = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Nejsi přihlášen/a"); return; }
 
-      const res = await supabase.functions.invoke("karel-gdrive-backup", {
+      const res = await supabase.functions.invoke("karel-gdocs-sync", {
         headers: { Authorization: `Bearer ${session.access_token}` },
+        body: {},
       });
 
       if (handleDriveError(res)) {
         // Drive auth error shown via toast
       } else if (res.error || !res.data?.success) {
-        toast.error(res.data?.error || "Záloha selhala");
+        toast.error(res.data?.error || "Synchronizace selhala");
       } else {
-        toast.success(res.data.message);
+        toast.success(res.data.message || "Synchronizováno s Google Docs ✅");
+        // Refresh clients to get updated drive_doc_url
+        fetchClients();
       }
     } catch (e: any) {
-      toast.error(e.message || "Chyba při zálohování");
+      toast.error(e.message || "Chyba při synchronizaci");
     } finally {
       setIsBackingUp(false);
     }
