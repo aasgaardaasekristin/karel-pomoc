@@ -1,70 +1,50 @@
 
 
-# Per-context theme isolation
+# Přidání ThemeQuickButton na všechna chybějící místa
 
-## Overview
-Replace the current `persona`-based theme keying with a granular `context_key` system so each view (DID therapist, Hana thread, client card, etc.) gets independent appearance settings.
+## Problém
+ThemeQuickButton chybí na mnoha obrazovkách – Hub, DID vstupní obrazovka, DID terapeut dashboard, PIN obrazovky, seznamy vláken (terapeut i Kluci), porady týmu, a celý Research režim.
 
-## 1. Database migration
+## Plán úprav
 
-```sql
--- Add context_key column, defaulting existing rows to use persona value
-ALTER TABLE user_theme_preferences 
-  ADD COLUMN IF NOT EXISTS context_key TEXT NOT NULL DEFAULT 'global';
+### 1. `src/pages/Hub.tsx`
+Přidat ThemeQuickButton do headeru vedle "Odejít" tlačítka.
 
--- Migrate existing data: copy persona values into context_key
-UPDATE user_theme_preferences SET context_key = persona WHERE context_key = 'global' AND persona != 'default';
+### 2. `src/components/did/DidEntryScreen.tsx`
+Přidat ThemeQuickButton vedle "Zpět na výběr režimu" tlačítka.
 
--- Drop old unique constraint and create new one
-ALTER TABLE user_theme_preferences 
-  DROP CONSTRAINT IF EXISTS user_theme_preferences_user_id_persona_key;
-ALTER TABLE user_theme_preferences
-  ADD CONSTRAINT user_theme_preferences_user_context_key UNIQUE (user_id, context_key);
-```
+### 3. `src/components/did/DidContentRouter.tsx` (terapeut view, ~ř. 200-258)
+Přidat ThemeQuickButton do terapeut dashboard view, vedle "← Zpět" nebo do hlavičky sekce.
 
-## 2. ThemeContext.tsx refactor
+### 4. `src/components/did/DidPinEntry.tsx`
+Přidat ThemeQuickButton vedle "Zpět" tlačítka nahoře.
 
-Replace `currentPersona` with `currentContextKey`:
-- State: `currentContextKey: string` (default `"global"`)
-- `setContextKey(key: string)` — loads prefs from cache or DB for that key
-- Cache: `Map<string, ThemePrefs>` for instant switching
-- `loadPrefs` queries by `context_key` instead of `persona`
-- `updatePrefs` upserts with `context_key` on conflict `user_id,context_key`
-- **Fallback**: if no record for context_key, load `"global"` prefs as base
-- Keep `persona` field in DB rows (set to context_key for backward compat)
-- Keep `applyTemporaryTheme` / `restoreGlobalTheme` unchanged
+### 5. `src/components/did/DidTherapistThreads.tsx`
+Přidat ThemeQuickButton do hlavičky vedle "Příprava na sezení" a "Nové téma".
 
-Interface changes:
-```
-currentContextKey: string
-setContextKey: (key: string) => void
-```
+### 6. `src/components/did/DidThreadList.tsx`
+Přidat ThemeQuickButton do hlavičky vedle "+ Nové vlákno".
 
-## 3. Context key assignments
+### 7. `src/components/did/DidMeetingPanel.tsx`
+Přidat ThemeQuickButton do hlavičky panelu porad.
 
-| View | context_key | Set where |
-|---|---|---|
-| Hub / main menu | `"global"` | Hub.tsx useEffect |
-| DID Kateřina | `"did_katerina"` | DidContentRouter (therapist=mamka) |
-| DID Kids thread | `"did_kids_{threadId}"` | DidContentRouter (thread select) |
-| Hana mode | `"hana"` | HanaChat init |
-| Hana thread | `"hana_thread_{threadId}"` | HanaChat thread select |
-| Kartoteka client | `"kartoteka_client_{clientId}"` | Kartoteka selectClient |
+### 8. `src/pages/Chat.tsx` – Research thread list (~ř. 1448-1461)
+Přidat ThemeQuickButton nad ResearchThreadList.
 
-## 4. Files to change
+### 9. `src/pages/Chat.tsx` – Research chat view (~ř. 1480-1518)
+Přidat ThemeQuickButton do toolbaru vedle "Příručka (PDF)" a "← Vlákna".
 
-1. **Migration** — add `context_key` column, new unique constraint
-2. **src/contexts/ThemeContext.tsx** — replace persona-based logic with context_key
-3. **src/pages/Hub.tsx** — `setContextKey("global")` on mount
-4. **src/components/hana/HanaChat.tsx** — `setContextKey` on init/thread change
-5. **src/pages/Kartoteka.tsx** — `setContextKey` on client select
-6. **src/components/did/DidContentRouter.tsx** — `setContextKey` per therapist/thread
+## Soubory k úpravě (7)
+1. `src/pages/Hub.tsx`
+2. `src/components/did/DidEntryScreen.tsx`
+3. `src/components/did/DidContentRouter.tsx`
+4. `src/components/did/DidPinEntry.tsx`
+5. `src/components/did/DidTherapistThreads.tsx`
+6. `src/components/did/DidThreadList.tsx`
+7. `src/components/did/DidMeetingPanel.tsx`
+8. `src/pages/Chat.tsx`
 
-## 5. What stays unchanged
-
-- ThemeEditorDialog UI and draft pattern
-- ThemeQuickButton component
-- CSS variable derivation logic
-- RLS policies (context_key is just a text column, same user_id check)
-- Preset backgrounds feature
+## Co se NEMĚNÍ
+- ThemeEditorDialog, ThemeQuickButton komponenta, ThemeContext
+- Stávající umístění (HanaChat, Kartoteka, LiveSessionPanel, DID chat view)
 
