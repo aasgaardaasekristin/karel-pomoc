@@ -913,4 +913,14 @@ const HanaChatInner = () => {
   );
 };
 
+const HanaChat = () => {
+  // We need conversationId to compute the key, but it's internal state.
+  // Use a simple wrapper that provides the base key; HanaChatInner will override via prop when conversationId changes.
+  return (
+    <ThemeStorageKeyProvider value="theme_hana">
+      <HanaChatInner />
+    </ThemeStorageKeyProvider>
+  );
+};
+
 export default HanaChat;
