@@ -1,68 +1,68 @@
 
 
-# Oprava zobrazení analýzy karty — odstranění raw JSON z UI
+# Drive sync tracking: unique constraint + unsync indicator
 
-## Přehled
+## 1. DB migrace
 
-Problém: v Kartotéce záložka „Analýzy karty" zobrazuje surový JSON místo formátovaného textu. Hlavní příčina je na řádku 771 v `Kartoteka.tsx`: `{parsed?.clientProfile || a.content}` — fallback `a.content` je celý JSON blob.
+```sql
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS drive_last_synced_at timestamptz DEFAULT NULL;
+ALTER TABLE clients ADD CONSTRAINT clients_drive_doc_id_unique UNIQUE (drive_doc_id);
+```
 
-## Kroky implementace
+## 2. Edge funkce `karel-gdocs-sync`
 
-### 1. Nový soubor: `src/lib/parseCardAnalysis.ts`
-
-Robustní parser specificky pro card analysis data:
-- Vstup: raw string (`a.content` z DB)
-- Pokusí se `JSON.parse` (s odstraněním markdown fences, double-encoded handling)
-- Pokud se JSON extrahuje, vrátí typovaný objekt `{ clientProfile, diagnosticHypothesis, therapeuticProgress, nextSessionRecommendations, dataGaps }`
-- Pokud parse selže, vrátí objekt s `clientProfile: "Analýza není k dispozici"` a prázdnými poli
-- Nikdy nevrací raw JSON string
-
-### 2. Zpevnění parseru v `supabase/functions/karel-card-analysis/index.ts`
-
-Řádky 169-175 — vylepšit extrakci JSON z AI odpovědi:
-- Regex pro nalezení JSON objektu `{...}` i když je obalený textem
-- Pokud `JSON.parse` selže na celém stringu, zkusit najít první `{` a poslední `}` a parsovat substring
-- Fallback: `clientProfile` = vyčištěný text bez JSON artefaktů
-
-### 3. Oprava `src/pages/Kartoteka.tsx`
-
-Řádky 715-737 a **kritický řádek 771**:
-- Nahradit manuální `JSON.parse` + regex hack za volání `parseCardAnalysis(a.content)`
-- **Řádek 771**: `{parsed?.clientProfile || a.content}` → `{parsed.clientProfile}` (parser vždy vrací neprázdný string)
-- Všechny `parsed?.` přístupy zůstanou bezpečné, protože parser vrací kompletní objekt s defaults
-
-### 4. Oprava `src/components/report/CardAnalysisPanel.tsx`
-
-- Nahradit `sanitizeAnalysisResult` za použití `parseCardAnalysis` pro čištění dat
-- V `handleSaveToCard` uložit už vyčištěná data
-
-## Technické detaily
-
-**`parseCardAnalysis` interface:**
+Po uspesnem zapisu (radek 392, po `writeDocContent`), pridat:
 ```typescript
-interface CardAnalysisResult {
-  clientProfile: string;
-  diagnosticHypothesis: { primary: string; differential: string[]; confidence: string; supportingEvidence: string[]; sources: string[] };
-  therapeuticProgress: { whatWorks: string[]; whatDoesntWork: string[]; clientDynamics: string };
-  nextSessionRecommendations: { focus: string[]; suggestedTechniques: string[]; diagnosticTests: string[]; thingsToAsk: string[] };
-  dataGaps: string[];
+const syncedAt = new Date().toISOString();
+await supabaseAdmin
+  .from("clients")
+  .update({ drive_last_synced_at: syncedAt })
+  .eq("id", client.id);
+```
+
+A do `results.push` pridat `drive_last_synced_at: syncedAt`.
+
+## 3. UI `Kartoteka.tsx`
+
+### Client type (radek 50-66)
+Pridat `drive_last_synced_at?: string | null;`
+
+### Helper (pod Client type)
+```typescript
+// Vraci true, pokud ma klient v DB novejsi zmeny nez posledni Drive sync.
+// Pouziva updated_at/created_at z clients a drive_last_synced_at z posledniho karel-gdocs-sync.
+const hasUnsyncedChanges = (client: Client): boolean => {
+  if (!client.drive_last_synced_at) return true;
+  const lastChange = new Date(client.updated_at || client.created_at);
+  const lastSync = new Date(client.drive_last_synced_at);
+  return lastChange > lastSync;
+};
+```
+
+### Save button (radky 486-496)
+Pridat oranzovou tecku a tooltip kdyz `hasUnsyncedChanges(selectedClient)`:
+- `className` na Button: conditionally add orange ring
+- Mala oranzova tecka (`<span className="absolute -top-1 -right-1 w-2 h-2 bg-orange-500 rounded-full" />`) uvnitr `relative` wrapperu
+- `title` zmenit na "Jsou neulozene zmeny od posledniho syncu" kdyz unsynced
+
+### handleSaveAndBackup (radky 327-332)
+Po uspechu take nastavit `drive_last_synced_at` z response:
+```typescript
+if (result?.docUrl) {
+  setSelectedClient(prev => prev ? {
+    ...prev,
+    drive_doc_id: result.docId,
+    drive_doc_url: result.docUrl,
+    drive_last_synced_at: result.drive_last_synced_at,
+  } : prev);
 }
-
-export function parseCardAnalysis(raw: string): CardAnalysisResult
 ```
 
-**Diff řádku 771 (Kartoteka.tsx) — co se změní:**
-```text
-// PŘED:
-<RichMarkdown>{parsed?.clientProfile || a.content}</RichMarkdown>
+### handleBackup (radky 168-171)
+Po uspechu `fetchClients()` uz staci — novy sloupec se nacte automaticky.
 
-// PO:
-<RichMarkdown>{parsed.clientProfile}</RichMarkdown>
-```
-
-**Soubory dotčené:**
-- Nový: `src/lib/parseCardAnalysis.ts`
-- Editace: `supabase/functions/karel-card-analysis/index.ts` (parser řádky 169-175)
-- Editace: `src/pages/Kartoteka.tsx` (řádky 715-771+)
-- Editace: `src/components/report/CardAnalysisPanel.tsx` (sanitize logic)
+## Soubory dotcene
+- DB migrace (novy SQL)
+- `supabase/functions/karel-gdocs-sync/index.ts` (2 radky navic)
+- `src/pages/Kartoteka.tsx` (Client type, helper, button UI, state update)
 
