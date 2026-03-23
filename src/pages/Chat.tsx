@@ -1641,6 +1641,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
       {studyMaterial && <StudyMaterialPanel material={studyMaterial} onClose={() => setStudyMaterial(null)} />}
       <GoogleDrivePickerDialog open={drivePickerOpen} onClose={() => setDrivePickerOpen(false)} onFileSelected={addAttachment} />
     </div>
+    </ThemeStorageKeyProvider>
   );
 };
 
