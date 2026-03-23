@@ -1,98 +1,93 @@
 
 
-# Přepis vzhledu na čistý localStorage
+# Oprava race condition: localStorage vs DB v ThemeContext
 
-## Co se změní
+## Problém
+`ThemeContext.tsx` řádek 301-303 — `useEffect` vždy volá `loadPrefsForContext()` při změně `currentContextKey`. Tato DB query vrátí data asynchronně a zavolá `setPrefs()`, čímž **přepíše** téma, které stránka právě aplikovala přes `applyTemporaryTheme()` z localStorage.
 
-Celý systém per-stránkového vzhledu přejde z DB (`user_theme_preferences` + `context_key`) na **localStorage**. ThemeContext zůstane jen jako „CSS aplikátor" — nebude řídit, KTERÝ vzhled se načte. Každá stránka si sama načte/uloží svůj vzhled.
+## Řešení — localMode flag
 
-## Architektura
+### 1. `src/contexts/ThemeContext.tsx`
 
-```text
-ThemeQuickButton(storageKey="theme_hub")
-  ├─ otevření: načte localStorage["theme_hub"] || DEFAULT
-  ├─ uložení: zapíše localStorage["theme_hub"]
-  └─ ihned: volá applyTemporaryTheme(prefs)
-
-Stránka mount:
-  useEffect → localStorage.getItem(storageKey) → applyTemporaryTheme()
-  
-Stránka unmount:
-  useEffect cleanup → restoreGlobalTheme()
+**Přidat stav:**
+```typescript
+const [localMode, setLocalModeState] = useState<string | null>(null);
 ```
 
-## Soubory k úpravě
+**Přidat do interface + provider:**
+```typescript
+setLocalMode: (key: string | null) => void;
+```
 
-### 1. `src/components/ThemeQuickButton.tsx`
-- Přidat prop `storageKey: string`
-- Přidat prop `onPrefsLoaded?: (prefs: ThemePrefs) => void` (volitelné)
-- Při otevření editoru: předat `storageKey` do `ThemeEditorDialog`
-
-### 2. `src/components/ThemeEditorDialog.tsx`
-- Přidat prop `storageKey?: string`
-- Pokud `storageKey` je zadán:
-  - `draft` se inicializuje z `localStorage[storageKey]` nebo DEFAULT_PREFS
-  - "Použít změny" zapíše do `localStorage[storageKey]` + zavolá `applyTemporaryTheme(draft)`
-  - **Neukládá do DB**
-- Pokud `storageKey` chybí: chování jako dosud (fallback)
-
-### 3. `src/contexts/ThemeContext.tsx`
-- **Beze změny struktury** — pouze exportovat `DEFAULT_PREFS` aby ho mohly stránky importovat
-- `applyTemporaryTheme` a `restoreGlobalTheme` zůstávají jak jsou
-
-### 4. Každá stránka — přidat 2 useEffecty + předat storageKey
-
-**`src/pages/Hub.tsx`** — `storageKey="theme_hub"`
-**`src/pages/Login.tsx`** — `storageKey="theme_login"`
-**`src/pages/CalmMode.tsx`** — `storageKey="theme_zklidneni"`
-**`src/pages/Zklidneni.tsx`** — `storageKey="theme_zklidneni"`
-**`src/pages/Pomoc.tsx`** — `storageKey="theme_pomoc"`
-**`src/pages/Kartoteka.tsx`** — `storageKey="theme_kartoteka_{clientId}"` / `"theme_kartoteka"`
-**`src/pages/NotFound.tsx`** — `storageKey="theme_global"`
-
-**`src/pages/Chat.tsx`** — dynamický storageKey podle režimu:
-- report + klient → `theme_report_{clientId}`
-- report bez klienta → `theme_report`
-- research + vlákno → `theme_research_{threadId}`
-- research → `theme_research`
-- DID a Hana → nechá child komponenty
-
-**`src/components/did/DidContentRouter.tsx`**:
-- mamka/kata → `theme_did_katerina`
-- cast + vlákno → `theme_did_kids_{threadId}`
-- cast bez vlákna → `theme_did_kids`
-- entry → `theme_did_entry`
-
-**`src/components/hana/HanaChat.tsx`**:
-- s vláknem → `theme_hana_{conversationId}`
-- bez vlákna → `theme_hana`
-
-### 5. Vzorový useEffect pro každou stránku
+**Upravit useEffect (řádek 301-303):**
+- Pokud `localMode !== null` → přeskočit DB load
+- Přidat cancellation flag pro async race
 
 ```typescript
-// Na stránce, např. Hub.tsx:
-const storageKey = "theme_hub";
-const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
+useEffect(() => {
+  if (localMode !== null) return; // stránka řídí téma sama
+  let cancelled = false;
+  (async () => {
+    await loadPrefsForContext(currentContextKey);
+    // loadPrefsForContext already calls setPrefs internally,
+    // but we need the cancelled check inside it
+  })();
+  return () => { cancelled = true; };
+}, [currentContextKey, loadPrefsForContext, localMode]);
+```
+
+**Upravit `loadPrefsForContext`** — přijmout optional `signal` nebo přidat cancelled ref aby async result nepřepsal stav po unmount.
+
+**Upravit `applyTemporaryTheme`** (řádek 403-408) — opravit stale closure:
+```typescript
+const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
+  setPrefs((prev) => {
+    if (!savedPrefsRef.current) savedPrefsRef.current = prev;
+    return { ...prev, ...config };
+  });
+}, []); // no deps needed — uses functional updater
+```
+
+### 2. Všechny stránky s `THEME_STORAGE_KEY` (6 souborů)
+
+Přidat `setLocalMode` do destrukturingu `useTheme()` a zavolat v existujícím useEffectu:
+
+```typescript
+const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
 
 useEffect(() => {
-  const saved = localStorage.getItem(storageKey);
+  setLocalMode(THEME_STORAGE_KEY);
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
   if (saved) {
     try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
   }
-  return () => { restoreGlobalTheme(); };
-}, [storageKey]);
+  return () => {
+    setLocalMode(null);
+    restoreGlobalTheme();
+  };
+}, []);
 ```
 
-### 6. Odstranit z Chat.tsx
-- Celý useEffect na řádcích 539-553 (setContextKey podle mainMode) — **smazat**
-- Odstranit volání `setContextKey` z Chat.tsx, DidContentRouter, HanaChat, Hub, Login, Pomoc, CalmMode, Zklidneni, Kartoteka
-- setContextKey volání se nahradí localStorage logikou
+**Soubory:**
+- `src/pages/Hub.tsx`
+- `src/pages/Login.tsx`
+- `src/pages/Pomoc.tsx`
+- `src/pages/Zklidneni.tsx`
+- `src/pages/CalmMode.tsx`
+- `src/pages/NotFound.tsx`
 
-## Co se NEZMĚNÍ
-- `ThemeContext.tsx` — struktura, `applyTemporaryTheme`, `restoreGlobalTheme`, CSS aplikace
-- Žádná DB migrace
-- Žádné nové tabulky
+### 3. DID + Hana komponenty
 
-## Shrnutí
-9 souborů se upraví. Každá stránka bude mít 2 řádky useEffect (mount load + unmount restore) a předá `storageKey` do `ThemeQuickButton`. Editor bude ukládat/číst z localStorage místo DB.
+Zkontrolovat `DidContentRouter.tsx` a `HanaChat.tsx` — pokud mají vlastní localStorage useEffect, přidat `setLocalMode` stejným způsobem.
+
+## Soubory k úpravě
+1. `src/contexts/ThemeContext.tsx` — localMode state + guard v useEffect + fix applyTemporaryTheme closure
+2. `src/pages/Hub.tsx` — setLocalMode
+3. `src/pages/Login.tsx` — setLocalMode
+4. `src/pages/Pomoc.tsx` — setLocalMode
+5. `src/pages/Zklidneni.tsx` — setLocalMode
+6. `src/pages/CalmMode.tsx` — setLocalMode
+7. `src/pages/NotFound.tsx` — setLocalMode
+8. `src/components/did/DidContentRouter.tsx` — setLocalMode (pokud má localStorage)
+9. `src/components/hana/HanaChat.tsx` — setLocalMode (pokud má localStorage)
 
