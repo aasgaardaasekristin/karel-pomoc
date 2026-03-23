@@ -531,16 +531,17 @@ serve(async (req) => {
 
     const sb = getServiceClient();
 
-    // ═══ STEP 1: Load memory + Analyze (parallel) ═══
-    const [episodes, strategies, entities, patterns, relations] = await Promise.all([
-      loadRecentEpisodes(sb, user.id),
-      loadStrategies(sb, user.id),
-      loadSemanticEntities(sb, user.id),
-      loadSemanticPatterns(sb, user.id),
-      loadSemanticRelations(sb, user.id),
+    // ═══ STEP 1: Load memory + Analyze (PARALLEL) ═══
+    const [[episodes, strategies, entities, patterns, relations], analysis] = await Promise.all([
+      Promise.all([
+        loadRecentEpisodes(sb, user.id),
+        loadStrategies(sb, user.id),
+        loadSemanticEntities(sb, user.id),
+        loadSemanticPatterns(sb, user.id),
+        loadSemanticRelations(sb, user.id),
+      ]),
+      analyzeInput(messages, [], LOVABLE_API_KEY),
     ]);
-
-    const analysis = await analyzeInput(messages, episodes, LOVABLE_API_KEY);
     console.log(`Analysis: domain=${analysis.domain}, state=${analysis.hana_state}, intensity=${analysis.emotional_intensity}, tags=${analysis.tags.join(",")}`);
 
     // ═══ STEP 2: Build situation cache + prompt ═══
