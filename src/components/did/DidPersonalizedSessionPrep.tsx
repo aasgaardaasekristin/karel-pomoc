@@ -262,8 +262,10 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
               {step === "revising" ? "Karel upravuje plán..." : "Karel prohledává Drive, internet a sestavuje plán..."}
             </div>
             {plan && (
-              <RichMarkdown compact>{plan}</RichMarkdown>
-              {loading && <Loader2 className="w-3 h-3 animate-spin text-primary inline-block ml-1" />}
+              <div>
+                <RichMarkdown compact>{plan}</RichMarkdown>
+                {loading && <Loader2 className="w-3 h-3 animate-spin text-primary inline-block ml-1" />}
+              </div>
             )}
           </div>
         )}
