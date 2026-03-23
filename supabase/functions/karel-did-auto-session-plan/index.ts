@@ -342,6 +342,33 @@ serve(async (req) => {
 
     // NOTE: Manual override (forcePart) always INSERTs a new plan, never deletes old ones
 
+    // ═══ PRIORITY 1: OVERDUE ESCALATION — update overdue_days for old pending plans ═══
+    const overduePartBonus = new Map<string, number>();
+    {
+      const { data: overduePlans } = await sb.from("did_daily_session_plans")
+        .select("id, plan_date, selected_part")
+        .eq("status", "generated")
+        .lt("plan_date", todayPrague);
+
+      if (overduePlans?.length) {
+        for (const op of overduePlans) {
+          const days = Math.floor((new Date(todayPrague).getTime() - new Date(op.plan_date).getTime()) / (24 * 60 * 60 * 1000));
+          await sb.from("did_daily_session_plans")
+            .update({ overdue_days: days, updated_at: new Date().toISOString() })
+            .eq("id", op.id);
+          overduePartBonus.set(op.selected_part, (overduePartBonus.get(op.selected_part) || 0) + 3);
+        }
+        console.log(`[auto-session-plan] Overdue escalation: ${overduePlans.length} plans, bonuses: ${JSON.stringify(Object.fromEntries(overduePartBonus))}`);
+      }
+    }
+
+    // ═══ PRIORITY 3: LOAD RECENT SESSIONS (48h) for repetition penalty ═══
+    const cutoff48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const { data: recentSessions48h } = await sb.from("did_part_sessions")
+      .select("part_name")
+      .gte("session_date", cutoff48h);
+    const recentPartNames48h = new Set((recentSessions48h || []).map((s: any) => s.part_name));
+
     // ═══ GATHER DATA ═══
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const cutoff3d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
