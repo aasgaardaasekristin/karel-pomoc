@@ -118,6 +118,15 @@ const Kartoteka = () => {
   const [clientAnalyses, setClientAnalyses] = useState<any[]>([]);
   const [sessionMaterials, setSessionMaterials] = useState<any[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Set theme context per selected client
+  useEffect(() => {
+    if (selectedClient) {
+      setContextKey(`kartoteka_client_${selectedClient.id}`);
+    } else {
+      setContextKey("global");
+    }
+  }, [selectedClient?.id, setContextKey]);
+
   const handleTabChange = (value: string) => {
     setActiveTab(value);
     if (value === "assistance" && selectedClient) {
