@@ -43,6 +43,7 @@ export interface SessionMediaUploadHandle {
 const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUploadProps>(
   ({ clientId, sessionDate, onMediaContext }, ref) => {
     const [items, setItems] = useState<MediaItem[]>([]);
+    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const audioRef = useRef<HTMLInputElement>(null);
     const imageRef = useRef<HTMLInputElement>(null);
     const handwritingRef = useRef<HTMLInputElement>(null);
