@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, forwardRef, useImperativeHandle } from "
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { X, Loader2, FileCheck, Plus } from "lucide-react";
+import { X, Loader2, FileCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -43,6 +43,7 @@ export interface SessionMediaUploadHandle {
 const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUploadProps>(
   ({ clientId, sessionDate, onMediaContext }, ref) => {
     const [items, setItems] = useState<MediaItem[]>([]);
+    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const audioRef = useRef<HTMLInputElement>(null);
     const imageRef = useRef<HTMLInputElement>(null);
     const handwritingRef = useRef<HTMLInputElement>(null);
@@ -133,6 +134,21 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
 
         updateItem(item.id, { analyzing: false, analysis });
 
+        // Auto-aggregate and push media context
+        setItems(prev => {
+          const updated = prev.map(it => it.id === item.id ? { ...it, analysis } : it);
+          const completed = updated.filter(i => i.analysis && !i.error);
+          if (completed.length > 0) {
+            const sections = completed.map(ci => {
+              const label = ci.type === "audio" ? "🎙 Audio nahrávka" :
+                            ci.type === "handwriting" ? "✍️ Grafologická analýza" : "🖼 Vizuální záznam";
+              return `### ${label}: ${ci.file.name}\n${ci.analysis}`;
+            });
+            onMediaContext(sections.join("\n\n---\n\n"));
+          }
+          return updated;
+        });
+
         await supabase.from("session_media" as any).insert({
           client_id: clientId,
           session_date: sessionDate,
@@ -177,18 +193,13 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
       setItems(prev => prev.filter(i => i.id !== id));
     }, [items]);
 
-    const completedAnalyses = items.filter(i => i.analysis && !i.error);
-
-    const handleAddToRecord = useCallback(() => {
-      if (completedAnalyses.length === 0) return;
-      const sections = completedAnalyses.map(item => {
-        const label = item.type === "audio" ? "🎙 Audio nahrávka" :
-                      item.type === "handwriting" ? "✍️ Grafologická analýza" : "🖼 Vizuální záznam";
-        return `### ${label}: ${item.file.name}\n${item.analysis}`;
+    const toggleExpanded = useCallback((id: string) => {
+      setExpandedItems(prev => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
       });
-      onMediaContext(sections.join("\n\n---\n\n"));
-      toast.success(`${completedAnalyses.length} analýz přidáno do záznamu`);
-    }, [completedAnalyses, onMediaContext]);
+    }, []);
 
     // Hidden file inputs
     const hiddenInputs = (
@@ -208,13 +219,6 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
       <>
         {hiddenInputs}
         <div className="space-y-2">
-          {completedAnalyses.length > 0 && (
-            <div className="flex justify-end">
-              <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleAddToRecord}>
-                <Plus className="w-3 h-3" /> Přidat do záznamu ({completedAnalyses.length})
-              </Button>
-            </div>
-          )}
           {items.map(item => (
             <div key={item.id} className="bg-muted/30 rounded-lg p-2">
               <div className="flex items-center gap-2 mb-1">
@@ -237,8 +241,17 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
               </div>
               {(item.uploading || item.analyzing) && <Progress value={item.uploading ? 40 : 80} className="h-1" />}
               {item.analysis && (
-                <div className="mt-2 text-xs prose prose-sm max-w-none dark:prose-invert max-h-32 overflow-y-auto">
-                  <ReactMarkdown>{item.analysis.length > 500 ? item.analysis.slice(0, 500) + "…" : item.analysis}</ReactMarkdown>
+                <div className="mt-2">
+                  <div className="text-xs prose prose-sm max-w-none dark:prose-invert">
+                    <ReactMarkdown>
+                      {expandedItems.has(item.id) ? item.analysis : (item.analysis.length > 500 ? item.analysis.slice(0, 500) + "…" : item.analysis)}
+                    </ReactMarkdown>
+                  </div>
+                  {item.analysis.length > 500 && (
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] mt-1 text-muted-foreground" onClick={() => toggleExpanded(item.id)}>
+                      {expandedItems.has(item.id) ? "Skrýt" : "Zobrazit celou analýzu"}
+                    </Button>
+                  )}
                 </div>
               )}
               {item.error && <p className="text-xs text-destructive mt-1">{item.error}</p>}
