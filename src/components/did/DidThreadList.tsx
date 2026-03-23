@@ -2,6 +2,7 @@ import { MessageCircle, Clock, Globe, Trash2, Palette } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DidThread } from "@/hooks/useDidThreads";
 import { KIDS_PRESETS } from "@/components/did/DidKidsThemeEditor";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 interface Props {
   threads: DidThread[];
