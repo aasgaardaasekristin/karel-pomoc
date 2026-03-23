@@ -763,8 +763,8 @@ const Kartoteka = () => {
                                 <TabsTrigger value="next" className="text-xs">Co příště</TabsTrigger>
                               </TabsList>
 
-                              <TabsContent value="profile" className="prose prose-sm max-w-none dark:prose-invert">
-                                <ReactMarkdown>{parsed?.clientProfile || a.content}</ReactMarkdown>
+                              <TabsContent value="profile">
+                                <RichMarkdown>{parsed?.clientProfile || a.content}</RichMarkdown>
                                 {parsed?.therapeuticProgress && (
                                   <div className="mt-3 space-y-2 not-prose">
                                     {parsed.therapeuticProgress.whatWorks?.length > 0 && (
