@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, FileText, Download, Search, Link2 } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import type { PendingAttachment } from "@/hooks/useUniversalUpload";
 
 interface DriveFile {
