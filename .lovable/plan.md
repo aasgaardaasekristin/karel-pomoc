@@ -1,30 +1,25 @@
 
 
-# Oprava sekce „Analýzy karty" — kompletní zobrazení + počet sezení
+# Tlačítko „Uložit do karty" + mazání analýz
 
 ## Problém
-1. Sekce „Analýzy karty" se zobrazuje **jen když existují data** — prázdná je neviditelná
-2. Zobrazuje se pouze `clientProfile` — chybí **Diagnostika** a **Co příště**
-3. Chybí informace o **počtu sezení v době vytvoření** analýzy
+1. Analýza se ukládá automaticky na pozadí — uživatel neví, že se uložila, a nemá kontrolu
+2. V záložce Karta chybí možnost smazat uloženou analýzu
 
 ## Řešení
 
-### 1. DB migrace — nový sloupec `sessions_count`
-Přidat do `client_analyses` sloupec `sessions_count INT` pro uložení počtu sezení v okamžiku vytvoření analýzy.
+### 1. `CardAnalysisPanel.tsx` — explicitní tlačítko „Uložit do karty"
+- Odstranit fire-and-forget auto-save z `handleAnalyze` (řádky 99-118)
+- Po vygenerování výsledku zobrazit pod taby tlačítko **„💾 Uložit do karty"**
+- Po kliknutí: insert do `client_analyses`, toast „Analýza uložena do karty", tlačítko se změní na **„✅ Uloženo"** (disabled)
+- Nový state: `savedToCard: boolean` — resetuje se při nové analýze
 
-### 2. `CardAnalysisPanel.tsx` — ukládat `sessions_count`
-V fire-and-forget insertu (řádek 107) přidat `sessions_count: data.sessionsCount` do insertu.
-
-### 3. `Kartoteka.tsx` — sekce „Analýzy karty"
-- **Vždy zobrazit** sekci (i prázdnou s textem „Zatím žádné analýzy — vygeneruj ji v záložce Analýza")
-- V accordion položce zobrazit **všechny 3 části** z uloženého JSON:
-  - **Profil**: `clientProfile` + `therapeuticProgress`
-  - **Diagnostika**: `diagnosticHypothesis` (primární, diferenciální, důkazy)
-  - **Co příště**: `nextSessionRecommendations` (zaměření, techniky, testy)
-- V hlavičce každé analýzy: `Analýza č. X – DD.MM.YYYY (Y sezení)`
+### 2. `Kartoteka.tsx` — tlačítko smazat u každé analýzy
+- V každém accordion itemu (řádek 690-769) přidat do headeru ikonu 🗑 (Trash2)
+- Klik → confirm dialog → `supabase.from("client_analyses").delete().eq("id", a.id)`
+- Po smazání: odebrat z `clientAnalyses` state
 
 ## Soubory
-- **Migrace** — `ALTER TABLE client_analyses ADD COLUMN sessions_count INT`
-- **`src/components/report/CardAnalysisPanel.tsx`** — insert s `sessions_count`
-- **`src/pages/Kartoteka.tsx`** — rozšířený accordion obsah + vždy viditelná sekce
+- `src/components/report/CardAnalysisPanel.tsx` — save button místo auto-save
+- `src/pages/Kartoteka.tsx` — delete button u analýz
 
