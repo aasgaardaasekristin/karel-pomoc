@@ -1198,121 +1198,127 @@ const parseAnalysisJson = (text: string): Record<string, any> | null => {
 };
 
 const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
-  const parsed = useMemo(() => parseAnalysisJson(analysis), [analysis]);
+  if (!analysis) return null;
 
-  if (!parsed || !parsed.summary) {
+  let parsed: any = null;
+
+  try {
+    parsed = JSON.parse(analysis);
+  } catch {
+    try {
+      const cleaned = analysis
+        .replace(/^```json\n?/, "")
+        .replace(/```$/, "")
+        .trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return (
+        <div className="prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown>{analysis}</ReactMarkdown>
+        </div>
+      );
+    }
+  }
+
+  if (!parsed) {
     return (
-      <div className="text-sm mt-1 prose prose-sm max-w-none dark:prose-invert">
+      <div className="prose prose-sm max-w-none dark:prose-invert">
         <ReactMarkdown>{analysis}</ReactMarkdown>
       </div>
     );
   }
 
-  return (
-    <div className="text-sm mt-2 space-y-3">
-      {/* BIRP+S summary */}
-      <div className="prose prose-sm max-w-none dark:prose-invert">
-        <ReactMarkdown>{parsed.summary}</ReactMarkdown>
-      </div>
+  const summary = typeof parsed.summary === "string" ? parsed.summary : "";
+  const analysis2 = typeof parsed.analysis === "string" ? parsed.analysis : "";
+  const hypothesis = parsed.diagnosticHypothesis;
+  const recommendations = Array.isArray(parsed.therapeuticRecommendations)
+    ? parsed.therapeuticRecommendations
+    : [];
+  const nextFocus = Array.isArray(parsed.nextSessionFocus)
+    ? parsed.nextSessionFocus
+    : [];
+  const questionnaire = Array.isArray(parsed.questionnaire)
+    ? parsed.questionnaire
+    : [];
+  const tasks = Array.isArray(parsed.clientTasks)
+    ? parsed.clientTasks
+    : [];
 
-      {/* Analysis context */}
-      {parsed.analysis && (
-        <div>
-          <span className="text-xs font-medium text-muted-foreground">Analýza v kontextu terapie</span>
-          <div className="prose prose-sm max-w-none dark:prose-invert mt-1">
-            <ReactMarkdown>{parsed.analysis}</ReactMarkdown>
-          </div>
+  return (
+    <div className="space-y-4 text-sm">
+      {summary && (
+        <div className="prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown>{summary}</ReactMarkdown>
         </div>
       )}
-
-      {/* Diagnostic hypothesis */}
-      {parsed.diagnosticHypothesis && (
-        <div>
-          <span className="text-xs font-medium text-muted-foreground">Diagnostická hypotéza</span>
-          {Array.isArray(parsed.diagnosticHypothesis) ? (
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {parsed.diagnosticHypothesis.map((h: any, i: number) => (
-                <Badge key={i} variant="secondary" className="text-xs">
-                  {typeof h === "string" ? h : `${h.hypothesis || h.label} (${h.confidence ?? ""})`}
-                </Badge>
+      {analysis2 && (
+        <div className="bg-muted/30 rounded p-3">
+          <p className="font-medium text-xs text-muted-foreground mb-1">Analýza</p>
+          <p className="text-sm">{analysis2}</p>
+        </div>
+      )}
+      {hypothesis?.hypothesis && (
+        <div className="bg-muted/30 rounded p-3 border border-border">
+          <p className="font-medium text-xs text-muted-foreground mb-1">
+            Diagnostická hypotéza
+            <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-secondary text-secondary-foreground">
+              {hypothesis.confidence === "high"
+                ? "Vysoká jistota"
+                : hypothesis.confidence === "medium"
+                  ? "Střední jistota"
+                  : "Nízká jistota"}
+            </span>
+          </p>
+          <p>{hypothesis.hypothesis}</p>
+          {hypothesis.missingData?.length > 0 && (
+            <ul className="mt-2 list-disc list-inside text-muted-foreground">
+              {hypothesis.missingData.map((d: string, i: number) => (
+                <li key={i}>{d}</li>
               ))}
-            </div>
-          ) : typeof parsed.diagnosticHypothesis === "object" ? (
-            <div className="mt-1">
-              <Badge variant="secondary" className="text-xs">
-                {parsed.diagnosticHypothesis.hypothesis} ({parsed.diagnosticHypothesis.confidence})
-              </Badge>
-              {Array.isArray(parsed.diagnosticHypothesis.missingData) && parsed.diagnosticHypothesis.missingData.length > 0 && (
-                <div className="mt-1.5">
-                  <span className="text-xs text-muted-foreground">Chybějící data:</span>
-                  <ul className="list-disc list-inside mt-0.5 space-y-0.5">
-                    {parsed.diagnosticHypothesis.missingData.map((d: string, i: number) => (
-                      <li key={i} className="text-xs text-muted-foreground">{d}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm mt-0.5">{String(parsed.diagnosticHypothesis)}</p>
+            </ul>
           )}
         </div>
       )}
-
-      {/* Therapeutic recommendations */}
-      {Array.isArray(parsed.therapeuticRecommendations) && parsed.therapeuticRecommendations.length > 0 && (
+      {recommendations.length > 0 && (
         <div>
-          <span className="text-xs font-medium text-muted-foreground">Doporučení</span>
-          <ul className="mt-1 space-y-1.5">
-            {parsed.therapeuticRecommendations.map((r: any, i: number) => (
-              <li key={i} className="text-sm">
-                {typeof r === "string" ? r : (
-                  <>
-                    <span className="font-medium">{r.approach}</span>
-                    {r.reason && <span className="text-muted-foreground text-xs block">{r.reason}</span>}
-                  </>
-                )}
+          <p className="font-medium text-xs text-muted-foreground mb-1">Doporučení</p>
+          <ul className="space-y-1">
+            {recommendations.map((r: any, i: number) => (
+              <li key={i} className="flex gap-2">
+                <span className="font-medium">{r.approach}</span>
+                {r.reason && <span className="text-muted-foreground">— {r.reason}</span>}
               </li>
             ))}
           </ul>
         </div>
       )}
-
-      {/* Next session focus */}
-      {Array.isArray(parsed.nextSessionFocus) && parsed.nextSessionFocus.length > 0 && (
+      {nextFocus.length > 0 && (
         <div>
-          <span className="text-xs font-medium text-muted-foreground">Zaměření příštího sezení</span>
-          <ul className="list-disc list-inside mt-1 space-y-0.5">
-            {parsed.nextSessionFocus.map((f: string, i: number) => (
-              <li key={i} className="text-sm">{f}</li>
+          <p className="font-medium text-xs text-muted-foreground mb-1">
+            Zaměření příštího sezení
+          </p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {nextFocus.map((f: string, i: number) => <li key={i}>{f}</li>)}
+          </ul>
+        </div>
+      )}
+      {questionnaire.length > 0 && (
+        <div>
+          <p className="font-medium text-xs text-muted-foreground mb-1">
+            Dotazník ({questionnaire.length} otázek)
+          </p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {questionnaire.map((q: any, i: number) => (
+              <li key={i}>{q.question || q}</li>
             ))}
           </ul>
         </div>
       )}
-
-      {/* Questionnaire */}
-      {Array.isArray(parsed.questionnaire) && parsed.questionnaire.length > 0 && (
+      {tasks.length > 0 && (
         <div>
-          <span className="text-xs font-medium text-muted-foreground">Doplňující otázky</span>
-          <ol className="list-decimal list-inside mt-1 space-y-0.5">
-            {parsed.questionnaire.map((q: any, i: number) => (
-              <li key={i} className="text-sm">
-                {typeof q === "string" ? q : q.question || JSON.stringify(q)}
-                {q.priority && <Badge variant="outline" className="text-[10px] ml-1.5 py-0">{q.priority}</Badge>}
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      {/* Client tasks */}
-      {Array.isArray(parsed.clientTasks) && parsed.clientTasks.length > 0 && (
-        <div>
-          <span className="text-xs font-medium text-muted-foreground">Úkoly pro klienta</span>
-          <ul className="list-disc list-inside mt-1 space-y-0.5">
-            {parsed.clientTasks.map((t: any, i: number) => (
-              <li key={i} className="text-sm">{typeof t === "string" ? t : t.task || JSON.stringify(t)}</li>
-            ))}
+          <p className="font-medium text-xs text-muted-foreground mb-1">Úkoly klienta</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            {tasks.map((t: string, i: number) => <li key={i}>{t}</li>)}
           </ul>
         </div>
       )}
