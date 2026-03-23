@@ -492,6 +492,7 @@ export type Database = {
           distributed_email: boolean
           generated_by: string
           id: string
+          overdue_days: number
           part_tier: string
           plan_date: string
           plan_html: string
@@ -513,6 +514,7 @@ export type Database = {
           distributed_email?: boolean
           generated_by?: string
           id?: string
+          overdue_days?: number
           part_tier?: string
           plan_date?: string
           plan_html?: string
@@ -534,6 +536,7 @@ export type Database = {
           distributed_email?: boolean
           generated_by?: string
           id?: string
+          overdue_days?: number
           part_tier?: string
           plan_date?: string
           plan_html?: string
