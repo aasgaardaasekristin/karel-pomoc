@@ -79,6 +79,11 @@ serve(async (req) => {
       userContent.push({ type: "text", text: `\n\nINSTRUKCE K ÚPRAVĚ: ${revisionRequest}` });
     }
 
+    // Append media analyses if present
+    if (mediaContext) {
+      userContent.push({ type: "text", text: `\n\n📎 ANALÝZY MÉDIÍ ZE SEZENÍ:\n${mediaContext}` });
+    }
+
     const systemPrompt = `Jsi Karel, klinický supervizor. Terapeutka ti posílá popis toho, co proběhlo na sezení s klientem. Tvým úkolem je vytvořit strukturovaný zápis ze sezení.
 ${emptyCardWarning}
 
