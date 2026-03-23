@@ -276,6 +276,23 @@ serve(async (req) => {
   const isCron = req.headers.get("user-agent")?.includes("pg_net") ||
     authHeader.includes(Deno.env.get("SUPABASE_ANON_KEY") || "___none___");
 
+  // ═══ TIMEZONE GUARD — ensure cron runs only in 5:00–7:00 Prague time ═══
+  if (isCron) {
+    const pragueHour = parseInt(
+      new Date().toLocaleString("en", {
+        timeZone: "Europe/Prague",
+        hour: "numeric",
+        hour12: false,
+      })
+    );
+    if (pragueHour < 5 || pragueHour > 7) {
+      console.log(`[auto-session-plan] Timezone guard: pragueHour=${pragueHour}, skipping.`);
+      return new Response(JSON.stringify({ skipped: true, reason: "outside_window", pragueHour }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+  }
+
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const sb = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
