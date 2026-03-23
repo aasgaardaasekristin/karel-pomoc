@@ -241,8 +241,17 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
               </div>
               {(item.uploading || item.analyzing) && <Progress value={item.uploading ? 40 : 80} className="h-1" />}
               {item.analysis && (
-                <div className="mt-2 text-xs prose prose-sm max-w-none dark:prose-invert max-h-32 overflow-y-auto">
-                  <ReactMarkdown>{item.analysis.length > 500 ? item.analysis.slice(0, 500) + "…" : item.analysis}</ReactMarkdown>
+                <div className="mt-2">
+                  <div className="text-xs prose prose-sm max-w-none dark:prose-invert">
+                    <ReactMarkdown>
+                      {expandedItems.has(item.id) ? item.analysis : (item.analysis.length > 500 ? item.analysis.slice(0, 500) + "…" : item.analysis)}
+                    </ReactMarkdown>
+                  </div>
+                  {item.analysis.length > 500 && (
+                    <Button variant="ghost" size="sm" className="h-6 text-[10px] mt-1 text-muted-foreground" onClick={() => toggleExpanded(item.id)}>
+                      {expandedItems.has(item.id) ? "Skrýt" : "Zobrazit celou analýzu"}
+                    </Button>
+                  )}
                 </div>
               )}
               {item.error && <p className="text-xs text-destructive mt-1">{item.error}</p>}

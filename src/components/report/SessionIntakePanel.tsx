@@ -463,6 +463,12 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
               <span className="text-xs text-center leading-tight">Rukopis / deník</span>
             </Button>
           </div>
+
+          {mediaContext && (
+            <Button className="w-full gap-2 h-12" onClick={() => handleSubmit(true)}>
+              <Send className="w-4 h-4" /> 📋 Zpracovat záznam z médií
+            </Button>
+          )}
         </div>
       )}
 
