@@ -252,13 +252,16 @@ async function readCentrumDocuments(token: string, centrumFolderId: string): Pro
 
 // ═══ Parse session_lead from AI response ═══
 function parseSessionLead(markdown: string): { lead: string; format: string } {
-  // Look for VEDE: HANKA or VEDE: KÁŤA patterns
-  const vedeMatch = markdown.match(/VEDE:\s*(HANKA|KÁŤA|KATA|Hanka|Káťa|Kata)/i);
+  // Look for VEDE: HANKA + KÁŤA / OBĚ / HANKA / KÁŤA patterns
+  const vedeMatch = markdown.match(/VEDE:\s*(HANKA\s*\+\s*KÁŤA|HANKA\s*\+\s*KATA|OBĚ|OBE|HANKA|KÁŤA|KATA|Hanka\s*\+\s*Káťa|Hanka\s*\+\s*Kata|Hanka|Káťa|Kata)/i);
   if (!vedeMatch) return { lead: "hanka", format: "osobně" };
 
-  const name = vedeMatch[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (name === "kata" || name === "katka") {
-    // Try to find format
+  const raw = vedeMatch[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  // Check for combined lead
+  if (raw.includes("+") || raw === "obe") {
+    return { lead: "obe", format: "kombinované" };
+  }
+  if (raw === "kata" || raw === "katka") {
     const formatMatch = markdown.match(/VEDE:\s*(?:KÁŤA|KATA|Káťa|Kata)\s*\(([^)]+)\)/i);
     const format = formatMatch?.[1]?.toLowerCase().trim() || "chat";
     return { lead: "kata", format };
