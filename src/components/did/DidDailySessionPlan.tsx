@@ -111,10 +111,11 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     setLoading(true);
     try {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+      // Load today's plans + overdue pending plans from previous days
       const { data, error } = await (supabase as any)
         .from("did_daily_session_plans")
         .select("*")
-        .eq("plan_date", today)
+        .or(`plan_date.eq.${today},and(status.eq.generated,plan_date.lt.${today})`)
         .order("created_at", { ascending: false });
       if (error) throw error;
       setPlans(data || []);
