@@ -136,6 +136,7 @@ export interface DidContentRouterProps {
 }
 
 const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
+  const { setContextKey } = useTheme();
   const {
     didFlowState, setDidFlowState, didSubMode, setDidSubMode,
     activeThread, setActiveThread, messages, setMessages,

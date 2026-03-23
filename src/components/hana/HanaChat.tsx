@@ -115,6 +115,20 @@ const HanaChat = () => {
     return { id: newConv.id, welcomeMessages };
   }, []);
 
+  // Set theme context for Hana mode
+  useEffect(() => {
+    setContextKey("hana");
+  }, [setContextKey]);
+
+  // Update theme context when switching threads
+  useEffect(() => {
+    if (conversationId) {
+      setContextKey(`hana_thread_${conversationId}`);
+    } else {
+      setContextKey("hana");
+    }
+  }, [conversationId, setContextKey]);
+
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {
     const loadActiveConversation = async () => {
