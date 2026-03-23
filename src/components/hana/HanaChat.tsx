@@ -115,19 +115,17 @@ const HanaChat = () => {
     return { id: newConv.id, welcomeMessages };
   }, []);
 
-  // Set theme context for Hana mode
-  useEffect(() => {
-    setContextKey("hana");
-  }, [setContextKey]);
+  // Compute localStorage storageKey based on active conversation
+  const hanaStorageKey = conversationId ? `theme_hana_${conversationId}` : "theme_hana";
 
-  // Update theme context when switching threads
+  // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
-    if (conversationId) {
-      setContextKey(`hana_thread_${conversationId}`);
-    } else {
-      setContextKey("hana");
+    const saved = localStorage.getItem(hanaStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-  }, [conversationId, setContextKey]);
+    return () => { restoreGlobalTheme(); };
+  }, [hanaStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {
