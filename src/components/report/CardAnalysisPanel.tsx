@@ -686,6 +686,20 @@ const CardAnalysisPanel = ({
         </div>
       )}
 
+      {/* Save to card button */}
+      <div className="flex items-center gap-2">
+        {savedToCard ? (
+          <Button disabled variant="outline" size="sm" className="gap-1.5">
+            <Check className="w-4 h-4" /> Uloženo do karty
+          </Button>
+        ) : (
+          <Button onClick={handleSaveToCard} disabled={isSavingToCard} size="sm" className="gap-1.5">
+            {isSavingToCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Uložit do karty
+          </Button>
+        )}
+      </div>
+
       {/* Action buttons */}
       <div className="flex gap-2">
         <Button onClick={() => handleGeneratePlan()} className="flex-1 gap-1.5" size="sm"
