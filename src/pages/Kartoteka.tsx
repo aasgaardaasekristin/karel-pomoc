@@ -155,7 +155,9 @@ const Kartoteka = () => {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
 
-      if (res.error || !res.data?.success) {
+      if (handleDriveError(res)) {
+        // Drive auth error shown via toast
+      } else if (res.error || !res.data?.success) {
         toast.error(res.data?.error || "Záloha selhala");
       } else {
         toast.success(res.data.message);
