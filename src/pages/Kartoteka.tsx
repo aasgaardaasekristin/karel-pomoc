@@ -61,8 +61,18 @@ type Client = {
   therapy_plan: string;
   drive_doc_id: string | null;
   drive_doc_url: string | null;
+  drive_last_synced_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// Vrací true, pokud má klient v DB novější změny než poslední Drive sync.
+// Používá updated_at/created_at z clients a drive_last_synced_at z posledního karel-gdocs-sync.
+const hasUnsyncedChanges = (client: Client): boolean => {
+  if (!client.drive_last_synced_at) return true; // ještě nikdy nesyncnuto
+  const lastChange = new Date(client.updated_at || client.created_at);
+  const lastSync = new Date(client.drive_last_synced_at);
+  return lastChange > lastSync;
 };
 
 type ClientSession = {
