@@ -493,17 +493,22 @@ const Kartoteka = () => {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSaveAndBackup}
-              disabled={isSavingCard}
-              className="h-8 px-2 sm:px-3"
-              title="Uložit kartu a zálohovat na Drive"
-            >
-              {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" /> : <Save className="w-3.5 h-3.5 sm:mr-1" />}
-              <span className="hidden sm:inline">{isSavingCard ? "Ukládám..." : "Uložit"}</span>
-            </Button>
+            <div className="relative">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveAndBackup}
+                disabled={isSavingCard}
+                className="h-8 px-2 sm:px-3"
+                title={hasUnsyncedChanges(selectedClient) ? "Jsou neuložené změny od posledního syncu" : "Uložit kartu a zálohovat na Drive"}
+              >
+                {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" /> : <Save className="w-3.5 h-3.5 sm:mr-1" />}
+                <span className="hidden sm:inline">{isSavingCard ? "Ukládám..." : "Uložit"}</span>
+              </Button>
+              {hasUnsyncedChanges(selectedClient) && !isSavingCard && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 border-2 border-background" />
+              )}
+            </div>
             {!isEditing ? (
               <Button variant="outline" size="sm" onClick={() => { setIsEditing(true); setEditData(selectedClient); }} className="h-8">
                 <Edit3 className="w-3.5 h-3.5 sm:mr-1" />
