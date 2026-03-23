@@ -160,8 +160,22 @@ const ClientSessionPrepPanel = ({
 
   const handleApprove = async () => {
     setPrepState("approved");
-    setApprovedAt(new Date().toISOString());
+    const now = new Date().toISOString();
+    setApprovedAt(now);
     onPlanApproved?.(plan);
+
+    // Persist to DB
+    try {
+      const { data: inserted } = await supabase.from("session_preparations" as any).insert({
+        client_id: clientId,
+        session_number: sessionNumber,
+        plan,
+        approved_at: now,
+      }).select("id, session_number, created_at, plan, approved_at").single();
+      if (inserted) setSavedPreps(prev => [inserted as any, ...prev]);
+    } catch (e) {
+      console.warn("Failed to persist preparation:", e);
+    }
 
     // Fire-and-forget: backup plan PDF to Drive
     try {
@@ -188,6 +202,20 @@ const ClientSessionPrepPanel = ({
     } catch (e) {
       console.warn("Plan backup failed:", e);
     }
+  };
+
+  const handleDeletePrep = async (prepId: string) => {
+    if (!window.confirm("Smazat tuto přípravu?")) return;
+    await supabase.from("session_preparations" as any).delete().eq("id", prepId);
+    setSavedPreps(prev => prev.filter(p => p.id !== prepId));
+    toast.success("Příprava smazána");
+  };
+
+  const handleLoadPrep = (prep: SavedPrep) => {
+    setPlan(prep.plan);
+    setSessionNumber(prep.session_number);
+    setPrepState("review");
+    toast.success("Příprava načtena");
   };
 
   const handleDelete = () => {

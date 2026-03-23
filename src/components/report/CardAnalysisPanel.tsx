@@ -95,6 +95,26 @@ const CardAnalysisPanel = ({
       setResult(data.result);
       setSessionsCount(data.sessionsCount || 0);
       toast.success("Analýza karty dokončena");
+
+      // Fire-and-forget: persist analysis to DB
+      if (data.result) {
+        (async () => {
+          try {
+            const { count } = await supabase
+              .from("client_analyses" as any)
+              .select("*", { count: "exact", head: true })
+              .eq("client_id", clientId);
+            await supabase.from("client_analyses" as any).insert({
+              client_id: clientId,
+              content: JSON.stringify(data.result),
+              summary: (data.result.clientProfile || "").slice(0, 200),
+              version: (count ?? 0) + 1,
+            });
+          } catch (e) {
+            console.warn("Failed to persist analysis:", e);
+          }
+        })();
+      }
     } catch (err: any) {
       toast.error(err.message || "Chyba při analýze");
     } finally {
