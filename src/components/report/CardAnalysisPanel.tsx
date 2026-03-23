@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Search, ClipboardList, Eye, Check, Edit3, Download } from "lucide-react";
+import { Loader2, Search, ClipboardList, Eye, Check, Edit3, Download, Save } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -53,6 +53,8 @@ const CardAnalysisPanel = ({
   const [analysisStep, setAnalysisStep] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [sessionsCount, setSessionsCount] = useState(0);
+  const [savedToCard, setSavedToCard] = useState(false);
+  const [isSavingToCard, setIsSavingToCard] = useState(false);
 
   // Plan state
   const [planState, setPlanState] = useState<PlanState>("idle");
@@ -94,32 +96,38 @@ const CardAnalysisPanel = ({
       const data = await res.json();
       setResult(data.result);
       setSessionsCount(data.sessionsCount || 0);
+      setSavedToCard(false);
       toast.success("Analýza karty dokončena");
-
-      // Fire-and-forget: persist analysis to DB
-      if (data.result) {
-        (async () => {
-          try {
-            const { count } = await supabase
-              .from("client_analyses" as any)
-              .select("*", { count: "exact", head: true })
-              .eq("client_id", clientId);
-            await supabase.from("client_analyses" as any).insert({
-              client_id: clientId,
-              content: JSON.stringify(data.result),
-              summary: (data.result.clientProfile || "").slice(0, 200),
-              version: (count ?? 0) + 1,
-              sessions_count: data.sessionsCount || 0,
-            });
-          } catch (e) {
-            console.warn("Failed to persist analysis:", e);
-          }
-        })();
-      }
     } catch (err: any) {
       toast.error(err.message || "Chyba při analýze");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveToCard = async () => {
+    if (!result) return;
+    setIsSavingToCard(true);
+    try {
+      const { count } = await supabase
+        .from("client_analyses" as any)
+        .select("*", { count: "exact", head: true })
+        .eq("client_id", clientId);
+      const { error } = await supabase.from("client_analyses" as any).insert({
+        client_id: clientId,
+        content: JSON.stringify(result),
+        summary: (result.clientProfile || "").slice(0, 200),
+        version: (count ?? 0) + 1,
+        sessions_count: sessionsCount,
+      });
+      if (error) throw error;
+      setSavedToCard(true);
+      toast.success("Analýza uložena do karty");
+    } catch (e: any) {
+      toast.error("Nepodařilo se uložit analýzu");
+      console.error(e);
+    } finally {
+      setIsSavingToCard(false);
     }
   };
 
@@ -677,6 +685,20 @@ const CardAnalysisPanel = ({
           </Button>
         </div>
       )}
+
+      {/* Save to card button */}
+      <div className="flex items-center gap-2">
+        {savedToCard ? (
+          <Button disabled variant="outline" size="sm" className="gap-1.5">
+            <Check className="w-4 h-4" /> Uloženo do karty
+          </Button>
+        ) : (
+          <Button onClick={handleSaveToCard} disabled={isSavingToCard} size="sm" className="gap-1.5">
+            {isSavingToCard ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Uložit do karty
+          </Button>
+        )}
+      </div>
 
       {/* Action buttons */}
       <div className="flex gap-2">
