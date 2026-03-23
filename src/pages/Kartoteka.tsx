@@ -1061,6 +1061,9 @@ const Kartoteka = () => {
                 onPlanSaved={(plan) => {
                   setSelectedClient(prev => prev ? { ...prev, therapy_plan: plan } : prev);
                 }}
+                onAnalysisSaved={(saved) => {
+                  setClientAnalyses(prev => [saved, ...prev]);
+                }}
               />
             </TabsContent>
 

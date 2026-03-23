@@ -20,6 +20,7 @@ interface CardAnalysisPanelProps {
   onRequestPlan?: (analysis: any) => void;
   existingTherapyPlan?: string;
   onPlanSaved?: (plan: string) => void;
+  onAnalysisSaved?: (analysis: any) => void;
 }
 
 const ANALYSIS_STEPS = [
@@ -48,6 +49,7 @@ const CardAnalysisPanel = ({
   onRequestPlan,
   existingTherapyPlan,
   onPlanSaved,
+  onAnalysisSaved,
 }: CardAnalysisPanelProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
@@ -135,16 +137,21 @@ const CardAnalysisPanel = ({
         .from("client_analyses" as any)
         .select("*", { count: "exact", head: true })
         .eq("client_id", clientId);
-      const { error } = await supabase.from("client_analyses" as any).insert({
+      const version = (count ?? 0) + 1;
+      const contentStr = JSON.stringify(cleanResult);
+      const { data, error } = await supabase.from("client_analyses" as any).insert({
         client_id: clientId,
-        content: JSON.stringify(cleanResult),
+        content: contentStr,
         summary: (cleanResult.clientProfile || "").slice(0, 200),
-        version: (count ?? 0) + 1,
+        version,
         sessions_count: sessionsCount,
-      });
+      }).select().single();
       if (error) throw error;
       setSavedToCard(true);
       toast.success("Analýza uložena do karty");
+      if (onAnalysisSaved && data) {
+        onAnalysisSaved(data);
+      }
     } catch (e: any) {
       toast.error("Nepodařilo se uložit analýzu");
       console.error(e);
