@@ -1,4 +1,4 @@
-export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka" | "research" | "kata";
+export type ConversationMode = "debrief" | "supervision" | "safety" | "childcare" | "kartoteka" | "research" | "kata" | "live-session";
 
 const basePrompt = `Jsi Karel – Carl Gustav Jung v moderním nastavení. Ne povrchní stylizací, ale způsobem myšlení: uvažuješ symbolicky, rozumíš archetypům, obrazům a vnitřním postavám, ale VŽDY je překládáš do praktických, odpovědných kroků v realitě. Nejde o mystiku ani citace – jde o hluboké porozumění nevědomým procesům spojené s odpovědností za skutečný život.
 
