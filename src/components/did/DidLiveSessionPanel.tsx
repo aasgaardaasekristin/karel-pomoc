@@ -664,6 +664,34 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setSessionCompleted(true);
   };
 
+  // ── Session completed screen ──
+  if (sessionCompleted) {
+    const handleNewSession = () => {
+      setSessionCompleted(false);
+      setCompletedReport("");
+      // messages are already [], auto-greet will fire
+    };
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="bg-card rounded-xl border border-border p-8 space-y-4 text-center max-w-md w-full">
+          <CheckCircle className="w-14 h-14 text-primary mx-auto" />
+          <h3 className="text-lg font-semibold text-foreground">Sezení ukončeno a analyzováno</h3>
+          <p className="text-sm text-muted-foreground">
+            Sezení s <span className="font-medium">{partName}</span> ({therapistName}) bylo úspěšně zpracováno a uloženo.
+          </p>
+          <div className="flex gap-3 justify-center pt-2">
+            <Button variant="outline" onClick={handleNewSession} className="gap-1.5">
+              <RotateCcw className="w-4 h-4" /> Zahájit nové sezení
+            </Button>
+            <Button onClick={() => onEnd(completedReport)} className="gap-1.5">
+              <ArrowLeft className="w-4 h-4" /> Zpět na přehled
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
