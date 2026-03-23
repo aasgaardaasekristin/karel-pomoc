@@ -1,82 +1,92 @@
 
 
-# Oprava pomalosti chatu – DID & Hana
+# Oprava systému "Plán sezení na dnes" — implementační plán
 
-## A) `karel-hana-chat/index.ts` – paralelizace analyzeInput
+## Současný stav (z auditu kódu)
 
-**Problém:** `analyzeInput()` (řádek 535) blokuje 1-3s před streamem. Přitom výsledek analýzy slouží hlavně pro: 1) filtrování epizod/strategií do situation cache, 2) background episode save.
+- **Tabulka `did_daily_session_plans`**: Nemá UNIQUE constraint (už odstraněn dříve), ale **chybí sloupce** `generated_by`, `completed_at`, `part_tier`, `session_lead`, `session_format`
+- **Cron job ID 23**: Schedule `50 11 * * *` (13:50 CET) — potřeba přepsat na `0 5 * * *`
+- **Edge funkce**: Nefiltruje sleeping části (řádek 152-181 scoring), při override DELETUJE starý plán (řádek 304-307), čte kartu + operativní plán z Drive ale NE celé 00_CENTRUM dokumenty
+- **UI**: Načítá `.maybeSingle()` (max 1 plán), chybí smazat/dokončit/přegenerovat tlačítka
 
-**Řešení:** Spustit analýzu PARALELNĚ s DB queries (Promise.all), ne sekvenčně po nich. Analýza a DB load jsou nezávislé.
+## Změny
 
-```typescript
-// PŘED (sekvenční):
-const [episodes, ...] = await Promise.all([...DB queries...]);
-const analysis = await analyzeInput(messages, episodes, key); // BLOKUJE
+### 1. Migrace: přidat sloupce
 
-// PO (paralelní):
-const [dbResults, analysis] = await Promise.all([
-  Promise.all([loadEpisodes, loadStrategies, ...]),
-  analyzeInput(messages, [], key),  // episodes nepotřebuje pro klasifikaci
-]);
+```sql
+ALTER TABLE did_daily_session_plans 
+  ADD COLUMN IF NOT EXISTS generated_by text NOT NULL DEFAULT 'manual',
+  ADD COLUMN IF NOT EXISTS completed_at timestamptz,
+  ADD COLUMN IF NOT EXISTS part_tier text NOT NULL DEFAULT 'active',
+  ADD COLUMN IF NOT EXISTS session_lead text NOT NULL DEFAULT 'hanka',
+  ADD COLUMN IF NOT EXISTS session_format text NOT NULL DEFAULT 'osobně';
 ```
 
-Navíc přidat **AbortController s 8s timeout** na analyzeInput fetch + fallback na `getDefaultAnalysis()` při timeout.
+### 2. Cron job: reschedule (via data INSERT tool)
 
-**Soubor:** `supabase/functions/karel-hana-chat/index.ts` řádky 526-536
+- DELETE job ID 23
+- INSERT new: `0 5 * * *` (5:00 UTC ≈ 6:00 CET)
 
-## B) `Chat.tsx` – zkrátit didInitialContext
+### 3. Edge funkce `karel-did-auto-session-plan/index.ts`
 
-**Problém:** `didInitialContext` limit je 80000 chars (řádek 1207), což je ~90k tokenů.
+**Striktní tier filtrování:**
+- Po scoring: vyřadit VŠECHNY části s `tier === "sleeping"` (ne jen CAP)
+- Pokud nezbude žádná část → vrátit `{ success: false, reason: "no_active_parts" }` + log
+- Fallback na "oldest sleeping" ODSTRANĚN
 
-**Řešení:** Změnit limit z 80000 na 8000 chars. Zkrátit `didContextPrimeCache` na max 2000 chars.
+**Existující plán check:**
+- `.select("id, generated_by")` kde `generated_by = 'auto'` a dnešní datum
+- Manuální override: INSERT nový (NE delete starého)
 
-**Soubor:** `src/pages/Chat.tsx` řádky 1207-1217
+**Čtení karet + 00_CENTRUM (DOPLNĚK A):**
+- Rozšířit Drive čtení: po nalezení karty části, načíst i klíčové 00_CENTRUM dokumenty (Dashboard, Index, Instrukce, Mapa vztahů) — truncate každý na 1500 chars
+- Tyto dokumenty přidat do userContent pro AI
 
-```typescript
-// Změnit 80000 → 8000
-const trimmedContext = didInitialContext && didInitialContext.length > 8000
-  ? didInitialContext.slice(-8000)  // zachovat KONEC (novější data)
-  : didInitialContext;
+**Perplexity search (DOPLNĚK B):**
+- Již existuje (`searchPerplexity` řádek 221-246) — rozšířit dotaz o diagnózu/potřeby z karty části
+- Timeout 25s (už nastaveno)
 
-// Přidat trim pro primeCache
-const trimmedPrimeCache = didContextPrime.primeCache && didContextPrime.primeCache.length > 2000
-  ? didContextPrime.primeCache.slice(-2000)
-  : didContextPrime.primeCache;
-```
+**Role Hanka/Káťa:**
+- Přidat do systémového promptu instrukci `VEDE: HANKA/KÁŤA`
+- Parsovat z AI odpovědi a uložit do nových sloupců `session_lead` + `session_format`
 
-## C) `Chat.tsx` – zprávy 30 → 20
+**generated_by + part_tier:** Uložit při INSERT
 
-**Řešení:** Řádek 1206: `messages.slice(-30)` → `messages.slice(-20)`
+### 4. UI `DidDailySessionPlan.tsx`
 
-**Soubor:** `src/pages/Chat.tsx` řádek 1206
+**Data loading:**
+- `.maybeSingle()` → `.select("*").eq("plan_date", today).order("created_at", { ascending: false })`
+- State: `plans: SessionPlan[]`
 
-## D) `karel-hana-chat` – timeout na fetch volání
+**Interface rozšíření:**
+- Přidat `generated_by`, `completed_at`, `session_lead`, `session_format` do `SessionPlan`
 
-Přidat AbortController s 10s timeout na:
-1. `analyzeInput()` – fetch na řádku ~150 (AI gateway call)
-2. `saveEpisodeInBackground()` – fetch na řádku ~450 (AI gateway call)
+**Zobrazení fronty:**
+- Nejnovější pending plán nahoře (rozbalitelný)
+- Done/skipped plány pod ním (sbalené, šedé) — NEMIZÍ po refreshi
+- Badge s `session_lead`: "VEDE: Hanka (osobně)" / "VEDE: Káťa (chat)"
 
-```typescript
-const controller = new AbortController();
-const timeout = setTimeout(() => controller.abort(), 10000);
-try {
-  const response = await fetch(url, { ...opts, signal: controller.signal });
-  clearTimeout(timeout);
-} catch (e) {
-  clearTimeout(timeout);
-  if (e.name === 'AbortError') return getDefaultAnalysis(msg);
-  throw e;
-}
-```
+**Nová tlačítka u každého plánu:**
+- ✅ Dokončeno → UPDATE `status='done', completed_at=now()`
+- 🗑 Smazat → `window.confirm()` → DELETE z DB
+- 🔄 Přegenerovat → nový INSERT (starý zůstane)
 
-**Soubor:** `supabase/functions/karel-hana-chat/index.ts` funkce `analyzeInput` + `saveEpisodeInBackground`
+**Globální tlačítko:** "➕ Vygenerovat nový plán" vždy viditelné
+
+**Live session:** Napojit na první pending plán
+
+**Text 13:50 → 6:00:** Update informační text
 
 ## Soubory k úpravě
-1. `supabase/functions/karel-hana-chat/index.ts` – paralelizace + timeouty
-2. `src/pages/Chat.tsx` – context trim + message limit
 
-## Co se NEMĚNÍ
-- DID mamka/kata flow
-- Kvalita odpovědí (analýza stále běží, jen paralelně)
-- Background saveEpisode logika (jen přidán timeout)
+1. **DB migrace** — 5 nových sloupců
+2. **Cron job** — reschedule job 23 na `0 5 * * *`
+3. **`supabase/functions/karel-did-auto-session-plan/index.ts`** — tier filtr, ne-delete, 00_CENTRUM čtení, Perplexity rozšíření, role Hanka/Káťa, generated_by
+4. **`src/components/did/DidDailySessionPlan.tsx`** — pole plánů, smazat, dokončit, přegenerovat, session_lead badge
+
+## Co se NEZMĚNÍ
+- Live session flow (DidLiveSessionPanel) — jen napojení na první pending plán
+- Drive write logika
+- Urgency scoring algoritmus (jen striktní filtr sleeping)
+- Preference dialog
 
