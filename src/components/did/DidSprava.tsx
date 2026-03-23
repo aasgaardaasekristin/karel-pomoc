@@ -214,23 +214,6 @@ function ToolButton({ icon, title, desc, loading, onClick }: {
   );
 }
 
-function ColorPicker({ label, value, onChange }: { label: string; value: string; onChange: (hsl: string) => void }) {
-  const hex = hslToHex(value);
 
-  return (
-    <label className="flex items-center gap-2 cursor-pointer flex-1">
-      <input
-        type="color"
-        value={hex}
-        onChange={(e) => onChange(hexToHSL(e.target.value))}
-        className="w-8 h-8 rounded-lg border border-border cursor-pointer p-0.5 bg-transparent"
-      />
-      <div>
-        <span className="text-[10px] text-muted-foreground block">{label}</span>
-        <span className="text-[9px] font-mono text-muted-foreground">{hex}</span>
-      </div>
-    </label>
-  );
-}
 
 export default DidSprava;
