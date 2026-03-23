@@ -13,6 +13,8 @@ import {
   FileDown,
   Play,
   Pencil,
+} from "lucide-react";
+// re-opened below
   Bot,
   RotateCcw,
 } from "lucide-react";

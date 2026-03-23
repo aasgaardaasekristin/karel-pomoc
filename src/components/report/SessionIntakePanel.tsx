@@ -235,7 +235,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             clientId,
             folder: "Sezeni",
           },
-        });
+        }).then(res => handleDriveError(res));
       } catch (e) {
         console.warn("Drive backup failed:", e);
       }

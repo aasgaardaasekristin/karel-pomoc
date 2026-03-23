@@ -382,7 +382,7 @@ const Kartoteka = () => {
         },
         headers: { Authorization: `Bearer ${session.access_token}` },
       }).then(res => {
-        if (res.error || !res.data?.success) {
+        if (!handleDriveError(res) && (res.error || !res.data?.success)) {
           console.warn("Drive backup failed:", res.data?.error || res.error);
         }
       });

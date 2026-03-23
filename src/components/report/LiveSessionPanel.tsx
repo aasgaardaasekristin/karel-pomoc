@@ -504,7 +504,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             clientId,
             folder: "Asistence",
           },
-        });
+        }).then(res => handleDriveError(res));
       } catch (e) {
         console.warn("Assistance backup failed:", e);
       }
