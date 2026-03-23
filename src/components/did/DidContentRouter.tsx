@@ -136,7 +136,7 @@ export interface DidContentRouterProps {
   setMode: React.Dispatch<React.SetStateAction<ConversationMode>>;
 }
 
-const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
+const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const {
     didFlowState, setDidFlowState, didSubMode, setDidSubMode,
