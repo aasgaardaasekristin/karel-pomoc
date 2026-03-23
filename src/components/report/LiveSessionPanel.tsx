@@ -473,11 +473,176 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
     }
   };
 
+  // Helper: load selected prep into session plan
+  const loadPrepIntoPlan = (prep: DbPrep) => {
+    if (resolvedSessionId) {
+      updateSessionPlan(resolvedSessionId, prep.plan);
+    }
+  };
+
+  // Helper: generate modified plan via edge function
+  const generateModifiedPlan = async (basePlan: any, modifications: string) => {
+    setIsGeneratingModification(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-session-plan`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            clientId,
+            baseAnalysis: null,
+            customRequest: null,
+            modificationsRequested: `PŮVODNÍ PLÁN:\n${JSON.stringify(basePlan, null, 2)}\n\nPOŽADOVANÉ ÚPRAVY:\n${modifications}`,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`Chyba: ${res.status}`);
+      const { plan } = await res.json();
+      setModifiedPlan(plan);
+      setModifyPhase("reviewing");
+    } catch (e) {
+      console.error("[LiveSessionPanel] Modify plan error:", e);
+      toast.error("Chyba při generování upraveného plánu");
+    } finally {
+      setIsGeneratingModification(false);
+    }
+  };
+
   // Mode selection dialog
   if (messages.length === 0 && !modeConfirmed) {
+    const hasDbPreps = dbPreps.length > 0;
+    const canUsePlan = hasPlan || hasDbPreps;
+
+    // Modify flow: reviewing generated plan
+    if (modifyPhase === "reviewing" && modifiedPlan) {
+      const planObj = modifiedPlan;
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-lg space-y-4">
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">Upravený plán sezení</h3>
+              <p className="text-sm text-muted-foreground">Zkontroluj a schval, nebo uprav dále</p>
+            </div>
+            <ScrollArea className="max-h-[400px] border border-border rounded-lg p-4 bg-card">
+              <div className="space-y-3">
+                {planObj.sessionGoal && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">Cíl sezení</p>
+                    <p className="text-sm text-foreground">{planObj.sessionGoal}</p>
+                  </div>
+                )}
+                {planObj.phases?.map((phase: any, i: number) => (
+                  <div key={i} className="border-l-2 border-primary/30 pl-3">
+                    <p className="text-sm font-medium text-foreground">
+                      {phase.timeStart && `${phase.timeStart}–${phase.timeEnd} `}{phase.name}
+                    </p>
+                    {phase.technique && <p className="text-xs text-muted-foreground">Technika: {phase.technique}</p>}
+                    {phase.howToStart && <p className="text-xs text-muted-foreground italic">„{phase.howToStart}"</p>}
+                  </div>
+                ))}
+                {planObj.whyThisPlan && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">Zdůvodnění</p>
+                    <p className="text-xs text-muted-foreground">{planObj.whyThisPlan}</p>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  if (resolvedSessionId) updateSessionPlan(resolvedSessionId, modifiedPlan);
+                  setModeConfirmed(true);
+                }}
+              >
+                Schválit a začít
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setModifyPhase("editing");
+                  setModifyRequest("");
+                }}
+              >
+                Další úpravy
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Modify flow: editing modifications
+    if (modifyPhase === "editing") {
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-md space-y-4">
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">Jaké úpravy chceš?</h3>
+              <p className="text-sm text-muted-foreground">Popiš, co chceš v plánu změnit</p>
+            </div>
+            <Textarea
+              value={modifyRequest}
+              onChange={e => setModifyRequest(e.target.value)}
+              placeholder="Např. přidej 10 minut na relaxaci na začátku, vynech aktivitu s kresbou..."
+              className="min-h-[100px] text-sm"
+              disabled={isGeneratingModification}
+            />
+            <div className="flex gap-2">
+              <Button
+                className="flex-1"
+                disabled={!modifyRequest.trim() || isGeneratingModification}
+                onClick={() => {
+                  const prep = dbPreps.find(p => p.id === selectedPrepId);
+                  const basePlan = modifiedPlan || prep?.plan || sessionPlan;
+                  if (basePlan) generateModifiedPlan(basePlan, modifyRequest);
+                }}
+              >
+                {isGeneratingModification ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                {isGeneratingModification ? "Karel generuje…" : "Vygenerovat úpravy"}
+              </Button>
+              <Button variant="outline" onClick={() => { setModifyPhase(null); setSessionMode(null); }}>
+                Zpět
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Modify flow: generating
+    if (modifyPhase === "generating" || isGeneratingModification) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="text-center space-y-4">
+            <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
+            <p className="text-sm text-muted-foreground">Karel upravuje plán sezení…</p>
+          </div>
+        </div>
+      );
+    }
+
     const handleConfirm = () => {
       if (!sessionMode) return;
-      if ((sessionMode === "modify" || sessionMode === "custom") && !customTopic.trim()) return;
+
+      // For plan/modify modes, load the selected DB prep first
+      if ((sessionMode === "plan" || sessionMode === "modify") && !hasPlan && hasDbPreps) {
+        const prep = selectedPrepId ? dbPreps.find(p => p.id === selectedPrepId) : dbPreps[0];
+        if (prep) loadPrepIntoPlan(prep);
+      }
+
+      if (sessionMode === "modify") {
+        // Enter modify flow
+        const prep = selectedPrepId ? dbPreps.find(p => p.id === selectedPrepId) : dbPreps[0];
+        if (prep) loadPrepIntoPlan(prep);
+        setModifyPhase("editing");
+        return;
+      }
+
+      if (sessionMode === "custom" && !customTopic.trim()) return;
       setModeConfirmed(true);
     };
 
@@ -489,26 +654,41 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             <h3 className="text-lg font-semibold text-foreground">Jak chceš vést sezení?</h3>
             <p className="text-sm text-muted-foreground">Zvol režim pro sezení s {clientName}</p>
           </div>
-          {!hasPlan && (
+          {!canUsePlan && !dbPrepsLoading && (
             <div className="text-center text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
               <p>Pro <strong>{clientName}</strong> nemáš připravené sezení.</p>
               <p className="text-xs mt-1">Vyber „Vlastní téma" nebo „Volná asistence".</p>
             </div>
           )}
+          {dbPrepsLoading && (
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Načítám přípravy…</span>
+            </div>
+          )}
           <RadioGroup
             value={sessionMode ?? ""}
-            onValueChange={(v) => setSessionMode(v as SessionMode)}
+            onValueChange={(v) => {
+              setSessionMode(v as SessionMode);
+              // Auto-select first prep if only one
+              if ((v === "plan" || v === "modify") && dbPreps.length === 1) {
+                setSelectedPrepId(dbPreps[0].id);
+              }
+            }}
             className="space-y-3"
           >
-            <label className={`flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50 ${!hasPlan ? "opacity-50 pointer-events-none" : ""}`}>
-              <RadioGroupItem value="plan" id="mode-plan" disabled={!hasPlan} className="mt-0.5" />
+            <label className={`flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50 ${!canUsePlan ? "opacity-50 pointer-events-none" : ""}`}>
+              <RadioGroupItem value="plan" id="mode-plan" disabled={!canUsePlan} className="mt-0.5" />
               <div>
                 <Label htmlFor="mode-plan" className="font-medium cursor-pointer">Podle návrhu</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Karel tě provede připraveným plánem fázi po fázi</p>
+                {hasDbPreps && !hasPlan && (
+                  <p className="text-xs text-primary mt-0.5">{dbPreps.length} příprav(a) v kartotéce</p>
+                )}
               </div>
             </label>
-            <label className={`flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50 ${!hasPlan ? "opacity-50 pointer-events-none" : ""}`}>
-              <RadioGroupItem value="modify" id="mode-modify" disabled={!hasPlan} className="mt-0.5" />
+            <label className={`flex items-start gap-3 rounded-lg border border-border p-4 cursor-pointer transition-colors hover:bg-accent/50 ${!canUsePlan ? "opacity-50 pointer-events-none" : ""}`}>
+              <RadioGroupItem value="modify" id="mode-modify" disabled={!canUsePlan} className="mt-0.5" />
               <div className="flex-1">
                 <Label htmlFor="mode-modify" className="font-medium cursor-pointer">Upravit návrh</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Plán jako základ, ale s tvými úpravami</p>
@@ -529,20 +709,52 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               </div>
             </label>
           </RadioGroup>
-          {sessionMode && (sessionMode === "modify" || sessionMode === "custom") && (
+
+          {/* Prep picker when plan/modify selected and multiple DB preps exist */}
+          {(sessionMode === "plan" || sessionMode === "modify") && !hasPlan && dbPreps.length > 1 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Které připravené sezení použít?</p>
+              <RadioGroup
+                value={selectedPrepId ?? ""}
+                onValueChange={setSelectedPrepId}
+                className="space-y-2"
+              >
+                {dbPreps.map(prep => (
+                  <label key={prep.id} className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer transition-colors hover:bg-accent/50">
+                    <RadioGroupItem value={prep.id} className="shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">
+                        Sezení č. {prep.session_number ?? "?"} — {new Date(prep.created_at || "").toLocaleDateString("cs-CZ")}
+                      </p>
+                      {prep.approved_at && (
+                        <Badge variant="outline" className="text-[10px] mt-0.5">Schváleno</Badge>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </RadioGroup>
+            </div>
+          )}
+
+          {sessionMode === "custom" && (
             <Textarea
               value={customTopic}
               onChange={e => setCustomTopic(e.target.value)}
-              placeholder={sessionMode === "modify" ? "Jak chceš plán upravit?" : "Na co se chceš zaměřit?"}
+              placeholder="Na co se chceš zaměřit?"
               className="min-h-[80px] text-sm"
             />
           )}
           <Button
             className="w-full"
-            disabled={!sessionMode || ((sessionMode === "modify" || sessionMode === "custom") && !customTopic.trim())}
+            disabled={
+              !sessionMode ||
+              (sessionMode === "custom" && !customTopic.trim()) ||
+              ((sessionMode === "plan" || sessionMode === "modify") && !canUsePlan) ||
+              ((sessionMode === "plan" || sessionMode === "modify") && !hasPlan && dbPreps.length > 1 && !selectedPrepId)
+            }
             onClick={handleConfirm}
           >
-            Začít sezení
+            {sessionMode === "modify" ? "Pokračovat k úpravám" : "Začít sezení"}
           </Button>
         </div>
       </div>
