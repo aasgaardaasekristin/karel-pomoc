@@ -256,7 +256,7 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
             <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
               ← Zpět
             </Button>
-            <ThemeQuickButton />
+            <ThemeQuickButton storageKey={didStorageKey} />
           </div>
         </div>
       </ScrollArea>
