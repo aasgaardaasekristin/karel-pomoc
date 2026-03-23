@@ -221,7 +221,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
           report_missing_data: (rec.diagnosticHypothesis?.missingData || []).join("; "),
           report_interventions_tried: (rec.therapeuticRecommendations || []).map((r: any) => `${r.approach}: ${r.reason}`).join("\n"),
           report_next_session_goal: (rec.nextSessionFocus || []).join("; "),
-          ai_analysis: rec.summary || "",
+          ai_analysis: JSON.stringify(result),
           voice_analysis: "",
           notes: rec.analysis || "",
         });

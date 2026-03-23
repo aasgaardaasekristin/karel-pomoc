@@ -1204,50 +1204,50 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
 
   try {
     parsed = JSON.parse(analysis);
+    if (typeof parsed === "string") {
+      parsed = JSON.parse(parsed);
+    }
   } catch {
     try {
       const cleaned = analysis
-        .replace(/^```json\r?\n?/i, "")
-        .replace(/^```\r?\n?/i, "")
-        .replace(/\r?\n?```\s*$/i, "")
+        .replace(/^```json\n?/, "")
+        .replace(/```$/, "")
         .trim();
       parsed = JSON.parse(cleaned);
-
       if (typeof parsed === "string") {
         parsed = JSON.parse(parsed);
       }
     } catch {
-      return (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown>{analysis}</ReactMarkdown>
-        </div>
-      );
+      return <ReactMarkdown>{analysis}</ReactMarkdown>;
     }
   }
 
-  if (!parsed || typeof parsed !== "object") {
-    return (
-      <div className="prose prose-sm max-w-none dark:prose-invert">
-        <ReactMarkdown>{analysis}</ReactMarkdown>
-      </div>
-    );
-  }
+  if (!parsed || typeof parsed !== "object") return <ReactMarkdown>{analysis}</ReactMarkdown>;
 
-  const summary = typeof parsed.summary === "string" ? parsed.summary : "";
-  const analysis2 = typeof parsed.analysis === "string" ? parsed.analysis : "";
-  const hypothesis = parsed.diagnosticHypothesis;
-  const recommendations = Array.isArray(parsed.therapeuticRecommendations)
-    ? parsed.therapeuticRecommendations
+  const record =
+    parsed.sessionRecord && typeof parsed.sessionRecord === "object"
+      ? parsed.sessionRecord
+      : parsed;
+
+  const summary = typeof record.summary === "string" ? record.summary : "";
+  const analysis2 = typeof record.analysis === "string" ? record.analysis : "";
+  const hypothesis = record.diagnosticHypothesis;
+  const recommendations = Array.isArray(record.therapeuticRecommendations)
+    ? record.therapeuticRecommendations
     : [];
-  const nextFocus = Array.isArray(parsed.nextSessionFocus)
-    ? parsed.nextSessionFocus
+  const nextFocus = Array.isArray(record.nextSessionFocus)
+    ? record.nextSessionFocus
     : [];
   const questionnaire = Array.isArray(parsed.questionnaire)
     ? parsed.questionnaire
-    : [];
+    : Array.isArray(record.questionnaire)
+      ? record.questionnaire
+      : [];
   const tasks = Array.isArray(parsed.clientTasks)
     ? parsed.clientTasks
-    : [];
+    : Array.isArray(record.clientTasks)
+      ? record.clientTasks
+      : [];
 
   return (
     <div className="space-y-4 text-sm">
