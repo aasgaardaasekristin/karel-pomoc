@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Loader2, ClipboardList, Search, ArrowLeft, CheckCircle, Edit3, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 type Step = "select-part" | "set-goals" | "generating" | "review" | "revising";
 
