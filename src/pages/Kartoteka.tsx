@@ -686,8 +686,8 @@ const Kartoteka = () => {
                             </Button>
                           </div>
                         </div>
-                        <div className="prose prose-sm max-w-none dark:prose-invert bg-secondary/20 rounded-lg p-3">
-                          <ReactMarkdown>{selectedClient.therapy_plan}</ReactMarkdown>
+                        <div className="bg-secondary/20 rounded-lg p-3">
+                          <RichMarkdown>{selectedClient.therapy_plan}</RichMarkdown>
                         </div>
                       </div>
                     )}
