@@ -536,21 +536,28 @@ const Chat = () => {
     setContextKey,
   } = useTheme();
 
-  useEffect(() => {
+  // Compute localStorage storageKey for this screen
+  const chatStorageKey = (() => {
     if (mainMode === "report") {
-      setContextKey(activeSession ? `report_client_${activeSession.clientId}` : "report_session_selector");
-      return;
+      return activeSession ? `theme_report_${activeSession.clientId}` : "theme_report";
     }
-    // DID and Hana modes manage their own context keys in child components
-    if (hubSection === "did" || hubSection === "hana") return;
-
     if (hubSection === "research") {
-      setContextKey(activeResearchThread ? `research_thread_${activeResearchThread.id}` : "research");
-      return;
+      return activeResearchThread ? `theme_research_${activeResearchThread.id}` : "theme_research";
     }
+    // DID and Hana manage their own storageKey in child components
+    if (hubSection === "did" || hubSection === "hana") return null;
+    return "theme_global";
+  })();
 
-    setContextKey("global");
-  }, [mainMode, hubSection, activeSession?.clientId, activeResearchThread?.id, setContextKey]);
+  // Load/restore theme from localStorage for non-child-managed modes
+  useEffect(() => {
+    if (!chatStorageKey) return;
+    const saved = localStorage.getItem(chatStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+    }
+    return () => { restoreGlobalTheme(); };
+  }, [chatStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
     setActiveThread(thread);
