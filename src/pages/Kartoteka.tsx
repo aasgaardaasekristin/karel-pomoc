@@ -59,6 +59,8 @@ type Client = {
   family_context: string;
   notes: string;
   therapy_plan: string;
+  drive_doc_id: string | null;
+  drive_doc_url: string | null;
   created_at: string;
   updated_at: string;
 };
