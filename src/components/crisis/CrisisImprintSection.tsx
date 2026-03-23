@@ -1,5 +1,5 @@
 import { AlertTriangle, TrendingUp, StickyNote } from "lucide-react";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import type { DbCrisisBrief } from "./types";
 
 const signalLabels: Record<string, string> = {
