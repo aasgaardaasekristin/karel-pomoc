@@ -136,7 +136,7 @@ export interface DidContentRouterProps {
 }
 
 const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
-  const { setContextKey } = useTheme();
+  const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const {
     didFlowState, setDidFlowState, didSubMode, setDidSubMode,
     activeThread, setActiveThread, messages, setMessages,
@@ -159,18 +159,22 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
     meetingTherapist, setMeetingTherapist, mode, setMode,
   } = props;
 
-  // Set theme context based on DID sub-mode and active thread
+  // Compute localStorage storageKey based on DID sub-mode and active thread
+  const didStorageKey = (() => {
+    if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
+    if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
+    if (didSubMode === "cast") return "theme_did_kids";
+    return "theme_did_entry";
+  })();
+
+  // Load theme from localStorage on mount/change, restore on unmount
   useEffect(() => {
-    if (didSubMode === "mamka" || didSubMode === "kata") {
-      setContextKey("did_katerina");
-    } else if (didSubMode === "cast" && activeThread) {
-      setContextKey(`did_kids_${activeThread.id}`);
-    } else if (didSubMode === "cast") {
-      setContextKey("did_kids");
-    } else {
-      setContextKey("did_entry");
+    const saved = localStorage.getItem(didStorageKey);
+    if (saved) {
+      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-  }, [didSubMode, activeThread?.id, setContextKey]);
+    return () => { restoreGlobalTheme(); };
+  }, [didStorageKey, applyTemporaryTheme, restoreGlobalTheme]);
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {

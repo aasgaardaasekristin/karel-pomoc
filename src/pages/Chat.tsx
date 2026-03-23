@@ -533,7 +533,6 @@ const Chat = () => {
     applyTemporaryTheme,
     restoreGlobalTheme,
     getPersonaPrefs,
-    setContextKey,
   } = useTheme();
 
   // Compute localStorage storageKey for this screen
