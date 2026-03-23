@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
-import DidLiveSessionPanel from "./DidLiveSessionPanel";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface SessionPlan {
   id: string;
