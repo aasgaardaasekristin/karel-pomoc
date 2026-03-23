@@ -102,7 +102,8 @@ const CardAnalysisPanel = ({
         throw new Error(err.error || `Chyba ${res.status}`);
       }
       const data = await res.json();
-      setResult(data.result);
+      const cleanedResult = sanitizeAnalysisResult(data.result);
+      setResult(cleanedResult);
       setSessionsCount(data.sessionsCount || 0);
       setSavedToCard(false);
       toast.success("Analýza karty dokončena");
@@ -113,15 +114,13 @@ const CardAnalysisPanel = ({
     }
   };
 
-  const sanitizeResultForSave = (r: any) => {
+  const sanitizeAnalysisResult = (r: any) => {
     const clean = { ...r };
-    // If clientProfile contains embedded JSON block, extract it
-    if (typeof clean.clientProfile === "string" && clean.clientProfile.includes("```json")) {
-      const match = clean.clientProfile.match(/```json\s*([\s\S]*?)```/);
-      if (match) {
+    if (typeof clean.clientProfile === "string") {
+      const embeddedMatch = clean.clientProfile.match(/```json\s*([\s\S]*?)```/);
+      if (embeddedMatch) {
         try {
-          const embedded = JSON.parse(match[1].trim());
-          // Merge embedded JSON into clean result, keeping conversational prefix as profile text
+          const embedded = JSON.parse(embeddedMatch[1].trim());
           const prefix = clean.clientProfile.slice(0, clean.clientProfile.indexOf("```json")).trim();
           clean.clientProfile = embedded.clientProfile || prefix || clean.clientProfile;
           if (embedded.diagnosticHypothesis) clean.diagnosticHypothesis = embedded.diagnosticHypothesis;
@@ -130,7 +129,10 @@ const CardAnalysisPanel = ({
           if (embedded.dataGaps) clean.dataGaps = embedded.dataGaps;
         } catch {}
       }
+
+      clean.clientProfile = parseAiAnalysis(clean.clientProfile);
     }
+
     return clean;
   };
 
@@ -144,7 +146,7 @@ const CardAnalysisPanel = ({
     }
     setIsSavingToCard(true);
     try {
-      const cleanResult = sanitizeResultForSave(result);
+      const cleanResult = sanitizeAnalysisResult(result);
       const { count } = await supabase
         .from("client_analyses")
         .select("*", { count: "exact", head: true })
