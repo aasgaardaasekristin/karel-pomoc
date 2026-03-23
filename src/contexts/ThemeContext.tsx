@@ -26,14 +26,12 @@ const PRESETS: Record<string, Partial<ThemePrefs>> = {
   midnight: { primary_color: "214 24% 34%", accent_color: "206 18% 68%" },
   rose: { primary_color: "344 30% 50%", accent_color: "18 34% 78%" },
   mint: { primary_color: "164 28% 40%", accent_color: "148 22% 76%" },
-  // Therapeutic presets
   sand: { primary_color: "32 22% 48%", accent_color: "38 26% 72%" },
   stone: { primary_color: "200 12% 42%", accent_color: "180 10% 68%" },
   dawn: { primary_color: "340 18% 52%", accent_color: "24 28% 74%" },
   moss: { primary_color: "136 18% 36%", accent_color: "88 14% 66%" },
   cloud: { primary_color: "210 18% 56%", accent_color: "220 14% 78%" },
   earth: { primary_color: "22 26% 42%", accent_color: "34 20% 68%" },
-  // Kids presets (auto-applied per-thread)
   ocean_explorer: { primary_color: "200 38% 42%", accent_color: "190 30% 68%" },
   forest_ranger: { primary_color: "142 28% 36%", accent_color: "88 22% 62%" },
   space: { primary_color: "230 30% 32%", accent_color: "260 24% 58%" },
@@ -211,7 +209,11 @@ interface ThemeContextValue {
   updatePrefs: (partial: Partial<ThemePrefs>) => Promise<void>;
   applyPreset: (presetName: string) => Promise<void>;
   uploadBackground: (file: File) => Promise<string>;
+  currentContextKey: string;
+  setContextKey: (key: string) => void;
+  /** @deprecated Use currentContextKey */
   currentPersona: string;
+  /** @deprecated Use setContextKey */
   setCurrentPersona: (p: string) => void;
   loading: boolean;
   applyTemporaryTheme: (config: Partial<ThemePrefs>) => void;
@@ -227,15 +229,33 @@ export const useTheme = () => {
   return ctx;
 };
 
+function dbRowToPrefs(data: any, contextKey: string): ThemePrefs {
+  return {
+    persona: data.persona ?? contextKey,
+    primary_color: data.primary_color,
+    accent_color: data.accent_color,
+    background_image_url: data.background_image_url || "",
+    theme_preset: data.theme_preset,
+    dark_mode: data.dark_mode,
+    font_scale: Number(data.font_scale),
+    border_radius: data.border_radius || "normal",
+    chat_bubble_style: data.chat_bubble_style || "rounded",
+    compact_mode: data.compact_mode ?? false,
+    animations_enabled: data.animations_enabled ?? true,
+    font_color: data.font_color || "",
+    font_family: data.font_family || "default",
+  };
+}
+
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const [prefs, setPrefs] = useState<ThemePrefs>(DEFAULT_PREFS);
-  const [currentPersona, setCurrentPersona] = useState("default");
+  const [currentContextKey, setCurrentContextKeyState] = useState("global");
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const savedPrefsRef = useRef<ThemePrefs | null>(null);
-  const personaPrefsCache = useRef<Record<string, ThemePrefs>>({});
+  const contextCache = useRef<Map<string, ThemePrefs>>(new Map());
 
-  const loadPrefs = useCallback(async (persona: string) => {
+  const loadPrefsForContext = useCallback(async (contextKey: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setLoading(false);
@@ -244,38 +264,62 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
     setUserId(user.id);
 
+    // Check cache first
+    const cached = contextCache.current.get(contextKey);
+    if (cached) {
+      setPrefs(cached);
+      setLoading(false);
+      return;
+    }
+
+    // Query DB by context_key
     const { data } = await supabase
       .from("user_theme_preferences")
       .select("*")
-      .eq("persona", persona)
+      .eq("context_key", contextKey)
       .maybeSingle();
 
     if (data) {
-      setPrefs({
-        persona: (data as any).persona,
-        primary_color: (data as any).primary_color,
-        accent_color: (data as any).accent_color,
-        background_image_url: (data as any).background_image_url || "",
-        theme_preset: (data as any).theme_preset,
-        dark_mode: (data as any).dark_mode,
-        font_scale: Number((data as any).font_scale),
-        border_radius: (data as any).border_radius || "normal",
-        chat_bubble_style: (data as any).chat_bubble_style || "rounded",
-        compact_mode: (data as any).compact_mode ?? false,
-        animations_enabled: (data as any).animations_enabled ?? true,
-        font_color: (data as any).font_color || "",
-        font_family: (data as any).font_family || "default",
-      });
+      const parsed = dbRowToPrefs(data, contextKey);
+      contextCache.current.set(contextKey, parsed);
+      setPrefs(parsed);
+    } else if (contextKey !== "global") {
+      // Fallback: load global prefs as base
+      const globalCached = contextCache.current.get("global");
+      if (globalCached) {
+        setPrefs(globalCached);
+      } else {
+        const { data: globalData } = await supabase
+          .from("user_theme_preferences")
+          .select("*")
+          .eq("context_key", "global")
+          .maybeSingle();
+
+        if (globalData) {
+          const globalPrefs = dbRowToPrefs(globalData, "global");
+          contextCache.current.set("global", globalPrefs);
+          setPrefs(globalPrefs);
+        } else {
+          setPrefs({ ...DEFAULT_PREFS, persona: contextKey });
+        }
+      }
     } else {
-      setPrefs({ ...DEFAULT_PREFS, persona });
+      setPrefs({ ...DEFAULT_PREFS, persona: contextKey });
     }
 
     setLoading(false);
   }, []);
 
+  const setContextKey = useCallback((key: string) => {
+    setCurrentContextKeyState(key);
+  }, []);
+
+  // Backward compat alias
+  const setCurrentPersona = setContextKey;
+
   useEffect(() => {
-    void loadPrefs(currentPersona);
-  }, [currentPersona, loadPrefs]);
+    void loadPrefsForContext(currentContextKey);
+  }, [currentContextKey, loadPrefsForContext]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -289,13 +333,11 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     root.style.fontSize = `${14 * prefs.font_scale}px`;
     root.style.setProperty("--radius", RADIUS_MAP[prefs.border_radius] || "0.75rem");
 
-    // Custom font color
     if (prefs.font_color) {
       root.style.setProperty("--foreground", prefs.font_color);
       root.style.setProperty("--card-foreground", prefs.font_color);
     }
 
-    // Font family
     const FONT_MAP: Record<string, string> = {
       default: "'DM Sans', system-ui, sans-serif",
       comic: "'Comic Neue', 'Comic Sans MS', cursive",
@@ -332,13 +374,17 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     const next = { ...prefs, ...partial };
     setPrefs(next);
 
+    // Update cache for current context
+    contextCache.current.set(currentContextKey, next);
+
     if (!userId) return;
 
     await supabase
       .from("user_theme_preferences")
       .upsert({
         user_id: userId,
-        persona: next.persona,
+        persona: next.persona || currentContextKey,
+        context_key: currentContextKey,
         primary_color: next.primary_color,
         accent_color: next.accent_color,
         background_image_url: next.background_image_url,
@@ -352,8 +398,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
         font_color: next.font_color,
         font_family: next.font_family,
         updated_at: new Date().toISOString(),
-      } as any, { onConflict: "user_id,persona" });
-  }, [prefs, userId]);
+      } as any, { onConflict: "user_id,context_key" });
+  }, [prefs, userId, currentContextKey]);
 
   const applyPreset = useCallback(async (presetName: string) => {
     const preset = PRESETS[presetName];
@@ -365,16 +411,15 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     if (!userId) throw new Error("Not authenticated");
 
     const ext = file.name.split(".").pop() || "jpg";
-    const path = `${userId}/${currentPersona}_bg_${Date.now()}.${ext}`;
+    const path = `${userId}/${currentContextKey}_bg_${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("theme-backgrounds").upload(path, file, { upsert: true });
     if (error) throw error;
 
     const { data } = supabase.storage.from("theme-backgrounds").getPublicUrl(path);
     return data.publicUrl;
-  }, [userId, currentPersona]);
+  }, [userId, currentContextKey]);
 
   const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
-    // Only save the global prefs if we're not already in temporary mode
     if (!savedPrefsRef.current) {
       savedPrefsRef.current = prefs;
     }
@@ -388,12 +433,9 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Read-only helper: fetch persona prefs from DB without changing global state.
-  // Cached per-session so repeated calls don't hit DB.
   const getPersonaPrefs = useCallback(async (persona: string): Promise<ThemePrefs> => {
-    if (personaPrefsCache.current[persona]) {
-      return personaPrefsCache.current[persona];
-    }
+    const cached = contextCache.current.get(persona);
+    if (cached) return cached;
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { ...DEFAULT_PREFS, persona };
@@ -401,34 +443,34 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     const { data } = await supabase
       .from("user_theme_preferences")
       .select("*")
-      .eq("persona", persona)
+      .eq("context_key", persona)
       .eq("user_id", user.id)
       .maybeSingle();
 
     const result: ThemePrefs = data
-      ? {
-          persona: (data as any).persona,
-          primary_color: (data as any).primary_color,
-          accent_color: (data as any).accent_color,
-          background_image_url: (data as any).background_image_url || "",
-          theme_preset: (data as any).theme_preset,
-          dark_mode: (data as any).dark_mode,
-          font_scale: Number((data as any).font_scale),
-          border_radius: (data as any).border_radius || "normal",
-          chat_bubble_style: (data as any).chat_bubble_style || "rounded",
-          compact_mode: (data as any).compact_mode ?? false,
-          animations_enabled: (data as any).animations_enabled ?? true,
-          font_color: (data as any).font_color || "",
-          font_family: (data as any).font_family || "default",
-        }
+      ? dbRowToPrefs(data, persona)
       : { ...DEFAULT_PREFS, persona };
 
-    personaPrefsCache.current[persona] = result;
+    contextCache.current.set(persona, result);
     return result;
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ prefs, presets: PRESETS, updatePrefs, applyPreset, uploadBackground, currentPersona, setCurrentPersona, loading, applyTemporaryTheme, restoreGlobalTheme, getPersonaPrefs }}>
+    <ThemeContext.Provider value={{
+      prefs,
+      presets: PRESETS,
+      updatePrefs,
+      applyPreset,
+      uploadBackground,
+      currentContextKey,
+      setContextKey,
+      currentPersona: currentContextKey,
+      setCurrentPersona,
+      loading,
+      applyTemporaryTheme,
+      restoreGlobalTheme,
+      getPersonaPrefs,
+    }}>
       {children}
     </ThemeContext.Provider>
   );
