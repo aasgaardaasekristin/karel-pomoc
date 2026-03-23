@@ -368,8 +368,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
                     {new Date(m.timestamp).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
-                <div className="text-sm text-foreground/90 prose prose-sm dark:prose-invert max-w-none">
-                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                <div className="text-sm text-foreground/90">
+                  <RichMarkdown>{m.content}</RichMarkdown>
                 </div>
               </div>
             );
