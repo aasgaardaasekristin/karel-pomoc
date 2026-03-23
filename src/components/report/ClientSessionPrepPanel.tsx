@@ -13,8 +13,6 @@ import {
   FileDown,
   Play,
   Pencil,
-} from "lucide-react";
-// re-opened below
   Bot,
   RotateCcw,
 } from "lucide-react";
@@ -22,6 +20,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { blobToBase64 } from "@/lib/driveUtils";
+import { handleDriveError } from "@/lib/driveErrorHandler";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 
