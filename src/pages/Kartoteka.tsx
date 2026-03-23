@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useNavigate } from "react-router-dom";
@@ -1024,7 +1024,7 @@ const Kartoteka = () => {
                         {s.ai_analysis && (
                           <div className="pt-2 border-t border-border">
                             <span className="text-muted-foreground text-xs">AI analýza:</span>
-                            <p className="text-sm mt-1 whitespace-pre-wrap">{s.ai_analysis}</p>
+                            <SessionAnalysisView analysis={s.ai_analysis} />
                           </div>
                         )}
                         {s.voice_analysis && (
@@ -1157,6 +1157,109 @@ const SessionField = ({ label, value }: { label: string; value: string }) => {
     <div>
       <span className="text-muted-foreground text-xs">{label}:</span>
       <p className="text-sm whitespace-pre-wrap mt-0.5">{value}</p>
+    </div>
+  );
+};
+
+const parseAnalysisJson = (text: string): Record<string, any> | null => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (text.trimStart().startsWith("{") || text.includes("```json")) {
+      const cleaned = text.replace(/^```json\n?/, "").replace(/```$/, "").trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+};
+
+const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
+  const parsed = useMemo(() => parseAnalysisJson(analysis), [analysis]);
+
+  if (!parsed || !parsed.summary) {
+    return (
+      <div className="text-sm mt-1 prose prose-sm max-w-none dark:prose-invert">
+        <ReactMarkdown>{analysis}</ReactMarkdown>
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-sm mt-2 space-y-3">
+      {/* BIRP+S summary */}
+      <div className="prose prose-sm max-w-none dark:prose-invert">
+        <ReactMarkdown>{parsed.summary}</ReactMarkdown>
+      </div>
+
+      {/* Diagnostic hypothesis */}
+      {parsed.diagnosticHypothesis && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Diagnostická hypotéza</span>
+          {Array.isArray(parsed.diagnosticHypothesis) ? (
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {parsed.diagnosticHypothesis.map((h: any, i: number) => (
+                <Badge key={i} variant="secondary" className="text-xs">
+                  {typeof h === "string" ? h : `${h.hypothesis || h.label || h} (${h.confidence ?? ""}%)`}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm mt-0.5">{String(parsed.diagnosticHypothesis)}</p>
+          )}
+        </div>
+      )}
+
+      {/* Therapeutic recommendations */}
+      {Array.isArray(parsed.therapeuticRecommendations) && parsed.therapeuticRecommendations.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Doporučení</span>
+          <ul className="list-disc list-inside mt-1 space-y-0.5">
+            {parsed.therapeuticRecommendations.map((r: string, i: number) => (
+              <li key={i} className="text-sm">{r}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Next session focus */}
+      {Array.isArray(parsed.nextSessionFocus) && parsed.nextSessionFocus.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Zaměření příštího sezení</span>
+          <ul className="list-disc list-inside mt-1 space-y-0.5">
+            {parsed.nextSessionFocus.map((f: string, i: number) => (
+              <li key={i} className="text-sm">{f}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Questionnaire */}
+      {Array.isArray(parsed.questionnaire) && parsed.questionnaire.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Doplňující otázky</span>
+          <ol className="list-decimal list-inside mt-1 space-y-0.5">
+            {parsed.questionnaire.map((q: string, i: number) => (
+              <li key={i} className="text-sm">{q}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* Client tasks */}
+      {Array.isArray(parsed.clientTasks) && parsed.clientTasks.length > 0 && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Úkoly pro klienta</span>
+          <ul className="list-disc list-inside mt-1 space-y-0.5">
+            {parsed.clientTasks.map((t: any, i: number) => (
+              <li key={i} className="text-sm">{typeof t === "string" ? t : t.task || JSON.stringify(t)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };
