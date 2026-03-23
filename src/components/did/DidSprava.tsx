@@ -45,59 +45,7 @@ const DidSprava = ({
 }: Props) => {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports">("tools");
-  const { prefs, presets, updatePrefs, uploadBackground, currentPersona, setCurrentPersona } = useTheme();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<ThemePrefs>(prefs);
-
-  useEffect(() => {
-    setDraft(prefs);
-  }, [prefs, currentPersona, open]);
-
-  const hasPendingChanges = useMemo(() => JSON.stringify(draft) !== JSON.stringify(prefs), [draft, prefs]);
-
-  const setDraftPartial = (partial: Partial<ThemePrefs>) => {
-    setDraft((prev) => ({ ...prev, ...partial, persona: currentPersona }));
-  };
-
-  const handleApplyTheme = async () => {
-    try {
-      setSaving(true);
-      await updatePrefs(draft);
-      toast.success("Vzhled použit");
-    } catch (error: any) {
-      toast.error(error?.message || "Nepodařilo se uložit vzhled");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleResetTheme = () => {
-    setDraft(prefs);
-    toast.info("Rozpracované změny zrušeny");
-  };
-
-  const handleBgUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Obrázek je příliš velký (max 5 MB)");
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const url = await uploadBackground(file);
-      setDraftPartial({ background_image_url: url });
-      toast.success("Pozadí připraveno — klikni na Použít změny");
-    } catch (err: any) {
-      toast.error(err.message || "Chyba při nahrávání");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
+  const [themeDialogOpen, setThemeDialogOpen] = useState(false);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
