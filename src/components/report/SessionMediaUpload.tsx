@@ -105,7 +105,11 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
         headers,
         body: JSON.stringify({ clientId, inputType: "audio", audioBase64: base64, sessionDate }),
       });
-      if (!res.ok) throw new Error(`Chyba přepisu: ${res.status}`);
+      if (!res.ok) {
+        if (res.status === 402) throw new Error("Nedostatek kreditů – zkus to později");
+        if (res.status === 429) throw new Error("Příliš mnoho požadavků – zkus to za chvíli");
+        throw new Error(`Chyba přepisu: ${res.status}`);
+      }
       const data = await res.json();
       const parts: string[] = [];
       if (data.transcription) parts.push(`**Přepis:** ${data.transcription}`);
