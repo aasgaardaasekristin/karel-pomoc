@@ -397,7 +397,7 @@ const Kartoteka = () => {
             <div className="flex items-center gap-1 sm:gap-2">
               <Button variant="outline" size="sm" onClick={handleBackup} disabled={isBackingUp} className="h-8 px-2 sm:px-3">
                 {isBackingUp ? <Loader2 className="w-4 h-4 animate-spin sm:mr-2" /> : <HardDriveDownload className="w-4 h-4 sm:mr-2" />}
-                <span className="hidden sm:inline">{isBackingUp ? "Zálohuji..." : "Záloha"}</span>
+                <span className="hidden sm:inline">{isBackingUp ? "Synchronizuji..." : "Sync Drive"}</span>
               </Button>
               <Button variant="outline" size="sm" onClick={() => navigate("/chat")} className="h-8 px-2 sm:px-3">
                 <MessageSquare className="w-4 h-4 sm:mr-2" />
