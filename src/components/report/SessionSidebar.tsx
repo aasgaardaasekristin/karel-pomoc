@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -86,6 +87,10 @@ const SessionSidebar = () => {
   return (
     <ScrollArea className="flex-1">
       <div className="max-w-xl mx-auto px-4 py-8 sm:py-12 space-y-8">
+        <div className="flex justify-end">
+          <ThemeQuickButton />
+        </div>
+
         {/* Hero section */}
         <div className="text-center space-y-3">
           <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">

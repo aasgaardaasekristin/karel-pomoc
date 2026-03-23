@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Users, Play, FileText, CheckCircle2, Circle } from "lucide-react";
@@ -111,6 +112,10 @@ const ClientSummaryCard = ({ clientId, clientName, onStartLiveSession, onCaseSum
   return (
     <ScrollArea className="flex-1">
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12 space-y-6">
+        <div className="flex justify-end">
+          <ThemeQuickButton />
+        </div>
+
         {/* Client header */}
         <div className="text-center space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Leaf, Mail, Loader2, CheckCircle, AlertCircle } from "lucide-react";
@@ -90,14 +91,17 @@ const Zklidneni = () => {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setScenario(null)} className="shrink-0">
-              <Leaf className="w-4 h-4 text-primary" />
-            </Button>
-            <div>
-              <h1 className="text-lg font-serif font-semibold text-foreground">Zklidnění</h1>
-              <p className="text-xs text-muted-foreground">Bezpečný prostor pro tebe</p>
+          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => setScenario(null)} className="shrink-0">
+                <Leaf className="w-4 h-4 text-primary" />
+              </Button>
+              <div>
+                <h1 className="text-lg font-serif font-semibold text-foreground">Zklidnění</h1>
+                <p className="text-xs text-muted-foreground">Bezpečný prostor pro tebe</p>
+              </div>
             </div>
+            <ThemeQuickButton />
           </div>
         </header>
         <CalmChat scenario={scenario} onEnd={handleEnd} />
@@ -109,12 +113,15 @@ const Zklidneni = () => {
     return (
       <div className="min-h-screen flex flex-col bg-background">
         <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-            <Leaf className="w-4 h-4 text-primary" />
-            <div>
-              <h1 className="text-lg font-serif font-semibold text-foreground">Zklidnění</h1>
-              <p className="text-xs text-muted-foreground">Vyber, co teď prožíváš</p>
+          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Leaf className="w-4 h-4 text-primary" />
+              <div>
+                <h1 className="text-lg font-serif font-semibold text-foreground">Zklidnění</h1>
+                <p className="text-xs text-muted-foreground">Vyber, co teď prožíváš</p>
+              </div>
             </div>
+            <ThemeQuickButton />
           </div>
         </header>
         <ScenarioSelector onSelect={setScenario} />
@@ -124,7 +131,10 @@ const Zklidneni = () => {
 
   // Landing page states
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      <div className="absolute top-4 right-4">
+        <ThemeQuickButton />
+      </div>
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">

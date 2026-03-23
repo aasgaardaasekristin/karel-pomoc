@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Lock, Heart, Leaf, Mail } from "lucide-react";
@@ -45,6 +46,9 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
+        <div className="mb-4 flex justify-end">
+          <ThemeQuickButton />
+        </div>
         <div className="login-card text-center">
           {/* Logo / Icon */}
           <div className="mb-6 flex justify-center">
