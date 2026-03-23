@@ -1224,15 +1224,11 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
     if (summaryMatch) {
       const rawSummary = summaryMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
       return (
-        <div className="prose prose-sm max-w-none dark:prose-invert">
-          <ReactMarkdown>{rawSummary}</ReactMarkdown>
-        </div>
+        <RichMarkdown>{rawSummary}</RichMarkdown>
       );
     }
     return (
-      <div className="prose prose-sm max-w-none dark:prose-invert">
-        <ReactMarkdown>{stripped}</ReactMarkdown>
-      </div>
+      <RichMarkdown>{stripped}</RichMarkdown>
     );
   }
 
