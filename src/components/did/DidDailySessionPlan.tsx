@@ -64,25 +64,7 @@ const GENERATION_STEPS = [
   { key: "save", label: "Ukládání a distribuce", icon: Send },
 ];
 
-/** Simple markdown → HTML for session plan rendering */
-const renderMarkdown = (md: string): string => {
-  return md
-    .split('\n')
-    .map(line => {
-      if (line.startsWith('### ')) return `<h4 class="font-serif font-semibold text-xs mt-3 mb-1 text-foreground">${line.slice(4)}</h4>`;
-      if (line.startsWith('## ')) return `<h3 class="font-serif font-semibold text-[13px] mt-4 mb-1.5 text-foreground">${line.slice(3)}</h3>`;
-      if (line.trim() === '---') return '<hr class="my-2 border-border/40" />';
-      if (/^\s*[\*\-]\s/.test(line)) {
-        const content = line.replace(/^\s*[\*\-]\s/, '');
-        const formatted = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        return `<li class="ml-3 mb-0.5 list-disc list-inside">${formatted}</li>`;
-      }
-      const formatted = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-      if (line.trim() === '') return '<div class="h-1.5"></div>';
-      return `<p class="mb-0.5">${formatted}</p>`;
-    })
-    .join('');
-};
+import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
 const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [plans, setPlans] = useState<SessionPlan[]>([]);
