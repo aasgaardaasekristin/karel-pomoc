@@ -170,8 +170,8 @@ const DidPartCard = ({ partName, therapistName, onStartLiveSession, onContextLoa
             <h3 className="text-[11px] font-semibold text-primary/80 uppercase tracking-wider flex items-center gap-1.5">
               <Sparkles className="w-3 h-3" /> Karlovo shrnutí
             </h3>
-            <div className="text-[13px] text-foreground/90 leading-relaxed prose prose-sm max-w-none">
-              <ReactMarkdown>{summary["KARLOVO_SHRNUTÍ"]}</ReactMarkdown>
+            <div className="text-[13px] text-foreground/90 leading-relaxed">
+              <RichMarkdown>{summary["KARLOVO_SHRNUTÍ"]}</RichMarkdown>
             </div>
           </div>
         )}
