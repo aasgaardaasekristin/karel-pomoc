@@ -1,44 +1,55 @@
 
 
-# Asistence: Napojení na připravená sezení z DB
+# Oprava: Asistence se zasekne — spinning loader navždy
 
-## Problém
-Když terapeut přejde na záložku **Asistence**, volby "Podle návrhu" a "Upravit návrh" jsou disabled, protože `hasPlan` závisí na `sessionPlan` v localStorage (`ActiveSessionsContext`). Ten se nastaví pouze při kliknutí "Zahájit asistenci" v záložce Připravit sezení ve stejné browser session. Pokud terapeut přijde později, `activePlan` je `null` → plány z DB se nenačtou.
+## Příčina
+
+Zjištěno z network logu: požadavek na `karel-chat` skončil s `Error: Failed to fetch`. Kód v `requestLiveReply` nemá:
+
+1. **Žádný timeout** — fetch čeká nekonečně. Pokud edge function spadne, reader.read() nikdy nevrátí `done: true`
+2. **Žádný AbortController** — nelze přerušit visící request
+3. **Žádný retry** — při selhání se zobrazí toast, ale `isLoading` zůstane true pokud catch nezachytí chybu správně (edge case: reader.read() vyhodí po network drop)
+4. **Streaming reader může viset** — pokud server přestane posílat data uprostřed streamu (edge function timeout po 60s), `reader.read()` visí navždy bez signálu `done`
+
+Navíc: `buildContext()` posílá celý JSON plán sezení v `didInitialContext` (v tomto případě ~6KB) což je OK, ale zvyšuje pravděpodobnost timeoutu edge funkce.
 
 ## Řešení
 
-### 1. `LiveSessionPanel.tsx` — načtení příprav z DB + výběr plánu
+### 1. `LiveSessionPanel.tsx` — AbortController + timeout + retry
 
-**Při zobrazení mode-selection dialogu (řádky 444-518):**
-- Přidat `useEffect` na fetch `session_preparations` pro aktuální `clientId` z DB (stejně jako v `ClientSessionPrepPanel`)
-- Pokud existují uložené přípravy a `hasPlan` je false, zobrazit seznam příprav k výběru
-- **"Podle návrhu"**: Pokud je 1 příprava → načíst rovnou. Pokud více → zobrazit picker (radio/select) s číslem sezení a datem
-- **"Upravit návrh"**: Stejný picker + textarea pro úpravy. Karel v Asistenci generuje upravený plán (ne v záložce Připravit), nechá odsouhlasit, pak spustí asistenci
-- Po výběru plánu: uložit do `updateSessionPlan(resolvedSessionId, selectedPlan)` → `hasPlan` se stane true
+**`requestLiveReply`:**
+- Přidat `AbortController` s 90s timeout
+- Při timeout: abort request, zobrazit jasnou zprávu ("Karel neodpověděl včas, zkus to znovu")
+- Přidat 1 automatický retry při network error (Failed to fetch, AbortError z timeoutu)
+- Po finálním selhání: resetovat `isLoading` na false, zobrazit tlačítko "Zkusit znovu" v chatu
 
-**Nový flow pro "Upravit návrh":**
-- Po potvrzení volby Karel vygeneruje upravený plán přímo v chat (streamovaný výstup z `karel-session-plan` s `modificationsRequested`)
-- Zobrazí výsledek jako assistant message s tlačítky "Schválit a začít" / "Další úpravy"
-- Po schválení přejde do live asistence s upraveným plánem
+**Streaming read loop:**
+- Přidat per-chunk timeout (30s) — pokud `reader.read()` nevrátí nic 30s, abort
+- Pokud stream selže uprostřed ale máme partial content, ponechat co máme a přidat "(odpověď byla přerušena)"
 
-### 2. `LiveSessionPanel.tsx` — nový stav pro modify flow
+### 2. `LiveSessionPanel.tsx` — "Zkusit znovu" tlačítko
 
-- Přidat stav `modifyPhase: "pick" | "editing" | "reviewing" | null`
-- V "editing" fázi: Karel se ptá na změny, terapeut odpovídá
-- V "reviewing" fázi: Karel generuje nový plán, terapeut schvaluje/upravuje
-- Po schválení: `setModeConfirmed(true)` → standardní live asistence
+- Pokud poslední zpráva je user message a `isLoading === false` (= selhání), zobrazit tlačítko "Zkusit znovu" které zavolá `requestLiveReply` se stávajícími messages
+- Alternativně: přidat ref `lastFailedMessages` pro retry
 
-### 3. Změny ve mode-selection UI
+### 3. Edge function `karel-chat` — supervision mode fast-path
 
-- Odebrat `disabled` z "Podle návrhu" a "Upravit návrh" pokud existují DB přípravy (i když `hasPlan` je false)
-- Přidat podmíněný picker příprav pod radio options když je vybrán "plan" nebo "modify"
-- Picker zobrazí: "Sezení č. X — datum" pro každou přípravu
+- Pro `mode === "supervision"` přeskočit pomalé operace (Google Drive fetch, Perplexity, task injection) které jsou relevantní jen pro DID
+- Supervision mode by měl jít rovnou na AI gateway bez zbytečných DB/API callů
+- To dramaticky sníží latenci a pravděpodobnost timeoutu
 
 ## Soubory
-- `src/components/report/LiveSessionPanel.tsx` — hlavní změny (DB fetch, picker, modify flow)
+- `src/components/report/LiveSessionPanel.tsx` — AbortController, timeout, retry, retry tlačítko
+- `supabase/functions/karel-chat/index.ts` — supervision fast-path (přeskočit DID-only bloky)
 
 ## Technické detaily
-- DB query: `supabase.from("session_preparations").select("id, session_number, created_at, plan, approved_at").eq("client_id", clientId).order("created_at", { ascending: false })`
-- Pro modify flow: volání `karel-session-plan` s `modificationsRequested` parametrem, streaming odpověď zobrazená v chatu
-- Po schválení upraveného plánu: uložit do `sessionPlan` přes `updateSessionPlan`
+```text
+requestLiveReply flow (nový):
+  ┌─ AbortController (90s global timeout)
+  ├─ fetch() with signal
+  ├─ retry 1x on network error
+  ├─ reader.read() with per-chunk 30s race
+  ├─ on partial success: keep content + "(přerušeno)"
+  └─ on total failure: isLoading=false + retry button
+```
 
