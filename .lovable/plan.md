@@ -1,35 +1,33 @@
 
 
-# Rozbalitelné analýzy + Zpracovat záznam z médií
+# Formátovaný výstup AI analýzy sezení
 
-## Změny
+## Co se změní
 
-### 1. SessionMediaUpload.tsx — rozbalitelné analýzy + auto-context
+**`src/pages/Kartoteka.tsx`** — řádky 1024–1028
 
-- Přidat `expandedItems: Set<string>` state
-- U každé dokončené analýzy: tlačítko "Zobrazit celou analýzu" / "Skrýt" — toggle mezi 500 znaků a plný text, odstranit `max-h-32`
-- Po dokončení každé analýzy automaticky volat `onMediaContext` s agregací všech hotových analýz (ne jen po kliknutí "Přidat do záznamu")
-- Odstranit tlačítko "Přidat do záznamu" — kontext se aktualizuje automaticky
+Nahradí se surový `<p>{s.ai_analysis}</p>` za komponentu `SessionAnalysisView`.
 
-### 2. SessionIntakePanel.tsx — tlačítko "Zpracovat záznam z médií"
+## Komponenta SessionAnalysisView
 
-V `inputMode === "choose"` bloku, pod gridy tlačítek, pokud `mediaContext` existuje:
-- Zobrazit tlačítko "📋 Zpracovat záznam z médií"
-- Po kliknutí: zavolat `handleSubmit` upravenou pro media-only mode
+Definovaná přímo v `Kartoteka.tsx` (helper komponenta).
 
-Úprava `handleSubmit`:
-- Nová podmínka: pokud `inputMode === "choose"` a `mediaContext` existuje → media-only mode
-- `body.inputType = "text"`
-- `body.textInput = "Sestav kompletní BIRP+S zápis sezení výhradně na základě přiložených analýz médií. Nevymýšlej žádné detaily které nejsou v analýzách. Pokud něco chybí, uveď to v dotazníku."`
-- `body.mediaContext = mediaContext`
+**Logika parsování:**
+1. Zkusí `JSON.parse(text)`
+2. Pokud selže a text začíná `{` nebo obsahuje ` ```json ` → odstraní code fences regexem `text.replace(/^```json\n?/, "").replace(/```$/, "").trim()` → zkusí parse znovu
+3. Pokud parsing uspěje a má `summary` → strukturovaný výstup
+4. Pokud nic nefunguje → `ReactMarkdown` fallback
+
+**Strukturovaný výstup (z JSON):**
+- `summary` → ReactMarkdown (BIRP+S sekce s `##` nadpisy)
+- `diagnosticHypothesis` → badge s confidence %
+- `therapeuticRecommendations` → odrážkový seznam
+- `nextSessionFocus` → odrážkový seznam
+- `questionnaire` → číslovaný seznam otázek
+- `clientTasks` → odrážkový seznam úkolů
+
+**Závislost:** Přidat `react-markdown` (už je v package.json? — ověřím při implementaci, pokud ne, přidám).
 
 ## Soubory
-
-1. `src/components/report/SessionMediaUpload.tsx` — expandable + auto-context
-2. `src/components/report/SessionIntakePanel.tsx` — media-only submit button + logic
-
-## Co se NEZMĚNÍ
-- Edge funkce (již zpracovává mediaContext)
-- Logika ukládání (saveToDb)
-- Stávající text/audio flow
+1. `src/pages/Kartoteka.tsx` — přidat `SessionAnalysisView`, nahradit řádky 1024–1028
 
