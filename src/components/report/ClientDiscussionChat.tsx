@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, Send, MessageSquare, Save, Check } from "lucide-react";
 import { getAuthHeaders } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
-import ReactMarkdown from "react-markdown";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 import { toast } from "sonner";
 
 type Message = { role: "user" | "assistant"; content: string };
