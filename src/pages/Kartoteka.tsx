@@ -673,38 +673,105 @@ const Kartoteka = () => {
               </div>
 
               {/* Analýzy karty */}
-              {clientAnalyses.length > 0 && (
-                <div className="bg-card rounded-xl border border-border p-4 sm:p-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Search className="w-4 h-4 text-muted-foreground" />
-                    <h4 className="text-sm font-semibold">Analýzy karty ({clientAnalyses.length})</h4>
-                  </div>
-                  <Accordion type="single" collapsible defaultValue={clientAnalyses[0]?.id}>
-                    {clientAnalyses.map((a: any) => (
-                      <AccordionItem key={a.id} value={a.id}>
-                        <AccordionTrigger className="text-sm py-2">
-                          Analýza č. {a.version} – {new Date(a.created_at).toLocaleDateString("cs-CZ")}
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          {a.summary && (
-                            <p className="text-xs text-muted-foreground mb-2 italic">{a.summary}</p>
-                          )}
-                          <div className="prose prose-sm max-w-none dark:prose-invert">
-                            {(() => {
-                              try {
-                                const parsed = JSON.parse(a.content);
-                                return <ReactMarkdown>{parsed.clientProfile || a.content}</ReactMarkdown>;
-                              } catch {
-                                return <ReactMarkdown>{a.content}</ReactMarkdown>;
-                              }
-                            })()}
-                          </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
+              <div className="bg-card rounded-xl border border-border p-4 sm:p-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Search className="w-4 h-4 text-muted-foreground" />
+                  <h4 className="text-sm font-semibold">Analýzy karty ({clientAnalyses.length})</h4>
                 </div>
-              )}
+                {clientAnalyses.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic">Zatím žádné analýzy — vygeneruj ji v záložce Analýza.</p>
+                ) : (
+                  <Accordion type="single" collapsible defaultValue={clientAnalyses[0]?.id}>
+                    {clientAnalyses.map((a: any) => {
+                      let parsed: any = null;
+                      try { parsed = JSON.parse(a.content); } catch {}
+                      const sessionsLabel = a.sessions_count != null ? ` (${a.sessions_count} sezení)` : "";
+                      return (
+                        <AccordionItem key={a.id} value={a.id}>
+                          <AccordionTrigger className="text-sm py-2">
+                            Analýza č. {a.version} – {new Date(a.created_at).toLocaleDateString("cs-CZ")}{sessionsLabel}
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-4">
+                            {/* Profil */}
+                            <div>
+                              <p className="text-xs font-semibold text-muted-foreground mb-1">📋 Profil</p>
+                              <div className="prose prose-sm max-w-none dark:prose-invert">
+                                <ReactMarkdown>{parsed?.clientProfile || a.content}</ReactMarkdown>
+                              </div>
+                              {parsed?.therapeuticProgress && (
+                                <div className="mt-2 space-y-1 text-sm">
+                                  {parsed.therapeuticProgress.whatWorks?.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">✅ Co funguje:</p>
+                                      {parsed.therapeuticProgress.whatWorks.map((w: string, i: number) => (
+                                        <p key={i} className="text-sm">• {w}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {parsed.therapeuticProgress.whatDoesntWork?.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">❌ Co nefunguje:</p>
+                                      {parsed.therapeuticProgress.whatDoesntWork.map((w: string, i: number) => (
+                                        <p key={i} className="text-sm">• {w}</p>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {/* Diagnostika */}
+                            {parsed?.diagnosticHypothesis && (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground mb-1">🔬 Diagnostika</p>
+                                <p className="text-sm"><strong>Primární:</strong> {parsed.diagnosticHypothesis.primary || "—"}</p>
+                                {parsed.diagnosticHypothesis.differential?.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {parsed.diagnosticHypothesis.differential.map((d: string, i: number) => (
+                                      <Badge key={i} variant="outline" className="text-xs">{d}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                                {parsed.diagnosticHypothesis.supportingEvidence?.length > 0 && (
+                                  <div className="mt-1">
+                                    <p className="text-xs text-muted-foreground">Důkazy:</p>
+                                    {parsed.diagnosticHypothesis.supportingEvidence.map((e: string, i: number) => (
+                                      <p key={i} className="text-sm">• {e}</p>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {/* Co příště */}
+                            {parsed?.nextSessionRecommendations && (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground mb-1">🎯 Co příště</p>
+                                {parsed.nextSessionRecommendations.focus && (
+                                  <p className="text-sm"><strong>Zaměření:</strong> {parsed.nextSessionRecommendations.focus}</p>
+                                )}
+                                {parsed.nextSessionRecommendations.suggestedTechniques?.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {parsed.nextSessionRecommendations.suggestedTechniques.map((t: string, i: number) => (
+                                      <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
+                                    ))}
+                                  </div>
+                                )}
+                                {parsed.nextSessionRecommendations.diagnosticTests?.length > 0 && (
+                                  <div className="mt-1">
+                                    <p className="text-xs text-muted-foreground">Doporučené testy:</p>
+                                    {parsed.nextSessionRecommendations.diagnosticTests.map((t: string, i: number) => (
+                                      <p key={i} className="text-sm">• {t}</p>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
+                )}
+              </div>
 
               {/* Materiály ze sezení */}
               {sessionMaterials.length > 0 && (
