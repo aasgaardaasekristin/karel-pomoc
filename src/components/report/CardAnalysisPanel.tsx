@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -82,7 +82,11 @@ const CardAnalysisPanel = ({
     return () => clearInterval(interval);
   }, [planState]);
 
+  // Capture clientId at analysis start to prevent race conditions
+  const analysisClientIdRef = useRef<string>(clientId);
+
   const handleAnalyze = async () => {
+    analysisClientIdRef.current = clientId;
     setIsLoading(true);
     setAnalysisStep(0);
     try {
@@ -130,31 +134,42 @@ const CardAnalysisPanel = ({
 
   const handleSaveToCard = async () => {
     if (!result) return;
+    // Use the clientId captured at analysis start to prevent mismatches
+    const saveClientId = analysisClientIdRef.current;
+    if (saveClientId !== clientId) {
+      toast.warning("Klient se změnil od vygenerování analýzy. Spusť analýzu znovu.");
+      return;
+    }
     setIsSavingToCard(true);
     try {
       const cleanResult = sanitizeResultForSave(result);
       const { count } = await supabase
-        .from("client_analyses" as any)
+        .from("client_analyses")
         .select("*", { count: "exact", head: true })
-        .eq("client_id", clientId);
+        .eq("client_id", saveClientId);
       const version = (count ?? 0) + 1;
       const contentStr = JSON.stringify(cleanResult);
-      const { data, error } = await supabase.from("client_analyses" as any).insert({
-        client_id: clientId,
+      const { data, error } = await supabase.from("client_analyses").insert({
+        client_id: saveClientId,
         content: contentStr,
         summary: (cleanResult.clientProfile || "").slice(0, 200),
         version,
         sessions_count: sessionsCount,
-      }).select().single();
-      if (error) throw error;
+      }).select().maybeSingle();
+      if (error) {
+        console.error("client_analyses insert error:", error);
+        throw error;
+      }
+      if (!data) {
+        console.error("client_analyses insert returned no data");
+        throw new Error("Insert vrátil prázdná data");
+      }
       setSavedToCard(true);
       toast.success("Analýza uložena do karty");
-      if (onAnalysisSaved && data) {
-        onAnalysisSaved(data);
-      }
+      onAnalysisSaved?.(data);
     } catch (e: any) {
-      toast.error("Nepodařilo se uložit analýzu");
-      console.error(e);
+      toast.error("Nepodařilo se uložit analýzu: " + (e.message || "neznámá chyba"));
+      console.error("handleSaveToCard error:", e);
     } finally {
       setIsSavingToCard(false);
     }
