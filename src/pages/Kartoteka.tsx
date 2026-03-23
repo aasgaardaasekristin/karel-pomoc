@@ -1162,17 +1162,38 @@ const SessionField = ({ label, value }: { label: string; value: string }) => {
 };
 
 const parseAnalysisJson = (text: string): Record<string, any> | null => {
+  if (!text || typeof text !== "string") return null;
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
   const tryParse = (s: string) => {
-    try { return JSON.parse(s); } catch { return null; }
+    try {
+      const r = JSON.parse(s);
+      return r && typeof r === "object" && !Array.isArray(r) ? r : null;
+    } catch { return null; }
   };
-  let result = tryParse(text);
+
+  // Try direct parse
+  let result = tryParse(trimmed);
   if (result) return result;
-  // Strip code fences and retry
-  const cleaned = text.replace(/^[\s]*```json\s*\n?/i, "").replace(/\n?```[\s]*$/i, "").trim();
-  if (cleaned !== text) {
+
+  // Strip markdown code fences (```json ... ```) and retry
+  const cleaned = trimmed
+    .replace(/^[\s]*```(?:json)?\s*\n?/i, "")
+    .replace(/\n?\s*```[\s]*$/i, "")
+    .trim();
+  if (cleaned !== trimmed) {
     result = tryParse(cleaned);
     if (result) return result;
   }
+
+  // Try to extract JSON object from mixed content
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    result = tryParse(jsonMatch[0]);
+    if (result) return result;
+  }
+
   return null;
 };
 
@@ -1193,6 +1214,16 @@ const SessionAnalysisView = ({ analysis }: { analysis: string }) => {
       <div className="prose prose-sm max-w-none dark:prose-invert">
         <ReactMarkdown>{parsed.summary}</ReactMarkdown>
       </div>
+
+      {/* Analysis context */}
+      {parsed.analysis && (
+        <div>
+          <span className="text-xs font-medium text-muted-foreground">Analýza v kontextu terapie</span>
+          <div className="prose prose-sm max-w-none dark:prose-invert mt-1">
+            <ReactMarkdown>{parsed.analysis}</ReactMarkdown>
+          </div>
+        </div>
+      )}
 
       {/* Diagnostic hypothesis */}
       {parsed.diagnosticHypothesis && (
