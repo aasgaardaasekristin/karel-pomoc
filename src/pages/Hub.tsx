@@ -13,6 +13,7 @@ const HANA_PIN_KEY = "karel_hana_pin_verified";
 
 const Hub = () => {
   const navigate = useNavigate();
+  const { setContextKey } = useTheme();
   const [authChecked, setAuthChecked] = useState(false);
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pin, setPin] = useState("");
