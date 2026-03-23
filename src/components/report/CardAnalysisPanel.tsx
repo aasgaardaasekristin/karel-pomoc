@@ -49,6 +49,7 @@ const CardAnalysisPanel = ({
   onRequestPlan,
   existingTherapyPlan,
   onPlanSaved,
+  onAnalysisSaved,
 }: CardAnalysisPanelProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [analysisStep, setAnalysisStep] = useState(0);
