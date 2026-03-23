@@ -236,8 +236,12 @@ Vrať POUZE validní JSON (bez markdown bloků):
       };
     }
     return getDefaultAnalysis(lastUserMsg);
-  } catch (e) {
-    console.error("Analysis error:", e);
+  } catch (e: any) {
+    if (e?.name === "AbortError") {
+      console.warn("Analysis timed out after 8s, using default");
+    } else {
+      console.error("Analysis error:", e);
+    }
     return getDefaultAnalysis(lastUserMsg);
   }
 }
