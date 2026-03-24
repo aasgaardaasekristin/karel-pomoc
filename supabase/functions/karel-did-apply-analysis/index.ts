@@ -213,45 +213,17 @@ function findPartCardFromIndex(
   return null;
 }
 
-// ── Google Docs: get document length ──
-async function getDocEndIndex(token: string, docId: string): Promise<number> {
-  const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}?fields=body.content`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Cannot read doc ${docId}: ${res.status}`);
-  const doc = await res.json();
-  const content = doc.body?.content || [];
-  const last = content[content.length - 1];
-  return last?.endIndex || 1;
-}
-
-// ── Google Docs: append text with optional heading ──
-async function appendToDoc(token: string, docId: string, blocks: Array<{ text: string; style?: string }>): Promise<void> {
-  const endIndex = await getDocEndIndex(token, docId);
-  const requests: any[] = [];
-  let insertAt = endIndex - 1;
-  const styleOps: Array<{ start: number; end: number; style: string }> = [];
-
-  for (const block of blocks) {
-    const textToInsert = block.text.endsWith("\n") ? block.text : block.text + "\n";
-    requests.push({ insertText: { location: { index: insertAt }, text: textToInsert } });
-    if (block.style) {
-      styleOps.push({ start: insertAt, end: insertAt + textToInsert.length - 1, style: block.style });
-    }
-    insertAt += textToInsert.length;
-  }
-
-  for (const op of styleOps) {
-    requests.push({
-      updateParagraphStyle: {
-        range: { startIndex: op.start, endIndex: op.end },
-        paragraphStyle: { namedStyleType: op.style },
-        fields: "namedStyleType",
+// ── Google Docs: append plain text at end (lightweight, no doc body read) ──
+async function appendTextToDoc(token: string, docId: string, text: string): Promise<void> {
+  // Use endOfSegmentLocation to insert at end without reading doc first
+  const requests = [
+    {
+      insertText: {
+        endOfSegmentLocation: { segmentId: "" },
+        text: "\n" + text + "\n",
       },
-    });
-  }
-
-  if (requests.length === 0) return;
+    },
+  ];
   const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -259,7 +231,7 @@ async function appendToDoc(token: string, docId: string, blocks: Array<{ text: s
   });
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Docs batchUpdate failed: ${res.status} ${errText}`);
+    throw new Error(`Docs append failed: ${res.status} ${errText}`);
   }
 }
 
