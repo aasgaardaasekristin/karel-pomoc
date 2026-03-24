@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
+import { loadDriveRegistryEntries, type DriveRegistryEntry } from "../_shared/driveRegistry.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -145,11 +146,53 @@ serve(async (req) => {
       }
 
       console.log(`[daily-refresh] Drive: dashboard=${dashboardText.length}ch, plan=${operativniPlanText.length}ch, strategy=${strategickyVyhledText.length}ch, instrukce=${instrukceText.length}ch, pamet=${pametKarelText.length}ch`);
+
+      // ═══ 1b. DRIVE INDEX → did_part_registry SYNC ═══
+      // 01_Index_Vsech_Casti je autoritativní zdroj pravdy pro stavy částí.
+      // Čteme ho z Drive, parsujeme a upsertujeme do DB.
+      try {
+        const registryEntries = await loadDriveRegistryEntries(token);
+        console.log(`[daily-refresh] Drive index: ${registryEntries.length} entries found`);
+
+        if (registryEntries.length > 0) {
+          let syncedCount = 0;
+          for (const entry of registryEntries) {
+            if (!entry.primaryName) continue;
+
+            // Mapování statusu z indexu (české → anglické)
+            const rawStatus = entry.status.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            let dbStatus = "sleeping";
+            if (rawStatus.includes("aktiv") || rawStatus === "active") dbStatus = "active";
+            else if (rawStatus.includes("spi") || rawStatus.includes("dormant") || rawStatus === "sleeping") dbStatus = "sleeping";
+
+            const { error: upsErr } = await sb.from("did_part_registry").upsert(
+              {
+                user_id: userId,
+                part_name: entry.primaryName,
+                display_name: entry.primaryName,
+                status: dbStatus,
+                drive_folder_label: entry.id ? `${entry.id}_${entry.primaryName}` : entry.primaryName,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id,part_name" },
+            );
+            if (upsErr) {
+              console.warn(`[daily-refresh] Upsert error for ${entry.primaryName}:`, upsErr.message);
+            } else {
+              syncedCount++;
+            }
+          }
+          console.log(`[daily-refresh] ✅ Synced ${syncedCount}/${registryEntries.length} parts from Drive index → did_part_registry`);
+        }
+      } catch (indexErr) {
+        console.warn("[daily-refresh] Drive index sync failed (non-fatal):", indexErr);
+      }
+
     } catch (e) {
       console.warn("[daily-refresh] Drive read failed (non-fatal):", e);
     }
 
-    // ═══ 2. DB: Aggregate current state ═══
+    // ═══ 2. DB: Aggregate current state (POST-SYNC – reflects Drive index) ═══
     const [
       { data: parts },
       { data: tasks },
@@ -165,6 +208,7 @@ serve(async (req) => {
     ]);
 
     // ═══ 3. Build structured context JSON ═══
+    // Počty aktivních/spících nyní odrážejí stav PO synchronizaci s Drive indexem
     const activeParts = (parts || []).filter((p: any) => p.status === "active" || p.status === "aktivní");
     const sleepingParts = (parts || []).filter((p: any) => p.status === "sleeping" || p.status === "dormant");
 
