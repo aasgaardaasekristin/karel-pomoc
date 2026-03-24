@@ -443,6 +443,36 @@ export type Database = {
         }
         Relationships: []
       }
+      did_daily_context: {
+        Row: {
+          context_date: string
+          context_json: Json
+          created_at: string
+          id: string
+          source: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          context_date?: string
+          context_json?: Json
+          created_at?: string
+          id?: string
+          source?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          context_date?: string
+          context_json?: Json
+          created_at?: string
+          id?: string
+          source?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_daily_report_dispatches: {
         Row: {
           created_at: string

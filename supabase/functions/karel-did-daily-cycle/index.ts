@@ -4817,6 +4817,22 @@ ESKALACE: level ${task.escalation_level || 0}`,
       console.warn("[daily-cycle] Profiling engine error (non-fatal):", profilingErr);
     }
 
+    // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
+    try {
+      const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;
+      const refreshRes = await fetch(refreshUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+        },
+        body: JSON.stringify({ source: "daily-cycle-post" }),
+      });
+      console.log(`[daily-cycle] karel-daily-refresh triggered: ${refreshRes.status}`);
+    } catch (e) {
+      console.warn("[daily-cycle] Failed to trigger karel-daily-refresh (non-fatal):", e);
+    }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,

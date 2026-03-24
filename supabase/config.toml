@@ -161,3 +161,6 @@ verify_jwt = false
 
 [functions.karel-gdocs-sync]
 verify_jwt = false
+
+[functions.karel-daily-refresh]
+verify_jwt = false
