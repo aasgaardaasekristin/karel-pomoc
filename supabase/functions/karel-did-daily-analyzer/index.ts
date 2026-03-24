@@ -246,6 +246,30 @@ serve(async (req) => {
     // 2. BUILD AI PROMPT
     // ══════════════════════════════════════════════════════════
 
+    // ── Build set of parts that had DIRECT communication in last 24h ──
+    const directlyActiveParts = new Set<string>();
+    for (const t of (recentThreads || [])) {
+      if (t.sub_mode === "cast" && t.part_name) {
+        directlyActiveParts.add(t.part_name.toUpperCase().trim());
+      }
+    }
+    console.log(`[daily-analyzer] Directly active parts (sub_mode=cast, 24h): ${[...directlyActiveParts].join(", ") || "(none)"}`);
+
+    // ── Banned entities that are NEVER DID parts ──
+    const BANNED_ENTITIES = new Set([
+      "LOCIK", "LOCÍK", // pes, ne část
+    ]);
+
+    // ── Parts that must NOT be marked active unless they had direct communication ──
+    const STRICT_SLEEPING_UNLESS_DIRECT = new Set([
+      "BENDIK", "BENDIK_BONDEVIK",
+      "CLARK", "KLARK",
+      "ADAM",
+      "EINAR",
+      "BELO", "BÉLO",
+      "GERHARDT",
+    ]);
+
     const systemPrompt = `Jsi Karel – AI asistent DID terapeutického týmu. Tvým úkolem je provést DENNÍ ANALÝZU stavu celého DID systému a obou terapeutek.
 
 TVOJE ROLE:
@@ -254,12 +278,44 @@ TVOJE ROLE:
 - Čteš Index Všech Částí (autoritativní seznam částí a jejich stavů).
 - Znáš emoční vazby (countertransference bonds) mezi terapeutkami a částmi.
 
-KRITICKÁ PRAVIDLA:
-- Káťa NENÍ část DID systému. Je to DRUHÁ TERAPEUTKA (dcera Hanky).
+═══ TVRDÁ PRAVIDLA (NESMÍŠ PORUŠIT) ═══
+
+1. ZDROJ PRAVDY PRO ČÁSTI
+- Seznam částí je POUZE 01_Index_Vsech_Casti (Excel), synchronizovaný do did_part_registry.
+- Jakákoliv entita, která NENÍ v Indexu (např. Locik, jiná zvířata, metafory),
+  NIKDY nesmí být považována za část DID systému ani se objevit v analysis_json.parts.
+- Locik je PES – NIKDY ho nezařazuj do analysis_json.parts.
+
+2. STATUS "ACTIVE" VS "SLEEPING"
+- Část má status "active" POUZE tehdy, když:
+  a) je v did_part_registry jako existující část A
+  b) v posledních 24 hodinách existuje vlákno v DID/kluci,
+     kde sub_mode = "cast" a part_name odpovídá této části (včetně aliasů).
+- Pokud podmínka b) NENÍ splněná, musí mít status "sleeping",
+  i když je v indexu jako "aktivní" nebo se o ní mluví v jiných vláknech.
+- PŘÍMO AKTIVNÍ ČÁSTI (sub_mode=cast za posledních 24h): ${[...directlyActiveParts].join(", ") || "ŽÁDNÉ"}
+- Všechny ostatní části MUSÍ mít status = "sleeping".
+
+3. ZMÍNKA O ČÁSTI ≠ AKTIVACE
+- Pokud Hanka nebo Káťa mluví "o Bendikovi", "o Clarkovi" atd.,
+  ale část sama v posledních 24h nepsala v DID/kluci (sub_mode=cast),
+  tak:
+  - status MUSÍ být "sleeping",
+  - session_recommendation.needed = false.
+
+4. ZÁKAZ PRO SPECIFICKÁ JMÉNA
+- Tyto entity se NESMÍ objevit jako "active" ani jako adresáti sezení,
+  pokud nemají PŘÍMOU komunikaci (sub_mode=cast) za posledních 24h:
+  Bendik, Clark/Klark, Adam, Einar, Bélo/Belo, Gerhardt.
+- Locik NIKDY není část systému a NESMÍ být v analysis_json.parts vůbec.
+
+5. KÁŤA NENÍ ČÁST DID SYSTÉMU
+- Káťa je DRUHÁ TERAPEUTKA (dcera Hanky). NIKDY ji nezařazuj do parts.
 - Hanka je PRVNÍ TERAPEUTKA (životní partnerka Karla).
-- Soukromá data o terapeutkách (emoční vazby, osobní stresory) se NIKDY nesmí zobrazit v UI. Používej je pouze pro svou dedukci.
-- "active" = část se přímo projevila (sub_mode=cast). "sleeping" = neprojevila se, ale je v registru.
-- Pokud část nebyla aktivní v posledních 24h ale je v registru jako "active", i tak ji uveď jako active.
+
+6. SOUKROMÉ INFORMACE
+- Soukromá data o terapeutkách (emoční vazby, osobní stresory) se NIKDY nesmí
+  zobrazit v UI. Používej je pouze pro svou dedukci.
 
 VÝSTUP: Vrať POUZE jeden validní JSON objekt (bez markdown fences, bez komentářů) přesně v tomto formátu:
 {
@@ -320,7 +376,11 @@ VÝSTUP: Vrať POUZE jeden validní JSON objekt (bez markdown fences, bez koment
   }
 }
 
-Pro KAŽDOU část v registru (aktivní i spící) vytvoř záznam v "parts". U spících částí bude session_recommendation.needed=false a priority="later".`;
+PRAVIDLA PRO POLE "parts":
+- Pro KAŽDOU část v registru (aktivní i spící) vytvoř záznam.
+- U spících částí: session_recommendation.needed=false, priority="later".
+- PŘIPOMENUTÍ: status="active" POUZE pokud je v seznamu PŘÍMO AKTIVNÍCH ČÁSTÍ výše.
+- Všechny ostatní MUSÍ mít status="sleeping", i když je v registru "active".`;
 
     const userPrompt = `═══ DATA PRO ANALÝZU (${today}) ═══
 
@@ -374,6 +434,57 @@ Proveď analýzu a vrať JSON.`;
     // Validate basic structure
     if (!analysisJson.date || !analysisJson.therapists || !analysisJson.parts) {
       throw new Error("AI response missing required fields (date, therapists, parts)");
+    }
+
+    // ── POST-PROCESSING: enforce hard rules on AI output ──
+    if (Array.isArray(analysisJson.parts)) {
+      // Remove banned entities (e.g. Locik)
+      analysisJson.parts = analysisJson.parts.filter((p: any) => {
+        const nameUpper = (p.name || "").toUpperCase().replace(/\s+/g, "_").trim();
+        if (BANNED_ENTITIES.has(nameUpper)) {
+          console.log(`[daily-analyzer] REMOVED banned entity from parts: ${p.name}`);
+          return false;
+        }
+        return true;
+      });
+
+      // Force correct status based on direct communication
+      for (const p of analysisJson.parts) {
+        const nameUpper = (p.name || "").toUpperCase().replace(/\s+/g, "_").trim();
+        const hadDirectComm = directlyActiveParts.has(nameUpper);
+
+        if (!hadDirectComm) {
+          // Check aliases: strip diacritics for matching
+          const nameNorm = nameUpper.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const hadDirectNorm = [...directlyActiveParts].some(dp =>
+            dp.normalize("NFD").replace(/[\u0300-\u036f]/g, "") === nameNorm
+          );
+
+          if (!hadDirectNorm) {
+            if (p.status === "active") {
+              console.log(`[daily-analyzer] FORCED sleeping: ${p.name} (no direct comm in 24h)`);
+              p.status = "sleeping";
+            }
+            if (p.session_recommendation) {
+              p.session_recommendation.needed = false;
+              p.session_recommendation.priority = "later";
+            }
+          }
+        }
+
+        // Extra guard for strict-sleeping list
+        if (STRICT_SLEEPING_UNLESS_DIRECT.has(nameUpper) && !directlyActiveParts.has(nameUpper)) {
+          p.status = "sleeping";
+          if (p.session_recommendation) {
+            p.session_recommendation.needed = false;
+            p.session_recommendation.priority = "later";
+          }
+        }
+      }
+
+      const activeCount = analysisJson.parts.filter((p: any) => p.status === "active").length;
+      const sleepingCount = analysisJson.parts.filter((p: any) => p.status === "sleeping").length;
+      console.log(`[daily-analyzer] Post-processing: ${activeCount} active, ${sleepingCount} sleeping`);
     }
 
     // ══════════════════════════════════════════════════════════
