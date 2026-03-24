@@ -356,6 +356,17 @@ serve(async (req) => {
         .limit(10),
     ]);
 
+    // Load analysis_json from did_daily_context (source of truth for parts status)
+    const { data: dailyCtx } = await sb
+      .from("did_daily_context")
+      .select("context_date, analysis_json")
+      .eq("user_id", userId)
+      .order("context_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    const analysisJson = dailyCtx?.analysis_json as any;
+
     const normalizeKey = (value: string) =>
       (value || "")
         .toLowerCase()
