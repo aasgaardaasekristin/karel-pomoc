@@ -1033,6 +1033,32 @@ ${partName ? `═══ KARTA ČÁSTI: ${partName} ═══\n[klíčové info z
 
 DATA:
 
+${(() => {
+  const dc = (dbResults.dailyContext || [])[0];
+  if (!dc?.analysis_json) return "";
+  const a = dc.analysis_json as any;
+  const lines: string[] = [`═══ DENNÍ ANALÝZA (${dc.context_date}) ═══`];
+  if (a.therapists) {
+    for (const [name, t] of Object.entries(a.therapists) as any) {
+      const s = t?.situational || {};
+      lines.push(`${name}: energie=${s.energy || "?"}, zdraví=${s.health || "?"}, stresory=${(s.current_stressors || []).join(", ") || "-"}`);
+    }
+  }
+  if (Array.isArray(a.parts)) {
+    lines.push("Části (z analýzy):");
+    for (const p of a.parts) {
+      const rec = p.session_recommendation;
+      lines.push(`  ${p.name}: status=${p.status}, risk=${p.risk_level}, needs=${(p.needs || []).join(",")}, sezení=${rec?.needed ? `ANO(${rec.who_leads},${rec.priority})` : "ne"}`);
+    }
+  }
+  if (a.team_observations) {
+    const to = a.team_observations;
+    if (to.warnings?.length) lines.push(`Varování: ${to.warnings.join("; ")}`);
+    if (to.praise?.length) lines.push(`Pochvaly: ${to.praise.join("; ")}`);
+  }
+  return lines.join("\n");
+})()}
+
 ═══ DID VLÁKNA ═══
 ${didThreadDigest || "(žádná)"}
 
