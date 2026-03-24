@@ -64,7 +64,7 @@ export interface DidContentRouterProps {
   didDocsLoaded: boolean;
   didSessionId: string | null;
   basicDocsRef: React.MutableRefObject<string>;
-  didContextPrime: { runPrime: (partName?: string, subMode?: string) => void; primeCache: string | null };
+  didContextPrime: { runPrime: (partName?: string, subMode?: string) => void; primeCache: string | null; isPriming: boolean };
   didThreads: {
     threads: DidThread[];
     fetchActiveThreads: (subMode?: string) => Promise<void>;
