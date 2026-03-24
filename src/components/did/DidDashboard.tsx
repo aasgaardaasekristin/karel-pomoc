@@ -234,6 +234,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
             isCentrumSyncing={isCentrumSyncing}
             onCleanupTasks={runCleanupTasks}
             isCleaningTasks={isCleaningTasks}
+            onRefreshMemory={onRefreshMemory}
+            isRefreshingMemory={isRefreshingMemory}
             refreshTrigger={refreshTrigger}
             onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
           />

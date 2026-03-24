@@ -89,6 +89,16 @@ const DidSprava = ({
 
         {activeTab === "tools" && (
           <div className="space-y-2">
+            {onRefreshMemory && (
+              <ToolButton
+                icon={<Brain className={`w-4 h-4 text-violet-600 ${isRefreshingMemory ? "animate-pulse" : ""}`} />}
+                title="Osvěž paměť"
+                desc="Vynutit novou situační cache z Drive, DB a analýzy"
+                loading={isRefreshingMemory}
+                onClick={() => { onRefreshMemory(); setOpen(false); }}
+              />
+            )}
+
             {onManualUpdate && (
               <ToolButton
                 icon={<RefreshCw className={`w-4 h-4 text-primary ${isUpdating ? "animate-spin" : ""}`} />}
