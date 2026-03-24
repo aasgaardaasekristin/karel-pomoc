@@ -208,7 +208,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     return (
       <ScrollArea className="flex-1">
         <ErrorBoundary fallbackTitle="Dashboard selhal">
-          <DidDashboard onManualUpdate={onManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} />
+          <DidDashboard onManualUpdate={onManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")} isRefreshingMemory={!!(didContextPrime as any).isPriming} />
         </ErrorBoundary>
         <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
           <h3 className="text-sm font-medium text-foreground mb-3 text-center">Kdo mluví s Karlem?</h3>
