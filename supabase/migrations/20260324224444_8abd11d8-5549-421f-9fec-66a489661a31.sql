@@ -1,0 +1,1 @@
+ALTER TABLE public.did_daily_session_plans DROP CONSTRAINT IF EXISTS did_daily_session_plans_user_id_plan_date_key;

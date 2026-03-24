@@ -51,8 +51,15 @@ async function listFilesInFolder(token: string, folderId: string): Promise<Array
 }
 
 async function readFileContent(token: string, fileId: string, mimeType?: string): Promise<string> {
+  const isGoogleSheet = mimeType === "application/vnd.google-apps.spreadsheet";
   const isGoogleDoc = mimeType === "application/vnd.google-apps.document";
   const isGoogleWorkspace = mimeType?.startsWith("application/vnd.google-apps.");
+
+  if (isGoogleSheet) {
+    const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!exportRes.ok) throw new Error(`Cannot export sheet ${fileId}`);
+    return await exportRes.text();
+  }
 
   if (isGoogleDoc || isGoogleWorkspace) {
     const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });

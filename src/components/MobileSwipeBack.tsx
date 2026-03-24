@@ -80,9 +80,8 @@ const MobileSwipeBack = () => {
       const startTarget = event.target as Element | null;
       if (!startTarget) return;
 
-      // Find closest back button by walking up from the touch target's container
-      const backButton = startTarget.closest("[data-swipe-back='true']")
-        || document.querySelector<HTMLElement>("[data-swipe-back='true']");
+      // Find closest back button — NO global fallback to prevent accidental navigation
+      const backButton = startTarget.closest("[data-swipe-back='true']");
 
       if (backButton instanceof HTMLElement) {
         backButton.click();

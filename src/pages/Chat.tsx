@@ -346,6 +346,9 @@ const Chat = () => {
 
   // Welcome message when mode changes
   useEffect(() => {
+    // Guard: skip re-runs caused by other deps when mode hasn't changed
+    if (prevModeRef.current === mode) return;
+
     const welcomeMessages = WELCOME_MESSAGES;
 
     if (mode !== "childcare") {
@@ -452,7 +455,6 @@ const Chat = () => {
 
     switch (didFlowState) {
       case "chat": {
-        restoreGlobalTheme();
         setActiveThread(null);
         setMessages([]);
         if (didSubMode === "cast") {
@@ -468,7 +470,6 @@ const Chat = () => {
         break;
       }
       case "thread-list":
-        restoreGlobalTheme();
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
