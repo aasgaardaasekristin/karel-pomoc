@@ -388,11 +388,8 @@ serve(async (req) => {
             continue;
           }
 
-          const blockText = formatPartBlock(analysisDate, part);
-          await appendToDoc(token, cardDocId, [
-            { text: `\n[${analysisDate}] Denní aktualizace stavu\n`, style: "HEADING_3" },
-            { text: blockText + "\n" },
-          ]);
+          const blockText = `\n=== [${analysisDate}] Denní aktualizace stavu ===\n` + formatPartBlock(analysisDate, part);
+          await appendTextToDoc(token, cardDocId, blockText);
           results.parts_updated++;
           console.log(`[apply-analysis] ✅ Card updated: ${part.name}`);
         } catch (e) {
