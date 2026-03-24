@@ -470,7 +470,6 @@ const Chat = () => {
         break;
       }
       case "thread-list":
-        restoreGlobalTheme();
         setDidSubMode(null);
         setActiveThread(null);
         setMessages([]);
