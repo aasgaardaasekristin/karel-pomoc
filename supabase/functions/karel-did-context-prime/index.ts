@@ -604,6 +604,7 @@ serve(async (req) => {
       systemProfile: sb.from("did_system_profile").select("system_identity, inner_world_description, goals_short_term, goals_mid_term, goals_long_term, integration_strategy, karel_master_analysis, relationships_map, education_context, current_priorities, risk_factors").eq("user_id", userId).maybeSingle(),
       partRegistry: sb.from("did_part_registry").select("part_name, status, cluster, age_estimate, last_seen_at, last_emotional_state").eq("user_id", userId),
       partProfiles: sb.from("did_part_profiles").select("part_name, personality_traits, cognitive_profile, emotional_profile, needs, motivations, strengths, challenges, interests, communication_style, therapeutic_approach, theme_preferences, confidence_score").eq("user_id", userId),
+      dailyContext: sb.from("did_daily_context").select("context_date, context_json, analysis_json").eq("user_id", userId).order("context_date", { ascending: false }).limit(1),
     };
 
     // Drive reads (parallel with DB)
@@ -1031,6 +1032,32 @@ ${partName ? `═══ KARTA ČÁSTI: ${partName} ═══\n[klíčové info z
 [relevantní pokud dostupné]
 
 DATA:
+
+${(() => {
+  const dc = (dbResults.dailyContext || [])[0];
+  if (!dc?.analysis_json) return "";
+  const a = dc.analysis_json as any;
+  const lines: string[] = [`═══ DENNÍ ANALÝZA (${dc.context_date}) ═══`];
+  if (a.therapists) {
+    for (const [name, t] of Object.entries(a.therapists) as any) {
+      const s = t?.situational || {};
+      lines.push(`${name}: energie=${s.energy || "?"}, zdraví=${s.health || "?"}, stresory=${(s.current_stressors || []).join(", ") || "-"}`);
+    }
+  }
+  if (Array.isArray(a.parts)) {
+    lines.push("Části (z analýzy):");
+    for (const p of a.parts) {
+      const rec = p.session_recommendation;
+      lines.push(`  ${p.name}: status=${p.status}, risk=${p.risk_level}, needs=${(p.needs || []).join(",")}, sezení=${rec?.needed ? `ANO(${rec.who_leads},${rec.priority})` : "ne"}`);
+    }
+  }
+  if (a.team_observations) {
+    const to = a.team_observations;
+    if (to.warnings?.length) lines.push(`Varování: ${to.warnings.join("; ")}`);
+    if (to.praise?.length) lines.push(`Pochvaly: ${to.praise.join("; ")}`);
+  }
+  return lines.join("\n");
+})()}
 
 ═══ DID VLÁKNA ═══
 ${didThreadDigest || "(žádná)"}

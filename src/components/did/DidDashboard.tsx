@@ -39,9 +39,11 @@ interface Props {
   onQuickSubMode?: (subMode: DidSubMode) => void;
   onQuickThread?: (threadId: string, partName: string) => void;
   contextDocs?: string;
+  onRefreshMemory?: () => void;
+  isRefreshingMemory?: boolean;
 }
 
-const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread }: Props) => {
+const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
@@ -232,6 +234,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread 
             isCentrumSyncing={isCentrumSyncing}
             onCleanupTasks={runCleanupTasks}
             isCleaningTasks={isCleaningTasks}
+            onRefreshMemory={onRefreshMemory}
+            isRefreshingMemory={isRefreshingMemory}
             refreshTrigger={refreshTrigger}
             onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
           />

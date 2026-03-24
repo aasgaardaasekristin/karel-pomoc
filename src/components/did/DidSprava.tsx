@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2 } from "lucide-react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -22,6 +22,8 @@ interface Props {
   isCentrumSyncing?: boolean;
   onCleanupTasks?: () => void;
   isCleaningTasks?: boolean;
+  onRefreshMemory?: () => void;
+  isRefreshingMemory?: boolean;
   refreshTrigger?: number;
   onSelectPart?: (partName: string) => void;
 }
@@ -40,6 +42,8 @@ const DidSprava = ({
   isCentrumSyncing,
   onCleanupTasks,
   isCleaningTasks,
+  onRefreshMemory,
+  isRefreshingMemory,
   refreshTrigger = 0,
   onSelectPart,
 }: Props) => {
@@ -85,6 +89,16 @@ const DidSprava = ({
 
         {activeTab === "tools" && (
           <div className="space-y-2">
+            {onRefreshMemory && (
+              <ToolButton
+                icon={<Brain className={`w-4 h-4 text-violet-600 ${isRefreshingMemory ? "animate-pulse" : ""}`} />}
+                title="Osvěž paměť"
+                desc="Vynutit novou situační cache z Drive, DB a analýzy"
+                loading={isRefreshingMemory}
+                onClick={() => { onRefreshMemory(); setOpen(false); }}
+              />
+            )}
+
             {onManualUpdate && (
               <ToolButton
                 icon={<RefreshCw className={`w-4 h-4 text-primary ${isUpdating ? "animate-spin" : ""}`} />}
