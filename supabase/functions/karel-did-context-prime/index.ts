@@ -604,6 +604,7 @@ serve(async (req) => {
       systemProfile: sb.from("did_system_profile").select("system_identity, inner_world_description, goals_short_term, goals_mid_term, goals_long_term, integration_strategy, karel_master_analysis, relationships_map, education_context, current_priorities, risk_factors").eq("user_id", userId).maybeSingle(),
       partRegistry: sb.from("did_part_registry").select("part_name, status, cluster, age_estimate, last_seen_at, last_emotional_state").eq("user_id", userId),
       partProfiles: sb.from("did_part_profiles").select("part_name, personality_traits, cognitive_profile, emotional_profile, needs, motivations, strengths, challenges, interests, communication_style, therapeutic_approach, theme_preferences, confidence_score").eq("user_id", userId),
+      dailyContext: sb.from("did_daily_context").select("context_date, context_json, analysis_json").eq("user_id", userId).order("context_date", { ascending: false }).limit(1),
     };
 
     // Drive reads (parallel with DB)
