@@ -371,14 +371,20 @@ serve(async (req) => {
       const cardIndex = await buildCardIndex(token, kartotekaId);
       console.log(`[apply-analysis] Registry: ${registryEntries.length} entries, Card index: ${cardIndex.byIdPrefix.size} cards`);
 
-      // Only update cards for parts with meaningful new info (avoid memory overflow on 27+ Docs API calls)
-      const partsToUpdate = analysis.parts.filter((p: any) => {
+      // Only update cards with meaningful new info; cap at 15 per run to avoid memory limits
+      const partsWithContent = analysis.parts.filter((p: any) => {
         if (!p.name) return false;
         const hasContent = p.recent_emotions || (p.needs?.length > 0) || p.risk_level === "medium" || p.risk_level === "high";
         const hasRec = p.session_recommendation?.needed;
         return hasContent || hasRec;
       });
-      console.log(`[apply-analysis] Will update ${partsToUpdate.length}/${analysis.parts.length} cards (filtered by relevance)`);
+      // Prioritize high-risk parts first
+      partsWithContent.sort((a: any, b: any) => {
+        const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        return (riskOrder[a.risk_level] ?? 2) - (riskOrder[b.risk_level] ?? 2);
+      });
+      const partsToUpdate = partsWithContent.slice(0, 15);
+      console.log(`[apply-analysis] Will update ${partsToUpdate.length}/${analysis.parts.length} cards (filtered+capped)`);
 
       for (const part of partsToUpdate) {
         try {
