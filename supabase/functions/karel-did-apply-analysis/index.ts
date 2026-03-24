@@ -139,55 +139,73 @@ function cardNameNorm(s: string): string {
   return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
 }
 
-// ── Find part card on Drive using ID or name ──
-// Cards live as documents DIRECTLY inside 01_AKTIVNI_FRAGMENTY or 03_ARCHIV_SPICICH
-// File naming: XXX_JMENO (e.g. 004_ARTHUR)
-async function findPartCard(
-  token: string,
-  kartotekaId: string,
-  partName: string,
-  partStatus: string,
-  registryEntries: Array<{ id: string; primaryName: string; normalizedName: string }>,
-): Promise<string | null> {
-  // 1. Resolve registry ID for this part
-  const partNorm = normalize(partName);
-  const registryEntry = registryEntries.find(e =>
-    e.normalizedName === partNorm || normalize(e.primaryName) === partNorm
-  );
-  const partId = registryEntry?.id; // e.g. "004"
+// ── Pre-loaded card index for O(1) lookups ──
+interface CardIndex {
+  byIdPrefix: Map<string, { id: string; name: string }>; // "004" → file
+  byNameNorm: Map<string, { id: string; name: string }>; // "ARTHUR" → file
+}
 
-  // 2. Determine which folder to search first based on status
-  const isActive = !partStatus || partStatus === "active" || partStatus === "aktivní" || partStatus === "aktivni";
-  const primaryFolder = isActive ? "01_AKTIVNI_FRAGMENTY" : "03_ARCHIV_SPICICH";
-  const fallbackFolder = isActive ? "03_ARCHIV_SPICICH" : "01_AKTIVNI_FRAGMENTY";
+async function buildCardIndex(token: string, kartotekaId: string): Promise<CardIndex> {
+  const index: CardIndex = { byIdPrefix: new Map(), byNameNorm: new Map() };
 
-  for (const folderName of [primaryFolder, fallbackFolder]) {
+  for (const folderName of ["01_AKTIVNI_FRAGMENTY", "03_ARCHIV_SPICICH"]) {
     const folderId = await findSubfolder(token, kartotekaId, folderName);
     if (!folderId) continue;
 
     const files = await listFiles(token, folderId);
-    const docs = files.filter(f => f.mimeType !== "application/vnd.google-apps.folder");
-
-    // 2a. Try ID-based match: file name starts with "004_"
-    if (partId) {
-      const idMatch = docs.find(f => f.name.startsWith(`${partId}_`));
+    for (const f of files) {
+      if (f.mimeType === "application/vnd.google-apps.folder") continue;
+      // Extract ID prefix (e.g. "004" from "004_ARTHUR")
+      const idMatch = f.name.match(/^(\d{1,3})_/);
       if (idMatch) {
-        console.log(`[findPartCard] ✅ ID match: ${partId}_ → ${idMatch.name} (${idMatch.id})`);
-        return idMatch.id;
+        const paddedId = idMatch[1].padStart(3, "0");
+        if (!index.byIdPrefix.has(paddedId)) {
+          index.byIdPrefix.set(paddedId, { id: f.id, name: f.name });
+        }
+      }
+      // Name-based index
+      const nameAfterPrefix = f.name.replace(/^\d{1,3}_/, "");
+      const norm = cardNameNorm(nameAfterPrefix);
+      if (norm.length >= 2 && !index.byNameNorm.has(norm)) {
+        index.byNameNorm.set(norm, { id: f.id, name: f.name });
       }
     }
+  }
 
-    // 2b. Fallback: name-based match
-    const nameNorm = cardNameNorm(partName);
-    if (nameNorm.length >= 3) {
-      const nameMatch = docs.find(f => {
-        // Strip the ID prefix (e.g. "004_") and compare
-        const fNameNorm = cardNameNorm(f.name.replace(/^\d{1,3}_/, ""));
-        return fNameNorm === nameNorm || fNameNorm.includes(nameNorm) || nameNorm.includes(fNameNorm);
-      });
-      if (nameMatch) {
-        console.log(`[findPartCard] ✅ Name match: ${nameNorm} → ${nameMatch.name} (${nameMatch.id})`);
-        return nameMatch.id;
+  console.log(`[buildCardIndex] Indexed ${index.byIdPrefix.size} by ID, ${index.byNameNorm.size} by name`);
+  return index;
+}
+
+function findPartCardFromIndex(
+  cardIndex: CardIndex,
+  partName: string,
+  registryEntries: Array<{ id: string; primaryName: string; normalizedName: string }>,
+): string | null {
+  const partNorm = normalize(partName);
+  const entry = registryEntries.find(e => e.normalizedName === partNorm);
+  const partId = entry?.id;
+
+  // 1. ID-based lookup
+  if (partId && cardIndex.byIdPrefix.has(partId)) {
+    const card = cardIndex.byIdPrefix.get(partId)!;
+    console.log(`[findPartCard] ✅ ID match: ${partId} → ${card.name}`);
+    return card.id;
+  }
+
+  // 2. Name-based fallback
+  const nameNorm = cardNameNorm(partName);
+  if (nameNorm.length >= 3) {
+    // Exact match
+    if (cardIndex.byNameNorm.has(nameNorm)) {
+      const card = cardIndex.byNameNorm.get(nameNorm)!;
+      console.log(`[findPartCard] ✅ Name match: ${nameNorm} → ${card.name}`);
+      return card.id;
+    }
+    // Substring match
+    for (const [key, card] of cardIndex.byNameNorm) {
+      if (key.includes(nameNorm) || nameNorm.includes(key)) {
+        console.log(`[findPartCard] ✅ Fuzzy match: ${nameNorm} ~ ${key} → ${card.name}`);
+        return card.id;
       }
     }
   }
