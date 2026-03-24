@@ -1,0 +1,291 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders } from "../_shared/auth.ts";
+
+// OAuth2 token helper
+async function getAccessToken(): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+  if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
+  return data.access_token;
+}
+
+async function readDriveFile(token: string, fileId: string): Promise<string> {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const expRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!expRes.ok) throw new Error(`Cannot read file ${fileId}`);
+    return expRes.text();
+  }
+  return res.text();
+}
+
+async function findKartotekaAndCentrum(token: string): Promise<{ centrumFiles: Array<{ id: string; name: string; mimeType?: string }>; planFiles: Array<{ id: string; name: string; mimeType?: string }> }> {
+  const rootNames = ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID", "KARTOTEKA_DID"];
+  let kartotekaId: string | null = null;
+
+  for (const name of rootNames) {
+    const q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.files?.[0]?.id) { kartotekaId = data.files[0].id; break; }
+  }
+
+  if (!kartotekaId) return { centrumFiles: [], planFiles: [] };
+
+  // Find 00_CENTRUM
+  const q2 = `'${kartotekaId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+  const r2 = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q2)}&fields=files(id,name)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const d2 = await r2.json();
+  const centrumFolder = (d2.files || []).find((f: any) => /^00/.test(f.name.trim()) || f.name.toLowerCase().includes("centrum"));
+  if (!centrumFolder) return { centrumFiles: [], planFiles: [] };
+
+  // List files in 00_CENTRUM
+  const q3 = `'${centrumFolder.id}' in parents and trashed=false`;
+  const r3 = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q3)}&fields=files(id,name,mimeType)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const d3 = await r3.json();
+  const centrumFiles = d3.files || [];
+
+  // Find 05_PLAN subfolder
+  const planFolder = centrumFiles.find((f: any) => f.mimeType === "application/vnd.google-apps.folder" && /05.*plan/i.test(f.name));
+  let planFiles: Array<{ id: string; name: string; mimeType?: string }> = [];
+  if (planFolder) {
+    const q4 = `'${planFolder.id}' in parents and trashed=false`;
+    const r4 = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q4)}&fields=files(id,name,mimeType)&pageSize=50&supportsAllDrives=true&includeItemsFromAllDrives=true`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const d4 = await r4.json();
+    planFiles = d4.files || [];
+  }
+
+  return { centrumFiles, planFiles };
+}
+
+const strip = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    // Resolve user_id (from auth or fallback)
+    let userId: string | null = null;
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const userClient = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      userId = user?.id || null;
+    }
+    if (!userId) {
+      const { data: fallback } = await sb.from("did_part_registry").select("user_id").limit(1).single();
+      userId = fallback?.user_id || null;
+    }
+    if (!userId) {
+      return new Response(JSON.stringify({ error: "No user found" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    console.log(`[daily-refresh] Starting for user=${userId}, date=${today}`);
+
+    // ═══ 1. DRIVE: Read key CENTRUM documents ═══
+    let dashboardText = "";
+    let operativniPlanText = "";
+    let strategickyVyhledText = "";
+    let instrukceText = "";
+    let pametKarelText = "";
+
+    try {
+      const token = await getAccessToken();
+      const { centrumFiles, planFiles } = await findKartotekaAndCentrum(token);
+
+      for (const f of centrumFiles) {
+        if (f.mimeType === "application/vnd.google-apps.folder") continue;
+        const cn = strip(f.name);
+        try {
+          if (cn.includes("dashboard")) {
+            dashboardText = (await readDriveFile(token, f.id)).slice(0, 5000);
+          } else if (cn.includes("instrukce") && cn.includes("karel")) {
+            instrukceText = (await readDriveFile(token, f.id)).slice(0, 4000);
+          } else if (cn.includes("pamet") && cn.includes("karel")) {
+            pametKarelText = (await readDriveFile(token, f.id)).slice(0, 4000);
+          }
+        } catch (e) { console.warn(`[daily-refresh] Error reading ${f.name}:`, e); }
+      }
+
+      for (const f of planFiles) {
+        const cn = strip(f.name);
+        try {
+          if (cn.includes("operativn") && cn.includes("plan")) {
+            operativniPlanText = (await readDriveFile(token, f.id)).slice(0, 4000);
+          } else if (cn.includes("strategick") && cn.includes("vyhled")) {
+            strategickyVyhledText = (await readDriveFile(token, f.id)).slice(0, 4000);
+          }
+        } catch (e) { console.warn(`[daily-refresh] Error reading plan ${f.name}:`, e); }
+      }
+
+      console.log(`[daily-refresh] Drive: dashboard=${dashboardText.length}ch, plan=${operativniPlanText.length}ch, strategy=${strategickyVyhledText.length}ch, instrukce=${instrukceText.length}ch, pamet=${pametKarelText.length}ch`);
+    } catch (e) {
+      console.warn("[daily-refresh] Drive read failed (non-fatal):", e);
+    }
+
+    // ═══ 2. DB: Aggregate current state ═══
+    const [
+      { data: parts },
+      { data: tasks },
+      { data: recentThreads },
+      { data: profiles },
+      { data: recentSessions },
+    ] = await Promise.all([
+      sb.from("did_part_registry").select("part_name, display_name, status, last_seen_at, cluster, age_estimate, last_emotional_state, last_emotional_intensity, health_score").eq("user_id", userId),
+      sb.from("did_therapist_tasks").select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, category, escalation_level").eq("user_id", userId).neq("status", "done").order("priority", { ascending: false }),
+      sb.from("did_threads").select("part_name, sub_mode, thread_label, last_activity_at, started_at").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(20),
+      sb.from("did_motivation_profiles").select("therapist, preferred_style, tasks_completed, tasks_missed, streak_current, avg_completion_days").eq("user_id", userId),
+      sb.from("did_part_sessions").select("part_name, therapist, session_date, session_type, methods_used").eq("user_id", userId).order("session_date", { ascending: false }).limit(10),
+    ]);
+
+    // ═══ 3. Build structured context JSON ═══
+    const activeParts = (parts || []).filter((p: any) => p.status === "active" || p.status === "aktivní");
+    const sleepingParts = (parts || []).filter((p: any) => p.status === "sleeping" || p.status === "dormant");
+
+    const recentCastThreads = (recentThreads || []).filter((t: any) => t.sub_mode === "cast");
+    const recentTherapistThreads = (recentThreads || []).filter((t: any) => t.sub_mode === "mamka" || t.sub_mode === "kata");
+
+    const contextJson = {
+      date: today,
+      generated_at: new Date().toISOString(),
+
+      // Therapist profiles
+      therapists: {
+        hanka: {
+          role: "první_terapeutka",
+          profile: (profiles || []).find((p: any) => p.therapist === "Hanka") || null,
+          note: "Životní partnerka Karla. Hlavní terapeutka DID systému.",
+        },
+        kata: {
+          role: "druhá_terapeutka",
+          is_NOT_a_part: true,
+          profile: (profiles || []).find((p: any) => p.therapist === "Káťa") || null,
+          note: "Káťa je DRUHÁ TERAPEUTKA, Hančina biologická dcera. NIKDY ji nezařazuj mezi části DID systému.",
+        },
+      },
+
+      // Part registry snapshot
+      parts: {
+        active: activeParts.map((p: any) => ({
+          name: p.part_name,
+          display_name: p.display_name,
+          cluster: p.cluster,
+          age: p.age_estimate,
+          emotional_state: p.last_emotional_state,
+          emotional_intensity: p.last_emotional_intensity,
+          health: p.health_score,
+          last_seen: p.last_seen_at,
+        })),
+        sleeping: sleepingParts.map((p: any) => ({
+          name: p.part_name,
+          display_name: p.display_name,
+          cluster: p.cluster,
+          status: p.status,
+        })),
+      },
+
+      // Activity classification
+      recent_activity: {
+        direct_activity: recentCastThreads.slice(0, 10).map((t: any) => ({
+          part: t.part_name,
+          label: t.thread_label,
+          type: "direct_activity" as const,
+          at: t.last_activity_at,
+        })),
+        therapist_mentions: recentTherapistThreads.slice(0, 10).map((t: any) => ({
+          part: t.part_name,
+          mentioned_by: t.sub_mode === "mamka" ? "Hanka" : "Káťa",
+          type: "therapist_mention" as const,
+          at: t.last_activity_at,
+        })),
+      },
+
+      // Pending tasks
+      pending_tasks: (tasks || []).slice(0, 15).map((t: any) => ({
+        task: t.task,
+        assigned_to: t.assigned_to,
+        priority: t.priority,
+        due_date: t.due_date,
+        age_days: Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24)),
+        escalation: t.escalation_level || 0,
+        status_hanka: t.status_hanka,
+        status_kata: t.status_kata,
+      })),
+
+      // Recent sessions
+      recent_sessions: (recentSessions || []).slice(0, 5).map((s: any) => ({
+        part: s.part_name,
+        therapist: s.therapist,
+        date: s.session_date,
+        type: s.session_type,
+        methods: s.methods_used,
+      })),
+
+      // Drive documents (summaries)
+      drive_documents: {
+        dashboard: dashboardText ? dashboardText.slice(0, 3000) : null,
+        operativni_plan: operativniPlanText ? operativniPlanText.slice(0, 3000) : null,
+        strategicky_vyhled: strategickyVyhledText ? strategickyVyhledText.slice(0, 2000) : null,
+        instrukce_karel: instrukceText ? `[loaded, ${instrukceText.length} chars]` : null,
+        pamet_karel: pametKarelText ? pametKarelText.slice(0, 2000) : null,
+      },
+    };
+
+    // ═══ 4. Upsert into did_daily_context ═══
+    const { error: upsertError } = await sb.from("did_daily_context").upsert(
+      { user_id: userId, context_date: today, context_json: contextJson, source: "karel-daily-refresh", updated_at: new Date().toISOString() },
+      { onConflict: "user_id,context_date" },
+    );
+
+    if (upsertError) {
+      console.error("[daily-refresh] Upsert error:", upsertError);
+      return new Response(JSON.stringify({ error: upsertError.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    console.log(`[daily-refresh] ✅ Context saved: ${JSON.stringify(contextJson).length} bytes, parts=${(parts || []).length}, tasks=${(tasks || []).length}`);
+
+    return new Response(JSON.stringify({
+      success: true,
+      date: today,
+      stats: {
+        active_parts: activeParts.length,
+        sleeping_parts: sleepingParts.length,
+        pending_tasks: (tasks || []).length,
+        drive_docs_loaded: Object.values(contextJson.drive_documents).filter(Boolean).length,
+        context_size_bytes: JSON.stringify(contextJson).length,
+      },
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+  } catch (error) {
+    console.error("[daily-refresh] Error:", error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
