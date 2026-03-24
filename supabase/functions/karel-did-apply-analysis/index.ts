@@ -366,25 +366,33 @@ serve(async (req) => {
     // ══════════════════════════════════════════════════════════
     const kartotekaId = await findKartotekaRoot(token);
     if (kartotekaId) {
-      // Load registry + build card index ONCE (2 Drive API calls total)
-      const registryEntries = await loadDriveRegistryEntries(token);
+      // Load registry from DB (lightweight, no xlsx import) + build card index
+      const { data: regRows } = await sb.from("did_part_registry").select("part_name, display_name, drive_folder_label").eq("user_id", userId);
+      const registryEntries = (regRows || []).map(r => {
+        const label = r.drive_folder_label || r.display_name || r.part_name;
+        const idMatch = label.match(/^(\d{1,3})_/);
+        return {
+          id: idMatch ? idMatch[1].padStart(3, "0") : "",
+          primaryName: r.part_name,
+          normalizedName: normalize(r.part_name),
+        };
+      });
       const cardIndex = await buildCardIndex(token, kartotekaId);
       console.log(`[apply-analysis] Registry: ${registryEntries.length} entries, Card index: ${cardIndex.byIdPrefix.size} cards`);
 
-      // Only update cards with meaningful new info; cap at 15 per run to avoid memory limits
+      // Only update cards with meaningful new info; cap at 10 per run to avoid memory limits
       const partsWithContent = analysis.parts.filter((p: any) => {
         if (!p.name) return false;
         const hasContent = p.recent_emotions || (p.needs?.length > 0) || p.risk_level === "medium" || p.risk_level === "high";
         const hasRec = p.session_recommendation?.needed;
         return hasContent || hasRec;
       });
-      // Prioritize high-risk parts first
       partsWithContent.sort((a: any, b: any) => {
         const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
         return (riskOrder[a.risk_level] ?? 2) - (riskOrder[b.risk_level] ?? 2);
       });
-      const partsToUpdate = partsWithContent.slice(0, 15);
-      console.log(`[apply-analysis] Will update ${partsToUpdate.length}/${analysis.parts.length} cards (filtered+capped)`);
+      const partsToUpdate = partsWithContent.slice(0, 10);
+      console.log(`[apply-analysis] Will update ${partsToUpdate.length}/${analysis.parts.length} cards (filtered+capped@10)`);
 
       for (const part of partsToUpdate) {
         try {
