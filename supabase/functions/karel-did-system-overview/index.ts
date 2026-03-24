@@ -356,6 +356,17 @@ serve(async (req) => {
         .limit(10),
     ]);
 
+    // Load analysis_json from did_daily_context (source of truth for parts status)
+    const { data: dailyCtx } = await sb
+      .from("did_daily_context")
+      .select("context_date, analysis_json")
+      .eq("user_id", userId)
+      .order("context_date", { ascending: false })
+      .limit(1)
+      .single();
+
+    const analysisJson = dailyCtx?.analysis_json as any;
+
     const normalizeKey = (value: string) =>
       (value || "")
         .toLowerCase()
@@ -774,6 +785,23 @@ ${therapistSummary24h || "(bez vláken terapeutek za 24h)"}
 
 === SIGNÁLY ZAPOJENÍ TÝMU ===
 ${teamEngagementBlock}
+
+=== DENNÍ ANALÝZA (analysis_json – ZDROJ PRAVDY) ===
+${analysisJson ? `
+Terapeutky:
+- Hanka: energie ${analysisJson.therapists?.Hanka?.situational?.energy || "?"}, zdraví: ${analysisJson.therapists?.Hanka?.situational?.health || "?"}, stresory: ${(analysisJson.therapists?.Hanka?.situational?.current_stressors || []).join(", ") || "žádné"}
+- Káťa: energie ${analysisJson.therapists?.Kata?.situational?.energy || "?"}, zdraví: ${analysisJson.therapists?.Kata?.situational?.health || "?"}, stresory: ${(analysisJson.therapists?.Kata?.situational?.current_stressors || []).join(", ") || "žádné"}
+
+Části s doporučeným sezením (POUZE tyto smíš doporučit):
+${(analysisJson.parts || [])
+  .filter((p: any) => p.status === "active" && p.session_recommendation?.needed)
+  .map((p: any) => `- ${p.name}: riziko ${p.risk_level}, potřeby: ${(p.needs || []).join(", ")}, cíle: ${(p.session_recommendation?.goals || []).join(", ")}`)
+  .join("\n") || "(žádné doporučené sezení)"}
+
+Týmové pozorování: ${analysisJson.team_observations?.cooperation || ""}
+Varování: ${(analysisJson.team_observations?.warnings || []).join(", ") || "žádná"}
+Pochvaly: ${(analysisJson.team_observations?.praise || []).join(", ") || "žádné"}
+` : "(analýza není k dispozici)"}
 
 === AKTIVNÍ ÚKOLY ===
 ${tasksBlock || "(bez veřejných úkolů pro briefing)"}

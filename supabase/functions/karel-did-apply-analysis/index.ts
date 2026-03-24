@@ -423,10 +423,42 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // 5. DB: CREATE TASKS FROM session_recommendation
+    // 5. DB: CREATE TASKS + SESSION PLANS FROM session_recommendation
     // ══════════════════════════════════════════════════════════
+
+    // HARD RULES: only create tasks/plans for parts that are ACTIVE and have needed=true
+    const BANNED_PART_NAMES = new Set([
+      "LOCIK", "BENDIK_BONDEVIK", "BENDIK", "CLARK", "KLARK",
+      "ADAM", "EINAR", "BELO", "BÉLO", "GERHARDT",
+    ]);
+
+    // PRIVACY: task text must never contain these patterns
+    const PRIVATE_PATTERNS = [
+      /vinou/i, /intimní/i, /soukrom/i, /osobní terapie/i,
+      /countertransference/i, /emoční vazb/i, /sedmikrásk/i,
+    ];
+
+    const isTaskTextClean = (text: string) => !PRIVATE_PATTERNS.some(p => p.test(text));
+
+    // SELF-TASK FILTER: Karel must not assign self-tasks to therapists
+    const SELF_TASK_PATTERNS = [
+      /^zapsat /i, /^zalogovat/i, /^aktualizovat kartu/i,
+      /do sekce .* karty/i, /do karty jako/i,
+    ];
+    const isNotSelfTask = (text: string) => !SELF_TASK_PATTERNS.some(p => p.test(text));
+
     for (const part of analysis.parts) {
       if (!part.session_recommendation?.needed) continue;
+      if (part.status !== "active") {
+        console.log(`[apply-analysis] ⏭️ Skipping task for sleeping part: ${part.name}`);
+        continue;
+      }
+
+      const nameUpper = (part.name || "").toUpperCase().replace(/\s+/g, "_").trim();
+      if (BANNED_PART_NAMES.has(nameUpper)) {
+        console.log(`[apply-analysis] ⏭️ Skipping banned part: ${part.name}`);
+        continue;
+      }
 
       const rec = part.session_recommendation;
       const assignedTo = (rec.who_leads || "").toLowerCase();
@@ -447,17 +479,24 @@ serve(async (req) => {
         dueDate = d.toISOString().slice(0, 10);
       }
 
-      const taskText = `Sezení s ${part.name}: ${(rec.goals || []).slice(0, 2).join(", ") || "dle analýzy"}`;
+      const goalsText = (rec.goals || []).slice(0, 2).join(", ") || "dle analýzy";
+      const taskText = `Sezení s ${part.name}: ${goalsText}`;
 
-      // Deduplicate
+      // Privacy + self-task check
+      if (!isTaskTextClean(taskText) || !isNotSelfTask(taskText)) {
+        console.log(`[apply-analysis] ⏭️ Skipping private/self task: ${taskText}`);
+        continue;
+      }
+
+      // Deduplicate: check if task for this part already exists today
       const { data: existingTasks } = await sb
         .from("did_therapist_tasks")
         .select("id")
         .eq("user_id", userId)
-        .eq("assigned_to", assignee)
         .eq("category", "session_recommendation")
         .ilike("task", `%${part.name}%`)
         .gte("created_at", `${today}T00:00:00`)
+        .neq("status", "archived")
         .limit(1);
 
       if (existingTasks && existingTasks.length > 0) {
@@ -465,6 +504,7 @@ serve(async (req) => {
         continue;
       }
 
+      // Create task in did_therapist_tasks
       const { error: taskError } = await sb.from("did_therapist_tasks").insert({
         user_id: userId,
         task: taskText,
@@ -483,6 +523,56 @@ serve(async (req) => {
       } else {
         results.tasks_created++;
         console.log(`[apply-analysis] ✅ Task created: ${taskText} → ${assignee}`);
+      }
+
+      // Also create session plan in did_daily_session_plans (for "Příprava na sezení")
+      const { data: existingPlans } = await sb
+        .from("did_daily_session_plans")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("selected_part", part.name)
+        .eq("plan_date", today)
+        .neq("status", "cancelled")
+        .limit(1);
+
+      if (!existingPlans || existingPlans.length === 0) {
+        const planMarkdown = [
+          `# Plán sezení: ${part.name}`,
+          `**Datum:** ${analysisDate}`,
+          `**Vede:** ${rec.who_leads || "dle dohody"}`,
+          `**Priorita:** ${rec.priority || "medium"}`,
+          `**Riziko:** ${part.risk_level || "low"}`,
+          ``,
+          `## Cíle sezení`,
+          ...(rec.goals || []).map((g: string) => `- ${g}`),
+          ``,
+          `## Potřeby části`,
+          ...(part.needs || []).map((n: string) => `- ${n}`),
+          ``,
+          `## Emoční stav`,
+          part.recent_emotions || "Nespecifikováno",
+        ].join("\n");
+
+        const { error: planError } = await sb.from("did_daily_session_plans").insert({
+          user_id: userId,
+          selected_part: part.name,
+          plan_date: today,
+          therapist: assignee === "both" ? "Hanka" : (assignee === "hanka" ? "Hanka" : "Káťa"),
+          session_lead: assignee === "both" ? "obe" : assignee,
+          plan_markdown: planMarkdown,
+          plan_html: `<div>${planMarkdown.replace(/\n/g, "<br>")}</div>`,
+          urgency_score: rec.priority === "today" ? 8 : rec.priority === "soon" ? 5 : 3,
+          urgency_breakdown: { risk: part.risk_level, needs: part.needs, goals: rec.goals },
+          part_tier: part.status === "active" ? "aktivní" : "spící",
+          status: "pending",
+          generated_by: "karel-did-apply-analysis",
+        });
+
+        if (planError) {
+          console.error(`[apply-analysis] ❌ Session plan insert failed for ${part.name}:`, planError);
+        } else {
+          console.log(`[apply-analysis] ✅ Session plan created for ${part.name}`);
+        }
       }
     }
 
