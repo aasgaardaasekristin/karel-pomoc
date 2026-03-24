@@ -390,18 +390,19 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // 4. DRIVE: UPDATE PART CARDS (Google Docs in kartoteka)
+    // 4. DRIVE: UPDATE PART CARDS (pre-indexed, no per-part API calls)
     // ══════════════════════════════════════════════════════════
     const kartotekaId = await findKartotekaRoot(token);
     if (kartotekaId) {
-      // Load registry entries for ID-based card lookup
+      // Load registry + build card index ONCE (2 Drive API calls total)
       const registryEntries = await loadDriveRegistryEntries(token);
-      console.log(`[apply-analysis] Loaded ${registryEntries.length} registry entries for card lookup`);
+      const cardIndex = await buildCardIndex(token, kartotekaId);
+      console.log(`[apply-analysis] Registry: ${registryEntries.length} entries, Card index: ${cardIndex.byIdPrefix.size} cards`);
 
       for (const part of analysis.parts) {
         if (!part.name) continue;
         try {
-          const cardDocId = await findPartCard(token, kartotekaId, part.name, part.status || "active", registryEntries);
+          const cardDocId = findPartCardFromIndex(cardIndex, part.name, registryEntries);
           if (!cardDocId) {
             results.parts_skipped.push(part.name);
             console.warn(`[apply-analysis] ⚠️ Card not found for part: ${part.name}`);
