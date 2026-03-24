@@ -455,7 +455,6 @@ const Chat = () => {
 
     switch (didFlowState) {
       case "chat": {
-        restoreGlobalTheme();
         setActiveThread(null);
         setMessages([]);
         if (didSubMode === "cast") {
