@@ -444,11 +444,38 @@ Podpis: "Karel"
 
 Tón: profesionální, věcný. Nesdílej Hančiny osobní informace.
 NIKDY nezmiňuj profilaci.`;
+      // ═══ FILTER: only parts that are truly active + recommended ═══
+      const BANNED_PART_NAMES = new Set([
+        "LOCIK","LOCÍK","BENDIK_BONDEVIK","BENDIK","CLARK","KLARK",
+        "ADAM","EINAR","BELO","BÉLO","GERHARDT",
+      ]);
+
+      const partsForEmail = hasAnalysis
+        ? (analysis.parts || []).filter((p: any) =>
+            p.status === "active" &&
+            p.session_recommendation?.needed === true &&
+            !BANNED_PART_NAMES.has((p.name || "").toUpperCase().replace(/\s+/g, "_").trim())
+          )
+        : [];
+
+      console.log(`[daily-email] partsForEmail: ${partsForEmail.length} (from ${(analysis?.parts || []).length} total)`);
+
       // USER prompt: analysis first, supplementary second
       let userContent = `DATUM: ${dateStr} (${pragueHour}:00 SEČ)\n\n`;
 
       if (hasAnalysis) {
+        // Include full analysis for context but mark which parts are eligible for sessions
         userContent += `═══ PRIMÁRNÍ ZDROJ: DENNÍ ANALÝZA ═══\n${analysisBlock}\n\n`;
+        userContent += `═══ ČÁSTI ZPŮSOBILÉ PRO DOPORUČENÍ SEZENÍ (partsForEmail) ═══\n`;
+        if (partsForEmail.length > 0) {
+          userContent += partsForEmail.map((p: any) => {
+            const rec = p.session_recommendation;
+            return `  ▸ ${p.name} | riziko: ${p.risk_level} | emoce: ${p.recent_emotions || "?"} | vede: ${rec?.who_leads} | priorita: ${rec?.priority} | cíle: ${(rec?.goals || []).join(", ")}`;
+          }).join("\n");
+        } else {
+          userContent += `  (ŽÁDNÉ – nenavrhuj žádná sezení s částmi)`;
+        }
+        userContent += `\n\nV tomto e-mailu pracuj POUZE s částmi ze seznamu partsForEmail výše.\nNepracuj s jinými jmény (např. Locik, Bendik, Clark) ani když se objeví v doplňkových textech.\nPokud je seznam partsForEmail prázdný, NEPIŠ žádná doporučení sezení s částmi.\n\n`;
       }
 
       userContent += `═══ DOPLŇUJÍCÍ KONTEXT (syrová data) ═══\n${suppBlock}\n\n`;

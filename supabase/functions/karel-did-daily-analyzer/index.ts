@@ -436,6 +436,57 @@ Proveď analýzu a vrať JSON.`;
       throw new Error("AI response missing required fields (date, therapists, parts)");
     }
 
+    // ── POST-PROCESSING: enforce hard rules on AI output ──
+    if (Array.isArray(analysisJson.parts)) {
+      // Remove banned entities (e.g. Locik)
+      analysisJson.parts = analysisJson.parts.filter((p: any) => {
+        const nameUpper = (p.name || "").toUpperCase().replace(/\s+/g, "_").trim();
+        if (BANNED_ENTITIES.has(nameUpper)) {
+          console.log(`[daily-analyzer] REMOVED banned entity from parts: ${p.name}`);
+          return false;
+        }
+        return true;
+      });
+
+      // Force correct status based on direct communication
+      for (const p of analysisJson.parts) {
+        const nameUpper = (p.name || "").toUpperCase().replace(/\s+/g, "_").trim();
+        const hadDirectComm = directlyActiveParts.has(nameUpper);
+
+        if (!hadDirectComm) {
+          // Check aliases: strip diacritics for matching
+          const nameNorm = nameUpper.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const hadDirectNorm = [...directlyActiveParts].some(dp =>
+            dp.normalize("NFD").replace(/[\u0300-\u036f]/g, "") === nameNorm
+          );
+
+          if (!hadDirectNorm) {
+            if (p.status === "active") {
+              console.log(`[daily-analyzer] FORCED sleeping: ${p.name} (no direct comm in 24h)`);
+              p.status = "sleeping";
+            }
+            if (p.session_recommendation) {
+              p.session_recommendation.needed = false;
+              p.session_recommendation.priority = "later";
+            }
+          }
+        }
+
+        // Extra guard for strict-sleeping list
+        if (STRICT_SLEEPING_UNLESS_DIRECT.has(nameUpper) && !directlyActiveParts.has(nameUpper)) {
+          p.status = "sleeping";
+          if (p.session_recommendation) {
+            p.session_recommendation.needed = false;
+            p.session_recommendation.priority = "later";
+          }
+        }
+      }
+
+      const activeCount = analysisJson.parts.filter((p: any) => p.status === "active").length;
+      const sleepingCount = analysisJson.parts.filter((p: any) => p.status === "sleeping").length;
+      console.log(`[daily-analyzer] Post-processing: ${activeCount} active, ${sleepingCount} sleeping`);
+    }
+
     // ══════════════════════════════════════════════════════════
     // 4. SAVE TO did_daily_context.analysis_json
     // ══════════════════════════════════════════════════════════
