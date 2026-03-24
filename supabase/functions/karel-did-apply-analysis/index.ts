@@ -28,11 +28,135 @@ async function listFiles(token: string, folderId: string): Promise<Array<{ id: s
   return data.files || [];
 }
 
-async function searchFiles(token: string, query: string): Promise<Array<{ id: string; name: string; mimeType: string }>> {
-  const params = new URLSearchParams({ q: query, fields: "files(id,name,mimeType)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files || [];
+// ── Find subfolder by exact name (case-insensitive) ──
+async function findSubfolder(token: string, parentId: string, name: string): Promise<string | null> {
+  const files = await listFiles(token, parentId);
+  const nameLower = name.toLowerCase();
+  const match = files.find(f =>
+    f.mimeType === "application/vnd.google-apps.folder" &&
+    f.name.toLowerCase() === nameLower
+  );
+  return match?.id || null;
+}
+
+// ── Find file by exact name in folder ──
+async function findFileInFolder(token: string, folderId: string, fileName: string): Promise<string | null> {
+  const files = await listFiles(token, folderId);
+  const nameLower = fileName.toLowerCase();
+  const match = files.find(f =>
+    f.mimeType !== "application/vnd.google-apps.folder" &&
+    f.name.toLowerCase() === nameLower
+  );
+  return match?.id || null;
+}
+
+// ── Read plain text file from Drive ──
+async function readDriveFile(token: string, fileId: string): Promise<string> {
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`Cannot read file ${fileId}: ${res.status}`);
+  return await res.text();
+}
+
+// ── Append text to a plain text file on Drive ──
+async function appendToTextFile(token: string, fileId: string, newContent: string): Promise<void> {
+  const existing = await readDriveFile(token, fileId);
+  const updated = existing + "\n" + newContent;
+  const res = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+      body: updated,
+    }
+  );
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Drive file update failed: ${res.status} ${errText}`);
+  }
+}
+
+// ── Navigate PAMET_KAREL/DID/HANKA|KATA → SITUACNI_ANALYZA.txt ──
+async function findSituacniAnalyza(
+  token: string,
+  therapistFolder: string // "HANKA" or "KATA"
+): Promise<{ fileId: string; path: string } | null> {
+  // Step 1: Find PAMET_KAREL
+  const rootFiles = await listFiles(token, "root");
+  const pametFolder = rootFiles.find(f =>
+    f.mimeType === "application/vnd.google-apps.folder" &&
+    f.name.toUpperCase() === "PAMET_KAREL"
+  );
+  if (!pametFolder) {
+    // Fallback: search entire drive for exact name
+    const q = `mimeType='application/vnd.google-apps.folder' and name='PAMET_KAREL' and trashed=false`;
+    const params = new URLSearchParams({ q, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (!data.files?.length) {
+      console.warn(`[apply-analysis] PAMET_KAREL folder not found anywhere`);
+      return null;
+    }
+    var pametId = data.files[0].id;
+  } else {
+    var pametId = pametFolder.id;
+  }
+  console.log(`[apply-analysis] Found PAMET_KAREL: ${pametId}`);
+
+  // Step 2: Find DID subfolder
+  const didId = await findSubfolder(token, pametId, "DID");
+  if (!didId) {
+    console.warn(`[apply-analysis] PAMET_KAREL/DID subfolder not found`);
+    return null;
+  }
+
+  // Step 3: Find HANKA or KATA subfolder
+  const therapistId = await findSubfolder(token, didId, therapistFolder);
+  if (!therapistId) {
+    console.warn(`[apply-analysis] PAMET_KAREL/DID/${therapistFolder} subfolder not found`);
+    return null;
+  }
+
+  // Step 4: Find SITUACNI_ANALYZA.txt
+  const fileId = await findFileInFolder(token, therapistId, "SITUACNI_ANALYZA.txt");
+  if (!fileId) {
+    console.warn(`[apply-analysis] SITUACNI_ANALYZA.txt not found in PAMET_KAREL/DID/${therapistFolder}`);
+    return null;
+  }
+
+  const path = `PAMET_KAREL/DID/${therapistFolder}/SITUACNI_ANALYZA.txt`;
+  console.log(`[apply-analysis] Found ${path}: ${fileId}`);
+  return { fileId, path };
+}
+
+// ── Find part card on Drive ──
+async function findPartCard(token: string, kartotekaId: string, partName: string): Promise<string | null> {
+  const partNorm = normalize(partName);
+  const rootFiles = await listFiles(token, kartotekaId);
+
+  for (const folder of rootFiles) {
+    if (folder.mimeType !== "application/vnd.google-apps.folder") continue;
+    const folderNorm = normalize(folder.name);
+    if (folderNorm.startsWith("00") || folderNorm.includes("centrum") || folderNorm.includes("mesicni") || folderNorm.includes("reporty")) continue;
+
+    if (folderNorm.includes(partNorm)) {
+      const folderFiles = await listFiles(token, folder.id);
+      const cardDoc = folderFiles.find(f => {
+        if (f.mimeType === "application/vnd.google-apps.folder") return false;
+        const fn = normalize(f.name);
+        return fn.includes(partNorm) || fn.includes("karta") || fn.includes("profil");
+      });
+      if (cardDoc) return cardDoc.id;
+      const firstDoc = folderFiles.find(f => f.mimeType !== "application/vnd.google-apps.folder");
+      if (firstDoc) return firstDoc.id;
+    }
+  }
+  return null;
 }
 
 // ── Google Docs: get document length ──
@@ -50,25 +174,19 @@ async function getDocEndIndex(token: string, docId: string): Promise<number> {
 // ── Google Docs: append text with optional heading ──
 async function appendToDoc(token: string, docId: string, blocks: Array<{ text: string; style?: string }>): Promise<void> {
   const endIndex = await getDocEndIndex(token, docId);
-
   const requests: any[] = [];
   let insertAt = endIndex - 1;
-
-  // Build all text first, then apply styles in reverse
   const styleOps: Array<{ start: number; end: number; style: string }> = [];
 
   for (const block of blocks) {
     const textToInsert = block.text.endsWith("\n") ? block.text : block.text + "\n";
-    requests.push({
-      insertText: { location: { index: insertAt }, text: textToInsert },
-    });
+    requests.push({ insertText: { location: { index: insertAt }, text: textToInsert } });
     if (block.style) {
       styleOps.push({ start: insertAt, end: insertAt + textToInsert.length - 1, style: block.style });
     }
     insertAt += textToInsert.length;
   }
 
-  // Apply paragraph styles
   for (const op of styleOps) {
     requests.push({
       updateParagraphStyle: {
@@ -80,94 +198,21 @@ async function appendToDoc(token: string, docId: string, blocks: Array<{ text: s
   }
 
   if (requests.length === 0) return;
-
   const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ requests }),
   });
-
   if (!res.ok) {
     const errText = await res.text();
     throw new Error(`Docs batchUpdate failed: ${res.status} ${errText}`);
   }
 }
 
-// ── Find PAMET_KAREL folder structure ──
-async function findPametKarelFolder(token: string): Promise<string | null> {
-  // Search for PAMET_KAREL folder anywhere
-  const q = `mimeType='application/vnd.google-apps.folder' and trashed=false and (name contains 'PAMET_KAREL' or name contains 'PAMET' or name contains 'pamet_karel')`;
-  const files = await searchFiles(token, q);
-  const strip = (s: string) => normalize(s);
-  const match = files.find(f => {
-    const n = strip(f.name);
-    return n.includes("pamet") && n.includes("karel");
-  });
-  return match?.id || null;
-}
-
-// ── Find therapist profile doc in PAMET_KAREL ──
-async function findTherapistDoc(token: string, pametFolderId: string, therapistName: string): Promise<string | null> {
-  // Look recursively: PAMET_KAREL/DID/Hanka or PAMET_KAREL/Hanka etc.
-  const allFiles = await listFiles(token, pametFolderId);
-  const nameLower = normalize(therapistName);
-
-  // Direct file match
-  for (const f of allFiles) {
-    if (f.mimeType === "application/vnd.google-apps.folder") continue;
-    if (normalize(f.name).includes(nameLower)) return f.id;
-  }
-
-  // Check subfolders (DID, etc.)
-  for (const f of allFiles) {
-    if (f.mimeType !== "application/vnd.google-apps.folder") continue;
-    const subFiles = await listFiles(token, f.id);
-    for (const sf of subFiles) {
-      if (sf.mimeType === "application/vnd.google-apps.folder") continue;
-      if (normalize(sf.name).includes(nameLower)) return sf.id;
-    }
-  }
-
-  return null;
-}
-
-// ── Find part card on Drive ──
-async function findPartCard(token: string, kartotekaId: string, partName: string): Promise<string | null> {
-  const partNorm = normalize(partName);
-
-  // List all folders in kartoteka root
-  const rootFiles = await listFiles(token, kartotekaId);
-
-  for (const folder of rootFiles) {
-    if (folder.mimeType !== "application/vnd.google-apps.folder") continue;
-    const folderNorm = normalize(folder.name);
-    // Skip 00_CENTRUM, 08_MESICNI_REPORTY etc.
-    if (folderNorm.startsWith("00") || folderNorm.includes("centrum") || folderNorm.includes("mesicni") || folderNorm.includes("reporty")) continue;
-
-    // Check if folder name contains part name
-    if (folderNorm.includes(partNorm)) {
-      // Find main card doc inside
-      const folderFiles = await listFiles(token, folder.id);
-      // Look for files like "DID_XXX_NAME" or "Karta" or the main doc
-      const cardDoc = folderFiles.find(f => {
-        if (f.mimeType === "application/vnd.google-apps.folder") return false;
-        const fn = normalize(f.name);
-        return fn.includes(partNorm) || fn.includes("karta") || fn.includes("profil");
-      });
-      if (cardDoc) return cardDoc.id;
-      // If no specific card found, return first non-folder file
-      const firstDoc = folderFiles.find(f => f.mimeType !== "application/vnd.google-apps.folder");
-      if (firstDoc) return firstDoc.id;
-    }
-  }
-
-  return null;
-}
-
-// ── Format therapist update block ──
+// ── Format therapist situational block (plain text, no markdown) ──
 function formatTherapistBlock(date: string, situational: any): string {
   const lines: string[] = [];
-  lines.push(`Datum: ${date}`);
+  lines.push(`[${date}] Denní situační update`);
   if (situational.energy) lines.push(`Energie: ${situational.energy}`);
   if (situational.health) lines.push(`Zdraví: ${situational.health}`);
   if (situational.current_stressors?.length) {
@@ -180,7 +225,7 @@ function formatTherapistBlock(date: string, situational: any): string {
 // ── Format part update block ──
 function formatPartBlock(date: string, part: any): string {
   const lines: string[] = [];
-  lines.push(`Datum: ${date}`);
+  lines.push(`[${date}] Denní aktualizace stavu`);
   lines.push(`Status: ${part.status}`);
   if (part.recent_emotions) lines.push(`Emoční stav: ${part.recent_emotions}`);
   if (part.needs?.length) lines.push(`Potřeby: ${part.needs.join(", ")}`);
@@ -246,59 +291,52 @@ serve(async (req) => {
     const analysisDate = analysis.date || dailyCtx.context_date || today;
     console.log(`[apply-analysis] Starting for user=${userId}, date=${analysisDate}, parts=${analysis.parts?.length}`);
 
-    // ══════════════════════════════════════════════════════════
-    // 2. DRIVE: UPDATE PAMET_KAREL (THERAPIST PROFILES)
-    // ══════════════════════════════════════════════════════════
     const token = await getAccessToken();
-    const results = { pamet_hanka: false, pamet_kata: false, parts_updated: 0, parts_skipped: [] as string[], tasks_created: 0, tasks_skipped: 0 };
+    const results = {
+      pamet_hanka: false,
+      pamet_kata: false,
+      parts_updated: 0,
+      parts_skipped: [] as string[],
+      tasks_created: 0,
+      tasks_skipped: 0,
+    };
 
-    const pametFolderId = await findPametKarelFolder(token);
-    if (pametFolderId) {
-      // ── Hanka ──
-      if (analysis.therapists.Hanka?.situational) {
-        const hankaDocId = await findTherapistDoc(token, pametFolderId, "Hanka");
-        if (hankaDocId) {
-          try {
-            const blockText = formatTherapistBlock(analysisDate, analysis.therapists.Hanka.situational);
-            await appendToDoc(token, hankaDocId, [
-              { text: `\n[${analysisDate}] Denní situační update\n`, style: "HEADING_3" },
-              { text: blockText + "\n" },
-            ]);
-            results.pamet_hanka = true;
-            console.log(`[apply-analysis] ✅ PAMET_KAREL/Hanka updated`);
-          } catch (e) {
-            console.error(`[apply-analysis] ❌ Hanka doc update failed:`, e);
-          }
-        } else {
-          console.warn(`[apply-analysis] ⚠️ Hanka doc not found in PAMET_KAREL`);
+    // ══════════════════════════════════════════════════════════
+    // 2. PAMET_KAREL: HANKA → SITUACNI_ANALYZA.txt
+    // ══════════════════════════════════════════════════════════
+    if (analysis.therapists.Hanka?.situational) {
+      const hankaFile = await findSituacniAnalyza(token, "HANKA");
+      if (hankaFile) {
+        try {
+          const block = formatTherapistBlock(analysisDate, analysis.therapists.Hanka.situational);
+          await appendToTextFile(token, hankaFile.fileId, "\n" + block + "\n");
+          results.pamet_hanka = true;
+          console.log(`[apply-analysis] ✅ ${hankaFile.path} updated`);
+        } catch (e) {
+          console.error(`[apply-analysis] ❌ Hanka SITUACNI_ANALYZA update failed:`, e);
         }
       }
-
-      // ── Káťa ──
-      if (analysis.therapists.Kata?.situational) {
-        const kataDocId = await findTherapistDoc(token, pametFolderId, "Kata");
-        if (kataDocId) {
-          try {
-            const blockText = formatTherapistBlock(analysisDate, analysis.therapists.Kata.situational);
-            await appendToDoc(token, kataDocId, [
-              { text: `\n[${analysisDate}] Denní situační update\n`, style: "HEADING_3" },
-              { text: blockText + "\n" },
-            ]);
-            results.pamet_kata = true;
-            console.log(`[apply-analysis] ✅ PAMET_KAREL/Kata updated`);
-          } catch (e) {
-            console.error(`[apply-analysis] ❌ Kata doc update failed:`, e);
-          }
-        } else {
-          console.warn(`[apply-analysis] ⚠️ Kata doc not found in PAMET_KAREL`);
-        }
-      }
-    } else {
-      console.warn(`[apply-analysis] ⚠️ PAMET_KAREL folder not found`);
     }
 
     // ══════════════════════════════════════════════════════════
-    // 3. DRIVE: UPDATE PART CARDS
+    // 3. PAMET_KAREL: KATA → SITUACNI_ANALYZA.txt
+    // ══════════════════════════════════════════════════════════
+    if (analysis.therapists.Kata?.situational) {
+      const kataFile = await findSituacniAnalyza(token, "KATA");
+      if (kataFile) {
+        try {
+          const block = formatTherapistBlock(analysisDate, analysis.therapists.Kata.situational);
+          await appendToTextFile(token, kataFile.fileId, "\n" + block + "\n");
+          results.pamet_kata = true;
+          console.log(`[apply-analysis] ✅ ${kataFile.path} updated`);
+        } catch (e) {
+          console.error(`[apply-analysis] ❌ Kata SITUACNI_ANALYZA update failed:`, e);
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // 4. DRIVE: UPDATE PART CARDS (Google Docs in kartoteka)
     // ══════════════════════════════════════════════════════════
     const kartotekaId = await findKartotekaRoot(token);
     if (kartotekaId) {
@@ -329,38 +367,33 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // 4. DB: CREATE TASKS FROM session_recommendation
+    // 5. DB: CREATE TASKS FROM session_recommendation
     // ══════════════════════════════════════════════════════════
     for (const part of analysis.parts) {
       if (!part.session_recommendation?.needed) continue;
 
       const rec = part.session_recommendation;
       const assignedTo = (rec.who_leads || "").toLowerCase();
-      // Map who_leads to valid assignee
       let assignee = "both";
       if (assignedTo.includes("hanka")) assignee = "hanka";
       else if (assignedTo.includes("kat") || assignedTo.includes("kát")) assignee = "kata";
 
-      // Map priority
       let priority = "medium";
       if (rec.priority === "today") priority = "high";
       else if (rec.priority === "later") priority = "low";
 
-      // Calculate due_date
       let dueDate = today;
       if (rec.priority === "soon") {
-        const d = new Date();
-        d.setDate(d.getDate() + 2);
+        const d = new Date(); d.setDate(d.getDate() + 2);
         dueDate = d.toISOString().slice(0, 10);
       } else if (rec.priority === "later") {
-        const d = new Date();
-        d.setDate(d.getDate() + 7);
+        const d = new Date(); d.setDate(d.getDate() + 7);
         dueDate = d.toISOString().slice(0, 10);
       }
 
       const taskText = `Sezení s ${part.name}: ${(rec.goals || []).slice(0, 2).join(", ") || "dle analýzy"}`;
 
-      // ── Deduplicate: check if similar task exists for same part + assignee + date ──
+      // Deduplicate
       const { data: existingTasks } = await sb
         .from("did_therapist_tasks")
         .select("id")
@@ -373,7 +406,6 @@ serve(async (req) => {
 
       if (existingTasks && existingTasks.length > 0) {
         results.tasks_skipped++;
-        console.log(`[apply-analysis] ⏭️ Task already exists for ${part.name} → ${assignee}`);
         continue;
       }
 
@@ -398,7 +430,7 @@ serve(async (req) => {
       }
     }
 
-    console.log(`[apply-analysis] ✅ Done: pamet_h=${results.pamet_hanka}, pamet_k=${results.pamet_kata}, parts=${results.parts_updated}, tasks=${results.tasks_created}, skipped_parts=${results.parts_skipped.length}, skipped_tasks=${results.tasks_skipped}`);
+    console.log(`[apply-analysis] ✅ Done: pamet_h=${results.pamet_hanka}, pamet_k=${results.pamet_kata}, parts=${results.parts_updated}, tasks=${results.tasks_created}`);
 
     return new Response(JSON.stringify({
       success: true,
