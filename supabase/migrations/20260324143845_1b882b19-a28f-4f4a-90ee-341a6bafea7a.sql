@@ -1,0 +1,1 @@
+ALTER TABLE public.did_daily_context ADD COLUMN IF NOT EXISTS analysis_json jsonb DEFAULT NULL;

@@ -445,6 +445,7 @@ export type Database = {
       }
       did_daily_context: {
         Row: {
+          analysis_json: Json | null
           context_date: string
           context_json: Json
           created_at: string
@@ -454,6 +455,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          analysis_json?: Json | null
           context_date?: string
           context_json?: Json
           created_at?: string
@@ -463,6 +465,7 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          analysis_json?: Json | null
           context_date?: string
           context_json?: Json
           created_at?: string
