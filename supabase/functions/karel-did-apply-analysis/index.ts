@@ -134,70 +134,96 @@ async function findSituacniAnalyza(
   return { fileId, path };
 }
 
-// ── Find part card on Drive ──
-async function findPartCard(token: string, kartotekaId: string, partName: string): Promise<string | null> {
-  const partNorm = normalize(partName);
-  const rootFiles = await listFiles(token, kartotekaId);
+// ── Normalize name for card matching: strip diacritics, uppercase, spaces→_ ──
+function cardNameNorm(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+}
 
-  for (const folder of rootFiles) {
-    if (folder.mimeType !== "application/vnd.google-apps.folder") continue;
-    const folderNorm = normalize(folder.name);
-    if (folderNorm.startsWith("00") || folderNorm.includes("centrum") || folderNorm.includes("mesicni") || folderNorm.includes("reporty")) continue;
+// ── Pre-loaded card index for O(1) lookups ──
+interface CardIndex {
+  byIdPrefix: Map<string, { id: string; name: string }>; // "004" → file
+  byNameNorm: Map<string, { id: string; name: string }>; // "ARTHUR" → file
+}
 
-    if (folderNorm.includes(partNorm)) {
-      const folderFiles = await listFiles(token, folder.id);
-      const cardDoc = folderFiles.find(f => {
-        if (f.mimeType === "application/vnd.google-apps.folder") return false;
-        const fn = normalize(f.name);
-        return fn.includes(partNorm) || fn.includes("karta") || fn.includes("profil");
-      });
-      if (cardDoc) return cardDoc.id;
-      const firstDoc = folderFiles.find(f => f.mimeType !== "application/vnd.google-apps.folder");
-      if (firstDoc) return firstDoc.id;
+async function buildCardIndex(token: string, kartotekaId: string): Promise<CardIndex> {
+  const index: CardIndex = { byIdPrefix: new Map(), byNameNorm: new Map() };
+
+  for (const folderName of ["01_AKTIVNI_FRAGMENTY", "03_ARCHIV_SPICICH"]) {
+    const folderId = await findSubfolder(token, kartotekaId, folderName);
+    if (!folderId) continue;
+
+    const files = await listFiles(token, folderId);
+    for (const f of files) {
+      if (f.mimeType === "application/vnd.google-apps.folder") continue;
+      // Extract ID prefix (e.g. "004" from "004_ARTHUR")
+      const idMatch = f.name.match(/^(\d{1,3})_/);
+      if (idMatch) {
+        const paddedId = idMatch[1].padStart(3, "0");
+        if (!index.byIdPrefix.has(paddedId)) {
+          index.byIdPrefix.set(paddedId, { id: f.id, name: f.name });
+        }
+      }
+      // Name-based index
+      const nameAfterPrefix = f.name.replace(/^\d{1,3}_/, "");
+      const norm = cardNameNorm(nameAfterPrefix);
+      if (norm.length >= 2 && !index.byNameNorm.has(norm)) {
+        index.byNameNorm.set(norm, { id: f.id, name: f.name });
+      }
     }
   }
+
+  console.log(`[buildCardIndex] Indexed ${index.byIdPrefix.size} by ID, ${index.byNameNorm.size} by name`);
+  return index;
+}
+
+function findPartCardFromIndex(
+  cardIndex: CardIndex,
+  partName: string,
+  registryEntries: Array<{ id: string; primaryName: string; normalizedName: string }>,
+): string | null {
+  const partNorm = normalize(partName);
+  const entry = registryEntries.find(e => e.normalizedName === partNorm);
+  const partId = entry?.id;
+
+  // 1. ID-based lookup
+  if (partId && cardIndex.byIdPrefix.has(partId)) {
+    const card = cardIndex.byIdPrefix.get(partId)!;
+    console.log(`[findPartCard] ✅ ID match: ${partId} → ${card.name}`);
+    return card.id;
+  }
+
+  // 2. Name-based fallback
+  const nameNorm = cardNameNorm(partName);
+  if (nameNorm.length >= 3) {
+    // Exact match
+    if (cardIndex.byNameNorm.has(nameNorm)) {
+      const card = cardIndex.byNameNorm.get(nameNorm)!;
+      console.log(`[findPartCard] ✅ Name match: ${nameNorm} → ${card.name}`);
+      return card.id;
+    }
+    // Substring match
+    for (const [key, card] of cardIndex.byNameNorm) {
+      if (key.includes(nameNorm) || nameNorm.includes(key)) {
+        console.log(`[findPartCard] ✅ Fuzzy match: ${nameNorm} ~ ${key} → ${card.name}`);
+        return card.id;
+      }
+    }
+  }
+
   return null;
 }
 
-// ── Google Docs: get document length ──
-async function getDocEndIndex(token: string, docId: string): Promise<number> {
-  const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}?fields=body.content`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Cannot read doc ${docId}: ${res.status}`);
-  const doc = await res.json();
-  const content = doc.body?.content || [];
-  const last = content[content.length - 1];
-  return last?.endIndex || 1;
-}
-
-// ── Google Docs: append text with optional heading ──
-async function appendToDoc(token: string, docId: string, blocks: Array<{ text: string; style?: string }>): Promise<void> {
-  const endIndex = await getDocEndIndex(token, docId);
-  const requests: any[] = [];
-  let insertAt = endIndex - 1;
-  const styleOps: Array<{ start: number; end: number; style: string }> = [];
-
-  for (const block of blocks) {
-    const textToInsert = block.text.endsWith("\n") ? block.text : block.text + "\n";
-    requests.push({ insertText: { location: { index: insertAt }, text: textToInsert } });
-    if (block.style) {
-      styleOps.push({ start: insertAt, end: insertAt + textToInsert.length - 1, style: block.style });
-    }
-    insertAt += textToInsert.length;
-  }
-
-  for (const op of styleOps) {
-    requests.push({
-      updateParagraphStyle: {
-        range: { startIndex: op.start, endIndex: op.end },
-        paragraphStyle: { namedStyleType: op.style },
-        fields: "namedStyleType",
+// ── Google Docs: append plain text at end (lightweight, no doc body read) ──
+async function appendTextToDoc(token: string, docId: string, text: string): Promise<void> {
+  // Use endOfSegmentLocation to insert at end without reading doc first
+  const requests = [
+    {
+      insertText: {
+        endOfSegmentLocation: { segmentId: "" },
+        text: "\n" + text + "\n",
       },
-    });
-  }
-
-  if (requests.length === 0) return;
+    },
+  ];
   const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -205,7 +231,7 @@ async function appendToDoc(token: string, docId: string, blocks: Array<{ text: s
   });
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`Docs batchUpdate failed: ${res.status} ${errText}`);
+    throw new Error(`Docs append failed: ${res.status} ${errText}`);
   }
 }
 
@@ -336,31 +362,61 @@ serve(async (req) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // 4. DRIVE: UPDATE PART CARDS (Google Docs in kartoteka)
+    // 4. DRIVE: UPDATE PART CARDS (pre-indexed, no per-part API calls)
     // ══════════════════════════════════════════════════════════
     const kartotekaId = await findKartotekaRoot(token);
     if (kartotekaId) {
-      for (const part of analysis.parts) {
-        if (!part.name) continue;
+      // Load registry from DB (lightweight, no xlsx import) + build card index
+      const { data: regRows } = await sb.from("did_part_registry").select("part_name, display_name, drive_folder_label").eq("user_id", userId);
+      const registryEntries = (regRows || []).map(r => {
+        const label = r.drive_folder_label || r.display_name || r.part_name;
+        const idMatch = label.match(/^(\d{1,3})_/);
+        return {
+          id: idMatch ? idMatch[1].padStart(3, "0") : "",
+          primaryName: r.part_name,
+          normalizedName: normalize(r.part_name),
+        };
+      });
+      const cardIndex = await buildCardIndex(token, kartotekaId);
+      console.log(`[apply-analysis] Registry: ${registryEntries.length} entries, Card index: ${cardIndex.byIdPrefix.size} cards`);
+
+      // Only update cards with meaningful new info; cap at 10 per run to avoid memory limits
+      const partsWithContent = analysis.parts.filter((p: any) => {
+        if (!p.name) return false;
+        const hasContent = p.recent_emotions || (p.needs?.length > 0) || p.risk_level === "medium" || p.risk_level === "high";
+        const hasRec = p.session_recommendation?.needed;
+        return hasContent || hasRec;
+      });
+      partsWithContent.sort((a: any, b: any) => {
+        const riskOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        return (riskOrder[a.risk_level] ?? 2) - (riskOrder[b.risk_level] ?? 2);
+      });
+      const partsToUpdate = partsWithContent.slice(0, 10);
+      console.log(`[apply-analysis] Will update ${partsToUpdate.length}/${analysis.parts.length} cards (filtered+capped@10)`);
+
+      for (const part of partsToUpdate) {
         try {
-          const cardDocId = await findPartCard(token, kartotekaId, part.name);
+          const cardDocId = findPartCardFromIndex(cardIndex, part.name, registryEntries);
           if (!cardDocId) {
             results.parts_skipped.push(part.name);
-            console.warn(`[apply-analysis] ⚠️ Card not found for part: ${part.name}`);
             continue;
           }
 
-          const blockText = formatPartBlock(analysisDate, part);
-          await appendToDoc(token, cardDocId, [
-            { text: `\n[${analysisDate}] Denní aktualizace stavu\n`, style: "HEADING_3" },
-            { text: blockText + "\n" },
-          ]);
+          const blockText = `\n=== [${analysisDate}] Denní aktualizace stavu ===\n` + formatPartBlock(analysisDate, part);
+          await appendTextToDoc(token, cardDocId, blockText);
           results.parts_updated++;
           console.log(`[apply-analysis] ✅ Card updated: ${part.name}`);
         } catch (e) {
           results.parts_skipped.push(part.name);
           console.error(`[apply-analysis] ❌ Card update failed for ${part.name}:`, e);
         }
+      }
+      // Log parts not updated (no meaningful content)
+      const skippedNoContent = analysis.parts
+        .filter((p: any) => p.name && !partsToUpdate.includes(p))
+        .map((p: any) => p.name);
+      if (skippedNoContent.length > 0) {
+        console.log(`[apply-analysis] ℹ️ Skipped (no new data): ${skippedNoContent.join(", ")}`);
       }
     } else {
       console.warn(`[apply-analysis] ⚠️ Kartoteka root not found`);
