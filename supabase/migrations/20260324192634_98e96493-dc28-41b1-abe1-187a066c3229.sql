@@ -1,0 +1,1 @@
+UPDATE did_daily_report_dispatches SET status = 'failed', error_message = 'manual_resend_v3' WHERE report_date = CURRENT_DATE;
