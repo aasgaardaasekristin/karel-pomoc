@@ -399,13 +399,20 @@ serve(async (req) => {
       const cardIndex = await buildCardIndex(token, kartotekaId);
       console.log(`[apply-analysis] Registry: ${registryEntries.length} entries, Card index: ${cardIndex.byIdPrefix.size} cards`);
 
-      for (const part of analysis.parts) {
-        if (!part.name) continue;
+      // Only update cards for parts with meaningful new info (avoid memory overflow on 27+ Docs API calls)
+      const partsToUpdate = analysis.parts.filter((p: any) => {
+        if (!p.name) return false;
+        const hasContent = p.recent_emotions || (p.needs?.length > 0) || p.risk_level === "medium" || p.risk_level === "high";
+        const hasRec = p.session_recommendation?.needed;
+        return hasContent || hasRec;
+      });
+      console.log(`[apply-analysis] Will update ${partsToUpdate.length}/${analysis.parts.length} cards (filtered by relevance)`);
+
+      for (const part of partsToUpdate) {
         try {
           const cardDocId = findPartCardFromIndex(cardIndex, part.name, registryEntries);
           if (!cardDocId) {
             results.parts_skipped.push(part.name);
-            console.warn(`[apply-analysis] ⚠️ Card not found for part: ${part.name}`);
             continue;
           }
 
@@ -420,6 +427,13 @@ serve(async (req) => {
           results.parts_skipped.push(part.name);
           console.error(`[apply-analysis] ❌ Card update failed for ${part.name}:`, e);
         }
+      }
+      // Log parts not updated (no meaningful content)
+      const skippedNoContent = analysis.parts
+        .filter((p: any) => p.name && !partsToUpdate.includes(p))
+        .map((p: any) => p.name);
+      if (skippedNoContent.length > 0) {
+        console.log(`[apply-analysis] ℹ️ Skipped (no new data): ${skippedNoContent.join(", ")}`);
       }
     } else {
       console.warn(`[apply-analysis] ⚠️ Kartoteka root not found`);
