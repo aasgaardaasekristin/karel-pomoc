@@ -533,17 +533,40 @@ Tón: přátelský, profesionální. NIKDY nezmiňuj profilaci.`;
 
       userContent += `═══ MOTIVAČNÍ PROFIL ${isHanka ? "HANKY" : "KÁTI"} ═══\n${formatProfile(profile)}`;
 
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userContent },
-          ],
-        }),
-      });
+      // ═══ AI CALL WITH RETRY ON CONNECTION RESET ═══
+      const callAI = async (attempt = 1): Promise<Response> => {
+        try {
+          const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userContent },
+              ],
+            }),
+          });
+          // Retry on 502/503 (often connection reset / gateway error)
+          if ((res.status === 502 || res.status === 503) && attempt < 3) {
+            console.warn(`[daily-email] AI gateway returned ${res.status} on attempt ${attempt}, retrying in 3s...`);
+            await new Promise(r => setTimeout(r, 3000));
+            return callAI(attempt + 1);
+          }
+          return res;
+        } catch (fetchErr: any) {
+          // Retry on network-level errors (connection reset, ECONNRESET, etc.)
+          const msg = fetchErr?.message || String(fetchErr);
+          if (attempt < 3 && (msg.includes("reset") || msg.includes("ECONNRESET") || msg.includes("connection") || msg.includes("aborted"))) {
+            console.warn(`[daily-email] AI fetch error on attempt ${attempt}: ${msg}, retrying in 3s...`);
+            await new Promise(r => setTimeout(r, 3000));
+            return callAI(attempt + 1);
+          }
+          throw fetchErr;
+        }
+      };
+
+      const response = await callAI();
 
       if (response.ok) {
         const d = await response.json();
@@ -552,6 +575,8 @@ Tón: přátelský, profesionální. NIKDY nezmiňuj profilaci.`;
           console.log(`[daily-email] Generated HTML (first 3000ch): ${html.slice(0, 3000)}`);
           return html;
         }
+      } else {
+        console.error(`[daily-email] AI gateway final status: ${response.status}`);
       }
 
       return `<pre style="font-family: sans-serif; white-space: pre-wrap;">${analysisBlock || suppBlock}</pre>`;
