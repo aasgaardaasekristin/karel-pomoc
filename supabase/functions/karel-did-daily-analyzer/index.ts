@@ -110,15 +110,19 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
 
 // ── Extract JSON from AI response ──
 function extractJSON(text: string): any {
+  // Strip thinking tags if present
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
   // Try direct parse
-  try { return JSON.parse(text); } catch {}
+  try { return JSON.parse(cleaned); } catch {}
   // Try markdown fence
-  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+  const fenceMatch = cleaned.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
   if (fenceMatch) { try { return JSON.parse(fenceMatch[1]); } catch {} }
   // Try first { to last }
-  const first = text.indexOf("{");
-  const last = text.lastIndexOf("}");
-  if (first >= 0 && last > first) { try { return JSON.parse(text.slice(first, last + 1)); } catch {} }
+  const first = cleaned.indexOf("{");
+  const last = cleaned.lastIndexOf("}");
+  if (first >= 0 && last > first) { try { return JSON.parse(cleaned.slice(first, last + 1)); } catch {} }
+  // Log first 500 chars for debugging
+  console.error(`[daily-analyzer] Cannot parse JSON. First 500 chars: ${cleaned.slice(0, 500)}`);
   throw new Error("Cannot extract JSON from AI response");
 }
 
