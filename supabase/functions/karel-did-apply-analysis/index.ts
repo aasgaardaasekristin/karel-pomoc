@@ -376,10 +376,14 @@ serve(async (req) => {
     // ══════════════════════════════════════════════════════════
     const kartotekaId = await findKartotekaRoot(token);
     if (kartotekaId) {
+      // Load registry entries for ID-based card lookup
+      const registryEntries = await loadDriveRegistryEntries(token);
+      console.log(`[apply-analysis] Loaded ${registryEntries.length} registry entries for card lookup`);
+
       for (const part of analysis.parts) {
         if (!part.name) continue;
         try {
-          const cardDocId = await findPartCard(token, kartotekaId, part.name);
+          const cardDocId = await findPartCard(token, kartotekaId, part.name, part.status || "active", registryEntries);
           if (!cardDocId) {
             results.parts_skipped.push(part.name);
             console.warn(`[apply-analysis] ⚠️ Card not found for part: ${part.name}`);
