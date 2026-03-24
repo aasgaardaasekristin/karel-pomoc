@@ -21,6 +21,88 @@ serve(async (req) => {
     const effectiveMode = (mode === "childcare" && didSubMode === "kata") ? "kata" : mode;
     let systemPrompt = getSystemPrompt(effectiveMode as ConversationMode);
 
+    // ═══ DID DAILY CONTEXT INJECTION ═══
+    // Load structured daily profile from did_daily_context (built by karel-daily-refresh)
+    if (mode === "childcare" || effectiveMode === "kata") {
+      try {
+        const { createClient: createSbClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const sbDaily = createSbClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+        
+        // Get user_id from auth
+        let dailyUserId: string | null = null;
+        const dailyAuthHeader = req.headers.get("Authorization");
+        if (dailyAuthHeader?.startsWith("Bearer ")) {
+          const userSb = createSbClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+            global: { headers: { Authorization: dailyAuthHeader } },
+          });
+          const { data: { user } } = await userSb.auth.getUser();
+          dailyUserId = user?.id || null;
+        }
+        
+        if (dailyUserId) {
+          const { data: dailyCtx } = await sbDaily.from("did_daily_context")
+            .select("context_json, context_date, updated_at")
+            .eq("user_id", dailyUserId)
+            .order("context_date", { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (dailyCtx?.context_json) {
+            const ctx = dailyCtx.context_json as any;
+            
+            // Build structured text block from JSON
+            const therapistBlock = ctx.therapists ? `
+PROFIL TERAPEUTEK:
+• Hanka: ${ctx.therapists.hanka?.note || "první terapeutka"}
+• Káťa: ${ctx.therapists.kata?.note || "druhá terapeutka"} ⚠️ NIKDY NENÍ ČÁST DID SYSTÉMU` : "";
+
+            const activePartsBlock = ctx.parts?.active?.length ? `
+AKTIVNÍ ČÁSTI (${ctx.parts.active.length}):
+${ctx.parts.active.map((p: any) => `• ${p.display_name || p.name} – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}, emoce: ${p.emotional_state || "?"} (${p.emotional_intensity || "?"}/10), zdraví: ${p.health || "?"}`).join("\n")}` : "";
+
+            const sleepingBlock = ctx.parts?.sleeping?.length ? `
+SPÍCÍ/DORMANTNÍ ČÁSTI (${ctx.parts.sleeping.length}): ${ctx.parts.sleeping.map((p: any) => p.display_name || p.name).join(", ")}
+⚠️ NELZE s nimi přímo pracovat – pouze monitoring` : "";
+
+            const activityBlock = ctx.recent_activity ? `
+KLASIFIKACE AKTIVITY:
+  PŘÍMÁ AKTIVITA (sub_mode=cast): ${ctx.recent_activity.direct_activity?.map((a: any) => `${a.part} (${a.at?.slice(0, 10)})`).join(", ") || "žádná"}
+  ZMÍNKY TERAPEUTEK: ${ctx.recent_activity.therapist_mentions?.map((a: any) => `${a.part} zmíněn/a ${a.mentioned_by}`).join(", ") || "žádné"}` : "";
+
+            const tasksBlock = ctx.pending_tasks?.length ? `
+NESPLNĚNÉ ÚKOLY (${ctx.pending_tasks.length}):
+${ctx.pending_tasks.slice(0, 8).map((t: any) => `• [${t.priority}${t.escalation >= 2 ? " ⚠️ESK" : ""}] ${t.task} (${t.assigned_to}, ${t.age_days}d)`).join("\n")}` : "";
+
+            const driveBlock = [
+              ctx.drive_documents?.dashboard ? `DASHBOARD: ${ctx.drive_documents.dashboard.slice(0, 1500)}` : null,
+              ctx.drive_documents?.operativni_plan ? `OPERATIVNÍ PLÁN: ${ctx.drive_documents.operativni_plan.slice(0, 1500)}` : null,
+              ctx.drive_documents?.strategicky_vyhled ? `STRATEGICKÝ VÝHLED: ${ctx.drive_documents.strategicky_vyhled.slice(0, 1000)}` : null,
+              ctx.drive_documents?.pamet_karel ? `PAMĚŤ KARLA: ${ctx.drive_documents.pamet_karel.slice(0, 1000)}` : null,
+            ].filter(Boolean).join("\n\n");
+
+            systemPrompt += `\n\n═══ KARLŮV DENNÍ PROFIL (z did_daily_context, ${dailyCtx.context_date}) ═══
+Vygenerováno: ${ctx.generated_at || dailyCtx.updated_at}
+Toto je tvá STRUKTUROVANÁ PAMĚŤ na dnešní den. Pracuj s ní AKTIVNĚ.
+${therapistBlock}
+${activePartsBlock}
+${sleepingBlock}
+${activityBlock}
+${tasksBlock}
+
+═══ DOKUMENTY Z DRIVE ═══
+${driveBlock || "(Drive dokumenty nebyly načteny)"}
+═══ KONEC DENNÍHO PROFILU ═══`;
+
+            console.log(`[karel-chat] Daily context injected: date=${dailyCtx.context_date}, size=${JSON.stringify(ctx).length}ch`);
+          } else {
+            console.log("[karel-chat] No daily context found in did_daily_context");
+          }
+        }
+      } catch (e) {
+        console.warn("[karel-chat] Daily context injection error (non-fatal):", e);
+      }
+    }
+
     // ═══ DID DYNAMIC CONTEXT PRIME ═══
     // If DID mode and we have a context-prime cache from frontend, inject it
     // This replaces the static didInitialContext with a rich, AI-synthesized situational cache
