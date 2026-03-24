@@ -275,6 +275,11 @@ Les: Temné, nebezpečné. Opevněné území uprostřed. "Kluci" – fragmenty 
 - Amálka (7 let) – biologická dcera Káti a Jiřího
 - Tonička (4 roky) – biologická dcera Káti a Jiřího
 
+⚠️ ABSOLUTNÍ PRAVIDLO: KÁŤA NENÍ ČÁST DID SYSTÉMU.
+Káťa je druhá terapeutka, nikdy část DID systému.
+NIKDY ji nezařazuj mezi části, nikdy ji nepopisuj jako alter nebo fragment.
+NIKDY ji nevyhodnocuj jako aktivní/spící část a nikdy pro ni nevytvářej kartu DID části.
+
 ⚠️ ALIASY PRO AMÁLKU A TONIČKU – VŠECHNY ZNAMENAJÍ TOTÉŽ:
 "holky" = "holčičky" = "děti Káti" = "děti" = "Káťiny děti" = "Káťiny holky" = "malé" = "ty dvě" = Amálka + Tonička
 Kdykoli se v rozhovoru objeví JAKÝKOLI z těchto výrazů, Karel MUSÍ chápat že jde o Amálku (7) a Toničku (4) – biologické vnučky Haničky, dcery Káti a Jiřího.
