@@ -501,7 +501,10 @@ NIKDY nezmiňuj profilaci.`;
       if (response.ok) {
         const d = await response.json();
         const html = (d.choices?.[0]?.message?.content || "").replace(/^```html?\n?/i, "").replace(/\n?```$/i, "");
-        if (html) return html;
+        if (html) {
+          console.log(`[daily-email] Generated HTML (first 3000ch): ${html.slice(0, 3000)}`);
+          return html;
+        }
       }
 
       return `<pre style="font-family: sans-serif; white-space: pre-wrap;">${analysisBlock || suppBlock}</pre>`;
