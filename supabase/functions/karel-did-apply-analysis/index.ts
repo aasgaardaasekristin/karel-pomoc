@@ -134,28 +134,64 @@ async function findSituacniAnalyza(
   return { fileId, path };
 }
 
-// ── Find part card on Drive ──
-async function findPartCard(token: string, kartotekaId: string, partName: string): Promise<string | null> {
+// ── Normalize name for card matching: strip diacritics, uppercase, spaces→_ ──
+function cardNameNorm(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, "_").replace(/[^A-Z0-9_]/g, "");
+}
+
+// ── Find part card on Drive using ID or name ──
+// Cards live as documents DIRECTLY inside 01_AKTIVNI_FRAGMENTY or 03_ARCHIV_SPICICH
+// File naming: XXX_JMENO (e.g. 004_ARTHUR)
+async function findPartCard(
+  token: string,
+  kartotekaId: string,
+  partName: string,
+  partStatus: string,
+  registryEntries: Array<{ id: string; primaryName: string; normalizedName: string }>,
+): Promise<string | null> {
+  // 1. Resolve registry ID for this part
   const partNorm = normalize(partName);
-  const rootFiles = await listFiles(token, kartotekaId);
+  const registryEntry = registryEntries.find(e =>
+    e.normalizedName === partNorm || normalize(e.primaryName) === partNorm
+  );
+  const partId = registryEntry?.id; // e.g. "004"
 
-  for (const folder of rootFiles) {
-    if (folder.mimeType !== "application/vnd.google-apps.folder") continue;
-    const folderNorm = normalize(folder.name);
-    if (folderNorm.startsWith("00") || folderNorm.includes("centrum") || folderNorm.includes("mesicni") || folderNorm.includes("reporty")) continue;
+  // 2. Determine which folder to search first based on status
+  const isActive = !partStatus || partStatus === "active" || partStatus === "aktivní" || partStatus === "aktivni";
+  const primaryFolder = isActive ? "01_AKTIVNI_FRAGMENTY" : "03_ARCHIV_SPICICH";
+  const fallbackFolder = isActive ? "03_ARCHIV_SPICICH" : "01_AKTIVNI_FRAGMENTY";
 
-    if (folderNorm.includes(partNorm)) {
-      const folderFiles = await listFiles(token, folder.id);
-      const cardDoc = folderFiles.find(f => {
-        if (f.mimeType === "application/vnd.google-apps.folder") return false;
-        const fn = normalize(f.name);
-        return fn.includes(partNorm) || fn.includes("karta") || fn.includes("profil");
+  for (const folderName of [primaryFolder, fallbackFolder]) {
+    const folderId = await findSubfolder(token, kartotekaId, folderName);
+    if (!folderId) continue;
+
+    const files = await listFiles(token, folderId);
+    const docs = files.filter(f => f.mimeType !== "application/vnd.google-apps.folder");
+
+    // 2a. Try ID-based match: file name starts with "004_"
+    if (partId) {
+      const idMatch = docs.find(f => f.name.startsWith(`${partId}_`));
+      if (idMatch) {
+        console.log(`[findPartCard] ✅ ID match: ${partId}_ → ${idMatch.name} (${idMatch.id})`);
+        return idMatch.id;
+      }
+    }
+
+    // 2b. Fallback: name-based match
+    const nameNorm = cardNameNorm(partName);
+    if (nameNorm.length >= 3) {
+      const nameMatch = docs.find(f => {
+        // Strip the ID prefix (e.g. "004_") and compare
+        const fNameNorm = cardNameNorm(f.name.replace(/^\d{1,3}_/, ""));
+        return fNameNorm === nameNorm || fNameNorm.includes(nameNorm) || nameNorm.includes(fNameNorm);
       });
-      if (cardDoc) return cardDoc.id;
-      const firstDoc = folderFiles.find(f => f.mimeType !== "application/vnd.google-apps.folder");
-      if (firstDoc) return firstDoc.id;
+      if (nameMatch) {
+        console.log(`[findPartCard] ✅ Name match: ${nameNorm} → ${nameMatch.name} (${nameMatch.id})`);
+        return nameMatch.id;
+      }
     }
   }
+
   return null;
 }
 
