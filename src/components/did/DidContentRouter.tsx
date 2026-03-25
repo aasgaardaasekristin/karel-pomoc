@@ -160,7 +160,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     meetingTherapist, setMeetingTherapist, mode, setMode,
   } = props;
 
-  // Compute localStorage storageKey based on DID sub-mode and active thread
+  // Use didStorageKey from outer wrapper (passed via ThemeStorageKeyContext)
   const didStorageKey = (() => {
     if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
     if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
@@ -177,7 +177,14 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     setLocalMode(didStorageKey);
     const saved = localStorage.getItem(didStorageKey);
     if (saved) {
-      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object" && parsed.primary_color) {
+          applyTemporaryTheme(parsed);
+        }
+      } catch {
+        localStorage.removeItem(didStorageKey);
+      }
     }
     return () => {
       if (isUnmountingRef.current) {

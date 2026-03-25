@@ -69,8 +69,20 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
 function loadFromStorage(key: string): ThemePrefs {
   try {
     const raw = localStorage.getItem(key);
-    if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
-  } catch {}
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Validate basic structure
+      if (parsed && typeof parsed === "object" && parsed.primary_color && parsed.accent_color) {
+        return { ...DEFAULT_PREFS, ...parsed };
+      }
+      // Invalid structure — remove corrupted data
+      console.warn("Invalid theme data in localStorage, resetting:", key);
+      localStorage.removeItem(key);
+    }
+  } catch (e) {
+    console.warn("Error parsing theme from localStorage:", key, e);
+    localStorage.removeItem(key);
+  }
   return { ...DEFAULT_PREFS };
 }
 
