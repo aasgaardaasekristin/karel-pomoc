@@ -35,6 +35,10 @@ const PRESET_BACKGROUNDS = [
   { label: "Louka", url: "https://images.unsplash.com/photo-1500534314263-0869cef6150a?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1500534314263-0869cef6150a?w=200&q=60" },
   { label: "Mlha", url: "https://images.unsplash.com/photo-1485236715568-ddc5ee6ca227?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1485236715568-ddc5ee6ca227?w=200&q=60" },
   { label: "Západ slunce", url: "https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=200&q=60" },
+  { label: "Mlhovina", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=200&q=60" },
+  { label: "Noční obloha", url: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=60" },
+  { label: "Duha", url: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=200&q=60" },
+  { label: "Mandala", url: "https://images.unsplash.com/photo-1545048702-79362596cdc9?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1545048702-79362596cdc9?w=200&q=60" },
   { label: "Textura", url: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=200&q=60" },
 ];
 
@@ -91,7 +95,8 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
     }
   }, [prefs, currentPersona, open, storageKey, isLocalMode]);
 
-  const basePrefs = isLocalMode ? loadFromStorage(storageKey!) : prefs;
+  const [storageVersion, setStorageVersion] = useState(0);
+  const basePrefs = useMemo(() => isLocalMode ? loadFromStorage(storageKey!) : prefs, [isLocalMode, storageKey, prefs, storageVersion]);
   const hasPendingChanges = useMemo(() => JSON.stringify(draft) !== JSON.stringify(basePrefs), [draft, basePrefs]);
 
   const setDraftPartial = (partial: Partial<ThemePrefs>) => {
@@ -102,9 +107,9 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
     try {
       setSaving(true);
       if (isLocalMode) {
-        // Save to localStorage and apply immediately
         localStorage.setItem(storageKey!, JSON.stringify(draft));
         applyTemporaryTheme(draft);
+        setStorageVersion(v => v + 1);
         toast.success("Vzhled použit");
       } else {
         await updatePrefs(draft);

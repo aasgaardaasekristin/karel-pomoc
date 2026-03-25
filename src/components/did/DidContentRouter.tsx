@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
@@ -168,14 +168,23 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     return "theme_did_entry";
   })();
 
-  // Load theme from localStorage on mount/change, restore on unmount
+  // Track whether this component is truly unmounting vs just changing key
+  const isUnmountingRef = useRef(false);
+  useEffect(() => { return () => { isUnmountingRef.current = true; }; }, []);
+
+  // Load theme from localStorage on mount/change, restore only on unmount
   useEffect(() => {
     setLocalMode(didStorageKey);
     const saved = localStorage.getItem(didStorageKey);
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
-    return () => { setLocalMode(null); restoreGlobalTheme(); };
+    return () => {
+      if (isUnmountingRef.current) {
+        setLocalMode(null);
+        restoreGlobalTheme();
+      }
+    };
   }, [didStorageKey]);
 
   // Entry screen: Terapeut / Kluci
@@ -533,7 +542,6 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
                 )}
                 {" "}• {activeThread.partLanguage !== "cs" ? `jazyk: ${activeThread.partLanguage} • ` : ""}{activeThread.messages.length} zpráv
               </span>
-              <ThemeQuickButton storageKey={didStorageKey} />
               <DidKidsThemeEditor
                 partName={activeThread.partName}
                 threadId={activeThread.id}

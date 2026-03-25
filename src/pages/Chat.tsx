@@ -678,7 +678,7 @@ const Chat = () => {
       await didThreads.updateThreadMessages(activeThread.id, messages);
       triggerEpisodeGeneration(activeThread.id);
     }
-    restoreGlobalTheme();
+    // Theme cleanup is handled by DidContentRouter's useEffect when didStorageKey changes
     setActiveThread(null);
     setMessages([]);
     if (didSubMode === "mamka" || didSubMode === "kata") {
@@ -1401,7 +1401,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            <ThemeQuickButton storageKey={chatStorageKey || undefined} />
+            {chatStorageKey && <ThemeQuickButton storageKey={chatStorageKey} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
             </Button>
