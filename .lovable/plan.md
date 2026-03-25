@@ -1,55 +1,44 @@
 
 
-# Plan: Fix Session Plan Generation + UI Navigation/Theme Issues
+# Fix broken preset backgrounds + DID theme isolation
 
-## Part A: Fix `karel-did-auto-session-plan` errors
+## Issues from screenshot
 
-### Error 1: Duplicate key constraint
-The table `did_daily_session_plans` has `UNIQUE(user_id, plan_date)` but the function needs to INSERT multiple plans per day (manual overrides, different parts). The auto-plan check (line 329-341) only skips `generated_by=auto`, but the DB constraint blocks ALL duplicates.
+1. **Mandala** -- broken image (Wikimedia hotlinking blocked)
+2. **Vodopád** -- broken image (invalid Unsplash photo ID)
+3. **Louka** -- shows aerial mountains/valleys, not a flat green meadow
+4. **DID theme isolation** -- `didStorageKey` maps "mamka" and "kata" to the same key (`theme_did_katerina`), and all other DID sub-modes (terapeut entry, therapist-threads, etc.) fall through to `theme_did_entry` -- no per-sub-mode isolation
 
-**Fix**: SQL migration to drop the unique constraint on `(user_id, plan_date)` — the function already supports multiple plans per day by design.
+## Changes
 
-### Error 2: Cannot export Google Sheets file as text/plain
-`readFileContent` tries to export `01_Index_Vsech_Casti` (which is a Google Sheet) using `mimeType=text/plain`. Google Sheets need `text/csv` export.
+### 1. Fix broken/wrong image URLs in `src/components/ThemeEditorDialog.tsx`
 
-**Fix**: In `readFileContent`, detect `application/vnd.google-apps.spreadsheet` and export as `text/csv` instead of `text/plain`.
+Replace three entries in `PRESET_BACKGROUNDS`:
 
-### Files to edit:
-- `supabase/functions/karel-did-auto-session-plan/index.ts` — fix `readFileContent` for Sheets
-- SQL migration — drop the unique constraint
+- **Louka**: Change to a flat green meadow image (Unsplash `photo-1500382017468-9049fed747ef` -- golden-green flat field)
+- **Mandala**: Change to a working Unsplash mandala/kaleidoscope image (e.g. `photo-1545048702-79362596cdc9` or similar geometric pattern that loads reliably)
+- **Vodopád**: Change to a working waterfall image (Unsplash `photo-1546182990-dffeafbe841d` -- sunlit waterfall)
 
----
+All three will use standard Unsplash `images.unsplash.com/photo-XXX?w=1920&q=80` format with matching `?w=200&q=60` thumbnails, ensuring consistent loading.
 
-## Part B: ThemeQuickButton dedup fix
+### 2. Expand DID theme key isolation in `src/components/did/DidContentRouter.tsx`
 
-Remove the `screenButtonOwners` dedup mechanism entirely. Multiple small palette buttons can coexist — simpler and eliminates the disappearing-button bug.
+Update both the inner (line 164) and outer (line 627) `didStorageKey` computations to give each sub-mode its own key:
 
-### File: `src/components/ThemeQuickButton.tsx`
-- Remove `screenButtonOwners` Map, `getScreenScope`, `shouldRender` logic
-- Keep the component simple: always render
+```
+mamka        → theme_did_mamka
+kata         → theme_did_kata
+cast + thread → theme_did_kids_{threadId}
+cast (no thread) → theme_did_kids
+(default/entry)  → theme_did_entry
+```
 
----
+This splits "mamka" and "kata" into separate keys (currently both map to `theme_did_katerina`), so each therapist persona gets independent theme settings.
 
-## Part C: Swipe-back global fallback fix
+### Files to edit
 
-### File: `src/components/MobileSwipeBack.tsx`
-- Remove `document.querySelector("[data-swipe-back='true']")` fallback (line 84-85)
-- Only use `startTarget.closest(...)` — if no local back button found, do nothing
-
----
-
-## Part D: DID mode navigation stability
-
-### File: `src/pages/Chat.tsx`
-1. **Mode-change useEffect (line 348)**: Add guard `if (prevModeRef.current === mode) return;` at the top to prevent re-runs from other dependency changes
-2. **`handleDidBackHierarchical`**: Remove `restoreGlobalTheme()` calls from `case "chat"` and `case "thread-list"` — the theme cleanup in `DidContentRouter.tsx` useEffect (line 178) already handles this
-
----
-
-## Summary of changes (5 files):
-1. SQL migration — drop `did_daily_session_plans` unique constraint on `(user_id, plan_date)`
-2. `supabase/functions/karel-did-auto-session-plan/index.ts` — Sheets export fix
-3. `src/components/ThemeQuickButton.tsx` — remove dedup guard
-4. `src/components/MobileSwipeBack.tsx` — remove global fallback
-5. `src/pages/Chat.tsx` — mode-change guard + remove `restoreGlobalTheme` from back handler
+| File | Change |
+|---|---|
+| `src/components/ThemeEditorDialog.tsx` | Fix 3 image URLs in `PRESET_BACKGROUNDS` (lines 35, 41, 42) |
+| `src/components/did/DidContentRouter.tsx` | Update `didStorageKey` in both inner (line 164-168) and outer (line 627-631) to separate mamka/kata keys |
 
