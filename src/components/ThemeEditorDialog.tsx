@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import bgRainbow from "@/assets/bg-rainbow.jpg";
+import bgMandala from "@/assets/bg-mandala.jpg";
+import bgWaterfall from "@/assets/bg-waterfall.jpg";
 import { Check, Image, Loader2, MessageCircle, Minimize2, Moon, Pipette, RotateCcw, Save, Sparkles, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,9 +40,9 @@ const PRESET_BACKGROUNDS = [
   { label: "Západ slunce", url: "https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=200&q=60" },
   { label: "Mlhovina", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=200&q=60" },
   { label: "Noční obloha", url: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=60" },
-  { label: "Duha", url: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=200&q=60" },
-  { label: "Mandala", url: "https://images.unsplash.com/photo-1545048702-79362596cdc9?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1545048702-79362596cdc9?w=200&q=60" },
-  { label: "Vodopád", url: "https://images.unsplash.com/photo-1546182990-dffeafbe841d?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1546182990-dffeafbe841d?w=200&q=60" },
+  { label: "Duha", url: bgRainbow, thumbnail: bgRainbow },
+  { label: "Mandala", url: bgMandala, thumbnail: bgMandala },
+  { label: "Vodopád", url: bgWaterfall, thumbnail: bgWaterfall },
 ];
 
 interface ThemeEditorDialogProps {
