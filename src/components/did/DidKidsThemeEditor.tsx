@@ -46,7 +46,7 @@ const FONT_OPTIONS = [
   { value: "mono", label: "Kódové", preview: "01" },
 ] as const;
 
-const THREAD_EMOJIS = ["🐱", "🐶", "🦊", "🐸", "🐻", "🦁", "🐼", "🐨", "🐯", "🦄", "🐲", "👾", "🤖", "👻", "⭐", "🎮"];
+const THREAD_EMOJIS = ["🚀", "🚜", "☄️", "🐉", "🐻", "🦁", "🐼", "🐨", "🐯", "🦄", "🐲", "⭐", "🌈", "⚡", "🦕", "🧚"];
 
 const PRESET_BACKGROUNDS = [
   { key: "space", label: "Vesmír 🚀", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=800&q=80", gradient: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)" },
