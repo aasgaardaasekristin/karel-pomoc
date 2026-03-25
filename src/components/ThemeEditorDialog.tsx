@@ -107,9 +107,9 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
     try {
       setSaving(true);
       if (isLocalMode) {
-        // Save to localStorage and apply immediately
         localStorage.setItem(storageKey!, JSON.stringify(draft));
         applyTemporaryTheme(draft);
+        setStorageVersion(v => v + 1);
         toast.success("Vzhled použit");
       } else {
         await updatePrefs(draft);

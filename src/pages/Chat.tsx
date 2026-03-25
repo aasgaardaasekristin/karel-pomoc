@@ -678,7 +678,7 @@ const Chat = () => {
       await didThreads.updateThreadMessages(activeThread.id, messages);
       triggerEpisodeGeneration(activeThread.id);
     }
-    restoreGlobalTheme();
+    // Theme cleanup is handled by DidContentRouter's useEffect when didStorageKey changes
     setActiveThread(null);
     setMessages([]);
     if (didSubMode === "mamka" || didSubMode === "kata") {
