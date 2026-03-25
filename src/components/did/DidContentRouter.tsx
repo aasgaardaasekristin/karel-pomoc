@@ -160,7 +160,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     meetingTherapist, setMeetingTherapist, mode, setMode,
   } = props;
 
-  // Compute localStorage storageKey based on DID sub-mode and active thread
+  // Use didStorageKey from outer wrapper (passed via ThemeStorageKeyContext)
   const didStorageKey = (() => {
     if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
     if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
