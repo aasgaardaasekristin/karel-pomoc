@@ -38,7 +38,7 @@ const PRESET_BACKGROUNDS = [
   { label: "Mlhovina", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=200&q=60" },
   { label: "Noční obloha", url: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=60" },
   { label: "Duha", url: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1507400492013-162706c8c05e?w=200&q=60" },
-  { label: "Mandala", url: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Mandala_of_Vajrabhairava_-_AMNH_-_DSC06325.JPG/1024px-Mandala_of_Vajrabhairava_-_AMNH_-_DSC06325.JPG", thumbnail: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Mandala_of_Vajrabhairava_-_AMNH_-_DSC06325.JPG/200px-Mandala_of_Vajrabhairava_-_AMNH_-_DSC06325.JPG" },
+  { label: "Mandala", url: "https://images.unsplash.com/photo-1545048702-79362596cdc9?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1545048702-79362596cdc9?w=200&q=60" },
   { label: "Vodopád", url: "https://images.unsplash.com/photo-1432405972618-c6b0cfba8673?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1432405972618-c6b0cfba8673?w=200&q=60" },
 ];
 
