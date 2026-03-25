@@ -435,10 +435,14 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   }, [userId, currentContextKey]);
 
   const applyTemporaryTheme = useCallback((config: Partial<ThemePrefs>) => {
+    // Trigger smooth CSS transition
+    const root = document.documentElement;
+    root.classList.add("theme-transitioning");
     setPrefs((prev) => {
       if (!savedPrefsRef.current) savedPrefsRef.current = prev;
       return { ...prev, ...config };
     });
+    setTimeout(() => root.classList.remove("theme-transitioning"), 400);
   }, []);
 
   const restoreGlobalTheme = useCallback(() => {
