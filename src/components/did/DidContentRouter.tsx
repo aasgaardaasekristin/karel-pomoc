@@ -626,7 +626,8 @@ const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
   const activeThread = props.activeThread;
 
   const didStorageKey = (() => {
-    if (didSubMode === "mamka" || didSubMode === "kata") return "theme_did_katerina";
+    if (didSubMode === "mamka") return "theme_did_mamka";
+    if (didSubMode === "kata") return "theme_did_kata";
     if (didSubMode === "cast" && activeThread) return `theme_did_kids_${activeThread.id}`;
     if (didSubMode === "cast") return "theme_did_kids";
     return "theme_did_entry";
