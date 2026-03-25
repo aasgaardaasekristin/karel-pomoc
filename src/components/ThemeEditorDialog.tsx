@@ -258,11 +258,13 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
           <div>
             <p className="text-xs font-medium text-foreground mb-2">Styl písma</p>
             <div className="grid grid-cols-4 gap-1.5">
-              {([
+            {([
                 { value: "default", label: "Výchozí" },
                 { value: "comic", label: "Hravé" },
                 { value: "rounded", label: "Kulaté" },
                 { value: "mono", label: "Kódové" },
+                { value: "handwritten", label: "Ruční" },
+                { value: "playful", label: "Zábavné" },
               ] as const).map((opt) => (
                 <button
                   key={opt.value}

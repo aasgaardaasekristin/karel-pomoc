@@ -44,6 +44,8 @@ const FONT_OPTIONS = [
   { value: "comic", label: "Hravé", preview: "Aa" },
   { value: "rounded", label: "Kulaté", preview: "Aa" },
   { value: "mono", label: "Kódové", preview: "01" },
+  { value: "handwritten", label: "Ruční", preview: "Aa" },
+  { value: "playful", label: "Zábavné", preview: "Aa" },
 ] as const;
 
 const THREAD_EMOJIS = ["🚀", "🚜", "☄️", "🐉", "🐻", "🦁", "🐼", "🐨", "🐯", "🦄", "🐲", "⭐", "🌈", "⚡", "🦕", "🧚"];

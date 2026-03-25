@@ -358,6 +358,8 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       comic: "'Comic Neue', 'Comic Sans MS', cursive",
       rounded: "'Nunito', 'Varela Round', sans-serif",
       mono: "'JetBrains Mono', 'Fira Code', monospace",
+      handwritten: "'Caveat', 'Patrick Hand', cursive",
+      playful: "'Baloo 2', 'Fredoka', sans-serif",
     };
     const fontFamily = FONT_MAP[prefs.font_family] || FONT_MAP.default;
     root.style.setProperty("--font-body", fontFamily);
