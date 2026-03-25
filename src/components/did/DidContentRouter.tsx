@@ -177,7 +177,14 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     setLocalMode(didStorageKey);
     const saved = localStorage.getItem(didStorageKey);
     if (saved) {
-      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object" && parsed.primary_color) {
+          applyTemporaryTheme(parsed);
+        }
+      } catch {
+        localStorage.removeItem(didStorageKey);
+      }
     }
     return () => {
       if (isUnmountingRef.current) {

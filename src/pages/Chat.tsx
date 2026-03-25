@@ -551,15 +551,31 @@ const Chat = () => {
     return "theme_global";
   })();
 
+  // Track true unmount vs key change for theme cleanup
+  const chatUnmountRef = useRef(false);
+  useEffect(() => { return () => { chatUnmountRef.current = true; }; }, []);
+
   // Load/restore theme from localStorage for non-child-managed modes
   useEffect(() => {
     if (!chatStorageKey) return;
     setLocalMode(chatStorageKey);
     const saved = localStorage.getItem(chatStorageKey);
     if (saved) {
-      try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object" && parsed.primary_color) {
+          applyTemporaryTheme(parsed);
+        }
+      } catch {
+        localStorage.removeItem(chatStorageKey);
+      }
     }
-    return () => { setLocalMode(null); restoreGlobalTheme(); };
+    return () => {
+      if (chatUnmountRef.current) {
+        setLocalMode(null);
+        restoreGlobalTheme();
+      }
+    };
   }, [chatStorageKey]);
 
   const handleSelectThread = useCallback(async (thread: DidThread) => {
