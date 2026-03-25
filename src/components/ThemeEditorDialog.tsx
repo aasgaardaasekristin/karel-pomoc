@@ -309,7 +309,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
               <span className="text-xs text-foreground">Velikost písma</span>
               <Badge variant="outline" className="text-[9px] h-4 px-1.5">{Math.round(draft.font_scale * 100)}%</Badge>
             </div>
-            <Slider value={[draft.font_scale]} min={0.8} max={1.3} step={0.05} onValueChange={([v]) => setDraftPartial({ font_scale: v })} />
+            <Slider value={[draft.font_scale]} min={0.75} max={1.5} step={0.05} onValueChange={([v]) => setDraftPartial({ font_scale: v })} />
           </div>
 
           {/* Border radius */}
