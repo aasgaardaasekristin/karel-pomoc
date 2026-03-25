@@ -95,7 +95,8 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
     }
   }, [prefs, currentPersona, open, storageKey, isLocalMode]);
 
-  const basePrefs = isLocalMode ? loadFromStorage(storageKey!) : prefs;
+  const [storageVersion, setStorageVersion] = useState(0);
+  const basePrefs = useMemo(() => isLocalMode ? loadFromStorage(storageKey!) : prefs, [isLocalMode, storageKey, prefs, storageVersion]);
   const hasPendingChanges = useMemo(() => JSON.stringify(draft) !== JSON.stringify(basePrefs), [draft, basePrefs]);
 
   const setDraftPartial = (partial: Partial<ThemePrefs>) => {
