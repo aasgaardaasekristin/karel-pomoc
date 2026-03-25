@@ -40,9 +40,9 @@ const PRESET_BACKGROUNDS = [
   { label: "Západ slunce", url: "https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=200&q=60" },
   { label: "Mlhovina", url: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1462331940025-496dfbfc7564?w=200&q=60" },
   { label: "Noční obloha", url: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1519681393784-d120267933ba?w=200&q=60" },
-  { label: "Duha", url: "https://images.unsplash.com/photo-1507898931985-f01c45d4ebcc?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1507898931985-f01c45d4ebcc?w=200&q=60" },
-  { label: "Mandala", url: "https://images.unsplash.com/photo-1573055418049-c6da22ba1519?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1573055418049-c6da22ba1519?w=200&q=60" },
-  { label: "Vodopád", url: "https://images.unsplash.com/photo-1467890947394-8171244e5410?w=1920&q=80", thumbnail: "https://images.unsplash.com/photo-1467890947394-8171244e5410?w=200&q=60" },
+  { label: "Duha", url: bgRainbow, thumbnail: bgRainbow },
+  { label: "Mandala", url: bgMandala, thumbnail: bgMandala },
+  { label: "Vodopád", url: bgWaterfall, thumbnail: bgWaterfall },
 ];
 
 interface ThemeEditorDialogProps {
