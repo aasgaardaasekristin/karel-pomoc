@@ -257,7 +257,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
           {/* Font family */}
           <div>
             <p className="text-xs font-medium text-foreground mb-2">Styl písma</p>
-            <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             {([
                 { value: "default", label: "Výchozí" },
                 { value: "comic", label: "Hravé" },
