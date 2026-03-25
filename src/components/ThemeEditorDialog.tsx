@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import bgRainbow from "@/assets/bg-rainbow.jpg";
+import bgMandala from "@/assets/bg-mandala.jpg";
+import bgWaterfall from "@/assets/bg-waterfall.jpg";
 import { Check, Image, Loader2, MessageCircle, Minimize2, Moon, Pipette, RotateCcw, Save, Sparkles, Sun, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
