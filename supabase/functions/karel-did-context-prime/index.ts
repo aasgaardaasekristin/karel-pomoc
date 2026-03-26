@@ -216,7 +216,7 @@ const PROFILE_FILES = [
   "PROFIL_OSOBNOSTI.txt",
   "STRATEGIE_KOMUNIKACE.txt",
   "SITUACNI_ANALYZA.txt",
-  "VLAKNA_3DNY.txt",
+  "VLAKNA_POSLEDNI.txt",
   "KARLOVY_POZNATKY.txt",
 ] as const;
 
