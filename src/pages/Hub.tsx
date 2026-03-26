@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Brain, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
+import karelAvatar from '@/assets/karel-avatar.png';
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
@@ -220,9 +221,7 @@ const Hub = () => {
         <div className="max-w-md w-full">
           {/* Logo */}
           <div className="flex flex-col items-center mb-10 animate-fade-in">
-            <div className="w-16 h-16 rounded-2xl bg-[hsl(var(--accent-light))] flex items-center justify-center text-3xl mb-3">
-              🤖
-            </div>
+            <img src={karelAvatar} alt="Karel" className="w-16 h-16 rounded-2xl object-cover mb-3" />
             <h1 className="text-3xl font-bold text-[hsl(var(--text-primary))]">Karel</h1>
             <p className="text-sm text-[hsl(var(--text-secondary))] mt-1">Supervizní partner a tandem-terapeut</p>
           </div>
