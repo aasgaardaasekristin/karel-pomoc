@@ -11,6 +11,7 @@ import { corsHeaders } from "../_shared/auth.ts";
  *  3. For each part: call karel-thread-analyzer → get section updates
  *  4. Send sections to karel-did-card-update (append-only, no memory issues)
  *  5. Insert audit records into thread_processing_log
+ *  6. Archive check: cards > 150K chars trigger karel-kartoteka-archiver
  */
 
 const THERAPIST_BLACKLIST = [
