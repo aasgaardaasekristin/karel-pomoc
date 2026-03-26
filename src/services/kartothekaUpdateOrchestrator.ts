@@ -6,15 +6,27 @@
  *
  * Kroky:
  *  1. Sběr nezpracovaných vláken (did_threads, sub_mode="cast")
- *  2. Vytvoření záznamů v thread_processing_log
- *  3. Zpracování po částech (analýza → card_update_queue → Drive zápis)
+ *  2. Vytvoření záznamů v thread_processing_log + seskupení po částech
+ *  3. Zpracování po částech (analýza → applyCardUpdates → saveCardToDrive)
  *  4. Aktualizace Centra (dashboard, operativní plán)
  */
 
 import { supabase } from "@/integrations/supabase/client";
-import { analyzeThreadsForPart, type Thread, type CardContent, type SectionUpdates } from "@/services/threadAnalyzer";
+import {
+  analyzeThreadsForPart,
+  type Thread,
+  type CardContent,
+  type SectionKey,
+} from "@/services/threadAnalyzer";
+import {
+  applyCardUpdates,
+  saveCardToDrive,
+  type OperativePlanEntry,
+} from "@/services/cardUpdateApplicator";
 
-/* ---------- Typy ---------- */
+/* ================================================================
+   TYPY
+   ================================================================ */
 
 export interface UnprocessedThread {
   id: string;
@@ -33,12 +45,12 @@ export interface ProcessingStatus {
   last_run_at: string | null;
 }
 
-/* CardUpdateEntry odstraněn – nyní se používá SectionUpdate z threadAnalyzer */
-
-/* ---------- Pomocné funkce ---------- */
+/* ================================================================
+   POMOCNÉ FUNKCE
+   ================================================================ */
 
 /**
- * Vrátí datum posledního úspěšného zpracování pro daný processing_type,
+ * Vrátí datum posledního úspěšného zpracování,
  * nebo null (= zpracovat posledních 24 h).
  */
 async function getLastCompletedAt(processingType: string): Promise<string | null> {
@@ -53,18 +65,66 @@ async function getLastCompletedAt(processingType: string): Promise<string | null
   return data?.[0]?.processed_at ?? null;
 }
 
-/* ---------- Exportované funkce ---------- */
+/**
+ * Parsuje surový text karty z Drive do CardContent (sekce A-M).
+ */
+function parseCardFromDriveText(rawText: string): CardContent {
+  const card: CardContent = {};
+  const sectionKeys: SectionKey[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
+
+  // Hledáme nadpisy ve formátu "# A –" nebo "# B –" atd.
+  for (let i = 0; i < sectionKeys.length; i++) {
+    const key = sectionKeys[i];
+    const regex = new RegExp(`#\\s*${key}\\s*[–—-]`, "i");
+    const startIdx = rawText.search(regex);
+    if (startIdx === -1) continue;
+
+    // Najdi konec sekce (začátek další sekce nebo konec textu)
+    const afterHeader = rawText.indexOf("\n", startIdx);
+    if (afterHeader === -1) continue;
+
+    let endIdx = rawText.length;
+    for (let j = i + 1; j < sectionKeys.length; j++) {
+      const nextRegex = new RegExp(`#\\s*${sectionKeys[j]}\\s*[–—-]`, "i");
+      const nextIdx = rawText.search(nextRegex);
+      if (nextIdx !== -1 && nextIdx > startIdx) {
+        endIdx = nextIdx;
+        break;
+      }
+    }
+
+    card[key] = rawText.slice(afterHeader + 1, endIdx).trim();
+  }
+
+  return card;
+}
+
+/**
+ * Zjistí, které části byly aktivní za posledních 24h.
+ */
+async function getActivePartsLast24h(): Promise<string[]> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("did_threads")
+    .select("part_name")
+    .eq("sub_mode", "cast")
+    .gte("last_activity_at", cutoff);
+
+  if (!data) return [];
+  return [...new Set(data.map((t) => t.part_name))];
+}
+
+/* ================================================================
+   EXPORTOVANÉ FUNKCE
+   ================================================================ */
 
 /**
  * Načte vlákna, která ještě nebyla zpracována pro aktualizaci kartotéky.
  */
 export async function getUnprocessedThreads(): Promise<UnprocessedThread[]> {
   const lastCompleted = await getLastCompletedAt("kartoteka_update");
-
-  // Výchozí cutoff: 24 h zpět
   const cutoff = lastCompleted ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  // 1. Načti vlákna z režimu „cast" (DID části mluví s Karlem)
   const { data: threads, error } = await supabase
     .from("did_threads")
     .select("id, part_name, messages, last_activity_at, thread_label")
@@ -82,7 +142,7 @@ export async function getUnprocessedThreads(): Promise<UnprocessedThread[]> {
     return [];
   }
 
-  // 2. Zjisti, která vlákna už byla zpracována (completed)
+  // Odfiltruj již zpracovaná vlákna
   const threadIds = threads.map((t) => t.id);
   const { data: processed } = await supabase
     .from("thread_processing_log")
@@ -92,7 +152,6 @@ export async function getUnprocessedThreads(): Promise<UnprocessedThread[]> {
     .eq("processing_type", "kartoteka_update");
 
   const processedSet = new Set((processed ?? []).map((p) => p.thread_id));
-
   return threads.filter((t) => !processedSet.has(t.id));
 }
 
@@ -134,11 +193,10 @@ export async function runKartothekaUpdate(): Promise<void> {
   }
   console.log(`[Kartotheka] Nalezeno ${unprocessed.length} nezpracovaných vláken.`);
 
-  // ── KROK 2: Vytvoř záznamy v processing logu a seskup po částech ──
+  // ── KROK 2: Záznamy v processing logu + seskupení po částech ──
   const partGroups = new Map<string, UnprocessedThread[]>();
 
   for (const thread of unprocessed) {
-    // Vlož pending záznam
     await supabase.from("thread_processing_log").insert({
       thread_id: thread.id,
       part_id: thread.part_name,
@@ -153,79 +211,77 @@ export async function runKartothekaUpdate(): Promise<void> {
 
   console.log(`[Kartotheka] Seskupeno do ${partGroups.size} částí.`);
 
+  // Předem zjisti aktivní části za 24h (pro sekci L)
+  const allActivePartsLast24h = await getActivePartsLast24h();
+
+  // Shromáždi OP entries ze všech částí
+  const allOperativePlanEntries: OperativePlanEntry[] = [];
+
   // ── KROK 3: Zpracování po částech ──
   for (const [partId, threads] of partGroups) {
     console.log(`[Kartotheka] Zpracovávám část "${partId}" (${threads.length} vláken)…`);
+    const threadIds = threads.map((t) => t.id);
 
     try {
       // 3a) Označ vlákna jako „processing"
-      const threadIds = threads.map((t) => t.id);
       await supabase
         .from("thread_processing_log")
         .update({ status: "processing" })
         .in("thread_id", threadIds)
         .eq("processing_type", "kartoteka_update");
 
-      // 3b) Načti aktuální kartu z Drive přes edge funkci
-      let currentCard: CardContent | null = null;
+      // 3b) Načti aktuální kartu z Drive
+      let currentCard: CardContent = {};
       try {
         const { data: driveData } = await supabase.functions.invoke("karel-did-drive-read", {
           body: { partName: partId },
         });
-        currentCard = driveData?.content ? { M: driveData.content } : null;
+        if (driveData?.content) {
+          currentCard = parseCardFromDriveText(driveData.content);
+        }
       } catch (driveErr) {
         console.warn(`[Kartotheka] Nelze načíst kartu z Drive pro "${partId}":`, driveErr);
       }
 
-      // 3c) Analýza vláken
-      const castThreads = threads.map((t) => ({
-        ...t,
+      // 3c) Konverze vláken na Thread[]
+      const castThreads: Thread[] = threads.map((t) => ({
+        id: t.id,
+        part_name: t.part_name,
         messages: Array.isArray(t.messages) ? t.messages : [],
-      })) as Thread[];
+        last_activity_at: t.last_activity_at,
+        thread_label: t.thread_label,
+      }));
 
+      // Datum vlákna (nejnovější)
+      const threadDate = castThreads
+        .map((t) => t.last_activity_at)
+        .sort()
+        .pop()?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+
+      // 3d) AI analýza vláken → roztřídění do sekcí
       const sectionUpdates = await analyzeThreadsForPart(partId, castThreads, currentCard);
 
-      // Flatten SectionUpdates → pole pro card_update_queue
-      const allUpdates = Object.values(sectionUpdates).flat();
+      // 3e) Aplikace změn pomocí cardUpdateApplicator (sekvenčně A→M)
+      const { updatedCard, operativePlanEntries } = await applyCardUpdates(
+        partId,
+        currentCard,
+        sectionUpdates,
+        castThreads,
+        threadDate,
+        allActivePartsLast24h,
+      );
 
-      // 3d) Ulož výsledky do card_update_queue
-      if (allUpdates.length > 0) {
-        const rows = allUpdates.map((u) => ({
-          part_id: partId,
-          section: u.section,
-          subsection: u.subsection,
-          action: u.type,
-          old_content: "",
-          new_content: u.content,
-          reason: u.reasoning,
-          source_thread_id: threads[0]?.id ?? null,
-          source_date: u.sourceDate,
-          priority: u.section === "J" ? 9 : 5,
-          applied: false,
-        }));
+      allOperativePlanEntries.push(...operativePlanEntries);
 
-        const { error: queueErr } = await supabase.from("card_update_queue").insert(rows);
-        if (queueErr) {
-          console.error(`[Kartotheka] Chyba při ukládání do card_update_queue:`, queueErr.message);
-        }
+      // 3f) Uložení aktualizované karty na Drive
+      try {
+        await saveCardToDrive(partId, updatedCard);
+        console.log(`[Kartotheka] Karta "${partId}" uložena na Drive.`);
+      } catch (writeErr) {
+        console.warn(`[Kartotheka] Chyba při zápisu karty "${partId}" na Drive:`, writeErr);
       }
 
-      // 3e) Aplikuj změny na kartu v Drive
-      if (allUpdates.length > 0) {
-        try {
-          await supabase.functions.invoke("karel-did-drive-write", {
-            body: {
-              partName: partId,
-              updates: allUpdates,
-            },
-          });
-          console.log(`[Kartotheka] Karta "${partId}" aktualizována na Drive.`);
-        } catch (writeErr) {
-          console.warn(`[Kartotheka] Chyba při zápisu karty "${partId}" na Drive:`, writeErr);
-        }
-      }
-
-      // 3f) Označ vlákna jako „completed"
+      // 3g) Označ vlákna jako „completed"
       const now = new Date().toISOString();
       await supabase
         .from("thread_processing_log")
@@ -233,12 +289,16 @@ export async function runKartothekaUpdate(): Promise<void> {
         .in("thread_id", threadIds)
         .eq("processing_type", "kartoteka_update");
 
+      // Označ vlákna v did_threads jako zpracovaná
+      await supabase
+        .from("did_threads")
+        .update({ is_processed: true, processed_at: now })
+        .in("id", threadIds);
+
       console.log(`[Kartotheka] Část "${partId}" zpracována úspěšně.`);
     } catch (err) {
-      // Pokud selže zpracování jedné části, pokračuj s dalšími
       console.error(`[Kartotheka] CHYBA při zpracování části "${partId}":`, err);
 
-      const threadIds = threads.map((t) => t.id);
       await supabase
         .from("thread_processing_log")
         .update({ status: "failed", notes: JSON.stringify({ error: String(err) }) })
@@ -248,9 +308,17 @@ export async function runKartothekaUpdate(): Promise<void> {
   }
 
   // ── KROK 4: Aktualizace Centra ──
-  console.log("[Kartotheka] Krok 4: Aktualizace Centra (placeholder)…");
-  // updateCentrum() – bude implementováno později
-  // Aktualizace 00_Aktualni_Dashboard a 05_PLAN/operativni_plan
+  console.log("[Kartotheka] Krok 4: Aktualizace Centra…");
+  try {
+    // updateCentrum() – bude plně implementováno později
+    // Prozatím logujeme OP entries
+    if (allOperativePlanEntries.length > 0) {
+      console.log(`[Kartotheka] ${allOperativePlanEntries.length} operativních plánových záznamů k distribuci.`);
+      // TODO: Zápis do 05_PLAN/operativni_plan a 00_Aktualni_Dashboard
+    }
+  } catch (centrumErr) {
+    console.error("[Kartotheka] Chyba při aktualizaci Centra:", centrumErr);
+  }
 
   console.log("[Kartotheka] === KONEC aktualizace kartotéky ===");
 }
