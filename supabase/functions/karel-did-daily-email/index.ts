@@ -521,7 +521,10 @@ Podpis: "Karel"
 Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
       // ═══ FILTER: only parts that are truly active + recommended ═══
       const BANNED_PART_NAMES = new Set([
-        "LOCIK","LOCÍK","BENDIK_BONDEVIK","BENDIK","CLARK","KLARK",
+        "LOCIK","LOCÍK","LOCEK", // pes – NIKDY DID část
+        "HANKA","KATA","KÁŤA","KATKA","KATEŘINA","KAREL", // terapeutky/AI – NIKDY DID části
+        "JIŘÍ","JIRI","AMÁLKA","AMALKA","TONIČKA","TONICKA", // biologické děti
+        "BENDIK_BONDEVIK","BENDIK","CLARK","KLARK",
         "ADAM","EINAR","BELO","BÉLO","GERHARDT",
       ]);
 

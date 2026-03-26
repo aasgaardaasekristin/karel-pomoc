@@ -257,7 +257,10 @@ serve(async (req) => {
 
     // ── Banned entities that are NEVER DID parts ──
     const BANNED_ENTITIES = new Set([
-      "LOCIK", "LOCÍK", // pes, ne část
+      "LOCIK", "LOCÍK", "LOCEK", // pes, domácí zvíře – NIKDY DID část
+      "HANKA", "KATA", "KÁŤA", "KATKA", "KATEŘINA", // terapeutky – NIKDY DID části
+      "KAREL", // AI asistent – NIKDY DID část
+      "JIŘÍ", "JIRI", "AMÁLKA", "AMALKA", "TONIČKA", "TONICKA", // biologické děti – NIKDY DID části
     ]);
 
     // ── Parts that must NOT be marked active unless they had direct communication ──
@@ -277,6 +280,7 @@ TVOJE ROLE:
 - Čteš PAMET_KAREL (tvá dlouhodobá paměť o terapeutkách – NIKDY ji nezobrazuj přímo).
 - Čteš Index Všech Částí (autoritativní seznam částí a jejich stavů).
 - Znáš emoční vazby (countertransference bonds) mezi terapeutkami a částmi.
+- Locík je PES, domácí zvíře – NIKDY ho nezařazuj do analysis_json.parts.
 
 ═══ TVRDÁ PRAVIDLA (NESMÍŠ PORUŠIT) ═══
 
