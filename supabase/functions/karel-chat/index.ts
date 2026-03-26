@@ -106,6 +106,8 @@ ${driveBlock || "(Drive dokumenty nebyly načteny)"}
     // ═══ DID DYNAMIC CONTEXT PRIME ═══
     // If DID mode and we have a context-prime cache from frontend, inject it
     // This replaces the static didInitialContext with a rich, AI-synthesized situational cache
+    console.log('[debug-profiling] Cache length:', didContextPrimeCache?.length || 0);
+    console.log('[debug-profiling] Cache preview:', didContextPrimeCache?.slice(0, 800));
     if (mode === "childcare" && didContextPrimeCache && typeof didContextPrimeCache === "string" && didContextPrimeCache.length > 50) {
       systemPrompt += `\n\n═══ DYNAMICKÁ SITUAČNÍ CACHE (DID Context Prime) ═══\nToto je tvá aktuální předsunutá paměť – plastická mezipaměť vystavěná ze VŠECH zdrojů (Drive kartotéka, DB vlákna a epizody, sémantická paměť, úkoly terapeutek, internet). Využívej ji pro maximální přítomnost, adaptabilitu a informovanost.\n\n${didContextPrimeCache}`;
     }
