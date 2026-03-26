@@ -174,13 +174,32 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     setIsCentrumSyncing(true);
     try {
       const headers = await getAuthHeaders();
-      const resp = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-centrum-sync`,
-        { method: "POST", headers, body: JSON.stringify({}) }
-      );
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      toast.success(data.summary || "Centrum synchronizováno");
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Run Centrum sync + dashboard + plan in parallel
+      const [centrumResp, dashboardResp] = await Promise.allSettled([
+        fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-centrum-sync`,
+          { method: "POST", headers, body: JSON.stringify({}) }
+        ),
+        fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-dashboard`,
+          { method: "POST", headers, body: JSON.stringify({ date: today }) }
+        ),
+      ]);
+
+      const results: string[] = [];
+      if (centrumResp.status === "fulfilled" && centrumResp.value.ok) {
+        const data = await centrumResp.value.json();
+        results.push(data.summary || "Centrum ✅");
+      } else {
+        results.push("Centrum ❌");
+      }
+      if (dashboardResp.status === "fulfilled" && dashboardResp.value.ok) {
+        results.push("Dashboard ✅");
+      }
+
+      toast.success(results.join(" | "));
       setRefreshTrigger((prev) => prev + 1);
     } catch (e: any) {
       console.error("Centrum sync failed:", e);

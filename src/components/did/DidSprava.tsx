@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import ThemeEditorDialog from "@/components/ThemeEditorDialog";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
@@ -28,6 +29,64 @@ interface Props {
   onSelectPart?: (partName: string) => void;
 }
 
+interface CycleStatus {
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  lastSummary: string | null;
+}
+
+interface ProcessingStats {
+  unprocessedThreads: number;
+}
+
+function useProcessingStatus(refreshTrigger: number) {
+  const [cycleStatus, setCycleStatus] = useState<CycleStatus>({ lastRunAt: null, lastStatus: null, lastSummary: null });
+  const [stats, setStats] = useState<ProcessingStats>({ unprocessedThreads: 0 });
+
+  useEffect(() => {
+    async function load() {
+      const [cycleRes, threadsRes] = await Promise.all([
+        supabase
+          .from("did_update_cycles")
+          .select("completed_at, status, report_summary")
+          .order("started_at", { ascending: false })
+          .limit(1),
+        supabase
+          .from("did_threads")
+          .select("id", { count: "exact", head: true })
+          .eq("sub_mode", "cast")
+          .eq("is_processed", false),
+      ]);
+
+      if (cycleRes.data?.[0]) {
+        const c = cycleRes.data[0];
+        setCycleStatus({
+          lastRunAt: c.completed_at || null,
+          lastStatus: c.status,
+          lastSummary: c.report_summary || null,
+        });
+      }
+
+      setStats({ unprocessedThreads: threadsRes.count ?? 0 });
+    }
+
+    load();
+  }, [refreshTrigger]);
+
+  return { cycleStatus, stats };
+}
+
+function formatRelativeTime(iso: string | null): string {
+  if (!iso) return "nikdy";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "právě teď";
+  if (mins < 60) return `před ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `před ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `před ${days}d`;
+}
 
 const DidSprava = ({
   onBootstrap,
@@ -50,13 +109,19 @@ const DidSprava = ({
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports">("tools");
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
+  const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 px-2.5 text-[10px] gap-1.5">
+        <Button variant="outline" size="sm" className="h-7 px-2.5 text-[10px] gap-1.5 relative">
           <Settings className="w-3 h-3" />
           Správa
+          {stats.unprocessedThreads > 0 && (
+            <Badge className="absolute -top-1.5 -right-1.5 h-4 min-w-4 px-1 text-[9px] bg-destructive text-destructive-foreground">
+              {stats.unprocessedThreads}
+            </Badge>
+          )}
         </Button>
       </DialogTrigger>
 
@@ -68,6 +133,9 @@ const DidSprava = ({
           </DialogTitle>
           <DialogDescription className="text-xs">Nástroje a osobní nastavení vzhledu pro každou personu zvlášť.</DialogDescription>
         </DialogHeader>
+
+        {/* Status bar */}
+        <StatusBar cycleStatus={cycleStatus} unprocessedThreads={stats.unprocessedThreads} />
 
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
           {([
@@ -106,6 +174,7 @@ const DidSprava = ({
                 desc="Synchronizace dat z rozhovorů do karet na Drive"
                 loading={isUpdating}
                 onClick={() => { onManualUpdate(); setOpen(false); }}
+                badge={stats.unprocessedThreads > 0 ? `${stats.unprocessedThreads} vláken` : undefined}
               />
             )}
 
@@ -113,7 +182,7 @@ const DidSprava = ({
               <ToolButton
                 icon={<ClipboardList className={`w-4 h-4 text-emerald-600 ${isCentrumSyncing ? "animate-pulse" : ""}`} />}
                 title="Aktualizovat Centrum"
-                desc="Synchronizace CENTRUM dokumentů na Drive"
+                desc="Dashboard + operativní plán + CENTRUM dokumenty"
                 loading={isCentrumSyncing}
                 onClick={() => { onCentrumSync(); setOpen(false); }}
               />
@@ -192,12 +261,45 @@ const DidSprava = ({
   );
 };
 
-function ToolButton({ icon, title, desc, loading, onClick }: {
+/* ── Status bar showing last run info ── */
+function StatusBar({ cycleStatus, unprocessedThreads }: { cycleStatus: CycleStatus; unprocessedThreads: number }) {
+  const statusColor = cycleStatus.lastStatus === "completed"
+    ? "text-emerald-600"
+    : cycleStatus.lastStatus === "failed"
+      ? "text-destructive"
+      : "text-muted-foreground";
+
+  const statusLabel = cycleStatus.lastStatus === "completed"
+    ? "✅ Úspěch"
+    : cycleStatus.lastStatus === "failed"
+      ? "❌ Chyba"
+      : cycleStatus.lastStatus === "running"
+        ? "⏳ Běží"
+        : "—";
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-md bg-muted/50 text-[0.625rem] text-muted-foreground mb-2">
+      <span>
+        Poslední cyklus: <strong className="text-foreground">{formatRelativeTime(cycleStatus.lastRunAt)}</strong>
+      </span>
+      <span>
+        Status: <strong className={statusColor}>{statusLabel}</strong>
+      </span>
+      <span>
+        Nezpracovaná vlákna: <strong className={unprocessedThreads > 0 ? "text-amber-600" : "text-foreground"}>{unprocessedThreads}</strong>
+      </span>
+    </div>
+  );
+}
+
+/* ── Tool button ── */
+function ToolButton({ icon, title, desc, loading, onClick, badge }: {
   icon: React.ReactNode;
   title: string;
   desc: string;
   loading?: boolean;
   onClick: () => void;
+  badge?: string;
 }) {
   return (
     <button
@@ -212,7 +314,14 @@ function ToolButton({ icon, title, desc, loading, onClick }: {
       <div className="flex items-center gap-3 w-full">
         {icon}
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-foreground">{title}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-medium text-foreground">{title}</p>
+            {badge && (
+              <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+                {badge}
+              </Badge>
+            )}
+          </div>
           <p className="text-[0.625rem] text-muted-foreground">
             {loading ? "Probíhá..." : desc}
           </p>
@@ -227,7 +336,5 @@ function ToolButton({ icon, title, desc, loading, onClick }: {
     </button>
   );
 }
-
-
 
 export default DidSprava;
