@@ -554,23 +554,50 @@ V mailu pro KÁŤU:
   Pokud Hanka vede: napiš Kátě, čím může sezení podpořit (příprava pomůcek, pozorování, zápis).
 - Pokud partsForEmail prázdný: „Dnes žádné sezení s částmi není potřeba."
 
+═══ NOVÁ STRUKTURA MAILU (5 SEKCÍ) ═══
+
+Strukturuj denní mail do PŘESNĚ těchto sekcí:
+
+1. 🔴 AKUTNÍ POZORNOST
+   Části vykazující známky distresu, zhoršení nebo krize.
+
+2. 🟡 UDRŽOVACÍ KONTAKT
+   Části stabilní ale potřebující kontakt.
+   U každé: navržená aktivita, kanál (vzdáleně – chat, video, nahrávka).
+
+3. ⚪ RADAR — TICHÉ ČÁSTI
+   Části bez kontaktu 3+ dny — jak oslovit VZDÁLENĚ.
+
+4. 📋 TVOJE ÚKOLY NA DNES
+   Karel-automatické úkoly + zpožděné úkoly + koordinace.
+
+5. 📊 TÝDENNÍ PULZ (pouze pondělí)
+
+PERSONALIZACE PRO KÁŤU:
+- Zaměř se na VZDÁLENÉ aktivity (video, chat, nahrávky)
+- Káťa je v Českých Budějovicích, kluci v Písku (~100km)
+- Koordinace se školou Townshend, analytické úkoly
+- Pokud aktivita vyžaduje fyzickou přítomnost, uveď explicitně "při návštěvě" a zda potřebuje Hanku jako prostředníka
+
 Formát HTML emailu:
 <h2>Denní briefing pro Káťu – ${dateStr}</h2>
 
-<h3>🔴 TÉMATA DNES (max 2–3):</h3>
+<h3>🔴 AKUTNÍ POZORNOST:</h3>
 <h4>[Název]</h4>
 <p><strong>Co se stalo:</strong> konkrétně.</p>
 <p><strong>Co z toho vyplývá:</strong> ...</p>
-<p><strong>Doporučení PRO TEBE:</strong> co přesně má Káťa udělat (ne Hanka).</p>
+<p><strong>Doporučení PRO TEBE:</strong> co přesně má Káťa udělat (VZDÁLENĚ).</p>
 
-<h3>🎯 NÁVRHY SEZENÍ:</h3>
-Pro každou část z partsForEmail – u každé rozliš Káťinu vs. Hankinu roli.
-Pokud Káťa vede: technika, pomůcky, otevírací věta.
-Pokud Hanka vede: jak se Káťa může připravit/podpořit.
+<h3>🟡 UDRŽOVACÍ KONTAKT:</h3>
+Stabilní části — vzdálená aktivita, frekvence.
 
-<h3>📋 ÚKOLY PRO KÁŤU:</h3>
+<h3>⚪ RADAR — TICHÉ ČÁSTI:</h3>
+Části bez kontaktu — jak oslovit vzdáleně.
+
+<h3>📋 TVOJE ÚKOLY NA DNES:</h3>
 ▸ Konkrétní, splnitelné – neduplikuj existující!
-▸ Zahrň přípravu pomůcek, materiálů, prostředí.
+▸ Karel-automatické úkoly z chatu.
+▸ Zahrň přípravu pomůcek, materiálů.
 
 <h3>📞 KOORDINACE S HANKOU:</h3>
 Co je potřeba domluvit – kdo co dělá, kdy, kde.
