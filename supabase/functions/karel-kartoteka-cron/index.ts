@@ -127,7 +127,7 @@ serve(async (req) => {
         // Call thread analyzer
         const { data: analysisData, error: analysisErr } = await supabase.functions.invoke(
           "karel-thread-analyzer",
-          { body: { threads: partThreads, partName, currentCard: {} } }
+          { body: { partId: partName, threads: partThreads, currentCard: {} } }
         );
 
         if (analysisErr) throw new Error(`Analyzer error: ${JSON.stringify(analysisErr)}`);
