@@ -216,7 +216,7 @@ const PROFILE_FILES = [
   "PROFIL_OSOBNOSTI.txt",
   "STRATEGIE_KOMUNIKACE.txt",
   "SITUACNI_ANALYZA.txt",
-  "VLAKNA_3DNY.txt",
+  "VLAKNA_POSLEDNI.txt",
   "KARLOVY_POZNATKY.txt",
 ] as const;
 
@@ -226,19 +226,20 @@ function gatherThreadsForTherapist(
   didConversations: any[],
   hanaConversations: any[],
   researchThreads: any[],
-  now: Date,
+  cutoff: Date,
 ): string {
-  const cutoff3d = now.getTime() - 3 * 24 * 60 * 60 * 1000;
-  const lines: string[] = [`Konverzace za poslední 3 dny (${therapist === "hanka" ? "Hanička" : "Káťa"})`];
+  const cutoffMs = cutoff.getTime();
+  const cutoffLabel = cutoff.toISOString().slice(0, 10);
+  const nowLabel = new Date().toISOString().slice(0, 10);
+  const lines: string[] = [`Konverzace od ${cutoffLabel} do ${nowLabel} (${therapist === "hanka" ? "Hanička" : "Káťa"})`];
 
   const subModes = therapist === "hanka" ? ["mamka"] : ["kata"];
-  const label = therapist === "hanka" ? "Hanička" : "Káťa";
 
   // DID threads
   for (const t of didThreads || []) {
     if (!subModes.includes(t.sub_mode)) continue;
     const ts = t?.last_activity_at ? new Date(t.last_activity_at).getTime() : 0;
-    if (!ts || ts < cutoff3d) continue;
+    if (!ts || ts < cutoffMs) continue;
     const msgs = Array.isArray(t.messages) ? t.messages : [];
     const snippets = msgs.slice(-8).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
     if (snippets.length) {
@@ -252,7 +253,7 @@ function gatherThreadsForTherapist(
     if (!subModes.includes(c.sub_mode)) continue;
     const tsRaw = c?.updated_at || c?.saved_at;
     const ts = tsRaw ? new Date(tsRaw).getTime() : 0;
-    if (!ts || ts < cutoff3d) continue;
+    if (!ts || ts < cutoffMs) continue;
     const msgs = Array.isArray(c.messages) ? c.messages : [];
     const snippets = msgs.slice(-6).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
     if (snippets.length) {
@@ -265,7 +266,7 @@ function gatherThreadsForTherapist(
   if (therapist === "hanka") {
     for (const h of hanaConversations || []) {
       const ts = h?.last_activity_at ? new Date(h.last_activity_at).getTime() : 0;
-      if (!ts || ts < cutoff3d) continue;
+      if (!ts || ts < cutoffMs) continue;
       const msgs = Array.isArray(h.messages) ? h.messages : [];
       const snippets = msgs.slice(-8).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
       if (snippets.length) {
@@ -277,7 +278,7 @@ function gatherThreadsForTherapist(
     // Research threads
     for (const r of researchThreads || []) {
       const ts = r?.last_activity_at ? new Date(r.last_activity_at).getTime() : 0;
-      if (!ts || ts < cutoff3d) continue;
+      if (!ts || ts < cutoffMs) continue;
       const msgs = Array.isArray(r.messages) ? r.messages : [];
       const snippets = msgs.slice(-4).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 200)}`);
       if (snippets.length) {
@@ -287,7 +288,7 @@ function gatherThreadsForTherapist(
     }
   }
 
-  if (lines.length <= 1) lines.push("(žádné konverzace za poslední 3 dny)");
+  if (lines.length <= 1) lines.push(`(žádné konverzace od ${cutoffLabel})`);
   return lines.join("\n");
 }
 
@@ -350,7 +351,7 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    - Terapeutický dopad: jak vazba ovlivňuje terapii, co monitorovat
    Příklady: "silný mateřský vztah k Tundrupkovi", "nostalgie a něha k Aničce", "empatie k Bélovi"
    NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
-4. [[[VLAKNA_3DNY.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
+4. [[[VLAKNA_POSLEDNI.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
 
@@ -430,7 +431,9 @@ FORMÁT: Každý soubor začni značkou [[[NÁZEV_SOUBORU.txt]]] na novém řád
 async function syncTherapistProfilingEngine(params: {
   token: string;
   apiKey: string;
+  sb: any;
   now: Date;
+  cutoff: Date;
   didThreads: any[];
   didConversations: any[];
   hanaConversations: any[];
@@ -438,8 +441,8 @@ async function syncTherapistProfilingEngine(params: {
   therapistTasks: any[];
   motivationProfiles: any[];
   didEpisodes: any[];
-}): Promise<{ updated: boolean; filesUpdated: number }> {
-  const { token, apiKey, now, didThreads, didConversations, hanaConversations, researchThreads, therapistTasks, motivationProfiles, didEpisodes } = params;
+}): Promise<{ updated: boolean; filesUpdated: number; hankaThreadsDeleted: number }> {
+  const { token, apiKey, sb, now, cutoff, didThreads, didConversations, hanaConversations, researchThreads, therapistTasks, motivationProfiles, didEpisodes } = params;
 
   const pametId = await findFolder(token, "PAMET_KAREL");
   if (!pametId) throw new Error("PAMET_KAREL folder not found");
@@ -448,7 +451,7 @@ async function syncTherapistProfilingEngine(params: {
   const hankaRoot = await findOrCreateFolder(token, "HANKA", didRootId);
   const kataRoot = await findOrCreateFolder(token, "KATA", didRootId);
 
-  // Read existing profiles from Drive (parallel)
+  // Also try to read old VLAKNA_3DNY.txt and migrate content
   const readExisting = async (folderId: string): Promise<Record<string, string>> => {
     const result: Record<string, string> = {};
     for (const fileName of PROFILE_FILES) {
@@ -456,7 +459,17 @@ async function syncTherapistProfilingEngine(params: {
       if (doc) {
         try { result[fileName] = await readDoc(token, doc.id, 8000); } catch { result[fileName] = ""; }
       } else {
-        result[fileName] = "";
+        // Fallback: try old name for VLAKNA_POSLEDNI.txt
+        if (fileName === "VLAKNA_POSLEDNI.txt") {
+          const oldDoc = await findDocByExactName(token, folderId, "VLAKNA_3DNY.txt");
+          if (oldDoc) {
+            try { result[fileName] = await readDoc(token, oldDoc.id, 8000); } catch { result[fileName] = ""; }
+          } else {
+            result[fileName] = "";
+          }
+        } else {
+          result[fileName] = "";
+        }
       }
     }
     return result;
@@ -467,9 +480,9 @@ async function syncTherapistProfilingEngine(params: {
     readExisting(kataRoot),
   ]);
 
-  // Gather conversation dumps
-  const hankaThreadsDump = gatherThreadsForTherapist("hanka", didThreads, didConversations, hanaConversations, researchThreads, now);
-  const kataThreadsDump = gatherThreadsForTherapist("kata", didThreads, didConversations, hanaConversations, researchThreads, now);
+  // Gather conversation dumps using dynamic cutoff
+  const hankaThreadsDump = gatherThreadsForTherapist("hanka", didThreads, didConversations, hanaConversations, researchThreads, cutoff);
+  const kataThreadsDump = gatherThreadsForTherapist("kata", didThreads, didConversations, hanaConversations, researchThreads, cutoff);
 
   // Build digests
   const hankaTasksDigest = therapistTasks
@@ -502,16 +515,19 @@ async function syncTherapistProfilingEngine(params: {
 
   // Write files to Drive sequentially to avoid rate limits
   let filesUpdated = 0;
+  const hankaFilesWritten: string[] = [];
+  const kataFilesWritten: string[] = [];
 
   for (const fileName of PROFILE_FILES) {
     try {
       let content = hankaProfiles[fileName] || hankaExisting[fileName] || "";
-      if (fileName === "VLAKNA_3DNY.txt" && content) {
-        content = `${hankaThreadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${content}`;
+      if (fileName === "VLAKNA_POSLEDNI.txt" && content) {
+        content = `Data od ${cutoff.toISOString().slice(0, 10)} do ${now.toISOString().slice(0, 10)}\n\n${hankaThreadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${content}`;
       }
       if (content) {
         await upsertTextDoc(token, hankaRoot, fileName, content);
         filesUpdated++;
+        hankaFilesWritten.push(fileName);
         console.log(`[profiling] ✅ hanka/${fileName} (${content.length} chars)`);
       }
     } catch (e) {
@@ -522,12 +538,13 @@ async function syncTherapistProfilingEngine(params: {
   for (const fileName of PROFILE_FILES) {
     try {
       let content = kataProfiles[fileName] || kataExisting[fileName] || "";
-      if (fileName === "VLAKNA_3DNY.txt" && content) {
-        content = `${kataThreadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${content}`;
+      if (fileName === "VLAKNA_POSLEDNI.txt" && content) {
+        content = `Data od ${cutoff.toISOString().slice(0, 10)} do ${now.toISOString().slice(0, 10)}\n\n${kataThreadsDump}\n\n═══ KARLOVA REFLEXE ═══\n${content}`;
       }
       if (content) {
         await upsertTextDoc(token, kataRoot, fileName, content);
         filesUpdated++;
+        kataFilesWritten.push(fileName);
         console.log(`[profiling] ✅ kata/${fileName} (${content.length} chars)`);
       }
     } catch (e) {
@@ -536,7 +553,46 @@ async function syncTherapistProfilingEngine(params: {
   }
 
   console.log(`[profiling] Done: ${filesUpdated} files written`);
-  return { updated: true, filesUpdated };
+
+  // ── Cleanup old Hanka threads (only if ALL 5 hanka files were written) ──
+  let hankaThreadsDeleted = 0;
+  if (hankaFilesWritten.length === PROFILE_FILES.length) {
+    try {
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: deleted, error } = await sb
+        .from("karel_hana_conversations")
+        .delete()
+        .lt("last_activity_at", sevenDaysAgo)
+        .select("id");
+      if (error) {
+        console.error("[shadowSync] Hanka cleanup error:", error);
+      } else {
+        hankaThreadsDeleted = deleted?.length || 0;
+        console.log(`[shadowSync] Deleted ${hankaThreadsDeleted} old Hanka threads (>7 days)`);
+      }
+    } catch (e) {
+      console.error("[shadowSync] Cleanup error:", e);
+    }
+  } else {
+    console.warn(`[shadowSync] Skipping Hanka cleanup — only ${hankaFilesWritten.length}/${PROFILE_FILES.length} files written`);
+  }
+
+  // ── Log to shadow_sync_log ──
+  for (const therapist of ["hanka", "kata"] as const) {
+    const written = therapist === "hanka" ? hankaFilesWritten : kataFilesWritten;
+    const threadsDump = therapist === "hanka" ? hankaThreadsDump : kataThreadsDump;
+    const msgCount = (threadsDump.match(/\[user\]/gi) || []).length + (threadsDump.match(/\[assistant\]/gi) || []).length;
+    await sb.from("shadow_sync_log").insert({
+      therapist,
+      success: written.length > 0,
+      threads_processed: (threadsDump.match(/---.*vlákno|---.*konverzace|---.*chat|---.*Research/gi) || []).length,
+      messages_processed: msgCount,
+      files_written: written,
+      threads_deleted: therapist === "hanka" ? hankaThreadsDeleted : 0,
+    });
+  }
+
+  return { updated: true, filesUpdated, hankaThreadsDeleted };
 }
 
 // ── Auth ──
@@ -855,19 +911,36 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
       activePartsLast24h.size <= 2 ? "AKTIVNÍ" :
       activePartsLast24h.size <= 5 ? "ZVÝŠENÁ_AKTIVITA" : "VYSOKÁ_AKTIVITA";
 
-    let shadowSyncResult: { updated: boolean; filesUpdated: number; error: string | null } = {
+    let shadowSyncResult: { updated: boolean; filesUpdated: number; hankaThreadsDeleted: number; error: string | null } = {
       updated: false,
       filesUpdated: 0,
+      hankaThreadsDeleted: 0,
       error: null,
     };
 
     if (forceRefresh === true) {
       try {
+        // ── Determine dynamic cutoff from last successful shadow_sync_log ──
+        const { data: lastRun } = await sb
+          .from("shadow_sync_log")
+          .select("created_at")
+          .eq("success", true)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        const cutoff = lastRun
+          ? new Date(new Date(lastRun.created_at).getTime() - 60 * 60 * 1000) // overlap 1h
+          : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // fallback 7 days
+        console.log(`[shadowSync] Cutoff: ${cutoff.toISOString()} (lastRun: ${lastRun?.created_at || "none"})`);
+
         const token = await getAccessToken();
         const syncResult = await syncTherapistProfilingEngine({
           token,
           apiKey: LOVABLE_API_KEY,
+          sb,
           now,
+          cutoff,
           didThreads,
           didConversations,
           hanaConversations,
@@ -877,7 +950,7 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
           didEpisodes,
         });
         shadowSyncResult = { ...syncResult, error: null };
-        console.log(`[did-context-prime] Profiling engine done: ${syncResult.filesUpdated} files updated`);
+        console.log(`[did-context-prime] Profiling engine done: ${syncResult.filesUpdated} files updated, ${syncResult.hankaThreadsDeleted} threads deleted`);
 
         // ═══ BOND EXTRACTION: Extract countertransference bonds from generated profiles ═══
         try {
@@ -961,12 +1034,19 @@ Pouze fakta z textu, nevymýšlej. Piš česky.` },
         }
 
       } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : "Profiling sync failed";
         shadowSyncResult = {
           updated: false,
           filesUpdated: 0,
-          error: e instanceof Error ? e.message : "Profiling sync failed",
+          hankaThreadsDeleted: 0,
+          error: errorMsg,
         };
-        console.error("[did-context-prime] Profiling engine error:", shadowSyncResult.error);
+        console.error("[did-context-prime] Profiling engine error:", errorMsg);
+        // Log failure to shadow_sync_log
+        try {
+          await sb.from("shadow_sync_log").insert({ therapist: "hanka", success: false, error: errorMsg });
+          await sb.from("shadow_sync_log").insert({ therapist: "kata", success: false, error: errorMsg });
+        } catch {}
       }
     }
 
