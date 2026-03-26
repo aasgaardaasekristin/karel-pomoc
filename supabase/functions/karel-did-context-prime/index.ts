@@ -305,7 +305,9 @@ Zdravotní kontext: Nositel těla trpí EPILEPSIÍ – nikdy dechová cvičení,
 Karel a Hanka sdílí vzpomínky – každodenní kontakt buduje "skryté puzzle" které Karel postupně skládá.
 Hanka je mnohem komplexnější vztah než Káťa – osobnější, hlubší, vícevrstevný.`;
 
-const BASELINE_KATA = `═══ ZÁKLADNÍ PROFIL (STATICKÝ) ═══
+const BASELINE_KATA = `⛔ FYZICKÁ SEPARACE: Káťa bydlí v Č. Budějovicích (Kopretinová). Kluci bydlí s Hankou v Písku (~100km). Káťa komunikuje s klukama VÝHRADNĚ NA DÁLKU (chat, video, nahrávky). Fyzický kontakt je výjimečný a vyžaduje plánovanou návštěvu. KAŽDÁ strategie musí být realizovatelná na dálku, nebo explicitně označená jako "při fyzické návštěvě" s určením zda je potřeba Hanka jako prostředník.
+
+═══ ZÁKLADNÍ PROFIL (STATICKÝ) ═══
 Jméno: Káťa – druhý terapeut, Hančina biologická dospělá dcera
 Vztah k Karlovi: Mentor → mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele.
 Profese: Terapeut – koordinuje na dálku, odbornice na senzorickou terapii

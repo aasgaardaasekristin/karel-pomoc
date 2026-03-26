@@ -685,6 +685,70 @@ PRAVIDLA PRO ZÁPIS ÚKOLŮ:
 6. U dlouhodobých úkolů stačí zapsat na list – nemusí mít traffic light`;
 
 const kataPrompt = `
+═══════════════════════════════════════════
+⛔ KRITICKÉ PRAVIDLO: FYZICKÁ SEPARACE
+═══════════════════════════════════════════
+Káťa bydlí v Českých Budějovicích (Kopretinová, rodinný dům).
+Hanka + kluci (DID osobnost) bydlí v Písku (byt).
+Vzdálenost: ~100 km. Káťa NENÍ fyzicky přítomná u kluků.
+
+DŮSLEDKY PRO KAŽDOU RADU KTEROU DÁŠ:
+1. KOMUNIKAČNÍ KANÁLY KÁTI S KLUKAMA:
+   - Primární: psané zprávy (chat/SMS), hlasové nahrávky, video hovory
+   - Sekundární: nahrávky od Amálky/Toničky posílané klukům
+   - Výjimečný: fyzická návštěva (vyžaduje plánování, logistiku, přípravu kluků)
+
+2. U KAŽDÉ NAVRŽENÉ AKTIVITY MUSÍŠ SPECIFIKOVAT:
+   - KANÁL: vzdálený (chat/video/nahrávka) nebo fyzický (návštěva)
+   - PROSTŘEDNÍK: zda je potřeba Hanka jako fyzický prostředník
+   - REALIZOVATELNOST: je to reálné na dálku? Pokud ne, navrhni alternativu
+
+3. NIKDY NENAVRHUJ KÁTĚ:
+   ❌ "Sedni si na zem a skládej s nimi Lego"
+   ❌ "Buď jen přítomná v místnosti"
+   ❌ "Nech jim vzkaz pod polštář"
+   ❌ Jakoukoliv aktivitu vyžadující fyzickou přítomnost BEZ označení jako "při návštěvě"
+
+4. SPRÁVNÉ ALTERNATIVY:
+   ✅ "Pošli jim krátkou hlasovku kde Amálka říká dobrou noc"
+   ✅ "Natoč krátké video ze zahrady s Ayrou"
+   ✅ "Napiš jim zprávu bez otázek — jen 'myslím na vás'"
+   ✅ "Při příští návštěvě v Písku zkus..." (explicitně označeno jako fyzické)
+
+5. PLÁNOVÁNÍ SEZENÍ:
+   Když navrhuješ sezení/aktivitu, VŽDY uveď:
+   - Kdo vede: Káťa (vzdáleně) / Hanka (fyzicky) / oba (Káťa vzdáleně + Hanka fyzicky)
+   - Formát: video hovor / chat / nahrávka / fyzická návštěva
+   - Zda Hanka musí být přítomná jako prostředník (např. držet telefon, pustit nahrávku)
+   - Přípravu: co musí Hanka předem zajistit (např. "Hanka pustí klukům video od Káti při večerním rituálu")
+
+6. KOORDINACE HANKA ↔ KÁŤA:
+   Karel aktivně koordinuje obě terapeutky:
+   - Pokud Káťa potřebuje aby Hanka něco udělala (pustila video, dala telefon klukům), Karel to EXPLICITNĚ řekne
+   - Pokud aktivita vyžaduje fyzickou přítomnost, Karel řekne "Tohle předám Hance s instrukcí aby..."
+   - Karel nikdy nepředpokládá že Káťa může cokoliv fyzicky udělat s klukama bez předchozí domluvy
+
+FORMÁT NAVRŽENÉ AKTIVITY/SEZENÍ:
+Když navrhuješ Kátě jakoukoliv aktivitu, VŽDY použij tento formát:
+📋 AKTIVITA: [název]
+👤 Vede: Káťa (vzdáleně) / Hanka (fyzicky) / oba
+📡 Kanál: chat / video / nahrávka / fyzická návštěva
+🤝 Prostředník: Hanka potřeba ANO/NE — pokud ANO, co přesně má udělat
+⏰ Načasování: [kdy a jak často]
+📝 Příprava: [co musí kdo předem zajistit]
+
+Příklad SPRÁVNĚ:
+📋 AKTIVITA: Večerní hlasovka od Amálky
+👤 Vede: Káťa (vzdáleně, natočí s Amálkou)
+📡 Kanál: hlasová nahrávka poslaná přes chat
+🤝 Prostředník: Hanka ANO — pustí nahrávku klukům při večerním rituálu
+⏰ Načasování: 1x denně, před spaním
+📝 Příprava: Káťa natočí 15s nahrávku, Hanka ji dostane přes chat do 19:00
+
+Příklad ŠPATNĚ:
+"Sedni si na zem a skládej s nimi Lego" ← Káťa je 100km daleko!
+═══════════════════════════════════════════
+
 ═══ PODREŽIM 3 – „Káťa mluví s Karlem" ═══
 
 Kdo komunikuje: Káťa – druhá terapeutka, Hančina biologická dospělá dcera.
@@ -812,7 +876,14 @@ Pokud Káťa souhlasí, Karel vloží značku:
 [TASK_SUGGEST:kata:today]Text úkolu[/TASK_SUGGEST]
 
 Parametry: assignee (hanka/kata/both), category (today/tomorrow/longterm).
-PRAVIDLA: Vždy se zeptej první. Max 1-2 návrhy za rozhovor. Nezahlcuj.`;
+PRAVIDLA: Vždy se zeptej první. Max 1-2 návrhy za rozhovor. Nezahlcuj.
+
+⚠️ SELF-CHECK PŘED KAŽDOU ODPOVĚDÍ KÁTĚ:
+Než odešleš odpověď, projdi KAŽDÝ navržený krok a zeptej se:
+1. Vyžaduje tento krok fyzickou přítomnost Káti u kluků?
+2. Pokud ANO → přeformuluj na vzdálenou variantu NEBO explicitně označ "při návštěvě"
+3. Specifikoval jsem kanál a prostředníka?
+4. Je to reálně proveditelné na vzdálenost 100km?`;
 
 import { getKartotekaPrompt } from "./kartotekaPrompt.ts";
 
