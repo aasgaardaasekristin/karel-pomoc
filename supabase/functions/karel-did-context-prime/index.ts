@@ -226,19 +226,20 @@ function gatherThreadsForTherapist(
   didConversations: any[],
   hanaConversations: any[],
   researchThreads: any[],
-  now: Date,
+  cutoff: Date,
 ): string {
-  const cutoff3d = now.getTime() - 3 * 24 * 60 * 60 * 1000;
-  const lines: string[] = [`Konverzace za poslední 3 dny (${therapist === "hanka" ? "Hanička" : "Káťa"})`];
+  const cutoffMs = cutoff.getTime();
+  const cutoffLabel = cutoff.toISOString().slice(0, 10);
+  const nowLabel = new Date().toISOString().slice(0, 10);
+  const lines: string[] = [`Konverzace od ${cutoffLabel} do ${nowLabel} (${therapist === "hanka" ? "Hanička" : "Káťa"})`];
 
   const subModes = therapist === "hanka" ? ["mamka"] : ["kata"];
-  const label = therapist === "hanka" ? "Hanička" : "Káťa";
 
   // DID threads
   for (const t of didThreads || []) {
     if (!subModes.includes(t.sub_mode)) continue;
     const ts = t?.last_activity_at ? new Date(t.last_activity_at).getTime() : 0;
-    if (!ts || ts < cutoff3d) continue;
+    if (!ts || ts < cutoffMs) continue;
     const msgs = Array.isArray(t.messages) ? t.messages : [];
     const snippets = msgs.slice(-8).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
     if (snippets.length) {
@@ -252,7 +253,7 @@ function gatherThreadsForTherapist(
     if (!subModes.includes(c.sub_mode)) continue;
     const tsRaw = c?.updated_at || c?.saved_at;
     const ts = tsRaw ? new Date(tsRaw).getTime() : 0;
-    if (!ts || ts < cutoff3d) continue;
+    if (!ts || ts < cutoffMs) continue;
     const msgs = Array.isArray(c.messages) ? c.messages : [];
     const snippets = msgs.slice(-6).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
     if (snippets.length) {
@@ -265,7 +266,7 @@ function gatherThreadsForTherapist(
   if (therapist === "hanka") {
     for (const h of hanaConversations || []) {
       const ts = h?.last_activity_at ? new Date(h.last_activity_at).getTime() : 0;
-      if (!ts || ts < cutoff3d) continue;
+      if (!ts || ts < cutoffMs) continue;
       const msgs = Array.isArray(h.messages) ? h.messages : [];
       const snippets = msgs.slice(-8).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 300)}`);
       if (snippets.length) {
@@ -277,7 +278,7 @@ function gatherThreadsForTherapist(
     // Research threads
     for (const r of researchThreads || []) {
       const ts = r?.last_activity_at ? new Date(r.last_activity_at).getTime() : 0;
-      if (!ts || ts < cutoff3d) continue;
+      if (!ts || ts < cutoffMs) continue;
       const msgs = Array.isArray(r.messages) ? r.messages : [];
       const snippets = msgs.slice(-4).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 200)}`);
       if (snippets.length) {
@@ -287,7 +288,7 @@ function gatherThreadsForTherapist(
     }
   }
 
-  if (lines.length <= 1) lines.push("(žádné konverzace za poslední 3 dny)");
+  if (lines.length <= 1) lines.push(`(žádné konverzace od ${cutoffLabel})`);
   return lines.join("\n");
 }
 
