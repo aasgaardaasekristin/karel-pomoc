@@ -221,7 +221,8 @@ const Hub = () => {
         <div className="max-w-md w-full">
           {/* Logo */}
           <div className="flex flex-col items-center mb-10 animate-fade-in">
-            <img src={karelAvatar} alt="Karel" className="w-16 h-16 rounded-2xl object-cover" />
+            <img src={karelAvatar} alt="Karel" className="w-16 h-16 rounded-2xl object-cover mb-3" />
+            <h1 className="text-3xl font-bold text-[hsl(var(--text-primary))]">Karel</h1>
             <p className="text-sm text-[hsl(var(--text-secondary))] mt-1">Supervizní partner a tandem-terapeut</p>
           </div>
 
