@@ -1300,6 +1300,57 @@ export type Database = {
           },
         ]
       }
+      did_tasks: {
+        Row: {
+          assigned_to: string
+          completed_at: string | null
+          created_at: string | null
+          description: string
+          due_date: string | null
+          follow_up_needed: boolean | null
+          id: string
+          priority: string | null
+          related_part: string | null
+          response: string | null
+          source: string | null
+          status: string | null
+          task_type: string
+          user_id: string
+        }
+        Insert: {
+          assigned_to: string
+          completed_at?: string | null
+          created_at?: string | null
+          description: string
+          due_date?: string | null
+          follow_up_needed?: boolean | null
+          id?: string
+          priority?: string | null
+          related_part?: string | null
+          response?: string | null
+          source?: string | null
+          status?: string | null
+          task_type: string
+          user_id?: string
+        }
+        Update: {
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string
+          due_date?: string | null
+          follow_up_needed?: boolean | null
+          id?: string
+          priority?: string | null
+          related_part?: string | null
+          response?: string | null
+          source?: string | null
+          status?: string | null
+          task_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_therapist_tasks: {
         Row: {
           assigned_to: string
