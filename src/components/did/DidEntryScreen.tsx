@@ -31,13 +31,6 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-      {/* Top bar */}
-      <div className="w-full max-w-sm flex items-center justify-between mb-8">
-        <KarelButton variant="ghost" size="sm" onClick={onBack} icon={<ArrowLeft size={16} />}>
-          Hub
-        </KarelButton>
-        <ThemeQuickButton />
-      </div>
 
       {/* Title */}
       <div className="text-center mb-8 animate-fade-in">
