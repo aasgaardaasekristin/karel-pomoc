@@ -12,6 +12,7 @@
  */
 
 import { supabase } from "@/integrations/supabase/client";
+import { analyzeThreadsForPart, type Thread, type CardContent, type SectionUpdates } from "@/services/threadAnalyzer";
 
 /* ---------- Typy ---------- */
 
