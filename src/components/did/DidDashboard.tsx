@@ -369,30 +369,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         </KarelCard>
       )}
 
-      {/* Admin tools */}
-      <section>
-        <SectionLabel>Správa</SectionLabel>
-        <div className="flex flex-wrap gap-2">
-          <KarelButton
-            variant="secondary"
-            size="sm"
-            loading={isRefreshingMemory}
-            onClick={onRefreshMemory}
-            icon={<RefreshCw size={14} />}
-          >
-            Osvěž paměť
-          </KarelButton>
-          <KarelButton
-            variant="secondary"
-            size="sm"
-            loading={isUpdating}
-            onClick={onManualUpdate}
-            icon={<Upload size={14} />}
-          >
-            Manuální aktualizace
-          </KarelButton>
-        </div>
-      </section>
 
       {/* Loading */}
       {loading && (
