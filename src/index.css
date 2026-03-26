@@ -143,37 +143,7 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     --sidebar-border: 154 10% 22%;
     --sidebar-ring: 154 28% 56%;
 
-    /* ─── Surface system (dark) ─── */
-    --surface-primary: 154 12% 11%;
-    --surface-secondary: 154 12% 13%;
-    --surface-tertiary: 154 10% 16%;
-    --surface-elevated: 154 12% 15%;
     --surface-glass: 154 12% 13% / 0.6;
-
-    /* ─── Text system (dark) ─── */
-    --text-primary: 42 18% 92%;
-    --text-secondary: 42 10% 66%;
-    --text-tertiary: 42 8% 48%;
-    --text-disabled: 42 6% 34%;
-    --text-inverse: 154 14% 10%;
-
-    /* ─── Border system (dark) ─── */
-    --border-default: 154 10% 22%;
-    --border-subtle: 154 8% 16%;
-    --border-strong: 154 12% 32%;
-    --border-focus: 154 28% 56%;
-
-    /* ─── Accent system (dark) ─── */
-    --accent-hue: 154;
-    --accent-saturation: 28%;
-    --accent-primary: var(--accent-hue) var(--accent-saturation) 56%;
-    --accent-light: var(--accent-hue) var(--accent-saturation) 36%;
-    --accent-dark: var(--accent-hue) var(--accent-saturation) 72%;
-
-    /* ─── Chat bubble system (dark) ─── */
-    --bubble-user-bg: 154 10% 18%;
-    --bubble-ai-bg: 154 14% 16%;
-    --bubble-ai-border: 154 10% 24%;
   }
 
   /* ─── Section-specific accent overrides ─── */
