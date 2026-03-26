@@ -43,6 +43,7 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useManualUpdate } from "@/hooks/useManualUpdate";
 import DidContentRouter from "@/components/did/DidContentRouter";
 import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
+import avatarKataSolo from "@/assets/avatar-kata-solo.png";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
