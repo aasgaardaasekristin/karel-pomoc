@@ -15,14 +15,8 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   analyzeThreadsForPart,
   type Thread,
-  type CardContent,
   type SectionKey,
 } from "@/services/threadAnalyzer";
-import {
-  applyCardUpdates,
-  saveCardToDrive,
-  type OperativePlanEntry,
-} from "@/services/cardUpdateApplicator";
 
 /* ================================================================
    TYPY
