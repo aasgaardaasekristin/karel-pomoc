@@ -132,14 +132,16 @@ serve(async (req) => {
 
         if (analysisErr) throw new Error(`Analyzer error: ${JSON.stringify(analysisErr)}`);
 
-        const sectionUpdates = analysisData?.updates || analysisData?.sections || {};
+        // Thread analyzer returns array of {section, subsection, type, content, ...}
+        const updates = analysisData?.updates || [];
         const sections: Record<string, string> = {};
 
-        for (const [key, updates] of Object.entries(sectionUpdates)) {
-          if (Array.isArray(updates) && updates.length > 0) {
-            sections[key] = updates.map((u: any) => u.content || u).join("\n");
-          } else if (typeof updates === "string" && updates.trim()) {
-            sections[key] = updates;
+        for (const u of updates) {
+          if (u?.section && u?.content) {
+            const key = u.section;
+            sections[key] = sections[key]
+              ? `${sections[key]}\n${u.content}`
+              : u.content;
           }
         }
 
