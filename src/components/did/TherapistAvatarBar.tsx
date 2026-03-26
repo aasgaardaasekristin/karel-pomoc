@@ -18,7 +18,7 @@ const TherapistAvatarBar = () => (
       {avatars.map((a) => (
         <Tooltip key={a.name}>
           <TooltipTrigger asChild>
-            <Avatar className="h-7 w-7 border-2 border-background shadow-sm">
+            <Avatar className="h-8 w-8 border-2 border-background shadow-sm">
               <AvatarImage src={a.src} alt={a.name} className="object-cover" />
               <AvatarFallback className="text-[10px] font-semibold bg-muted text-muted-foreground">
                 {a.fallback}
