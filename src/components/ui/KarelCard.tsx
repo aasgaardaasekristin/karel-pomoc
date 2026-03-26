@@ -73,19 +73,22 @@ const paddingClasses: Record<CardPadding, string> = {
 };
 
 const KarelCard = React.forwardRef<HTMLDivElement, KarelCardProps>(
-  ({ className, variant = "default", padding = "md", animate = false, ...props }, ref) => (
-    <div
-      ref={ref}
-      className={cn(
-        "rounded-lg",
-        variantClasses[variant],
-        paddingClasses[padding],
-        animate && "animate-fade-in",
-        className,
-      )}
-      {...props}
-    />
-  ),
+  ({ className, variant = "default", padding = "md", animate = false, style, ...props }, ref) => {
+    const v = variantStyles[variant];
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          v.className,
+          paddingClasses[padding],
+          animate && "animate-fade-in",
+          className,
+        )}
+        style={{ ...v.style, ...style }}
+        {...props}
+      />
+    );
+  },
 );
 KarelCard.displayName = "KarelCard";
 
