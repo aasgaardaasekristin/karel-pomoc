@@ -1214,6 +1214,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
     clearAttachments();
     const userContent = buildAttachmentContent(userMessage, currentAttachments);
     setMessages((prev) => [...prev, { role: "user", content: userContent as any }]);
+    if (mode === "childcare") didContextPrime.trackMessage();
     setIsLoading(true);
     let assistantContent = "";
     try {

@@ -335,7 +335,16 @@ async function generateAllProfilesForTherapist(
     `[[[${f}]]]\n${existingProfiles[f] || "(soubor dosud neexistuje)"}`
   ).join("\n\n");
 
-  const prompt = `Vygeneruj KOMPLETNÍ aktualizaci VŠECH 5 profilových souborů pro terapeutku ${name}.
+  const prompt = `KRITICKÉ PRAVIDLO — ANTI-DUPLIKACE:
+- Každou informaci zapiš POUZE JEDNOU do toho souboru, kam logicky patří
+- NIKDY neopakuj stejný fakt, větu nebo blok v rámci jednoho souboru
+- Pokud máš málo vstupních dat, napiš STRUČNÝ ale UNIKÁTNÍ obsah — NEDOPLŇUJ opakováním
+- SITUACNI_ANALYZA: každý denní update POUZE JEDNOU, seřazený chronologicky
+- VLAKNA_POSLEDNI: každou konverzaci POUZE JEDNOU, bez opakování reflexí
+- Pokud pro daný soubor nemáš dostatek nových dat, napiš: "(Nedostatek nových dat pro aktualizaci)"
+- NIKDY negeneruj placeholder text ani opakující se bloky pro vyplnění délky
+
+Vygeneruj KOMPLETNÍ aktualizaci VŠECH 5 profilových souborů pro terapeutku ${name}.
 
 VZTAH: ${relationship}
 ZÁKLADNÍ INFO (vždy zachovej na začátku PROFIL_OSOBNOSTI):
@@ -351,14 +360,14 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    - Terapeutický dopad: jak vazba ovlivňuje terapii, co monitorovat
    Příklady: "silný mateřský vztah k Tundrupkovi", "nostalgie a něha k Aničce", "empatie k Bélovi"
    NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
-4. [[[VLAKNA_POSLEDNI.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
+4. [[[VLAKNA_POSLEDNI.txt]]] — Surové konverzace BEZ duplikací. Každé vlákno POUZE JEDNOU. Na konci JEDNA Karlova reflexe (max 500 znaků). Neopakuj reflexi pro každé vlákno zvlášť.
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
 
 ═══ STÁVAJÍCÍ PROFILY ═══
 ${existingDump}
 
-═══ KONVERZACE (3 DNY) ═══
+═══ KONVERZACE ═══
 ${threadsDump.slice(0, 6000)}
 
 ═══ ÚKOLY ═══

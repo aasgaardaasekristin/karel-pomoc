@@ -11,14 +11,20 @@ interface DidContextPrimeResult {
   stats: Record<string, any>;
 }
 
+const REPRIME_INTERVAL = 15;
+
 export const useDidContextPrime = () => {
   const [primeCache, setPrimeCache] = useState<string | null>(null);
   const [systemState, setSystemState] = useState<string>("NEZNÁMÝ");
   const [activeParts, setActiveParts] = useState<string[]>([]);
   const [isPriming, setIsPriming] = useState(false);
   const requestIdRef = useRef(0);
+  const messagesSincePrime = useRef(0);
+  const lastPrimeArgs = useRef<{ partName?: string; subMode?: string }>({});
 
   const runPrime = useCallback(async (partName?: string, subMode?: string) => {
+    lastPrimeArgs.current = { partName, subMode };
+    messagesSincePrime.current = 0;
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
 
@@ -53,11 +59,31 @@ export const useDidContextPrime = () => {
     }
   }, []);
 
+  const trackMessage = useCallback(() => {
+    messagesSincePrime.current += 1;
+    if (messagesSincePrime.current >= REPRIME_INTERVAL) {
+      messagesSincePrime.current = 0;
+      console.log('[context] Silent re-prime after 15 messages');
+      const { partName, subMode } = lastPrimeArgs.current;
+      supabase.functions.invoke("karel-did-context-prime", {
+        body: { partName, subMode },
+      }).then(({ data }) => {
+        if (data) {
+          const r = data as DidContextPrimeResult;
+          setPrimeCache(r.contextBrief);
+          setSystemState(r.systemState);
+          setActiveParts(r.activePartsLast24h || []);
+        }
+      }).catch((e) => console.warn('[context] Silent re-prime failed:', e));
+    }
+  }, []);
+
   return {
     primeCache,
     systemState,
     activeParts,
     isPriming,
     runPrime,
+    trackMessage,
   };
 };
