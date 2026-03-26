@@ -351,7 +351,7 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    - Terapeutický dopad: jak vazba ovlivňuje terapii, co monitorovat
    Příklady: "silný mateřský vztah k Tundrupkovi", "nostalgie a něha k Aničce", "empatie k Bélovi"
    NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
-4. [[[VLAKNA_3DNY.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
+4. [[[VLAKNA_POSLEDNI.txt]]] — AI reflexe konverzací: vzorce, nové poznatky, na co navázat.
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
 
