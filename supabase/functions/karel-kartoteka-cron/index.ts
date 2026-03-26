@@ -53,25 +53,14 @@ serve(async (req) => {
   const addLog = (msg: string) => { log.push(msg); console.log(`[kartoteka-cron] ${msg}`); };
 
   try {
-    // ── STEP 1: Get last completed timestamp ──
-    const { data: lastRun } = await supabase
-      .from("thread_processing_log")
-      .select("processed_at")
-      .eq("processing_type", "kartoteka_update")
-      .eq("status", "completed")
-      .order("processed_at", { ascending: false })
-      .limit(1);
-
-    const cutoff = lastRun?.[0]?.processed_at
-      ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-    // ── STEP 2: Fetch unprocessed threads ──
+    // ── STEP 1+2: Fetch unprocessed threads (is_processed=false, no time cutoff) ──
     const { data: threads, error: fetchErr } = await supabase
       .from("did_threads")
       .select("id, part_name, messages, last_activity_at, thread_label")
       .eq("sub_mode", "cast")
-      .gte("last_activity_at", cutoff)
-      .order("last_activity_at", { ascending: true });
+      .eq("is_processed", false)
+      .order("last_activity_at", { ascending: true })
+      .limit(50);
 
     if (fetchErr) throw new Error(`Thread fetch error: ${fetchErr.message}`);
     if (!threads?.length) {
@@ -138,19 +127,21 @@ serve(async (req) => {
         // Call thread analyzer
         const { data: analysisData, error: analysisErr } = await supabase.functions.invoke(
           "karel-thread-analyzer",
-          { body: { threads: partThreads, partName, currentCard: {} } }
+          { body: { partId: partName, threads: partThreads, currentCard: {} } }
         );
 
         if (analysisErr) throw new Error(`Analyzer error: ${JSON.stringify(analysisErr)}`);
 
-        const sectionUpdates = analysisData?.updates || analysisData?.sections || {};
+        // Thread analyzer returns array of {section, subsection, type, content, ...}
+        const updates = analysisData?.updates || [];
         const sections: Record<string, string> = {};
 
-        for (const [key, updates] of Object.entries(sectionUpdates)) {
-          if (Array.isArray(updates) && updates.length > 0) {
-            sections[key] = updates.map((u: any) => u.content || u).join("\n");
-          } else if (typeof updates === "string" && updates.trim()) {
-            sections[key] = updates;
+        for (const u of updates) {
+          if (u?.section && u?.content) {
+            const key = u.section;
+            sections[key] = sections[key]
+              ? `${sections[key]}\n${u.content}`
+              : u.content;
           }
         }
 
