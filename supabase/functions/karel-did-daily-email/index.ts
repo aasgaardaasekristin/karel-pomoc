@@ -330,9 +330,37 @@ ${formatAnalysisTeam(analysis)}`;
     }
 
     // ═══ GENERATE PERSONALIZED EMAILS VIA AI ═══
+    // ═══ LOAD did_tasks (pending) FOR EMAIL ═══
+    let pendingDidTasks: any[] = [];
+    try {
+      const { data: dtData } = await (sb as any).from("did_tasks")
+        .select("*")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true });
+      pendingDidTasks = dtData || [];
+    } catch (e) { console.warn("[daily-email] did_tasks load error:", e); }
+
+    const isMonday = new Date().getDay() === 1;
+
     const generateEmail = async (recipient: "hanka" | "kata"): Promise<string> => {
       const isHanka = recipient === "hanka";
       const profile = isHanka ? hankaProfile : kataProfile;
+
+      // Filter did_tasks for this therapist
+      const myDidTasks = pendingDidTasks.filter((t: any) => t.assigned_to === recipient || t.assigned_to === "both");
+      const overdueTasks = myDidTasks.filter((t: any) => t.due_date && new Date(t.due_date) < new Date());
+      const followUpTasks = myDidTasks.filter((t: any) => t.follow_up_needed);
+
+      // Build did_tasks block for email
+      let didTasksBlock = "";
+      if (myDidTasks.length > 0) {
+        didTasksBlock = `\n═══ KAREL AUTOMATICKÉ ÚKOLY (z chatu) ═══\n`;
+        didTasksBlock += myDidTasks.map((t: any) => {
+          const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24));
+          const overdue = t.due_date && new Date(t.due_date) < new Date() ? " ⚠️ ZPOŽDĚNÝ" : "";
+          return `  ▸ [${t.task_type}|${t.priority}${overdue}] ${t.description} (${age}d${t.related_part ? `, část: ${t.related_part}` : ""})`;
+        }).join("\n");
+      }
 
       // CRITICAL RULES injected into EVERY system prompt
       const analysisRules = hasAnalysis ? `
@@ -418,22 +446,56 @@ ${analysisRules}
 - Pokud partsForEmail je prázdný, místo sezení napiš „Dnes žádné sezení s částmi
   není potřeba – zaměřte se na úkoly a koordinaci."
 
+═══ NOVÁ STRUKTURA MAILU (5 SEKCÍ) ═══
+
+Strukturuj denní mail do PŘESNĚ těchto sekcí:
+
+1. 🔴 AKUTNÍ POZORNOST
+   Části vykazující známky distresu, zhoršení nebo krize.
+   U každé uveď: co jsi zachytil, co navrhuješ, jaký konkrétní úkol má terapeutka.
+
+2. 🟡 UDRŽOVACÍ KONTAKT
+   Části které jsou stabilní ale potřebují pravidelný kontakt.
+   U každé: navržená aktivita nebo hra, frekvence, kanál (fyzicky přítomná).
+
+3. ⚪ RADAR — TICHÉ ČÁSTI
+   Části které nekomunikovaly 3+ dny.
+   U každé: jak dlouho mlčí, co byla poslední komunikace, návrh jak oslovit.
+
+4. 📋 TVOJE ÚKOLY NA DNES
+   Konkrétní úkoly s termínem:
+   - Zpětná vazba z včerejších sezení
+   - Doplňující otázky od Karla (z did_tasks)
+   - Navržená sezení na dnes/zítra s plánem a důvodem
+   - Zpožděné úkoly (pokud existují) — ZVÝRAZNI
+
+5. 📊 TÝDENNÍ PULZ (pouze v PONDĚLNÍM mailu)
+   Hodnocení uplynulého týdne — jen pokud je pondělí.
+
+PERSONALIZACE PRO HANKU:
+- Zaměř se na fyzické aktivity, přímá sezení, domácí rituály, senzorické hry
+- Hanka je FYZICKY PŘÍTOMNÁ s klukama v Písku
+
 Formát HTML emailu:
 <h2>Denní briefing – ${dateStr}</h2>
 
-<h3>🔴 TÉMATA DNES (max 2–3):</h3>
+<h3>🔴 AKUTNÍ POZORNOST:</h3>
 Pro každé téma:
 <h4>[Název]</h4>
 <p><strong>Co se stalo:</strong> KDY, KDE, S KÝM – konkrétně.</p>
 <p><strong>Co z toho vyplývá:</strong> riziko / příležitost.</p>
 <p><strong>Doporučení:</strong> konkrétní kroky.</p>
 
-<h3>🎯 NÁVRHY SEZENÍ:</h3>
-Pro každou část z partsForEmail: kdo vede, formát, délka, cíle, otevírací věta.
+<h3>🟡 UDRŽOVACÍ KONTAKT:</h3>
+Stabilní části — navržená aktivita, frekvence.
 
-<h3>📋 OTEVŘENÉ ÚKOLY:</h3>
-▸ Pouze EXISTUJÍCÍ úkoly – neduplikuj!
-▸ U dlouho nesplněných vysvětli, proč jsou dnes důležité.
+<h3>⚪ RADAR — TICHÉ ČÁSTI:</h3>
+Části bez kontaktu 3+ dny — jak oslovit.
+
+<h3>📋 TVOJE ÚKOLY NA DNES:</h3>
+▸ EXISTUJÍCÍ úkoly – neduplikuj!
+▸ Karel-automatické úkoly (z chatu) — zahrň je.
+▸ U zpožděných vysvětli proč jsou důležité.
 
 <h3>📞 KOORDINACE S KÁŤOU:</h3>
 Co je potřeba probrat.
@@ -492,23 +554,50 @@ V mailu pro KÁŤU:
   Pokud Hanka vede: napiš Kátě, čím může sezení podpořit (příprava pomůcek, pozorování, zápis).
 - Pokud partsForEmail prázdný: „Dnes žádné sezení s částmi není potřeba."
 
+═══ NOVÁ STRUKTURA MAILU (5 SEKCÍ) ═══
+
+Strukturuj denní mail do PŘESNĚ těchto sekcí:
+
+1. 🔴 AKUTNÍ POZORNOST
+   Části vykazující známky distresu, zhoršení nebo krize.
+
+2. 🟡 UDRŽOVACÍ KONTAKT
+   Části stabilní ale potřebující kontakt.
+   U každé: navržená aktivita, kanál (vzdáleně – chat, video, nahrávka).
+
+3. ⚪ RADAR — TICHÉ ČÁSTI
+   Části bez kontaktu 3+ dny — jak oslovit VZDÁLENĚ.
+
+4. 📋 TVOJE ÚKOLY NA DNES
+   Karel-automatické úkoly + zpožděné úkoly + koordinace.
+
+5. 📊 TÝDENNÍ PULZ (pouze pondělí)
+
+PERSONALIZACE PRO KÁŤU:
+- Zaměř se na VZDÁLENÉ aktivity (video, chat, nahrávky)
+- Káťa je v Českých Budějovicích, kluci v Písku (~100km)
+- Koordinace se školou Townshend, analytické úkoly
+- Pokud aktivita vyžaduje fyzickou přítomnost, uveď explicitně "při návštěvě" a zda potřebuje Hanku jako prostředníka
+
 Formát HTML emailu:
 <h2>Denní briefing pro Káťu – ${dateStr}</h2>
 
-<h3>🔴 TÉMATA DNES (max 2–3):</h3>
+<h3>🔴 AKUTNÍ POZORNOST:</h3>
 <h4>[Název]</h4>
 <p><strong>Co se stalo:</strong> konkrétně.</p>
 <p><strong>Co z toho vyplývá:</strong> ...</p>
-<p><strong>Doporučení PRO TEBE:</strong> co přesně má Káťa udělat (ne Hanka).</p>
+<p><strong>Doporučení PRO TEBE:</strong> co přesně má Káťa udělat (VZDÁLENĚ).</p>
 
-<h3>🎯 NÁVRHY SEZENÍ:</h3>
-Pro každou část z partsForEmail – u každé rozliš Káťinu vs. Hankinu roli.
-Pokud Káťa vede: technika, pomůcky, otevírací věta.
-Pokud Hanka vede: jak se Káťa může připravit/podpořit.
+<h3>🟡 UDRŽOVACÍ KONTAKT:</h3>
+Stabilní části — vzdálená aktivita, frekvence.
 
-<h3>📋 ÚKOLY PRO KÁŤU:</h3>
+<h3>⚪ RADAR — TICHÉ ČÁSTI:</h3>
+Části bez kontaktu — jak oslovit vzdáleně.
+
+<h3>📋 TVOJE ÚKOLY NA DNES:</h3>
 ▸ Konkrétní, splnitelné – neduplikuj existující!
-▸ Zahrň přípravu pomůcek, materiálů, prostředí.
+▸ Karel-automatické úkoly z chatu.
+▸ Zahrň přípravu pomůcek, materiálů.
 
 <h3>📞 KOORDINACE S HANKOU:</h3>
 Co je potřeba domluvit – kdo co dělá, kdy, kde.
@@ -558,11 +647,28 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
 
       userContent += `═══ DOPLŇUJÍCÍ KONTEXT (syrová data) ═══\n${suppBlock}\n\n`;
 
+      // Include did_tasks auto-extracted from chat
+      if (didTasksBlock) {
+        userContent += didTasksBlock + "\n\n";
+      }
+
+      // Overdue tasks highlight
+      if (overdueTasks.length > 0) {
+        userContent += `⚠️ ZPOŽDĚNÉ ÚKOLY (${overdueTasks.length}):\n`;
+        userContent += overdueTasks.map((t: any) => `  🔴 ${t.description} (měl být hotov: ${new Date(t.due_date).toLocaleDateString("cs-CZ")})`).join("\n");
+        userContent += "\n\n";
+      }
+
       if (weeklySummary) {
         userContent += `═══ POSLEDNÍ TÝDENNÍ ANALÝZA ═══\n${weeklySummary.slice(0, 2000)}\n\n`;
       }
 
       userContent += `═══ MOTIVAČNÍ PROFIL ${isHanka ? "HANKY" : "KÁTI"} ═══\n${formatProfile(profile)}`;
+
+      // Monday: add weekly pulse instruction
+      if (isMonday) {
+        userContent += `\n\n═══ PONDĚLNÍ INSTRUKCE ═══\nDnes je pondělí — PŘIDEJ na konec mailu sekci:\n<h3>📊 TÝDENNÍ PULZ</h3>\n- Které části se minulý týden zlepšily / zhoršily / stagnovaly\n- Co fungovalo / nefungovalo\n- Plán a priority na tento týden`;
+      }
 
       // ═══ AI CALL WITH RETRY ON CONNECTION RESET ═══
       const callAI = async (attempt = 1): Promise<Response> => {
