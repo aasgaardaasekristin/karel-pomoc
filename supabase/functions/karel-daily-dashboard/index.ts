@@ -7,6 +7,10 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/* ================================================================
+   SYSTEM PROMPT
+   ================================================================ */
+
 const DASHBOARD_PROMPT = `Jsi Karel – AI vedoucí terapeutického týmu pro DID systém.
 Tvým úkolem je sestavit DENNÍ DASHBOARD – komplexní briefing o stavu celého systému.
 
@@ -73,7 +77,238 @@ Vrať strukturovaný JSON blok uvnitř markdown:
 }
 \`\`\`
 
-Buď analytický, stručný a přesný. Každé tvrzení musí být podložené daty.`;
+Buď analytický, stručný a přesný. Každé tvrzení musí být podložené daty.
+Pokud nemáš pro nějakou sekci data, napiš to otevřeně – NIKDY nevymýšlej.`;
+
+/* ================================================================
+   DATA COLLECTION (server-side)
+   ================================================================ */
+
+function createSupabaseAdmin() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+}
+
+async function fetchActiveParts24h(supabase: ReturnType<typeof createClient>): Promise<string> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data, error } = await supabase
+      .from("did_threads")
+      .select("part_name, last_activity_at, thread_label, messages, sub_mode")
+      .eq("sub_mode", "cast")
+      .gte("last_activity_at", since)
+      .order("last_activity_at", { ascending: false });
+
+    if (error || !data?.length) return "(žádná aktivita)";
+
+    return data.map((t: any) => {
+      const msgs = Array.isArray(t.messages) ? t.messages : [];
+      const userMsgs = msgs.filter((m: any) => m.role === "user").length;
+      return `- **${t.part_name}** (${t.thread_label || "bez názvu"}): ${userMsgs} zpráv, posl. aktivita ${t.last_activity_at}`;
+    }).join("\n");
+  } catch (e) {
+    console.error("[Dashboard] fetchActiveParts24h error:", e);
+    return "(chyba načítání)";
+  }
+}
+
+async function fetchTasksData(supabase: ReturnType<typeof createClient>): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("did_therapist_tasks")
+      .select("task, assigned_to, status, status_hanka, status_kata, due_date, priority, created_at, completed_at")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error || !data?.length) return "(žádné úkoly)";
+
+    const now = new Date();
+    const completed: string[] = [];
+    const overdue: string[] = [];
+    const newTasks: string[] = [];
+    const active: string[] = [];
+
+    for (const t of data) {
+      const created = new Date(t.created_at);
+      const isNew = (now.getTime() - created.getTime()) < 24 * 60 * 60 * 1000;
+      const isOverdue = t.due_date && new Date(t.due_date) < now && t.status !== "done";
+      const isDone = t.status === "done";
+      const line = `${t.task} [${t.assigned_to}, ${t.priority || "medium"}]`;
+
+      if (isDone && t.completed_at) {
+        const completedAt = new Date(t.completed_at);
+        if ((now.getTime() - completedAt.getTime()) < 24 * 60 * 60 * 1000) {
+          completed.push(line);
+        }
+      } else if (isOverdue) {
+        overdue.push(`${line} (termín: ${t.due_date})`);
+      } else if (isNew) {
+        newTasks.push(line);
+      } else {
+        active.push(line);
+      }
+    }
+
+    const sections: string[] = [];
+    if (completed.length) sections.push(`### Dokončené (24h):\n${completed.map(l => `- ${l}`).join("\n")}`);
+    if (overdue.length) sections.push(`### Po termínu:\n${overdue.map(l => `- ⚠️ ${l}`).join("\n")}`);
+    if (newTasks.length) sections.push(`### Nové:\n${newTasks.map(l => `- ${l}`).join("\n")}`);
+    if (active.length) sections.push(`### Aktivní:\n${active.map(l => `- ${l}`).join("\n")}`);
+
+    return sections.join("\n\n") || "(žádné úkoly)";
+  } catch (e) {
+    console.error("[Dashboard] fetchTasksData error:", e);
+    return "(chyba načítání úkolů)";
+  }
+}
+
+async function fetchMeetingsData(supabase: ReturnType<typeof createClient>): Promise<string> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data, error } = await supabase
+      .from("did_meetings")
+      .select("topic, status, hanka_joined_at, kata_joined_at, outcome_summary, created_at")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false });
+
+    if (error || !data?.length) return "(žádné porady za 24h)";
+
+    return data.map((m: any) => {
+      const hankaStatus = m.hanka_joined_at ? `Hanka: ✅ (${m.hanka_joined_at})` : "Hanka: ❌ nereagovala";
+      const kataStatus = m.kata_joined_at ? `Káťa: ✅ (${m.kata_joined_at})` : "Káťa: ❌ nereagovala";
+      return `- **${m.topic}** [${m.status}]: ${hankaStatus}, ${kataStatus}${m.outcome_summary ? ` → ${m.outcome_summary}` : ""}`;
+    }).join("\n");
+  } catch (e) {
+    console.error("[Dashboard] fetchMeetingsData error:", e);
+    return "(chyba načítání porad)";
+  }
+}
+
+async function fetchOperativePlan(supabase: ReturnType<typeof createClient>): Promise<string> {
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    const { data, error } = await supabase
+      .from("did_daily_session_plans")
+      .select("selected_part, therapist, session_format, urgency_score, status, plan_markdown")
+      .gte("plan_date", today)
+      .order("urgency_score", { ascending: false })
+      .limit(20);
+
+    if (error || !data?.length) return "(žádné plánované sezení)";
+
+    return data.map((p: any) =>
+      `- **${p.selected_part}** [${p.therapist}, urgence: ${p.urgency_score}]: ${p.session_format}, status: ${p.status}`
+    ).join("\n");
+  } catch (e) {
+    console.error("[Dashboard] fetchOperativePlan error:", e);
+    return "(chyba načítání plánu)";
+  }
+}
+
+async function fetchUpdatedCardsInfo(supabase: ReturnType<typeof createClient>): Promise<string> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const { data, error } = await supabase
+      .from("card_update_queue")
+      .select("part_id, section, action, new_content, reason, created_at")
+      .gte("created_at", since)
+      .eq("applied", true)
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    if (error || !data?.length) return "(žádné aktualizace karet)";
+
+    const byPart: Record<string, string[]> = {};
+    for (const d of data) {
+      if (!byPart[d.part_id]) byPart[d.part_id] = [];
+      byPart[d.part_id].push(`Sekce ${d.section}: ${d.action} – ${(d.reason || d.new_content || "").slice(0, 80)}`);
+    }
+
+    return Object.entries(byPart)
+      .map(([part, changes]) => `### ${part}\n${changes.map(c => `- ${c}`).join("\n")}`)
+      .join("\n\n");
+  } catch (e) {
+    console.error("[Dashboard] fetchUpdatedCardsInfo error:", e);
+    return "(chyba načítání aktualizací karet)";
+  }
+}
+
+/* ================================================================
+   DRIVE WRITE
+   ================================================================ */
+
+async function saveDashboardToDrive(supabase: ReturnType<typeof createClient>, markdown: string): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke("karel-did-drive-write", {
+      body: {
+        targetDocument: "00_Aktualni_Dashboard",
+        content: markdown,
+        writeType: "replace",
+      },
+    });
+    if (error) {
+      console.error("[Dashboard] Drive write failed:", error);
+    } else {
+      console.log("[Dashboard] Dashboard uložen na Drive.");
+    }
+  } catch (err) {
+    console.error("[Dashboard] Drive write exception:", err);
+  }
+}
+
+/* ================================================================
+   APP DATA UPDATE
+   ================================================================ */
+
+async function applyAppUpdates(supabase: ReturnType<typeof createClient>, appData: any): Promise<void> {
+  try {
+    if (appData.systemOverview) {
+      const { error } = await supabase
+        .from("did_system_profile")
+        .update({
+          karel_master_analysis: appData.systemOverview,
+          updated_at: new Date().toISOString(),
+        })
+        .not("id", "is", null);
+      if (error) console.warn("[Dashboard] Failed to update system overview:", error);
+    }
+
+    if (appData.todayTasks?.length) {
+      const normalizeAssignee = (raw: string): string => {
+        const lower = (raw || "").toLowerCase();
+        if (lower.includes("both") || lower.includes("tandem")) return "both";
+        if (lower.includes("kata") || lower.includes("káťa")) return "kata";
+        if (lower.includes("karel")) return "karel";
+        return "hanka";
+      };
+
+      const tasksToInsert = appData.todayTasks
+        .filter((t: any) => t.task && t.assignedTo)
+        .map((t: any) => ({
+          task: t.task,
+          assigned_to: normalizeAssignee(t.assignedTo),
+          priority: t.priority || "medium",
+          status: "pending",
+          task_tier: "daily",
+          category: "dashboard",
+        }));
+
+      if (tasksToInsert.length) {
+        const { error } = await supabase.from("did_therapist_tasks").insert(tasksToInsert);
+        if (error) console.warn("[Dashboard] Failed to insert tasks:", error);
+        else console.log(`[Dashboard] Vytvořeno ${tasksToInsert.length} nových úkolů.`);
+      }
+    }
+  } catch (err) {
+    console.error("[Dashboard] App update exception:", err);
+  }
+}
+
+/* ================================================================
+   MAIN HANDLER
+   ================================================================ */
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -81,40 +316,50 @@ serve(async (req) => {
   }
 
   try {
-    const {
-      date,
-      activePartsData,
-      tasksData,
-      meetingsData,
-      operativePlan,
-      updatedCardsInfo,
-    } = await req.json();
+    const { date, trigger } = await req.json();
+    const targetDate = date || new Date().toISOString().slice(0, 10);
+    const triggerSource = trigger || "manual";
+
+    console.log(`[Dashboard] ═══ Spouštím dashboard pro ${targetDate} (trigger: ${triggerSource}) ═══`);
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const userPrompt = `## DATUM: ${date}
+    const supabase = createSupabaseAdmin();
+
+    // 1. COLLECT ALL DATA (parallel)
+    console.log("[Dashboard] Krok 1: Sběr dat server-side...");
+    const [activePartsData, tasksData, meetingsData, operativePlan, updatedCardsInfo] = await Promise.all([
+      fetchActiveParts24h(supabase),
+      fetchTasksData(supabase),
+      fetchMeetingsData(supabase),
+      fetchOperativePlan(supabase),
+      fetchUpdatedCardsInfo(supabase),
+    ]);
+
+    // 2. BUILD PROMPT
+    const userPrompt = `## DATUM: ${targetDate}
 
 ## AKTIVNÍ ČÁSTI (posledních 24h):
-${activePartsData || "(žádná aktivita)"}
+${activePartsData}
 
 ## AKTUALIZOVANÉ KARTY:
-${updatedCardsInfo || "(žádné aktualizace)"}
+${updatedCardsInfo}
 
 ## STAV ÚKOLŮ:
-${tasksData || "(žádné úkoly)"}
+${tasksData}
 
 ## PORADY:
-${meetingsData || "(žádné porady)"}
+${meetingsData}
 
 ## OPERATIVNÍ PLÁN:
-${operativePlan || "(prázdný)"}
+${operativePlan}
 
 Sestav kompletní denní dashboard.`;
 
-    console.log(`[DashboardGenerator] Generating for ${date}, prompt ~${userPrompt.length} chars`);
+    console.log(`[Dashboard] Data sebrána. Prompt ~${userPrompt.length} chars. Volám AI...`);
 
-    // Retry logic (3 attempts)
+    // 3. CALL AI (with retry)
     let aiContent = "";
     let lastError = "";
 
@@ -139,7 +384,7 @@ Sestav kompletní denní dashboard.`;
         if (!aiResponse.ok) {
           const errText = await aiResponse.text();
           lastError = `AI error ${aiResponse.status}: ${errText}`;
-          console.warn(`[DashboardGenerator] Attempt ${attempt}/3: ${lastError}`);
+          console.warn(`[Dashboard] Attempt ${attempt}/3: ${lastError}`);
 
           if (aiResponse.status === 429) {
             return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
@@ -169,27 +414,43 @@ Sestav kompletní denní dashboard.`;
       throw new Error(`All 3 attempts failed: ${lastError}`);
     }
 
-    // Extract JSON block from section 8
+    // 4. EXTRACT APP DATA from section 8
     let appData: any = null;
     const jsonMatch = aiContent.match(/```json\s*([\s\S]*?)```/);
     if (jsonMatch) {
       try {
         appData = JSON.parse(jsonMatch[1].trim());
       } catch {
-        console.warn("[DashboardGenerator] Failed to parse app data JSON from section 8");
+        console.warn("[Dashboard] Failed to parse app data JSON from section 8");
       }
     }
 
-    console.log(`[DashboardGenerator] Dashboard generated: ${aiContent.length} chars, appData: ${appData ? "yes" : "no"}`);
+    console.log(`[Dashboard] AI vygenerováno: ${aiContent.length} chars, appData: ${appData ? "yes" : "no"}`);
+
+    // 5. SAVE TO DRIVE
+    console.log("[Dashboard] Krok 5: Ukládám na Drive...");
+    await saveDashboardToDrive(supabase, aiContent);
+
+    // 6. UPDATE APP DATA
+    if (appData) {
+      console.log("[Dashboard] Krok 6: Aktualizuji aplikaci...");
+      await applyAppUpdates(supabase, appData);
+    }
+
+    console.log(`[Dashboard] ═══ Dashboard pro ${targetDate} dokončen ═══`);
 
     return new Response(JSON.stringify({
-      dashboardMarkdown: aiContent,
-      appData,
+      success: true,
+      date: targetDate,
+      trigger: triggerSource,
+      dashboardLength: aiContent.length,
+      appDataExtracted: !!appData,
+      summary: `Dashboard pro ${targetDate} vygenerován (${aiContent.length} znaků), ${appData?.todayTasks?.length || 0} úkolů vytvořeno.`,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error("[DashboardGenerator] Error:", e);
+    console.error("[Dashboard] Error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
