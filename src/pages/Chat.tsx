@@ -1420,7 +1420,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut") && (
-              <TherapistAvatarBar />
+              <TherapistAvatarBar variant={didSubMode === "mamka" ? "mamka" : didSubMode === "kata" ? "kata" : "all"} />
             )}
             {chatStorageKey && <ThemeQuickButton storageKey={chatStorageKey} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
