@@ -84,6 +84,25 @@ serve(async (req) => {
 2. UPOZORNĚNÍ (alerts): Potenciální rizika, známky dysregulace, části vyžadující pozornost
 3. POZITIVNÍ TRENDY: Co funguje dobře, stabilizační pokroky
 
+═══ KRITICKÁ PRAVIDLA – STRIKTNÍ ODDĚLENÍ ENTIT ═══
+⚠️ Následující osoby NEJSOU DID části a NIKDY je jako takové NEZAŘAZUJ:
+- Hanka (Hanička) – TERAPEUTKA, NE DID část
+- Káťa (Katka) – TERAPEUTKA, NE DID část
+- Karel – AI asistent / vedoucí týmu, NE DID část
+- Locík – PES (domácí zvíře), NE DID část
+- Amálka, Tonička – biologické děti Káti, NE DID části
+- Jiří – Kátin manžel, NE DID část
+
+═══ STAV ČÁSTÍ – AKTIVNÍ vs SPÍCÍ ═══
+- AKTIVNÍ: Část přímo komunikovala (sub_mode="cast") → lze navrhovat práci
+- SPÍCÍ/DORMANTNÍ: Část nekomunikovala přímo → NELZE navrhovat přímou práci, pouze monitoring
+- ZMÍNĚNÁ: O části se mluvilo, ale neprojevila se přímo → pouze záznam zmínky
+
+═══ TÓN A SOUKROMÍ ═══
+- NIKDY nepoužívej intimní oslovení (miláčku, lásko, drahá)
+- NIKDY nezařazuj soukromé emoční stavy terapeutek do výstupů
+- Profesionální, věcný tón
+
 DATA O AKTIVITĚ ČÁSTÍ:
 ${activitySummary}
 
