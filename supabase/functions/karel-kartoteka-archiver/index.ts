@@ -224,44 +224,37 @@ serve(async (req) => {
     const fileName: string = readData.fileName || partName;
     console.log(`[archiver] Card "${fileName}" loaded: ${originalSizeKB} KB`);
 
-    // 2. Parse sections
-    const sections = parseCardIntoSections(fullText);
+    // 2. Parse into original content + update blocks
+    const { originalContent, blocks } = parseCard(fullText);
+    console.log(`[archiver] Parsed: ${originalContent.length} chars original, ${blocks.length} update blocks`);
 
     // 3. Determine what to archive
-    let totalArchivedBlocks = 0;
-    const archivedSectionLetters: string[] = [];
-    const archivePayloadParts: string[] = [];
-    const trimmedSections: Map<string, ParsedSection & { keptBlocks: typeof sections[0]["blocks"] }> = new Map();
-
-    for (const sec of sections) {
-      if (!archiveSections.includes(sec.letter)) continue;
-      if (sec.blocks.length <= keepLastBlocks) continue;
-
-      const toArchive = sec.blocks.slice(0, sec.blocks.length - keepLastBlocks);
-      const toKeep = sec.blocks.slice(sec.blocks.length - keepLastBlocks);
-
-      totalArchivedBlocks += toArchive.length;
-      archivedSectionLetters.push(sec.letter);
-
-      // Build archive text for this section
-      archivePayloadParts.push(`\n── ARCHIV SEKCE ${sec.letter} z karty ${fileName} ──\n`);
-      for (const b of toArchive) {
-        archivePayloadParts.push(b.header + "\n" + b.content);
-      }
-
-      trimmedSections.set(sec.letter, { ...sec, keptBlocks: toKeep });
-    }
-
-    if (totalArchivedBlocks === 0) {
-      console.log(`[archiver] Nothing to archive for "${partName}"`);
+    if (blocks.length <= keepLastBlocks) {
+      console.log(`[archiver] Only ${blocks.length} blocks (keep=${keepLastBlocks}), nothing to archive`);
       return new Response(JSON.stringify({
         success: true, partName, originalSizeKB, newSizeKB: originalSizeKB,
         archivedSections: [], archivedBlockCount: 0, archiveFileName: null, dryRun,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const archivePayload = archivePayloadParts.join("");
-    console.log(`[archiver] Will archive ${totalArchivedBlocks} blocks from sections [${archivedSectionLetters.join(",")}]`);
+    const toArchive = blocks.slice(0, blocks.length - keepLastBlocks);
+    const toKeep = blocks.slice(blocks.length - keepLastBlocks);
+    const totalArchivedBlocks = toArchive.length;
+
+    // Collect unique archived section letters
+    const archivedSectionSet = new Set<string>();
+    for (const b of toArchive) {
+      for (const s of b.sections) {
+        if (archiveSections.includes(s)) archivedSectionSet.add(s);
+      }
+    }
+    const archivedSectionLetters = [...archivedSectionSet].sort();
+
+    // Build archive payload
+    const archivePayload = `\n── ARCHIV z karty ${fileName} (${toArchive.length} bloků) ──\n` +
+      toArchive.map(b => b.fullText).join("");
+
+    console.log(`[archiver] Will archive ${totalArchivedBlocks} blocks, sections [${archivedSectionLetters.join(",")}]`);
 
     if (dryRun) {
       return new Response(JSON.stringify({
@@ -304,7 +297,6 @@ serve(async (req) => {
     let archiveFileName: string;
 
     if (archiveDoc) {
-      // Check size — if > 200KB, create next number
       const archiveSize = await getDocSizeChars(driveToken, archiveDoc.id);
       if (archiveSize > 200000) {
         const match = archiveDoc.name.match(/_ARCHIV_(\d+)/);
@@ -316,7 +308,6 @@ serve(async (req) => {
         archiveFileName = archiveDoc.name;
       }
     } else {
-      // Extract number prefix from card file name if possible
       const numMatch = fileName.match(/^(\d{3})_/);
       const prefix = numMatch ? numMatch[1] + "_" : "";
       archiveFileName = `${prefix}${partNameUpper}_ARCHIV_01`;
@@ -328,21 +319,8 @@ serve(async (req) => {
     console.log(`[archiver] Appending ${archivePayload.length} chars to ${archiveDoc.name}`);
     await appendToDoc(driveToken, archiveDoc.id, archivePayload);
 
-    // 9. Rebuild trimmed card content
-    const rebuiltLines: string[] = [];
-    for (const sec of sections) {
-      const trimmed = trimmedSections.get(sec.letter);
-      if (trimmed) {
-        rebuiltLines.push(rebuildSection(sec, trimmed.keptBlocks));
-      } else {
-        // Untouched section — reconstruct as-is
-        rebuiltLines.push(sec.header + "\n" + sec.preBlockContent);
-        for (const b of sec.blocks) {
-          rebuiltLines.push(b.header + "\n" + b.content);
-        }
-      }
-    }
-    const trimmedContent = rebuiltLines.join("");
+    // 9. Rebuild trimmed card: original content + kept blocks
+    const trimmedContent = originalContent + toKeep.map(b => b.fullText).join("");
     const newSizeKB = Math.round(new TextEncoder().encode(trimmedContent).length / 1024);
     console.log(`[archiver] Trimmed card: ${originalSizeKB} KB → ${newSizeKB} KB`);
 
@@ -352,7 +330,6 @@ serve(async (req) => {
     });
     if (writeErr) {
       console.error(`[archiver] Card rewrite failed (archive already saved): ${JSON.stringify(writeErr)}`);
-      // Archive is already saved — data is not lost
     }
 
     // 11. Log to card_archive_log
