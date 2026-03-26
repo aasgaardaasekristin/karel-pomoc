@@ -131,7 +131,7 @@ function detectHeader(line: string): keyof ParsedParagraphs | null {
   const cleaned = line.replace(/^#+\s*/, "").replace(/[*_]/g, "").trim().toLowerCase();
 
   if (cleaned.includes("aktuální stav")) return "aktualni_stav";
-  if (cleaned.includes("povědomí o systému") || cleaned.includes("role")) return "povedomí_o_systemu_a_role";
+  if (cleaned.includes("povědomí o systému") || cleaned.includes("role")) return "povedomi_o_systemu_a_role";
   if (cleaned.includes("vztahy")) return "vztahy";
   if (cleaned.includes("co ho uklidňuje") || cleaned.includes("co ji uklidňuje") || cleaned.includes("uklidňuje")) return "co_ho_uklidnuje";
   if (cleaned.includes("ochranné mechanismy") || cleaned.includes("obranné mechanismy")) return "ochranne_mechanismy";
