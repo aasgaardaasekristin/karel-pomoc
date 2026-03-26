@@ -77,7 +77,7 @@ const PARAGRAPH_HEADERS = [
 
 interface ParsedParagraphs {
   aktualni_stav: string;
-  povedomí_o_systemu_a_role: string;
+  povedomi_o_systemu_a_role: string;
   vztahy: string;
   co_ho_uklidnuje: string;
   ochranne_mechanismy: string;
@@ -90,7 +90,7 @@ interface ParsedParagraphs {
 function parseSectionA(raw: string): ParsedParagraphs {
   const result: ParsedParagraphs = {
     aktualni_stav: "",
-    povedomí_o_systemu_a_role: "",
+    povedomi_o_systemu_a_role: "",
     vztahy: "",
     co_ho_uklidnuje: "",
     ochranne_mechanismy: "",
@@ -131,7 +131,7 @@ function detectHeader(line: string): keyof ParsedParagraphs | null {
   const cleaned = line.replace(/^#+\s*/, "").replace(/[*_]/g, "").trim().toLowerCase();
 
   if (cleaned.includes("aktuální stav")) return "aktualni_stav";
-  if (cleaned.includes("povědomí o systému") || cleaned.includes("role")) return "povedomí_o_systemu_a_role";
+  if (cleaned.includes("povědomí o systému") || cleaned.includes("role")) return "povedomi_o_systemu_a_role";
   if (cleaned.includes("vztahy")) return "vztahy";
   if (cleaned.includes("co ho uklidňuje") || cleaned.includes("co ji uklidňuje") || cleaned.includes("uklidňuje")) return "co_ho_uklidnuje";
   if (cleaned.includes("ochranné mechanismy") || cleaned.includes("obranné mechanismy")) return "ochranne_mechanismy";
@@ -147,7 +147,7 @@ function reassembleSectionA(p: ParsedParagraphs): string {
   if (p.rest.trim()) sections.push(p.rest.trim());
 
   sections.push(`### Aktuální stav\n${p.aktualni_stav}`);
-  sections.push(`### Povědomí o systému a role\n${p.povedomí_o_systemu_a_role}`);
+  sections.push(`### Povědomí o systému a role\n${p.povedomi_o_systemu_a_role}`);
   sections.push(`### Vztahy\n${p.vztahy}`);
   sections.push(`### Co ho uklidňuje\n${p.co_ho_uklidnuje}`);
   sections.push(`### Ochranné mechanismy\n${p.ochranne_mechanismy}`);
@@ -187,10 +187,10 @@ export async function updateSectionA(
   }
 
   // 2. POVĚDOMÍ O SYSTÉMU A ROLE
-  if (bySubsection.povedomí_o_systemu_a_role?.length) {
-    paragraphs.povedomí_o_systemu_a_role = applyGenericUpdates(
-      paragraphs.povedomí_o_systemu_a_role,
-      bySubsection.povedomí_o_systemu_a_role,
+  if (bySubsection.povedomi_o_systemu_a_role?.length) {
+    paragraphs.povedomi_o_systemu_a_role = applyGenericUpdates(
+      paragraphs.povedomi_o_systemu_a_role,
+      bySubsection.povedomi_o_systemu_a_role,
       date,
     );
   }
