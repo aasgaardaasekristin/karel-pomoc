@@ -147,7 +147,7 @@ function reassembleSectionA(p: ParsedParagraphs): string {
   if (p.rest.trim()) sections.push(p.rest.trim());
 
   sections.push(`### Aktuální stav\n${p.aktualni_stav}`);
-  sections.push(`### Povědomí o systému a role\n${p.povedomí_o_systemu_a_role}`);
+  sections.push(`### Povědomí o systému a role\n${p.povedomi_o_systemu_a_role}`);
   sections.push(`### Vztahy\n${p.vztahy}`);
   sections.push(`### Co ho uklidňuje\n${p.co_ho_uklidnuje}`);
   sections.push(`### Ochranné mechanismy\n${p.ochranne_mechanismy}`);
