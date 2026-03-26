@@ -1,6 +1,4 @@
-import { Users, Smile, ChevronRight, ArrowLeft } from "lucide-react";
-import { KarelButton } from "@/components/ui/KarelButton";
-import ThemeQuickButton from "@/components/ThemeQuickButton";
+import { Users, Smile, ChevronRight } from "lucide-react";
 
 interface Props {
   onSelectTerapeut: () => void;
