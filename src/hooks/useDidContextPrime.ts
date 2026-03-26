@@ -11,14 +11,20 @@ interface DidContextPrimeResult {
   stats: Record<string, any>;
 }
 
+const REPRIME_INTERVAL = 15;
+
 export const useDidContextPrime = () => {
   const [primeCache, setPrimeCache] = useState<string | null>(null);
   const [systemState, setSystemState] = useState<string>("NEZNÁMÝ");
   const [activeParts, setActiveParts] = useState<string[]>([]);
   const [isPriming, setIsPriming] = useState(false);
   const requestIdRef = useRef(0);
+  const messagesSincePrime = useRef(0);
+  const lastPrimeArgs = useRef<{ partName?: string; subMode?: string }>({});
 
   const runPrime = useCallback(async (partName?: string, subMode?: string) => {
+    lastPrimeArgs.current = { partName, subMode };
+    messagesSincePrime.current = 0;
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
 
