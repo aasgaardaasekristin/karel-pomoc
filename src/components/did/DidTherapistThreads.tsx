@@ -53,27 +53,52 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
       </div>
 
       {threads.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-card/30 px-4 py-8 text-center">
-          <MessageCircle className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">Zatím žádné rozhovory</p>
-          <p className="text-xs text-muted-foreground mt-1">Klikni na „Nové téma" pro zahájení rozhovoru s Karlem</p>
+        <div
+          className="rounded-2xl px-4 py-8 text-center"
+          style={{
+            background: "rgba(0, 0, 0, 0.08)",
+            backdropFilter: "blur(10px)",
+            WebkitBackdropFilter: "blur(10px)",
+            border: "1px dashed rgba(255, 255, 255, 0.15)",
+          }}
+        >
+          <MessageCircle className="w-8 h-8 mx-auto mb-2" style={{ color: "rgba(255, 255, 255, 0.35)" }} />
+          <p className="text-sm" style={{ color: "rgba(255, 255, 255, 0.7)" }}>Zatím žádné rozhovory</p>
+          <p className="text-xs mt-1" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Klikni na „Nové téma" pro zahájení rozhovoru s Karlem</p>
         </div>
       ) : (
         <div className="space-y-2">
           {threads.map((thread) => (
             <div
               key={thread.id}
-              className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card/50 hover:bg-card cursor-pointer transition-colors group"
+              className="flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-200 group"
+              style={{
+                background: "rgba(0, 0, 0, 0.1)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(0, 0, 0, 0.18)";
+                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(0, 0, 0, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+              }}
               onClick={() => onSelectThread(thread)}
             >
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <MessageCircle className="w-4 h-4 text-primary" />
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "rgba(255, 255, 255, 0.12)" }}
+              >
+                <MessageCircle className="w-4 h-4" style={{ color: "rgba(255, 255, 255, 0.7)" }} />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-sm text-foreground truncate">
+                <div className="text-sm truncate" style={{ color: "rgba(255, 255, 255, 0.9)" }}>
                   {getPreview(thread)}
                 </div>
-                <div className="flex items-center gap-2 text-[0.625rem] text-muted-foreground mt-0.5">
+                <div className="flex items-center gap-2 text-[0.625rem] mt-0.5" style={{ color: "rgba(255, 255, 255, 0.5)" }}>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {formatTime(thread.lastActivityAt)}
@@ -96,7 +121,6 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
           ))}
         </div>
       )}
-
       <div className="flex justify-center mt-4">
         <Button variant="ghost" size="sm" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-1" />
