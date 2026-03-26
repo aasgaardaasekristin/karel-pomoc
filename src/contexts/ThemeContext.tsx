@@ -417,8 +417,20 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       root.style.setProperty(key, value);
     });
 
-    root.style.setProperty("--font-scale", String(prefs.font_scale));
-    root.style.fontSize = `${14 * prefs.font_scale}px`;
+    // Font scaling — unified validation (symmetric with index.html early script)
+    const rawScale = parseFloat(String(prefs.font_scale));
+    const safeScale = (isNaN(rawScale) || !isFinite(rawScale)) ? 1 : rawScale;
+    const clampedScale = Math.min(2, Math.max(0.75, safeScale));
+
+    if (Math.abs(clampedScale - 1) < 0.001) {
+      root.style.removeProperty('font-size');
+      root.style.removeProperty('--font-scale');
+      localStorage.removeItem('karel-font-scale');
+    } else {
+      root.style.setProperty('--font-scale', String(clampedScale));
+      root.style.fontSize = `calc(16px * ${clampedScale})`;
+      localStorage.setItem('karel-font-scale', String(clampedScale));
+    }
     root.style.setProperty("--radius", RADIUS_MAP[prefs.border_radius] || "0.75rem");
 
     if (prefs.font_color) {

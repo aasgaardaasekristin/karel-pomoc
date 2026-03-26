@@ -17,6 +17,25 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@Lovable" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <script>
+      try {
+        var s = localStorage.getItem('karel-font-scale');
+        if (s) {
+          var v = parseFloat(s);
+          if (!isNaN(v) && isFinite(v)) {
+            var c = Math.min(2, Math.max(0.75, v));
+            if (Math.abs(c - 1) > 0.001) {
+              document.documentElement.style.setProperty('--font-scale', String(c));
+              document.documentElement.style.fontSize = 'calc(16px * ' + c + ')';
+            } else {
+              localStorage.removeItem('karel-font-scale');
+            }
+          } else {
+            localStorage.removeItem('karel-font-scale');
+          }
+        }
+      } catch(e) {}
+    </script>
   </head>
 
   <body>
