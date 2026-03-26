@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Brain, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
+import { Sparkles, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
 import karelAvatar from '@/assets/karel-avatar.png';
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
@@ -19,10 +19,10 @@ const sections = [
     key: "did",
     title: "DID",
     description: "Kartotéka, rozhovory s částmi, tandem-supervize, přehled systému",
-    icon: Brain,
-    gradient: "from-purple-500/10 to-violet-500/10",
-    iconBg: "bg-purple-100 dark:bg-purple-900/30",
-    iconColor: "text-purple-600 dark:text-purple-400",
+    icon: Sparkles,
+    bg: "#D4C4A8",
+    bgHover: "#C9B896",
+    textColor: "#5D4E37",
     locked: false,
   },
   {
@@ -30,9 +30,9 @@ const sections = [
     title: "Profesní zdroje",
     description: "Karel prohledá internet – odborné články, testy, metody, trendy",
     icon: BookOpen,
-    gradient: "from-emerald-500/10 to-green-500/10",
-    iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
-    iconColor: "text-emerald-600 dark:text-emerald-400",
+    bg: "#E0D5C3",
+    bgHover: "#D5C9B5",
+    textColor: "#5D4E37",
     locked: false,
   },
   {
@@ -40,9 +40,9 @@ const sections = [
     title: "Hana",
     description: "Debrief, supervize, bezpečnost, klinický report",
     icon: Heart,
-    gradient: "from-blue-500/10 to-sky-500/10",
-    iconBg: "bg-blue-100 dark:bg-blue-900/30",
-    iconColor: "text-blue-600 dark:text-blue-400",
+    bg: "#C8A96E",
+    bgHover: "#BB9C61",
+    textColor: "#4A3B28",
     locked: true,
   },
 ] as const;
@@ -231,37 +231,45 @@ const Hub = () => {
             {sections.map((section, index) => {
               const Icon = section.icon;
               return (
-                <KarelCard
+                <div
                   key={section.key}
-                  variant="interactive"
-                  padding="none"
-                  className="animate-fade-in overflow-hidden"
-                  style={{ animationDelay: `${index * 80}ms`, animationFillMode: "both" }}
+                  className="rounded-xl border shadow-sm cursor-pointer transition-all duration-200 animate-fade-in overflow-hidden group"
+                  style={{
+                    animationDelay: `${index * 80}ms`,
+                    animationFillMode: "both",
+                    backgroundColor: section.bg,
+                    borderColor: `${section.bg}cc`,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = section.bgHover; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = section.bg; }}
                   onClick={() => handleSectionClick(section.key)}
                 >
-                  <div className={`flex items-center gap-4 p-5 bg-gradient-to-r ${section.gradient}`}>
-                    <div className={`w-12 h-12 rounded-xl ${section.iconBg} flex items-center justify-center shrink-0`}>
-                      <Icon size={24} className={section.iconColor} />
+                  <div className="flex items-center gap-4 p-5">
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: `${section.textColor}18` }}
+                    >
+                      <Icon size={24} style={{ color: section.textColor }} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-semibold text-[hsl(var(--text-primary))]">
+                        <span className="text-lg font-semibold" style={{ color: section.textColor }}>
                           {section.title}
                         </span>
                       </div>
-                      <p className="text-sm text-[hsl(var(--text-secondary))] mt-0.5 line-clamp-2">
+                      <p className="text-sm mt-0.5 line-clamp-2" style={{ color: `${section.textColor}cc` }}>
                         {section.description}
                       </p>
                       {section.locked && (
-                        <div className="flex items-center gap-1 mt-1.5 text-xs text-[hsl(var(--text-tertiary))]">
+                        <div className="flex items-center gap-1 mt-1.5 text-xs" style={{ color: `${section.textColor}99` }}>
                           <Lock size={10} />
                           Vyžaduje PIN
                         </div>
                       )}
                     </div>
-                    <ChevronRight size={18} className="text-[hsl(var(--text-disabled))] shrink-0" />
+                    <ChevronRight size={18} style={{ color: `${section.textColor}66` }} className="shrink-0" />
                   </div>
-                </KarelCard>
+                </div>
               );
             })}
           </div>

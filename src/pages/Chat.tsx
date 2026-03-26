@@ -42,6 +42,7 @@ import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming"
 import { useTheme } from "@/contexts/ThemeContext";
 import { useManualUpdate } from "@/hooks/useManualUpdate";
 import DidContentRouter from "@/components/did/DidContentRouter";
+import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
@@ -1418,6 +1419,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata") && (
+              <TherapistAvatarBar />
+            )}
             {chatStorageKey && <ThemeQuickButton storageKey={chatStorageKey} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
