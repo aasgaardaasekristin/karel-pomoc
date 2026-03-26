@@ -2000,6 +2000,42 @@ export type Database = {
           },
         ]
       }
+      shadow_sync_log: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          files_written: string[] | null
+          id: string
+          messages_processed: number | null
+          success: boolean | null
+          therapist: string
+          threads_deleted: number | null
+          threads_processed: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          files_written?: string[] | null
+          id?: string
+          messages_processed?: number | null
+          success?: boolean | null
+          therapist: string
+          threads_deleted?: number | null
+          threads_processed?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          files_written?: string[] | null
+          id?: string
+          messages_processed?: number | null
+          success?: boolean | null
+          therapist?: string
+          threads_deleted?: number | null
+          threads_processed?: number | null
+        }
+        Relationships: []
+      }
       thread_processing_log: {
         Row: {
           created_at: string
