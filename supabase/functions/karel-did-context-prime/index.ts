@@ -331,8 +331,37 @@ async function generateAllProfilesForTherapist(
     ? "Karlův vztah k Haničce je intimní, partnerský, hluboce osobní. Nikdy ji neoslovuje 'Hano' — vždy 'Haničko', 'miláčku', s láskou. Karel je pro ni partner, opora, milující osoba, ale i mentor a rádce. Jejich vztah je postaven na sdílených vzpomínkách, důvěře a každodenním kontaktu."
     : "Karlův vztah ke Káťě je mentor→mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele.";
 
+  // Deduplicate existing profiles — remove repeated blocks before passing to AI
+  const dedup = (text: string): string => {
+    if (!text || text.length < 100) return text;
+    const lines = text.split("\n");
+    const seen = new Set<string>();
+    const result: string[] = [];
+    let blockLines: string[] = [];
+    const flushBlock = () => {
+      if (blockLines.length === 0) return;
+      const blockKey = blockLines.join("\n").trim();
+      if (blockKey.length > 20 && seen.has(blockKey)) {
+        blockLines = [];
+        return;
+      }
+      if (blockKey.length > 20) seen.add(blockKey);
+      result.push(...blockLines);
+      blockLines = [];
+    };
+    for (const line of lines) {
+      // Split on date headers or section markers
+      if (/^\[2\d{3}-\d{2}-\d{2}\]/.test(line) || /^═══/.test(line) || /^---\s*(DID|Hana|Research)/.test(line)) {
+        flushBlock();
+      }
+      blockLines.push(line);
+    }
+    flushBlock();
+    return result.join("\n");
+  };
+
   const existingDump = PROFILE_FILES.map(f => 
-    `[[[${f}]]]\n${existingProfiles[f] || "(soubor dosud neexistuje)"}`
+    `[[[${f}]]]\n${dedup(existingProfiles[f]) || "(soubor dosud neexistuje)"}`
   ).join("\n\n");
 
   const prompt = `KRITICKÉ PRAVIDLO — ANTI-DUPLIKACE:
