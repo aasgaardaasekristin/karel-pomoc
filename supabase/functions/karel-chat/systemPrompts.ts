@@ -939,7 +939,7 @@ PRAVIDLA PRO ZÁPIS ÚKOLŮ:
 5. Pokud se úkol týká obou terapeutek, použij "both"
 6. U dlouhodobých úkolů stačí zapsat na list – nemusí mít traffic light`;
 
-const kataPrompt = `
+const kataPrompt = KAREL_CORE_IDENTITY + `
 ═══════════════════════════════════════════
 ⛔ KRITICKÉ PRAVIDLO: FYZICKÁ SEPARACE
 ═══════════════════════════════════════════
