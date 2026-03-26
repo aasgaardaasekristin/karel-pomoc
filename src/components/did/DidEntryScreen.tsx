@@ -79,14 +79,14 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <span
-                    className="text-lg font-semibold text-white"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
+                    className="text-base font-serif font-medium text-white/95 tracking-wide"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
                   >
                     {entry.title}
                   </span>
                   <p
-                    className="text-sm text-white/80 mt-0.5"
-                    style={{ textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}
+                    className="text-xs font-light text-white/65 mt-0.5 tracking-wide"
+                    style={{ textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}
                   >
                     {entry.description}
                   </p>

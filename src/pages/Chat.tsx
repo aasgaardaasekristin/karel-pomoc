@@ -1413,7 +1413,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   : "← Hub"}
             </Button>
             <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
+              <h1 className="text-base sm:text-lg font-serif font-medium text-foreground tracking-wide truncate">
                 {hubSection === "did" ? "DID" : hubSection === "research" ? "Profesní zdroje" : "Hana"}
               </h1>
             </div>
