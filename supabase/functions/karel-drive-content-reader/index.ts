@@ -1,34 +1,29 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 async function getAccessToken(): Promise<string> {
-  const keyJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY");
-  if (!keyJson) throw new Error("No service account key");
-  const key = JSON.parse(keyJson);
-  const header = btoa(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const now = Math.floor(Date.now() / 1000);
-  const claim = btoa(JSON.stringify({
-    iss: key.client_email, scope: "https://www.googleapis.com/auth/drive",
-    aud: "https://oauth2.googleapis.com/token", iat: now, exp: now + 3600,
-  }));
-  const enc = new TextEncoder();
-  const importedKey = await crypto.subtle.importKey(
-    "pkcs8",
-    (() => { const b = atob(key.private_key.replace(/-----[^-]+-----/g, "").replace(/\s/g, "")); const a = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i); return a; })(),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", importedKey, enc.encode(`${header}.${claim}`)));
-  const jwt = `${header}.${claim}.${btoa(String.fromCharCode(...sig)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
-  const r = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
-  });
-  const d = await r.json();
-  return d.access_token;
+  // Try user refresh token first (same as other Drive functions)
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+  
+  if (clientId && clientSecret && refreshToken) {
+    const r = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        refresh_token: refreshToken,
+        grant_type: "refresh_token",
+      }),
+    });
+    const d = await r.json();
+    if (d.access_token) return d.access_token;
+  }
+  throw new Error("No valid auth method");
 }
 
 async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
@@ -67,8 +62,21 @@ async function readDoc(token: string, name: string, folderId: string): Promise<s
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { folders, files: requestedFiles } = await req.json();
+    const body = await req.json().catch(() => ({}));
     const token = await getAccessToken();
+    
+    // Debug: list root to find PAMET_KAREL
+    if (body.listRoot) {
+      const q = `mimeType='application/vnd.google-apps.folder' and trashed=false`;
+      const params = new URLSearchParams({ q, fields: "files(id,name)", pageSize: "50", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await r.json();
+      return new Response(JSON.stringify(d.files), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const { folders, files: requestedFiles } = body;
     const pamet = await findFolder(token, "PAMET_KAREL");
     if (!pamet) throw new Error("PAMET_KAREL not found");
     const did = await findFolder(token, "DID", pamet);
@@ -77,7 +85,7 @@ Deno.serve(async (req) => {
     const files = requestedFiles || ["SITUACNI_ANALYZA.txt", "VLAKNA_POSLEDNI.txt"];
     const result: Record<string, Record<string, { content: string; length: number }>> = {};
     
-    for (const folder of (folders || ["Hanka", "Kata"])) {
+    for (const folder of (folders || ["HANKA", "KATA"])) {
       const fId = await findFolder(token, folder, did);
       if (!fId) { result[folder] = { error: { content: "folder not found", length: 0 } }; continue; }
       result[folder] = {};
