@@ -138,7 +138,7 @@ interface UpdateBlock {
   sections: string[];    // Section letters found in this block
 }
 
-const BLOCK_SPLIT_RE = /(?=═{3,}\n═{3,}\s*AKTUALIZACE\s*\[)/;
+const BLOCK_SPLIT_RE = /(?=═{3,}\r?\n═{3,}\s*AKTUALIZACE\s*\[)/;
 const BLOCK_HEADER_RE = /═{3,}\s*AKTUALIZACE\s*\[([^\]]*)\]\s*═{3,}/;
 const SECTION_IN_BLOCK_RE = /^SEKCE ([A-M]) –/gm;
 
