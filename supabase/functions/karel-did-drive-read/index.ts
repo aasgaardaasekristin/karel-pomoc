@@ -221,7 +221,7 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { documents, listAll, subFolder, allowGlobalSearch, partName } = body;
+    const { documents, listAll, subFolder, allowGlobalSearch, partName, tailLines } = body;
     const token = await getAccessToken();
 
     // Find kartoteka_DID folder
