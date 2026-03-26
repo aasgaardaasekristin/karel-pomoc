@@ -37,7 +37,10 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
         <KarelButton variant="ghost" size="sm" onClick={onBack} icon={<ArrowLeft size={16} />}>
           Hub
         </KarelButton>
-        <ThemeQuickButton />
+        <div className="flex items-center gap-2">
+          <TherapistAvatarBar />
+          <ThemeQuickButton />
+        </div>
       </div>
 
       {/* Title */}
