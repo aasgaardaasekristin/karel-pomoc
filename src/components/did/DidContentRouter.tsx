@@ -291,8 +291,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             >
               <span className="text-lg">📋</span>
               <div>
-                <div className="font-medium" style={{ color: "rgba(255,255,255,0.95)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>Porady týmu</div>
-                <div className="text-xs" style={{ color: "rgba(255,255,255,0.7)", textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
+                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Porady týmu</div>
+                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
               </div>
             </button>
             {/* Live DID sezení */}
