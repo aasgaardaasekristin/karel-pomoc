@@ -4803,27 +4803,7 @@ ESKALACE: level ${task.escalation_level || 0}`,
       }).eq("id", cycle.id);
     }
 
-    // ═══ PHASE FINAL: Trigger Therapist Profiling Engine ═══
-    try {
-      const primeUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-context-prime`;
-      const primeRes = await fetch(primeUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          "User-Agent": "pg_net/daily-cycle",
-        },
-        body: JSON.stringify({ userId, forceRefresh: true, source: "daily_cycle" }),
-      });
-      if (primeRes.ok) {
-        const primeData = await primeRes.json();
-        console.log(`[daily-cycle] Profiling engine triggered: ${primeData.shadowSync?.filesUpdated || 0} files updated`);
-      } else {
-        console.warn(`[daily-cycle] Profiling engine failed: ${primeRes.status}`);
-      }
-    } catch (profilingErr) {
-      console.warn("[daily-cycle] Profiling engine error (non-fatal):", profilingErr);
-    }
+    // shadowSync moved to standalone CRON — see karel-did-context-prime (runs daily at 5:30 UTC)
 
     // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
     try {
