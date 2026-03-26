@@ -59,39 +59,7 @@ async function getLastCompletedAt(processingType: string): Promise<string | null
   return data?.[0]?.processed_at ?? null;
 }
 
-/**
- * Parsuje surový text karty z Drive do CardContent (sekce A-M).
- */
-function parseCardFromDriveText(rawText: string): CardContent {
-  const card: CardContent = {};
-  const sectionKeys: SectionKey[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
-
-  // Hledáme nadpisy ve formátu "# A –" nebo "# B –" atd.
-  for (let i = 0; i < sectionKeys.length; i++) {
-    const key = sectionKeys[i];
-    const regex = new RegExp(`#\\s*${key}\\s*[–—-]`, "i");
-    const startIdx = rawText.search(regex);
-    if (startIdx === -1) continue;
-
-    // Najdi konec sekce (začátek další sekce nebo konec textu)
-    const afterHeader = rawText.indexOf("\n", startIdx);
-    if (afterHeader === -1) continue;
-
-    let endIdx = rawText.length;
-    for (let j = i + 1; j < sectionKeys.length; j++) {
-      const nextRegex = new RegExp(`#\\s*${sectionKeys[j]}\\s*[–—-]`, "i");
-      const nextIdx = rawText.search(nextRegex);
-      if (nextIdx !== -1 && nextIdx > startIdx) {
-        endIdx = nextIdx;
-        break;
-      }
-    }
-
-    card[key] = rawText.slice(afterHeader + 1, endIdx).trim();
-  }
-
-  return card;
-}
+// parseCardFromDriveText removed — append-only mode doesn't need card parsing
 
 /**
  * Zjistí, které části byly aktivní za posledních 24h.
