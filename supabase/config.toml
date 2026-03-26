@@ -170,3 +170,30 @@ verify_jwt = false
 
 [functions.karel-internal-analysis]
 verify_jwt = false
+
+[functions.karel-thread-analyzer]
+verify_jwt = false
+
+[functions.karel-plan-strategy]
+verify_jwt = false
+
+[functions.karel-contradiction-check]
+verify_jwt = false
+
+[functions.karel-section-b-profile]
+verify_jwt = false
+
+[functions.karel-section-c-rotation]
+verify_jwt = false
+
+[functions.karel-section-d-therapy]
+verify_jwt = false
+
+[functions.karel-section-efg]
+verify_jwt = false
+
+[functions.karel-section-i-psychoanalysis]
+verify_jwt = false
+
+[functions.karel-did-centrum-sync]
+verify_jwt = false
