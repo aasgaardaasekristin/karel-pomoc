@@ -90,7 +90,7 @@ interface ParsedParagraphs {
 function parseSectionA(raw: string): ParsedParagraphs {
   const result: ParsedParagraphs = {
     aktualni_stav: "",
-    povedomí_o_systemu_a_role: "",
+    povedomi_o_systemu_a_role: "",
     vztahy: "",
     co_ho_uklidnuje: "",
     ochranne_mechanismy: "",
