@@ -1360,7 +1360,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         return { label: "← Klienti", action: () => clearActiveSession() };
       }
     }
-    return { label: "← Hub", action: () => navigate("/hub") };
+    return { label: "← Zpět", action: () => navigate("/hub") };
   };
 
   if (!authChecked) {
