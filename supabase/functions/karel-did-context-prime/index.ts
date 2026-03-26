@@ -360,9 +360,11 @@ async function generateAllProfilesForTherapist(
     return result.join("\n");
   };
 
-  const existingDump = PROFILE_FILES.map(f => 
-    `[[[${f}]]]\n${dedup(existingProfiles[f]) || "(soubor dosud neexistuje)"}`
-  ).join("\n\n");
+  const existingDump = PROFILE_FILES.map(f => {
+    // Don't pass existing VLAKNA_POSLEDNI — it will be regenerated from fresh thread data
+    if (f === "VLAKNA_POSLEDNI.txt") return `[[[${f}]]]\n(bude regenerováno z nových konverzací)`;
+    return `[[[${f}]]]\n${dedup(existingProfiles[f]) || "(soubor dosud neexistuje)"}`;
+  }).join("\n\n");
 
   const prompt = `KRITICKÉ PRAVIDLO — ANTI-DUPLIKACE:
 - Každou informaci zapiš POUZE JEDNOU do toho souboru, kam logicky patří
