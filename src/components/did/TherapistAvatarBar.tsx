@@ -18,13 +18,14 @@ const allAvatars: Record<string, AvatarDef> = {
 };
 
 const presets: Record<string, string[]> = {
+  meeting: ["kata", "karel", "hanicka"],
   all: ["karel", "hanicka", "kata"],
   mamka: ["karel", "hanicka"],
   kata: ["karel", "kata"],
 };
 
 interface Props {
-  variant?: "all" | "mamka" | "kata";
+  variant?: "all" | "mamka" | "kata" | "meeting";
 }
 
 const TherapistAvatarBar = ({ variant = "all" }: Props) => {
