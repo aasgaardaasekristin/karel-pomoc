@@ -570,6 +570,9 @@ Sestav UDRŽOVACÍ / STABILIZAČNÍ plán sezení (60 min). Zaměř se na:
 - Monitoring a prevenci
 
 NIKDY nepoužívej dechová cvičení. Klientka má epilepsii.
+NIKDY nenavrhuj sezení s Locíkem (je to pes), Káťou (je terapeutka) ani s jinými entitami které NEJSOU DID části.
+ŽÁDNÉ intimní oslovení ("miláčku", "lásko") – používej "Hani"/"Haničko" a "Káťo".
+Návrh sezení MUSÍ obsahovat: konkrétní techniku, 2-3 cíle, otevírací větu, co dělat při neresponzivitě.
 
 ${sessionLeadInstruction}
 
