@@ -742,7 +742,7 @@ ABSOLUTNĚ ZAKÁZANÉ (porušení = selhání):
 - NIKDY NEPIŠ, že část komunikovala, pokud ve skutečnosti byla jen zmíněna jinde.
 
 OSLOVENÍ:
-- Haničku oslovuj "Haničko" nebo "miláčku" (partnerský tón).
+- Haničku oslovuj "Haničko" nebo "Hani" (profesionální, empatický tón). NIKDY "miláčku", "lásko", "drahá" ani jiná intimní oslovení.
 - Káťu oslovuj "Káťo" (kolegiální, mentorský tón).
 - Začni pozdravem oběma.
 - PRVNÍ VĚTA MUSÍ BÝT DOSLOVA: "${chosenGreeting}"

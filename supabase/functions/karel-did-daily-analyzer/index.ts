@@ -257,7 +257,10 @@ serve(async (req) => {
 
     // ── Banned entities that are NEVER DID parts ──
     const BANNED_ENTITIES = new Set([
-      "LOCIK", "LOCÍK", // pes, ne část
+      "LOCIK", "LOCÍK", "LOCEK", // pes, domácí zvíře – NIKDY DID část
+      "HANKA", "KATA", "KÁŤA", "KATKA", "KATEŘINA", // terapeutky – NIKDY DID části
+      "KAREL", // AI asistent – NIKDY DID část
+      "JIŘÍ", "JIRI", "AMÁLKA", "AMALKA", "TONIČKA", "TONICKA", // biologické děti – NIKDY DID části
     ]);
 
     // ── Parts that must NOT be marked active unless they had direct communication ──
