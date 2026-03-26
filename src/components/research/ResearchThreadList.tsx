@@ -42,7 +42,7 @@ const ResearchThreadList = ({ threads, onSelect, onDelete, onNew, loading }: Pro
         <KarelEmptyState
           icon={<Search size={40} />}
           title="Žádné rešerše"
-          description="Klikni na „Nové téma" a začni rešerši."
+          description={'Klikni na „Nové téma" a začni rešerši.'}
         />
       ) : (
         <div className="space-y-2">

@@ -264,6 +264,25 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
     setLocalModeState(key);
   }, []);
 
+  const SECTION_MAP: Record<string, string> = {
+    did: "did", did_entry: "did", did_mamka: "did", did_kata: "did", did_kids: "did",
+    hana: "hana",
+    research: "research",
+    report: "report",
+    calm: "calm", zklidneni: "calm",
+    pomoc: "pomoc",
+  };
+
+  const setSection = useCallback((section: string | null) => {
+    const root = document.documentElement;
+    if (section) {
+      const mapped = SECTION_MAP[section] || section;
+      root.setAttribute("data-section", mapped);
+    } else {
+      root.removeAttribute("data-section");
+    }
+  }, []);
+
   const loadPrefsForContext = useCallback(async (contextKey: string) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
