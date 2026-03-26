@@ -187,10 +187,10 @@ export async function updateSectionA(
   }
 
   // 2. POVĚDOMÍ O SYSTÉMU A ROLE
-  if (bySubsection.povedomí_o_systemu_a_role?.length) {
-    paragraphs.povedomí_o_systemu_a_role = applyGenericUpdates(
-      paragraphs.povedomí_o_systemu_a_role,
-      bySubsection.povedomí_o_systemu_a_role,
+  if (bySubsection.povedomi_o_systemu_a_role?.length) {
+    paragraphs.povedomi_o_systemu_a_role = applyGenericUpdates(
+      paragraphs.povedomi_o_systemu_a_role,
+      bySubsection.povedomi_o_systemu_a_role,
       date,
     );
   }
