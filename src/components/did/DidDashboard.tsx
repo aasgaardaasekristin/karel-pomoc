@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, ListChecks, Upload } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Users, Video } from "lucide-react";
+import { KarelCard } from "@/components/ui/KarelCard";
+import { KarelButton } from "@/components/ui/KarelButton";
+import { KarelBadge } from "@/components/ui/KarelBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -42,6 +44,12 @@ interface Props {
   onRefreshMemory?: () => void;
   isRefreshingMemory?: boolean;
 }
+
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+  <h3 className="text-xs font-semibold uppercase tracking-wider text-[hsl(var(--text-tertiary))] mb-3">
+    {children}
+  </h3>
+);
 
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const [parts, setParts] = useState<PartActivity[]>([]);
@@ -87,7 +95,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
             lastActivityAt: thread.last_activity_at,
             messageCount: Array.isArray(thread.messages) ? thread.messages.length : 0,
           });
-
           partRows.push({ name: thread.part_name, lastSeen, status });
         }
       }
@@ -187,21 +194,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     setIsCleaningTasks(true);
     try {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      console.log("sevenDaysAgo:", sevenDaysAgo);
-
-      const { data: allTasks } = await supabase
-        .from("did_therapist_tasks")
-        .select("id, status, created_at")
-        .limit(5);
-      console.log("Sample tasks:", JSON.stringify(allTasks));
-
       const { data, error } = await supabase
         .from("did_therapist_tasks")
         .update({ status: "archived" } as any)
         .in("status", ["not_started", "pending"] as any)
         .lt("created_at", sevenDaysAgo)
         .select("id");
-      console.log("Cleanup result:", { data, error });
       if (error) throw error;
       const count = data?.length || 0;
       toast.success(`Archivováno ${count} starých úkolů`);
@@ -217,137 +215,171 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const warningParts = useMemo(() => parts.filter((part) => part.status === "warning"), [parts]);
 
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4" data-no-swipe-back="true">
-      <div className="mb-4 rounded-[calc(var(--radius)+0.5rem)] border border-border/70 bg-card/36 p-3 shadow-[0_10px_30px_hsl(var(--primary)/0.08)] backdrop-blur-md sm:p-4">
-        {/* Správa button at top */}
-        <div className="flex justify-end mb-3">
-          <DidSprava
-            onBootstrap={runDidBootstrap}
-            isBootstrapping={isBootstrapping}
-            onHealthAudit={runHealthAudit}
-            isAuditing={isAuditing}
-            onReformat={runReformat}
-            isReformatting={isReformatting}
-            onManualUpdate={onManualUpdate}
-            isUpdating={isUpdating}
-            onCentrumSync={runCentrumSync}
-            isCentrumSyncing={isCentrumSyncing}
-            onCleanupTasks={runCleanupTasks}
-            isCleaningTasks={isCleaningTasks}
-            onRefreshMemory={onRefreshMemory}
-            isRefreshingMemory={isRefreshingMemory}
-            refreshTrigger={refreshTrigger}
-            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-          />
-        </div>
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-6" data-no-swipe-back="true">
+      {/* Správa */}
+      <div className="flex justify-end">
+        <DidSprava
+          onBootstrap={runDidBootstrap}
+          isBootstrapping={isBootstrapping}
+          onHealthAudit={runHealthAudit}
+          isAuditing={isAuditing}
+          onReformat={runReformat}
+          isReformatting={isReformatting}
+          onManualUpdate={onManualUpdate}
+          isUpdating={isUpdating}
+          onCentrumSync={runCentrumSync}
+          isCentrumSyncing={isCentrumSyncing}
+          onCleanupTasks={runCleanupTasks}
+          isCleaningTasks={isCleaningTasks}
+          onRefreshMemory={onRefreshMemory}
+          isRefreshingMemory={isRefreshingMemory}
+          refreshTrigger={refreshTrigger}
+          onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
+        />
+      </div>
 
-        <ErrorBoundary fallbackTitle="Přehled systému selhal">
+      {/* System Overview */}
+      <ErrorBoundary fallbackTitle="Přehled systému selhal">
+        <KarelCard variant="default" padding="md" className="border-l-4 border-l-[hsl(var(--accent-primary))]">
           <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger((prev) => prev + 1)} />
-        </ErrorBoundary>
+        </KarelCard>
+      </ErrorBoundary>
 
-        <ErrorBoundary fallbackTitle="Denní plán selhal">
-          <DidDailySessionPlan refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
+      {/* Daily Session Plan */}
+      <ErrorBoundary fallbackTitle="Denní plán selhal">
+        <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
 
-        <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+      {/* Tasks */}
+      <section>
+        <SectionLabel>Úkoly pro terapeutky</SectionLabel>
+        <KarelCard variant="default" padding="md">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
-              <ListChecks className="w-3.5 h-3.5 text-primary" />
-              Úkoly pro terapeutky
-            </h4>
+            <div className="flex items-center gap-2">
+              <ListChecks size={14} className="text-[hsl(var(--accent-primary))]" />
+              <span className="text-sm font-medium text-[hsl(var(--text-primary))]">Task Board</span>
+            </div>
             {pendingWriteCount > 0 && (
-              <Badge variant="secondary" className="text-[8px] h-4 px-1.5 flex items-center gap-1">
-                <Upload className="w-2.5 h-2.5" />
-                {pendingWriteCount} čeká na Drive
-              </Badge>
+              <KarelBadge variant="warning" size="sm" dot>
+                <Upload size={10} /> {pendingWriteCount} čeká na Drive
+              </KarelBadge>
             )}
           </div>
           <ErrorBoundary fallbackTitle="Task board selhal">
             <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
           </ErrorBoundary>
+        </KarelCard>
+      </section>
+
+      {/* Agreements */}
+      <ErrorBoundary fallbackTitle="Dohody selhaly">
+        <KarelCard variant="default" padding="md">
+          <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
+        </KarelCard>
+      </ErrorBoundary>
+
+      {/* Monthly */}
+      <ErrorBoundary fallbackTitle="Měsíční panel selhal">
+        <KarelCard variant="default" padding="md">
+          <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+        </KarelCard>
+      </ErrorBoundary>
+
+      {/* Pulse Check */}
+      <ErrorBoundary fallbackTitle="Pulse check selhal">
+        <DidPulseCheck refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
+
+      {/* Coordination Alerts */}
+      <ErrorBoundary fallbackTitle="Koordinační upozornění selhala">
+        <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
+
+      {/* Supervision Report */}
+      <ErrorBoundary fallbackTitle="Supervizní report selhal">
+        <DidSupervisionReport refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
+
+      {/* Switch History */}
+      <ErrorBoundary fallbackTitle="Switch historie selhala">
+        <DidSwitchHistory refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
+
+      {/* Colleague View */}
+      <ErrorBoundary fallbackTitle="Pohled kolegyně selhal">
+        <DidColleagueView refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
+
+      {/* System Map */}
+      {!loading && parts.length > 0 && (
+        <ErrorBoundary fallbackTitle="Mapa systému selhala">
+          <DidSystemMap
+            parts={parts}
+            activeThreads={activeThreads}
+            onQuickThread={onQuickThread}
+            onDeletePart={async (partName) => {
+              const { error } = await supabase
+                .from("did_threads")
+                .delete()
+                .eq("part_name", partName)
+                .eq("sub_mode", "cast");
+
+              if (error) {
+                toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
+                return;
+              }
+
+              toast.success(`Vlákna pro „${partName}" smazána z mapy`);
+              setParts((prev) => prev.filter((part) => part.name !== partName));
+              setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
+            }}
+          />
+        </ErrorBoundary>
+      )}
+
+      {/* Warning parts */}
+      {warningParts.length > 0 && (
+        <KarelCard variant="outlined" padding="md">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle size={16} className="text-[hsl(var(--accent-primary))]" />
+            <span className="text-sm font-medium text-[hsl(var(--text-primary))]">Upozornění na neaktivní části</span>
+          </div>
+          <p className="text-xs text-[hsl(var(--text-secondary))]">
+            {warningParts.map((part) => part.name).join(", ")} – neaktivní více než 7 dní. Zvažte oslovení.
+          </p>
+        </KarelCard>
+      )}
+
+      {/* Admin tools */}
+      <section>
+        <SectionLabel>Správa</SectionLabel>
+        <div className="flex flex-wrap gap-2">
+          <KarelButton
+            variant="secondary"
+            size="sm"
+            loading={isRefreshingMemory}
+            onClick={onRefreshMemory}
+            icon={<RefreshCw size={14} />}
+          >
+            Osvěž paměť
+          </KarelButton>
+          <KarelButton
+            variant="secondary"
+            size="sm"
+            loading={isUpdating}
+            onClick={onManualUpdate}
+            icon={<Upload size={14} />}
+          >
+            Manuální aktualizace
+          </KarelButton>
         </div>
+      </section>
 
-        <ErrorBoundary fallbackTitle="Dohody selhaly">
-          <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
-            <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger((prev) => prev + 1)} />
-          </div>
-        </ErrorBoundary>
-
-        <ErrorBoundary fallbackTitle="Měsíční panel selhal">
-          <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
-            <DidMonthlyPanel refreshTrigger={refreshTrigger} />
-          </div>
-        </ErrorBoundary>
-
-        <ErrorBoundary fallbackTitle="Pulse check selhal">
-          <div className="mb-4">
-            <DidPulseCheck refreshTrigger={refreshTrigger} />
-          </div>
-        </ErrorBoundary>
-
-        <ErrorBoundary fallbackTitle="Koordinační upozornění selhala">
-          <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
-        <ErrorBoundary fallbackTitle="Supervizní report selhal">
-          <DidSupervisionReport refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
-        <ErrorBoundary fallbackTitle="Switch historie selhala">
-          <DidSwitchHistory refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
-        <ErrorBoundary fallbackTitle="Pohled kolegyně selhal">
-          <div className="mb-4">
-            <DidColleagueView refreshTrigger={refreshTrigger} />
-          </div>
-        </ErrorBoundary>
-
-        {/* DidRegistryOverview and DidKartotekaHealth moved to DidSprava tabs */}
-
-        {!loading && parts.length > 0 && (
-          <ErrorBoundary fallbackTitle="Mapa systému selhala">
-            <DidSystemMap
-              parts={parts}
-              activeThreads={activeThreads}
-              onQuickThread={onQuickThread}
-              onDeletePart={async (partName) => {
-                const { error } = await supabase
-                  .from("did_threads")
-                  .delete()
-                  .eq("part_name", partName)
-                  .eq("sub_mode", "cast");
-
-                if (error) {
-                  toast.error(`Nepodařilo se smazat vlákna pro ${partName}`);
-                  return;
-                }
-
-                toast.success(`Vlákna pro „${partName}" smazána z mapy`);
-                setParts((prev) => prev.filter((part) => part.name !== partName));
-                setActiveThreads((prev) => prev.filter((thread) => thread.partName !== partName));
-              }}
-            />
-          </ErrorBoundary>
-        )}
-
-        {warningParts.length > 0 && (
-          <div className="mt-3 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm">
-            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-foreground">
-              <AlertTriangle className="w-4 h-4 text-primary" />
-              Upozornění na neaktivní části
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {warningParts.map((part) => part.name).join(", ")} – neaktivní více než 7 dní. Zvažte oslovení.
-            </p>
-          </div>
-        )}
-      </div>
-
+      {/* Loading */}
       {loading && (
-        <div className="mt-4 flex items-center justify-center py-6 text-sm text-muted-foreground">
+        <div className="flex items-center justify-center py-8 text-sm text-[hsl(var(--text-tertiary))]">
           <Loader2 className="w-4 h-4 animate-spin mr-2" />
-          Načítám dashboard...
+          Načítám dashboard…
         </div>
       )}
     </div>

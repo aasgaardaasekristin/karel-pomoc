@@ -2,9 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Lock, Users, Heart, LogOut, Leaf, ArrowLeft, KeyRound, Search } from "lucide-react";
+import { Brain, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
+import { KarelCard } from "@/components/ui/KarelCard";
+import { KarelButton } from "@/components/ui/KarelButton";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -12,6 +12,39 @@ import { Loader2 } from "lucide-react";
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 const THEME_STORAGE_KEY = "theme_hub";
+
+const sections = [
+  {
+    key: "did",
+    title: "DID",
+    description: "Kartotéka, rozhovory s částmi, tandem-supervize, přehled systému",
+    icon: Brain,
+    gradient: "from-purple-500/10 to-violet-500/10",
+    iconBg: "bg-purple-100 dark:bg-purple-900/30",
+    iconColor: "text-purple-600 dark:text-purple-400",
+    locked: false,
+  },
+  {
+    key: "research",
+    title: "Profesní zdroje",
+    description: "Karel prohledá internet – odborné články, testy, metody, trendy",
+    icon: BookOpen,
+    gradient: "from-emerald-500/10 to-green-500/10",
+    iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
+    iconColor: "text-emerald-600 dark:text-emerald-400",
+    locked: false,
+  },
+  {
+    key: "hana",
+    title: "Hana",
+    description: "Debrief, supervize, bezpečnost, klinický report",
+    icon: Heart,
+    gradient: "from-blue-500/10 to-sky-500/10",
+    iconBg: "bg-blue-100 dark:bg-blue-900/30",
+    iconColor: "text-blue-600 dark:text-blue-400",
+    locked: true,
+  },
+] as const;
 
 const Hub = () => {
   const navigate = useNavigate();
@@ -21,7 +54,6 @@ const Hub = () => {
   const [pin, setPin] = useState("");
   const [pinError, setPinError] = useState(false);
 
-  // Load theme from localStorage on mount, restore on unmount
   useEffect(() => {
     setLocalMode(THEME_STORAGE_KEY);
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -50,25 +82,20 @@ const Hub = () => {
     navigate("/");
   };
 
-  const handleDidClick = () => {
-    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+  const handleSectionClick = (key: string) => {
+    if (key === "hana") {
+      try {
+        if (sessionStorage.getItem(HANA_PIN_KEY) === "1") {
+          sessionStorage.setItem("karel_hub_section", "hana");
+          navigate("/chat");
+          return;
+        }
+      } catch {}
+      setShowPinEntry(true);
+      return;
+    }
+    try { sessionStorage.setItem("karel_hub_section", key); } catch {}
     navigate("/chat");
-  };
-
-  const handleResearchClick = () => {
-    try { sessionStorage.setItem("karel_hub_section", "research"); } catch {}
-    navigate("/chat");
-  };
-
-  const handleHanaClick = () => {
-    try {
-      if (sessionStorage.getItem(HANA_PIN_KEY) === "1") {
-        try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
-        navigate("/chat");
-        return;
-      }
-    } catch {}
-    setShowPinEntry(true);
   };
 
   const handlePinSubmit = (e: React.FormEvent) => {
@@ -86,165 +113,169 @@ const Hub = () => {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      <div className="min-h-[100dvh] flex items-center justify-center bg-[hsl(var(--surface-secondary))]">
+        <Loader2 className="w-8 h-8 animate-spin text-[hsl(var(--text-tertiary))]" />
       </div>
     );
   }
 
   if (showPinEntry) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="max-w-sm w-full">
-          <div className="flex justify-center mb-6">
-            <Button variant="ghost" size="sm" data-swipe-back="true" onClick={() => { setShowPinEntry(false); setPin(""); setPinError(false); }}>
-              <ArrowLeft className="w-4 h-4 mr-1" />
+      <div className="min-h-[100dvh] flex items-center justify-center bg-[hsl(var(--surface-secondary))] p-4">
+        <div className="max-w-sm w-full animate-fade-in">
+          <div className="flex justify-start mb-8">
+            <KarelButton
+              variant="ghost"
+              size="sm"
+              onClick={() => { setShowPinEntry(false); setPin(""); setPinError(false); }}
+              icon={<ArrowRight className="rotate-180" size={16} />}
+            >
               Zpět
-            </Button>
+            </KarelButton>
           </div>
 
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-7 h-7 text-primary" />
+          <div className="text-center mb-10">
+            <div className="w-16 h-16 rounded-full bg-[hsl(var(--accent-light))] flex items-center justify-center mx-auto mb-5">
+              <Lock className="w-7 h-7 text-[hsl(var(--accent-primary))]" />
             </div>
-            <h2 className="text-lg font-serif font-semibold text-foreground">
-              Režim Hana
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h2 className="text-xl font-semibold text-[hsl(var(--text-primary))]">Režim Hana</h2>
+            <p className="text-sm text-[hsl(var(--text-secondary))] mt-1.5">
               Zadej PIN pro přístup k supervizním nástrojům
             </p>
           </div>
 
           <form onSubmit={handlePinSubmit} className="space-y-4">
-            <Input
+            <div className="flex justify-center gap-3">
+              {[0, 1, 2, 3].map((i) => (
+                <input
+                  key={i}
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={pin[i] || ""}
+                  readOnly
+                  className={`w-14 h-16 rounded-xl border-2 text-center text-2xl font-bold bg-[hsl(var(--surface-primary))] text-[hsl(var(--text-primary))] transition-all duration-200 focus:outline-none ${
+                    pinError
+                      ? "border-destructive animate-shake"
+                      : pin.length === i
+                        ? "border-[hsl(var(--border-focus))] shadow-glow-sm"
+                        : "border-[hsl(var(--border-default))]"
+                  }`}
+                />
+              ))}
+            </div>
+            {/* Hidden real input for keyboard */}
+            <input
               type="password"
               inputMode="numeric"
               pattern="[0-9]*"
-              maxLength={6}
+              maxLength={4}
               value={pin}
-              onChange={(e) => { setPin(e.target.value); setPinError(false); }}
-              placeholder="PIN"
-              className={`text-center text-2xl tracking-[0.5em] h-14 ${pinError ? "border-destructive" : ""}`}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g, "").slice(0, 4);
+                setPin(val);
+                setPinError(false);
+                if (val.length === 4) {
+                  // Auto-submit
+                  if (val === CORRECT_PIN) {
+                    try { sessionStorage.setItem(HANA_PIN_KEY, "1"); } catch {}
+                    try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
+                    navigate("/chat");
+                  } else {
+                    setPinError(true);
+                    setTimeout(() => setPin(""), 300);
+                    toast.error("Nesprávný PIN");
+                  }
+                }
+              }}
               autoFocus
+              className="sr-only"
             />
             {pinError && (
-              <p className="text-xs text-destructive text-center">Nesprávný PIN, zkus to znovu</p>
+              <p className="text-xs text-destructive text-center animate-fade-in">
+                Nesprávný PIN, zkus to znovu
+              </p>
             )}
-            <Button type="submit" className="w-full" disabled={pin.length < 4}>
-              Vstoupit
-            </Button>
           </form>
-
-          <div className="mt-6 text-center">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-muted-foreground"
-              onClick={() => toast.info("Změna PINu bude dostupná později.")}
-            >
-              <KeyRound className="w-3 h-3 mr-1" />
-              Změnit PIN
-            </Button>
-          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2.5 sm:py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground">Karel</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Supervizní partner a tandem-terapeut</p>
-          </div>
+    <div className="min-h-[100dvh] flex flex-col bg-[hsl(var(--surface-secondary))]">
+      {/* Header */}
+      <header className="shrink-0 border-b border-[hsl(var(--border-subtle))]">
+        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+          <div />
           <div className="flex items-center gap-1">
             <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
-            <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2 sm:px-3">
-              <LogOut className="w-4 h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Odejít</span>
-            </Button>
+            <KarelButton variant="ghost" size="icon" onClick={handleLogout} icon={<LogOut size={16} />} aria-label="Odejít" />
           </div>
         </div>
       </header>
 
+      {/* Content */}
       <div className="flex-1 flex items-center justify-center p-4">
-        <div className="max-w-lg w-full space-y-6">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-serif font-semibold text-foreground mb-2">
-              Kam dnes míříš?
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Vyber pracovní prostředí
-            </p>
+        <div className="max-w-md w-full">
+          {/* Logo */}
+          <div className="flex flex-col items-center mb-10 animate-fade-in">
+            <div className="w-16 h-16 rounded-2xl bg-[hsl(var(--accent-light))] flex items-center justify-center text-3xl mb-3">
+              🤖
+            </div>
+            <h1 className="text-3xl font-bold text-[hsl(var(--text-primary))]">Karel</h1>
+            <p className="text-sm text-[hsl(var(--text-secondary))] mt-1">Supervizní partner a tandem-terapeut</p>
           </div>
 
-          <div className="space-y-4">
-            {/* DID Mode - No PIN */}
-            <button
-              onClick={handleDidClick}
-              className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-primary/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-primary group"
-            >
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-                <Users className="w-6 h-6 text-primary" />
-              </div>
-              <div>
-                <div className="font-semibold text-foreground text-lg">DID</div>
-                <div className="text-sm text-muted-foreground mt-0.5">
-                  Kartotéka, rozhovory s částmi, tandem-supervize, přehled systému
-                </div>
-              </div>
-            </button>
-
-            {/* Research Mode - No PIN */}
-            <button
-              onClick={handleResearchClick}
-              className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-accent/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-accent group"
-            >
-              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center shrink-0 group-hover:bg-accent/20 transition-colors">
-                <Search className="w-6 h-6 text-accent" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground text-lg">Profesní zdroje</span>
-                </div>
-                <div className="text-sm text-muted-foreground mt-0.5">
-                  Karel prohledá internet – odborné články, testy, metody, trendy v psychologii
-                </div>
-              </div>
-            </button>
-
-            {/* Hana Mode - Requires PIN */}
-            <button
-              onClick={handleHanaClick}
-              className="w-full flex items-center gap-4 p-6 rounded-xl border-2 border-border bg-card hover:border-pink-500/50 hover:bg-card/80 transition-all text-left border-l-4 border-l-pink-500 group"
-            >
-              <div className="w-12 h-12 rounded-full bg-pink-500/10 flex items-center justify-center shrink-0 group-hover:bg-pink-500/20 transition-colors">
-                <Heart className="w-6 h-6 text-pink-500" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground text-lg">Hana</span>
-                  <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-                </div>
-                <div className="text-sm text-muted-foreground mt-0.5">
-                  Debrief, supervize, bezpečnost, klinický report
-                </div>
-              </div>
-            </button>
+          {/* Section cards */}
+          <div className="space-y-3">
+            {sections.map((section, index) => {
+              const Icon = section.icon;
+              return (
+                <KarelCard
+                  key={section.key}
+                  variant="interactive"
+                  padding="none"
+                  className="animate-fade-in overflow-hidden"
+                  style={{ animationDelay: `${index * 80}ms`, animationFillMode: "both" }}
+                  onClick={() => handleSectionClick(section.key)}
+                >
+                  <div className={`flex items-center gap-4 p-5 bg-gradient-to-r ${section.gradient}`}>
+                    <div className={`w-12 h-12 rounded-xl ${section.iconBg} flex items-center justify-center shrink-0`}>
+                      <Icon size={24} className={section.iconColor} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-semibold text-[hsl(var(--text-primary))]">
+                          {section.title}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[hsl(var(--text-secondary))] mt-0.5 line-clamp-2">
+                        {section.description}
+                      </p>
+                      {section.locked && (
+                        <div className="flex items-center gap-1 mt-1.5 text-xs text-[hsl(var(--text-tertiary))]">
+                          <Lock size={10} />
+                          Vyžaduje PIN
+                        </div>
+                      )}
+                    </div>
+                    <ChevronRight size={18} className="text-[hsl(var(--text-disabled))] shrink-0" />
+                  </div>
+                </KarelCard>
+              );
+            })}
           </div>
 
-          {/* Calm mode link */}
-          <div className="text-center pt-4">
+          {/* Calm link */}
+          <div className="text-center mt-8 animate-fade-in" style={{ animationDelay: "240ms", animationFillMode: "both" }}>
             <a
               href="/zklidneni"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl border border-border bg-card hover:bg-secondary/60 transition-all duration-200 text-sm text-foreground group"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm text-[hsl(var(--text-secondary))] hover:bg-[hsl(var(--surface-tertiary))] transition-colors duration-200"
             >
-              <Leaf className="w-4 h-4 text-primary group-hover:scale-110 transition-transform" />
-              <span>Potřebuju se teď zklidnit</span>
+              <Shield size={16} />
+              Potřebuju se teď zklidnit
             </a>
-            <p className="text-xs text-muted-foreground mt-2">Bez přihlášení · nic se neukládá</p>
           </div>
         </div>
       </div>
