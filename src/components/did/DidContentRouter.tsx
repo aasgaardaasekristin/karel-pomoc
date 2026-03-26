@@ -229,8 +229,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
         </ErrorBoundary>
         <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
           <h3
-            className="text-sm font-medium mb-3 text-center"
-            style={{ color: "rgba(255,255,255,0.85)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
+            className="text-sm font-serif font-normal mb-3 text-center tracking-wide"
+            style={{ color: "rgba(255,255,255,0.75)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}
           >
             Kdo mluví s Karlem?
           </h3>
