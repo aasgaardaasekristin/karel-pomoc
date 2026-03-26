@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Lock, KeyRound } from "lucide-react";
+import { Lock, KeyRound } from "lucide-react";
 import { KarelButton } from "@/components/ui/KarelButton";
 import { toast } from "sonner";
-import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 const CORRECT_PIN = "0126";
 const PIN_LENGTH = 4;

@@ -1,8 +1,7 @@
-import { MessageCircle, Clock, Trash2, Plus, ArrowLeft } from "lucide-react";
+import { MessageCircle, Clock, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DidThread } from "@/hooks/useDidThreads";
 import DidPersonalizedSessionPrep from "./DidPersonalizedSessionPrep";
-import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 interface Props {
   therapistName: string;
