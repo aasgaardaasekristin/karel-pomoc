@@ -87,22 +87,22 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
-    const userPrompt = \`## ČÁST: \${partName || partId || "neznámá"}
+    const userPrompt = `## ČÁST: ${partName || partId || "neznámá"}
 
 ## STÁVAJÍCÍ DOPORUČENÍ:
-\${currentRecommendations || "(žádná doporučení)"}
+${currentRecommendations || "(žádná doporučení)"}
 
 ## VLÁKNA K ANALÝZE:
-\${threads}
+${threads}
 
-Analyzuj doporučení a navrhni aktualizace/nové techniky.\`;
+Analyzuj doporučení a navrhni aktualizace/nové techniky.`;
 
-    console.log(\`[SectionD-Therapy] Analyzing for \${partName || partId}, prompt ~\${userPrompt.length} chars\`);
+    console.log(`[SectionD-Therapy] Analyzing for ${partName || partId}, prompt ~${userPrompt.length} chars`);
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: \`Bearer \${LOVABLE_API_KEY}\`,
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -117,7 +117,7 @@ Analyzuj doporučení a navrhni aktualizace/nové techniky.\`;
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
-      console.error(\`[SectionD-Therapy] AI error \${aiResponse.status}:\`, errText);
+      console.error(`[SectionD-Therapy] AI error ${aiResponse.status}:`, errText);
 
       if (aiResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
@@ -130,15 +130,15 @@ Analyzuj doporučení a navrhni aktualizace/nové techniky.\`;
         });
       }
 
-      throw new Error(\`AI gateway error: \${aiResponse.status}\`);
+      throw new Error(`AI gateway error: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
     const rawContent = aiData.choices?.[0]?.message?.content ?? "{}";
 
     let cleaned = rawContent.trim();
-    if (cleaned.startsWith("\`\`\`")) {
-      cleaned = cleaned.replace(/^\`\`\`(?:json)?\s*/, "").replace(/\`\`\`\s*$/, "").trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*/, "").replace(/```\s*$/, "").trim();
     }
 
     let parsed: any;
@@ -161,7 +161,7 @@ Analyzuj doporučení a navrhni aktualizace/nové techniky.\`;
       t && typeof t === "object" && t.name && t.goal,
     );
 
-    console.log(\`[SectionD-Therapy] \${partName || partId}: \${validTechniques.length} new techniques\`);
+    console.log(`[SectionD-Therapy] ${partName || partId}: ${validTechniques.length} new techniques`);
 
     return new Response(
       JSON.stringify({
