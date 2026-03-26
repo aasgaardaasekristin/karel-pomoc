@@ -446,22 +446,56 @@ ${analysisRules}
 - Pokud partsForEmail je prázdný, místo sezení napiš „Dnes žádné sezení s částmi
   není potřeba – zaměřte se na úkoly a koordinaci."
 
+═══ NOVÁ STRUKTURA MAILU (5 SEKCÍ) ═══
+
+Strukturuj denní mail do PŘESNĚ těchto sekcí:
+
+1. 🔴 AKUTNÍ POZORNOST
+   Části vykazující známky distresu, zhoršení nebo krize.
+   U každé uveď: co jsi zachytil, co navrhuješ, jaký konkrétní úkol má terapeutka.
+
+2. 🟡 UDRŽOVACÍ KONTAKT
+   Části které jsou stabilní ale potřebují pravidelný kontakt.
+   U každé: navržená aktivita nebo hra, frekvence, kanál (fyzicky přítomná).
+
+3. ⚪ RADAR — TICHÉ ČÁSTI
+   Části které nekomunikovaly 3+ dny.
+   U každé: jak dlouho mlčí, co byla poslední komunikace, návrh jak oslovit.
+
+4. 📋 TVOJE ÚKOLY NA DNES
+   Konkrétní úkoly s termínem:
+   - Zpětná vazba z včerejších sezení
+   - Doplňující otázky od Karla (z did_tasks)
+   - Navržená sezení na dnes/zítra s plánem a důvodem
+   - Zpožděné úkoly (pokud existují) — ZVÝRAZNI
+
+5. 📊 TÝDENNÍ PULZ (pouze v PONDĚLNÍM mailu)
+   Hodnocení uplynulého týdne — jen pokud je pondělí.
+
+PERSONALIZACE PRO HANKU:
+- Zaměř se na fyzické aktivity, přímá sezení, domácí rituály, senzorické hry
+- Hanka je FYZICKY PŘÍTOMNÁ s klukama v Písku
+
 Formát HTML emailu:
 <h2>Denní briefing – ${dateStr}</h2>
 
-<h3>🔴 TÉMATA DNES (max 2–3):</h3>
+<h3>🔴 AKUTNÍ POZORNOST:</h3>
 Pro každé téma:
 <h4>[Název]</h4>
 <p><strong>Co se stalo:</strong> KDY, KDE, S KÝM – konkrétně.</p>
 <p><strong>Co z toho vyplývá:</strong> riziko / příležitost.</p>
 <p><strong>Doporučení:</strong> konkrétní kroky.</p>
 
-<h3>🎯 NÁVRHY SEZENÍ:</h3>
-Pro každou část z partsForEmail: kdo vede, formát, délka, cíle, otevírací věta.
+<h3>🟡 UDRŽOVACÍ KONTAKT:</h3>
+Stabilní části — navržená aktivita, frekvence.
 
-<h3>📋 OTEVŘENÉ ÚKOLY:</h3>
-▸ Pouze EXISTUJÍCÍ úkoly – neduplikuj!
-▸ U dlouho nesplněných vysvětli, proč jsou dnes důležité.
+<h3>⚪ RADAR — TICHÉ ČÁSTI:</h3>
+Části bez kontaktu 3+ dny — jak oslovit.
+
+<h3>📋 TVOJE ÚKOLY NA DNES:</h3>
+▸ EXISTUJÍCÍ úkoly – neduplikuj!
+▸ Karel-automatické úkoly (z chatu) — zahrň je.
+▸ U zpožděných vysvětli proč jsou důležité.
 
 <h3>📞 KOORDINACE S KÁŤOU:</h3>
 Co je potřeba probrat.
