@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
-import * as XLSX from "npm:xlsx@0.18.5";
+// XLSX is lazy-imported only when needed (binary .xlsx files)
+// For Google Sheets (registry), we use native CSV parsing to save memory
 
 // ═══════════════════════════════════════════════════════
 // CORE RULE: NEVER create standalone files as substitutes
@@ -214,20 +215,52 @@ function parseRegistryEntries(rows: string[][]): RegistryEntry[] {
   return entries;
 }
 
+// ── Native CSV parser (no XLSX dependency) ──
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let current: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { field += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { current.push(field.trim()); field = ""; }
+      else if (ch === '\n' || (ch === '\r' && text[i + 1] === '\n')) {
+        current.push(field.trim()); field = "";
+        if (current.some(c => c.length > 0)) rows.push(current);
+        current = [];
+        if (ch === '\r') i++;
+      } else { field += ch; }
+    }
+  }
+  current.push(field.trim());
+  if (current.some(c => c.length > 0)) rows.push(current);
+  return rows;
+}
+
 async function readRegistryRows(token: string, file: DriveFile): Promise<string[][]> {
-  let workbook: XLSX.WorkBook;
   if (file.mimeType === DRIVE_SHEET_MIME) {
+    // Google Sheet → export as CSV → parse natively (no XLSX needed)
     const exportRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/export?mimeType=text/csv&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
     if (!exportRes.ok) throw new Error(`Registry export failed (${exportRes.status})`);
-    workbook = XLSX.read(await exportRes.text(), { type: "string" });
+    return parseCSV(await exportRes.text());
   } else {
+    // Binary .xlsx file → lazy-import XLSX
     const mediaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } });
     if (!mediaRes.ok) throw new Error(`Registry download failed (${mediaRes.status})`);
-    workbook = XLSX.read(new Uint8Array(await mediaRes.arrayBuffer()), { type: "array" });
+    let XLSX = await import("npm:xlsx@0.18.5");
+    const workbook = XLSX.read(new Uint8Array(await mediaRes.arrayBuffer()), { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!sheet) { XLSX = null as any; return []; }
+    const rows = (XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][]).map((r: any[]) => r.map((c: any) => `${c ?? ""}`.trim()));
+    XLSX = null as any; // GC hint
+    return rows;
   }
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  if (!sheet) return [];
-  return (XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "" }) as any[][]).map(r => r.map(c => `${c ?? ""}`.trim()));
 }
 
 async function loadRegistryContext(token: string, rootFolderId: string): Promise<RegistryContext> {
