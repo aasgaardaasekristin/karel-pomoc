@@ -586,11 +586,28 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
 
       userContent += `═══ DOPLŇUJÍCÍ KONTEXT (syrová data) ═══\n${suppBlock}\n\n`;
 
+      // Include did_tasks auto-extracted from chat
+      if (didTasksBlock) {
+        userContent += didTasksBlock + "\n\n";
+      }
+
+      // Overdue tasks highlight
+      if (overdueTasks.length > 0) {
+        userContent += `⚠️ ZPOŽDĚNÉ ÚKOLY (${overdueTasks.length}):\n`;
+        userContent += overdueTasks.map((t: any) => `  🔴 ${t.description} (měl být hotov: ${new Date(t.due_date).toLocaleDateString("cs-CZ")})`).join("\n");
+        userContent += "\n\n";
+      }
+
       if (weeklySummary) {
         userContent += `═══ POSLEDNÍ TÝDENNÍ ANALÝZA ═══\n${weeklySummary.slice(0, 2000)}\n\n`;
       }
 
       userContent += `═══ MOTIVAČNÍ PROFIL ${isHanka ? "HANKY" : "KÁTI"} ═══\n${formatProfile(profile)}`;
+
+      // Monday: add weekly pulse instruction
+      if (isMonday) {
+        userContent += `\n\n═══ PONDĚLNÍ INSTRUKCE ═══\nDnes je pondělí — PŘIDEJ na konec mailu sekci:\n<h3>📊 TÝDENNÍ PULZ</h3>\n- Které části se minulý týden zlepšily / zhoršily / stagnovaly\n- Co fungovalo / nefungovalo\n- Plán a priority na tento týden`;
+      }
 
       // ═══ AI CALL WITH RETRY ON CONNECTION RESET ═══
       const callAI = async (attempt = 1): Promise<Response> => {
