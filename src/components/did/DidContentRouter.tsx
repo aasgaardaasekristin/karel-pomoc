@@ -229,8 +229,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
         </ErrorBoundary>
         <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
           <h3
-            className="text-sm font-medium mb-3 text-center"
-            style={{ color: "rgba(255,255,255,0.85)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
+            className="text-sm font-serif font-normal mb-3 text-center tracking-wide"
+            style={{ color: "rgba(255,255,255,0.75)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}
           >
             Kdo mluví s Karlem?
           </h3>
@@ -251,8 +251,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             >
               <span className="text-lg" style={{ filter: "saturate(0.6) brightness(1.2)" }}>✨</span>
               <div>
-                <div className="font-medium" style={{ color: "rgba(255,255,255,0.95)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>Hanička</div>
-                <div className="text-xs" style={{ color: "rgba(255,255,255,0.7)", textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
+                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Hanička</div>
+                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
               </div>
             </button>
             {/* Káťa */}
@@ -271,8 +271,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             >
               <span className="text-lg" style={{ color: "rgba(255,255,255,0.8)" }}>🤍</span>
               <div>
-                <div className="font-medium" style={{ color: "rgba(255,255,255,0.95)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>Káťa</div>
-                <div className="text-xs" style={{ color: "rgba(255,255,255,0.7)", textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
+                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Káťa</div>
+                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
               </div>
             </button>
             {/* Porady */}
@@ -291,8 +291,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             >
               <span className="text-lg">📋</span>
               <div>
-                <div className="font-medium" style={{ color: "rgba(255,255,255,0.95)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>Porady týmu</div>
-                <div className="text-xs" style={{ color: "rgba(255,255,255,0.7)", textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
+                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Porady týmu</div>
+                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
               </div>
             </button>
             {/* Live DID sezení */}
@@ -311,8 +311,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             >
               <span className="text-lg" style={{ color: "#D4C060" }}>✦</span>
               <div>
-                <div className="font-medium" style={{ color: "rgba(255,255,255,0.95)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>Live DID sezení</div>
-                <div className="text-xs" style={{ color: "rgba(255,255,255,0.7)", textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}>Karel radí v reálném čase při práci s částí – audio + chat</div>
+                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Live DID sezení</div>
+                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Karel radí v reálném čase při práci s částí – audio + chat</div>
               </div>
             </button>
           </div>

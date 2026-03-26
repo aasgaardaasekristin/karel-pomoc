@@ -38,8 +38,8 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-base font-semibold" style={{ color: "rgba(255, 255, 255, 0.95)", textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>{therapistName}</h3>
-          <p className="text-xs" style={{ color: "rgba(255, 255, 255, 0.6)" }}>Témata a rozhovory s Karlem</p>
+          <h3 className="text-base font-serif font-medium tracking-wide" style={{ color: "rgba(255, 255, 255, 0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>{therapistName}</h3>
+          <p className="text-xs font-light tracking-wide" style={{ color: "rgba(255, 255, 255, 0.55)" }}>Témata a rozhovory s Karlem</p>
         </div>
         <div className="flex items-center gap-1.5">
           <DidPersonalizedSessionPrep therapistName={therapistName as "Hanička" | "Káťa"} />

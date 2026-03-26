@@ -32,10 +32,10 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
 
       {/* Title */}
       <div className="text-center mb-8 animate-fade-in">
-        <h2 className="text-2xl font-bold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>
+        <h2 className="text-2xl font-serif font-medium text-white/95 tracking-wide" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}>
           DID systém
         </h2>
-        <p className="text-sm text-white/80 mt-1.5" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
+        <p className="text-sm font-light text-white/70 mt-1.5 tracking-wide" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>
           Kdo dnes mluví?
         </p>
       </div>
@@ -79,14 +79,14 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <span
-                    className="text-lg font-semibold text-white"
-                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
+                    className="text-base font-serif font-medium text-white/95 tracking-wide"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}
                   >
                     {entry.title}
                   </span>
                   <p
-                    className="text-sm text-white/80 mt-0.5"
-                    style={{ textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}
+                    className="text-xs font-light text-white/65 mt-0.5 tracking-wide"
+                    style={{ textShadow: "0 1px 2px rgba(0,0,0,0.3)" }}
                   >
                     {entry.description}
                   </p>

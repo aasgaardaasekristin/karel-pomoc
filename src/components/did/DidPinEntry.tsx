@@ -86,8 +86,8 @@ const DidPinEntry = ({ therapistName, onSuccess, onBack }: Props) => {
         <div className="w-16 h-16 rounded-full bg-[hsl(var(--accent-light))] flex items-center justify-center mx-auto mb-5">
           <Lock className="w-7 h-7 text-[hsl(var(--accent-primary))]" />
         </div>
-        <h2 className="text-xl font-semibold text-[hsl(var(--text-primary))]">{therapistName}</h2>
-        <p className="text-sm text-[hsl(var(--text-secondary))] mt-1.5">Zadej osobní PIN pro přístup</p>
+        <h2 className="text-xl font-serif font-medium tracking-wide text-[hsl(var(--text-primary))]">{therapistName}</h2>
+        <p className="text-sm font-light tracking-wide text-[hsl(var(--text-secondary))] mt-1.5">Zadej osobní PIN pro přístup</p>
       </div>
 
       {/* PIN Inputs */}
