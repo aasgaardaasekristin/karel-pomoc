@@ -368,10 +368,11 @@ async function generateAllProfilesForTherapist(
 - Každou informaci zapiš POUZE JEDNOU do toho souboru, kam logicky patří
 - NIKDY neopakuj stejný fakt, větu nebo blok v rámci jednoho souboru
 - Pokud máš málo vstupních dat, napiš STRUČNÝ ale UNIKÁTNÍ obsah — NEDOPLŇUJ opakováním
-- SITUACNI_ANALYZA: každý denní update POUZE JEDNOU, seřazený chronologicky
+- SITUACNI_ANALYZA: každý denní update POUZE JEDNOU, seřazený chronologicky. Pokud ve stávajících profilech vidíš opakující se bloky — IGNORUJ duplikáty, zapiš každý blok POUZE JEDNOU.
 - VLAKNA_POSLEDNI: každou konverzaci POUZE JEDNOU, bez opakování reflexí
 - Pokud pro daný soubor nemáš dostatek nových dat, napiš: "(Nedostatek nových dat pro aktualizaci)"
 - NIKDY negeneruj placeholder text ani opakující se bloky pro vyplnění délky
+- STÁVAJÍCÍ PROFILY mohou obsahovat duplikáty z předchozích běhů — VYČISTI JE, zapiš každou informaci JEDNOU
 
 Vygeneruj KOMPLETNÍ aktualizaci VŠECH 5 profilových souborů pro terapeutku ${name}.
 
