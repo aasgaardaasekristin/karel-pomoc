@@ -316,12 +316,6 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
               </div>
             </button>
           </div>
-          <div className="flex items-center justify-center gap-2 mt-4">
-            <Button variant="ghost" size="sm" onClick={() => setDidFlowState("entry")}>
-              ← Zpět
-            </Button>
-            <ThemeQuickButton storageKey={didStorageKey} />
-          </div>
         </div>
       </ScrollArea>
     );

@@ -1,8 +1,7 @@
-import { MessageCircle, Clock, Trash2, Plus, ArrowLeft } from "lucide-react";
+import { MessageCircle, Clock, Trash2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DidThread } from "@/hooks/useDidThreads";
 import DidPersonalizedSessionPrep from "./DidPersonalizedSessionPrep";
-import ThemeQuickButton from "@/components/ThemeQuickButton";
 
 interface Props {
   therapistName: string;
@@ -43,7 +42,6 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
           <p className="text-xs" style={{ color: "rgba(255, 255, 255, 0.6)" }}>Témata a rozhovory s Karlem</p>
         </div>
         <div className="flex items-center gap-1.5">
-          <ThemeQuickButton />
           <DidPersonalizedSessionPrep therapistName={therapistName as "Hanička" | "Káťa"} />
           <Button
             variant="outline"
