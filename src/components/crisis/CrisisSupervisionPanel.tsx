@@ -131,7 +131,7 @@ const CrisisSupervisionPanel = ({ brief, onMarkRead, onClose }: Props) => {
 
         {/* Footer */}
         <div className="max-w-4xl mx-auto px-4 pb-4">
-          <p className="text-[11px] text-muted-foreground border-t border-border pt-3 mt-2">
+          <p className="text-[0.6875rem] text-muted-foreground border-t border-border pt-3 mt-2">
             Karel nepracuje s klientem. Karel připravuje terapeutku. Žádná identita nebyla předána. Žádné chat logy z Režimu C nebyly přeneseny.
           </p>
         </div>

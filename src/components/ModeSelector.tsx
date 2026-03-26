@@ -76,7 +76,7 @@ const ModeSelector = ({ currentMode, onModeChange, hideDid, hideResearch }: Mode
                   {modeItem.label}
                 </button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-[200px] text-center">
+              <TooltipContent side="bottom" className="max-w-[12.5rem] text-center">
                 <p className="text-xs">{modeItem.tooltip}</p>
               </TooltipContent>
             </Tooltip>

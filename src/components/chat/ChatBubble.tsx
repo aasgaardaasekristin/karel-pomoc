@@ -73,7 +73,7 @@ const ChatBubble = React.memo<ChatBubbleProps>(
           {timestamp && (
             <span
               className={cn(
-                "text-[10px] text-[hsl(var(--text-disabled))] mt-0.5",
+                "text-[0.625rem] text-[hsl(var(--text-disabled))] mt-0.5",
                 isUser ? "text-right mr-1" : "ml-1",
               )}
             >

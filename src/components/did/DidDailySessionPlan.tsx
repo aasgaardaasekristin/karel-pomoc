@@ -410,7 +410,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                   variant="outline"
                   size="sm"
                   onClick={() => generatePlan()}
-                  className="h-7 px-2 text-[10px]"
+                  className="h-7 px-2 text-[0.625rem]"
                 >
                   <Plus className="mr-1 h-3 w-3" /> Nový plán
                 </Button>
@@ -423,7 +423,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-52 p-1.5" align="end">
-                    <p className="text-[10px] text-muted-foreground px-2 py-1 mb-1">
+                    <p className="text-[0.625rem] text-muted-foreground px-2 py-1 mb-1">
                       Vygenerovat plán pro konkrétní část:
                     </p>
                     <div className="max-h-48 overflow-y-auto space-y-0.5 mb-2">
@@ -431,23 +431,23 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                         <button
                           key={p.part_name}
                           onClick={() => handlePartSelected(p.part_name)}
-                          className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent transition-colors"
+                          className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[0.6875rem] hover:bg-accent transition-colors"
                         >
                           <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                             p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
                           }`} />
                           {p.part_name}
-                          <span className="text-[9px] text-muted-foreground ml-auto">
+                          <span className="text-[0.5625rem] text-muted-foreground ml-auto">
                             {p.status === "active" ? "aktivní" : "spící"}
                           </span>
                         </button>
                       ))}
                       {registryParts.length === 0 && (
-                        <p className="text-[10px] text-muted-foreground px-2 py-1">Žádné části v registru</p>
+                        <p className="text-[0.625rem] text-muted-foreground px-2 py-1">Žádné části v registru</p>
                       )}
                     </div>
                     <div className="border-t border-border/60 pt-2 px-1">
-                      <p className="text-[9px] text-muted-foreground mb-1 flex items-center gap-1">
+                      <p className="text-[0.5625rem] text-muted-foreground mb-1 flex items-center gap-1">
                         <PenLine className="h-2.5 w-2.5" /> Nebo napiš jméno:
                       </p>
                       <form
@@ -470,7 +470,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                           type="submit"
                           variant="secondary"
                           size="sm"
-                          className="h-7 px-2 text-[10px]"
+                          className="h-7 px-2 text-[0.625rem]"
                           disabled={!customPartName.trim()}
                         >
                           <Zap className="h-3 w-3" />
@@ -499,7 +499,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 return (
                   <div
                     key={step.key}
-                    className={`flex items-center gap-2 text-[10px] transition-all duration-300 ${
+                    className={`flex items-center gap-2 text-[0.625rem] transition-all duration-300 ${
                       isDone
                         ? "text-primary/70"
                         : isCurrent
@@ -523,7 +523,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         )}
 
         {plans.length === 0 && !generating && (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[0.6875rem] text-muted-foreground">
             Automatický plán se generuje v 6:00. Můžeš ho vygenerovat i ručně.
           </p>
         )}
@@ -549,7 +549,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         {/* ═══ ARCHIVED PLANS (done/skipped) ═══ */}
         {archivedPlans.length > 0 && (
           <div className="mt-3 space-y-1.5">
-            <p className="text-[9px] text-muted-foreground font-medium uppercase tracking-wider">Archiv</p>
+            <p className="text-[0.5625rem] text-muted-foreground font-medium uppercase tracking-wider">Archiv</p>
             {archivedPlans.map((plan) => (
               <PlanCard
                 key={plan.id}
@@ -612,9 +612,9 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                 value={prefDetail}
                 onChange={(e) => setPrefDetail(e.target.value)}
                 placeholder={`Např.: Dnes ráno ${prefSelectedPart} plakal/a ze spaní…`}
-                className="min-h-[120px] text-sm resize-none"
+                className="min-h-[7.5rem] text-sm resize-none"
               />
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[0.625rem] text-muted-foreground">
                 Karel tyto informace zakomponuje jako prioritní vstup do plánu sezení.
               </p>
               <div className="flex gap-2 pt-1">
@@ -681,7 +681,7 @@ const PlanCard = ({
         : "border-border/60 bg-background/40"
     }`}>
       <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
-        <Badge variant="secondary" className="text-[11px] h-5 px-2 font-semibold">
+        <Badge variant="secondary" className="text-[0.6875rem] h-5 px-2 font-semibold">
           {plan.selected_part}
         </Badge>
         <span className={`h-2 w-2 rounded-full shrink-0 ${
@@ -702,7 +702,7 @@ const PlanCard = ({
 
         {/* Overdue badge */}
         {isOverdue && overdueDays >= 2 && (
-          <Badge className="text-[10px] h-5 px-1.5 bg-destructive/20 text-destructive border border-destructive/30">
+          <Badge className="text-[0.625rem] h-5 px-1.5 bg-destructive/20 text-destructive border border-destructive/30">
             🔴 Čeká {overdueDays} {overdueDays >= 5 ? "dní" : overdueDays >= 2 ? "dny" : "den"}
           </Badge>
         )}
@@ -714,12 +714,12 @@ const PlanCard = ({
           </Badge>
         )}
         {plan.status === "in_progress" && (
-          <Badge className="text-[10px] h-5 px-1.5 bg-primary/20 text-primary border border-primary/30">
+          <Badge className="text-[0.625rem] h-5 px-1.5 bg-primary/20 text-primary border border-primary/30">
             <Play className="mr-0.5 h-2.5 w-2.5" /> Probíhá
           </Badge>
         )}
         {plan.status === "done" && (
-          <Badge className="text-[10px] h-5 px-1.5 bg-green-500/20 text-green-700 border border-green-500/30">
+          <Badge className="text-[0.625rem] h-5 px-1.5 bg-green-500/20 text-green-700 border border-green-500/30">
             <CheckCircle2 className="mr-0.5 h-2.5 w-2.5" /> Splněno
           </Badge>
         )}
@@ -730,7 +730,7 @@ const PlanCard = ({
         )}
 
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-6 px-1.5 text-[10px]">
+          <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-6 px-1.5 text-[0.625rem]">
             {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>
         </div>
@@ -759,49 +759,49 @@ const PlanCard = ({
           </>
         )}
         {plan.status === "done" && (
-          <Button variant="ghost" size="sm" onClick={onRevert} className="h-6 px-2 text-[10px] text-muted-foreground">
+          <Button variant="ghost" size="sm" onClick={onRevert} className="h-6 px-2 text-[0.625rem] text-muted-foreground">
             ↩ Vrátit
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[10px] text-muted-foreground">
+        <Button variant="ghost" size="sm" onClick={onRegenerate} className="h-6 px-2 text-[0.625rem] text-muted-foreground">
           <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Přegenerovat
         </Button>
-        <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[10px] text-destructive/70 hover:text-destructive">
+        <Button variant="ghost" size="sm" onClick={onDelete} className="h-6 px-2 text-[0.625rem] text-destructive/70 hover:text-destructive">
           <Trash2 className="mr-0.5 h-2.5 w-2.5" /> Smazat
         </Button>
       </div>
 
       {/* ═══ EXPANDED CONTENT ═══ */}
       {isExpanded && (
-        <div className="mt-2 space-y-3 max-h-[500px] overflow-y-auto">
+        <div className="mt-2 space-y-3 max-h-[31.25rem] overflow-y-auto">
           <div className="rounded-md border border-border/60 bg-background/40 p-3 session-plan-content">
             <RichMarkdown compact>{plan.plan_markdown}</RichMarkdown>
           </div>
 
           {prevSession && (
             <div className="rounded-md border border-border/60 bg-background/40 p-3 space-y-2.5">
-              <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+              <div className="flex items-center gap-1.5 text-[0.625rem] font-medium text-muted-foreground">
                 <FileText className="w-3 h-3 text-primary" />
                 Poslední sezení — {prevSession.therapist}, {prevSession.session_date}
               </div>
 
               {prevSession.handoff_note && prevSession.handoff_note.trim() && (
                 <div className="rounded-md bg-primary/5 border border-primary/15 p-2.5">
-                  <span className="text-[9px] font-medium text-primary flex items-center gap-1 mb-1">
+                  <span className="text-[0.5625rem] font-medium text-primary flex items-center gap-1 mb-1">
                     <MessageSquare className="w-2.5 h-2.5" />
                     Předání pro kolegyni
                   </span>
-                  <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
+                  <p className="text-[0.625rem] leading-4 text-foreground whitespace-pre-wrap">{prevSession.handoff_note}</p>
                 </div>
               )}
 
               {prevSession.ai_analysis && prevSession.ai_analysis.trim() && (
                 <div>
-                  <span className="text-[9px] font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                  <span className="text-[0.5625rem] font-medium text-muted-foreground flex items-center gap-1 mb-1">
                     <Brain className="w-2.5 h-2.5" />
                     AI analýza sezení
                   </span>
-                  <div className="text-[10px] leading-4 text-muted-foreground">
+                  <div className="text-[0.625rem] leading-4 text-muted-foreground">
                     <RichMarkdown compact>{prevSession.ai_analysis}</RichMarkdown>
                   </div>
                 </div>
@@ -815,17 +815,17 @@ const PlanCard = ({
                 if (!refText) return null;
                 return (
                   <div className="rounded-md bg-amber-500/5 border border-amber-500/15 p-2.5">
-                    <span className="text-[9px] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1">
+                    <span className="text-[0.5625rem] font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1">
                       <PenLine className="w-2.5 h-2.5" />
                       Reflexe terapeutky
                     </span>
-                    <p className="text-[10px] leading-4 text-foreground whitespace-pre-wrap">{refText}</p>
+                    <p className="text-[0.625rem] leading-4 text-foreground whitespace-pre-wrap">{refText}</p>
                   </div>
                 );
               })()}
 
               {!prevSession.handoff_note?.trim() && !prevSession.ai_analysis?.trim() && (
-                <p className="text-[10px] text-muted-foreground/60 italic">Bez detailů z minulého sezení.</p>
+                <p className="text-[0.625rem] text-muted-foreground/60 italic">Bez detailů z minulého sezení.</p>
               )}
             </div>
           )}
@@ -833,7 +833,7 @@ const PlanCard = ({
       )}
 
       {!isExpanded && (
-        <p className="text-[10px] text-muted-foreground line-clamp-1">
+        <p className="text-[0.625rem] text-muted-foreground line-clamp-1">
           {plan.plan_markdown.replace(/[#*\-]/g, '').slice(0, 100)}…
         </p>
       )}

@@ -87,15 +87,15 @@ const DidThreadList = ({ threads, onSelectThread, onDeleteThread, onNewThread }:
                   <div className="text-sm font-medium text-foreground truncate flex items-center gap-1.5">
                     {displayName}
                     {isAlias && (
-                      <span className="text-[9px] text-muted-foreground">({thread.partName})</span>
+                      <span className="text-[0.5625rem] text-muted-foreground">({thread.partName})</span>
                     )}
                     {presetEmoji && (
-                      <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                      <span className="text-[0.5625rem] text-muted-foreground flex items-center gap-0.5">
                         <Palette className="w-2.5 h-2.5" />
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-[10px] sm:text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-[0.625rem] sm:text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatTime(thread.lastActivityAt)}

@@ -435,7 +435,7 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
                 </Button>
               </a>
             </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
+            <p className="text-[0.6875rem] text-muted-foreground leading-relaxed">
               Kontakt je dobrovolný. Terapeutka nemůže garantovat okamžitou odpověď, ale kód 11 znamená, že se na zprávu podívá co nejdříve.
             </p>
           </div>
@@ -487,14 +487,14 @@ const CalmChat = ({ scenario, onEnd }: CalmChatProps) => {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Napiš, co cítíš..."
-              className="min-h-[48px] max-h-[120px] resize-none text-sm"
+              className="min-h-[3rem] max-h-[7.5rem] resize-none text-sm"
               disabled={isLoading}
             />
             <Button
               onClick={sendMessage}
               disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
               size="icon"
-              className="h-[48px] w-[48px] shrink-0"
+              className="h-[3rem] w-[3rem] shrink-0"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>

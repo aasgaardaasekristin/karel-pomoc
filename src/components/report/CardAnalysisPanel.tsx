@@ -530,13 +530,13 @@ const CardAnalysisPanel = ({
           <h3 className="text-sm font-bold tracking-wide">
             PŘEHLED PŘED SEZENÍM č. {sessions?.length ? sessions.length + 1 : "?"} – {clientName}
           </h3>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[0.625rem] text-muted-foreground">
             Sestaveno: {new Date().toLocaleDateString("cs-CZ")}
           </p>
         </div>
 
         <div>
-          <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">KDO JE KLIENT</p>
+          <p className="text-[0.625rem] font-semibold text-muted-foreground mb-0.5">KDO JE KLIENT</p>
           <p className="text-sm">{truncateSentences(result.clientProfile, 2)}</p>
         </div>
 
@@ -560,20 +560,20 @@ const CardAnalysisPanel = ({
 
         {lastSession?.ai_analysis && (
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">MINULÉ SEZENÍ – SHRNUTÍ</p>
+            <p className="text-[0.625rem] font-semibold text-muted-foreground mb-0.5">MINULÉ SEZENÍ – SHRNUTÍ</p>
             <p className="text-sm">{truncateSentences(lastSession.ai_analysis, 3)}</p>
           </div>
         )}
 
         {result.diagnosticHypothesis?.primary && (
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">DIAGNOSTICKÁ HYPOTÉZA</p>
+            <p className="text-[0.625rem] font-semibold text-muted-foreground mb-0.5">DIAGNOSTICKÁ HYPOTÉZA</p>
             <div className="flex items-center gap-2">
               <p className="text-sm">{result.diagnosticHypothesis.primary}</p>
               <Badge variant={
                 result.diagnosticHypothesis.confidence === "high" ? "default" :
                 result.diagnosticHypothesis.confidence === "medium" ? "secondary" : "outline"
-              } className="text-[10px] shrink-0">
+              } className="text-[0.625rem] shrink-0">
                 {result.diagnosticHypothesis.confidence === "high" ? "● Vysoká" :
                  result.diagnosticHypothesis.confidence === "medium" ? "● Střední" : "○ Nízká"}
               </Badge>
@@ -583,7 +583,7 @@ const CardAnalysisPanel = ({
 
         {result.nextSessionRecommendations?.suggestedTechniques?.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground mb-1">VHODNÉ TECHNIKY</p>
+            <p className="text-[0.625rem] font-semibold text-muted-foreground mb-1">VHODNÉ TECHNIKY</p>
             <div className="flex flex-wrap gap-1.5">
               {result.nextSessionRecommendations.suggestedTechniques.map((t: string, i: number) => (
                 <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
@@ -594,7 +594,7 @@ const CardAnalysisPanel = ({
 
         {result.dataGaps?.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">CHYBĚJÍCÍ DATA</p>
+            <p className="text-[0.625rem] font-semibold text-muted-foreground mb-0.5">CHYBĚJÍCÍ DATA</p>
             {result.dataGaps.map((g: string, i: number) => (
               <p key={i} className="text-sm">• {g}</p>
             ))}
@@ -603,7 +603,7 @@ const CardAnalysisPanel = ({
 
         {openTasks.length > 0 && (
           <div>
-            <p className="text-[10px] font-semibold text-muted-foreground mb-0.5">OTEVŘENÉ ÚKOLY</p>
+            <p className="text-[0.625rem] font-semibold text-muted-foreground mb-0.5">OTEVŘENÉ ÚKOLY</p>
             {openTasks.map((t: any, i: number) => (
               <p key={i} className="text-sm">
                 {t.task_type === "client_homework" ? "📝" : priorityIcon[t.priority] || "📌"}{" "}
@@ -615,7 +615,7 @@ const CardAnalysisPanel = ({
 
         {/* TERAPEUTICKÝ PLÁN PROCESU */}
         <div>
-          <p className="text-[10px] font-semibold text-muted-foreground mb-1">TERAPEUTICKÝ PLÁN PROCESU</p>
+          <p className="text-[0.625rem] font-semibold text-muted-foreground mb-1">TERAPEUTICKÝ PLÁN PROCESU</p>
           {hasPlan ? (
             <div className="flex items-center gap-2">
               <span className="text-sm">✅ Sestavený a schválený</span>
@@ -673,7 +673,7 @@ const CardAnalysisPanel = ({
               value={modifications}
               onChange={(e) => setModifications(e.target.value)}
               placeholder="Např.: Přidej více projektivních technik, zaměř se víc na rodinnou dynamiku..."
-              className="min-h-[60px] text-sm"
+              className="min-h-[3.75rem] text-sm"
             />
           </div>
 

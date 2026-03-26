@@ -231,14 +231,14 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
                 )}
                 <div className="flex-1 min-w-0">
                   <p className="text-xs truncate">{item.file.name}</p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[0.625rem] text-muted-foreground">
                     {(item.file.size / 1024 / 1024).toFixed(1)} MB
                   </p>
                 </div>
                 {item.uploading && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
-                {item.analyzing && <Badge variant="secondary" className="text-[10px]">Analyzuji…</Badge>}
+                {item.analyzing && <Badge variant="secondary" className="text-[0.625rem]">Analyzuji…</Badge>}
                 {item.analysis && <FileCheck className="w-3.5 h-3.5 text-primary" />}
-                {item.error && <Badge variant="destructive" className="text-[10px]">Chyba</Badge>}
+                {item.error && <Badge variant="destructive" className="text-[0.625rem]">Chyba</Badge>}
                 <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => removeItem(item.id)}>
                   <X className="w-3 h-3" />
                 </Button>
@@ -252,7 +252,7 @@ const SessionMediaUpload = forwardRef<SessionMediaUploadHandle, SessionMediaUplo
                     </RichMarkdown>
                   </div>
                   {item.analysis.length > 500 && (
-                    <Button variant="ghost" size="sm" className="h-6 text-[10px] mt-1 text-muted-foreground" onClick={() => toggleExpanded(item.id)}>
+                    <Button variant="ghost" size="sm" className="h-6 text-[0.625rem] mt-1 text-muted-foreground" onClick={() => toggleExpanded(item.id)}>
                       {expandedItems.has(item.id) ? "Skrýt" : "Zobrazit celou analýzu"}
                     </Button>
                   )}

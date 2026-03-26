@@ -69,7 +69,7 @@ const AudioRecordButton = ({
           <div className="flex items-center gap-2 mb-1">
             <div className="w-2 h-2 rounded-full bg-destructive animate-pulse shrink-0" />
             <span className="text-xs font-medium text-destructive">{formatDuration(duration)}</span>
-            <span className="text-[10px] text-muted-foreground">zbývá {formatDuration(remaining)}</span>
+            <span className="text-[0.625rem] text-muted-foreground">zbývá {formatDuration(remaining)}</span>
           </div>
           <Progress value={progress} className="h-1.5" />
         </div>
@@ -91,7 +91,7 @@ const AudioRecordButton = ({
   return (
     <div className="flex items-center gap-2 w-full">
       {audioUrl && (
-        <audio src={audioUrl} controls className="h-8 flex-1 min-w-0 max-w-[200px]" />
+        <audio src={audioUrl} controls className="h-8 flex-1 min-w-0 max-w-[12.5rem]" />
       )}
       <Button
         variant="ghost"

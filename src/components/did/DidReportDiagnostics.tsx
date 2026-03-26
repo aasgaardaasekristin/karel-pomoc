@@ -90,10 +90,10 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
 
       {/* Target emails */}
       <div className="rounded-lg border border-border p-2.5 bg-muted/30">
-        <p className="text-[10px] font-medium text-muted-foreground mb-1.5">Cílové adresy</p>
+        <p className="text-[0.625rem] font-medium text-muted-foreground mb-1.5">Cílové adresy</p>
         <div className="space-y-1">
           {Object.entries(RECIPIENT_EMAILS).map(([key, email]) => (
-            <div key={key} className="flex items-center justify-between text-[10px]">
+            <div key={key} className="flex items-center justify-between text-[0.625rem]">
               <span className="text-foreground">{RECIPIENT_LABELS[key]}</span>
               <span className="text-muted-foreground font-mono">{email}</span>
             </div>
@@ -105,17 +105,17 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-medium text-foreground">Historie (14 dní)</p>
-          <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px]" onClick={fetchData}>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-[0.625rem]" onClick={fetchData}>
             <RefreshCw className="w-3 h-3 mr-1" /> Obnovit
           </Button>
         </div>
 
         {Object.keys(byDate).length === 0 ? (
-          <p className="text-[10px] text-muted-foreground text-center py-4">Žádné záznamy</p>
+          <p className="text-[0.625rem] text-muted-foreground text-center py-4">Žádné záznamy</p>
         ) : (
           Object.entries(byDate).map(([date, items]) => (
             <div key={date} className="rounded-lg border border-border overflow-hidden">
-              <div className="bg-muted/50 px-2.5 py-1.5 text-[10px] font-medium text-foreground">
+              <div className="bg-muted/50 px-2.5 py-1.5 text-[0.625rem] font-medium text-foreground">
                 {new Date(date + "T00:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "short" })}
               </div>
               <div className="divide-y divide-border">
@@ -131,19 +131,19 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
                         className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left hover:bg-muted/30 transition-colors"
                       >
                         <Icon className="w-3.5 h-3.5 shrink-0" />
-                        <span className="text-[10px] text-foreground flex-1">
+                        <span className="text-[0.625rem] text-foreground flex-1">
                           {RECIPIENT_LABELS[d.recipient] || d.recipient}
                         </span>
                         <Badge variant="outline" className={`text-[8px] h-4 px-1.5 ${cfg.color}`}>
                           {cfg.label}
                         </Badge>
                         {d.retry_count > 0 && (
-                          <Badge variant="secondary" className="text-[8px] h-4 px-1.5">
+                          <Badge variant="secondary" className="text-[0.5rem] h-4 px-1.5">
                             {d.retry_count}× retry
                           </Badge>
                         )}
                         {d.sent_at && (
-                          <span className="text-[9px] text-muted-foreground">
+                          <span className="text-[0.5625rem] text-muted-foreground">
                             {new Date(d.sent_at).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         )}
@@ -153,21 +153,21 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
                         <div className="px-2.5 pb-2 space-y-1.5 bg-muted/20">
                           {d.error_message && (
                             <div className="rounded border border-destructive/20 bg-destructive/5 p-2">
-                              <p className="text-[9px] font-medium text-destructive flex items-center gap-1">
+                              <p className="text-[0.5625rem] font-medium text-destructive flex items-center gap-1">
                                 <AlertTriangle className="w-3 h-3" /> Chyba
                               </p>
-                              <p className="text-[9px] text-muted-foreground mt-0.5 break-all">{d.error_message}</p>
+                              <p className="text-[0.5625rem] text-muted-foreground mt-0.5 break-all">{d.error_message}</p>
                             </div>
                           )}
                           {d.last_retry_strategy && (
-                            <div className="text-[9px] text-muted-foreground">
+                            <div className="text-[0.5625rem] text-muted-foreground">
                               <span className="font-medium text-foreground">Strategie:</span> {d.last_retry_strategy}
                             </div>
                           )}
                           {d.watchdog_log && (
                             <div className="rounded border border-border bg-background p-2">
-                              <p className="text-[9px] font-medium text-foreground mb-0.5">Watchdog log</p>
-                              <pre className="text-[8px] text-muted-foreground whitespace-pre-wrap break-all font-mono">{d.watchdog_log}</pre>
+                              <p className="text-[0.5625rem] font-medium text-foreground mb-0.5">Watchdog log</p>
+                              <pre className="text-[0.5rem] text-muted-foreground whitespace-pre-wrap break-all font-mono">{d.watchdog_log}</pre>
                             </div>
                           )}
                         </div>
@@ -189,7 +189,7 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
     <div className="rounded-lg border border-border p-2 text-center">
       <div className="flex items-center justify-center gap-1 mb-0.5">{icon}</div>
       <p className="text-lg font-bold text-foreground">{value}</p>
-      <p className="text-[9px] text-muted-foreground">{label}</p>
+      <p className="text-[0.5625rem] text-muted-foreground">{label}</p>
     </div>
   );
 }

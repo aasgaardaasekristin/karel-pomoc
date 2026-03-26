@@ -190,7 +190,7 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
                   key={i}
                   src={src}
                   alt={`Příloha ${i + 1}`}
-                  className="max-w-[200px] max-h-[200px] rounded-md object-cover border border-border/50"
+                  className="max-w-[12.5rem] max-h-[12.5rem] rounded-md object-cover border border-border/50"
                 />
               ))}
             </div>

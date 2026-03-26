@@ -558,7 +558,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
                   setActiveThread(prev => prev ? { ...prev, themePreset: preset, themeConfig: config, threadEmoji: config.thread_emoji || "" } : prev);
                 }}
                 trigger={
-                  <button className="text-[10px] text-primary hover:underline flex items-center gap-1">
+                  <button className="text-[0.625rem] text-primary hover:underline flex items-center gap-1">
                     🎨 Můj vzhled
                   </button>
                 }
@@ -570,7 +570,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
           ))}
           {isLoading && messages[messages.length - 1]?.role === "user" && <LoadingSkeleton />}
           {isEnrichingContext && (
-            <div className="text-center text-[10px] text-muted-foreground animate-pulse">
+            <div className="text-center text-[0.625rem] text-muted-foreground animate-pulse">
               📚 Dostudovávám materiály k tématu...
             </div>
           )}

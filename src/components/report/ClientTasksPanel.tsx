@@ -159,7 +159,7 @@ const ClientTasksPanel = ({ clientId, clientName, tasks, onRefresh }: ClientTask
                     type="date"
                     value={groupDueDate}
                     onChange={(e) => handleDueDateChange(groupTasks.map(t => t.id), e.target.value)}
-                    className="h-7 w-[140px] text-xs"
+                    className="h-7 w-[8.75rem] text-xs"
                   />
                 </div>
               )}

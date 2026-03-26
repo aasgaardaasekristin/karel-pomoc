@@ -534,41 +534,41 @@ const Kartoteka = () => {
               <div className="flex items-center gap-2">
                 <ThemeQuickButton storageKey={kartotekaStorageKey} />
                 <TabsList className="inline-flex w-auto flex-1 h-auto flex-nowrap sm:grid sm:grid-cols-4">
-                  <TabsTrigger value="card" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <TabsTrigger value="card" className="gap-1 text-[0.6875rem] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                     <User className="w-3.5 h-3.5 hidden sm:block" />
                     Karta
                   </TabsTrigger>
-                  <TabsTrigger value="intake" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <TabsTrigger value="intake" className="gap-1 text-[0.6875rem] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                     Záznam
                   </TabsTrigger>
-                  <TabsTrigger value="sessions" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <TabsTrigger value="sessions" className="gap-1 text-[0.6875rem] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                     <FileText className="w-3.5 h-3.5 hidden sm:block" />
                     Sezení
-                    {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{sessions.length}</Badge>}
+                    {sessions.length > 0 && <Badge variant="secondary" className="ml-0.5 text-[0.625rem] hidden sm:inline">{sessions.length}</Badge>}
                   </TabsTrigger>
-                  <TabsTrigger value="tasks" className="gap-1 text-[11px] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
+                  <TabsTrigger value="tasks" className="gap-1 text-[0.6875rem] sm:text-sm px-2 sm:px-3 whitespace-nowrap">
                     <ListChecks className="w-3.5 h-3.5 hidden sm:block" />
                     Úkoly
                     {tasks.filter(t => t.status !== "done").length > 0 && (
-                      <Badge variant="secondary" className="ml-0.5 text-[10px] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
+                      <Badge variant="secondary" className="ml-0.5 text-[0.625rem] hidden sm:inline">{tasks.filter(t => t.status !== "done").length}</Badge>
                     )}
                   </TabsTrigger>
                 </TabsList>
               </div>
               <div className="overflow-x-auto -mx-3 px-3 scrollbar-hide">
                 <div className="flex items-center gap-1.5 min-w-max">
-                  <span className="text-[10px] text-muted-foreground/70 shrink-0">Pracovní:</span>
+                  <span className="text-[0.625rem] text-muted-foreground/70 shrink-0">Pracovní:</span>
                   <TabsList className="inline-flex w-auto h-auto flex-nowrap bg-muted/50">
-                    <TabsTrigger value="analysis" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                    <TabsTrigger value="analysis" className="gap-1 text-[0.625rem] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
                       Analýza
                     </TabsTrigger>
-                    <TabsTrigger value="prep" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                    <TabsTrigger value="prep" className="gap-1 text-[0.625rem] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
                       Připravit sezení
                     </TabsTrigger>
-                    <TabsTrigger value="assistance" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                    <TabsTrigger value="assistance" className="gap-1 text-[0.625rem] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
                       Asistence
                     </TabsTrigger>
-                    <TabsTrigger value="discussion" className="gap-1 text-[10px] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
+                    <TabsTrigger value="discussion" className="gap-1 text-[0.625rem] sm:text-xs px-2 sm:px-3 whitespace-nowrap text-muted-foreground data-[state=active]:text-foreground">
                       <MessageSquare className="w-3.5 h-3.5 hidden sm:block" />
                       Rozhovor
                     </TabsTrigger>
@@ -602,7 +602,7 @@ const Kartoteka = () => {
                     </div>
                     <div className="space-y-1">
                       <Label>Diagnóza / pracovní hypotéza</Label>
-                      <Textarea value={editData.diagnosis || ""} onChange={(e) => setEditData(p => ({ ...p, diagnosis: e.target.value }))} className="min-h-[60px]" />
+                      <Textarea value={editData.diagnosis || ""} onChange={(e) => setEditData(p => ({ ...p, diagnosis: e.target.value }))} className="min-h-[3.75rem]" />
                     </div>
                     <div className="space-y-1">
                       <Label>Zdroj doporučení</Label>
@@ -610,15 +610,15 @@ const Kartoteka = () => {
                     </div>
                     <div className="space-y-1">
                       <Label>Klíčová anamnéza</Label>
-                      <Textarea value={editData.key_history || ""} onChange={(e) => setEditData(p => ({ ...p, key_history: e.target.value }))} className="min-h-[80px]" />
+                      <Textarea value={editData.key_history || ""} onChange={(e) => setEditData(p => ({ ...p, key_history: e.target.value }))} className="min-h-[5rem]" />
                     </div>
                     <div className="space-y-1">
                       <Label>Rodinný kontext</Label>
-                      <Textarea value={editData.family_context || ""} onChange={(e) => setEditData(p => ({ ...p, family_context: e.target.value }))} className="min-h-[80px]" />
+                      <Textarea value={editData.family_context || ""} onChange={(e) => setEditData(p => ({ ...p, family_context: e.target.value }))} className="min-h-[5rem]" />
                     </div>
                     <div className="space-y-1">
                       <Label>Poznámky</Label>
-                      <Textarea value={editData.notes || ""} onChange={(e) => setEditData(p => ({ ...p, notes: e.target.value }))} className="min-h-[80px]" />
+                      <Textarea value={editData.notes || ""} onChange={(e) => setEditData(p => ({ ...p, notes: e.target.value }))} className="min-h-[5rem]" />
                     </div>
                   </>
                 ) : (

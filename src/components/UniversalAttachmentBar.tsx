@@ -72,7 +72,7 @@ const UniversalAttachmentBar = ({
             variant="ghost"
             size="icon"
             disabled={disabled}
-            className="h-[40px] w-[40px] sm:h-[44px] sm:w-[44px] shrink-0"
+            className="h-[2.5rem] w-[2.5rem] sm:h-[2.75rem] sm:w-[2.75rem] shrink-0"
             title="Připojit soubor"
           >
             <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -119,7 +119,7 @@ const UniversalAttachmentBar = ({
           size="sm"
           onClick={onAutoAnalyze}
           disabled={disabled || isAnalyzing || attachments.some(a => a.uploading)}
-          className="h-[40px] sm:h-[44px] shrink-0 gap-1.5 px-3"
+          className="h-[2.5rem] sm:h-[2.75rem] shrink-0 gap-1.5 px-3"
           title="Karel automaticky analyzuje přiložené soubory"
         >
           {isAnalyzing ? (
@@ -135,7 +135,7 @@ const UniversalAttachmentBar = ({
       {attachments.length > 0 && (
         <div className="absolute bottom-full left-0 right-0 p-2 flex gap-2 flex-wrap bg-card/90 backdrop-blur-sm rounded-t-lg border border-b-0 border-border max-h-32 overflow-y-auto">
           {attachments.map(att => (
-            <div key={att.id} className="relative group flex items-center gap-1.5 bg-muted/60 rounded-md px-2 py-1.5 text-xs max-w-[200px]">
+            <div key={att.id} className="relative group flex items-center gap-1.5 bg-muted/60 rounded-md px-2 py-1.5 text-xs max-w-[12.5rem]">
               {att.uploading ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground shrink-0" />
               ) : att.dataUrl && (att.category === "image" || att.category === "screenshot") ? (

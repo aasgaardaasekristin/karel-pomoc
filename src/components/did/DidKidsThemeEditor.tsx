@@ -183,7 +183,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
         {threadId && (
           <div className="rounded-lg border border-accent/30 bg-accent/10 p-2.5 flex items-center gap-2">
             <span className="text-lg">🎯</span>
-            <p className="text-[10px] text-foreground/80">
+            <p className="text-[0.625rem] text-foreground/80">
               Tvůj vzhled se uloží do tohoto vlákna. Příště se automaticky načte!
             </p>
           </div>
@@ -195,10 +195,10 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
             <p className="text-xs font-medium text-foreground">
               {hasPendingChanges ? "Máš neuložené změny" : "Vše uloženo ✓"}
             </p>
-            {hasPendingChanges && <Badge variant="secondary" className="text-[9px]">Neuloženo</Badge>}
+            {hasPendingChanges && <Badge variant="secondary" className="text-[0.5625rem]">Neuloženo</Badge>}
           </div>
           <div className="mt-2 flex gap-2">
-            <Button size="sm" className="h-7 text-[10px] gap-1.5" disabled={!hasPendingChanges || saving} onClick={handleApplyTheme}>
+            <Button size="sm" className="h-7 text-[0.625rem] gap-1.5" disabled={!hasPendingChanges || saving} onClick={handleApplyTheme}>
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
               Použít{threadId ? " pro toto vlákno" : ""}
             </Button>
@@ -252,7 +252,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
                     <Check className="w-4 h-4 text-white drop-shadow-md" />
                   </div>
                 )}
-                <span className="absolute bottom-0.5 left-0 right-0 text-[9px] text-white text-center font-medium drop-shadow-md">
+                <span className="absolute bottom-0.5 left-0 right-0 text-[0.5625rem] text-white text-center font-medium drop-shadow-md">
                   {preset.label}
                 </span>
                 {/* Hover emoji pop */}
@@ -270,14 +270,14 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
                 }`}
               >
                 <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, hsl(${SECRET_PRESET.primary_color}) 0%, hsl(${SECRET_PRESET.accent_color}) 100%)` }} />
-                <span className="absolute bottom-0.5 left-0 right-0 text-[9px] text-white text-center font-medium drop-shadow-md">
+                <span className="absolute bottom-0.5 left-0 right-0 text-[0.5625rem] text-white text-center font-medium drop-shadow-md">
                   {SECRET_PRESET.label}
                 </span>
               </button>
             ) : (
               <div className="relative h-14 rounded-lg border-2 border-dashed border-border flex items-center justify-center opacity-50">
                 <Lock className="w-4 h-4 text-muted-foreground" />
-                <span className="text-[8px] text-muted-foreground absolute bottom-0.5">
+                <span className="text-[0.5rem] text-muted-foreground absolute bottom-0.5">
                   {SECRET_UNLOCK_COUNT - visitCount > 0 ? `ještě ${SECRET_UNLOCK_COUNT - visitCount}×` : ""}
                 </span>
               </div>
@@ -296,7 +296,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               {/* Assistant bubble */}
               <div className="flex gap-2 items-end">
                 <span className="text-base">{(draft as any).thread_emoji || "🤖"}</span>
-                <div className="rounded-2xl rounded-bl-sm px-3 py-2 max-w-[75%] text-[11px]" style={{ 
+                <div className="rounded-2xl rounded-bl-sm px-3 py-2 max-w-[75%] text-[0.6875rem]" style={{ 
                   background: `hsl(${draft.primary_color} / 0.15)`,
                   color: draft.font_color ? `hsl(${draft.font_color})` : undefined,
                   fontFamily: draft.font_family === "comic" ? "'Comic Neue', cursive" : draft.font_family === "rounded" ? "'Nunito', sans-serif" : draft.font_family === "mono" ? "'JetBrains Mono', monospace" : "inherit",
@@ -306,7 +306,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
               </div>
               {/* User bubble */}
               <div className="flex gap-2 items-end justify-end">
-                <div className="rounded-2xl rounded-br-sm px-3 py-2 max-w-[75%] text-[11px]" style={{
+                <div className="rounded-2xl rounded-br-sm px-3 py-2 max-w-[75%] text-[0.6875rem]" style={{
                   background: `hsl(${draft.accent_color} / 0.2)`,
                   color: draft.font_color ? `hsl(${draft.font_color})` : undefined,
                   fontFamily: draft.font_family === "comic" ? "'Comic Neue', cursive" : draft.font_family === "rounded" ? "'Nunito', sans-serif" : draft.font_family === "mono" ? "'JetBrains Mono', monospace" : "inherit",
@@ -329,7 +329,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
             )}
           </div>
           {!draft.font_color && (
-            <button onClick={() => setDraftPartial({ font_color: "0 0% 20%" })} className="text-[9px] text-primary mt-1 hover:underline">
+            <button onClick={() => setDraftPartial({ font_color: "0 0% 20%" })} className="text-[0.5625rem] text-primary mt-1 hover:underline">
               + vlastní barva písma
             </button>
           )}
@@ -349,7 +349,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
                 style={{ fontFamily: opt.value === "comic" ? "'Comic Neue', cursive" : opt.value === "rounded" ? "'Nunito', sans-serif" : opt.value === "mono" ? "'JetBrains Mono', monospace" : "inherit" }}
               >
                 <span className="text-lg block">{opt.preview}</span>
-                <span className="text-[9px] block mt-0.5">{opt.label}</span>
+                <span className="text-[0.5625rem] block mt-0.5">{opt.label}</span>
               </button>
             ))}
           </div>
@@ -397,7 +397,7 @@ const DidKidsThemeEditor = ({ partName, trigger, threadId, onThreadThemeSaved }:
                 }`}
               >
                 <div className="absolute inset-0" style={{ background: bg.gradient }} />
-                <span className="absolute bottom-0 left-0 right-0 text-[8px] text-white text-center font-medium drop-shadow-md bg-black/20 py-0.5">
+                <span className="absolute bottom-0 left-0 right-0 text-[0.5rem] text-white text-center font-medium drop-shadow-md bg-black/20 py-0.5">
                   {bg.label}
                 </span>
               </button>
@@ -449,8 +449,8 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
     <label className="flex items-center gap-2 cursor-pointer flex-1">
       <input type="color" value={hex} onChange={(e) => onChange(hexToHSL(e.target.value))} className="w-7 h-7 rounded-lg border border-border cursor-pointer p-0.5 bg-transparent" />
       <div>
-        <span className="text-[10px] text-muted-foreground block">{label}</span>
-        <span className="text-[9px] font-mono text-muted-foreground">{hex}</span>
+        <span className="text-[0.625rem] text-muted-foreground block">{label}</span>
+        <span className="text-[0.5625rem] font-mono text-muted-foreground">{hex}</span>
       </div>
     </label>
   );

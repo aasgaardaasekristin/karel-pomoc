@@ -527,14 +527,14 @@ const SupervisionChat = () => {
             <h3 className="text-xs md:text-sm font-semibold text-foreground truncate">
               Karel – {deepMode ? "🔬 reflexe" : "⚡ supervize"}
             </h3>
-            <p className="text-[10px] md:text-xs text-muted-foreground truncate">{activeSession.clientName}</p>
+            <p className="text-[0.625rem] md:text-xs text-muted-foreground truncate">{activeSession.clientName}</p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <Button
               size="sm"
               variant={deepMode ? "default" : "outline"}
               onClick={toggleDeepMode}
-              className="gap-1 text-[10px] md:text-xs h-7 md:h-8 px-2 md:px-3"
+              className="gap-1 text-[0.625rem] md:text-xs h-7 md:h-8 px-2 md:px-3"
               title={deepMode ? "Přepnout na rychlou supervizi" : "Probrat detailněji – diagnózy, metody, reflexe"}
             >
               <MessageSquareMore className="w-3 h-3" />
@@ -610,14 +610,14 @@ const SupervisionChat = () => {
               }
             }}
             placeholder={deepMode ? "Zeptej se Karla na diagnózu, metody, reflexi..." : "Napiš co klient říká / dělá..."}
-            className="flex-1 min-w-0 min-h-[40px] max-h-[100px] resize-none text-sm"
+            className="flex-1 min-w-0 min-h-[2.5rem] max-h-[6.25rem] resize-none text-sm"
             disabled={isLoading}
           />
           <Button
             size="icon"
             onClick={sendMessage}
             disabled={(!input.trim() && attachments.length === 0) || isLoading}
-            className="h-[40px] w-[40px] shrink-0"
+            className="h-[2.5rem] w-[2.5rem] shrink-0"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>

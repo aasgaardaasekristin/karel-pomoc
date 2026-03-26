@@ -34,7 +34,7 @@ const StepIndicator = ({
   step, label, status, hint 
 }: { step: number; label: string; status: StepStatus; hint?: string }) => (
   <div className="flex items-center gap-2 min-w-0">
-    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${
+    <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.625rem] font-bold shrink-0 transition-all ${
       status === "done" 
         ? "bg-primary text-primary-foreground" 
         : status === "active" 
@@ -44,11 +44,11 @@ const StepIndicator = ({
       {status === "done" ? <Check className="w-3 h-3" /> : step}
     </div>
     <div className="min-w-0">
-      <p className={`text-[11px] font-medium leading-tight truncate ${
+      <p className={`text-[0.6875rem] font-medium leading-tight truncate ${
         status === "active" ? "text-foreground" : status === "done" ? "text-primary" : "text-muted-foreground"
       }`}>{label}</p>
       {hint && status === "active" && (
-        <p className="text-[9px] text-muted-foreground leading-tight truncate">{hint}</p>
+        <p className="text-[0.5625rem] text-muted-foreground leading-tight truncate">{hint}</p>
       )}
     </div>
   </div>
@@ -304,7 +304,7 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
           <span className="sm:hidden">📋</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-[340px] sm:w-[420px] overflow-y-auto">
+      <SheetContent side="right" className="w-[21.25rem] sm:w-[26.25rem] overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-base">Rychlý zápis sezení</SheetTitle>
         </SheetHeader>
@@ -354,7 +354,7 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
               value={fields.summary}
               onChange={e => set("summary", e.target.value)}
               placeholder="Stručný popis průběhu..."
-              className="min-h-[80px] text-sm resize-none"
+              className="min-h-[5rem] text-sm resize-none"
             />
           </div>
 
@@ -364,7 +364,7 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
               value={fields.risks}
               onChange={e => set("risks", e.target.value)}
               placeholder="Rizikové faktory, důležité postřehy..."
-              className="min-h-[60px] text-sm resize-none"
+              className="min-h-[3.75rem] text-sm resize-none"
             />
           </div>
 
@@ -374,7 +374,7 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
               value={fields.nextGoal}
               onChange={e => set("nextGoal", e.target.value)}
               placeholder="Na co navázat příště..."
-              className="min-h-[60px] text-sm resize-none"
+              className="min-h-[3.75rem] text-sm resize-none"
             />
           </div>
 
@@ -398,9 +398,9 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
               disabled={!fields.clientName.trim()}
             />
             {!fields.clientName.trim() && recorder.state === "idle" && (
-              <p className="text-[10px] text-muted-foreground">Nejdřív vyplň jméno klienta</p>
+              <p className="text-[0.625rem] text-muted-foreground">Nejdřív vyplň jméno klienta</p>
             )}
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[0.625rem] text-muted-foreground">
               Postup: Nahrát → Stop → Analyzovat. Potom můžeš report syntetizovat a uložit do Kartotéky.
             </p>
           </div>
@@ -411,7 +411,7 @@ const HanaSessionReport = ({ messages, disabled }: HanaSessionReportProps) => {
               <Label className="text-xs font-medium text-muted-foreground">
                 Analýzy z nahrávek ({voiceAnalyses.length})
               </Label>
-              <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              <div className="space-y-2 max-h-[12.5rem] overflow-y-auto">
                 {voiceAnalyses.map((a, i) => (
                   <div key={i} className="text-xs p-2 rounded-md bg-muted/50 border border-border">
                     <span className="font-medium text-primary">#{i + 1}</span>

@@ -72,7 +72,7 @@ const SessionAudioRecorder = ({
             <div className="flex items-center gap-2 mb-1">
               <div className={`w-2 h-2 rounded-full shrink-0 ${state === "recording" ? "bg-destructive animate-pulse" : "bg-muted-foreground"}`} />
               <span className="text-xs font-medium text-foreground">{fmt(duration)}</span>
-              <span className="text-[10px] text-muted-foreground">/ {fmt(MAX_SESSION_DURATION)}</span>
+              <span className="text-[0.625rem] text-muted-foreground">/ {fmt(MAX_SESSION_DURATION)}</span>
             </div>
             <Progress value={progress} className="h-1.5" />
           </div>

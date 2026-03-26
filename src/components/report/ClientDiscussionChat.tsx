@@ -216,7 +216,7 @@ const ClientDiscussionChat = ({ clientId, clientName }: ClientDiscussionChatProp
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Zeptej se Karla na cokoliv o tomto klientovi…"
-            className="min-h-[44px] max-h-[120px] resize-none text-sm"
+            className="min-h-[2.75rem] max-h-[7.5rem] resize-none text-sm"
             rows={1}
           />
           <Button

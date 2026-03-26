@@ -24,14 +24,14 @@ const ErrorDetails = ({ error, title }: { error: Error | null; title: string }) 
       {error && (
         <button
           onClick={() => setShowDetails(!showDetails)}
-          className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+          className="mt-2 flex items-center gap-1 text-[0.625rem] text-muted-foreground hover:text-foreground transition-colors"
         >
           {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           Detail chyby
         </button>
       )}
       {showDetails && error && (
-        <pre className="mt-1.5 text-[9px] text-muted-foreground bg-muted/50 rounded p-2 overflow-x-auto max-h-24 whitespace-pre-wrap">
+        <pre className="mt-1.5 text-[0.5625rem] text-muted-foreground bg-muted/50 rounded p-2 overflow-x-auto max-h-24 whitespace-pre-wrap">
           {error.message}
         </pre>
       )}
@@ -63,7 +63,7 @@ class ErrorBoundary extends Component<Props, State> {
           />
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="mt-2 flex items-center gap-1.5 text-[10px] text-primary hover:text-primary/80 transition-colors"
+            className="mt-2 flex items-center gap-1.5 text-[0.625rem] text-primary hover:text-primary/80 transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
             Zkusit znovu

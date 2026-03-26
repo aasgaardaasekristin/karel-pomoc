@@ -8,7 +8,7 @@ interface RichMarkdownProps {
 }
 
 const RichMarkdown = ({ children, className, compact = false }: RichMarkdownProps) => {
-  const textSize = compact ? "text-[11px]" : "text-sm";
+  const textSize = compact ? "text-[0.6875rem]" : "text-sm";
 
   return (
     <div className={cn("max-w-prose", className)}>
@@ -25,12 +25,12 @@ const RichMarkdown = ({ children, className, compact = false }: RichMarkdownProp
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className={cn("font-semibold text-foreground border-l-2 border-primary pl-3 py-1 mb-2 bg-muted/20 rounded-r", compact ? "text-[11px]" : "text-[13px]")}>
+            <h3 className={cn("font-semibold text-foreground border-l-2 border-primary pl-3 py-1 mb-2 bg-muted/20 rounded-r", compact ? "text-[0.6875rem]" : "text-[0.8125rem]")}>
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className={cn("font-semibold text-foreground mb-1.5", compact ? "text-[11px]" : "text-xs")}>
+            <h4 className={cn("font-semibold text-foreground mb-1.5", compact ? "text-[0.6875rem]" : "text-xs")}>
               {children}
             </h4>
           ),

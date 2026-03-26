@@ -58,7 +58,7 @@ const DidSwitchHistory = ({ refreshTrigger }: { refreshTrigger: number }) => {
         <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
           <Shuffle className="w-3.5 h-3.5 text-primary" />
           Historie switchů
-          <Badge variant="secondary" className="text-[8px] h-4 px-1.5 ml-1">
+          <Badge variant="secondary" className="text-[0.5rem] h-4 px-1.5 ml-1">
             {totalSwitches} switchů v {events.length} sezeních
           </Badge>
         </h4>
@@ -77,16 +77,16 @@ const DidSwitchHistory = ({ refreshTrigger }: { refreshTrigger: number }) => {
               className="rounded-md border border-border/50 bg-background/50 p-2"
             >
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-medium text-foreground">
+                <span className="text-[0.625rem] font-medium text-foreground">
                   {new Date(event.date).toLocaleDateString("cs-CZ")} — {event.partName}
                 </span>
-                <span className="text-[9px] text-muted-foreground">
+                <span className="text-[0.5625rem] text-muted-foreground">
                   {event.therapist} · {event.switches.length} switchů
                 </span>
               </div>
               <div className="space-y-0.5">
                 {event.switches.map((sw, j) => (
-                  <p key={j} className="text-[9px] text-muted-foreground leading-tight">
+                  <p key={j} className="text-[0.5625rem] text-muted-foreground leading-tight">
                     {sw}
                   </p>
                 ))}
@@ -94,7 +94,7 @@ const DidSwitchHistory = ({ refreshTrigger }: { refreshTrigger: number }) => {
             </div>
           ))}
           {events.length > 10 && (
-            <p className="text-[9px] text-muted-foreground text-center pt-1">
+            <p className="text-[0.5625rem] text-muted-foreground text-center pt-1">
               …a dalších {events.length - 10} sezení se switchi
             </p>
           )}

@@ -180,7 +180,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                   variant={selectedPart === name ? "default" : "outline"}
                   size="sm"
                   onClick={() => { setSelectedPart(name); setCustomPart(""); }}
-                  className="h-8 text-[11px] justify-start truncate"
+                  className="h-8 text-[0.6875rem] justify-start truncate"
                 >
                   {name}
                 </Button>
@@ -211,7 +211,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
         {step === "set-goals" && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setStep("select-part")} className="h-6 text-[10px] px-1.5">
+              <Button variant="ghost" size="sm" onClick={() => setStep("select-part")} className="h-6 text-[0.625rem] px-1.5">
                 <ArrowLeft className="w-3 h-3" />
               </Button>
               <p className="text-xs font-medium">Sezení s: <span className="text-primary">{finalPartName}</span></p>
@@ -237,7 +237,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                 value={goalText}
                 onChange={e => setGoalText(e.target.value)}
                 placeholder={goalType === "specific" ? "Popiš cíl sezení..." : "Co chceš posílit nebo rozvíjet?"}
-                className="text-xs min-h-[60px]"
+                className="text-xs min-h-[3.75rem]"
               />
             )}
             <div className="flex justify-end">
@@ -282,7 +282,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                 variant="ghost"
                 size="sm"
                 onClick={() => { setStep("select-part"); setPlan(""); setGoalType(null); setGoalText(""); }}
-                className="h-6 text-[10px]"
+                className="h-6 text-[0.625rem]"
               >
                 ← Začít znovu
               </Button>
@@ -299,7 +299,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                 value={revisionNote}
                 onChange={e => setRevisionNote(e.target.value)}
                 placeholder="Napiš co chceš upravit... (např. 'přidej víc hravých aktivit', 'zkrať úvod')"
-                className="text-xs min-h-[50px]"
+                className="text-xs min-h-[3.125rem]"
               />
               <div className="flex gap-2 justify-end">
                 <Button
@@ -307,7 +307,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                   size="sm"
                   disabled={!revisionNote.trim() || loading}
                   onClick={() => { generatePlan(revisionNote); setRevisionNote(""); }}
-                  className="h-7 text-[10px] gap-1"
+                  className="h-7 text-[0.625rem] gap-1"
                 >
                   <Edit3 className="w-3 h-3" />
                   Upravit plán
@@ -315,7 +315,7 @@ const DidPersonalizedSessionPrep = ({ therapistName }: Props) => {
                 <Button
                   size="sm"
                   onClick={() => { toast.success("Plán sezení připraven! 🎯"); setOpen(false); }}
-                  className="h-7 text-[10px] gap-1"
+                  className="h-7 text-[0.625rem] gap-1"
                 >
                   <CheckCircle className="w-3 h-3" />
                   Schválit plán

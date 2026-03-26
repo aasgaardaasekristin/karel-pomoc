@@ -97,7 +97,7 @@ const DidCoordinationAlerts = ({ refreshTrigger }: { refreshTrigger: number }) =
         return (
           <div
             key={i}
-            className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-[11px] text-foreground"
+            className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-[0.6875rem] text-foreground"
           >
             <Icon className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
             <span>{alert.message}</span>

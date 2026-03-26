@@ -851,13 +851,13 @@ const HanaChatInner = () => {
                   ref={textareaRef} value={input}
                   onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
                   placeholder="Napiš svou zprávu..."
-                  className="flex-1 min-w-0 min-h-[46px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base rounded-xl"
+                  className="flex-1 min-w-0 min-h-[2.875rem] sm:min-h-[3.5rem] max-h-[9.375rem] sm:max-h-[12.5rem] resize-none text-sm sm:text-base rounded-xl"
                   disabled={isLoading}
                 />
                 <Button
                   onClick={sendMessage}
                   disabled={(!input.trim() && attachments.length === 0) || isLoading}
-                  size="icon" className="h-[46px] w-[46px] sm:h-[56px] sm:w-[56px] shrink-0 rounded-xl"
+                  size="icon" className="h-[2.875rem] w-[2.875rem] sm:h-[3.5rem] sm:w-[3.5rem] shrink-0 rounded-xl"
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
                 </Button>

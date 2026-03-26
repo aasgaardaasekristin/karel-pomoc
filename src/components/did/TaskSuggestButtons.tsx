@@ -89,19 +89,19 @@ export const TaskSuggestInline = ({ suggestions, onTaskAdded }: { suggestions: T
 
   return (
     <div className="mt-2 space-y-1.5 border-t border-border/30 pt-2">
-      <p className="text-[9px] text-muted-foreground flex items-center gap-1">
+      <p className="text-[0.5625rem] text-muted-foreground flex items-center gap-1">
         <ListChecks className="w-3 h-3" /> Karel navrhuje zapsat úkol:
       </p>
       {suggestions.map((s, idx) => (
         <div key={idx} className="flex items-center gap-1.5 p-1.5 rounded-md border border-primary/20 bg-primary/5">
-          <span className="text-[10px] text-foreground flex-1">{s.task}</span>
-          <span className="text-[8px] text-muted-foreground shrink-0">{assigneeLabel(s.assignee)} · {categoryLabel(s.category)}</span>
+          <span className="text-[0.625rem] text-foreground flex-1">{s.task}</span>
+          <span className="text-[0.5rem] text-muted-foreground shrink-0">{assigneeLabel(s.assignee)} · {categoryLabel(s.category)}</span>
           <Button
             size="sm"
             variant={savedIds.has(idx) ? "ghost" : "default"}
             onClick={() => handleSave(s, idx)}
             disabled={savedIds.has(idx) || saving === idx}
-            className="h-5 text-[8px] px-2 min-w-0"
+            className="h-5 text-[0.5rem] px-2 min-w-0"
           >
             {saving === idx ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : savedIds.has(idx) ? <Check className="w-2.5 h-2.5 text-green-500" /> : "Zapsat"}
           </Button>

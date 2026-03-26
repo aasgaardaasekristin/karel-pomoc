@@ -475,7 +475,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
           Přiřadit ke klientovi (volitelné)
         </div>
         <div className="flex flex-wrap gap-2 items-end">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[12.5rem]">
             <Select value={selectedClientId} onValueChange={setSelectedClientId}>
               <SelectTrigger>
                 <SelectValue placeholder="Vybrat klienta..." />
@@ -639,7 +639,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Stručný popis situace (bez jmen a identifikátorů)"
             value={formData.context}
             onChange={(e) => setFormData(prev => ({ ...prev, context: e.target.value }))}
-            className="min-h-[100px]"
+            className="min-h-[6.25rem]"
           />
         </div>
 
@@ -679,7 +679,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Jiné emoce..."
             value={formData.therapistEmotionsOther}
             onChange={(e) => setFormData(prev => ({ ...prev, therapistEmotionsOther: e.target.value }))}
-            className="min-h-[60px] mt-2"
+            className="min-h-[3.75rem] mt-2"
           />
         </div>
 
@@ -691,7 +691,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Co se ve mně spustilo?"
             value={formData.transference}
             onChange={(e) => setFormData(prev => ({ ...prev, transference: e.target.value }))}
-            className="min-h-[80px]"
+            className="min-h-[5rem]"
           />
         </div>
 
@@ -716,7 +716,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Jiná rizika..."
             value={formData.risksOther}
             onChange={(e) => setFormData(prev => ({ ...prev, risksOther: e.target.value }))}
-            className="min-h-[60px] mt-2"
+            className="min-h-[3.75rem] mt-2"
           />
         </div>
 
@@ -728,7 +728,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Jaká data mi chybí?"
             value={formData.missingData}
             onChange={(e) => setFormData(prev => ({ ...prev, missingData: e.target.value }))}
-            className="min-h-[80px]"
+            className="min-h-[5rem]"
           />
         </div>
 
@@ -740,7 +740,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Co jsem zkusila?"
             value={formData.interventionsTried}
             onChange={(e) => setFormData(prev => ({ ...prev, interventionsTried: e.target.value }))}
-            className="min-h-[80px]"
+            className="min-h-[5rem]"
           />
         </div>
 
@@ -752,7 +752,7 @@ ${simpleMarkdownToHtml(reportMarkdown)}
             placeholder="Na co se zaměřit příště?"
             value={formData.nextSessionGoal}
             onChange={(e) => setFormData(prev => ({ ...prev, nextSessionGoal: e.target.value }))}
-            className="min-h-[80px]"
+            className="min-h-[5rem]"
           />
         </div>
 
