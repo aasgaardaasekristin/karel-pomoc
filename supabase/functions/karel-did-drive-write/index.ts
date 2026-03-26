@@ -546,8 +546,88 @@ serve(async (req) => {
   try {
     const body = await req.json();
     const token = await getAccessToken();
+    const dateStr = new Date().toISOString().slice(0, 10);
 
-    // Find kartoteka_DID folder
+    // ═══════════════════════════════════════════════════════
+    // MODE A: "update-card-sections" - LIGHTWEIGHT PATH
+    // No registry loading, no XLSX — direct card lookup
+    // ═══════════════════════════════════════════════════════
+    if (body.mode === "update-card-sections") {
+      const { partName, sections: newSections } = body;
+      if (!partName || !newSections) {
+        return new Response(JSON.stringify({ error: "partName and sections required" }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Find kartoteka_DID folder
+      const folderId = await findFolder(token, "kartoteka_DID")
+        || await findFolder(token, "Kartoteka_DID")
+        || await findFolder(token, "Kartotéka_DID");
+      if (!folderId) {
+        return new Response(JSON.stringify({ error: "kartoteka_DID folder not found" }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Find active and archive folders directly (no full registry load)
+      const rootChildren = await listFilesInFolder(token, folderId);
+      const rootFolders = rootChildren.filter(f => f.mimeType === DRIVE_FOLDER_MIME);
+      const activeFolderId = rootFolders.find(f => /^01/.test(f.name.trim()) || canonicalText(f.name).includes("aktiv"))?.id || null;
+      const archiveFolderId = rootFolders.find(f => /^03/.test(f.name.trim()) || (canonicalText(f.name).includes("archiv") && /spic|spis/.test(canonicalText(f.name))))?.id || null;
+
+      // Search for card directly in active, then archive, then root
+      let card: CardFileResult | null = null;
+      const searchOrder = [activeFolderId, archiveFolderId, folderId].filter(Boolean) as string[];
+      for (const searchId of searchOrder) {
+        card = await findCardFile(token, partName, searchId);
+        if (card) break;
+      }
+
+      if (!card) {
+        return new Response(JSON.stringify({ error: `Card for "${partName}" not found in active/archive folders` }), {
+          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log(`[update-card-sections] Found: ${card.fileName} (${card.fileId}), mimeType=${card.mimeType}`);
+
+      // Parse existing sections and merge
+      const existingSections = parseCardSections(card.content);
+      const sectionModes: Record<string, string> = body.sectionModes || {};
+      const updatedKeys: string[] = [];
+
+      for (const [letter, newContent] of Object.entries(newSections)) {
+        const ul = letter.toUpperCase();
+        if (!SECTION_ORDER.includes(ul)) continue;
+        const existing = existingSections[ul] || "";
+        const mode = (sectionModes[ul] || "APPEND").toUpperCase();
+        const timestamped = `[${dateStr}] ${newContent}`;
+
+        if (mode === "REPLACE" || mode === "ROTATE") {
+          existingSections[ul] = timestamped;
+        } else {
+          if (existing && existing !== "(zatím prázdné)") {
+            existingSections[ul] = existing + "\n\n" + timestamped;
+          } else {
+            existingSections[ul] = timestamped;
+          }
+        }
+        updatedKeys.push(ul);
+        console.log(`[update-card-sections] ${mode} section ${ul} for "${partName}" (${String(newContent).length} chars)`);
+      }
+
+      const fullCard = buildCard(partName, existingSections);
+      await updateFileById(token, card.fileId, fullCard, card.mimeType);
+      console.log(`[update-card-sections] Updated ${card.fileName} in-place, sections: ${updatedKeys.join(",")}`);
+
+      return new Response(JSON.stringify({
+        success: true, cardFileName: card.fileName, sectionsUpdated: updatedKeys,
+        isNewCard: false, path: "direct-lookup",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ═══ For all other modes, load full registry ═══
     const folderId = await findFolder(token, "kartoteka_DID")
       || await findFolder(token, "Kartoteka_DID")
       || await findFolder(token, "Kartotéka_DID");
@@ -558,136 +638,12 @@ serve(async (req) => {
       });
     }
 
-    // Load registry for all modes
     let registry: RegistryContext | null = null;
     try {
       registry = await loadRegistryContext(token, folderId);
       console.log(`[registry] Loaded: ${registry.entries.length} entries, active=${registry.activeFolderId}, archive=${registry.archiveFolderId}, center=${registry.centerFolderId}`);
     } catch (e) {
       console.error("[registry] Failed to load:", e);
-    }
-
-    const dateStr = new Date().toISOString().slice(0, 10);
-
-    // ═══════════════════════════════════════════════════════
-    // MODE A: "update-card-sections" - DID Part Card (A-M)
-    // Location: 01_AKTIVNI_FRAGMENTY/ or 03_ARCHIV_SPICICH/
-    // ═══════════════════════════════════════════════════════
-    if (body.mode === "update-card-sections") {
-      const { partName, sections: newSections } = body;
-      if (!partName || !newSections) {
-        return new Response(JSON.stringify({ error: "partName and sections required" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (!registry) {
-        return new Response(JSON.stringify({ error: "Registry not available - cannot safely resolve card location" }), {
-          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      const entry = findBestRegistryEntry(partName, registry.entries);
-      const isArchived = entry ? isArchivedFromRegistry(entry) : false;
-      let partFolder: DriveFile | null = null;
-      if (entry) {
-        const stateFolderId = isArchived ? registry.archiveFolderId : registry.activeFolderId;
-        if (stateFolderId) partFolder = await findBestPartFolder(token, stateFolderId, entry);
-      }
-
-      // Allow caller to override target folder (e.g. therapist choosing archive vs active)
-      let target = resolveCardTarget(partName, folderId, registry, partFolder, isArchived);
-      if (body.targetFolder === "archive" && registry.archiveFolderId) {
-        target = { ...target, searchRootId: registry.archiveFolderId, pathLabel: "03_ARCHIV_SPICICH/(manuální)", allowCreate: true };
-      } else if (body.targetFolder === "active" && registry.activeFolderId) {
-        target = { ...target, searchRootId: registry.activeFolderId, pathLabel: "01_AKTIVNI_FRAGMENTY/(manuální)", allowCreate: true };
-      }
-      const lookupName = target.registryEntry?.name || partName;
-      const card = await findCardFile(token, lookupName, target.searchRootId);
-
-      // ═══ FAIL-SAFE: registry match but card not found → BLOCK ═══
-      if (!card && target.registryEntry) {
-        const msg = `FAIL-SAFE: "${lookupName}" (ID: ${target.registryEntry.id}) exists in registry but card NOT found in ${target.pathLabel}. Write BLOCKED.`;
-        console.error(msg);
-        return new Response(JSON.stringify({
-          error: msg,
-          failSafe: true,
-          registryEntry: target.registryEntry,
-          searchedIn: target.pathLabel,
-        }), {
-          status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      let existingSections: Record<string, string>;
-      let isNew = false;
-
-      if (card) {
-        existingSections = parseCardSections(card.content);
-        console.log(`[update-card-sections] Found: ${card.fileName} (${card.fileId}), mimeType=${card.mimeType}`);
-      } else {
-        if (!target.allowCreate) {
-          return new Response(JSON.stringify({ error: `Card for "${partName}" not found and creation not allowed` }), {
-            status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-        existingSections = {};
-        isNew = true;
-        console.log(`[update-card-sections] Creating new card for "${partName}" in ${target.pathLabel}`);
-      }
-
-      // Merge: support REPLACE/ROTATE/APPEND modes per section
-      const sectionModes: Record<string, string> = body.sectionModes || {};
-      const updatedKeys: string[] = [];
-      for (const [letter, newContent] of Object.entries(newSections)) {
-        const ul = letter.toUpperCase();
-        if (!SECTION_ORDER.includes(ul)) continue;
-        const existing = existingSections[ul] || "";
-        const mode = (sectionModes[ul] || "APPEND").toUpperCase();
-        const timestamped = `[${dateStr}] ${newContent}`;
-
-        if (mode === "REPLACE" || mode === "ROTATE") {
-          // Full section replacement – AI already generated complete content
-          existingSections[ul] = timestamped;
-          console.log(`[update-card-sections] ${mode} section ${ul} for "${partName}" (${String(newContent).length} chars)`);
-        } else {
-          // Default APPEND
-          if (existing && existing !== "(zatím prázdné)") {
-            existingSections[ul] = existing + "\n\n" + timestamped;
-          } else {
-            existingSections[ul] = timestamped;
-          }
-        }
-        updatedKeys.push(ul);
-      }
-
-      const fullCard = buildCard(target.registryEntry?.name || partName, existingSections);
-      let resultFileName: string;
-
-      if (card) {
-        await updateFileById(token, card.fileId, fullCard, card.mimeType);
-        resultFileName = card.fileName;
-        console.log(`[update-card-sections] Updated ${card.fileName} in-place, sections: ${updatedKeys.join(",")}`);
-      } else {
-        // Auto-increment ID from registry and create as Google Doc
-        const nextId = getNextRegistryId(registry?.entries || []);
-        const paddedId = String(nextId).padStart(3, "0");
-        const newFileName = `${paddedId}_${partName.toUpperCase().replace(/\s+/g, "_")}`;
-        await createFileInFolder(token, newFileName, fullCard, target.searchRootId);
-        resultFileName = newFileName;
-        // Add entry to registry
-        // Determine status based on target folder
-        const registryStatus = body.targetFolder === "archive" ? "Spící" : "Aktivní";
-        if (registry?.registryFileId && registry?.registrySheetName) {
-          await addRegistryRow(token, registry.registryFileId, registry.registrySheetName, paddedId, partName, registryStatus);
-        }
-        console.log(`[update-card-sections] Created Google Doc: ${newFileName} (ID: ${paddedId}) in ${target.pathLabel}`);
-      }
-
-      return new Response(JSON.stringify({
-        success: true, cardFileName: resultFileName, sectionsUpdated: updatedKeys,
-        isNewCard: isNew, path: target.pathLabel,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ═══════════════════════════════════════════════════════
