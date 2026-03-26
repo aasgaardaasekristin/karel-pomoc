@@ -167,32 +167,40 @@ export async function runKartothekaUpdate(): Promise<void> {
         .eq("processing_type", "kartoteka_update");
 
       // 3b) Načti aktuální kartu z Drive přes edge funkci
-      let currentCard: string | null = null;
+      let currentCard: CardContent | null = null;
       try {
         const { data: driveData } = await supabase.functions.invoke("karel-did-drive-read", {
           body: { partName: partId },
         });
-        currentCard = driveData?.content ?? null;
+        currentCard = driveData?.content ? { M: driveData.content } : null;
       } catch (driveErr) {
         console.warn(`[Kartotheka] Nelze načíst kartu z Drive pro "${partId}":`, driveErr);
       }
 
-      // 3c) Analýza vláken (placeholder)
-      const updates = await analyzeThreadsForPart(partId, threads, currentCard);
+      // 3c) Analýza vláken
+      const castThreads = threads.map((t) => ({
+        ...t,
+        messages: Array.isArray(t.messages) ? t.messages : [],
+      })) as Thread[];
+
+      const sectionUpdates = await analyzeThreadsForPart(partId, castThreads, currentCard);
+
+      // Flatten SectionUpdates → pole pro card_update_queue
+      const allUpdates = Object.values(sectionUpdates).flat();
 
       // 3d) Ulož výsledky do card_update_queue
-      if (updates.length > 0) {
-        const rows = updates.map((u) => ({
-          part_id: u.part_id,
+      if (allUpdates.length > 0) {
+        const rows = allUpdates.map((u) => ({
+          part_id: partId,
           section: u.section,
           subsection: u.subsection,
-          action: u.action,
-          old_content: u.old_content,
-          new_content: u.new_content,
-          reason: u.reason,
-          source_thread_id: u.source_thread_id,
-          source_date: u.source_date,
-          priority: u.priority,
+          action: u.type,
+          old_content: "",
+          new_content: u.content,
+          reason: u.reasoning,
+          source_thread_id: threads[0]?.id ?? null,
+          source_date: u.sourceDate,
+          priority: u.section === "J" ? 9 : 5,
           applied: false,
         }));
 
@@ -202,13 +210,13 @@ export async function runKartothekaUpdate(): Promise<void> {
         }
       }
 
-      // 3e) Aplikuj změny na kartu v Drive (zatím placeholder – volá se po implementaci analyzeThreadsForPart)
-      if (updates.length > 0) {
+      // 3e) Aplikuj změny na kartu v Drive
+      if (allUpdates.length > 0) {
         try {
           await supabase.functions.invoke("karel-did-drive-write", {
             body: {
               partName: partId,
-              updates,
+              updates: allUpdates,
             },
           });
           console.log(`[Kartotheka] Karta "${partId}" aktualizována na Drive.`);
