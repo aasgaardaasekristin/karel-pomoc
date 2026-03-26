@@ -121,6 +121,18 @@ async function getActivePartsLast24h(): Promise<string[]> {
 /**
  * Načte vlákna, která ještě nebyla zpracována pro aktualizaci kartotéky.
  */
+/** Blacklist — terapeutky a AI nesmí být zpracovány jako DID části */
+const THERAPIST_BLACKLIST = [
+  "hanka", "hanička", "hanicka", "hana", "hani",
+  "káťa", "kata", "kateřina", "katerina",
+  "karel",
+];
+
+function isTherapistName(name: string): boolean {
+  const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  return THERAPIST_BLACKLIST.some((t) => normalized === t || normalized.includes(t));
+}
+
 export async function getUnprocessedThreads(): Promise<UnprocessedThread[]> {
   const lastCompleted = await getLastCompletedAt("kartoteka_update");
   const cutoff = lastCompleted ?? new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -142,8 +154,19 @@ export async function getUnprocessedThreads(): Promise<UnprocessedThread[]> {
     return [];
   }
 
+  // Safeguard: odfiltruj terapeutky i kdyby sub_mode byl špatně
+  const safeThreads = threads.filter((t) => {
+    if (isTherapistName(t.part_name)) {
+      console.warn(`[Kartotheka] ⚠️ PŘESKOČENO vlákno "${t.part_name}" — jméno terapeutky/AI, ne DID část.`);
+      return false;
+    }
+    return true;
+  });
+
   // Odfiltruj již zpracovaná vlákna
-  const threadIds = threads.map((t) => t.id);
+  const threadIds = safeThreads.map((t) => t.id);
+  if (threadIds.length === 0) return [];
+
   const { data: processed } = await supabase
     .from("thread_processing_log")
     .select("thread_id")
@@ -152,7 +175,7 @@ export async function getUnprocessedThreads(): Promise<UnprocessedThread[]> {
     .eq("processing_type", "kartoteka_update");
 
   const processedSet = new Set((processed ?? []).map((p) => p.thread_id));
-  return threads.filter((t) => !processedSet.has(t.id));
+  return safeThreads.filter((t) => !processedSet.has(t.id));
 }
 
 /**
