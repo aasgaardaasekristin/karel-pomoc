@@ -213,7 +213,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
           size="sm"
           onClick={runFullCycle}
           disabled={chainingRef.current || hasRunning}
-          className="h-6 px-2 text-[10px]"
+          className="h-6 px-2 text-[0.625rem]"
         >
           {chainingRef.current || hasRunning ? (
             <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Běží...</>
@@ -263,8 +263,8 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
 
                     {isRunning && (
                       <div className="mt-2 space-y-1.5">
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                          <span className="truncate max-w-[200px]">{phaseLabel}</span>
+                        <div className="flex items-center justify-between text-[0.625rem] text-muted-foreground">
+                          <span className="truncate max-w-[12.5rem]">{phaseLabel}</span>
                           <span>{progress}%</span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/50">
@@ -274,7 +274,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                           />
                         </div>
                         {cycle.last_error && (
-                          <p className="text-[9px] text-destructive/80 truncate">⚠ {cycle.last_error}</p>
+                          <p className="text-[0.5625rem] text-destructive/80 truncate">⚠ {cycle.last_error}</p>
                         )}
                       </div>
                     )}
@@ -295,7 +295,7 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
                   </div>
 
                   <div className="flex items-center gap-1">
-                    {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
+                    {!isRunning && <span className="text-[0.625rem] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
                     {!isRunning && (
                       <Button
                         variant="ghost"
@@ -313,19 +313,19 @@ const DidAgreementsPanel = ({ refreshTrigger = 0, onWeeklyCycleComplete }: { ref
               {isExpanded && (
                 <div className="border-t border-border/50 px-3 pb-3">
                   {summary ? (
-                    <div className="prose prose-sm mt-2 max-w-none text-[11px] leading-relaxed dark:prose-invert">
+                    <div className="prose prose-sm mt-2 max-w-none text-[0.6875rem] leading-relaxed dark:prose-invert">
                       <RichMarkdown compact>{summary.slice(0, 3000)}</RichMarkdown>
                     </div>
                   ) : (
-                    <p className="mt-2 text-[11px] text-muted-foreground italic">Report není k dispozici (starší cyklus).</p>
+                    <p className="mt-2 text-[0.6875rem] text-muted-foreground italic">Report není k dispozici (starší cyklus).</p>
                   )}
 
                   {cards.length > 0 && (
                     <div className="mt-2 border-t border-border/30 pt-2">
-                      <p className="mb-1 text-[10px] font-medium text-muted-foreground">Aktualizované položky:</p>
+                      <p className="mb-1 text-[0.625rem] font-medium text-muted-foreground">Aktualizované položky:</p>
                       <div className="flex flex-wrap gap-1">
                         {cards.map((card: any, index: number) => (
-                          <Badge key={index} variant="secondary" className="px-1 py-0 text-[9px]">
+                          <Badge key={index} variant="secondary" className="px-1 py-0 text-[0.5625rem]">
                             {typeof card === "string" ? card : card?.name || "?"}
                           </Badge>
                         ))}

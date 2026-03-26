@@ -335,7 +335,7 @@ const SessionReportForm = () => {
         <div className="bg-card rounded-xl border border-border p-4 space-y-4">
           <div className="space-y-1">
             <Label className="text-xs">A) Kontext</Label>
-            <Textarea value={formData.context} onChange={e => setField("context", e.target.value)} className="min-h-[70px] text-sm" placeholder="Stručný popis situace" />
+            <Textarea value={formData.context} onChange={e => setField("context", e.target.value)} className="min-h-[4.375rem] text-sm" placeholder="Stručný popis situace" />
           </div>
 
           <div className="space-y-1">
@@ -356,12 +356,12 @@ const SessionReportForm = () => {
                 </div>
               ))}
             </div>
-            <Textarea value={formData.therapistEmotionsOther} onChange={e => setField("therapistEmotionsOther", e.target.value)} placeholder="Jiné emoce..." className="min-h-[40px] text-sm mt-1" />
+            <Textarea value={formData.therapistEmotionsOther} onChange={e => setField("therapistEmotionsOther", e.target.value)} placeholder="Jiné emoce..." className="min-h-[2.5rem] text-sm mt-1" />
           </div>
 
           <div className="space-y-1">
             <Label className="text-xs">D) Přenos / protipřenos</Label>
-            <Textarea value={formData.transference} onChange={e => setField("transference", e.target.value)} className="min-h-[50px] text-sm" />
+            <Textarea value={formData.transference} onChange={e => setField("transference", e.target.value)} className="min-h-[3.125rem] text-sm" />
           </div>
 
           <div className="space-y-1">
@@ -374,22 +374,22 @@ const SessionReportForm = () => {
                 </div>
               ))}
             </div>
-            <Textarea value={formData.risksOther} onChange={e => setField("risksOther", e.target.value)} placeholder="Jiná rizika..." className="min-h-[40px] text-sm mt-1" />
+            <Textarea value={formData.risksOther} onChange={e => setField("risksOther", e.target.value)} placeholder="Jiná rizika..." className="min-h-[2.5rem] text-sm mt-1" />
           </div>
 
           <div className="space-y-1">
             <Label className="text-xs">F) Co potřebuji ověřit</Label>
-            <Textarea value={formData.missingData} onChange={e => setField("missingData", e.target.value)} className="min-h-[50px] text-sm" />
+            <Textarea value={formData.missingData} onChange={e => setField("missingData", e.target.value)} className="min-h-[3.125rem] text-sm" />
           </div>
 
           <div className="space-y-1">
             <Label className="text-xs">G) Dosavadní intervence</Label>
-            <Textarea value={formData.interventionsTried} onChange={e => setField("interventionsTried", e.target.value)} className="min-h-[50px] text-sm" />
+            <Textarea value={formData.interventionsTried} onChange={e => setField("interventionsTried", e.target.value)} className="min-h-[3.125rem] text-sm" />
           </div>
 
           <div className="space-y-1">
             <Label className="text-xs">H) Cíl dalšího sezení</Label>
-            <Textarea value={formData.nextSessionGoal} onChange={e => setField("nextSessionGoal", e.target.value)} className="min-h-[50px] text-sm" />
+            <Textarea value={formData.nextSessionGoal} onChange={e => setField("nextSessionGoal", e.target.value)} className="min-h-[3.125rem] text-sm" />
           </div>
 
           {/* Action buttons */}

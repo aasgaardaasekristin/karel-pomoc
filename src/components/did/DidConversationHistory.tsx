@@ -39,14 +39,14 @@ const DidConversationHistory = ({ conversations, onLoad, onDelete }: Props) => {
           <History className="w-4 h-4 text-muted-foreground" />
           <h3 className="text-xs sm:text-sm font-medium text-muted-foreground">Poslední rozhovory</h3>
         </div>
-        <div className="flex items-center gap-1 text-[10px] sm:text-xs text-muted-foreground/60">
+        <div className="flex items-center gap-1 text-[0.625rem] sm:text-xs text-muted-foreground/60">
           <Save className="w-3 h-3" />
           <span>autosave</span>
         </div>
       </div>
       <div className="space-y-1.5 sm:space-y-2">
         {conversations.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-card/30 px-3 py-3 text-[11px] sm:text-xs text-muted-foreground">
+          <div className="rounded-lg border border-dashed border-border bg-card/30 px-3 py-3 text-[0.6875rem] sm:text-xs text-muted-foreground">
             Zatím tu není žádný uložený rozhovor.
           </div>
         ) : (
@@ -64,7 +64,7 @@ const DidConversationHistory = ({ conversations, onLoad, onDelete }: Props) => {
                   <div className="text-xs sm:text-sm font-medium text-foreground truncate">
                     {conv.label}: {conv.preview}…
                   </div>
-                  <div className="text-[10px] sm:text-xs text-muted-foreground">{timeStr}</div>
+                  <div className="text-[0.625rem] sm:text-xs text-muted-foreground">{timeStr}</div>
                 </div>
                 <Button
                   variant="ghost"

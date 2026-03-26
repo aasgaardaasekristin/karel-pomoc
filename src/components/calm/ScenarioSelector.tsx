@@ -70,7 +70,7 @@ const ScenarioSelector = ({ onSelect }: ScenarioSelectorProps) => {
                 <Icon size={20} className={iconColor} />
               </div>
               <span className="text-sm font-semibold text-[hsl(var(--text-primary))]">{label}</span>
-              <span className="text-[10px] text-[hsl(var(--text-tertiary))] mt-0.5 line-clamp-2">{hint}</span>
+              <span className="text-[0.625rem] text-[hsl(var(--text-tertiary))] mt-0.5 line-clamp-2">{hint}</span>
             </div>
           </KarelCard>
         ))}

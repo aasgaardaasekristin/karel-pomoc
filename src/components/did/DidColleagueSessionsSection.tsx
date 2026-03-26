@@ -34,7 +34,7 @@ const DidColleagueSessionsSection = ({ refreshTrigger }: { refreshTrigger: numbe
 
   return (
     <div className="mt-3 pt-3 border-t border-border/30">
-      <h5 className="text-[10px] font-medium text-muted-foreground mb-2 flex items-center gap-1">
+      <h5 className="text-[0.625rem] font-medium text-muted-foreground mb-2 flex items-center gap-1">
         <FileText className="w-3 h-3" />
         Poslední sezení
       </h5>
@@ -52,14 +52,14 @@ const DidColleagueSessionsSection = ({ refreshTrigger }: { refreshTrigger: numbe
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-medium text-foreground">{s.part_name}</span>
+                    <span className="text-[0.625rem] font-medium text-foreground">{s.part_name}</span>
                     <Badge variant="outline" className="text-[7px] h-3.5 px-1">
                       {s.therapist}
                     </Badge>
-                    <span className="text-[8px] text-muted-foreground ml-auto shrink-0">{s.session_date}</span>
+                    <span className="text-[0.5rem] text-muted-foreground ml-auto shrink-0">{s.session_date}</span>
                   </div>
                   {!isExpanded && (
-                    <p className="text-[9px] text-muted-foreground truncate mt-0.5">{preview}…</p>
+                    <p className="text-[0.5625rem] text-muted-foreground truncate mt-0.5">{preview}…</p>
                   )}
                 </div>
                 {isExpanded ? (
@@ -74,13 +74,13 @@ const DidColleagueSessionsSection = ({ refreshTrigger }: { refreshTrigger: numbe
                     <div className="rounded bg-primary/5 border border-primary/15 p-2">
                       <div className="flex items-center gap-1 mb-1">
                         <MessageSquare className="w-2.5 h-2.5 text-primary" />
-                        <span className="text-[9px] font-medium text-primary">Předání pro kolegyni</span>
+                        <span className="text-[0.5625rem] font-medium text-primary">Předání pro kolegyni</span>
                       </div>
-                      <p className="text-[10px] text-foreground whitespace-pre-wrap">{s.handoff_note}</p>
+                      <p className="text-[0.625rem] text-foreground whitespace-pre-wrap">{s.handoff_note}</p>
                     </div>
                   )}
                   {s.ai_analysis && (
-                    <div className="text-[10px] text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
+                    <div className="text-[0.625rem] text-muted-foreground whitespace-pre-wrap max-h-48 overflow-y-auto">
                       {s.ai_analysis}
                     </div>
                   )}

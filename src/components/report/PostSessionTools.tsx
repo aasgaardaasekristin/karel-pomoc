@@ -183,7 +183,7 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
               >
                 <Globe className="w-5 h-5 text-primary" />
                 <span className="text-sm font-medium">Poradit se na internetu</span>
-                <span className="text-[10px] text-muted-foreground">Nové metody a přístupy</span>
+                <span className="text-[0.625rem] text-muted-foreground">Nové metody a přístupy</span>
               </Button>
               <Button
                 variant="outline"
@@ -192,7 +192,7 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
               >
                 <MessageSquare className="w-5 h-5 text-primary" />
                 <span className="text-sm font-medium">Probrat situaci se mnou</span>
-                <span className="text-[10px] text-muted-foreground">Supervizní pohled Karla</span>
+                <span className="text-[0.625rem] text-muted-foreground">Supervizní pohled Karla</span>
               </Button>
               <Button
                 variant="outline"
@@ -201,7 +201,7 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
               >
                 <GraduationCap className="w-5 h-5 text-primary" />
                 <span className="text-sm font-medium">Supervizní trénink</span>
-                <span className="text-[10px] text-muted-foreground">Simulace klienta</span>
+                <span className="text-[0.625rem] text-muted-foreground">Simulace klienta</span>
               </Button>
             </div>
           </div>
@@ -222,7 +222,7 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
       <div className="p-2 md:p-3 border-b border-border bg-card/30 flex items-center justify-between">
         <div>
           <h3 className="text-xs md:text-sm font-semibold text-foreground">{modeLabels[activeMode]}</h3>
-          <p className="text-[10px] md:text-xs text-muted-foreground">{clientName}</p>
+          <p className="text-[0.625rem] md:text-xs text-muted-foreground">{clientName}</p>
         </div>
         <div className="flex items-center gap-2">
           <ThemeQuickButton />
@@ -260,14 +260,14 @@ const PostSessionTools = ({ clientId, clientName, sessionReport, onBack }: PostS
               }
             }}
             placeholder={activeMode === "training" ? "Reaguj na klienta..." : "Napiš svou zprávu..."}
-            className="flex-1 min-w-0 min-h-[40px] max-h-[100px] resize-none text-sm"
+            className="flex-1 min-w-0 min-h-[2.5rem] max-h-[6.25rem] resize-none text-sm"
             disabled={isLoading}
           />
           <Button
             size="icon"
             onClick={sendMessage}
             disabled={!input.trim() || isLoading}
-            className="h-[40px] w-[40px] shrink-0"
+            className="h-[2.5rem] w-[2.5rem] shrink-0"
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>

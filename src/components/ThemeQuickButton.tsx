@@ -21,7 +21,7 @@ const ThemeQuickButton = ({ className = "", storageKey: propStorageKey }: ThemeQ
         variant="ghost"
         size="sm"
         onClick={() => setOpen(true)}
-        className={`min-w-[44px] min-h-[44px] h-7 px-2 text-xs gap-1 rounded-xl text-muted-foreground ${className}`}
+        className={`min-w-[2.75rem] min-h-[2.75rem] h-7 px-2 text-xs gap-1 rounded-xl text-muted-foreground ${className}`}
         title="Nastavení vzhledu"
       >
         <Palette className="w-3.5 h-3.5" />

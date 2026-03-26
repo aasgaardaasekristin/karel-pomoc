@@ -144,7 +144,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
         <h4 className="text-xs font-semibold uppercase tracking-wider text-[hsl(var(--text-tertiary))] flex items-center gap-1.5">
           <Users size={14} className="text-[hsl(var(--accent-primary))]" />
           Registr částí
-          <span className="text-[10px] font-normal normal-case ml-1">
+          <span className="text-[0.625rem] font-normal normal-case ml-1">
             ({stats.total} částí · {stats.active} aktivních · Ø {stats.avgHealth}%)
           </span>
         </h4>
@@ -179,7 +179,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
           </div>
 
           {/* Parts grid */}
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
             {filtered.map(part => {
               const cfg = STATUS_CONFIG[part.status] || STATUS_CONFIG.sleeping;
               const isExpanded = expandedPart === part.id;
@@ -206,14 +206,14 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
                           {part.display_name || part.part_name}
                         </span>
                         {part.age_estimate && (
-                          <span className="text-[10px] text-[hsl(var(--text-disabled))]">{part.age_estimate}</span>
+                          <span className="text-[0.625rem] text-[hsl(var(--text-disabled))]">{part.age_estimate}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <KarelBadge variant={cfg.variant} size="sm" dot>
                           {cfg.label}
                         </KarelBadge>
-                        <span className="text-[10px] text-[hsl(var(--text-disabled))] flex items-center gap-0.5">
+                        <span className="text-[0.625rem] text-[hsl(var(--text-disabled))] flex items-center gap-0.5">
                           <Clock size={10} />
                           {formatTimeAgo(part.last_seen_at)}
                         </span>
@@ -235,15 +235,15 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
                   </button>
 
                   {isExpanded && (
-                    <div className="px-3 pb-3 space-y-1.5 border-t border-[hsl(var(--border-subtle))] pt-2 ml-[52px]">
+                    <div className="px-3 pb-3 space-y-1.5 border-t border-[hsl(var(--border-subtle))] pt-2 ml-[3.25rem]">
                       {part.role_in_system && (
-                        <p className="text-[10px] text-[hsl(var(--text-secondary))] flex items-center gap-1">
+                        <p className="text-[0.625rem] text-[hsl(var(--text-secondary))] flex items-center gap-1">
                           <Shield size={10} className="text-[hsl(var(--accent-primary))]" />
                           <span className="font-medium">Role:</span> {part.role_in_system}
                         </p>
                       )}
                       {part.last_emotional_state && (
-                        <p className="text-[10px] text-[hsl(var(--text-secondary))] flex items-center gap-1">
+                        <p className="text-[0.625rem] text-[hsl(var(--text-secondary))] flex items-center gap-1">
                           <Heart size={10} className={emotionColor} />
                           <span className="font-medium">Emoce:</span> {part.last_emotional_state}
                           {part.last_emotional_intensity != null && (
@@ -251,7 +251,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
                           )}
                         </p>
                       )}
-                      <div className="flex items-center gap-3 text-[10px] text-[hsl(var(--text-tertiary))]">
+                      <div className="flex items-center gap-3 text-[0.625rem] text-[hsl(var(--text-tertiary))]">
                         <span><Activity size={10} className="inline mr-0.5" />{part.total_episodes || 0} epizod</span>
                         <span>{part.total_threads || 0} vláken</span>
                         <span>Zdraví: {part.health_score || 0}%</span>
@@ -261,7 +261,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
                       </div>
                       {part.known_triggers && part.known_triggers.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-medium text-[hsl(var(--text-tertiary))] flex items-center gap-1">
+                          <p className="text-[0.625rem] font-medium text-[hsl(var(--text-tertiary))] flex items-center gap-1">
                             <Zap size={10} className="text-yellow-500" /> Triggery
                           </p>
                           <div className="flex flex-wrap gap-1 mt-0.5">
@@ -273,7 +273,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
                       )}
                       {part.known_strengths && part.known_strengths.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-medium text-[hsl(var(--text-tertiary))] flex items-center gap-1">
+                          <p className="text-[0.625rem] font-medium text-[hsl(var(--text-tertiary))] flex items-center gap-1">
                             <Shield size={10} className="text-green-500" /> Silné stránky
                           </p>
                           <div className="flex flex-wrap gap-1 mt-0.5">
@@ -286,7 +286,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
                       {onSelectPart && (
                         <button
                           onClick={() => onSelectPart(part.part_name)}
-                          className="text-[10px] text-[hsl(var(--accent-primary))] hover:underline mt-1"
+                          className="text-[0.625rem] text-[hsl(var(--accent-primary))] hover:underline mt-1"
                         >
                           Otevřít vlákno →
                         </button>

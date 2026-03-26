@@ -62,8 +62,8 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
         className="w-8 h-8 rounded-lg border border-border cursor-pointer p-0.5 bg-transparent"
       />
       <div>
-        <span className="text-[10px] text-muted-foreground block">{label}</span>
-        <span className="text-[9px] font-mono text-muted-foreground">{hex}</span>
+        <span className="text-[0.625rem] text-muted-foreground block">{label}</span>
+        <span className="text-[0.5625rem] font-mono text-muted-foreground">{hex}</span>
       </div>
     </label>
   );
@@ -182,12 +182,12 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-medium text-foreground">Použití změn</p>
-                <p className="text-[10px] text-muted-foreground">Změny se projeví až po stisku tlačítka níže.</p>
+                <p className="text-[0.625rem] text-muted-foreground">Změny se projeví až po stisku tlačítka níže.</p>
               </div>
-              {hasPendingChanges && <Badge variant="secondary" className="text-[9px]">Neuloženo</Badge>}
+              {hasPendingChanges && <Badge variant="secondary" className="text-[0.5625rem]">Neuloženo</Badge>}
             </div>
             <div className="mt-3 flex gap-2">
-              <Button size="sm" className="h-7 text-[10px] gap-1.5" disabled={!hasPendingChanges || saving} onClick={handleApplyTheme}>
+              <Button size="sm" className="h-7 text-[0.625rem] gap-1.5" disabled={!hasPendingChanges || saving} onClick={handleApplyTheme}>
                 {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
                 Použít změny
               </Button>
@@ -209,7 +209,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                     variant={currentPersona === key ? "default" : "outline"}
                     size="sm"
                     onClick={() => setCurrentPersona(key)}
-                    className="h-7 text-[10px] px-2"
+                    className="h-7 text-[0.625rem] px-2"
                   >
                     {label}
                   </Button>
@@ -234,7 +234,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                       <Check className="w-3.5 h-3.5 text-white drop-shadow-md" />
                     </div>
                   )}
-                  <span className="absolute bottom-0.5 left-0 right-0 text-[8px] text-white text-center font-medium drop-shadow-md capitalize">{name}</span>
+                  <span className="absolute bottom-0.5 left-0 right-0 text-[0.5rem] text-white text-center font-medium drop-shadow-md capitalize">{name}</span>
                 </button>
               ))}
             </div>
@@ -252,7 +252,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
               {draft.font_color ? (
                 <ColorPicker label="Písmo" value={draft.font_color} onChange={(c) => setDraftPartial({ font_color: c })} />
               ) : (
-                <button onClick={() => setDraftPartial({ font_color: "0 0% 20%" })} className="text-[9px] text-primary self-end hover:underline pb-1">+ barva písma</button>
+                <button onClick={() => setDraftPartial({ font_color: "0 0% 20%" })} className="text-[0.5625rem] text-primary self-end hover:underline pb-1">+ barva písma</button>
               )}
             </div>
           </div>
@@ -272,7 +272,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                 <button
                   key={opt.value}
                   onClick={() => setDraftPartial({ font_family: opt.value })}
-                  className={`py-1.5 rounded-lg border-2 text-[10px] transition-all ${draft.font_family === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                  className={`py-1.5 rounded-lg border-2 text-[0.625rem] transition-all ${draft.font_family === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
                 >
                   {opt.label}
                 </button>
@@ -288,10 +288,10 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
             </div>
             <div className="grid grid-cols-2 gap-2 p-3 bg-background">
               <div className="rounded-lg border p-2" style={{ borderColor: `hsl(${draft.primary_color} / 0.3)` }}>
-                <p className="text-[10px] text-muted-foreground">Karta</p>
+                <p className="text-[0.625rem] text-muted-foreground">Karta</p>
                 <p className="text-xs font-medium text-foreground">Náhled tématu</p>
               </div>
-              <div className="rounded-lg p-2 text-[11px]" style={{ background: `hsl(${draft.primary_color})`, color: draft.dark_mode ? `hsl(${draft.primary_color} / 0.1)` : "white" }}>
+              <div className="rounded-lg p-2 text-[0.6875rem]" style={{ background: `hsl(${draft.primary_color})`, color: draft.dark_mode ? `hsl(${draft.primary_color} / 0.1)` : "white" }}>
                 Tlačítko
               </div>
             </div>
@@ -326,7 +326,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                   className={`py-1.5 rounded-lg border-2 text-center transition-all ${draft.border_radius === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
                 >
                   <span className="block text-sm">{opt.icon}</span>
-                  <span className="text-[9px]">{opt.label}</span>
+                  <span className="text-[0.5625rem]">{opt.label}</span>
                 </button>
               ))}
             </div>
@@ -343,7 +343,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                 <button
                   key={opt.value}
                   onClick={() => setDraftPartial({ chat_bubble_style: opt.value })}
-                  className={`py-2 rounded-lg border-2 text-[10px] transition-all ${draft.chat_bubble_style === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
+                  className={`py-2 rounded-lg border-2 text-[0.625rem] transition-all ${draft.chat_bubble_style === opt.value ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:border-primary/50"}`}
                 >
                   {opt.label}
                 </button>
@@ -377,16 +377,16 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                 <button
                   key={bg.label}
                   onClick={() => setDraftPartial({ background_image_url: bg.url })}
-                  className={`relative rounded-lg border-2 overflow-hidden transition-all min-h-[60px] min-w-[80px] ${
+                  className={`relative rounded-lg border-2 overflow-hidden transition-all min-h-[3.75rem] min-w-[5rem] ${
                     draft.background_image_url === bg.url
                       ? "border-primary ring-1 ring-primary/30"
                       : "border-border hover:border-primary/50"
                   }`}
                 >
                   {bg.thumbnail ? (
-                    <img src={bg.thumbnail} alt={bg.label} className="w-full h-[60px] object-cover" loading="lazy" />
+                    <img src={bg.thumbnail} alt={bg.label} className="w-full h-[3.75rem] object-cover" loading="lazy" />
                   ) : (
-                    <div className="w-full h-[60px] bg-muted flex items-center justify-center">
+                    <div className="w-full h-[3.75rem] bg-muted flex items-center justify-center">
                       <X className="w-4 h-4 text-muted-foreground" />
                     </div>
                   )}
@@ -395,7 +395,7 @@ const ThemeEditorDialog = ({ open, onOpenChange, storageKey }: ThemeEditorDialog
                       <Check className="w-4 h-4 text-white drop-shadow-md" />
                     </div>
                   )}
-                  <span className="absolute bottom-0 left-0 right-0 text-[8px] text-white text-center font-medium drop-shadow-md bg-black/30 py-0.5">
+                  <span className="absolute bottom-0 left-0 right-0 text-[0.5rem] text-white text-center font-medium drop-shadow-md bg-black/30 py-0.5">
                     {bg.label}
                   </span>
                 </button>

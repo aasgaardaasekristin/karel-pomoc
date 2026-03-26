@@ -82,7 +82,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
             "flex-1 resize-none bg-transparent text-sm text-[hsl(var(--text-primary))] leading-snug",
             "placeholder:text-[hsl(var(--text-disabled))]",
             "focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed",
-            "min-h-[22px]",
+            "min-h-[1.375rem]",
           )}
         />
 
@@ -108,7 +108,7 @@ const ChatInputBar: React.FC<ChatInputBarProps> = ({
         )}
       </div>
 
-      <p className="text-[10px] text-[hsl(var(--text-disabled))] text-center mt-1.5 select-none">
+      <p className="text-[0.625rem] text-[hsl(var(--text-disabled))] text-center mt-1.5 select-none">
         Karel je AI asistent. Shift+Enter pro nový řádek.
       </p>
     </div>

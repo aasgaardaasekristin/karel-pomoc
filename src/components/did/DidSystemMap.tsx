@@ -110,7 +110,7 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
       >
         <Activity className="w-4 h-4 text-primary" />
         Mapa systému
-        <span className="text-[10px] text-muted-foreground ml-1">
+        <span className="text-[0.625rem] text-muted-foreground ml-1">
           ({stats.active} aktivních, {stats.sleeping} spí{stats.warning > 0 ? `, ${stats.warning} ⚠️` : ""})
         </span>
         {expanded ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
@@ -135,7 +135,7 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
                       onQuickThread(thread.id, thread.partName);
                     }
                   }}
-                  className={`relative group flex flex-col items-center gap-1 p-2 rounded-xl ${cfg.bg} ${cfg.border} border ring-1 ${cfg.ring} transition-all min-w-[80px] max-w-[110px] ${
+                  className={`relative group flex flex-col items-center gap-1 p-2 rounded-xl ${cfg.bg} ${cfg.border} border ring-1 ${cfg.ring} transition-all min-w-[5rem] max-w-[6.875rem] ${
                     isClickable
                       ? "cursor-pointer hover:scale-110 hover:ring-2 hover:ring-primary/40 hover:shadow-md"
                       : "cursor-default hover:scale-105"
@@ -167,14 +167,14 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
                   </div>
                   
                   {/* Time + thread indicator */}
-                  <span className="text-[9px] text-muted-foreground flex items-center gap-0.5">
+                  <span className="text-[0.5625rem] text-muted-foreground flex items-center gap-0.5">
                     {isClickable && <MessageCircle className="w-2.5 h-2.5 text-primary" />}
                     <Clock className="w-2.5 h-2.5" />
                     {formatTimeAgo(part.lastSeen)}
                   </span>
 
                   {/* Tooltip on hover */}
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-md px-2 py-1 text-[10px] text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-md px-2 py-1 text-[0.625rem] text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                     {isClickable ? "Klikni pro navázání rozhovoru" : cfg.label} • {formatDate(part.lastSeen)}
                   </div>
                 </div>
@@ -184,7 +184,7 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
 
           {/* Timeline */}
           <div className="rounded-lg border border-border bg-card/30 p-3">
-            <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+            <h4 className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider mb-2">
               Chronologie aktivity
             </h4>
             <div className="space-y-1.5">
@@ -199,7 +199,7 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
                     <div key={part.name} className="flex items-center gap-2 text-xs">
                       <Icon className={`w-3 h-3 flex-shrink-0 ${cfg.iconColor}`} />
                       <span className="font-medium text-foreground truncate flex-1">{part.name}</span>
-                      <span className="text-muted-foreground text-[10px] flex-shrink-0">
+                      <span className="text-muted-foreground text-[0.625rem] flex-shrink-0">
                         {formatDate(part.lastSeen)}
                       </span>
                     </div>

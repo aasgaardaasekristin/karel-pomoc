@@ -187,9 +187,13 @@ Theme: Calming, professional, warm - inspired by therapy spaces
   body {
     @apply text-foreground font-sans;
     font-family: 'DM Sans', system-ui, sans-serif;
-    font-size: 14px;
+    /* 0.875rem = 14px at default scale — scales with html font-size via --font-scale. Do NOT change to px. */
+    font-size: 0.875rem;
     font-weight: 400;
     letter-spacing: 0.01em;
+    overflow-wrap: anywhere;
+    -webkit-hyphens: auto;
+    hyphens: auto;
     background-color: hsl(var(--background));
     background-image:
       radial-gradient(circle at 8% 14%, hsl(var(--theme-glow) / 0.74), transparent 0 34%),
@@ -198,6 +202,8 @@ Theme: Calming, professional, warm - inspired by therapy spaces
       linear-gradient(160deg, hsl(var(--theme-surface)) 0%, hsl(var(--background)) 48%, hsl(var(--theme-soft)) 100%);
     background-attachment: fixed;
   }
+
+  img, video { max-width: 100%; height: auto; }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Crimson Pro', Georgia, serif;

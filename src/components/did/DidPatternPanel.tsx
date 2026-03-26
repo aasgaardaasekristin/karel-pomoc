@@ -91,7 +91,7 @@ const DidPatternPanel = () => {
     return (
       <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
         {error}
-        <Button variant="ghost" size="sm" onClick={fetchPatterns} className="ml-2 h-6 text-[10px]">
+        <Button variant="ghost" size="sm" onClick={fetchPatterns} className="ml-2 h-6 text-[0.625rem]">
           Zkusit znovu
         </Button>
       </div>
@@ -124,7 +124,7 @@ const DidPatternPanel = () => {
                   {alert.message}
                 </div>
                 {alert.parts.length > 0 && (
-                  <p className="text-[10px] text-muted-foreground mt-1 ml-5">
+                  <p className="text-[0.625rem] text-muted-foreground mt-1 ml-5">
                     Části: {alert.parts.join(", ")}
                   </p>
                 )}
@@ -137,7 +137,7 @@ const DidPatternPanel = () => {
       {/* Patterns */}
       {data.patterns && data.patterns.length > 0 && (
         <div className="space-y-1.5">
-          <h4 className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <h4 className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
             Detekované vzorce
           </h4>
           {data.patterns.map((pattern, i) => {
@@ -145,11 +145,11 @@ const DidPatternPanel = () => {
             return (
               <div key={i} className={`rounded-lg border ${style.border} ${style.bg} p-2.5`}>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`text-[10px] font-medium ${style.text} bg-background/50 px-1.5 py-0.5 rounded`}>
+                  <span className={`text-[0.625rem] font-medium ${style.text} bg-background/50 px-1.5 py-0.5 rounded`}>
                     {TYPE_LABELS[pattern.type] || pattern.type}
                   </span>
                   {pattern.parts_involved.length > 0 && (
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-[0.625rem] text-muted-foreground">
                       {pattern.parts_involved.join(", ")}
                     </span>
                   )}
@@ -174,7 +174,7 @@ const DidPatternPanel = () => {
         </div>
       )}
 
-      <Button variant="ghost" size="sm" onClick={fetchPatterns} className="h-7 text-[10px] w-full">
+      <Button variant="ghost" size="sm" onClick={fetchPatterns} className="h-7 text-[0.625rem] w-full">
         <Brain className="w-3 h-3 mr-1" />
         Aktualizovat analýzu
       </Button>

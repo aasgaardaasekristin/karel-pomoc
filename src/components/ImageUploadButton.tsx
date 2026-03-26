@@ -35,7 +35,7 @@ const ImageUploadButton = ({
         size="icon"
         onClick={onOpenPicker}
         disabled={disabled}
-        className="h-[40px] w-[40px] sm:h-[44px] sm:w-[44px] shrink-0"
+        className="h-[2.5rem] w-[2.5rem] sm:h-[2.75rem] sm:w-[2.75rem] shrink-0"
         title="Přiložit obrázek"
       >
         <ImagePlus className="w-4 h-4 sm:w-5 sm:h-5" />

@@ -168,7 +168,7 @@ const STATUS_BADGE_ICON: Record<TrafficStatus, string> = {
 const StatusBadge = ({ status, label, onClick }: { status: TrafficStatus; label: string; onClick: () => void }) => (
   <button
     onClick={(e) => { e.stopPropagation(); onClick(); }}
-    className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[8px] font-semibold leading-[16px] cursor-pointer transition-all hover:scale-105 ${STATUS_BADGE_STYLES[status]}`}
+    className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0 text-[0.5rem] font-semibold leading-[1rem] cursor-pointer transition-all hover:scale-105 ${STATUS_BADGE_STYLES[status]}`}
     title={`${label}: ${STATUS_LABEL[status]} — klikni pro změnu`}
   >
     <span>{label}:</span>
@@ -300,7 +300,7 @@ const TaskCard = ({
         </div>
 
         <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
-          <span className={`text-[11px] text-foreground leading-tight ${isExpanded ? "font-medium" : "truncate block"}`}>{stripMarkdownNoise(task.task)}</span>
+          <span className={`text-[0.6875rem] text-foreground leading-tight ${isExpanded ? "font-medium" : "truncate block"}`}>{stripMarkdownNoise(task.task)}</span>
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
@@ -316,7 +316,7 @@ const TaskCard = ({
 
       {isExpanded && (
         <div className="mt-1.5 space-y-1.5 border-t border-border/30 pt-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[9px] text-muted-foreground">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[0.5625rem] text-muted-foreground">
             <span>👤 {assigneeLabel(assigned)}</span>
             <span>🗂️ {categoryLabel(task.category)}</span>
             <span>⚡ {priorityLabel(task.priority)}</span>
@@ -358,40 +358,40 @@ const TaskCard = ({
               <div className="space-y-1">
                 {blocks.map((b, i) => (
                   <div key={i} className="rounded bg-muted/30 px-2 py-1.5">
-                    <span className="text-[8px] font-semibold text-muted-foreground uppercase">{b.label}</span>
-                    <p className="text-[10px] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
+                    <span className="text-[0.5rem] font-semibold text-muted-foreground uppercase">{b.label}</span>
+                    <p className="text-[0.625rem] leading-relaxed text-foreground/80 whitespace-pre-line mt-0.5">
                       {b.text}
                     </p>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="rounded bg-muted/20 px-2 py-1 text-[9px] text-muted-foreground italic">
+              <div className="rounded bg-muted/20 px-2 py-1 text-[0.5625rem] text-muted-foreground italic">
                 Žádná podrobná instrukce. Použij pole níže pro update.
               </div>
             );
           })()}
 
           {isPendingDriveWrite && (
-            <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+            <div className="rounded-md border border-border/60 bg-muted/40 px-1.5 py-1 text-[0.5625rem] text-muted-foreground">
               🆕 Nový úkol — čeká na propsání do kartotéky.
             </div>
           )}
 
           {isFailedDriveWrite && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-1 text-[9px] text-destructive">
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-1 text-[0.5625rem] text-destructive">
               ⚠️ Poslední propsání do kartotéky selhalo. Zkus znovu aktualizaci.
             </div>
           )}
 
           {task.source_agreement && (
             <div className="flex items-center gap-1">
-              <span className="max-w-[220px] truncate text-[9px] text-muted-foreground">📋 {stripMarkdownNoise(task.source_agreement)}</span>
+              <span className="max-w-[13.75rem] truncate text-[0.5625rem] text-muted-foreground">📋 {stripMarkdownNoise(task.source_agreement)}</span>
               {safeDriveLink && (
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); openExternalDocument(safeDriveLink); }}
-                  className="inline-flex items-center gap-0.5 shrink-0 text-[9px] text-primary hover:underline"
+                  className="inline-flex items-center gap-0.5 shrink-0 text-[0.5625rem] text-primary hover:underline"
                 >
                   <ExternalLink className="w-2.5 h-2.5" /> Otevřít
                 </button>
@@ -401,14 +401,14 @@ const TaskCard = ({
 
           {/* Feedback feed */}
           {feedback.length > 0 && (
-            <div className="space-y-1 max-h-[160px] overflow-y-auto rounded bg-background/50 p-1">
+            <div className="space-y-1 max-h-[10rem] overflow-y-auto rounded bg-background/50 p-1">
               {feedback.map((entry) => (
                 <div key={entry.id} className={`rounded border px-1.5 py-1 ${authorStyle(entry.author)}`}>
                   <div className="flex items-center justify-between gap-1">
-                    <span className="text-[8px] font-semibold">{entry.author === "karel" ? "🤖" : "💬"} {authorLabel(entry.author)}</span>
-                    <span className="text-[7px] text-muted-foreground">{new Date(entry.created_at).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    <span className="text-[0.5rem] font-semibold">{entry.author === "karel" ? "🤖" : "💬"} {authorLabel(entry.author)}</span>
+                    <span className="text-[0.4375rem] text-muted-foreground">{new Date(entry.created_at).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
                   </div>
-                  <p className="text-[9px] leading-relaxed whitespace-pre-line mt-0.5">{entry.message}</p>
+                  <p className="text-[0.5625rem] leading-relaxed whitespace-pre-line mt-0.5">{entry.message}</p>
                 </div>
               ))}
               <div ref={feedEndRef} />
@@ -417,7 +417,7 @@ const TaskCard = ({
 
           {/* Legacy completed_note display */}
           {task.completed_note && feedback.length === 0 && (
-            <div className="whitespace-pre-line rounded bg-muted/40 px-1.5 py-1 text-[9px] text-muted-foreground">
+            <div className="whitespace-pre-line rounded bg-muted/40 px-1.5 py-1 text-[0.5625rem] text-muted-foreground">
               <MessageSquare className="mr-0.5 inline h-2.5 w-2.5 opacity-60" />
               {task.completed_note}
             </div>
@@ -428,7 +428,7 @@ const TaskCard = ({
               value={noteInputs[task.id] || ""}
               onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
               placeholder="Jak to jde? Napiš update..."
-              className="h-6 flex-1 bg-background text-[9px]"
+              className="h-6 flex-1 bg-background text-[0.5625rem]"
               onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
             />
             <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
@@ -443,8 +443,8 @@ const TaskCard = ({
 
 const SectionHeader = ({ emoji, label, count, max }: { emoji: string; label: string; count: number; max?: number }) => (
   <div className="mb-1 flex items-center justify-between">
-    <span className="text-[10px] font-semibold text-foreground">{emoji} {label}</span>
-    {max !== undefined && <span className="text-[8px] text-muted-foreground">{count}/{max}</span>}
+    <span className="text-[0.625rem] font-semibold text-foreground">{emoji} {label}</span>
+    {max !== undefined && <span className="text-[0.5rem] text-muted-foreground">{count}/{max}</span>}
   </div>
 );
 
@@ -760,7 +760,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
             value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
             placeholder="Nový konkrétní úkol..."
-            className="h-7 flex-1 bg-background text-[11px]"
+            className="h-7 flex-1 bg-background text-[0.6875rem]"
             onKeyDown={(e) => { if (e.key === "Enter") void handleAddTask(); }}
           />
           <Button size="sm" onClick={() => void handleAddTask()} disabled={!newTask.trim() || adding} className="h-7 w-7 p-0">
@@ -770,7 +770,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
 
         <div className="space-y-1.5 rounded-md border border-border/60 bg-background/70 p-1.5">
           <div>
-            <p className="mb-1 text-[8px] text-muted-foreground">Kdo</p>
+            <p className="mb-1 text-[0.5rem] text-muted-foreground">Kdo</p>
             <div className="flex flex-wrap gap-1">
               {(["hanka", "kata", "both"] as const).map((assignee) => (
                 <Button
@@ -778,7 +778,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                   variant={assigneeFilter === assignee ? "default" : "outline"}
                   size="sm"
                   onClick={() => { setAssigneeFilter(assignee); setNewAssignee(assignee); }}
-                  className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
+                  className="h-5 min-w-0 rounded-full px-2.5 text-[0.5rem]"
                 >
                   {assigneeLabel(assignee)}
                 </Button>
@@ -787,7 +787,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
           </div>
 
           <div>
-            <p className="mb-1 text-[8px] text-muted-foreground">Kdy</p>
+            <p className="mb-1 text-[0.5rem] text-muted-foreground">Kdy</p>
             <div className="flex flex-wrap gap-1">
               {(["today", "tomorrow", "longterm"] as const).map((category) => (
                 <Button
@@ -795,7 +795,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                   variant={categoryFilter === category ? "default" : "outline"}
                   size="sm"
                   onClick={() => { setCategoryFilter(category); setNewCategory(category); }}
-                  className="h-5 min-w-0 rounded-full px-2.5 text-[8px]"
+                  className="h-5 min-w-0 rounded-full px-2.5 text-[0.5rem]"
                 >
                   {category === "today" ? "Dnes" : category === "tomorrow" ? "Zítra" : "Dlouhodobé"}
                 </Button>
@@ -818,7 +818,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 isFailedDriveWrite={isFailedForTask(task)}
               />
             ))}
-            {todayTasks.length > MAX_TODAY && <p className="text-center text-[8px] text-muted-foreground">+{todayTasks.length - MAX_TODAY} dalších</p>}
+            {todayTasks.length > MAX_TODAY && <p className="text-center text-[0.5rem] text-muted-foreground">+{todayTasks.length - MAX_TODAY} dalších</p>}
           </div>
         </div>
       )}
@@ -836,7 +836,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 isFailedDriveWrite={isFailedForTask(task)}
               />
             ))}
-            {tomorrowTasks.length > MAX_TOMORROW && <p className="text-center text-[8px] text-muted-foreground">+{tomorrowTasks.length - MAX_TOMORROW} dalších</p>}
+            {tomorrowTasks.length > MAX_TOMORROW && <p className="text-center text-[0.5rem] text-muted-foreground">+{tomorrowTasks.length - MAX_TOMORROW} dalších</p>}
           </div>
         </div>
       )}
@@ -882,29 +882,29 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 }
               />
             ))}
-            {longtermList.length > MAX_LONGTERM && <p className="pt-1 text-center text-[8px] text-muted-foreground">+{longtermList.length - MAX_LONGTERM} dalších</p>}
+            {longtermList.length > MAX_LONGTERM && <p className="pt-1 text-center text-[0.5rem] text-muted-foreground">+{longtermList.length - MAX_LONGTERM} dalších</p>}
           </div>
         </div>
       )}
 
       {active.length === 0 && done.length === 0 && (
-        <p className="py-3 text-center text-[10px] text-muted-foreground">Zatím žádné terapeutické úkoly.</p>
+        <p className="py-3 text-center text-[0.625rem] text-muted-foreground">Zatím žádné terapeutické úkoly.</p>
       )}
 
       {active.length > 0 && visibleActive.length === 0 && (
-        <p className="py-2 text-center text-[10px] text-muted-foreground">Pro zvolený filtr tu teď nic není.</p>
+        <p className="py-2 text-center text-[0.625rem] text-muted-foreground">Pro zvolený filtr tu teď nic není.</p>
       )}
 
       {visibleDone.length > 0 && (
         <details className="group/done">
-          <summary className="cursor-pointer select-none text-[9px] text-muted-foreground transition-colors hover:text-foreground">
+          <summary className="cursor-pointer select-none text-[0.5625rem] text-muted-foreground transition-colors hover:text-foreground">
             ✅ Splněné ({visibleDone.length})
           </summary>
           <div className="mt-1 space-y-0.5">
             {visibleDone.slice(0, 10).map((task) => (
               <div key={task.id} className="flex items-center gap-1.5 rounded bg-muted/20 px-2 py-1 opacity-50">
                 <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />
-                <span className="flex-1 truncate text-[10px] text-muted-foreground line-through">{stripMarkdownNoise(task.task)}</span>
+                <span className="flex-1 truncate text-[0.625rem] text-muted-foreground line-through">{stripMarkdownNoise(task.task)}</span>
                 <Button variant="ghost" size="sm" onClick={() => void handleDelete(task.id)} className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover/done:opacity-100">
                   <Trash2 className="w-2 h-2" />
                 </Button>

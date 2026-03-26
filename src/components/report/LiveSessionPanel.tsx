@@ -570,7 +570,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               <h3 className="text-lg font-semibold text-foreground">Upravený plán sezení</h3>
               <p className="text-sm text-muted-foreground">Zkontroluj a schval, nebo uprav dále</p>
             </div>
-            <ScrollArea className="max-h-[400px] border border-border rounded-lg p-4 bg-card">
+            <ScrollArea className="max-h-[25rem] border border-border rounded-lg p-4 bg-card">
               <div className="space-y-3">
                 {planObj.sessionGoal && (
                   <div>
@@ -633,7 +633,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               value={modifyRequest}
               onChange={e => setModifyRequest(e.target.value)}
               placeholder="Např. přidej 10 minut na relaxaci na začátku, vynech aktivitu s kresbou..."
-              className="min-h-[100px] text-sm"
+              className="min-h-[6.25rem] text-sm"
               disabled={isGeneratingModification}
             />
             <div className="flex gap-2">
@@ -786,7 +786,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               value={customTopic}
               onChange={e => setCustomTopic(e.target.value)}
               placeholder="Na co se chceš zaměřit?"
-              className="min-h-[80px] text-sm"
+              className="min-h-[5rem] text-sm"
             />
           )}
           <Button
@@ -819,7 +819,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
               {sessionPlan.phases[currentPhaseIndex]?.name}
             </span>
             {sessionPlan.phases[currentPhaseIndex]?.timeRange && (
-              <Badge variant="secondary" className="text-[10px] shrink-0">
+              <Badge variant="secondary" className="text-[0.625rem] shrink-0">
                 {sessionPlan.phases[currentPhaseIndex].timeRange}
               </Badge>
             )}
@@ -917,7 +917,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
             )}
             {recorder.state === "recorded" && (
               <div className="flex items-center gap-2 flex-wrap">
-                {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[180px]" />}
+                {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[11.25rem]" />}
                 <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-8 text-xs gap-1.5">
                   {isAudioAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                   Analyzovat
@@ -937,7 +937,7 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
                   setTimeout(() => fileInputRef.current?.click(), 100);
                 }}
               >
-                <SelectTrigger className="h-8 w-[120px] sm:w-[140px] text-xs">
+                <SelectTrigger className="h-8 w-[7.5rem] sm:w-[8.75rem] text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1025,14 +1025,14 @@ ${caseSummary ? `SHRNUTÍ PŘÍPADU:\n${caseSummary}\n` : ""}${planContext}
                 }
               }}
               placeholder="Co klient říká / dělá..."
-              className="flex-1 min-w-0 min-h-[44px] max-h-[120px] resize-none text-sm"
+              className="flex-1 min-w-0 min-h-[2.75rem] max-h-[7.5rem] resize-none text-sm"
               disabled={isLoading || isFinishing}
             />
             <Button
               size="icon"
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isFinishing}
-              className="h-[44px] w-[44px] shrink-0"
+              className="h-[2.75rem] w-[2.75rem] shrink-0"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>

@@ -125,12 +125,12 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
           <HeartPulse className="w-3.5 h-3.5 text-primary" />
           Týdenní Pulse Check
           {thisWeekRecords.length > 0 && (
-            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 ml-1">
+            <Badge variant="secondary" className="text-[0.5rem] h-4 px-1.5 ml-1">
               {thisWeekRecords.length}/2 ✓
             </Badge>
           )}
           {avgThis && (
-            <span className="text-[10px] text-muted-foreground ml-1">⌀ {avgThis}</span>
+            <span className="text-[0.625rem] text-muted-foreground ml-1">⌀ {avgThis}</span>
           )}
         </h4>
         {expanded ? <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />}
@@ -153,14 +153,14 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
                 {done && thisWeek ? (
                   <div className="space-y-1">
                     {QUESTIONS.map(q => (
-                      <div key={q.key} className="flex items-center gap-2 text-[11px]">
+                      <div key={q.key} className="flex items-center gap-2 text-[0.6875rem]">
                         <span className="text-muted-foreground w-32 shrink-0">{q.label}</span>
                         <span className="font-medium">{q.emoji[thisWeek[q.key] - 1]} {thisWeek[q.key]}/5</span>
                         <TrendIcon current={thisWeek[q.key]} previous={getPrevious(name, q.key)} />
                       </div>
                     ))}
                     {thisWeek.karel_feedback && (
-                      <p className="text-[10px] text-muted-foreground mt-1 italic">
+                      <p className="text-[0.625rem] text-muted-foreground mt-1 italic">
                         💬 „{thisWeek.karel_feedback}"
                       </p>
                     )}
@@ -169,7 +169,7 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
                   <div className="space-y-2">
                     {QUESTIONS.map(q => (
                       <div key={q.key}>
-                        <span className="text-[10px] text-muted-foreground block mb-1">{q.label}</span>
+                        <span className="text-[0.625rem] text-muted-foreground block mb-1">{q.label}</span>
                         <div className="flex gap-1">
                           {[1, 2, 3, 4, 5].map(v => (
                             <button
@@ -188,7 +188,7 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
                       </div>
                     ))}
                     <div>
-                      <span className="text-[10px] text-muted-foreground block mb-1">Vzkaz pro Karla (nepovinné)</span>
+                      <span className="text-[0.625rem] text-muted-foreground block mb-1">Vzkaz pro Karla (nepovinné)</span>
                       <input
                         type="text"
                         value={fd.karel_feedback}
@@ -202,7 +202,7 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
                       size="sm"
                       onClick={() => handleSubmit(name)}
                       disabled={submitting === name || !fd.team_feeling || !fd.priority_clarity}
-                      className="h-7 text-[11px] gap-1"
+                      className="h-7 text-[0.6875rem] gap-1"
                     >
                       <Send className="w-3 h-3" />
                       Odeslat za {name}
@@ -216,7 +216,7 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
           {/* Trend history */}
           {records.length > 2 && (
             <div className="border-t border-border/50 pt-2 mt-2">
-              <span className="text-[10px] text-muted-foreground font-medium">Historie (posledních 4 týdnů)</span>
+              <span className="text-[0.625rem] text-muted-foreground font-medium">Historie (posledních 4 týdnů)</span>
               <div className="mt-1 space-y-0.5">
                 {Array.from(new Set(records.map(r => r.week_start))).slice(0, 4).map(week => {
                   const weekRecs = records.filter(r => r.week_start === week);
@@ -224,7 +224,7 @@ const DidPulseCheck = ({ refreshTrigger }: { refreshTrigger: number }) => {
                     ? (weekRecs.reduce((s, r) => s + r.team_feeling + r.priority_clarity, 0) / (weekRecs.length * 2)).toFixed(1)
                     : "–";
                   return (
-                    <div key={week} className="flex items-center gap-2 text-[10px]">
+                    <div key={week} className="flex items-center gap-2 text-[0.625rem]">
                       <span className="text-muted-foreground w-20">{new Date(week).toLocaleDateString("cs-CZ", { day: "numeric", month: "short" })}</span>
                       <span className="font-medium">⌀ {avg}</span>
                       <span className="text-muted-foreground">({weekRecs.map(r => r.respondent[0]).join(", ")})</span>

@@ -83,18 +83,18 @@ const DidColleagueView = ({ refreshTrigger }: { refreshTrigger: number }) => {
     return (
       <div className="rounded-md border border-border/50 p-2 bg-background/50">
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[11px] font-medium text-foreground">{name}</span>
+          <span className="text-[0.6875rem] font-medium text-foreground">{name}</span>
           <div className="flex items-center gap-1.5">
             {s.streak > 0 && (
-              <Badge variant="secondary" className="text-[8px] h-4 px-1 gap-0.5">
+              <Badge variant="secondary" className="text-[0.5rem] h-4 px-1 gap-0.5">
                 <Trophy className="w-2.5 h-2.5" />{s.streak}🔥
               </Badge>
             )}
-            <span className="text-[8px] text-muted-foreground">{STYLE_LABELS[s.style]}</span>
+            <span className="text-[0.5rem] text-muted-foreground">{STYLE_LABELS[s.style]}</span>
           </div>
         </div>
         {renderBar(s)}
-        <div className="flex items-center gap-2 mt-1.5 text-[9px] text-muted-foreground">
+        <div className="flex items-center gap-2 mt-1.5 text-[0.5625rem] text-muted-foreground">
           <span className="text-green-600">✓ {s.done}</span>
           <span className="text-orange-500">◐ {s.inProgress}</span>
           <span className="text-destructive">○ {s.notStarted}</span>
@@ -111,7 +111,7 @@ const DidColleagueView = ({ refreshTrigger }: { refreshTrigger: number }) => {
           <Users className="w-3.5 h-3.5 text-primary" />
           Co dělá kolegyně
           {hanka && kata && (
-            <Badge variant="secondary" className="text-[8px] h-4 px-1.5 ml-1">
+            <Badge variant="secondary" className="text-[0.5rem] h-4 px-1.5 ml-1">
               H: {hanka.done}/{hanka.total} · K: {kata.done}/{kata.total}
             </Badge>
           )}
@@ -124,7 +124,7 @@ const DidColleagueView = ({ refreshTrigger }: { refreshTrigger: number }) => {
           {renderPerson("Hanka", hanka)}
           {renderPerson("Káťa", kata)}
           {hanka && kata && (hanka.done + kata.done) > 0 && (
-            <div className="text-[9px] text-muted-foreground text-center pt-1 border-t border-border/30">
+            <div className="text-[0.5625rem] text-muted-foreground text-center pt-1 border-t border-border/30">
               <TrendingUp className="w-3 h-3 inline mr-0.5" />
               Celkem splněno: {hanka.done + kata.done} z {hanka.total + kata.total} úkolů
             </div>

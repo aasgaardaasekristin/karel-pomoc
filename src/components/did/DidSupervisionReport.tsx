@@ -114,14 +114,14 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
               variant="ghost"
               size="sm"
               onClick={() => setShowHistory(!showHistory)}
-              className="h-7 text-[10px] gap-1 text-muted-foreground"
+              className="h-7 text-[0.625rem] gap-1 text-muted-foreground"
             >
               <History className="w-3 h-3" />
               {pastReports.length}
             </Button>
           )}
           <Select value={period} onValueChange={setPeriod}>
-            <SelectTrigger className="h-7 text-[10px] w-[100px]">
+            <SelectTrigger className="h-7 text-[0.625rem] w-[6.25rem]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -134,7 +134,7 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
             size="sm"
             onClick={generateReport}
             disabled={isGenerating}
-            className="h-7 text-[10px] gap-1"
+            className="h-7 text-[0.625rem] gap-1"
           >
             {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
             {isGenerating ? "Generuji…" : "Generovat"}
@@ -144,12 +144,12 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
 
       {showHistory && pastReports.length > 0 && (
         <div className="mb-3 rounded-md border border-border/50 bg-background/40 p-2 space-y-1">
-          <p className="text-[10px] text-muted-foreground font-medium mb-1">Historie reportů</p>
+          <p className="text-[0.625rem] text-muted-foreground font-medium mb-1">Historie reportů</p>
           {pastReports.map((r) => (
             <button
               key={r.id}
               onClick={() => showPastReport(r)}
-              className={`w-full text-left rounded px-2 py-1.5 text-[10px] transition-colors flex items-center justify-between ${
+              className={`w-full text-left rounded px-2 py-1.5 text-[0.625rem] transition-colors flex items-center justify-between ${
                 selectedPastId === r.id
                   ? "bg-primary/10 text-primary"
                   : "hover:bg-muted/50 text-foreground"
@@ -168,22 +168,22 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
 
       {meta && (
         <div className="flex flex-wrap gap-1.5 mb-2">
-          <Badge variant="secondary" className="text-[9px] h-5 gap-0.5">
+          <Badge variant="secondary" className="text-[0.5625rem] h-5 gap-0.5">
             <FileText className="w-2.5 h-2.5" />
             {meta.sessionCount} sezení
           </Badge>
-          <Badge variant="secondary" className="text-[9px] h-5 gap-0.5">
+          <Badge variant="secondary" className="text-[0.5625rem] h-5 gap-0.5">
             🧩 {meta.partCount} částí
           </Badge>
-          <Badge variant="secondary" className="text-[9px] h-5 gap-0.5">
+          <Badge variant="secondary" className="text-[0.5625rem] h-5 gap-0.5">
             <Shuffle className="w-2.5 h-2.5" />
             {meta.switchCount} switchů
           </Badge>
-          <Badge variant="secondary" className="text-[9px] h-5 gap-0.5">
+          <Badge variant="secondary" className="text-[0.5625rem] h-5 gap-0.5">
             <PenLine className="w-2.5 h-2.5" />
             {meta.reflectionCount} reflexí
           </Badge>
-          <Badge variant="secondary" className="text-[9px] h-5 gap-0.5">
+          <Badge variant="secondary" className="text-[0.5625rem] h-5 gap-0.5">
             <ListChecks className="w-2.5 h-2.5" />
             {meta.taskStats.done}/{meta.taskStats.total} úkolů
           </Badge>
@@ -197,7 +197,7 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
               variant="ghost"
               size="sm"
               onClick={() => setExpanded(!expanded)}
-              className="h-6 px-2 text-[10px] gap-1 text-muted-foreground"
+              className="h-6 px-2 text-[0.625rem] gap-1 text-muted-foreground"
             >
               {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               {expanded ? "Sbalit" : "Rozbalit report"}
@@ -206,17 +206,17 @@ const DidSupervisionReport = ({ refreshTrigger }: Props) => {
               variant="ghost"
               size="sm"
               onClick={copyReport}
-              className="h-6 px-2 text-[10px] gap-1 text-muted-foreground"
+              className="h-6 px-2 text-[0.625rem] gap-1 text-muted-foreground"
             >
               📋 Kopírovat
             </Button>
             {selectedPastId && (
-              <span className="text-[9px] text-muted-foreground ml-auto">Historický report</span>
+              <span className="text-[0.5625rem] text-muted-foreground ml-auto">Historický report</span>
             )}
           </div>
 
           {expanded && (
-            <ScrollArea className="max-h-[500px]">
+            <ScrollArea className="max-h-[31.25rem]">
               <div className="rounded-md border border-border/60 bg-background/40 p-3">
                 <RichMarkdown compact>{report}</RichMarkdown>
               </div>

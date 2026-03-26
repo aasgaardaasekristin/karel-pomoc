@@ -114,7 +114,7 @@ const DidOrientationForm = ({ onSubmit, onBack, notebookProject = "DID – vnit�
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Stručně popiš, co se děje..."
-          className="min-h-[80px] resize-none"
+          className="min-h-[5rem] resize-none"
         />
       </div>
 

@@ -118,7 +118,7 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
             size="sm"
             onClick={() => void loadOverview(true)}
             disabled={refreshing || loading}
-            className="h-7 px-2 text-[10px]"
+            className="h-7 px-2 text-[0.625rem]"
           >
             {refreshing || loading ? (
               <>
@@ -145,7 +145,7 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
         </div>
       ) : overview ? (
         <div className={`mt-2 rounded-md border border-border/60 bg-background/40 p-3 ${refreshing ? "opacity-60" : ""}`}>
-          <p className="whitespace-pre-line text-[11px] leading-5 text-foreground">{overview}</p>
+          <p className="whitespace-pre-line text-[0.6875rem] leading-5 text-foreground">{overview}</p>
         </div>
       ) : null}
     </section>

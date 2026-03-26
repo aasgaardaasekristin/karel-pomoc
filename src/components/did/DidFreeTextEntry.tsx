@@ -81,7 +81,7 @@ const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID – vnitřn
             value={whatNow}
             onChange={(e) => setWhatNow(e.target.value)}
             placeholder="Popiš aktuální situaci…"
-            className="min-h-[60px] resize-none"
+            className="min-h-[3.75rem] resize-none"
           />
         </div>
         <div>
@@ -92,7 +92,7 @@ const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID – vnitřn
             value={whoActive}
             onChange={(e) => setWhoActive(e.target.value)}
             placeholder="Např. Maruška (5, strach), Vojta (ochránce)…"
-            className="min-h-[60px] resize-none"
+            className="min-h-[3.75rem] resize-none"
           />
         </div>
         <div>
@@ -126,7 +126,7 @@ const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID – vnitřn
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Cokoliv dalšího, výňatek z deníku, mapy systému…"
-          className="min-h-[100px] resize-none"
+          className="min-h-[6.25rem] resize-none"
         />
       </div>
 

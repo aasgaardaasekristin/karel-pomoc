@@ -781,7 +781,7 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
           )}
           {recorder.state === "recorded" && (
             <div className="flex items-center gap-2 flex-wrap">
-              {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[180px]" />}
+              {recorder.audioUrl && <audio src={recorder.audioUrl} controls className="h-8 max-w-[11.25rem]" />}
               <Button size="sm" onClick={handleAudioSegmentAnalysis} disabled={isAudioAnalyzing} className="h-8 text-xs gap-1.5">
                 {isAudioAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
                 Analyzovat
@@ -871,14 +871,14 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
                 }
               }}
               placeholder={`Co ${partName} říká / dělá...`}
-              className="flex-1 min-w-0 min-h-[44px] max-h-[120px] resize-none text-sm"
+              className="flex-1 min-w-0 min-h-[2.75rem] max-h-[7.5rem] resize-none text-sm"
               disabled={isLoading || isFinishing}
             />
             <Button
               size="icon"
               onClick={sendMessage}
               disabled={!input.trim() || isLoading || isFinishing}
-              className="h-[44px] w-[44px] shrink-0"
+              className="h-[2.75rem] w-[2.75rem] shrink-0"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
@@ -932,7 +932,7 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
                 value={reflectionSurprise}
                 onChange={e => setReflectionSurprise(e.target.value)}
                 placeholder="1-2 věty…"
-                className="min-h-[60px] text-sm"
+                className="min-h-[3.75rem] text-sm"
               />
             </div>
 
@@ -943,7 +943,7 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
                 value={reflectionNextTime}
                 onChange={e => setReflectionNextTime(e.target.value)}
                 placeholder="1-2 věty…"
-                className="min-h-[60px] text-sm"
+                className="min-h-[3.75rem] text-sm"
               />
             </div>
 

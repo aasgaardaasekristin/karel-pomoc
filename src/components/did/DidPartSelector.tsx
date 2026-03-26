@@ -106,29 +106,29 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
           <h2 className="text-lg font-serif font-medium text-foreground tracking-tight">
             Sezení s částí
           </h2>
-          <p className="text-[13px] text-muted-foreground/80 max-w-xs mx-auto leading-relaxed">
+          <p className="text-[0.8125rem] text-muted-foreground/80 max-w-xs mx-auto leading-relaxed">
             {therapistName}, vyber část z kartotéky nebo zadej jméno nové.
           </p>
         </div>
 
         {/* Selection card */}
         <div className="bg-card border border-border/60 rounded-xl p-5 space-y-4 shadow-[0_1px_3px_hsl(var(--foreground)/0.04)]">
-          <h3 className="text-[13px] font-medium text-foreground/90">Vybrat část</h3>
+          <h3 className="text-[0.8125rem] font-medium text-foreground/90">Vybrat část</h3>
           {loading ? (
             <div className="flex justify-center py-3">
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground/60" />
             </div>
           ) : (
             <Select value={selectedPartName} onValueChange={setSelectedPartName}>
-              <SelectTrigger className="h-9 text-[13px]">
+              <SelectTrigger className="h-9 text-[0.8125rem]">
                 <SelectValue placeholder="Vyberte část z kartotéky..." />
               </SelectTrigger>
               <SelectContent>
                 {registryParts.map(p => (
-                  <SelectItem key={p.id} value={p.part_name} className="text-[13px]">
+                  <SelectItem key={p.id} value={p.part_name} className="text-[0.8125rem]">
                     <span className="flex items-center gap-2">
                       <span className={`w-1.5 h-1.5 rounded-full ${statusDot(p.status)} shrink-0`} />
-                      <span className="text-muted-foreground/60 font-mono text-[11px]">{p.part_name.match(/^\d{3}/)?.[0] || ""}</span>
+                      <span className="text-muted-foreground/60 font-mono text-[0.6875rem]">{p.part_name.match(/^\d{3}/)?.[0] || ""}</span>
                       <span>{p.display_name || p.part_name}</span>
                       {p.status === "sleeping" && <Moon className="w-3 h-3 text-muted-foreground/40 ml-auto" />}
                       {p.status === "warning" && <AlertTriangle className="w-3 h-3 text-amber-400/70 ml-auto" />}
@@ -138,7 +138,7 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
               </SelectContent>
             </Select>
           )}
-          <Button className="w-full h-9 gap-2 text-[13px]" onClick={handleStartSession} disabled={!selectedPartName}>
+          <Button className="w-full h-9 gap-2 text-[0.8125rem]" onClick={handleStartSession} disabled={!selectedPartName}>
             <Plus className="w-3.5 h-3.5" /> Zahájit sezení
           </Button>
 
@@ -146,7 +146,7 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-border/40" />
             </div>
-            <div className="relative flex justify-center text-[11px] uppercase tracking-wider">
+            <div className="relative flex justify-center text-[0.6875rem] uppercase tracking-wider">
               <span className="bg-card px-3 text-muted-foreground/60">nebo nová část</span>
             </div>
           </div>
@@ -156,7 +156,7 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
               placeholder="Jméno nové části..."
               value={newPartName}
               onChange={e => setNewPartName(e.target.value)}
-              className="h-9 text-[13px] flex-1"
+              className="h-9 text-[0.8125rem] flex-1"
               onKeyDown={e => { if (e.key === "Enter") handleCreateAndStart(); }}
             />
             <Button
@@ -176,7 +176,7 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
           <Button
             variant="outline"
             onClick={onOpenKartoteka}
-            className="w-full h-9 gap-2 text-[13px] border-border/50 text-muted-foreground hover:text-foreground"
+            className="w-full h-9 gap-2 text-[0.8125rem] border-border/50 text-muted-foreground hover:text-foreground"
           >
             <FolderOpen className="w-3.5 h-3.5" />
             Otevřít kartotéku
@@ -184,7 +184,7 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
         )}
 
         {/* Back */}
-        <Button variant="ghost" size="sm" onClick={onBack} className="w-full text-[12px] text-muted-foreground/70 hover:text-foreground">
+        <Button variant="ghost" size="sm" onClick={onBack} className="w-full text-[0.75rem] text-muted-foreground/70 hover:text-foreground">
           ← Zpět
         </Button>
       </div>

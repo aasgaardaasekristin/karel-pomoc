@@ -248,7 +248,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
               >
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-foreground">{m.topic}</span>
-                  <Badge variant="destructive" className="text-[10px] h-5">Otevřená</Badge>
+                  <Badge variant="destructive" className="text-[0.625rem] h-5">Otevřená</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {new Date(m.created_at).toLocaleString("cs-CZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
@@ -272,7 +272,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
               >
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium text-foreground">{m.topic}</span>
-                  <Badge variant="secondary" className="text-[10px] h-5">Uzavřená</Badge>
+                  <Badge variant="secondary" className="text-[0.625rem] h-5">Uzavřená</Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
                   {m.finalized_at ? new Date(m.finalized_at).toLocaleString("cs-CZ", { day: "numeric", month: "short" }) : ""}
@@ -305,7 +305,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
               value={newTopic}
               onChange={e => setNewTopic(e.target.value)}
               placeholder="O čem chceš jednat?"
-              className="min-h-[60px] text-sm"
+              className="min-h-[3.75rem] text-sm"
             />
           </div>
           <div>
@@ -314,7 +314,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
               value={newAgenda}
               onChange={e => setNewAgenda(e.target.value)}
               placeholder="Body k projednání..."
-              className="min-h-[80px] text-sm"
+              className="min-h-[5rem] text-sm"
             />
           </div>
           <Button onClick={createMeeting} disabled={!newTopic.trim() || isLoading} className="w-full">
@@ -341,7 +341,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
             <ThemeQuickButton />
             {activeMeeting?.hanka_joined_at && <Badge variant="outline" className="text-[10px] h-5 border-pink-500/30 text-pink-600">Hanka ✓</Badge>}
             {activeMeeting?.kata_joined_at && <Badge variant="outline" className="text-[10px] h-5 border-blue-500/30 text-blue-600">Káťa ✓</Badge>}
-            {activeMeeting?.status === "finalized" && <Badge className="text-[10px] h-5 bg-green-600">Uzavřená</Badge>}
+            {activeMeeting?.status === "finalized" && <Badge className="text-[0.625rem] h-5 bg-green-600">Uzavřená</Badge>}
           </div>
         </div>
         <h3 className="text-sm font-semibold text-foreground mt-1">{activeMeeting?.topic}</h3>
@@ -364,7 +364,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
               <div key={i} className={`rounded-lg border p-3 ${bgClass}`}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-xs font-semibold text-foreground">{name}</span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-[0.625rem] text-muted-foreground">
                     {new Date(m.timestamp).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
@@ -407,7 +407,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
               value={input}
               onChange={e => setInput(e.target.value)}
               placeholder={`Tvůj příspěvek k poradě (${therapist === "hanka" ? "Hanička" : "Káťa"})...`}
-              className="min-h-[60px] text-sm flex-1"
+              className="min-h-[3.75rem] text-sm flex-1"
               onKeyDown={e => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();

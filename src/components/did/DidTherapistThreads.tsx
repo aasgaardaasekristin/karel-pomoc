@@ -73,7 +73,7 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
                 <div className="text-sm text-foreground truncate">
                   {getPreview(thread)}
                 </div>
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
+                <div className="flex items-center gap-2 text-[0.625rem] text-muted-foreground mt-0.5">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
                     {formatTime(thread.lastActivityAt)}

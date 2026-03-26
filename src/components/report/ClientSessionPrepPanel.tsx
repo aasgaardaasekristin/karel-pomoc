@@ -306,7 +306,7 @@ const ClientSessionPrepPanel = ({
               value={customRequest}
               onChange={(e) => setCustomRequest(e.target.value)}
               placeholder="Např. včera se pohádal s manželkou, zapracovat do sezení. Metody 1 a 3 fungovaly dobře…"
-              className="min-h-[80px] text-sm"
+              className="min-h-[5rem] text-sm"
             />
             <Button
               className="w-full h-11 gap-2"
@@ -507,7 +507,7 @@ const ClientSessionPrepPanel = ({
                   value={modificationNote}
                   onChange={(e) => setModificationNote(e.target.value)}
                   placeholder="Metodu 2 změň na… / Aktivitu zkrať…"
-                  className="min-h-[60px] text-sm"
+                  className="min-h-[3.75rem] text-sm"
                 />
               </div>
               <div className="flex gap-2 flex-wrap">

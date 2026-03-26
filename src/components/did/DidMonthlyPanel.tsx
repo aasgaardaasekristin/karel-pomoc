@@ -107,7 +107,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
               setShowRetro(true);
             } catch { toast.error("Nepodařilo se načíst retrospektivu"); }
             finally { setRetroLoading(false); }
-          }} disabled={retroLoading} className="h-6 text-[10px] px-2">
+          }} disabled={retroLoading} className="h-6 text-[0.625rem] px-2">
             {retroLoading ? <><Loader2 className="w-3 h-3 animate-spin mr-1" /> Generuji...</> : <><FileText className="w-3 h-3 mr-1" /> Retrospektiva</>}
           </Button>
           <Button variant="outline" size="sm" onClick={handleRun} disabled={running || hasRunning} className="h-6 text-[10px] px-2">
@@ -120,7 +120,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
 
       {showRetro && retroText && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-          <div className="prose prose-sm dark:prose-invert max-w-none text-[11px] leading-relaxed">
+          <div className="prose prose-sm dark:prose-invert max-w-none text-[0.6875rem] leading-relaxed">
             <RichMarkdown compact>{retroText}</RichMarkdown>
           </div>
         </div>
@@ -151,7 +151,7 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  {!isRunning && <span className="text-[10px] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
+                  {!isRunning && <span className="text-[0.625rem] text-muted-foreground">{isExpanded ? "▲" : "▼"}</span>}
                   {!isRunning && (
                     <Button
                       variant="ghost"
@@ -173,10 +173,10 @@ const DidMonthlyPanel = ({ refreshTrigger = 0 }: { refreshTrigger?: number }) =>
                 </div>
                 {cards.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-border/30">
-                    <p className="text-[10px] text-muted-foreground font-medium mb-1">Aktualizované dokumenty:</p>
+                    <p className="text-[0.625rem] text-muted-foreground font-medium mb-1">Aktualizované dokumenty:</p>
                     <div className="flex flex-wrap gap-1">
                       {cards.map((c: any, i: number) => (
-                        <Badge key={i} variant="secondary" className="text-[9px] px-1 py-0">
+                        <Badge key={i} variant="secondary" className="text-[0.5625rem] px-1 py-0">
                           {typeof c === "string" ? c : c?.name || "?"}
                         </Badge>
                       ))}

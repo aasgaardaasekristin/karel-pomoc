@@ -213,7 +213,7 @@ function ToolButton({ icon, title, desc, loading, onClick }: {
         {icon}
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-foreground">{title}</p>
-          <p className="text-[10px] text-muted-foreground">
+          <p className="text-[0.625rem] text-muted-foreground">
             {loading ? "Probíhá..." : desc}
           </p>
         </div>

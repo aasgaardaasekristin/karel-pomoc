@@ -161,7 +161,7 @@ const SessionSidebar = () => {
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Rozpracovaná sezení
               </h3>
-              <span className="text-[10px] text-muted-foreground">{sessions.length}/5</span>
+              <span className="text-[0.625rem] text-muted-foreground">{sessions.length}/5</span>
             </div>
             <div className="space-y-2">
               {[...sessions]

@@ -197,7 +197,7 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
                 Zatím žádná vlákna. Začni novou konverzaci.
               </div>
             ) : (
-              <div className="space-y-1.5 max-h-[320px] overflow-y-auto">
+              <div className="space-y-1.5 max-h-[20rem] overflow-y-auto">
                 {meaningfulThreads.map(thread => {
                   const isCurrent = thread.id === currentConversationId;
                   return (
@@ -215,7 +215,7 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
                         <div className="text-sm text-foreground truncate leading-snug">
                           {getTopicLabel(thread)}
                         </div>
-                        <div className="text-[11px] text-muted-foreground mt-0.5">
+                        <div className="text-[0.6875rem] text-muted-foreground mt-0.5">
                           {formatDate(thread.startedAt)}
                           {isCurrent && <span className="text-primary ml-2 font-medium">● aktivní</span>}
                         </div>

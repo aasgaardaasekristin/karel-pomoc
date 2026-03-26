@@ -414,7 +414,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             placeholder="Napiš Karlovi co upravit... (volitelné)"
             value={revisionNote}
             onChange={(e) => setRevisionNote(e.target.value)}
-            className="min-h-[60px]"
+            className="min-h-[3.75rem]"
           />
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleRevision} disabled={!revisionNote.trim() || isSaving} className="gap-1.5 flex-1">
@@ -479,7 +479,7 @@ const SessionIntakePanel = ({ clientId, clientName, onComplete }: SessionIntakeP
             placeholder="Co proběhlo na sezení? Piš volně, Karel to zpracuje sám…"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            className="min-h-[150px]"
+            className="min-h-[9.375rem]"
           />
           <div className="flex gap-2">
             <Button onClick={() => handleSubmit()} disabled={!textInput.trim()} className="gap-1.5">

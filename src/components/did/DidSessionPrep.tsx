@@ -128,7 +128,7 @@ const DidSessionPrep = () => {
                   variant="outline"
                   size="sm"
                   onClick={() => handlePrepare(name)}
-                  className="h-8 text-[11px] justify-start truncate"
+                  className="h-8 text-[0.6875rem] justify-start truncate"
                 >
                   {name}
                 </Button>
@@ -150,7 +150,7 @@ const DidSessionPrep = () => {
                 variant="ghost"
                 size="sm"
                 onClick={() => { setSelectedPart(""); setBriefing(""); setFilter(""); }}
-                className="h-6 text-[10px]"
+                className="h-6 text-[0.625rem]"
               >
                 ← Jiná část
               </Button>
@@ -164,7 +164,7 @@ const DidSessionPrep = () => {
             )}
 
             {briefing && (
-              <div className="text-[11px] leading-relaxed">
+              <div className="text-[0.6875rem] leading-relaxed">
                 <RichMarkdown compact>{briefing}</RichMarkdown>
                 {loading && <Loader2 className="w-3 h-3 animate-spin text-primary inline-block ml-1" />}
               </div>

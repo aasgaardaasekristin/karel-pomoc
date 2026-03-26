@@ -311,10 +311,10 @@ const CrisisSupervisionChat = ({ brief }: Props) => {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
           placeholder="Napiš Karlovi..."
-          className="min-h-[40px] max-h-[80px] resize-none text-sm"
+          className="min-h-[2.5rem] max-h-[5rem] resize-none text-sm"
           disabled={isLoading || isSummarizing}
         />
-        <Button onClick={sendMessage} disabled={(!input.trim() && pendingImages.length === 0) || isLoading || isSummarizing} size="icon" className="h-[40px] w-[40px] shrink-0">
+        <Button onClick={sendMessage} disabled={(!input.trim() && pendingImages.length === 0) || isLoading || isSummarizing} size="icon" className="h-[2.5rem] w-[2.5rem] shrink-0">
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </div>

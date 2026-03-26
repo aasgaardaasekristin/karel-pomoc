@@ -125,7 +125,7 @@ const DidPartIdentifier = ({ knownParts, onSelectPart, onBack }: Props) => {
         </Button>
       </div>
 
-      <p className="text-[10px] text-muted-foreground text-center mt-6 opacity-60">
+      <p className="text-[0.625rem] text-muted-foreground text-center mt-6 opacity-60">
         Karel tě pozná podle jména — stačí napsat, jak ti říkají.
       </p>
     </div>

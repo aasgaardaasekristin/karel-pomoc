@@ -108,7 +108,7 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
           <HeartPulse className="w-3.5 h-3.5 text-primary" />
           Zdraví kartotéky
           {records.length > 0 && (
-            <span className="ml-1.5 text-[10px] text-muted-foreground">
+            <span className="ml-1.5 text-[0.625rem] text-muted-foreground">
               {getScoreEmoji(avgScore)} Ø {avgScore}%
               {criticalCount > 0 && (
                 <span className="text-red-500 ml-1">• {criticalCount} kritických</span>
@@ -122,7 +122,7 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
       {!isCollapsed && (
         <div className="mt-3">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[0.625rem] text-muted-foreground">
               {records.length > 0
                 ? `Poslední audit: ${new Date(records[0]?.last_checked).toLocaleString("cs-CZ", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
                 : "Zatím nebyl proveden žádný audit"}
@@ -132,7 +132,7 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
               size="sm"
               onClick={runAudit}
               disabled={auditing}
-              className="h-6 text-[10px] px-2"
+              className="h-6 text-[0.625rem] px-2"
             >
               {auditing ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
               {auditing ? "Auditování..." : "Auditovat"}
@@ -149,14 +149,14 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
           {/* Active cards */}
           {activeCards.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">Aktivní karty</p>
+              <p className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wide">Aktivní karty</p>
               {activeCards.map(record => (
                 <div key={record.part_name} className="rounded-md border border-border/50 bg-background/50">
                   <button
                     onClick={() => setExpandedCard(expandedCard === record.part_name ? null : record.part_name)}
                     className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left"
                   >
-                    <span className="text-[10px]">{getScoreEmoji(record.health_score)}</span>
+                    <span className="text-[0.625rem]">{getScoreEmoji(record.health_score)}</span>
                     <span className="text-xs font-medium text-foreground flex-1 truncate">{record.part_name}</span>
                     <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
                       <div
@@ -164,7 +164,7 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
                         style={{ width: `${record.health_score}%` }}
                       />
                     </div>
-                    <span className={`text-[10px] font-mono w-8 text-right ${getScoreColor(record.health_score)}`}>
+                    <span className={`text-[0.625rem] font-mono w-8 text-right ${getScoreColor(record.health_score)}`}>
                       {record.health_score}%
                     </span>
                     {expandedCard === record.part_name
@@ -175,19 +175,19 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
 
                   {expandedCard === record.part_name && (
                     <div className="px-2.5 pb-2 space-y-1.5 border-t border-border/30">
-                      <div className="pt-1.5 text-[10px] text-muted-foreground">
+                      <div className="pt-1.5 text-[0.625rem] text-muted-foreground">
                         {record.filled_sections}/{record.total_sections} sekcí vyplněno
                       </div>
 
                       {record.missing_sections.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-medium text-red-500 flex items-center gap-1">
+                          <p className="text-[0.625rem] font-medium text-red-500 flex items-center gap-1">
                             <AlertTriangle className="w-2.5 h-2.5" />
                             Chybějící sekce ({record.missing_sections.length})
                           </p>
                           <div className="flex flex-wrap gap-1 mt-0.5">
                             {record.missing_sections.map(s => (
-                              <Badge key={s} variant="destructive" className="text-[8px] h-4 px-1">
+                              <Badge key={s} variant="destructive" className="text-[0.5rem] h-4 px-1">
                                 {s.split(" – ")[0]}
                               </Badge>
                             ))}
@@ -197,12 +197,12 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
 
                       {record.stub_sections.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-medium text-yellow-600 dark:text-yellow-400">
+                          <p className="text-[0.625rem] font-medium text-yellow-600 dark:text-yellow-400">
                             Stub data ({record.stub_sections.length})
                           </p>
                           <div className="flex flex-wrap gap-1 mt-0.5">
                             {record.stub_sections.map(s => (
-                              <Badge key={s} variant="secondary" className="text-[8px] h-4 px-1">
+                              <Badge key={s} variant="secondary" className="text-[0.5rem] h-4 px-1">
                                 {s.split(" – ")[0]}
                               </Badge>
                             ))}
@@ -212,7 +212,7 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
 
                       {record.stale_sections.length > 0 && (
                         <div>
-                          <p className="text-[10px] font-medium text-orange-500">
+                          <p className="text-[0.625rem] font-medium text-orange-500">
                             Zastaralé ({record.stale_sections.length}) – starší 14 dní
                           </p>
                           <div className="flex flex-wrap gap-1 mt-0.5">
@@ -234,14 +234,14 @@ const DidKartotekaHealth = ({ refreshTrigger }: Props) => {
           {/* Archive summary */}
           {archiveCards.length > 0 && (
             <div className="mt-2">
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-[0.625rem] text-muted-foreground">
                 📦 {archiveCards.length} archivovaných karet (Ø {Math.round(archiveCards.reduce((s, r) => s + r.health_score, 0) / archiveCards.length)}%)
               </p>
             </div>
           )}
 
           {records.length === 0 && !loading && (
-            <p className="text-[10px] text-muted-foreground text-center py-2">
+            <p className="text-[0.625rem] text-muted-foreground text-center py-2">
               Klikni „Auditovat" pro kontrolu integrity karet
             </p>
           )}

@@ -53,14 +53,14 @@ const ChatInputArea = ({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Napiš svou zprávu..."
-          className="flex-1 min-w-0 min-h-[44px] sm:min-h-[56px] max-h-[150px] sm:max-h-[200px] resize-none text-sm sm:text-base"
+          className="flex-1 min-w-0 min-h-[2.75rem] sm:min-h-[3.5rem] max-h-[9.375rem] sm:max-h-[12.5rem] resize-none text-sm sm:text-base"
           disabled={isLoading || disabled}
         />
         <Button
           onClick={onSend}
           disabled={(!input.trim() && attachments.length === 0) || isLoading || disabled}
           size="icon"
-          className="h-[44px] w-[44px] sm:h-[56px] sm:w-[56px] shrink-0"
+          className="h-[2.75rem] w-[2.75rem] sm:h-[3.5rem] sm:w-[3.5rem] shrink-0"
         >
           {isLoading ? <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" /> : <Send className="w-4 h-4 sm:w-5 sm:h-5" />}
         </Button>
