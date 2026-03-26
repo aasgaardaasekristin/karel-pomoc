@@ -298,12 +298,7 @@ export async function runKartothekaUpdate(): Promise<void> {
   // ── KROK 4: Aktualizace Centra ──
   console.log("[Kartotheka] Krok 4: Aktualizace Centra…");
   try {
-    // updateCentrum() – bude plně implementováno později
-    // Prozatím logujeme OP entries
-    if (allOperativePlanEntries.length > 0) {
-      console.log(`[Kartotheka] ${allOperativePlanEntries.length} operativních plánových záznamů k distribuci.`);
-      // TODO: Zápis do 05_PLAN/operativni_plan a 00_Aktualni_Dashboard
-    }
+    // TODO: updateCentrum() – operativní plán + dashboard
   } catch (centrumErr) {
     console.error("[Kartotheka] Chyba při aktualizaci Centra:", centrumErr);
   }
