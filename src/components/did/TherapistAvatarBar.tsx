@@ -25,7 +25,7 @@ const presets: Record<string, string[]> = {
 };
 
 interface Props {
-  variant?: "all" | "mamka" | "kata";
+  variant?: "all" | "mamka" | "kata" | "meeting";
 }
 
 const TherapistAvatarBar = ({ variant = "all" }: Props) => {
