@@ -59,11 +59,31 @@ export const useDidContextPrime = () => {
     }
   }, []);
 
+  const trackMessage = useCallback(() => {
+    messagesSincePrime.current += 1;
+    if (messagesSincePrime.current >= REPRIME_INTERVAL) {
+      messagesSincePrime.current = 0;
+      console.log('[context] Silent re-prime after 15 messages');
+      const { partName, subMode } = lastPrimeArgs.current;
+      supabase.functions.invoke("karel-did-context-prime", {
+        body: { partName, subMode },
+      }).then(({ data }) => {
+        if (data) {
+          const r = data as DidContextPrimeResult;
+          setPrimeCache(r.contextBrief);
+          setSystemState(r.systemState);
+          setActiveParts(r.activePartsLast24h || []);
+        }
+      }).catch((e) => console.warn('[context] Silent re-prime failed:', e));
+    }
+  }, []);
+
   return {
     primeCache,
     systemState,
     activeParts,
     isPriming,
     runPrime,
+    trackMessage,
   };
 };
