@@ -1410,7 +1410,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 ? getHanaBackAction().label
                 : (hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry")
                   ? "← Zpět"
-                  : hubSection === "hana" ? "← Zpět" : "← Hub"}
+                  : "← Hub"}
             </Button>
             <div className="min-w-0">
               <h1 className="text-base sm:text-lg font-serif font-medium text-foreground tracking-wide truncate">
