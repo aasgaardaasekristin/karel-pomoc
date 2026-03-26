@@ -196,11 +196,9 @@ export async function runKartothekaUpdate(): Promise<void> {
 
   console.log(`[Kartotheka] Seskupeno do ${partGroups.size} částí.`);
 
-  // Předem zjisti aktivní části za 24h (pro sekci L)
+  // allActivePartsLast24h kept for future use (sekce L)
   const allActivePartsLast24h = await getActivePartsLast24h();
-
-  // Shromáždi OP entries ze všech částí
-  const allOperativePlanEntries: OperativePlanEntry[] = [];
+  void allActivePartsLast24h; // suppress unused warning
 
   // ── KROK 3: Zpracování po částech ──
   for (const [partId, threads] of partGroups) {
