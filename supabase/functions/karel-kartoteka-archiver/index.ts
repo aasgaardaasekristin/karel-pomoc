@@ -144,7 +144,7 @@ const SECTION_IN_BLOCK_RE = /^SEKCE ([A-M]) –/gm;
 
 function parseCard(fullText: string): { originalContent: string; blocks: UpdateBlock[] } {
   // Find first update block separator
-  const firstBlockIdx = fullText.search(/═{3,}\n═{3,}\s*AKTUALIZACE\s*\[/);
+  const firstBlockIdx = fullText.search(/═{3,}\r?\n═{3,}\s*AKTUALIZACE\s*\[/);
   
   if (firstBlockIdx === -1) {
     return { originalContent: fullText, blocks: [] };
