@@ -124,55 +124,49 @@ async function getDocSizeChars(token: string, fileId: string): Promise<number> {
   return await getDocEndIndex(token, fileId);
 }
 
-// ── Section parsing ──
+// ── Card parsing ──
+// Updates are appended at the END of the document as complete blocks:
+//   ═══════════════════════════════════════
+//   ═══ AKTUALIZACE [2026-03-26] ═══
+//   ═══════════════════════════════════════
+//   SEKCE D – ...: content
+//   SEKCE E – ...: content
 
-interface ParsedSection {
-  letter: string;
-  header: string;
-  preBlockContent: string; // content before first update block
-  blocks: { header: string; content: string }[];
+interface UpdateBlock {
+  fullText: string;      // Complete block text including header
+  date: string;          // Extracted date
+  sections: string[];    // Section letters found in this block
 }
 
-const SECTION_RE = /^SEKCE ([A-M]) –\s*(.*)$/m;
-const BLOCK_RE = /═{3,}\s*AKTUALIZACE\s*\[([^\]]*)\]\s*═{3,}/;
+const BLOCK_SPLIT_RE = /(?=═{3,}\n═{3,}\s*AKTUALIZACE\s*\[)/;
+const BLOCK_HEADER_RE = /═{3,}\s*AKTUALIZACE\s*\[([^\]]*)\]\s*═{3,}/;
+const SECTION_IN_BLOCK_RE = /^SEKCE ([A-M]) –/gm;
 
-function parseCardIntoSections(fullText: string): ParsedSection[] {
-  const lines = fullText.split("\n");
-  const sections: ParsedSection[] = [];
-  let current: ParsedSection | null = null;
-
-  for (const line of lines) {
-    const secMatch = line.match(SECTION_RE);
-    if (secMatch) {
-      if (current) sections.push(current);
-      current = { letter: secMatch[1], header: line, preBlockContent: "", blocks: [] };
-      continue;
-    }
-    if (!current) continue;
-
-    const blockMatch = line.match(BLOCK_RE);
-    if (blockMatch) {
-      // Start of new update block — scan for the triple-line header
-      current.blocks.push({ header: line, content: "" });
-    } else if (current.blocks.length > 0) {
-      // Append to current block
-      const lastBlock = current.blocks[current.blocks.length - 1];
-      lastBlock.content += line + "\n";
-    } else {
-      // Pre-block content (original card content before any updates)
-      current.preBlockContent += line + "\n";
-    }
+function parseCard(fullText: string): { originalContent: string; blocks: UpdateBlock[] } {
+  // Find first update block separator
+  const firstBlockIdx = fullText.search(/═{3,}\n═{3,}\s*AKTUALIZACE\s*\[/);
+  
+  if (firstBlockIdx === -1) {
+    return { originalContent: fullText, blocks: [] };
   }
-  if (current) sections.push(current);
-  return sections;
-}
 
-function rebuildSection(sec: ParsedSection, keepBlocks: { header: string; content: string }[]): string {
-  let result = sec.header + "\n" + sec.preBlockContent;
-  for (const b of keepBlocks) {
-    result += b.header + "\n" + b.content;
-  }
-  return result;
+  const originalContent = fullText.slice(0, firstBlockIdx);
+  const blocksText = fullText.slice(firstBlockIdx);
+  
+  // Split into individual update blocks
+  const rawBlocks = blocksText.split(BLOCK_SPLIT_RE).filter(b => b.trim().length > 0);
+  
+  const blocks: UpdateBlock[] = rawBlocks.map(raw => {
+    const dateMatch = raw.match(BLOCK_HEADER_RE);
+    const sectionMatches = [...raw.matchAll(SECTION_IN_BLOCK_RE)].map(m => m[1]);
+    return {
+      fullText: raw,
+      date: dateMatch?.[1] || "unknown",
+      sections: sectionMatches,
+    };
+  });
+
+  return { originalContent, blocks };
 }
 
 // ── Main handler ──
