@@ -121,9 +121,60 @@ const RADIUS_MAP: Record<string, string> = {
 function deriveCSSVars(primary: string, accent: string, dark: boolean) {
   const p = parseHSL(primary);
   const a = parseHSL(accent);
+  const cl = (v: number) => clamp(Math.round(v), 0, 100);
+
+  // New design-system vars derived from primary/accent
+  const newVars = dark
+    ? {
+        "--surface-primary": `${p.h} ${cl(p.s * 0.4)}% 12%`,
+        "--surface-secondary": `${p.h} ${cl(p.s * 0.35)}% 15%`,
+        "--surface-tertiary": `${p.h} ${cl(p.s * 0.3)}% 18%`,
+        "--surface-elevated": `${p.h} ${cl(p.s * 0.35)}% 20%`,
+        "--text-primary": `${p.h} ${cl(p.s * 0.15)}% 93%`,
+        "--text-secondary": `${p.h} ${cl(p.s * 0.15)}% 68%`,
+        "--text-tertiary": `${p.h} ${cl(p.s * 0.1)}% 48%`,
+        "--text-disabled": `${p.h} ${cl(p.s * 0.1)}% 32%`,
+        "--text-inverse": "0 0% 0%",
+        "--border-default": `${p.h} ${cl(p.s * 0.15)}% 21%`,
+        "--border-subtle": `${p.h} ${cl(p.s * 0.1)}% 16%`,
+        "--border-strong": `${p.h} ${cl(p.s * 0.2)}% 33%`,
+        "--border-focus": `${a.h} ${a.s}% 50%`,
+        "--accent-hue": `${a.h}`,
+        "--accent-saturation": `${a.s}%`,
+        "--accent-primary": `${a.h} ${a.s}% 50%`,
+        "--accent-light": `${a.h} ${a.s}% 20%`,
+        "--accent-dark": `${a.h} ${a.s}% 68%`,
+        "--bubble-user-bg": `${a.h} ${a.s}% 50%`,
+        "--bubble-ai-bg": `${p.h} ${cl(p.s * 0.35)}% 15%`,
+        "--bubble-ai-border": `${p.h} ${cl(p.s * 0.15)}% 21%`,
+      }
+    : {
+        "--surface-primary": `${p.h} ${cl(p.s * 0.3)}% 94%`,
+        "--surface-secondary": `${p.h} ${cl(p.s * 0.25)}% 96%`,
+        "--surface-tertiary": `${p.h} ${cl(p.s * 0.2)}% 98%`,
+        "--surface-elevated": "0 0% 100%",
+        "--text-primary": `${p.h} ${cl(p.s * 0.9)}% 12%`,
+        "--text-secondary": `${p.h} ${cl(p.s * 0.5)}% 40%`,
+        "--text-tertiary": `${p.h} ${cl(p.s * 0.2)}% 58%`,
+        "--text-disabled": `${p.h} ${cl(p.s * 0.1)}% 72%`,
+        "--text-inverse": "0 0% 100%",
+        "--border-default": `${p.h} ${cl(p.s * 0.2)}% 87%`,
+        "--border-subtle": `${p.h} ${cl(p.s * 0.15)}% 92%`,
+        "--border-strong": `${p.h} ${cl(p.s * 0.4)}% 72%`,
+        "--border-focus": `${a.h} ${a.s}% 50%`,
+        "--accent-hue": `${a.h}`,
+        "--accent-saturation": `${a.s}%`,
+        "--accent-primary": `${a.h} ${a.s}% 50%`,
+        "--accent-light": `${a.h} ${a.s}% 92%`,
+        "--accent-dark": `${a.h} ${a.s}% 35%`,
+        "--bubble-user-bg": `${a.h} ${a.s}% 50%`,
+        "--bubble-ai-bg": `${p.h} ${cl(p.s * 0.25)}% 96%`,
+        "--bubble-ai-border": `${p.h} ${cl(p.s * 0.2)}% 87%`,
+      };
 
   if (dark) {
     return {
+      ...newVars,
       "--background": shift(primary, { s: Math.max(8, p.s * 0.35), l: 11 }),
       "--foreground": shift(primary, { s: 14, l: 92 }),
       "--card": shift(primary, { s: Math.max(8, p.s * 0.42), l: 13 }),
@@ -164,6 +215,7 @@ function deriveCSSVars(primary: string, accent: string, dark: boolean) {
   }
 
   return {
+    ...newVars,
     "--background": shift(primary, { s: Math.max(10, p.s * 0.24), l: 92 }),
     "--foreground": shift(primary, { s: 10, l: 20 }),
     "--card": shift(primary, { s: Math.max(10, p.s * 0.2), l: 89 }),
