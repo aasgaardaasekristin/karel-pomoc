@@ -1306,6 +1306,38 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
       contextBrief = aiData.choices?.[0]?.message?.content || "";
     }
 
+    // ═══ SILENT PARTS DETECTION ═══
+    // Detect parts with 3+ days of no contact
+    try {
+      const silentThreshold = 72 * 60 * 60 * 1000; // 72 hours
+      const silentParts: Array<{ name: string; lastSeen: string; daysSilent: number }> = [];
+      
+      for (const part of partRegistry) {
+        if (part.status === "sleeping" || part.status === "dormant") continue; // skip sleeping parts
+        const lastSeen = part.last_seen_at ? new Date(part.last_seen_at).getTime() : 0;
+        if (!lastSeen) continue; // skip parts without any recorded contact
+        const diff = now.getTime() - lastSeen;
+        if (diff > silentThreshold) {
+          silentParts.push({
+            name: part.part_name,
+            lastSeen: new Date(lastSeen).toLocaleDateString("cs-CZ"),
+            daysSilent: Math.floor(diff / (24 * 60 * 60 * 1000)),
+          });
+        }
+      }
+
+      if (silentParts.length > 0) {
+        const silentBlock = silentParts
+          .sort((a, b) => b.daysSilent - a.daysSilent)
+          .map(p => `⚠️ TICHÁ ČÁST: ${p.name} — poslední kontakt ${p.lastSeen} (${p.daysSilent} dní). Zvážit oslovení.`)
+          .join("\n");
+        contextBrief += `\n\n═══ TICHÉ ČÁSTI (3+ dny bez kontaktu) ═══\n${silentBlock}`;
+        console.log(`[did-context-prime] Silent parts detected: ${silentParts.length} (${silentParts.map(p => p.name).join(", ")})`);
+      }
+    } catch (silentErr) {
+      console.warn("[did-context-prime] Silent parts detection error (non-fatal):", silentErr);
+    }
+
     const totalTime = Date.now() - startTime;
     console.log(`[did-context-prime] Done in ${totalTime}ms. Brief: ${contextBrief.length} chars`);
 

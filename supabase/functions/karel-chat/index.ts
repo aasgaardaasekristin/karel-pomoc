@@ -574,7 +574,63 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
       });
     }
 
-    return new Response(response.body, {
+    // ═══ ASYNC TASK EXTRACTION (non-blocking) ═══
+    // Collect streamed response and extract tasks after sending
+    const [streamForClient, streamForExtract] = response.body!.tee();
+
+    // Fire-and-forget task extraction
+    (async () => {
+      try {
+        const reader = streamForExtract.getReader();
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          // Parse SSE data lines
+          for (const line of chunk.split("\n")) {
+            if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+              try {
+                const json = JSON.parse(line.slice(6));
+                const delta = json.choices?.[0]?.delta?.content || "";
+                fullResponse += delta;
+              } catch {}
+            }
+          }
+        }
+
+        if (fullResponse.length > 20 && (mode === "childcare" || effectiveMode === "kata")) {
+          const extractedTasks = extractTasksFromResponse(fullResponse, didSubMode || "general");
+          if (extractedTasks.length > 0) {
+            const { createClient: createSbForTasks } = await import("https://esm.sh/@supabase/supabase-js@2");
+            const sbTasks = createSbForTasks(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+            
+            // Get user_id
+            let taskUserId: string | null = null;
+            const taskAuth = req.headers.get("Authorization");
+            if (taskAuth?.startsWith("Bearer ")) {
+              const userSbT = createSbForTasks(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+                global: { headers: { Authorization: taskAuth } },
+              });
+              const { data: { user } } = await userSbT.auth.getUser();
+              taskUserId = user?.id || null;
+            }
+
+            if (taskUserId) {
+              const rows = extractedTasks.map(t => ({ ...t, user_id: taskUserId }));
+              const { error: insErr } = await sbTasks.from("did_tasks").insert(rows);
+              if (insErr) console.warn("[task-extract] Insert error:", insErr.message);
+              else console.log(`[task-extract] Saved ${rows.length} tasks from chat response`);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[task-extract] Async extraction error (non-fatal):", e);
+      }
+    })();
+
+    return new Response(streamForClient, {
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (error) {
@@ -588,3 +644,56 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
     );
   }
 });
+
+// ═══ TASK EXTRACTION HELPERS ═══
+function extractTasksFromResponse(responseText: string, subMode: string): Array<Record<string, any>> {
+  const taskPatterns = [
+    /(?:Potřebuji (?:vědět|znát|ověřit|zjistit))[^.!?\n]+[.!?]/gi,
+    /(?:Můžeš mi (?:říct|sdělit|popsat))[^.!?\n]+[.!?]/gi,
+    /(?:Zeptej se)[^.!?\n]+[.!?]/gi,
+    /(?:Úkol(?:\s+pro\s+tebe)?:)[^.!?\n]+[.!?]/gi,
+    /(?:Zpětná vazba:)[^.!?\n]+[.!?]/gi,
+    /(?:Jak to (?:dopadlo|proběhlo))[^.!?\n]+[.!?]/gi,
+    /(?:Navrhuji sezení:)[^.!?\n]+[.!?]/gi,
+    /(?:🔶 HYPOTÉZA:)[^.!?\n]+[.!?]/gi,
+    /(?:❓)[^.!?\n]+[.!?]/gi,
+  ];
+  const tasks: Array<Record<string, any>> = [];
+  const seen = new Set<string>();
+  
+  for (const pattern of taskPatterns) {
+    const matches = responseText.matchAll(pattern);
+    for (const match of matches) {
+      const desc = match[0].trim();
+      if (desc.length < 10 || seen.has(desc)) continue;
+      seen.add(desc);
+      tasks.push({
+        assigned_to: subMode === "mamka" ? "hanka" : subMode === "kata" ? "kata" : "both",
+        task_type: determineTaskType(desc),
+        description: desc.slice(0, 500),
+        priority: /🔴|akutní|krize|kritick/i.test(responseText) ? "high" : "medium",
+        due_date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        status: "pending",
+        source: "chat_auto_extract",
+        related_part: extractPartName(desc),
+      });
+    }
+  }
+  return tasks.slice(0, 10); // cap at 10 per response
+}
+
+function determineTaskType(text: string): string {
+  if (/zpětná vazba|jak to|dopadlo|proběhlo/i.test(text)) return "feedback";
+  if (/sezení|plán/i.test(text)) return "session";
+  if (/zeptej se|potřebuji vědět|potřebuji znát/i.test(text)) return "question";
+  if (/hypotéza|ověřit/i.test(text)) return "observation";
+  return "followup";
+}
+
+function extractPartName(text: string): string | null {
+  const knownParts = ["Arthur", "Clark", "Tundrupek", "Gustík", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Dmytri", "Dymi"];
+  for (const part of knownParts) {
+    if (text.includes(part)) return part;
+  }
+  return null;
+}

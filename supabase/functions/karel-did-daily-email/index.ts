@@ -330,9 +330,37 @@ ${formatAnalysisTeam(analysis)}`;
     }
 
     // ═══ GENERATE PERSONALIZED EMAILS VIA AI ═══
+    // ═══ LOAD did_tasks (pending) FOR EMAIL ═══
+    let pendingDidTasks: any[] = [];
+    try {
+      const { data: dtData } = await (sb as any).from("did_tasks")
+        .select("*")
+        .eq("status", "pending")
+        .order("created_at", { ascending: true });
+      pendingDidTasks = dtData || [];
+    } catch (e) { console.warn("[daily-email] did_tasks load error:", e); }
+
+    const isMonday = new Date().getDay() === 1;
+
     const generateEmail = async (recipient: "hanka" | "kata"): Promise<string> => {
       const isHanka = recipient === "hanka";
       const profile = isHanka ? hankaProfile : kataProfile;
+
+      // Filter did_tasks for this therapist
+      const myDidTasks = pendingDidTasks.filter((t: any) => t.assigned_to === recipient || t.assigned_to === "both");
+      const overdueTasks = myDidTasks.filter((t: any) => t.due_date && new Date(t.due_date) < new Date());
+      const followUpTasks = myDidTasks.filter((t: any) => t.follow_up_needed);
+
+      // Build did_tasks block for email
+      let didTasksBlock = "";
+      if (myDidTasks.length > 0) {
+        didTasksBlock = `\n═══ KAREL AUTOMATICKÉ ÚKOLY (z chatu) ═══\n`;
+        didTasksBlock += myDidTasks.map((t: any) => {
+          const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000 * 60 * 60 * 24));
+          const overdue = t.due_date && new Date(t.due_date) < new Date() ? " ⚠️ ZPOŽDĚNÝ" : "";
+          return `  ▸ [${t.task_type}|${t.priority}${overdue}] ${t.description} (${age}d${t.related_part ? `, část: ${t.related_part}` : ""})`;
+        }).join("\n");
+      }
 
       // CRITICAL RULES injected into EVERY system prompt
       const analysisRules = hasAnalysis ? `
