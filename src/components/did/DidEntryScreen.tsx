@@ -1,8 +1,6 @@
-import { Users, Smile, ChevronRight } from "lucide-react";
-import { KarelCard } from "@/components/ui/KarelCard";
+import { Users, Smile, ChevronRight, ArrowLeft } from "lucide-react";
 import { KarelButton } from "@/components/ui/KarelButton";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
-import { ArrowLeft } from "lucide-react";
 
 interface Props {
   onSelectTerapeut: () => void;
@@ -16,16 +14,12 @@ const entries = [
     title: "Terapeut",
     description: "Hanička nebo Káťa – supervize, analýza, plánování",
     icon: Users,
-    iconBg: "bg-purple-100 dark:bg-purple-900/30",
-    iconColor: "text-purple-600 dark:text-purple-400",
   },
   {
     key: "kluci",
     title: "Kluci",
     description: "Části systému – rozhovor s Karlem, vlastní vlákna",
     icon: Smile,
-    iconBg: "bg-amber-100 dark:bg-amber-900/30",
-    iconColor: "text-amber-600 dark:text-amber-400",
   },
 ] as const;
 
@@ -47,34 +41,68 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
 
       {/* Title */}
       <div className="text-center mb-8 animate-fade-in">
-        <h2 className="text-2xl font-bold text-[hsl(var(--text-primary))]">DID systém</h2>
-        <p className="text-sm text-[hsl(var(--text-secondary))] mt-1.5">Kdo dnes mluví?</p>
+        <h2 className="text-2xl font-bold text-white" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>
+          DID systém
+        </h2>
+        <p className="text-sm text-white/80 mt-1.5" style={{ textShadow: "0 1px 3px rgba(0,0,0,0.4)" }}>
+          Kdo dnes mluví?
+        </p>
       </div>
 
-      {/* Cards */}
+      {/* Cards — glass morphism */}
       <div className="w-full max-w-sm space-y-3">
         {entries.map((entry, index) => {
           const Icon = entry.icon;
           return (
-            <KarelCard
+            <div
               key={entry.key}
-              variant="interactive"
-              padding="none"
-              className="animate-fade-in"
-              style={{ animationDelay: `${index * 80}ms`, animationFillMode: "both" }}
+              className="rounded-2xl cursor-pointer transition-all duration-200 animate-fade-in group"
+              style={{
+                animationDelay: `${index * 80}ms`,
+                animationFillMode: "both",
+                background: "rgba(0, 0, 0, 0.15)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(0, 0, 0, 0.25)";
+                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.25)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(0, 0, 0, 0.15)";
+                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.15)";
+              }}
               onClick={handlers[entry.key]}
             >
               <div className="flex items-center gap-4 p-5">
-                <div className={`w-12 h-12 rounded-full ${entry.iconBg} flex items-center justify-center shrink-0`}>
-                  <Icon size={22} className={entry.iconColor} />
+                <div
+                  className="w-12 h-12 rounded-full flex items-center justify-center shrink-0"
+                  style={{
+                    background: "rgba(255, 255, 255, 0.15)",
+                    backdropFilter: "blur(8px)",
+                    WebkitBackdropFilter: "blur(8px)",
+                  }}
+                >
+                  <Icon size={22} style={{ color: "rgba(255, 255, 255, 0.85)" }} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span className="text-lg font-semibold text-[hsl(var(--text-primary))]">{entry.title}</span>
-                  <p className="text-sm text-[hsl(var(--text-secondary))] mt-0.5">{entry.description}</p>
+                  <span
+                    className="text-lg font-semibold text-white"
+                    style={{ textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
+                  >
+                    {entry.title}
+                  </span>
+                  <p
+                    className="text-sm text-white/80 mt-0.5"
+                    style={{ textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}
+                  >
+                    {entry.description}
+                  </p>
                 </div>
-                <ChevronRight size={18} className="text-[hsl(var(--text-disabled))] shrink-0" />
+                <ChevronRight size={18} style={{ color: "rgba(255, 255, 255, 0.5)" }} className="shrink-0" />
               </div>
-            </KarelCard>
+            </div>
           );
         })}
       </div>
