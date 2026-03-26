@@ -221,6 +221,8 @@ interface ThemeContextValue {
   getPersonaPrefs: (persona: string) => Promise<ThemePrefs>;
   /** When set, DB load/save is skipped — page manages theme via localStorage */
   setLocalMode: (key: string | null) => void;
+  /** Sets data-section attribute on document root for accent color overrides */
+  setSection: (section: string | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
