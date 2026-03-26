@@ -236,12 +236,76 @@ serve(async (req) => {
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    addLog(`Done in ${elapsed}s: ${successCount} ok, ${failCount} failed`);
+    addLog(`STEP 4 done in ${elapsed}s: ${successCount} ok, ${failCount} failed`);
+
+    // ── STEP 5: Archive check ──
+    const archivedCards: { partName: string; originalSizeKB: number; newSizeKB: number }[] = [];
+    let archiveError: string | null = null;
+
+    try {
+      addLog("STEP 5: Checking card sizes for archival…");
+      const driveToken = await getAccessToken();
+      const rootId = await findKartotekaRoot(driveToken);
+
+      if (rootId) {
+        const rootFiles = await listFiles(driveToken, rootId);
+        const folders = rootFiles.filter(f => f.mimeType === FOLDER_MIME);
+        const activeId = folders.find(f => /^01/.test(f.name.trim()))?.id;
+
+        if (activeId) {
+          const cards = await listFiles(driveToken, activeId);
+          const docCards = cards.filter(f => f.mimeType !== FOLDER_MIME);
+          addLog(`  Found ${docCards.length} cards in active folder`);
+
+          for (const card of docCards) {
+            try {
+              const endIdx = await getDocEndIndex(driveToken, card.id);
+              if (endIdx > ARCHIVE_THRESHOLD_CHARS) {
+                // Extract part name from file name (e.g. "004_TUNDRUPEK" → "TUNDRUPEK")
+                const partMatch = card.name.match(/^\d{3}_(.+)$/);
+                const pName = partMatch ? partMatch[1] : card.name;
+                addLog(`  📦 Card "${card.name}" is ${Math.round(endIdx / 1024)} KB → archiving…`);
+
+                const { data: archResult, error: archErr } = await supabase.functions.invoke(
+                  "karel-kartoteka-archiver",
+                  { body: { partName: pName, keepLastBlocks: 5, archiveSections: ["C","D","E","G","K","L","M"], dryRun: false } }
+                );
+
+                if (archErr) {
+                  addLog(`  ⚠️ Archiver error for "${pName}": ${JSON.stringify(archErr)}`);
+                } else if (archResult?.success && archResult.archivedBlockCount > 0) {
+                  archivedCards.push({
+                    partName: pName,
+                    originalSizeKB: archResult.originalSizeKB,
+                    newSizeKB: archResult.newSizeKB,
+                  });
+                  addLog(`  ✅ Archived "${pName}": ${archResult.originalSizeKB}→${archResult.newSizeKB} KB (${archResult.archivedBlockCount} blocks)`);
+                } else {
+                  addLog(`  ℹ️ "${pName}": nothing to archive`);
+                }
+              }
+            } catch (cardErr) {
+              addLog(`  ⚠️ Size check failed for "${card.name}": ${cardErr}`);
+            }
+          }
+        }
+      } else {
+        addLog("  ⚠️ kartoteka_DID folder not found, skipping archive check");
+      }
+    } catch (archiveErr) {
+      archiveError = String(archiveErr);
+      addLog(`  ❌ Archive step error: ${archiveError}`);
+    }
+
+    const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    addLog(`All done in ${totalElapsed}s`);
 
     return new Response(JSON.stringify({
       ok: true, log, threads: unprocessed.length,
       parts: partGroups.size, success: successCount, failed: failCount,
-      elapsed_seconds: Number(elapsed),
+      elapsed_seconds: Number(totalElapsed),
+      archivedCards,
+      ...(archiveError ? { archiveError } : {}),
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
