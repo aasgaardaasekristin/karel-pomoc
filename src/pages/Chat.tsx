@@ -1419,7 +1419,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata") && (
+            {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut") && (
               <TherapistAvatarBar />
             )}
             {chatStorageKey && <ThemeQuickButton storageKey={chatStorageKey} />}
