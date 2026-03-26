@@ -179,7 +179,7 @@ const DidRegistryOverview = ({ refreshTrigger, onSelectPart }: Props) => {
           </div>
 
           {/* Parts grid */}
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
             {filtered.map(part => {
               const cfg = STATUS_CONFIG[part.status] || STATUS_CONFIG.sleeping;
               const isExpanded = expandedPart === part.id;
