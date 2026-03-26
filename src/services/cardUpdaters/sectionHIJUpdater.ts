@@ -8,7 +8,7 @@
 
 import type { SectionUpdate, Thread } from "@/services/threadAnalyzer";
 import { supabase } from "@/integrations/supabase/client";
-import { findContradiction } from "@/services/cardUpdaters/sectionAUpdater";
+
 
 /* ================================================================
    HELPERS
