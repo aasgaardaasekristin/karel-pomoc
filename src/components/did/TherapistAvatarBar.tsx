@@ -18,6 +18,7 @@ const allAvatars: Record<string, AvatarDef> = {
 };
 
 const presets: Record<string, string[]> = {
+  meeting: ["kata", "karel", "hanicka"],
   all: ["karel", "hanicka", "kata"],
   mamka: ["karel", "hanicka"],
   kata: ["karel", "kata"],
