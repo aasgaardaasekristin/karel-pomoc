@@ -87,7 +87,7 @@ export async function applyCardUpdates(
   };
 
   // ── A ──
-  const newA = await safe("A", () => updateSectionA(currentCard.A ?? "", analyzedUpdates.A ?? [], threads, threadDate), currentCard.A ?? "");
+  const newA = await safe("A", () => updateSectionA(currentCard.A ?? "", analyzedUpdates.A ?? [], threadDate), currentCard.A ?? "");
   logChange("A", currentCard.A, newA);
   updatedCard.A = newA;
 
