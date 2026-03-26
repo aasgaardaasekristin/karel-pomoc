@@ -133,12 +133,6 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
           ))}
         </div>
       )}
-      <div className="flex justify-center mt-4">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-1" />
-          Zpět
-        </Button>
-      </div>
     </div>
   );
 };
