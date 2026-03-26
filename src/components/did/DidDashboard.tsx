@@ -184,7 +184,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         ),
         fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-dashboard`,
-          { method: "POST", headers, body: JSON.stringify({ date: today }) }
+          { method: "POST", headers, body: JSON.stringify({ date: today, trigger: "manual" }) }
         ),
       ]);
 

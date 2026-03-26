@@ -165,5 +165,8 @@ verify_jwt = false
 [functions.karel-daily-refresh]
 verify_jwt = false
 
+[functions.karel-daily-dashboard]
+verify_jwt = false
+
 [functions.karel-internal-analysis]
 verify_jwt = false
