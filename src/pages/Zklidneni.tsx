@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { KarelButton } from "@/components/ui/KarelButton";
+import { KarelCard } from "@/components/ui/KarelCard";
+import { KarelInput } from "@/components/ui/KarelInput";
 import { Leaf, Mail, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import ScenarioSelector, { type CalmScenario } from "@/components/calm/ScenarioSelector";
 import CalmChat from "@/components/calm/CalmChat";
@@ -36,7 +37,6 @@ const Zklidneni = () => {
 
   useEffect(() => {
     if (!token) return;
-    
     const verify = async () => {
       try {
         const res = await fetch(
@@ -71,7 +71,6 @@ const Zklidneni = () => {
     if (!email.trim()) return;
     setIsLoading(true);
     setErrorMsg("");
-
     try {
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-calm-magic-link`,
@@ -99,147 +98,144 @@ const Zklidneni = () => {
 
   const handleEnd = () => setScenario(null);
 
+  const headerContent = (
+    <header className="shrink-0 border-b border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-primary)/0.8)] backdrop-blur-sm sticky top-0 z-10">
+      <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <KarelButton variant="ghost" size="icon" onClick={() => setScenario(null)} icon={<Leaf size={18} className="text-teal-600 dark:text-teal-400" />} />
+          <div>
+            <h1 className="text-base font-semibold text-[hsl(var(--text-primary))]">Zklidnění</h1>
+            <p className="text-xs text-[hsl(var(--text-tertiary))]">Bezpečný prostor pro tebe</p>
+          </div>
+        </div>
+        <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
+      </div>
+    </header>
+  );
+
   if (step === "verified" && scenario) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={() => setScenario(null)} className="shrink-0">
-                <Leaf className="w-4 h-4 text-primary" />
-              </Button>
-              <div>
-                <h1 className="text-lg font-serif font-semibold text-foreground">Zklidnění</h1>
-                <p className="text-xs text-muted-foreground">Bezpečný prostor pro tebe</p>
-              </div>
-            </div>
-            <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
-          </div>
-        </header>
-        <CalmChat scenario={scenario} onEnd={handleEnd} />
+      <div className="min-h-[100dvh] flex flex-col relative overflow-hidden" data-section="calm">
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute -top-1/4 -left-1/4 w-[60vw] h-[60vw] rounded-full bg-gradient-to-br from-teal-400 to-cyan-400 opacity-[0.03] animate-breathe" />
+          <div className="absolute -bottom-1/4 -right-1/4 w-[50vw] h-[50vw] rounded-full bg-gradient-to-br from-cyan-400 to-blue-400 opacity-[0.03] animate-breathe" style={{ animationDelay: "1.5s" }} />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50 dark:from-teal-950/30 dark:via-cyan-950/20 dark:to-blue-950/30 -z-10" />
+        {headerContent}
+        <div className="flex-1 relative z-0">
+          <CalmChat scenario={scenario} onEnd={handleEnd} />
+        </div>
       </div>
     );
   }
 
   if (step === "verified") {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
-        <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-          <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <Leaf className="w-4 h-4 text-primary" />
-              <div>
-                <h1 className="text-lg font-serif font-semibold text-foreground">Zklidnění</h1>
-                <p className="text-xs text-muted-foreground">Vyber, co teď prožíváš</p>
-              </div>
-            </div>
-            <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
-          </div>
-        </header>
-        <ScenarioSelector onSelect={setScenario} />
+      <div className="min-h-[100dvh] flex flex-col relative overflow-hidden" data-section="calm">
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute -top-1/4 -left-1/4 w-[60vw] h-[60vw] rounded-full bg-gradient-to-br from-teal-400 to-cyan-400 opacity-[0.03] animate-breathe" />
+          <div className="absolute -bottom-1/4 -right-1/4 w-[50vw] h-[50vw] rounded-full bg-gradient-to-br from-cyan-400 to-blue-400 opacity-[0.03] animate-breathe" style={{ animationDelay: "1.5s" }} />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50 dark:from-teal-950/30 dark:via-cyan-950/20 dark:to-blue-950/30 -z-10" />
+        {headerContent}
+        <div className="flex-1 relative z-0">
+          <ScenarioSelector onSelect={setScenario} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
-      <div className="absolute top-4 right-4">
+    <div className="min-h-[100dvh] flex items-center justify-center p-4 relative overflow-hidden" data-section="calm">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-1/4 -left-1/4 w-[60vw] h-[60vw] rounded-full bg-gradient-to-br from-teal-400 to-cyan-400 opacity-[0.03] animate-breathe" />
+        <div className="absolute -bottom-1/4 -right-1/4 w-[50vw] h-[50vw] rounded-full bg-gradient-to-br from-cyan-400 to-blue-400 opacity-[0.03] animate-breathe" style={{ animationDelay: "1.5s" }} />
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-50 via-cyan-50 to-blue-50 dark:from-teal-950/30 dark:via-cyan-950/20 dark:to-blue-950/30 -z-10" />
+
+      <div className="absolute top-4 right-4 z-10">
         <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
       </div>
-      <div className="w-full max-w-md">
+
+      <div className="w-full max-w-md relative z-10 animate-fade-in">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Leaf className="w-8 h-8 text-primary" />
+          <div className="w-16 h-16 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center mx-auto mb-4">
+            <Leaf className="w-8 h-8 text-teal-600 dark:text-teal-400" />
           </div>
-          <h1 className="text-2xl font-serif font-semibold text-foreground mb-2">
+          <h1 className="text-2xl font-bold text-[hsl(var(--text-primary))] mb-2">
             Chci si popovídat
           </h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">
+          <p className="text-[hsl(var(--text-secondary))] text-sm leading-relaxed">
             Bezpečný prostor, kde tě někdo vyslechne.<br />
             Nic se neukládá. Jsi tu anonymně.
           </p>
         </div>
 
         {step === "email" && (
-          <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
-            <p className="text-sm text-muted-foreground text-center">
+          <KarelCard variant="elevated" padding="lg">
+            <p className="text-sm text-[hsl(var(--text-secondary))] text-center mb-4">
               Pro přístup zadej svůj e-mail. Pošleme ti jednorázový odkaz.
             </p>
             <form onSubmit={handleSendLink} className="space-y-4">
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                <Input
-                  type="email"
-                  placeholder="Tvůj e-mail"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="pl-10 h-12 text-base"
-                  autoFocus
-                  required
-                />
-              </div>
-              {errorMsg && (
-                <p className="text-sm text-destructive flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" /> {errorMsg}
-                </p>
-              )}
-              <Button
+              <KarelInput
+                type="email"
+                placeholder="Tvůj e-mail"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                icon={<Mail size={16} />}
+                error={errorMsg || undefined}
+                autoFocus
+                required
+              />
+              <KarelButton
                 type="submit"
-                className="w-full h-12 text-base"
-                disabled={isLoading || !email.trim()}
+                variant="primary"
+                className="w-full h-12"
+                loading={isLoading}
+                disabled={!email.trim()}
               >
-                {isLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Odesílám...</>
-                ) : (
-                  "Poslat odkaz"
-                )}
-              </Button>
+                Poslat odkaz
+              </KarelButton>
             </form>
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-xs text-[hsl(var(--text-disabled))] text-center mt-4">
               E-mail slouží pouze k ověření. Žádný účet se nevytváří.
             </p>
-          </div>
+          </KarelCard>
         )}
 
         {step === "sent" && (
-          <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-4">
-            <CheckCircle className="w-12 h-12 text-primary mx-auto" />
-            <h2 className="text-lg font-serif font-semibold text-foreground">
-              Odkaz odeslán
-            </h2>
-            <p className="text-sm text-muted-foreground">
+          <KarelCard variant="elevated" padding="lg" className="text-center">
+            <CheckCircle className="w-12 h-12 text-teal-600 dark:text-teal-400 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-[hsl(var(--text-primary))]">Odkaz odeslán</h2>
+            <p className="text-sm text-[hsl(var(--text-secondary))] mt-2">
               Zkontroluj svůj e-mail <strong>{email}</strong> a klikni na odkaz.
               <br />Platí 15 minut.
             </p>
-            <Button variant="ghost" onClick={() => { setStep("email"); setEmail(""); }}>
+            <KarelButton variant="ghost" className="mt-4" onClick={() => { setStep("email"); setEmail(""); }}>
               Zadat jiný e-mail
-            </Button>
-          </div>
+            </KarelButton>
+          </KarelCard>
         )}
 
         {step === "verifying" && (
-          <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-4">
-            <Loader2 className="w-12 h-12 text-primary mx-auto animate-spin" />
-            <p className="text-sm text-muted-foreground">Ověřuji odkaz...</p>
-          </div>
+          <KarelCard variant="elevated" padding="lg" className="text-center">
+            <Loader2 className="w-12 h-12 text-teal-600 dark:text-teal-400 mx-auto animate-spin mb-4" />
+            <p className="text-sm text-[hsl(var(--text-secondary))]">Ověřuji odkaz…</p>
+          </KarelCard>
         )}
 
         {step === "error" && (
-          <div className="bg-card border border-border rounded-2xl p-8 text-center space-y-4">
-            <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
-            <h2 className="text-lg font-serif font-semibold text-foreground">
-              {errorMsg}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Můžeš si nechat poslat nový odkaz.
-            </p>
-            <Button onClick={() => { setStep("email"); setErrorMsg(""); }}>
+          <KarelCard variant="elevated" padding="lg" className="text-center">
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-[hsl(var(--text-primary))]">{errorMsg}</h2>
+            <p className="text-sm text-[hsl(var(--text-secondary))] mt-2">Můžeš si nechat poslat nový odkaz.</p>
+            <KarelButton variant="primary" className="mt-4" onClick={() => { setStep("email"); setErrorMsg(""); }}>
               Zkusit znovu
-            </Button>
-          </div>
+            </KarelButton>
+          </KarelCard>
         )}
 
-        <p className="text-center text-xs text-muted-foreground mt-6">
+        <p className="text-center text-xs text-[hsl(var(--text-disabled))] mt-6">
           Hana Chlebcová · Psychoterapie
         </p>
       </div>

@@ -1,4 +1,4 @@
-import { Brain, Shield, Heart, Baby, Search } from "lucide-react";
+import { Coffee, Eye, Shield, Baby, Search } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -19,49 +19,44 @@ const ModeSelector = ({ currentMode, onModeChange, hideDid, hideResearch }: Mode
   const modes = [
     {
       id: "debrief" as const,
-      label: "Debrief po sezení",
-      sublabel: "psychohygiena",
+      label: "Debrief",
       tooltip: "Prostor pro zpracování emocí po pracovním dni",
-      icon: Heart,
-      className: "mode-button-debrief",
+      icon: Coffee,
+      activeClasses: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 shadow-subtle",
     },
     {
       id: "supervision" as const,
-      label: "Supervizní reflexe",
-      sublabel: "případu",
+      label: "Supervize",
       tooltip: "Reflexe konkrétního případu, trénink a zápis",
-      icon: Brain,
-      className: "mode-button-supervision",
+      icon: Eye,
+      activeClasses: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 shadow-subtle",
     },
     {
       id: "safety" as const,
-      label: "Bezpečnost a hranice",
-      sublabel: "rizika",
+      label: "Bezpečnost",
       tooltip: "Postup při obavách, dokumentace a hranice",
       icon: Shield,
-      className: "mode-button-safety",
+      activeClasses: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 shadow-subtle",
     },
     {
       id: "childcare" as const,
       label: "DID",
-      sublabel: "DID",
       tooltip: "Režim pro práci s DID systémem – terapeuti i části",
       icon: Baby,
-      className: "mode-button-childcare",
+      activeClasses: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 shadow-subtle",
     },
     {
       id: "research" as const,
-      label: "Profesní zdroje",
-      sublabel: "research",
-      tooltip: "Karel prohledá internet – odborné články, testy, metody, trendy v psychologii",
+      label: "Research",
+      tooltip: "Karel prohledá internet – odborné články, testy, metody, trendy",
       icon: Search,
-      className: "mode-button-supervision",
+      activeClasses: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 shadow-subtle",
     },
   ].filter(m => (!hideDid || m.id !== "childcare") && (!hideResearch || m.id !== "research"));
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-1.5 sm:gap-2 justify-center">
+      <div className="flex flex-wrap gap-1 justify-center">
         {modes.map((modeItem) => {
           const Icon = modeItem.icon;
           const isActive = currentMode === modeItem.id;
@@ -71,20 +66,14 @@ const ModeSelector = ({ currentMode, onModeChange, hideDid, hideResearch }: Mode
               <TooltipTrigger asChild>
                 <button
                   onClick={() => onModeChange(modeItem.id)}
-                  className={`mode-button flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2 text-xs sm:text-sm ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
                     isActive
-                      ? modeItem.className
-                      : "bg-secondary text-secondary-foreground border-border hover:bg-secondary/80"
+                      ? modeItem.activeClasses
+                      : "text-[hsl(var(--text-tertiary))] hover:bg-[hsl(var(--surface-tertiary))] hover:text-[hsl(var(--text-secondary))]"
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-                  <span className="hidden sm:inline">
-                    {modeItem.label}
-                    <span className="text-xs opacity-80 ml-1">({modeItem.sublabel})</span>
-                  </span>
-                  <span className="sm:hidden leading-tight">
-                    {modeItem.sublabel}
-                  </span>
+                  <Icon size={14} />
+                  {modeItem.label}
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="max-w-[200px] text-center">

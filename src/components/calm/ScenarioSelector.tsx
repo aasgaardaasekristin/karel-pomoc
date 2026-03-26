@@ -1,7 +1,8 @@
 import {
-  Wind, Moon, Layers, CloudRain, Heart, ShieldAlert,
-  Baby, Briefcase, Activity, Eye, Sparkles, BrainCircuit, CloudFog,
+  Wind, Moon, TreePine, Waves, Heart, Flame,
+  Layers, CloudRain, Baby, Briefcase, Activity, Eye, Sparkles, BrainCircuit, CloudFog,
 } from "lucide-react";
+import { KarelCard } from "@/components/ui/KarelCard";
 
 export type CalmScenario =
   | "panic" | "insomnia" | "overwhelm" | "sadness"
@@ -14,21 +15,26 @@ interface ScenarioOption {
   label: string;
   hint: string;
   icon: React.ElementType;
+  gradient: string;
+  iconColor: string;
 }
 
 const scenarios: ScenarioOption[] = [
-  { id: "panic", label: "Panika / silná úzkost", hint: "Když tě zaplaví strach nebo úzkost", icon: Wind },
-  { id: "insomnia", label: "Nemohu usnout", hint: "Když myšlenky nebo napětí nedají spát", icon: Moon },
-  { id: "overwhelm", label: "Je toho na mě moc", hint: "Když nestíháš a cítíš přetížení", icon: Layers },
-  { id: "sadness", label: "Smutek / prázdno", hint: "Když se cítíš prázdně nebo smutně", icon: CloudRain },
-  { id: "relationship", label: "Vztahové napětí", hint: "Když bolí vztahy s blízkými", icon: Heart },
-  { id: "threat", label: "Cítím se doma ohroženě", hint: "Když se necítíš v bezpečí", icon: ShieldAlert },
-  { id: "child_anxiety", label: "Úzkost u dítěte / rodičovská bezmoc", hint: "Když vidíš, že tvé dítě trpí", icon: Baby },
-  { id: "work_stress", label: "Pracovní / studijní stres", hint: "Když drtí práce nebo škola", icon: Briefcase },
-  { id: "somatic", label: "Tělesná úzkost (bušení, závratě)", hint: "Když úzkost cítíš hlavně v těle", icon: Activity },
-  { id: "shame", label: "Stud / vina (těžké pocity)", hint: "Když tě sžírá stud nebo vina", icon: Eye },
-  { id: "rumination", label: "Nemohu zastavit myšlenky", hint: "Když se myšlenky točí dokola", icon: BrainCircuit },
-  { id: "dissociation", label: "Cítím se odpojeně / mimo sebe", hint: "Když se cítíš mimo nebo neskutečně", icon: CloudFog },
+  { id: "panic", label: "Dýchání", hint: "Zklidni dech, zklidni mysl", icon: Wind, gradient: "from-sky-500/10 to-blue-500/10", iconColor: "text-sky-600 dark:text-sky-400" },
+  { id: "overwhelm", label: "Uzemnění", hint: "Vrať se do přítomného okamžiku", icon: TreePine, gradient: "from-green-500/10 to-emerald-500/10", iconColor: "text-green-600 dark:text-green-400" },
+  { id: "sadness", label: "Bezpečné místo", hint: "Najdi si bezpečné místo v mysli", icon: Waves, gradient: "from-cyan-500/10 to-teal-500/10", iconColor: "text-cyan-600 dark:text-cyan-400" },
+  { id: "insomnia", label: "Usínání", hint: "Uvolni napětí a nech se unášet", icon: Moon, gradient: "from-indigo-500/10 to-violet-500/10", iconColor: "text-indigo-600 dark:text-indigo-400" },
+  { id: "relationship", label: "Útěcha", hint: "Vlídná slova, když to bolí", icon: Heart, gradient: "from-pink-500/10 to-rose-500/10", iconColor: "text-pink-600 dark:text-pink-400" },
+  { id: "threat", label: "Krize", hint: "Okamžitá podpora v tísni", icon: Flame, gradient: "from-orange-500/10 to-amber-500/10", iconColor: "text-orange-600 dark:text-orange-400" },
+];
+
+const extraScenarios: { id: CalmScenario; label: string; hint: string; icon: React.ElementType }[] = [
+  { id: "child_anxiety", label: "Úzkost u dítěte", hint: "Když vidíš, že tvé dítě trpí", icon: Baby },
+  { id: "work_stress", label: "Pracovní stres", hint: "Když drtí práce nebo škola", icon: Briefcase },
+  { id: "somatic", label: "Tělesná úzkost", hint: "Bušení, závratě, napětí", icon: Activity },
+  { id: "shame", label: "Stud / vina", hint: "Když tě sžírá stud nebo vina", icon: Eye },
+  { id: "rumination", label: "Ruminace", hint: "Myšlenky se točí dokola", icon: BrainCircuit },
+  { id: "dissociation", label: "Odpojení", hint: "Cítím se mimo sebe", icon: CloudFog },
   { id: "other", label: "Něco jiného", hint: "Cokoliv, co teď prožíváš", icon: Sparkles },
 ];
 
@@ -38,29 +44,57 @@ interface ScenarioSelectorProps {
 
 const ScenarioSelector = ({ onSelect }: ScenarioSelectorProps) => {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
-      <h2 className="text-xl font-serif font-semibold text-foreground text-center mb-2">
-        Co teď prožíváš?
-      </h2>
-      <p className="text-sm text-muted-foreground text-center mb-8">
-        Vyber, co je ti nejblíž. Společně to zkusíme zklidnit.
-      </p>
+    <div className="max-w-lg mx-auto px-4 py-8">
+      <div className="text-center mb-8 animate-fade-in">
+        <h2 className="text-xl font-bold text-[hsl(var(--text-primary))]">
+          Co teď prožíváš?
+        </h2>
+        <p className="text-sm text-[hsl(var(--text-secondary))] mt-1.5">
+          Vyber, co je ti nejblíž. Společně to zkusíme zklidnit.
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {scenarios.map(({ id, label, hint, icon: Icon }) => (
-          <button
+      {/* Primary 6 scenarios - 2x3 grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+        {scenarios.map(({ id, label, hint, icon: Icon, gradient, iconColor }, index) => (
+          <KarelCard
             key={id}
+            variant="interactive"
+            padding="none"
+            className="animate-fade-in overflow-hidden"
+            style={{ animationDelay: `${index * 60}ms`, animationFillMode: "both" }}
             onClick={() => onSelect(id)}
-            className="flex items-center gap-3 px-4 py-3.5 rounded-xl border border-border bg-card hover:bg-secondary/60 transition-all duration-200 text-left group"
           >
-            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-              <Icon className="w-4.5 h-4.5 text-primary" />
+            <div className={`flex flex-col items-center text-center p-4 bg-gradient-to-br ${gradient}`}>
+              <div className="w-10 h-10 rounded-xl bg-white/80 dark:bg-white/10 flex items-center justify-center mb-2.5">
+                <Icon size={20} className={iconColor} />
+              </div>
+              <span className="text-sm font-semibold text-[hsl(var(--text-primary))]">{label}</span>
+              <span className="text-[10px] text-[hsl(var(--text-tertiary))] mt-0.5 line-clamp-2">{hint}</span>
             </div>
-            <div className="min-w-0">
-              <span className="text-sm font-medium text-foreground block">{label}</span>
-              <span className="text-xs text-muted-foreground block mt-0.5">{hint}</span>
+          </KarelCard>
+        ))}
+      </div>
+
+      {/* Extra scenarios - compact list */}
+      <div className="space-y-1.5">
+        {extraScenarios.map(({ id, label, hint, icon: Icon }, index) => (
+          <KarelCard
+            key={id}
+            variant="interactive"
+            padding="none"
+            className="animate-fade-in"
+            style={{ animationDelay: `${(6 + index) * 60}ms`, animationFillMode: "both" }}
+            onClick={() => onSelect(id)}
+          >
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <Icon size={16} className="text-[hsl(var(--text-tertiary))] shrink-0" />
+              <div className="min-w-0">
+                <span className="text-sm font-medium text-[hsl(var(--text-primary))]">{label}</span>
+                <span className="text-xs text-[hsl(var(--text-tertiary))] ml-2">{hint}</span>
+              </div>
             </div>
-          </button>
+          </KarelCard>
         ))}
       </div>
     </div>

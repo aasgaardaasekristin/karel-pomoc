@@ -221,6 +221,8 @@ interface ThemeContextValue {
   getPersonaPrefs: (persona: string) => Promise<ThemePrefs>;
   /** When set, DB load/save is skipped — page manages theme via localStorage */
   setLocalMode: (key: string | null) => void;
+  /** Sets data-section attribute on document root for accent color overrides */
+  setSection: (section: string | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -260,6 +262,25 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
   const setLocalMode = useCallback((key: string | null) => {
     setLocalModeState(key);
+  }, []);
+
+  const SECTION_MAP: Record<string, string> = {
+    did: "did", did_entry: "did", did_mamka: "did", did_kata: "did", did_kids: "did",
+    hana: "hana",
+    research: "research",
+    report: "report",
+    calm: "calm", zklidneni: "calm",
+    pomoc: "pomoc",
+  };
+
+  const setSection = useCallback((section: string | null) => {
+    const root = document.documentElement;
+    if (section) {
+      const mapped = SECTION_MAP[section] || section;
+      root.setAttribute("data-section", mapped);
+    } else {
+      root.removeAttribute("data-section");
+    }
   }, []);
 
   const loadPrefsForContext = useCallback(async (contextKey: string) => {
@@ -492,6 +513,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       restoreGlobalTheme,
       getPersonaPrefs,
       setLocalMode,
+      setSection,
     }}>
       {children}
     </ThemeContext.Provider>
