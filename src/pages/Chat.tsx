@@ -1412,15 +1412,25 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                   ? "← Zpět"
                   : "← Hub"}
             </Button>
-            <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
-                {hubSection === "did" ? "DID" : hubSection === "research" ? "Profesní zdroje" : "Hana"}
-              </h1>
-            </div>
+            {hubSection === "did" && (
+              <div className="flex items-center gap-2 min-w-0">
+                <img src={avatarKataSolo} alt="Kata" className="w-8 h-8 rounded-full object-cover border-2 border-background shadow-md" />
+                <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
+                  {hubSection === "did" ? "DID" : ""}
+                </h1>
+              </div>
+            )}
+            {hubSection !== "did" && (
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl font-serif font-semibold text-foreground truncate">
+                  {hubSection === "research" ? "Profesní zdroje" : "Hana"}
+                </h1>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-            {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut" || didFlowState === "meeting") && (
-              <TherapistAvatarBar variant={didFlowState === "meeting" ? "meeting" : didSubMode === "mamka" ? "mamka" : didSubMode === "kata" ? "kata" : "all"} />
+            {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut" || didFlowState === "meeting" || didFlowState === "live-session") && (
+              <TherapistAvatarBar variant={didFlowState === "meeting" || didFlowState === "live-session" ? "meeting" : didSubMode === "mamka" ? "mamka" : didSubMode === "kata" ? "kata" : "all"} />
             )}
             {chatStorageKey && <ThemeQuickButton storageKey={chatStorageKey} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
