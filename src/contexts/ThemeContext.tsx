@@ -513,6 +513,7 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
       restoreGlobalTheme,
       getPersonaPrefs,
       setLocalMode,
+      setSection,
     }}>
       {children}
     </ThemeContext.Provider>
