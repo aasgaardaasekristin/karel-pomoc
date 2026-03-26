@@ -331,18 +331,50 @@ async function generateAllProfilesForTherapist(
     ? "Karlův vztah k Haničce je intimní, partnerský, hluboce osobní. Nikdy ji neoslovuje 'Hano' — vždy 'Haničko', 'miláčku', s láskou. Karel je pro ni partner, opora, milující osoba, ale i mentor a rádce. Jejich vztah je postaven na sdílených vzpomínkách, důvěře a každodenním kontaktu."
     : "Karlův vztah ke Káťě je mentor→mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele.";
 
-  const existingDump = PROFILE_FILES.map(f => 
-    `[[[${f}]]]\n${existingProfiles[f] || "(soubor dosud neexistuje)"}`
-  ).join("\n\n");
+  // Deduplicate existing profiles — remove repeated blocks before passing to AI
+  const dedup = (text: string): string => {
+    if (!text || text.length < 100) return text;
+    const lines = text.split("\n");
+    const seen = new Set<string>();
+    const result: string[] = [];
+    let blockLines: string[] = [];
+    const flushBlock = () => {
+      if (blockLines.length === 0) return;
+      const blockKey = blockLines.join("\n").trim();
+      if (blockKey.length > 20 && seen.has(blockKey)) {
+        blockLines = [];
+        return;
+      }
+      if (blockKey.length > 20) seen.add(blockKey);
+      result.push(...blockLines);
+      blockLines = [];
+    };
+    for (const line of lines) {
+      // Split on date headers or section markers
+      if (/^\[2\d{3}-\d{2}-\d{2}\]/.test(line) || /^═══/.test(line) || /^---\s*(DID|Hana|Research)/.test(line)) {
+        flushBlock();
+      }
+      blockLines.push(line);
+    }
+    flushBlock();
+    return result.join("\n");
+  };
+
+  const existingDump = PROFILE_FILES.map(f => {
+    // Don't pass existing VLAKNA_POSLEDNI — it will be regenerated from fresh thread data
+    if (f === "VLAKNA_POSLEDNI.txt") return `[[[${f}]]]\n(bude regenerováno z nových konverzací)`;
+    return `[[[${f}]]]\n${dedup(existingProfiles[f]) || "(soubor dosud neexistuje)"}`;
+  }).join("\n\n");
 
   const prompt = `KRITICKÉ PRAVIDLO — ANTI-DUPLIKACE:
 - Každou informaci zapiš POUZE JEDNOU do toho souboru, kam logicky patří
 - NIKDY neopakuj stejný fakt, větu nebo blok v rámci jednoho souboru
 - Pokud máš málo vstupních dat, napiš STRUČNÝ ale UNIKÁTNÍ obsah — NEDOPLŇUJ opakováním
-- SITUACNI_ANALYZA: každý denní update POUZE JEDNOU, seřazený chronologicky
+- SITUACNI_ANALYZA: každý denní update POUZE JEDNOU, seřazený chronologicky. Pokud ve stávajících profilech vidíš opakující se bloky — IGNORUJ duplikáty, zapiš každý blok POUZE JEDNOU.
 - VLAKNA_POSLEDNI: každou konverzaci POUZE JEDNOU, bez opakování reflexí
 - Pokud pro daný soubor nemáš dostatek nových dat, napiš: "(Nedostatek nových dat pro aktualizaci)"
 - NIKDY negeneruj placeholder text ani opakující se bloky pro vyplnění délky
+- STÁVAJÍCÍ PROFILY mohou obsahovat duplikáty z předchozích běhů — VYČISTI JE, zapiš každou informaci JEDNOU
 
 Vygeneruj KOMPLETNÍ aktualizaci VŠECH 5 profilových souborů pro terapeutku ${name}.
 
@@ -360,7 +392,7 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    - Terapeutický dopad: jak vazba ovlivňuje terapii, co monitorovat
    Příklady: "silný mateřský vztah k Tundrupkovi", "nostalgie a něha k Aničce", "empatie k Bélovi"
    NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
-4. [[[VLAKNA_POSLEDNI.txt]]] — Surové konverzace BEZ duplikací. Každé vlákno POUZE JEDNOU. Na konci JEDNA Karlova reflexe (max 500 znaků). Neopakuj reflexi pro každé vlákno zvlášť.
+4. [[[VLAKNA_POSLEDNI.txt]]] — IGNORUJ stávající obsah tohoto souboru. Generuj ČISTĚ z nových konverzací (sekce KONVERZACE níže). Každé vlákno POUZE JEDNOU. Na konci JEDNA Karlova reflexe (max 500 znaků). Neopakuj reflexi pro každé vlákno zvlášť. Pokud nejsou nové konverzace, napiš "(Nedostatek nových dat pro aktualizaci)".
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
 
