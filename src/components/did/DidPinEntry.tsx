@@ -81,13 +81,6 @@ const DidPinEntry = ({ therapistName, onSuccess, onBack }: Props) => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-      {/* Top bar */}
-      <div className="w-full max-w-sm flex items-center justify-between mb-8">
-        <KarelButton variant="ghost" size="sm" onClick={onBack} icon={<ArrowLeft size={16} />}>
-          Zpět
-        </KarelButton>
-        <ThemeQuickButton />
-      </div>
 
       {/* Icon & Title */}
       <div className="text-center mb-10 animate-fade-in">
