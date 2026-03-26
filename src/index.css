@@ -255,11 +255,11 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 
 @layer components {
   .chat-message-user {
-    @apply bg-[hsl(var(--chat-user))] rounded-2xl rounded-br-md px-4 py-3;
+    @apply bg-[hsl(var(--chat-user)/0.45)] backdrop-blur-md rounded-2xl rounded-br-md px-4 py-3 border border-[hsl(var(--chat-border)/0.2)];
   }
 
   .chat-message-assistant {
-    @apply bg-[hsl(var(--chat-assistant))] rounded-2xl rounded-bl-md px-4 py-3;
+    @apply bg-[hsl(var(--chat-assistant)/0.4)] backdrop-blur-md rounded-2xl rounded-bl-md px-4 py-3 border border-[hsl(var(--chat-border)/0.15)];
   }
 
   .mode-button {

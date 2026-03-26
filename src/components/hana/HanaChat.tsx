@@ -835,7 +835,7 @@ const HanaChatInner = () => {
           </ScrollArea>
 
           {/* Input */}
-          <div className="border-t border-border bg-background/80 backdrop-blur-sm">
+          <div className="border-t border-border/20 bg-background/30 backdrop-blur-lg">
             <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 sm:py-4">
               <div className="flex gap-2 sm:gap-3 items-end relative">
                 <UniversalAttachmentBar
