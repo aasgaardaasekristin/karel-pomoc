@@ -5,22 +5,30 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import avatarKarel from "@/assets/avatar-karel.png";
+import avatarHanicka from "@/assets/avatar-hanicka.png";
 
 const avatars = [
-  { name: "Hanka", fallback: "H", src: "/avatars/hanka.png" },
-  { name: "Karel Gustav Jung", fallback: "K", src: "/avatars/karel.png" },
-  { name: "Káťa", fallback: "Ká", src: "/avatars/kata.png" },
+  { name: "Karel Gustav Jung", fallback: "K", src: avatarKarel },
+  { name: "Hanička", fallback: "H", src: avatarHanicka },
 ] as const;
 
 const TherapistAvatarBar = () => (
   <TooltipProvider delayDuration={300}>
-    <div className="flex items-center -space-x-1.5">
-      {avatars.map((a) => (
+    <div className="flex items-center -space-x-2.5">
+      {avatars.map((a, i) => (
         <Tooltip key={a.name}>
           <TooltipTrigger asChild>
-            <Avatar className="h-8 w-8 border-2 border-background shadow-sm">
+            <Avatar
+              className="border-2 border-background shadow-md"
+              style={{
+                width: i === 0 ? 40 : 36,
+                height: i === 0 ? 40 : 36,
+                zIndex: avatars.length - i,
+              }}
+            >
               <AvatarImage src={a.src} alt={a.name} className="object-cover" />
-              <AvatarFallback className="text-[10px] font-semibold bg-muted text-muted-foreground">
+              <AvatarFallback className="text-xs font-semibold bg-muted text-muted-foreground">
                 {a.fallback}
               </AvatarFallback>
             </Avatar>

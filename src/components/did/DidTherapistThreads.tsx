@@ -45,7 +45,19 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
         <div className="flex items-center gap-1.5">
           <ThemeQuickButton />
           <DidPersonalizedSessionPrep therapistName={therapistName as "Hanička" | "Káťa"} />
-          <Button variant="outline" size="sm" onClick={onNewThread} className="h-8 text-xs gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onNewThread}
+            className="h-8 text-xs gap-1"
+            style={{
+              background: "rgba(255, 255, 255, 0.1)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+              color: "rgba(255, 255, 255, 0.9)",
+            }}
+          >
             <Plus className="w-3.5 h-3.5" />
             Nové téma
           </Button>
