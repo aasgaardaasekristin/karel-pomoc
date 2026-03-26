@@ -77,7 +77,7 @@ const PARAGRAPH_HEADERS = [
 
 interface ParsedParagraphs {
   aktualni_stav: string;
-  povedomí_o_systemu_a_role: string;
+  povedomi_o_systemu_a_role: string;
   vztahy: string;
   co_ho_uklidnuje: string;
   ochranne_mechanismy: string;
