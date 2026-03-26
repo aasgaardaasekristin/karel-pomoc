@@ -193,53 +193,36 @@ export async function applyCardUpdates(
  * přes edge funkci karel-did-drive-write.
  */
 export async function saveCardToDrive(
-  partId: string,
+  partName: string,
   updatedCard: CardContent,
 ): Promise<void> {
-  const SECTION_LABELS: Record<SectionKey, string> = {
-    A: "A – Identita a aktuální stav",
-    B: "B – Profilace",
-    C: "C – Potřeby a rizika",
-    D: "D – Terapeutické techniky a metody",
-    E: "E – Časová osa / Historie",
-    F: "F – Plánování a budoucnost",
-    G: "G – Deník části",
-    H: "H – Dohody a pravidla",
-    I: "I – Úkoly a cíle",
-    J: "J – Priority a operativní plán",
-    K: "K – Zpětná vazba na aktivity",
-    L: "L – Sledování aktivity",
-    M: "M – Poznámky Karla",
-  };
+  const sectionKeys: SectionKey[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
 
-  const sections: SectionKey[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
-  const lines: string[] = [];
-
-  for (const key of sections) {
-    const label = SECTION_LABELS[key];
-    const content = updatedCard[key] ?? "";
-    lines.push(`# ${label}\n\n${content}\n`);
+  const sections: Record<string, string> = {};
+  const sectionModes: Record<string, string> = {};
+  for (const key of sectionKeys) {
+    sections[key] = updatedCard[key] || "";
+    sectionModes[key] = "REPLACE";
   }
-
-  const fullText = lines.join("\n");
 
   try {
     const { data, error } = await supabase.functions.invoke("karel-did-drive-write", {
       body: {
-        partId,
-        content: fullText,
-        writeType: "card_update",
+        mode: "update-card-sections",
+        partName,
+        sections,
+        sectionModes,
       },
     });
 
     if (error) {
-      console.error(`[CardApplicator] Drive write error for ${partId}:`, error);
+      console.error(`[CardApplicator] Drive write error for ${partName}:`, error);
       throw error;
     }
 
-    console.log(`[CardApplicator] Karta ${partId} uložena na Drive`, data);
+    console.log(`[CardApplicator] Karta "${partName}" uložena na Drive:`, data);
   } catch (err) {
-    console.error(`[CardApplicator] Failed to save card ${partId} to Drive:`, err);
+    console.error(`[CardApplicator] Failed to save card "${partName}" to Drive:`, err);
     throw err;
   }
 }
