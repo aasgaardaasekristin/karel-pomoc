@@ -215,7 +215,8 @@ serve(async (req) => {
   if (authResult instanceof Response) return authResult;
 
   try {
-    const { documents, listAll, subFolder, allowGlobalSearch } = await req.json();
+    const body = await req.json();
+    const { documents, listAll, subFolder, allowGlobalSearch, partName } = body;
     const token = await getAccessToken();
 
     // Find kartoteka_DID folder
@@ -231,7 +232,52 @@ serve(async (req) => {
       });
     }
 
-    // Resolve target folder (root or subfolder)
+    // ═══ MODE: partName — find and read a DID part card by name ═══
+    if (partName) {
+      const rootChildren = await listFilesInFolder(token, rootFolderId);
+      const foldersToSearch: string[] = [];
+
+      for (const f of rootChildren) {
+        if (f.mimeType !== "application/vnd.google-apps.folder") continue;
+        const name = f.name.trim();
+        if (/^01/.test(name) || stripDiacritics(name).toLowerCase().includes("aktiv")) {
+          foldersToSearch.unshift(f.id);
+        } else if (/^03/.test(name) || stripDiacritics(name).toLowerCase().includes("archiv")) {
+          foldersToSearch.push(f.id);
+        }
+      }
+      foldersToSearch.push(rootFolderId);
+
+      let cardContent: string | null = null;
+      let foundFile: { id: string; name: string; mimeType?: string } | null = null;
+
+      for (const searchFolderId of foldersToSearch) {
+        const found = await findDocumentRecursive(token, searchFolderId, partName);
+        if (found) {
+          try {
+            cardContent = await readFileContent(token, found.id, found.mimeType);
+            foundFile = found;
+            break;
+          } catch (e) {
+            console.error(`Failed to read card for "${partName}" (${found.name}):`, e);
+          }
+        }
+      }
+
+      if (cardContent && foundFile) {
+        console.log(`[drive-read] Found card for "${partName}": ${foundFile.name}`);
+        return new Response(JSON.stringify({ content: cardContent, fileId: foundFile.id, fileName: foundFile.name }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ content: null, error: `Card for "${partName}" not found` }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ═══ MODE: documents[] — original behavior ═══
     let targetFolderId = rootFolderId;
     if (subFolder) {
       const subFolderId = await findFolder(token, subFolder, rootFolderId);
@@ -242,7 +288,6 @@ serve(async (req) => {
       }
     }
 
-    // If listAll is true, return list of all files in the target folder
     if (listAll) {
       const files = await listFilesInFolder(token, targetFolderId);
       return new Response(JSON.stringify({ files, folderId: targetFolderId }), {
@@ -250,16 +295,13 @@ serve(async (req) => {
       });
     }
 
-    // Read requested documents — search recursively through all subfolders
     const result: Record<string, string> = {};
     const requestedDocs: string[] = documents || [];
     const shouldUseGlobalSearch = allowGlobalSearch === true || !subFolder;
 
     for (const docName of requestedDocs) {
-      // Search recursively from the target folder
       let match = await findDocumentRecursive(token, targetFolderId, docName);
       if (!match && shouldUseGlobalSearch) {
-        // Optional fallback to global search (disabled by default for subFolder lookups)
         match = await findDocumentGlobal(token, docName);
       }
 

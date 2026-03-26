@@ -167,12 +167,30 @@ Buď precizní. Každý update musí mít jasné zdůvodnění (reasoning).`;
  * Analyzuje vlákna DID části a roztřídí informace do sekcí A-M.
  * Volá edge funkci karel-thread-analyzer, která komunikuje s AI.
  */
+/** Blacklist — terapeutky a AI nesmí být analyzovány jako DID části */
+const THERAPIST_BLACKLIST = [
+  "hanka", "hanička", "hanicka", "hana", "hani",
+  "káťa", "kata", "kateřina", "katerina",
+  "karel",
+];
+
+function isTherapistName(name: string): boolean {
+  const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  return THERAPIST_BLACKLIST.some((t) => normalized === t || normalized.includes(t));
+}
+
 export async function analyzeThreadsForPart(
   partId: string,
   threads: Thread[],
   currentCard: CardContent | null,
 ): Promise<SectionUpdates> {
   const empty = createEmptySectionUpdates();
+
+  // SAFEGUARD: nikdy neanalyzuj vlákna terapeutek jako DID části
+  if (isTherapistName(partId)) {
+    console.warn(`[ThreadAnalyzer] ⚠️ BLOKOVÁNO: "${partId}" je terapeutka/AI, ne DID část.`);
+    return empty;
+  }
 
   if (!threads.length) {
     console.log(`[ThreadAnalyzer] Žádná vlákna pro "${partId}".`);
