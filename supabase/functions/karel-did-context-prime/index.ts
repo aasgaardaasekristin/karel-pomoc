@@ -1034,12 +1034,19 @@ Pouze fakta z textu, nevymýšlej. Piš česky.` },
         }
 
       } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : "Profiling sync failed";
         shadowSyncResult = {
           updated: false,
           filesUpdated: 0,
-          error: e instanceof Error ? e.message : "Profiling sync failed",
+          hankaThreadsDeleted: 0,
+          error: errorMsg,
         };
-        console.error("[did-context-prime] Profiling engine error:", shadowSyncResult.error);
+        console.error("[did-context-prime] Profiling engine error:", errorMsg);
+        // Log failure to shadow_sync_log
+        try {
+          await sb.from("shadow_sync_log").insert({ therapist: "hanka", success: false, error: errorMsg });
+          await sb.from("shadow_sync_log").insert({ therapist: "kata", success: false, error: errorMsg });
+        } catch {}
       }
     }
 
