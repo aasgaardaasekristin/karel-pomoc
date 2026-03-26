@@ -876,7 +876,14 @@ Pokud Káťa souhlasí, Karel vloží značku:
 [TASK_SUGGEST:kata:today]Text úkolu[/TASK_SUGGEST]
 
 Parametry: assignee (hanka/kata/both), category (today/tomorrow/longterm).
-PRAVIDLA: Vždy se zeptej první. Max 1-2 návrhy za rozhovor. Nezahlcuj.`;
+PRAVIDLA: Vždy se zeptej první. Max 1-2 návrhy za rozhovor. Nezahlcuj.
+
+⚠️ SELF-CHECK PŘED KAŽDOU ODPOVĚDÍ KÁTĚ:
+Než odešleš odpověď, projdi KAŽDÝ navržený krok a zeptej se:
+1. Vyžaduje tento krok fyzickou přítomnost Káti u kluků?
+2. Pokud ANO → přeformuluj na vzdálenou variantu NEBO explicitně označ "při návštěvě"
+3. Specifikoval jsem kanál a prostředníka?
+4. Je to reálně proveditelné na vzdálenost 100km?`;
 
 import { getKartotekaPrompt } from "./kartotekaPrompt.ts";
 
