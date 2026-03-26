@@ -42,6 +42,7 @@ import { sanitizePartName, uniqueSanitizedPartNames } from "@/lib/didPartNaming"
 import { useTheme } from "@/contexts/ThemeContext";
 import { useManualUpdate } from "@/hooks/useManualUpdate";
 import DidContentRouter from "@/components/did/DidContentRouter";
+import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
