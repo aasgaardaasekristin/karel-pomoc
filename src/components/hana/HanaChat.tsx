@@ -729,10 +729,9 @@ const HanaChatInner = () => {
 
   return (
     <>
-      {/* Toolbar with Správa + Vlákna */}
-      <div className="border-b border-border bg-background/60 backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2 flex items-center justify-end gap-2">
-          <ThemeQuickButton storageKey={hanaStorageKey} />
+      {/* Toolbar with Správa + Vlákna – no border, visually merged with header */}
+      <div className="bg-transparent">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-1 flex items-center justify-end gap-2">
           <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
             <PopoverTrigger asChild>
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 rounded-xl text-muted-foreground">

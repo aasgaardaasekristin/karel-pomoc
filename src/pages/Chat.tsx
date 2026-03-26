@@ -1635,12 +1635,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         </>
       ) : (
         <>
-          <div className="border-b border-border bg-card/30">
-            <div className="max-w-4xl mx-auto px-4 py-3">
-              <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
-            </div>
-          </div>
-
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
