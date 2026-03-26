@@ -41,6 +41,57 @@ export type Database = {
         }
         Relationships: []
       }
+      card_update_queue: {
+        Row: {
+          action: string
+          applied: boolean
+          created_at: string
+          id: string
+          new_content: string | null
+          old_content: string | null
+          part_id: string
+          priority: number
+          reason: string | null
+          section: string
+          source_date: string | null
+          source_thread_id: string | null
+          subsection: string | null
+          user_id: string
+        }
+        Insert: {
+          action?: string
+          applied?: boolean
+          created_at?: string
+          id?: string
+          new_content?: string | null
+          old_content?: string | null
+          part_id: string
+          priority?: number
+          reason?: string | null
+          section: string
+          source_date?: string | null
+          source_thread_id?: string | null
+          subsection?: string | null
+          user_id?: string
+        }
+        Update: {
+          action?: string
+          applied?: boolean
+          created_at?: string
+          id?: string
+          new_content?: string | null
+          old_content?: string | null
+          part_id?: string
+          priority?: number
+          reason?: string | null
+          section?: string
+          source_date?: string | null
+          source_thread_id?: string | null
+          subsection?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       client_analyses: {
         Row: {
           client_id: string
@@ -1909,6 +1960,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      thread_processing_log: {
+        Row: {
+          created_at: string
+          id: string
+          notes: Json | null
+          part_id: string
+          processed_at: string | null
+          processing_type: string
+          status: string
+          thread_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: Json | null
+          part_id: string
+          processed_at?: string | null
+          processing_type?: string
+          status?: string
+          thread_id: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: Json | null
+          part_id?: string
+          processed_at?: string | null
+          processing_type?: string
+          status?: string
+          thread_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_theme_preferences: {
         Row: {
