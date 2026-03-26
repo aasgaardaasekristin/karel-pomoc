@@ -20,7 +20,7 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 
 @layer base {
   :root {
-    /* Warm, calming palette */
+    /* ─── Warm, calming palette ─── */
     --background: 42 26% 92%;
     --foreground: 150 10% 20%;
 
@@ -55,23 +55,24 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 
     --radius: 0.75rem;
 
-    /* Ambient theme layers */
+    /* ─── Ambient theme layers ─── */
     --theme-surface: 42 24% 90%;
     --theme-soft: 38 24% 84%;
     --theme-glow: 154 28% 76%;
     --theme-glow-strong: 20 34% 80%;
     --theme-noise-opacity: 0.05;
 
-    /* Chat-specific colors */
+    /* ─── Chat-specific colors ─── */
     --chat-user: 36 28% 84%;
     --chat-assistant: 154 18% 86%;
     --chat-border: 36 14% 76%;
     
-    /* Mode button colors */
+    /* ─── Mode button colors ─── */
     --mode-debrief: 154 28% 42%;
     --mode-supervision: 194 28% 48%;
     --mode-safety: 20 38% 56%;
 
+    /* ─── Sidebar ─── */
     --sidebar-background: 40 24% 88%;
     --sidebar-foreground: 150 10% 24%;
     --sidebar-primary: 154 24% 38%;
@@ -80,6 +81,44 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     --sidebar-accent-foreground: 150 10% 24%;
     --sidebar-border: 36 18% 78%;
     --sidebar-ring: 154 24% 38%;
+
+    /* ─── Surface system ─── */
+    --surface-primary: 42 26% 92%;
+    --surface-secondary: 42 22% 89%;
+    --surface-tertiary: 40 18% 87%;
+    --surface-elevated: 0 0% 100%;
+    --surface-glass: 0 0% 100% / 0.6;
+
+    /* ─── Text system ─── */
+    --text-primary: 150 10% 20%;
+    --text-secondary: 150 8% 40%;
+    --text-tertiary: 150 6% 56%;
+    --text-disabled: 150 4% 72%;
+    --text-inverse: 42 35% 98%;
+
+    /* ─── Border system ─── */
+    --border-default: 36 18% 78%;
+    --border-subtle: 36 12% 86%;
+    --border-strong: 36 20% 66%;
+    --border-focus: 154 24% 38%;
+
+    /* ─── Accent system (hue-driven) ─── */
+    --accent-hue: 154;
+    --accent-saturation: 24%;
+    --accent-primary: var(--accent-hue) var(--accent-saturation) 38%;
+    --accent-light: var(--accent-hue) var(--accent-saturation) 76%;
+    --accent-dark: var(--accent-hue) var(--accent-saturation) 24%;
+
+    /* ─── Chat bubble system ─── */
+    --bubble-user-bg: 36 28% 84%;
+    --bubble-ai-bg: 154 18% 86%;
+    --bubble-ai-border: 154 14% 76%;
+
+    /* ─── Layout constants ─── */
+    --header-height: 3.5rem;
+    --sidebar-width: 16rem;
+    --chat-max-width: 52rem;
+    --input-height: 2.75rem;
   }
 
   .dark {
@@ -133,6 +172,64 @@ Theme: Calming, professional, warm - inspired by therapy spaces
     --sidebar-accent-foreground: 42 16% 90%;
     --sidebar-border: 154 10% 22%;
     --sidebar-ring: 154 28% 56%;
+
+    /* ─── Surface system (dark) ─── */
+    --surface-primary: 154 12% 11%;
+    --surface-secondary: 154 12% 13%;
+    --surface-tertiary: 154 10% 16%;
+    --surface-elevated: 154 12% 15%;
+    --surface-glass: 154 12% 13% / 0.6;
+
+    /* ─── Text system (dark) ─── */
+    --text-primary: 42 18% 92%;
+    --text-secondary: 42 10% 66%;
+    --text-tertiary: 42 8% 48%;
+    --text-disabled: 42 6% 34%;
+    --text-inverse: 154 14% 10%;
+
+    /* ─── Border system (dark) ─── */
+    --border-default: 154 10% 22%;
+    --border-subtle: 154 8% 16%;
+    --border-strong: 154 12% 32%;
+    --border-focus: 154 28% 56%;
+
+    /* ─── Accent system (dark) ─── */
+    --accent-hue: 154;
+    --accent-saturation: 28%;
+    --accent-primary: var(--accent-hue) var(--accent-saturation) 56%;
+    --accent-light: var(--accent-hue) var(--accent-saturation) 36%;
+    --accent-dark: var(--accent-hue) var(--accent-saturation) 72%;
+
+    /* ─── Chat bubble system (dark) ─── */
+    --bubble-user-bg: 154 10% 18%;
+    --bubble-ai-bg: 154 14% 16%;
+    --bubble-ai-border: 154 10% 24%;
+  }
+
+  /* ─── Section-specific accent overrides ─── */
+  [data-section="did"] {
+    --accent-hue: 280;
+    --accent-saturation: 32%;
+  }
+  [data-section="hana"] {
+    --accent-hue: 210;
+    --accent-saturation: 30%;
+  }
+  [data-section="research"] {
+    --accent-hue: 160;
+    --accent-saturation: 28%;
+  }
+  [data-section="calm"] {
+    --accent-hue: 170;
+    --accent-saturation: 26%;
+  }
+  [data-section="pomoc"] {
+    --accent-hue: 0;
+    --accent-saturation: 48%;
+  }
+  [data-section="report"] {
+    --accent-hue: 35;
+    --accent-saturation: 34%;
   }
 }
 
@@ -165,6 +262,49 @@ Theme: Calming, professional, warm - inspired by therapy spaces
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Crimson Pro', Georgia, serif;
   }
+
+  /* ─── Custom scrollbar ─── */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(0 0% 72%);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(0 0% 56%);
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: hsl(0 0% 32%);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: hsl(0 0% 44%);
+  }
+
+  /* Firefox scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(0 0% 72%) transparent;
+  }
+  .dark * {
+    scrollbar-color: hsl(0 0% 32%) transparent;
+  }
+
+  /* ─── Focus visible ring ─── */
+  :focus-visible {
+    outline: 2px solid hsl(var(--accent-primary));
+    outline-offset: 2px;
+  }
+
+  /* ─── Selection ─── */
+  ::selection {
+    background: hsl(var(--accent-primary) / 0.2);
+    color: hsl(var(--text-primary));
+  }
 }
 
 @layer components {
@@ -194,6 +334,50 @@ Theme: Calming, professional, warm - inspired by therapy spaces
 
   .login-card {
     @apply bg-card border border-border rounded-2xl shadow-lg p-8;
+  }
+}
+
+@layer utilities {
+  /* ─── Glass effect ─── */
+  .glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: hsl(var(--surface-glass));
+  }
+
+  /* ─── Skeleton shimmer ─── */
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--muted-foreground) / 0.08) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  /* ─── Hidden scrollbar (keeps scroll) ─── */
+  .scrollbar-hidden {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ─── Line clamping ─── */
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
@@ -258,7 +442,7 @@ body.has-bg-image {
   padding-left: 0.75rem;
 }
 
-/* Hide scrollbar but keep scroll functionality */
+/* Hide scrollbar but keep scroll functionality (legacy class) */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
