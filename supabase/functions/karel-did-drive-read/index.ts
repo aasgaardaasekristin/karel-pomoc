@@ -271,7 +271,12 @@ serve(async (req) => {
 
       if (cardContent && foundFile) {
         console.log(`[drive-read] Found card for "${partName}": ${foundFile.name}`);
-        return new Response(JSON.stringify({ content: cardContent, fileId: foundFile.id, fileName: foundFile.name }), {
+        let returnContent = cardContent;
+        if (tailLines && typeof tailLines === "number" && tailLines > 0) {
+          const allLines = cardContent.split("\n");
+          returnContent = allLines.slice(-tailLines).join("\n");
+        }
+        return new Response(JSON.stringify({ content: returnContent, fileId: foundFile.id, fileName: foundFile.name, totalChars: cardContent.length, totalLines: cardContent.split("\n").length }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
