@@ -1422,7 +1422,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut" || didFlowState === "meeting" || didFlowState === "live-session") && (
               <TherapistAvatarBar variant={didFlowState === "meeting" || didFlowState === "live-session" ? "meeting" : didSubMode === "mamka" ? "mamka" : didSubMode === "kata" ? "kata" : "all"} />
             )}
-            {chatStorageKey && <ThemeQuickButton storageKey={chatStorageKey} />}
+            <ThemeQuickButton storageKey={chatStorageKey || undefined} />
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
             </Button>
