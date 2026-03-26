@@ -1360,7 +1360,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         return { label: "← Klienti", action: () => clearActiveSession() };
       }
     }
-    return { label: "← Hub", action: () => navigate("/hub") };
+    return { label: "← Zpět", action: () => navigate("/hub") };
   };
 
   if (!authChecked) {
@@ -1406,7 +1406,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               }}
               className="h-8 px-2 shrink-0"
             >
-              {hubSection === "hana"
+             {hubSection === "hana"
                 ? getHanaBackAction().label
                 : (hubSection === "research" && researchFlowState !== "thread-list") || (hubSection === "did" && didFlowState !== "entry")
                   ? "← Zpět"
@@ -1418,9 +1418,33 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               </h1>
             </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut" || didFlowState === "meeting" || didFlowState === "live-session") && (
               <TherapistAvatarBar variant={didFlowState === "meeting" || didFlowState === "live-session" ? "meeting" : didSubMode === "mamka" ? "mamka" : didSubMode === "kata" ? "kata" : "all"} />
+            )}
+            {hubSection === "hana" && (
+              <div className="flex items-center bg-[hsl(var(--surface-tertiary))]/40 rounded-lg p-0.5 gap-0.5">
+                <button
+                  onClick={() => setMainMode("chat")}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    mainMode === "chat"
+                      ? "bg-white/60 text-[hsl(var(--text-primary))] shadow-sm"
+                      : "text-[hsl(var(--text-secondary))]/70 hover:text-[hsl(var(--text-primary))]"
+                  }`}
+                >
+                  Osobní
+                </button>
+                <button
+                  onClick={() => setMainMode("report")}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
+                    mainMode === "report"
+                      ? "bg-white/60 text-[hsl(var(--text-primary))] shadow-sm"
+                      : "text-[hsl(var(--text-secondary))]/70 hover:text-[hsl(var(--text-primary))]"
+                  }`}
+                >
+                  Pracovní
+                </button>
+              </div>
             )}
             <ThemeQuickButton storageKey={chatStorageKey || undefined} />
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
@@ -1611,12 +1635,6 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         </>
       ) : (
         <>
-          <div className="border-b border-border bg-card/30">
-            <div className="max-w-4xl mx-auto px-4 py-3">
-              <MainModeToggle currentMode={mainMode} onModeChange={setMainMode} />
-            </div>
-          </div>
-
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
