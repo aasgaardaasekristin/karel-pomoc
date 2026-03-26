@@ -2738,6 +2738,10 @@ Datum: ${dateStr}` },
 Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
 - Shrnutí stavu (klidný den)
 - Připomenutí otevřených úkolů pokud existují
+KRITICKÁ PRAVIDLA:
+- Oslovuj: "Káťo" – NIKDY "miláčku", "lásko", "drahá"
+- NIKDY nezařazuj soukromé emoční stavy terapeutek
+- Locík je PES, NE DID část. Káťa je TERAPEUTKA, NE DID část.
 Datum: ${dateStr}` },
                     { role: "user", content: "Vygeneruj klidný denní report." },
                   ],
