@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/contexts/ThemeContext";
-import { Brain, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
+import { Sparkles, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRight } from "lucide-react";
 import karelAvatar from '@/assets/karel-avatar.png';
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
