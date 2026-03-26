@@ -3,9 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Sparkles, UserPlus, Loader2, Plus, FolderOpen, CheckCircle, Moon, AlertTriangle } from "lucide-react";
+import { Sparkles, Loader2, Plus, FolderOpen, Moon, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import avatarKataSolo from "@/assets/avatar-kata-solo.png";
 
 interface RegistryPart {
   id: string;
@@ -166,7 +167,7 @@ const DidPartSelector = ({ therapistName, knownParts, onSelectPart, onBack, onOp
               onClick={handleCreateAndStart}
               disabled={!newPartName.trim() || isCreating}
             >
-              {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+              {isCreating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <img src={avatarKataSolo} alt="DID" className="w-5 h-5 rounded-full object-cover" />}
             </Button>
           </div>
         </div>
