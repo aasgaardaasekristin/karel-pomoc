@@ -90,7 +90,7 @@ Tvým úkolem je analyzovat vlákna (rozhovory DID části s Karlem) a roztříd
 3. Každou extrahovanou poznámku zařaď do sekcí:
 
 **A (Identita a aktuální stav):**
-- aktualni_stav, povedomí_o_systemu_a_role, vztahy, co_ho_uklidnuje, ochranne_mechanismy
+- aktualni_stav, povedomi_o_systemu_a_role, vztahy, co_ho_uklidnuje, ochranne_mechanismy
 
 **B (Psychologický profil):**
 - aktualni_stav, psychologicke_charakteristiky, psychologicka_profilace, obranne_mechanismy, reakce_na_kontakt
