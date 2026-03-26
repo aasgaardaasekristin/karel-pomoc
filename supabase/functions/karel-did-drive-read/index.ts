@@ -211,8 +211,13 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const authResult = await requireAuth(req);
-  if (authResult instanceof Response) return authResult;
+  // Allow service-role calls (CRON, other edge functions)
+  const authHeader = req.headers.get("Authorization") || "";
+  const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "__never__";
+  if (authHeader !== `Bearer ${srvKey}`) {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+  }
 
   try {
     const body = await req.json();
