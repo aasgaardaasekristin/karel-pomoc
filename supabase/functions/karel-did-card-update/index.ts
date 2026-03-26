@@ -1,8 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 
-// Minimal edge function for updating DID part card sections (A-M)
-// Separated from karel-did-drive-write to avoid memory limits
+/**
+ * Minimal edge function for appending updates to DID part cards.
+ * 
+ * KEY DESIGN: Never reads full card content into memory.
+ * Uses Google Docs API structurally — gets endIndex and appends via insertText.
+ * This keeps memory usage minimal even for 200KB+ cards.
+ *
+ * TODO (Řešení 3): When a card exceeds 100 KB, archive older entries
+ * from sections E (Chronologický log), G (Deník sezení), K (Výstupy)
+ * into a separate "{NAME}_ARCHIV" document.
+ */
 
 async function getAccessToken(): Promise<string> {
   const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
@@ -20,7 +29,6 @@ async function getAccessToken(): Promise<string> {
 }
 
 const FOLDER_MIME = "application/vnd.google-apps.folder";
-const DOC_MIME = "application/vnd.google-apps.document";
 
 const stripDiacritics = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 const canonical = (v: string) => stripDiacritics(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -53,36 +61,72 @@ async function listFiles(token: string, folderId: string): Promise<DriveFile[]> 
   return data.files || [];
 }
 
-async function readFile(token: string, fileId: string): Promise<string> {
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Cannot read ${fileId}: ${res.status}`);
-  return await res.text();
+/**
+ * Find the card file ID WITHOUT reading its content.
+ * Returns only { fileId, name } — no content loaded into memory.
+ */
+async function findCardFileId(token: string, partName: string, folderId: string): Promise<{ fileId: string; name: string } | null> {
+  const norm = canonical(partName);
+  const files = await listFiles(token, folderId);
+
+  for (const f of files) {
+    if (f.mimeType === FOLDER_MIME) continue;
+    if (scoreName(norm, canonical(f.name.replace(/\.(txt|md|doc|docx)$/i, ""))) > 0) {
+      console.log(`[card-update] Found card: ${f.name} (${f.id})`);
+      return { fileId: f.id, name: f.name };
+    }
+  }
+  // Recurse into subfolders
+  for (const f of files) {
+    if (f.mimeType !== FOLDER_MIME) continue;
+    const result = await findCardFileId(token, partName, f.id);
+    if (result) return result;
+  }
+  return null;
 }
 
-async function updateDocInPlace(token: string, fileId: string, content: string): Promise<void> {
-  const docRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!docRes.ok) throw new Error(`Docs read failed: ${docRes.status}`);
-  const docData = await docRes.json();
-  const bodyContent = docData?.body?.content || [];
-  const lastEnd = bodyContent.length > 0 ? Number(bodyContent[bodyContent.length - 1]?.endIndex || 1) : 1;
-  // Free docData from memory
-  const requests: any[] = [];
-  if (lastEnd > 1) requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: lastEnd - 1 } } });
-  requests.push({ insertText: { location: { index: 1 }, text: content } });
-  const upRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
+/**
+ * Get the endIndex of the document using a MINIMAL Docs API call.
+ * We request only body.content endIndex — not the full text content.
+ * For a 210KB doc, the structural metadata is ~5-10KB vs ~500KB+ for full export.
+ */
+async function getDocEndIndex(token: string, fileId: string): Promise<number> {
+  // Use fields mask to get ONLY the structural info we need
+  const res = await fetch(
+    `https://docs.googleapis.com/v1/documents/${fileId}?fields=body.content(endIndex)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) throw new Error(`Docs API failed: ${res.status}`);
+  const data = await res.json();
+  const content = data?.body?.content || [];
+  if (content.length === 0) return 1;
+  // endIndex of the last structural element
+  const lastEnd = Number(content[content.length - 1]?.endIndex || 1);
+  // insertText index must be endIndex - 1 (before the trailing newline)
+  return Math.max(lastEnd - 1, 1);
+}
+
+/**
+ * Append text at the end of the document using batchUpdate.
+ * No reading of full content — just structural endIndex + insertText.
+ */
+async function appendToDoc(token: string, fileId: string, text: string): Promise<void> {
+  const insertAt = await getDocEndIndex(token, fileId);
+
+  const res = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ requests }),
+    body: JSON.stringify({
+      requests: [{ insertText: { location: { index: insertAt }, text } }],
+    }),
   });
-  if (!upRes.ok) throw new Error(`Docs update failed: ${upRes.status}`);
-  await upRes.text(); // consume body
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Docs batchUpdate failed: ${res.status} ${errText}`);
+  }
+  await res.text(); // consume response body
 }
 
-// Section definitions
 const SECTIONS: Record<string, string> = {
   A: "Kdo jsem", B: "Charakter a psychologický profil", C: "Potřeby, strachy, konflikty",
   D: "Terapeutická doporučení", E: "Chronologický log / Handover", F: "Poznámky pro Karla",
@@ -92,57 +136,31 @@ const SECTIONS: Record<string, string> = {
 };
 const SECTION_ORDER = ["A","B","C","D","E","F","G","H","I","J","K","L","M"];
 
-function parseSections(content: string): Record<string, string> {
-  const sections: Record<string, string> = {};
-  const regex = /(?:═+\s*)?SEKCE\s+([A-M])\s*[–\-:]/gi;
-  let matches = [...content.matchAll(regex)];
-  if (matches.length === 0) {
-    const loose = /^##?\s*([A-M])\s*[–\-:)]\s*/gmi;
-    matches = [...content.matchAll(loose)];
-  }
-  if (matches.length === 0) { sections["_preamble"] = content.trim(); return sections; }
-  const before = content.slice(0, matches[0].index).trim();
-  if (before) sections["_preamble"] = before;
-  for (let i = 0; i < matches.length; i++) {
-    const letter = matches[i][1].toUpperCase();
-    const headerEnd = content.indexOf("\n", matches[i].index!);
-    const end = i + 1 < matches.length ? matches[i + 1].index! : content.length;
-    sections[letter] = content.slice(headerEnd > -1 ? headerEnd + 1 : matches[i].index! + matches[i][0].length, end).trim();
-  }
-  return sections;
-}
+/**
+ * Build an append-only block of text from the section updates.
+ * Format:
+ *   ═══ AKTUALIZACE [2026-03-26] ═══
+ *   SEKCE A – Kdo jsem: <new text>
+ *   SEKCE C – Potřeby...: <new text>
+ */
+function buildAppendBlock(dateStr: string, sections: Record<string, string>): string {
+  const lines: string[] = [
+    "",
+    `═══════════════════════════════════════`,
+    `═══ AKTUALIZACE [${dateStr}] ═══`,
+    `═══════════════════════════════════════`,
+  ];
 
-function buildCard(partName: string, sections: Record<string, string>): string {
-  const lines: string[] = [sections["_preamble"] || `KARTA ČÁSTI: ${partName.toUpperCase()}`, ""];
-  for (const l of SECTION_ORDER) {
-    lines.push(`SEKCE ${l} – ${SECTIONS[l]}`);
-    lines.push(sections[l] || "(zatím prázdné)");
+  for (const letter of SECTION_ORDER) {
+    const content = sections[letter];
+    if (!content || content.trim() === "") continue;
     lines.push("");
+    lines.push(`SEKCE ${letter} – ${SECTIONS[letter]}:`);
+    lines.push(content.trim());
   }
-  return lines.join("\n");
-}
 
-async function findCard(token: string, partName: string, folderId: string): Promise<{ fileId: string; name: string; content: string } | null> {
-  const norm = canonical(partName);
-  const files = await listFiles(token, folderId);
-  // Check files first
-  for (const f of files) {
-    if (f.mimeType === FOLDER_MIME) continue;
-    if (scoreName(norm, canonical(f.name.replace(/\.(txt|md|doc|docx)$/i, ""))) > 0) {
-      try {
-        const content = await readFile(token, f.id);
-        console.log(`[card-update] Found: ${f.name} (${f.id})`);
-        return { fileId: f.id, name: f.name, content };
-      } catch (e) { console.error(`Cannot read ${f.name}:`, e); }
-    }
-  }
-  // Check subfolders
-  for (const f of files) {
-    if (f.mimeType !== FOLDER_MIME) continue;
-    const result = await findCard(token, partName, f.id);
-    if (result) return result;
-  }
-  return null;
+  lines.push("");
+  return lines.join("\n");
 }
 
 serve(async (req) => {
@@ -156,7 +174,7 @@ serve(async (req) => {
   }
 
   try {
-    const { partName, sections: newSections, sectionModes: modes } = await req.json();
+    const { partName, sections: newSections } = await req.json();
     if (!partName || !newSections) {
       return new Response(JSON.stringify({ error: "partName and sections required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -182,10 +200,10 @@ serve(async (req) => {
     const activeId = folders.find(f => /^01/.test(f.name.trim()) || canonical(f.name).includes("aktiv"))?.id;
     const archiveId = folders.find(f => /^03/.test(f.name.trim()) || canonical(f.name).includes("archiv"))?.id;
 
-    // Search for card: active → archive → root
-    let card: Awaited<ReturnType<typeof findCard>> = null;
+    // Search for card: active → archive → root (NO content reading)
+    let card: { fileId: string; name: string } | null = null;
     for (const fid of [activeId, archiveId, rootId].filter(Boolean) as string[]) {
-      card = await findCard(token, partName, fid);
+      card = await findCardFileId(token, partName, fid);
       if (card) break;
     }
 
@@ -195,33 +213,33 @@ serve(async (req) => {
       });
     }
 
-    // Parse and merge
-    const existing = parseSections(card.content);
-    const sectionModes: Record<string, string> = modes || {};
-    const updated: string[] = [];
-
-    for (const [letter, newContent] of Object.entries(newSections)) {
-      const ul = letter.toUpperCase();
-      if (!SECTION_ORDER.includes(ul)) continue;
-      const old = existing[ul] || "";
-      const mode = (sectionModes[ul] || "APPEND").toUpperCase();
-      const stamped = `[${dateStr}] ${newContent}`;
-
-      if (mode === "REPLACE" || mode === "ROTATE") {
-        existing[ul] = stamped;
-      } else {
-        existing[ul] = (old && old !== "(zatím prázdné)") ? old + "\n\n" + stamped : stamped;
-      }
-      updated.push(ul);
-      console.log(`[card-update] ${mode} ${ul} (${String(newContent).length} chars)`);
+    // Build append block from provided sections
+    const nonEmpty = Object.entries(newSections).filter(([k, v]) =>
+      SECTION_ORDER.includes(k.toUpperCase()) && v && String(v).trim() !== ""
+    );
+    if (nonEmpty.length === 0) {
+      return new Response(JSON.stringify({ success: true, cardFileName: card.name, sectionsUpdated: [], note: "No non-empty sections to append" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const fullCard = buildCard(partName, existing);
-    await updateDocInPlace(token, card.fileId, fullCard);
-    console.log(`[card-update] ✅ Updated ${card.name}, sections: ${updated.join(",")}`);
+    const normalizedSections: Record<string, string> = {};
+    for (const [k, v] of nonEmpty) {
+      normalizedSections[k.toUpperCase()] = String(v);
+    }
+
+    const appendText = buildAppendBlock(dateStr, normalizedSections);
+    console.log(`[card-update] Appending ${appendText.length} chars to ${card.name} (${card.fileId})`);
+
+    // Append to document — NO full content read
+    await appendToDoc(token, card.fileId, appendText);
+
+    const updated = Object.keys(normalizedSections).sort();
+    console.log(`[card-update] ✅ Appended to ${card.name}, sections: ${updated.join(",")}`);
 
     return new Response(JSON.stringify({
       success: true, cardFileName: card.name, sectionsUpdated: updated,
+      appendedChars: appendText.length,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {
