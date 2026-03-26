@@ -11,7 +11,59 @@ import { corsHeaders } from "../_shared/auth.ts";
  *  3. For each part: call karel-thread-analyzer → get section updates
  *  4. Send sections to karel-did-card-update (append-only, no memory issues)
  *  5. Insert audit records into thread_processing_log
+ *  6. Archive check: cards > 150K chars trigger karel-kartoteka-archiver
  */
+
+async function getAccessToken(): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+  if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
+  return data.access_token;
+}
+
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+const ARCHIVE_THRESHOLD_CHARS = 150000;
+
+async function findKartotekaRoot(token: string): Promise<string | null> {
+  for (const name of ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID"]) {
+    const q = `name='${name}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
+      q, fields: "files(id)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+    })}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (data.files?.[0]?.id) return data.files[0].id;
+  }
+  return null;
+}
+
+async function listFiles(token: string, folderId: string): Promise<{ id: string; name: string; mimeType: string }[]> {
+  const q = `'${folderId}' in parents and trashed=false`;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
+    q, fields: "files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+  })}`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function getDocEndIndex(token: string, fileId: string): Promise<number> {
+  const res = await fetch(
+    `https://docs.googleapis.com/v1/documents/${fileId}?fields=body.content(endIndex)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) return 0;
+  const data = await res.json();
+  const content = data?.body?.content || [];
+  if (content.length === 0) return 0;
+  return Number(content[content.length - 1]?.endIndex || 0);
+}
 
 const THERAPIST_BLACKLIST = [
   "hanka", "hanička", "hanicka", "hana", "hani",
@@ -184,12 +236,76 @@ serve(async (req) => {
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    addLog(`Done in ${elapsed}s: ${successCount} ok, ${failCount} failed`);
+    addLog(`STEP 4 done in ${elapsed}s: ${successCount} ok, ${failCount} failed`);
+
+    // ── STEP 5: Archive check ──
+    const archivedCards: { partName: string; originalSizeKB: number; newSizeKB: number }[] = [];
+    let archiveError: string | null = null;
+
+    try {
+      addLog("STEP 5: Checking card sizes for archival…");
+      const driveToken = await getAccessToken();
+      const rootId = await findKartotekaRoot(driveToken);
+
+      if (rootId) {
+        const rootFiles = await listFiles(driveToken, rootId);
+        const folders = rootFiles.filter(f => f.mimeType === FOLDER_MIME);
+        const activeId = folders.find(f => /^01/.test(f.name.trim()))?.id;
+
+        if (activeId) {
+          const cards = await listFiles(driveToken, activeId);
+          const docCards = cards.filter(f => f.mimeType !== FOLDER_MIME);
+          addLog(`  Found ${docCards.length} cards in active folder`);
+
+          for (const card of docCards) {
+            try {
+              const endIdx = await getDocEndIndex(driveToken, card.id);
+              if (endIdx > ARCHIVE_THRESHOLD_CHARS) {
+                // Extract part name from file name (e.g. "004_TUNDRUPEK" → "TUNDRUPEK")
+                const partMatch = card.name.match(/^\d{3}_(.+)$/);
+                const pName = partMatch ? partMatch[1] : card.name;
+                addLog(`  📦 Card "${card.name}" is ${Math.round(endIdx / 1024)} KB → archiving…`);
+
+                const { data: archResult, error: archErr } = await supabase.functions.invoke(
+                  "karel-kartoteka-archiver",
+                  { body: { partName: pName, keepLastBlocks: 5, archiveSections: ["C","D","E","G","K","L","M"], dryRun: false } }
+                );
+
+                if (archErr) {
+                  addLog(`  ⚠️ Archiver error for "${pName}": ${JSON.stringify(archErr)}`);
+                } else if (archResult?.success && archResult.archivedBlockCount > 0) {
+                  archivedCards.push({
+                    partName: pName,
+                    originalSizeKB: archResult.originalSizeKB,
+                    newSizeKB: archResult.newSizeKB,
+                  });
+                  addLog(`  ✅ Archived "${pName}": ${archResult.originalSizeKB}→${archResult.newSizeKB} KB (${archResult.archivedBlockCount} blocks)`);
+                } else {
+                  addLog(`  ℹ️ "${pName}": nothing to archive`);
+                }
+              }
+            } catch (cardErr) {
+              addLog(`  ⚠️ Size check failed for "${card.name}": ${cardErr}`);
+            }
+          }
+        }
+      } else {
+        addLog("  ⚠️ kartoteka_DID folder not found, skipping archive check");
+      }
+    } catch (archiveErr) {
+      archiveError = String(archiveErr);
+      addLog(`  ❌ Archive step error: ${archiveError}`);
+    }
+
+    const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    addLog(`All done in ${totalElapsed}s`);
 
     return new Response(JSON.stringify({
       ok: true, log, threads: unprocessed.length,
       parts: partGroups.size, success: successCount, failed: failCount,
-      elapsed_seconds: Number(elapsed),
+      elapsed_seconds: Number(totalElapsed),
+      archivedCards,
+      ...(archiveError ? { archiveError } : {}),
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (err) {

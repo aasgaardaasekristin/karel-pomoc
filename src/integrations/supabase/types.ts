@@ -41,6 +41,45 @@ export type Database = {
         }
         Relationships: []
       }
+      card_archive_log: {
+        Row: {
+          archive_file_name: string | null
+          archived_block_count: number | null
+          archived_sections: string[] | null
+          backup_file_name: string | null
+          created_at: string | null
+          dry_run: boolean | null
+          id: string
+          new_size_kb: number | null
+          original_size_kb: number | null
+          part_id: string
+        }
+        Insert: {
+          archive_file_name?: string | null
+          archived_block_count?: number | null
+          archived_sections?: string[] | null
+          backup_file_name?: string | null
+          created_at?: string | null
+          dry_run?: boolean | null
+          id?: string
+          new_size_kb?: number | null
+          original_size_kb?: number | null
+          part_id: string
+        }
+        Update: {
+          archive_file_name?: string | null
+          archived_block_count?: number | null
+          archived_sections?: string[] | null
+          backup_file_name?: string | null
+          created_at?: string | null
+          dry_run?: boolean | null
+          id?: string
+          new_size_kb?: number | null
+          original_size_kb?: number | null
+          part_id?: string
+        }
+        Relationships: []
+      }
       card_update_queue: {
         Row: {
           action: string
