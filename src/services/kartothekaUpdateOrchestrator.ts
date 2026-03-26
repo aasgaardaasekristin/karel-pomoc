@@ -253,20 +253,7 @@ export async function runKartothekaUpdate(): Promise<void> {
         .in("thread_id", threadIds)
         .eq("processing_type", "kartoteka_update");
 
-      // 3b) Načti aktuální kartu z Drive
-      let currentCard: CardContent = {};
-      try {
-        const { data: driveData } = await supabase.functions.invoke("karel-did-drive-read", {
-          body: { partName: partId },
-        });
-        if (driveData?.content) {
-          currentCard = parseCardFromDriveText(driveData.content);
-        }
-      } catch (driveErr) {
-        console.warn(`[Kartotheka] Nelze načíst kartu z Drive pro "${partId}":`, driveErr);
-      }
-
-      // 3c) Konverze vláken na Thread[]
+      // 3b) Konverze vláken na Thread[]
       const castThreads: Thread[] = threads.map((t) => ({
         id: t.id,
         part_name: t.part_name,
@@ -275,33 +262,51 @@ export async function runKartothekaUpdate(): Promise<void> {
         thread_label: t.thread_label,
       }));
 
-      // Datum vlákna (nejnovější)
+      // 3c) AI analýza vláken → roztřídění do sekcí
+      // Nepotřebujeme číst kartu z Drive — append-only režim
+      const sectionUpdates = await analyzeThreadsForPart(partId, castThreads, {});
+
+      // 3d) Odeslání POUZE neprázdných sekcí do karel-did-card-update (append-only)
+      const sections: Record<string, string> = {};
+      const sectionKeys: SectionKey[] = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
+      for (const key of sectionKeys) {
+        const updates = sectionUpdates[key];
+        if (updates && updates.length > 0) {
+          sections[key] = updates.map((u) => u.content).join("\n");
+        }
+      }
+
+      const nonEmptyCount = Object.keys(sections).length;
+      if (nonEmptyCount === 0) {
+        console.log(`[Kartotheka] Žádné updaty pro "${partId}", přeskakuji zápis.`);
+      } else {
+        console.log(`[Kartotheka] Zapisuji ${nonEmptyCount} sekcí pro "${partId}" přes karel-did-card-update…`);
+        const { data: writeResult, error: writeErr } = await supabase.functions.invoke("karel-did-card-update", {
+          body: { partName: partId, sections },
+        });
+        if (writeErr) {
+          console.warn(`[Kartotheka] Chyba při zápisu karty "${partId}":`, writeErr);
+        } else {
+          console.log(`[Kartotheka] Karta "${partId}" aktualizována:`, writeResult);
+        }
+      }
+
+      // 3e) Audit trail do card_update_queue
       const threadDate = castThreads
         .map((t) => t.last_activity_at)
         .sort()
         .pop()?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
 
-      // 3d) AI analýza vláken → roztřídění do sekcí
-      const sectionUpdates = await analyzeThreadsForPart(partId, castThreads, currentCard);
-
-      // 3e) Aplikace změn pomocí cardUpdateApplicator (sekvenčně A→M)
-      const { updatedCard, operativePlanEntries } = await applyCardUpdates(
-        partId,
-        currentCard,
-        sectionUpdates,
-        castThreads,
-        threadDate,
-        allActivePartsLast24h,
-      );
-
-      allOperativePlanEntries.push(...operativePlanEntries);
-
-      // 3f) Uložení aktualizované karty na Drive
-      try {
-        await saveCardToDrive(partId, updatedCard);
-        console.log(`[Kartotheka] Karta "${partId}" uložena na Drive.`);
-      } catch (writeErr) {
-        console.warn(`[Kartotheka] Chyba při zápisu karty "${partId}" na Drive:`, writeErr);
+      for (const [key, content] of Object.entries(sections)) {
+        await supabase.from("card_update_queue").insert({
+          part_id: partId,
+          section: key,
+          action: "append",
+          new_content: content,
+          reason: `Automatická aktualizace z vlákna ${threadDate}`,
+          source_thread_id: threads[0]?.id ?? null,
+          source_date: threadDate,
+        });
       }
 
       // 3g) Označ vlákna jako „completed"
