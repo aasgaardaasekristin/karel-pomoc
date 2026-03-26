@@ -34,7 +34,8 @@ async function getAccessToken(): Promise<string> {
 async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
   let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   if (parentId) q += ` and '${parentId}' in parents`;
-  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)`, {
+  const params = new URLSearchParams({ q, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const d = await r.json();
@@ -43,43 +44,46 @@ async function findFolder(token: string, name: string, parentId?: string): Promi
 
 async function readDoc(token: string, name: string, folderId: string): Promise<string> {
   const q = `name='${name}' and '${folderId}' in parents and trashed=false`;
-  const r = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)`, {
+  const params = new URLSearchParams({ q, fields: "files(id,name,mimeType)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   const d = await r.json();
   const f = d.files?.[0];
   if (!f) return "(soubor nenalezen)";
+  let cr;
   if (f.mimeType === "application/vnd.google-apps.document") {
-    const cr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain`, {
+    cr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=text/plain`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    return await cr.text();
+  } else {
+    cr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
   }
-  const cr = await fetch(`https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
   return await cr.text();
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
-    const { folders } = await req.json(); // e.g. ["Hanka", "Kata"]
+    const { folders, files: requestedFiles } = await req.json();
     const token = await getAccessToken();
     const pamet = await findFolder(token, "PAMET_KAREL");
     if (!pamet) throw new Error("PAMET_KAREL not found");
     const did = await findFolder(token, "DID", pamet);
-    if (!did) throw new Error("DID not found");
+    if (!did) throw new Error("DID not found in PAMET_KAREL");
 
-    const files = ["SITUACNI_ANALYZA.txt", "VLAKNA_POSLEDNI.txt", "PROFIL_OSOBNOSTI.txt", "STRATEGIE_KOMUNIKACE.txt", "KARLOVY_POZNATKY.txt"];
-    const result: Record<string, Record<string, string>> = {};
+    const files = requestedFiles || ["SITUACNI_ANALYZA.txt", "VLAKNA_POSLEDNI.txt"];
+    const result: Record<string, Record<string, { content: string; length: number }>> = {};
     
     for (const folder of (folders || ["Hanka", "Kata"])) {
       const fId = await findFolder(token, folder, did);
-      if (!fId) { result[folder] = { error: "folder not found" }; continue; }
+      if (!fId) { result[folder] = { error: { content: "folder not found", length: 0 } }; continue; }
       result[folder] = {};
       for (const file of files) {
-        result[folder][file] = await readDoc(token, file, fId);
+        const content = await readDoc(token, file, fId);
+        result[folder][file] = { content, length: content.length };
       }
     }
 
