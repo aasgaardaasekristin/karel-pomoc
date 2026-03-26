@@ -211,12 +211,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const authResult = await requireAuth(req);
-  if (authResult instanceof Response) return authResult;
+  // Allow service-role calls (CRON, other edge functions)
+  const authHeader = req.headers.get("Authorization") || "";
+  const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "__never__";
+  if (authHeader !== `Bearer ${srvKey}`) {
+    const authResult = await requireAuth(req);
+    if (authResult instanceof Response) return authResult;
+  }
 
   try {
     const body = await req.json();
-    const { documents, listAll, subFolder, allowGlobalSearch, partName } = body;
+    const { documents, listAll, subFolder, allowGlobalSearch, partName, tailLines } = body;
     const token = await getAccessToken();
 
     // Find kartoteka_DID folder
@@ -266,7 +271,12 @@ serve(async (req) => {
 
       if (cardContent && foundFile) {
         console.log(`[drive-read] Found card for "${partName}": ${foundFile.name}`);
-        return new Response(JSON.stringify({ content: cardContent, fileId: foundFile.id, fileName: foundFile.name }), {
+        let returnContent = cardContent;
+        if (tailLines && typeof tailLines === "number" && tailLines > 0) {
+          const allLines = cardContent.split("\n");
+          returnContent = allLines.slice(-tailLines).join("\n");
+        }
+        return new Response(JSON.stringify({ content: returnContent, fileId: foundFile.id, fileName: foundFile.name, totalChars: cardContent.length, totalLines: cardContent.split("\n").length }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
