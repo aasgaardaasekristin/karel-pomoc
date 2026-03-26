@@ -33,29 +33,7 @@ export interface ProcessingStatus {
   last_run_at: string | null;
 }
 
-interface CardUpdateEntry {
-  part_id: string;
-  section: string;
-  subsection: string;
-  action: "add" | "replace" | "annotate" | "delete";
-  old_content: string;
-  new_content: string;
-  reason: string;
-  source_thread_id: string;
-  source_date: string;
-  priority: number;
-}
-
-/* ---------- Placeholder – bude implementován v dalším kroku ---------- */
-
-async function analyzeThreadsForPart(
-  _partId: string,
-  _threads: UnprocessedThread[],
-  _currentCard: string | null,
-): Promise<CardUpdateEntry[]> {
-  console.log(`[Kartotheka] analyzeThreadsForPart – placeholder pro ${_partId}, ${_threads.length} vláken`);
-  return [];
-}
+/* CardUpdateEntry odstraněn – nyní se používá SectionUpdate z threadAnalyzer */
 
 /* ---------- Pomocné funkce ---------- */
 
