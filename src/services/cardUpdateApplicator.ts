@@ -206,9 +206,8 @@ export async function saveCardToDrive(
   }
 
   try {
-    const { data, error } = await supabase.functions.invoke("karel-did-drive-write", {
+    const { data, error } = await supabase.functions.invoke("karel-did-card-update", {
       body: {
-        mode: "update-card-sections",
         partName,
         sections,
         sectionModes,
