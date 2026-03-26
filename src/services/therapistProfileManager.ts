@@ -180,20 +180,12 @@ export async function updateTherapistProfile(
 
   const raw = await readFromDrive(folder, file);
 
-  // Připrav AI aktualizaci profilu
-  const { data, error } = await supabase.functions.invoke("karel-chat", {
+  // Připrav AI aktualizaci profilu přes dedikovanou interní edge function
+  const { data, error } = await supabase.functions.invoke("karel-internal-analysis", {
     body: {
-      messages: [
-        {
-          role: "system",
-          content: `Jsi Karel, interní analytik terapeutického týmu. Aktualizuj profil terapeuta na základě nových pozorování. Zachovej strukturu se sekcemi: Silné stránky, Oblasti pro růst, Styl komunikace, Specializace, Aktuální vytížení, Osobnostní poznámky. Přidej nové poznatky, uprav existující kde je to relevantní. Výstup je ČISTÝ markdown profilu. NIKDY nepiš nic co by mohlo uniknout do UI.`,
-        },
-        {
-          role: "user",
-          content: `Aktuální profil:\n${raw || "(prázdný)"}\n\nNová pozorování:\n${newObservations}\n\nDatum: ${new Date().toISOString().slice(0, 10)}`,
-        },
-      ],
-      mode: "internal",
+      task: "update_therapist_profile",
+      currentProfile: raw || "",
+      newObservations,
     },
   });
 
