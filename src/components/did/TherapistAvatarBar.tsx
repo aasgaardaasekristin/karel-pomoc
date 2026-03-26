@@ -7,20 +7,20 @@ import {
 } from "@/components/ui/tooltip";
 
 const avatars = [
-  { name: "Karel Gustav Jung", fallback: "K", src: "/avatars/karel.jpg" },
-  { name: "Hanka", fallback: "H", src: "/avatars/hanka.jpg" },
-  { name: "Káťa", fallback: "Ká", src: "/avatars/kata.jpg" },
+  { name: "Hanka", fallback: "H", src: "/avatars/hanka.png" },
+  { name: "Karel Gustav Jung", fallback: "K", src: "/avatars/karel.png" },
+  { name: "Káťa", fallback: "Ká", src: "/avatars/kata.png" },
 ] as const;
 
 const TherapistAvatarBar = () => (
   <TooltipProvider delayDuration={300}>
-    <div className="flex items-center gap-2">
+    <div className="flex items-center -space-x-1.5">
       {avatars.map((a) => (
         <Tooltip key={a.name}>
           <TooltipTrigger asChild>
-            <Avatar className="h-9 w-9 border-2 border-white/60 shadow-md">
-              <AvatarImage src={a.src} alt={a.name} />
-              <AvatarFallback className="text-xs font-semibold bg-muted text-muted-foreground">
+            <Avatar className="h-7 w-7 border-2 border-background shadow-sm">
+              <AvatarImage src={a.src} alt={a.name} className="object-cover" />
+              <AvatarFallback className="text-[10px] font-semibold bg-muted text-muted-foreground">
                 {a.fallback}
               </AvatarFallback>
             </Avatar>

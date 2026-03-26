@@ -1,6 +1,7 @@
 import { Users, Smile, ChevronRight, ArrowLeft } from "lucide-react";
 import { KarelButton } from "@/components/ui/KarelButton";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
+import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 
 interface Props {
   onSelectTerapeut: () => void;
@@ -36,7 +37,10 @@ const DidEntryScreen = ({ onSelectTerapeut, onSelectKluci, onBack }: Props) => {
         <KarelButton variant="ghost" size="sm" onClick={onBack} icon={<ArrowLeft size={16} />}>
           Hub
         </KarelButton>
-        <ThemeQuickButton />
+        <div className="flex items-center gap-2">
+          <TherapistAvatarBar />
+          <ThemeQuickButton />
+        </div>
       </div>
 
       {/* Title */}
