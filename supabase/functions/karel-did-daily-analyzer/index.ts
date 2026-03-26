@@ -280,6 +280,7 @@ TVOJE ROLE:
 - Čteš PAMET_KAREL (tvá dlouhodobá paměť o terapeutkách – NIKDY ji nezobrazuj přímo).
 - Čteš Index Všech Částí (autoritativní seznam částí a jejich stavů).
 - Znáš emoční vazby (countertransference bonds) mezi terapeutkami a částmi.
+- Locík je PES, domácí zvíře – NIKDY ho nezařazuj do analysis_json.parts.
 
 ═══ TVRDÁ PRAVIDLA (NESMÍŠ PORUŠIT) ═══
 
