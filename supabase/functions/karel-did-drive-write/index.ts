@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
-import * as XLSX from "npm:xlsx@0.18.5";
+// XLSX is lazy-imported only when needed (binary .xlsx files)
+// For Google Sheets (registry), we use native CSV parsing to save memory
 
 // ═══════════════════════════════════════════════════════
 // CORE RULE: NEVER create standalone files as substitutes
