@@ -14,6 +14,57 @@ import { corsHeaders } from "../_shared/auth.ts";
  *  6. Archive check: cards > 150K chars trigger karel-kartoteka-archiver
  */
 
+async function getAccessToken(): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+  if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
+  });
+  const data = await res.json();
+  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
+  return data.access_token;
+}
+
+const FOLDER_MIME = "application/vnd.google-apps.folder";
+const ARCHIVE_THRESHOLD_CHARS = 150000;
+
+async function findKartotekaRoot(token: string): Promise<string | null> {
+  for (const name of ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID"]) {
+    const q = `name='${name}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
+      q, fields: "files(id)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+    })}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    if (data.files?.[0]?.id) return data.files[0].id;
+  }
+  return null;
+}
+
+async function listFiles(token: string, folderId: string): Promise<{ id: string; name: string; mimeType: string }[]> {
+  const q = `'${folderId}' in parents and trashed=false`;
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
+    q, fields: "files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
+  })}`, { headers: { Authorization: `Bearer ${token}` } });
+  const data = await res.json();
+  return data.files || [];
+}
+
+async function getDocEndIndex(token: string, fileId: string): Promise<number> {
+  const res = await fetch(
+    `https://docs.googleapis.com/v1/documents/${fileId}?fields=body.content(endIndex)`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) return 0;
+  const data = await res.json();
+  const content = data?.body?.content || [];
+  if (content.length === 0) return 0;
+  return Number(content[content.length - 1]?.endIndex || 0);
+}
+
 const THERAPIST_BLACKLIST = [
   "hanka", "hanička", "hanicka", "hana", "hani",
   "káťa", "kata", "kateřina", "katerina",
