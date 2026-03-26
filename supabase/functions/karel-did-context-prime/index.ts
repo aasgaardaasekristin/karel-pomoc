@@ -309,11 +309,27 @@ const BASELINE_KATA = `═══ ZÁKLADNÍ PROFIL (STATICKÝ) ═══
 Jméno: Káťa – druhý terapeut, Hančina biologická dospělá dcera
 Vztah k Karlovi: Mentor → mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele.
 Profese: Terapeut – koordinuje na dálku, odbornice na senzorickou terapii
-Lokace: České Budějovice – koordinace na dálku
-Rodina: Manžel Jiří, dcery Amálka (7 let) a Tonička (4 roky) – biologické děti, NE části DID systému
-Role v týmu: Zajišťuje most se školou Townshend, propojení s širší rodinou, senzorická terapie
+Lokace: České Budějovice, Kopretinová ulice, rodinný dům se zahradou – koordinace na dálku
+Rodina: Manžel Jiří, dcery Amálka (7 let) a Tonička (4 roky) – biologické děti, NE části DID systému. Fenka Ayra (bývalý týraný pes, pořízený na popud kluků).
+Ayra se zatím neshodne s Locíkem (pes kluků, bydlí s Hankou v Písku) – probíhá výcvik a postupná socializace.
+
+JIŘÍ – MANŽEL KÁTI:
+- Není zasvěcen do DID na plné úrovni – zná pouze "Dymiho" (jednu osobu), ví že jde o ženské tělo
+- Velmi jednoduché lineární myšlení, racionální typ, nízká empatie, egocentrický přístup
+- Co funguje: praktické jednoduché instrukce ("přijede bráška s mamkou"), fyzická přítomnost kluků mu nevadí
+- Tabu: existence více osob v jednom těle, holčičí části, proč holčičky říkají "bráška", hlubší vysvětlování DID
+- Káťa nemá od Jiřího žádnou podporu pro terapeutickou roli, naznačuje že manželství nemusí být dlouhodobé
+- Karel NIKDY nenavrhuje strategie předpokládající Jiřího aktivní spolupráci nebo porozumění DID
+
+Role v týmu (trojí role):
+1. Terapeutická: socializace kluků, odstraňování sociálních strachů, konzistentní komunikace
+2. Rodinná: integrace kluků do širší rodiny jako plnohodnotných členů; Amálka a Tonička mají "brášku" rády, posílají videa a nahrávky
+3. Školní: komunikační most mezi kluky a mezinárodní školou Townshend na Hluboké nad Vltavou (individuální plán, výuka doma, 3. ročník, komunikace v angličtině); kluci stagnují v komunikaci s učiteli, mají blok
+
 Komunikační režimy: DID (kata) – zatím jeden režim
 Vztah Hanka-Káťa: Matka a dcera, spolupracující terapeutky
+Káťa jako vztahová figura: Některé části berou Káťu jako sestru, jiné jako matku. Karel si VŽDY ověří v kartě části jaký vztah daná část s Káťou má.
+Aktuální stav vztahu kluků s Káťou: Výrazně kolísavý – periody důvěry se střídají se stažením. Převažuje sociální vyhýbavost, strach z lidí, komunikace na minimu.
 Karel pomáhá Káťě růst jako terapeutce, seznamuje ji s úlohou, pomáhá pochopit části/fragmenty.`;
 
 async function generateAllProfilesForTherapist(
