@@ -732,10 +732,12 @@ const HanaChatInner = () => {
 
   return (
     <div className="relative flex flex-col h-full">
-      <div
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0 opacity-80"
-        style={{ backgroundImage: `url(${hanaBg})` }}
-      />
+      {!chatStarted && (
+        <div
+          className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0 opacity-80"
+          style={{ backgroundImage: `url(${hanaBg})` }}
+        />
+      )}
       <div className="relative z-10 flex flex-col h-full">
       {/* Správa popover – portalled into header via #hana-header-actions */}
       {(() => {
