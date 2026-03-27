@@ -1561,6 +1561,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </ScrollArea>
           ) : researchFlowState === "new-topic" ? (
             <ScrollArea className="flex-1 relative z-10">
+              <ResearchNewTopicDialog
+                onSubmit={async (topic, createdBy) => {
                   const greeting = `🔬 **${topic}**\n\nVýborně, ${createdBy}! Začínám rešerši na téma "${topic}". Řekni mi, co konkrétně tě zajímá – metody, studie, testy, trendy? Nebo mi popiš situaci a já najdu relevantní zdroje.`;
                   const initialMsgs = [{ role: "assistant" as const, content: greeting }];
                   const thread = await researchThreads.createThread(topic, createdBy, initialMsgs);
@@ -1575,9 +1577,8 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </ScrollArea>
           ) : (
             <div className="flex-1 flex flex-col relative z-10">
-            <>
               {activeResearchThread && (
-                <div className="border-b border-border bg-card/30">
+                <div className="border-b border-border bg-card/30 backdrop-blur-sm">
                   <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
                     <div className="text-sm">
                       <span className="text-muted-foreground">Téma:</span>{" "}
@@ -1645,7 +1646,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           )}
         </div>
-        <>
+      ) : (
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
