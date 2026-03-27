@@ -405,6 +405,24 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   return (
     <>
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
+        {/* Crisis session block */}
+        {activeCrises.length > 0 && (
+          <div className="mb-3 rounded-lg border-2 border-destructive bg-destructive/10 p-3 space-y-2">
+            {activeCrises.map((crisis: any) => (
+              <div key={crisis.id} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-destructive">🔴 KRIZOVÉ SEZENÍ – {crisis.part_name} (večer)</span>
+                </div>
+                <div className="text-[0.6875rem] text-foreground/80 space-y-0.5">
+                  <p>Typ: Krizová intervence · Vede: Káťa · Koordinuje: Hanička</p>
+                  <p>Cíl: Ověřit bezpečí, zmapovat situaci, sestavit plán ochrany</p>
+                  <p className="text-[0.625rem] text-muted-foreground">{crisis.summary}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">
             <Target className="w-3.5 h-3.5 text-primary" />
