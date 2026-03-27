@@ -178,29 +178,22 @@ const CrisisAlert: React.FC = () => {
                   >
                     OTEVŘÍT DETAIL
                   </button>
-                   {alert.conversation_id && (
-                    <button
-                      onClick={() => {
-                        // Navigate to meeting panel with crisis meeting
-                        window.location.href = `/chat?meeting=${alert.conversation_id}`;
-                      }}
-                      className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      KRIZOVÁ PORADA
-                    </button>
-                  )}
-                  {!alert.conversation_id && alert.crisis_thread_id && (
-                    <button
-                      onClick={() => {
-                        window.location.href = `/chat?crisisThread=${alert.crisis_thread_id}`;
-                      }}
-                      className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      KRIZOVÉ VLÁKNO
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (alert.conversation_id) {
+                        navigate(`/chat?meeting=${alert.conversation_id}`);
+                      } else if (alert.crisis_thread_id) {
+                        navigate(`/chat?crisisThread=${alert.crisis_thread_id}`);
+                      } else {
+                        // Fallback: navigate to meetings panel
+                        navigate(`/chat?sub=meeting`);
+                      }
+                    }}
+                    className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    KRIZOVÁ PORADA
+                  </button>
                   {!isAcknowledged && (
                     <button
                       onClick={() => handleAcknowledge(alert)}
