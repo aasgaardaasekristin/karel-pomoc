@@ -12,6 +12,7 @@ export type DidFlowState = "entry" | "terapeut" | "pin-entry" | "therapist-threa
 export type ResearchFlowState = "thread-list" | "new-topic" | "chat";
 
 export const HANA_PIN_KEY = "karel_hana_pin_verified";
+export const HANA_PIN_ACCESS_TOKEN_KEY = "karel_hana_pin_access_token";
 
 const CAST_GREETINGS = [
   "Hej! 😊 Jak se dneska máš? Co nového?",

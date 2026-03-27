@@ -242,10 +242,13 @@ const Chat = () => {
         }
         if (hubSection === "hana") {
           try {
-            if (sessionStorage.getItem(HANA_PIN_KEY) !== "1") {
+            const hasVerifiedPin = sessionStorage.getItem(HANA_PIN_KEY) === "1";
+            const hasFreshAccessToken = Boolean(sessionStorage.getItem(HANA_PIN_ACCESS_TOKEN_KEY));
+            if (!hasVerifiedPin || !hasFreshAccessToken) {
               navigate("/hub", { replace: true });
               return;
             }
+            sessionStorage.removeItem(HANA_PIN_ACCESS_TOKEN_KEY);
           } catch {
             navigate("/hub", { replace: true });
             return;
