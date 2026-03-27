@@ -3,7 +3,7 @@ import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { Button } from "@/components/ui/button";
-import hanaWelcomeImg from "@/assets/hana-welcome.png";
+import hanaBg from "@/assets/hana-bg.png";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
