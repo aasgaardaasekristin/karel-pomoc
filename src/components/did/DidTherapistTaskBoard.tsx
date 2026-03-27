@@ -513,14 +513,29 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
         await supabase.from("did_therapist_tasks").update({ priority: "high" }).in("id", toEscalate.map((task) => task.id));
       }
 
+      // Sort: urgent first, then high, then normal, then rest
+      const priorityOrder = (p: string | null) => {
+        if (p === "urgent") return 0;
+        if (p === "high") return 1;
+        if (p === "normal") return 2;
+        return 3;
+      };
+      const sortByPriority = (a: TherapistTask, b: TherapistTask) => {
+        const pa = priorityOrder(a.priority);
+        const pb = priorityOrder(b.priority);
+        if (pa !== pb) return pa - pb;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      };
+
       if (toArchive.length > 0 || toEscalate.length > 0) {
         const { data: fresh } = await supabase.from("did_therapist_tasks").select("*").order("created_at", { ascending: false });
         const freshTasks = ((fresh || []) as TherapistTask[])
           .map((task) => ({ ...task, assigned_to: normalizeAssignedTo(task.assigned_to) }))
-          .filter((task) => isTherapistAssignee(task.assigned_to));
+          .filter((task) => isTherapistAssignee(task.assigned_to))
+          .sort(sortByPriority);
         setTasks(freshTasks);
       } else {
-        setTasks(normalizedRows);
+        setTasks(normalizedRows.sort(sortByPriority));
       }
     }
 

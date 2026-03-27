@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Users, Video } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Users, Video, Shield } from "lucide-react";
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
 import { KarelBadge } from "@/components/ui/KarelBadge";
@@ -52,6 +53,7 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
+  const navigate = useNavigate();
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
@@ -62,11 +64,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [isCleaningTasks, setIsCleaningTasks] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [activeCrises, setActiveCrises] = useState<any[]>([]);
 
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [threadsRes, pendingWritesRes] = await Promise.all([
+      const [threadsRes, pendingWritesRes, crisisRes] = await Promise.all([
         supabase
           .from("did_threads")
           .select("id, part_name, last_activity_at, messages")
@@ -76,7 +79,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           .from("did_pending_drive_writes")
           .select("id", { count: "exact", head: true })
           .eq("status", "pending"),
+        supabase
+          .from("crisis_alerts")
+          .select("*")
+          .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+          .order("created_at", { ascending: false }),
       ]);
+
+      setActiveCrises(crisisRes.data || []);
 
       const threads = threadsRes.data || [];
       const now = Date.now();
@@ -235,6 +245,45 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-6" data-no-swipe-back="true">
+      {/* CRISIS BLOCK – always first when active crises exist */}
+      {activeCrises.length > 0 && (
+        <div className="rounded-xl border-2 border-destructive bg-destructive/10 p-4 space-y-3 animate-pulse">
+          <div className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-destructive" />
+            <h3 className="text-sm font-bold text-destructive">
+              🔴 AKTIVNÍ KRIZE – {activeCrises.length} {activeCrises.length === 1 ? "případ" : "případy"}
+            </h3>
+          </div>
+          {activeCrises.map((crisis: any) => (
+            <div key={crisis.id} className="rounded-lg bg-destructive/5 border border-destructive/30 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-destructive">{crisis.part_name} ({crisis.severity})</span>
+                <span className="text-xs text-muted-foreground">{crisis.status}</span>
+              </div>
+              <p className="text-xs text-foreground">{crisis.summary}</p>
+              {crisis.trigger_signals && crisis.trigger_signals.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {crisis.trigger_signals.map((s: string, i: number) => (
+                    <span key={i} className="text-[0.6rem] bg-destructive/20 text-destructive px-1.5 py-0.5 rounded-full">{s}</span>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (crisis.conversation_id) navigate(`/chat?meeting=${crisis.conversation_id}`);
+                    else navigate(`/chat?sub=meeting`);
+                  }}
+                  className="text-xs bg-destructive text-destructive-foreground px-3 py-1.5 rounded font-semibold hover:bg-destructive/90 transition-colors"
+                >
+                  Otevřít krizovou poradu
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Správa */}
       <div className="flex justify-end">
         <DidSprava
