@@ -458,7 +458,7 @@ Sestav kompletní denní dashboard.`;
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: [
-              { role: "system", content: DASHBOARD_PROMPT },
+              { role: "system", content: effectiveSystemPrompt },
               { role: "user", content: userPrompt },
             ],
             temperature: 0.3,
