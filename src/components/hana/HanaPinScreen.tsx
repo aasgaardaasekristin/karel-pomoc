@@ -20,12 +20,21 @@ const HanaPinScreen = ({ onSuccess, onBack }: Props) => {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Video is ~10s. Start fading at 7s, show PIN at 10s.
+  // Explicitly play video on mount & start phase timers
   useEffect(() => {
+    const v = videoRef.current;
+    if (v) {
+      v.currentTime = 0;
+      v.play().catch(() => {
+        // autoplay blocked – skip straight to PIN
+        setPhase("pin");
+      });
+    }
+
     const timers: ReturnType<typeof setTimeout>[] = [];
     timers.push(setTimeout(() => setPhase("fading"), 7000));
-    timers.push(setTimeout(() => setPhase("pin"), 10000));
-    timers.push(setTimeout(() => setPhase("done"), 11000));
+    timers.push(setTimeout(() => setPhase("pin"), 10500));
+    timers.push(setTimeout(() => setPhase("done"), 11500));
     return () => timers.forEach(clearTimeout);
   }, []);
 
