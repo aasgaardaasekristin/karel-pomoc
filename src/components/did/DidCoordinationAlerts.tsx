@@ -36,8 +36,9 @@ const DidCoordinationAlerts = ({ refreshTrigger }: { refreshTrigger: number }) =
         .order("created_at", { ascending: false }),
       supabase
         .from("did_part_registry")
-        .select("part_name, last_emotional_intensity")
-        .gte("last_emotional_intensity", 4),
+        .select("part_name, last_emotional_intensity, updated_at")
+        .gte("last_emotional_intensity", 4)
+        .order("last_emotional_intensity", { ascending: false }),
       supabase
         .from("did_therapist_tasks")
         .select("task, assigned_to, created_at, category")
@@ -64,14 +65,21 @@ const DidCoordinationAlerts = ({ refreshTrigger }: { refreshTrigger: number }) =
       }
     }
 
-    // 2. High emotional intensity
+    // 2. High emotional intensity (only entries updated in the last 48h)
     if (registryRes.data) {
-      for (const part of registryRes.data.slice(0, 2)) {
+      const recentCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const seen = new Set<string>();
+      for (const part of registryRes.data) {
+        if (part.updated_at && part.updated_at < recentCutoff) continue;
+        const key = part.part_name.toUpperCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
         result.push({
           type: "intensity",
           partName: part.part_name,
           message: `${part.part_name} má vysokou emoční intenzitu (${part.last_emotional_intensity}/5) — vyžaduje pozornost.`,
         });
+        if (seen.size >= 3) break;
       }
     }
 

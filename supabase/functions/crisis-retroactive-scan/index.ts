@@ -359,16 +359,31 @@ Odpověz POUZE platným JSON:
           urgency_breakdown: { crisis: 100 },
           plan_markdown: `# 🔴 KRIZOVÉ SEZENÍ – ${thread.part_name}\n\n**Cíl:** ${analysis.session_goal}\n\n## Plán telefonátu (Káťa)\n${analysis.kata_call_plan}\n\n## Plán večerního sezení (Hanička)\n${analysis.hanka_session_plan}\n\n## Karlův plán\n${analysis.karel_plan}`,
           plan_html: "",
-          therapist: "kata",
+          therapist: "all",
           status: "generated",
           generated_by: "crisis-retroactive-scan",
-          session_lead: "kata",
+          session_lead: "all",
           session_format: "crisis_intervention",
           overdue_days: 0,
           part_tier: "crisis",
         });
       } catch (e) {
         console.warn(`[retro-scan] Session plan insert warning:`, e);
+      }
+
+      // ── STEP 10: Update emotional intensity in part registry ──
+      try {
+        await sb.from("did_part_registry")
+          .update({
+            last_emotional_intensity: 5,
+            last_emotional_state: "EMO_KRIZOVA",
+            last_seen_at: now.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .ilike("part_name", thread.part_name);
+        console.log(`[retro-scan] Updated registry intensity for ${thread.part_name}`);
+      } catch (e) {
+        console.warn(`[retro-scan] Registry update warning:`, e);
       }
 
       results.push({

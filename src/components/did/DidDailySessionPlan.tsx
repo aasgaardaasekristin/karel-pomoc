@@ -689,8 +689,12 @@ const PlanCard = ({
   prevSession,
   isArchived,
 }: PlanCardProps) => {
-  const leadLabel = plan.session_lead === "obe" ? "Hanka + Káťa" : plan.session_lead === "kata" ? "Káťa" : "Hanka";
-  const formatLabel = plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
+  const leadLabel = plan.session_format === "crisis_intervention" || plan.session_lead === "all"
+    ? "Karel (vlákno) · Káťa (telefon) · Hanička (sezení)"
+    : plan.session_lead === "obe" ? "Hanka + Káťa" : plan.session_lead === "kata" ? "Káťa" : "Hanka";
+  const formatLabel = plan.session_format === "crisis_intervention"
+    ? "krizová intervence"
+    : plan.session_lead === "obe" ? "kombinované" : plan.session_format || (plan.session_lead === "kata" ? "chat" : "osobně");
 
   // Overdue calculation using Prague timezone
   const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
