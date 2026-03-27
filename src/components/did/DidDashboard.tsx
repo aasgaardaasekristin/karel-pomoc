@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Users, Video } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Users, Video, Shield } from "lucide-react";
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
 import { KarelBadge } from "@/components/ui/KarelBadge";
