@@ -1531,9 +1531,19 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           />
         </>
       ) : hubSection === "research" ? (
-        <>
+        <div className="flex-1 flex flex-col relative overflow-hidden">
+          <div
+            className="absolute inset-0 z-0 pointer-events-none"
+            style={{
+              backgroundImage: 'url(/images/research-bg.png)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+              opacity: 0.18,
+            }}
+          />
           {researchFlowState === "thread-list" ? (
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 relative z-10">
               <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 flex justify-end">
                 <ThemeQuickButton storageKey={chatStorageKey || undefined} />
               </div>
@@ -1550,7 +1560,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               />
             </ScrollArea>
           ) : researchFlowState === "new-topic" ? (
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 relative z-10">
               <ResearchNewTopicDialog
                 onSubmit={async (topic, createdBy) => {
                   const greeting = `🔬 **${topic}**\n\nVýborně, ${createdBy}! Začínám rešerši na téma "${topic}". Řekni mi, co konkrétně tě zajímá – metody, studie, testy, trendy? Nebo mi popiš situaci a já najdu relevantní zdroje.`;
@@ -1566,9 +1576,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               />
             </ScrollArea>
           ) : (
-            <>
+            <div className="flex-1 flex flex-col relative z-10">
               {activeResearchThread && (
-                <div className="border-b border-border bg-card/30">
+                <div className="border-b border-border bg-card/30 backdrop-blur-sm">
                   <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
                     <div className="text-sm">
                       <span className="text-muted-foreground">Téma:</span>{" "}
@@ -1633,9 +1643,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 onFileChange={handleFileChange}
                 textareaRef={textareaRef}
               />
-            </>
+            </div>
           )}
-        </>
+        </div>
       ) : (
         <>
           {mainMode === "chat" ? (
