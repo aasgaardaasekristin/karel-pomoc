@@ -45,8 +45,7 @@ const HanaChatInner = () => {
   const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [introPhase, setIntroPhase] = useState<IntroPhase>("avatar-in");
-  const introVideoRef = useRef<HTMLVideoElement>(null);
+  // intro animation removed – now in HanaPinScreen
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isRefreshingMemory, setIsRefreshingMemory] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
