@@ -1,7 +1,4 @@
-import { BookOpen, Trash2, Plus, Clock, Search } from "lucide-react";
-import { KarelCard } from "@/components/ui/KarelCard";
-import { KarelButton } from "@/components/ui/KarelButton";
-import { KarelBadge } from "@/components/ui/KarelBadge";
+import { Clock, Search } from "lucide-react";
 import { KarelEmptyState } from "@/components/ui/KarelEmptyState";
 import type { ResearchThread } from "@/hooks/useResearchThreads";
 
@@ -26,61 +23,42 @@ const ResearchThreadList = ({ threads, onSelect, onDelete, onNew, loading }: Pro
   return (
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 relative z-10">
       <div className="text-center mb-6 animate-fade-in">
-        <h2 className="text-xl font-bold text-[hsl(var(--text-primary))]">Profesní zdroje</h2>
-        <p className="text-sm text-[hsl(var(--text-secondary))] mt-1">
+        <h2 className="text-xl font-bold" style={{ color: '#1a5c2e' }}>Profesní zdroje</h2>
+        <p className="text-sm mt-1" style={{ color: '#2d7a45' }}>
           Vlákna výzkumů a odborných rešerší
         </p>
       </div>
 
-      <KarelButton onClick={onNew} variant="secondary" className="w-full mb-4" icon={<Plus size={16} />}>
-        Nové téma
-      </KarelButton>
-
       {loading ? (
-        <div className="text-center text-sm text-[hsl(var(--text-tertiary))] py-8">Načítám vlákna…</div>
+        <div className="text-center text-sm py-8" style={{ color: '#2d7a45' }}>Načítám vlákna…</div>
       ) : threads.length === 0 ? (
         <KarelEmptyState
           icon={<Search size={40} />}
           title="Žádné rešerše"
-          description={'Klikni na „Nové téma" a začni rešerši.'}
+          description={'Klikni na „+ Nové téma" v horní liště.'}
         />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1">
           {threads.map((thread, index) => (
-            <KarelCard
+            <div
               key={thread.id}
-              variant="interactive"
-              padding="none"
-              className="animate-fade-in group bg-card/30 backdrop-blur-md border-border/30"
+              className="animate-fade-in cursor-pointer transition-all hover:bg-white/10 rounded-lg px-3 py-1.5 border border-emerald-900/20 bg-white/5 backdrop-blur-sm"
               style={{ animationDelay: `${index * 40}ms`, animationFillMode: "both" }}
               onClick={() => onSelect(thread)}
             >
-              <div className="flex items-center gap-3 p-3">
-                <div className="w-9 h-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
-                  <BookOpen size={18} className="text-emerald-600 dark:text-emerald-400" />
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium truncate" style={{ color: '#1a5c2e' }}>
+                  {thread.topic}
+                </span>
+                <div className="flex items-center gap-2 text-xs shrink-0" style={{ color: '#3a8a55' }}>
+                  <span>{thread.messages.length} zpráv</span>
+                  <span className="flex items-center gap-0.5">
+                    <Clock size={10} />
+                    {formatTimeAgo(thread.lastActivityAt)}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-[hsl(var(--text-primary))] truncate">{thread.topic}</div>
-                  <div className="flex items-center gap-2 text-xs text-[hsl(var(--text-tertiary))] mt-0.5">
-                    <KarelBadge variant={thread.createdBy === "Hana" ? "info" : "accent"} size="sm">
-                      {thread.createdBy}
-                    </KarelBadge>
-                    <span>{thread.messages.length} zpráv</span>
-                    <span className="flex items-center gap-0.5">
-                      <Clock size={10} />
-                      {formatTimeAgo(thread.lastActivityAt)}
-                    </span>
-                  </div>
-                </div>
-                <KarelButton
-                  variant="ghost"
-                  size="icon"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  onClick={(e) => { e.stopPropagation(); onDelete(thread.id); }}
-                  icon={<Trash2 size={14} className="text-destructive" />}
-                />
               </div>
-            </KarelCard>
+            </div>
           ))}
         </div>
       )}
