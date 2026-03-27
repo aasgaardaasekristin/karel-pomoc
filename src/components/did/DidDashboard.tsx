@@ -93,20 +93,28 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const latestByPart = new Map<string, ActiveThreadSummary>();
       const partRows: PartActivity[] = [];
 
+      // Group by case-insensitive part name, keep the MOST RECENT activity
+      const bestActivityByPart = new Map<string, { thread: typeof threads[0]; diffDays: number }>();
       for (const thread of threads) {
+        const key = thread.part_name.toUpperCase();
         const lastSeen = thread.last_activity_at || null;
         const diffDays = lastSeen ? (now - new Date(lastSeen).getTime()) / (1000 * 60 * 60 * 24) : Number.POSITIVE_INFINITY;
-        const status: PartActivity["status"] = diffDays <= 1 ? "active" : diffDays > 7 ? "warning" : "sleeping";
-
-        if (!latestByPart.has(thread.part_name)) {
-          latestByPart.set(thread.part_name, {
-            id: thread.id,
-            partName: thread.part_name,
-            lastActivityAt: thread.last_activity_at,
-            messageCount: Array.isArray(thread.messages) ? thread.messages.length : 0,
-          });
-          partRows.push({ name: thread.part_name, lastSeen, status });
+        const existing = bestActivityByPart.get(key);
+        if (!existing || diffDays < existing.diffDays) {
+          bestActivityByPart.set(key, { thread, diffDays });
         }
+      }
+
+      for (const [_key, { thread, diffDays }] of bestActivityByPart) {
+        const lastSeen = thread.last_activity_at || null;
+        const status: PartActivity["status"] = diffDays <= 1 ? "active" : diffDays > 7 ? "warning" : "sleeping";
+        latestByPart.set(thread.part_name, {
+          id: thread.id,
+          partName: thread.part_name,
+          lastActivityAt: thread.last_activity_at,
+          messageCount: Array.isArray(thread.messages) ? thread.messages.length : 0,
+        });
+        partRows.push({ name: thread.part_name, lastSeen, status });
       }
 
       setParts(partRows);
