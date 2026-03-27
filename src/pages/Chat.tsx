@@ -1422,6 +1422,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {hubSection === "hana" && <div id="hana-header-actions" className="flex items-center" />}
             {hubSection === "research" && researchFlowState === "thread-list" && (
               <button
                 onClick={() => setResearchFlowState("new-topic")}
