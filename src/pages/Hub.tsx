@@ -88,13 +88,7 @@ const Hub = () => {
 
   const handleSectionClick = (key: string) => {
     if (key === "hana") {
-      try {
-        if (sessionStorage.getItem(HANA_PIN_KEY) === "1") {
-          sessionStorage.setItem("karel_hub_section", "hana");
-          navigate("/chat");
-          return;
-        }
-      } catch {}
+      // Always show PIN screen with video animation
       setShowPinEntry(true);
       return;
     }
