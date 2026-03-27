@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -13,6 +13,8 @@ import { Loader2 } from "lucide-react";
 const CORRECT_PIN = "0126";
 const HANA_PIN_KEY = "karel_hana_pin_verified";
 const THEME_STORAGE_KEY = "theme_hub";
+
+type HanaPinPhase = "video" | "fading" | "pin" | "done";
 
 const sections = [
   {
