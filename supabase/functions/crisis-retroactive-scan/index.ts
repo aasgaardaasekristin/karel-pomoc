@@ -371,6 +371,21 @@ Odpověz POUZE platným JSON:
         console.warn(`[retro-scan] Session plan insert warning:`, e);
       }
 
+      // ── STEP 10: Update emotional intensity in part registry ──
+      try {
+        await sb.from("did_part_registry")
+          .update({
+            last_emotional_intensity: 5,
+            last_emotional_state: "EMO_KRIZOVA",
+            last_seen_at: now.toISOString(),
+            updated_at: now.toISOString(),
+          })
+          .ilike("part_name", thread.part_name);
+        console.log(`[retro-scan] Updated registry intensity for ${thread.part_name}`);
+      } catch (e) {
+        console.warn(`[retro-scan] Registry update warning:`, e);
+      }
+
       results.push({
         thread_id: thread.id,
         part_name: thread.part_name,
