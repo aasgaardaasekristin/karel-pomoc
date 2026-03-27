@@ -1574,6 +1574,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               />
             </ScrollArea>
           ) : (
+            <div className="flex-1 flex flex-col relative z-10">
             <>
               {activeResearchThread && (
                 <div className="border-b border-border bg-card/30">
