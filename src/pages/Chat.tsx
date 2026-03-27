@@ -1647,6 +1647,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           )}
         </div>
       ) : (
+        <>
           {mainMode === "chat" ? (
             <>
               <CrisisBriefPanel />
