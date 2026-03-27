@@ -1563,7 +1563,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 onDelete={(id) => researchThreads.deleteThread(id)}
                 onNew={() => setResearchFlowState("new-topic")}
               />
-            </ScrollArea>
+            </div>
           ) : researchFlowState === "new-topic" ? (
             <ScrollArea className="flex-1 relative z-10">
               <ResearchNewTopicDialog
