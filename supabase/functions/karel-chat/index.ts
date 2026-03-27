@@ -821,17 +821,19 @@ Dokud se nepřipojíte, pokračuji ve stabilizaci ${partName} v probíhajícím 
 
                       if (crisisUserId) {
                         const threadLabel = `🔴 KRIZOVÁ INTERVENCE – ${partName} – ${dateStr}`;
-                        const { data: newThread, error: threadErr } = await sbCrisis.from("did_conversations")
+                        const { data: newThread, error: threadErr } = await sbCrisis.from("did_threads")
                           .insert({
                             user_id: crisisUserId,
-                            session_id: `crisis-${newAlert.id}`,
+                            part_name: partName,
                             sub_mode: "crisis",
-                            label: threadLabel,
-                            preview: `⚠️ Krize: ${(crisisResult.summary || "").slice(0, 100)}`,
-                            messages: JSON.stringify([
+                            thread_label: threadLabel,
+                            thread_emoji: "🔴",
+                            messages: [
                               { role: "assistant", content: karelFirstMessage, timestamp: now.toISOString() }
-                            ]),
-                            did_initial_context: `KRIZOVÉ VLÁKNO pro alert ${newAlert.id}. Část: ${partName}. Severity: ${crisisResult.severity}.`,
+                            ],
+                            last_activity_at: now.toISOString(),
+                            is_processed: false,
+                            theme_preset: "default",
                           })
                           .select("id")
                           .single();
