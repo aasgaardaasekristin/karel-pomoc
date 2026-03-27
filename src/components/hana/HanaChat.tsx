@@ -804,7 +804,7 @@ const HanaChatInner = () => {
       {!chatStarted ? (
         <div className="flex-1 flex flex-col items-center justify-center px-4">
           <div className="text-center max-w-sm space-y-5 animate-fade-in">
-            <img src={hanaWelcomeImg} alt="" className="w-28 h-28 mx-auto object-contain" />
+            
             <div className="space-y-1.5">
               <h2 className="text-lg font-serif font-semibold text-foreground">
                 Ahoj, Hani 💛

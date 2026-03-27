@@ -1457,7 +1457,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 </button>
               </div>
             )}
-            {hubSection !== "research" && <ThemeQuickButton storageKey={chatStorageKey || undefined} />}
+            {hubSection !== "research" && hubSection !== "hana" && <ThemeQuickButton storageKey={chatStorageKey || undefined} />}
             <Button variant="ghost" size="sm" onClick={handleLogout} className="h-8 px-2">
               <LogOut className="w-4 h-4" />
             </Button>
