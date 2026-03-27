@@ -24,7 +24,7 @@ const formatTimeAgo = (dateStr: string) => {
 
 const ResearchThreadList = ({ threads, onSelect, onDelete, onNew, loading }: Props) => {
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6">
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 relative z-10">
       <div className="text-center mb-6 animate-fade-in">
         <h2 className="text-xl font-bold text-[hsl(var(--text-primary))]">Profesní zdroje</h2>
         <p className="text-sm text-[hsl(var(--text-secondary))] mt-1">
