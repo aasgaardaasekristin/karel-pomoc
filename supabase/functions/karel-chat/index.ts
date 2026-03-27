@@ -751,7 +751,8 @@ HIGH = závažný distres bez přímého ohrožení života`,
                   if (insErr) {
                     console.error("[crisis-detector] Insert alert error:", insErr.message);
                   } else if (newAlert) {
-                    console.log(`[crisis-detector] Created alert ${newAlert.id}, creating tasks...`);
+                    console.log(`[crisis-detector] Created alert ${newAlert.id}, creating tasks + thread...`);
+                    
                     // INSERT two crisis tasks
                     const { error: taskErr } = await sbCrisis.from("crisis_tasks").insert([
                       {
@@ -771,6 +772,85 @@ HIGH = závažný distres bez přímého ohrožení života`,
                     ]);
                     if (taskErr) console.error("[crisis-detector] Insert tasks error:", taskErr.message);
                     else console.log(`[crisis-detector] Created 2 crisis tasks for alert ${newAlert.id}`);
+
+                    // ═══ CREATE CRISIS THREAD (krizová porada) ═══
+                    try {
+                      const now = new Date();
+                      const dateStr = `${now.getDate()}.${now.getMonth()+1}.${now.getFullYear()}`;
+                      const timeStr = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+                      const signalsList = (crisisResult.signals || []).map((s: string) => `  • ${s}`).join("\n");
+
+                      const karelFirstMessage = `⚠️ KRIZOVÁ INTERVENCE – AKTIVOVÁNO
+
+Část: ${partName}
+Čas detekce: ${dateStr} ${timeStr}
+Úroveň rizika: ${crisisResult.severity || "HIGH"}
+
+CO SE STALO:
+${crisisResult.summary || "Detekována krizová situace."}
+
+DETEKOVANÉ SIGNÁLY:
+${signalsList || "  • (nespecifikováno)"}
+
+KLÍČOVÉ ÚRYVKY Z ROZHOVORU:
+${conversationExcerpt.slice(0, 3000)}
+
+MOJE VYHODNOCENÍ:
+${crisisResult.assessment || "Vyhodnocení není k dispozici."}
+
+NAVRŽENÝ PLÁN OKAMŽITÉ INTERVENCE:
+${crisisResult.intervention_plan || "Plán není k dispozici."}
+
+---
+
+Haničko, Káťo – potřebuji vás okamžitě.
+Připojte se do tohoto vlákna. Situace vyžaduje koordinovaný zásah.
+Dokud se nepřipojíte, pokračuji ve stabilizaci ${partName} v probíhajícím rozhovoru.
+Čekám na vaše instrukce.`;
+
+                      // Get user_id for the thread
+                      let crisisUserId: string | null = null;
+                      const crisisAuth = req.headers.get("Authorization");
+                      if (crisisAuth?.startsWith("Bearer ")) {
+                        const userSbCr = createSbCrisis(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+                          global: { headers: { Authorization: crisisAuth } },
+                        });
+                        const { data: { user: crUser } } = await userSbCr.auth.getUser();
+                        crisisUserId = crUser?.id || null;
+                      }
+
+                      if (crisisUserId) {
+                        const threadLabel = `🔴 KRIZOVÁ INTERVENCE – ${partName} – ${dateStr}`;
+                        const { data: newThread, error: threadErr } = await sbCrisis.from("did_conversations")
+                          .insert({
+                            user_id: crisisUserId,
+                            session_id: `crisis-${newAlert.id}`,
+                            sub_mode: "crisis",
+                            label: threadLabel,
+                            preview: `⚠️ Krize: ${(crisisResult.summary || "").slice(0, 100)}`,
+                            messages: JSON.stringify([
+                              { role: "assistant", content: karelFirstMessage, timestamp: now.toISOString() }
+                            ]),
+                            did_initial_context: `KRIZOVÉ VLÁKNO pro alert ${newAlert.id}. Část: ${partName}. Severity: ${crisisResult.severity}.`,
+                          })
+                          .select("id")
+                          .single();
+
+                        if (threadErr) {
+                          console.error("[crisis-detector] Create thread error:", threadErr.message);
+                        } else if (newThread) {
+                          // Link thread to alert
+                          await sbCrisis.from("crisis_alerts")
+                            .update({ crisis_thread_id: newThread.id })
+                            .eq("id", newAlert.id);
+                          console.log(`[crisis-detector] Created crisis thread ${newThread.id} for alert ${newAlert.id}`);
+                        }
+                      } else {
+                        console.warn("[crisis-detector] No user_id for crisis thread creation");
+                      }
+                    } catch (threadErr) {
+                      console.error("[crisis-detector] Thread creation error (non-fatal):", threadErr);
+                    }
                   }
                 }
               } else {
