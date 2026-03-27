@@ -135,6 +135,96 @@ HIGH = závažný distres bez přímého ohrožení života`,
         continue;
       }
 
+      // Extract direct quotes from the client (user messages)
+      const userMessages = msgs
+        .filter((m: any) => m.role === "user")
+        .map((m: any) => typeof m.content === "string" ? m.content : JSON.stringify(m.content));
+      const lastUserQuotes = userMessages.slice(-5);
+      const quotesBlock = lastUserQuotes.length > 0
+        ? lastUserQuotes.map((q: string) => `> ${q.slice(0, 300)}`).join("\n\n")
+        : "> (žádné přímé citace k dispozici)";
+
+      // Build the enhanced meeting message
+      const now = new Date();
+      const dateStr = `${now.getDate()}.${now.getMonth()+1}.${now.getFullYear()}`;
+      const signalsList = (result.signals || []).map((s: string) => `  • ${s}`).join("\n");
+      const totalMsgs = msgs.length;
+
+      const meetingKarelMessage = `⚠️ KRIZOVÁ PORADA – ${thread.part_name} – ${dateStr}
+
+Svolávám mimořádnou krizovou poradu. Situace je ${result.severity || "CRITICAL"}.
+
+CO SE STALO:
+${result.summary || "Detekována krizová situace."}
+
+DETEKOVANÉ SIGNÁLY:
+${signalsList || "  • (nespecifikováno)"}
+
+MOJE VYHODNOCENÍ:
+${result.assessment || "Vyhodnocení není k dispozici."}
+
+---
+
+PŘÍMÉ CITACE Z ROZHOVORU S ${thread.part_name.toUpperCase()}:
+
+${quotesBlock}
+
+Na základě těchto výroků hodnotím situaci jako ${result.severity || "CRITICAL"}.
+
+---
+
+DOSAVADNÍ PRŮBĚH KOMUNIKACE S ${thread.part_name.toUpperCase()}:
+${thread.part_name} kontaktoval/a Karla. Proběhlo ${totalMsgs} zpráv.
+${result.summary || ""}
+
+---
+
+MŮJ NÁVRH OKAMŽITÉHO POSTUPU:
+
+1. PARALELNÍ KRIZOVÁ INTERVENCE (teď hned):
+
+   KÁŤO – PŘESNÝ POSTUP PŘI KONTAKTU S ${thread.part_name.toUpperCase()}:
+
+   Krok 1: Zavolej mu/jí. První věta DOSLOVA:
+     '${thread.part_name}, tady je Káťa. Mluvila jsem s Karlem,
+      vím co se děje. Jsem tu pro tebe.'
+
+   Krok 2: Poslouchej. Nech ho/ji mluvit. NEPŘERUŠUJ.
+
+   Krok 3: Zeptej se na bezpečí:
+     'Jsi teď v bezpečí? Kde teď jsi?'
+
+   Krok 4: Validuj emoce, NEZLEHČUJ:
+     'Rozumím. To co popisuješ není fér. Máš právo se bránit.'
+
+   Krok 5: Nabídni konkrétní krok:
+     'Dnes odpoledne se sejdeme – já, Karel a Hanička.
+      Společně to vyřešíme. Souhlasíš?'
+
+   Krok 6: Po hovoru mi IHNED napiš sem do porady:
+     - Jak ${thread.part_name} reagoval/a
+     - Zda je v bezpečí
+     - Co řekl/a o situaci
+     - Zda souhlasil/a se sezením
+
+2. KOORDINACE (Hanička):
+   Haničko – potřebuji abys připravila podklady pro krizové sezení:
+   - Historie ${thread.part_name}
+   - Předchozí krizové epizody
+   - Co fungovalo / nefungovalo v minulosti
+
+3. ODPOLEDNÍ KRIZOVÉ SEZENÍ (plán):
+   Sestavuji strukturu sezení. Zúčastníme se všichni tři + ${thread.part_name}.
+
+---
+
+Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
+1. Kdo z vás může ${thread.part_name} kontaktovat TEĎ?
+2. Máte na něj/ni kontakt?
+3. Kdy jste s ním/ní naposledy komunikovaly?
+
+Čekám na vaše odpovědi. Čas běží.`;
+
       // Insert crisis alert
       const { data: newAlert, error: alertErr } = await sb.from("crisis_alerts")
         .insert({
@@ -214,57 +304,6 @@ HIGH = závažný distres bez přímého ohrožení života`,
       ]);
 
       // Create crisis meeting in did_meetings
-      const now = new Date();
-      const dateStr = `${now.getDate()}.${now.getMonth()+1}.${now.getFullYear()}`;
-      const signalsList = (result.signals || []).map((s: string) => `  • ${s}`).join("\n");
-
-      const meetingKarelMessage = `⚠️ KRIZOVÁ PORADA – ${thread.part_name} – ${dateStr}
-
-Svolávám mimořádnou krizovou poradu. Situace je ${result.severity || "CRITICAL"}.
-
-CO SE STALO:
-${result.summary || "Detekována krizová situace."}
-
-DETEKOVANÉ SIGNÁLY:
-${signalsList || "  • (nespecifikováno)"}
-
-MOJE VYHODNOCENÍ:
-${result.assessment || "Vyhodnocení není k dispozici."}
-
----
-
-MŮJ NÁVRH OKAMŽITÉHO POSTUPU:
-
-1. PARALELNÍ KRIZOVÁ INTERVENCE (teď hned):
-   Káťo – potřebuji, abys IHNED kontaktovala ${thread.part_name}.
-   Doporučuji tyto kanály v tomto pořadí:
-   a) Telefonát (nejefektivnější pro krizovou intervenci)
-   b) Audio zpráva přes chat (pokud telefon nezvedá)
-   c) Textová zpráva s jasným vzkazem že jsme tu pro něj/ni
-
-   Při kontaktu s ${thread.part_name}:
-   - Začni validací: '${thread.part_name}, vím co se děje. Jsem tu.'
-   - Neřeš příčinu, řeš BEZPEČÍ: 'Jsi teď v bezpečí?'
-   - Nabídni konkrétní pomoc, ne obecnou
-
-2. KOORDINACE (Hanička):
-   Haničko – potřebuji abys připravila podklady pro krizové sezení:
-   - Historie ${thread.part_name}
-   - Předchozí krizové epizody
-   - Co fungovalo / nefungovalo v minulosti
-
-3. ODPOLEDNÍ KRIZOVÉ SEZENÍ (plán):
-   Sestavuji strukturu sezení. Zúčastníme se všichni tři + ${thread.part_name}.
-
----
-
-Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
-1. Kdo z vás může ${thread.part_name} kontaktovat TEĎ?
-2. Máte na něj/ni kontakt?
-3. Kdy jste s ním/ní naposledy komunikovaly?
-
-Čekám na vaše odpovědi. Čas běží.`;
-
       const { data: crisisMeeting } = await sb.from("did_meetings").insert({
         user_id: thread.user_id,
         topic: `🔴 KRIZOVÁ PORADA – ${thread.part_name} – ${dateStr}`,
@@ -303,6 +342,7 @@ Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
         crisis: true,
         severity: result.severity,
         alert_id: newAlert!.id,
+        meeting_id: crisisMeeting?.id,
         summary: result.summary,
       });
     }
