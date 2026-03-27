@@ -730,7 +730,12 @@ const HanaChatInner = () => {
 
 
   return (
-    <>
+    <div className="relative flex flex-col h-full">
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0"
+        style={{ backgroundImage: `url(${hanaBg})` }}
+      />
+      <div className="relative z-10 flex flex-col h-full">
       {/* Toolbar with Správa + Vlákna – no border, visually merged with header */}
       <div className="bg-transparent">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-1 flex items-center justify-end gap-2">
