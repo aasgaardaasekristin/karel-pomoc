@@ -235,6 +235,33 @@ async function fetchUpdatedCardsInfo(supabase: ReturnType<typeof createClient>):
   }
 }
 
+async function fetchCrisisAlerts(supabase: ReturnType<typeof createClient>): Promise<{ active: any[]; resolved: any[]; text: string }> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  try {
+    const { data, error } = await supabase
+      .from("crisis_alerts")
+      .select("*")
+      .gte("created_at", todayStart.toISOString())
+      .order("created_at", { ascending: false });
+
+    if (error || !data?.length) return { active: [], resolved: [], text: "" };
+
+    const active = data.filter((a: any) => a.status === "ACTIVE" || a.status === "ACKNOWLEDGED");
+    const resolved = data.filter((a: any) => a.status === "RESOLVED");
+
+    const lines: string[] = [];
+    for (const a of data) {
+      const signals = (a.trigger_signals || []).join(", ");
+      lines.push(`- **${a.part_name}** [${a.severity}, ${a.status}]: ${a.summary} | Signály: ${signals}`);
+    }
+    return { active, resolved, text: lines.join("\n") || "(žádné)" };
+  } catch (e) {
+    console.error("[Dashboard] fetchCrisisAlerts error:", e);
+    return { active: [], resolved: [], text: "(chyba načítání)" };
+  }
+}
+
 /* ================================================================
    DRIVE WRITE
    ================================================================ */
