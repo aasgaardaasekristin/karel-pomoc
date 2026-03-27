@@ -1422,6 +1422,14 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             </div>
           </div>
            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {hubSection === "research" && researchFlowState === "thread-list" && (
+              <button
+                onClick={() => setResearchFlowState("new-topic")}
+                className="h-8 px-4 rounded-xl text-xs font-semibold bg-yellow-400 hover:bg-yellow-500 text-yellow-900 transition-colors shadow-sm"
+              >
+                + Nové téma
+              </button>
+            )}
             {hubSection === "did" && (didSubMode === "mamka" || didSubMode === "kata" || didFlowState === "terapeut" || didFlowState === "meeting" || didFlowState === "live-session") && (
               <TherapistAvatarBar variant={didFlowState === "meeting" || didFlowState === "live-session" ? "meeting" : didSubMode === "mamka" ? "mamka" : didSubMode === "kata" ? "kata" : "all"} />
             )}
