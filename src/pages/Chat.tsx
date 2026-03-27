@@ -1642,10 +1642,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
                 onFileChange={handleFileChange}
                 textareaRef={textareaRef}
               />
-            </>
+            </div>
           )}
-        </>
-      ) : (
+        </div>
         <>
           {mainMode === "chat" ? (
             <>
