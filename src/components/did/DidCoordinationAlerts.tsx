@@ -36,8 +36,9 @@ const DidCoordinationAlerts = ({ refreshTrigger }: { refreshTrigger: number }) =
         .order("created_at", { ascending: false }),
       supabase
         .from("did_part_registry")
-        .select("part_name, last_emotional_intensity")
-        .gte("last_emotional_intensity", 4),
+        .select("part_name, last_emotional_intensity, updated_at")
+        .gte("last_emotional_intensity", 4)
+        .order("last_emotional_intensity", { ascending: false }),
       supabase
         .from("did_therapist_tasks")
         .select("task, assigned_to, created_at, category")
