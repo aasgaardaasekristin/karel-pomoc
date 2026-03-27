@@ -736,7 +736,7 @@ const HanaChatInner = () => {
         style={{ backgroundImage: `url(${hanaBg})` }}
       />
       <div className="relative z-10 flex flex-col h-full">
-      {/* Toolbar with Správa + Vlákna – no border, visually merged with header */}
+      {/* Správa popover - rendered in header via Chat.tsx, removed from here */}
       <div className="bg-transparent">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-1 flex items-center justify-end gap-2">
           <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
@@ -784,13 +784,6 @@ const HanaChatInner = () => {
               </div>
             </PopoverContent>
           </Popover>
-
-          <HanaThreadHistory
-            currentConversationId={conversationId}
-            onSwitchThread={handleSwitchThread}
-            onNewThread={handleNewConversation}
-            onMirrorToDrive={handleMirrorToDrive}
-          />
         </div>
         {bootstrapProgress && (
           <div className="max-w-3xl mx-auto px-3 sm:px-4 pb-2">
@@ -807,27 +800,37 @@ const HanaChatInner = () => {
       </div>
 
       {!chatStarted ? (
-        <div className="flex-1 flex flex-col items-start justify-end px-6 pb-8">
-          <div className="text-left max-w-xs space-y-4 animate-fade-in">
-            
-            <div className="space-y-1.5">
-              <h2 className="text-lg font-serif font-semibold text-foreground">
-                Ahoj, Hani 💛
-              </h2>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
-              </p>
+        <>
+          <div className="flex-1" />
+          <div className="px-6 pb-6 animate-fade-in">
+            <div className="text-left max-w-xs space-y-3">
+              <div className="space-y-1.5">
+                <h2 className="text-lg font-serif font-semibold text-foreground">
+                  Ahoj, Hani 💛
+                </h2>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
+                </p>
+              </div>
+              <Button
+                onClick={handleNewConversation}
+                size="sm"
+                className="rounded-xl gap-1.5 text-xs"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Nová konverzace
+              </Button>
+              <div>
+                <HanaThreadHistory
+                  currentConversationId={conversationId}
+                  onSwitchThread={handleSwitchThread}
+                  onNewThread={handleNewConversation}
+                  onMirrorToDrive={handleMirrorToDrive}
+                />
+              </div>
             </div>
-            <Button
-              onClick={handleNewConversation}
-              size="sm"
-              className="rounded-xl gap-1.5 text-xs"
-            >
-              <Send className="w-3.5 h-3.5" />
-              Nová konverzace
-            </Button>
           </div>
-        </div>
+        </>
       ) : (
         <>
           {/* Messages */}
