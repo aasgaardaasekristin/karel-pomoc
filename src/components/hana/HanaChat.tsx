@@ -800,27 +800,7 @@ const HanaChatInner = () => {
       </div>
 
       {!chatStarted ? (
-        <div className="flex-1 flex flex-col items-start justify-end px-6 pb-8">
-          <div className="text-left max-w-xs space-y-4 animate-fade-in">
-            
-            <div className="space-y-1.5">
-              <h2 className="text-lg font-serif font-semibold text-foreground">
-                Ahoj, Hani 💛
-              </h2>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
-              </p>
-            </div>
-            <Button
-              onClick={handleNewConversation}
-              size="sm"
-              className="rounded-xl gap-1.5 text-xs"
-            >
-              <Send className="w-3.5 h-3.5" />
-              Nová konverzace
-            </Button>
-          </div>
-        </div>
+        <div className="flex-1" />
       ) : (
         <>
           {/* Messages */}
