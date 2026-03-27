@@ -20,6 +20,7 @@ interface CrisisAlertData {
   acknowledged_at: string | null;
   resolved_at: string | null;
   resolution_notes: string | null;
+  crisis_thread_id: string | null;
 }
 
 interface CrisisTaskData {
