@@ -126,32 +126,36 @@ const HanaPinScreen = ({ onSuccess, onBack }: Props) => {
         </KarelButton>
       </div>
 
-      {/* Video avatar */}
-      {showVideo && (
+      {/* Video avatar – always mounted, hidden via opacity */}
+      <div
+        className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+        style={{
+          opacity: showPin ? 0 : 1,
+          visibility: showPin ? "hidden" : "visible",
+          transition: "opacity 0.5s ease",
+        }}
+      >
         <div
-          className="absolute inset-0 flex items-center justify-center z-10"
+          className="rounded-full overflow-hidden"
+          style={{
+            width: 180,
+            height: 180,
+            boxShadow: "0 0 40px 15px rgba(200,169,110,0.35), 0 4px 20px rgba(200,169,110,0.25)",
+            ...videoStyle,
+          }}
         >
-          <div
-            className="rounded-full overflow-hidden"
-            style={{
-              width: 180,
-              height: 180,
-              boxShadow: "0 0 40px 15px rgba(200,169,110,0.35), 0 4px 20px rgba(200,169,110,0.25)",
-              ...videoStyle,
-            }}
-          >
-            <video
-              ref={videoRef}
-              src="/hana-avatar.mp4"
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover"
-              style={{ borderRadius: "50%" }}
-            />
-          </div>
+          <video
+            ref={videoRef}
+            src="/hana-avatar.mp4"
+            autoPlay
+            muted
+            playsInline
+            preload="auto"
+            className="w-full h-full object-cover"
+            style={{ borderRadius: "50%" }}
+          />
         </div>
-      )}
+      </div>
 
       {/* PIN form – appears after video fades */}
       {showPin && (
