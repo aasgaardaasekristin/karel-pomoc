@@ -3,7 +3,7 @@ import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import { Button } from "@/components/ui/button";
-import hanaWelcomeImg from "@/assets/hana-welcome.png";
+import hanaBg from "@/assets/hana-bg.png";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
@@ -730,7 +730,12 @@ const HanaChatInner = () => {
 
 
   return (
-    <>
+    <div className="relative flex flex-col h-full">
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0"
+        style={{ backgroundImage: `url(${hanaBg})` }}
+      />
+      <div className="relative z-10 flex flex-col h-full">
       {/* Toolbar with Správa + Vlákna – no border, visually merged with header */}
       <div className="bg-transparent">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-1 flex items-center justify-end gap-2">
@@ -910,7 +915,8 @@ const HanaChatInner = () => {
           </ScrollArea>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
+    </div>
   );
 };
 
