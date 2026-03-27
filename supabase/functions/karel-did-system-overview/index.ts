@@ -291,6 +291,7 @@ serve(async (req) => {
       { data: hanaConversations24h },
       { data: researchThreads24h },
       { data: openMeetings },
+      { data: activeCrisisAlerts },
     ] = await Promise.all([
       sb
         .from("did_part_registry")
@@ -352,6 +353,12 @@ serve(async (req) => {
         .select("id, topic, agenda, status, created_at, deadline_at, hanka_joined_at, kata_joined_at, triggered_by")
         .eq("user_id", userId)
         .in("status", ["open", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(10),
+      sb
+        .from("crisis_alerts")
+        .select("part_name, severity, status, summary, trigger_signals, karel_assessment, intervention_plan, created_at")
+        .in("status", ["ACTIVE", "ACKNOWLEDGED"])
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
