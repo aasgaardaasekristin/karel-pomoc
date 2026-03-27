@@ -21,10 +21,10 @@ const formatTimeAgo = (dateStr: string) => {
 
 const ResearchThreadList = ({ threads, onSelect, onDelete, onNew, loading }: Props) => {
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 relative z-10">
-      <div className="text-center mb-6 animate-fade-in">
-        <h2 className="text-xl font-bold" style={{ color: '#1a5c2e' }}>Profesní zdroje</h2>
-        <p className="text-sm mt-1" style={{ color: '#2d7a45' }}>
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 relative z-10 flex flex-col h-full justify-end pb-4">
+      <div className="text-center mb-3 animate-fade-in">
+        <h2 className="text-lg font-bold" style={{ color: '#1a5c2e' }}>Profesní zdroje</h2>
+        <p className="text-xs mt-0.5" style={{ color: '#2d7a45' }}>
           Vlákna výzkumů a odborných rešerší
         </p>
       </div>
