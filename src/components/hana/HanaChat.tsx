@@ -726,31 +726,7 @@ const HanaChatInner = () => {
       </div>
     </div>
   );
-  // Intro animation sequence
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => setIntroPhase("avatar-grow"), 1000));
-    timers.push(setTimeout(() => setIntroPhase("avatar-shrink"), 2500));
-    timers.push(setTimeout(() => setIntroPhase("form-in"), 4000));
-    timers.push(setTimeout(() => setIntroPhase("done"), 5000));
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
-  const showIntroAvatar = introPhase === "avatar-in" || introPhase === "avatar-grow" || introPhase === "avatar-shrink";
-  const introComplete = introPhase === "form-in" || introPhase === "done";
-
-  const introAvatarStyle: React.CSSProperties = {
-    transition: "all 1.5s ease-in-out",
-    opacity: introPhase === "avatar-shrink" ? 0 : 1,
-    transform:
-      introPhase === "avatar-in" ? "scale(1)"
-        : introPhase === "avatar-grow" ? "scale(1.3)"
-          : "scale(0.5) translateY(20px)",
-    filter: introPhase === "avatar-grow" ? "brightness(1.15)" : "brightness(1)",
-    boxShadow: introPhase === "avatar-grow"
-      ? "0 0 40px 15px rgba(200,169,110,0.45), 0 4px 20px rgba(200,169,110,0.3)"
-      : "0 4px 20px rgba(200,169,110,0.3)",
-  };
+  // Intro animation removed – now in HanaPinScreen
 
 
   return (
