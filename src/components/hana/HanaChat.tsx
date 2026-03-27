@@ -827,27 +827,59 @@ const HanaChatInner = () => {
       </div>
 
       {!chatStarted ? (
-        /* Clean empty state - no chat history visible */
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="text-center max-w-sm space-y-5">
-            <img src={hanaWelcomeImg} alt="" className="w-28 h-28 mx-auto object-contain" />
-            <div className="space-y-1.5">
-              <h2 className="text-lg font-serif font-semibold text-foreground">
-                Ahoj, Hani 💛
-              </h2>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
-              </p>
+        <div className="flex-1 flex flex-col items-center justify-center px-4 relative">
+          {/* Intro avatar animation */}
+          {showIntroAvatar && (
+            <div className="absolute inset-0 flex items-center justify-center z-10">
+              <div
+                className="rounded-full overflow-hidden"
+                style={{ width: 140, height: 140, ...introAvatarStyle }}
+              >
+                <video
+                  ref={introVideoRef}
+                  src="/hana-avatar.mp4"
+                  autoPlay
+                  muted
+                  playsInline
+                  className="w-full h-full object-cover"
+                  style={{ borderRadius: "50%" }}
+                />
+              </div>
             </div>
-            <Button
-              onClick={handleNewConversation}
-              size="sm"
-              className="rounded-xl gap-1.5 text-xs"
+          )}
+
+          {/* Welcome content – appears after intro */}
+          {introComplete && (
+            <div
+              className="text-center max-w-sm space-y-5"
+              style={{ animation: "hana-intro-in 1s ease-out forwards" }}
             >
-              <Send className="w-3.5 h-3.5" />
-              Nová konverzace
-            </Button>
-          </div>
+              <img src={hanaWelcomeImg} alt="" className="w-28 h-28 mx-auto object-contain" />
+              <div className="space-y-1.5">
+                <h2 className="text-lg font-serif font-semibold text-foreground">
+                  Ahoj, Hani 💛
+                </h2>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
+                </p>
+              </div>
+              <Button
+                onClick={handleNewConversation}
+                size="sm"
+                className="rounded-xl gap-1.5 text-xs"
+              >
+                <Send className="w-3.5 h-3.5" />
+                Nová konverzace
+              </Button>
+            </div>
+          )}
+
+          <style>{`
+            @keyframes hana-intro-in {
+              0% { opacity: 0; transform: scale(0.95); }
+              100% { opacity: 1; transform: scale(1); }
+            }
+          `}</style>
         </div>
       ) : (
         <>
