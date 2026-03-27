@@ -235,6 +235,33 @@ async function fetchUpdatedCardsInfo(supabase: ReturnType<typeof createClient>):
   }
 }
 
+async function fetchCrisisAlerts(supabase: ReturnType<typeof createClient>): Promise<{ active: any[]; resolved: any[]; text: string }> {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  try {
+    const { data, error } = await supabase
+      .from("crisis_alerts")
+      .select("*")
+      .gte("created_at", todayStart.toISOString())
+      .order("created_at", { ascending: false });
+
+    if (error || !data?.length) return { active: [], resolved: [], text: "" };
+
+    const active = data.filter((a: any) => a.status === "ACTIVE" || a.status === "ACKNOWLEDGED");
+    const resolved = data.filter((a: any) => a.status === "RESOLVED");
+
+    const lines: string[] = [];
+    for (const a of data) {
+      const signals = (a.trigger_signals || []).join(", ");
+      lines.push(`- **${a.part_name}** [${a.severity}, ${a.status}]: ${a.summary} | Signály: ${signals}`);
+    }
+    return { active, resolved, text: lines.join("\n") || "(žádné)" };
+  } catch (e) {
+    console.error("[Dashboard] fetchCrisisAlerts error:", e);
+    return { active: [], resolved: [], text: "(chyba načítání)" };
+  }
+}
+
 /* ================================================================
    DRIVE WRITE
    ================================================================ */
@@ -329,15 +356,71 @@ serve(async (req) => {
 
     // 1. COLLECT ALL DATA (parallel)
     console.log("[Dashboard] Krok 1: Sběr dat server-side...");
-    const [activePartsData, tasksData, meetingsData, operativePlan, updatedCardsInfo] = await Promise.all([
+    const [activePartsData, tasksData, meetingsData, operativePlan, updatedCardsInfo, crisisData] = await Promise.all([
       fetchActiveParts24h(supabase),
       fetchTasksData(supabase),
       fetchMeetingsData(supabase),
       fetchOperativePlan(supabase),
       fetchUpdatedCardsInfo(supabase),
+      fetchCrisisAlerts(supabase),
     ]);
 
+    // ═══ CRISIS CONTEXT INJECTION ═══
+    let crisisSystemInjection = "";
+    if (crisisData.active.length > 0) {
+      const alertBlocks = crisisData.active.map((a: any) => {
+        const statusText = a.status === "ACTIVE" ? "čeká na reakci" : ("řeší se (potvrzeno " + (a.acknowledged_by || "?") + ")");
+        const plan = a.intervention_plan || "(nebyl vygenerován)";
+        return "- Část: " + a.part_name + ", Úroveň: " + a.severity + ", Status: " + statusText + "\n  Souhrn: " + a.summary + "\n  Plán intervence: " + plan;
+      }).join("\n\n");
+
+      crisisSystemInjection = `
+
+POZOR – KRIZOVÁ SITUACE:
+
+Dnes byla detekována krizová situace. Toto MUSÍ být PRVNÍ a NEJDŮLEŽITĚJŠÍ část tvého přehledu. Nezačínej přehled běžným shrnutím dne. Začni KRIZOVÝM BLOKEM.
+
+Aktivní krize:
+${alertBlocks}
+
+Tvůj přehled MUSÍ začínat takto:
+
+"🔴 KRIZOVÉ UPOZORNĚNÍ
+
+[part_name] je/byl dnes v akutním distresu. [summary]
+
+Úroveň rizika: [severity]
+Status: [status]
+
+OKAMŽITÉ KROKY:
+1. [z intervention_plan]
+2. [z intervention_plan]
+
+Krizová porada je otevřena – připojte se."
+
+Teprve PO krizovém bloku pokračuj s běžným přehledem dne.
+Ale i v běžném přehledu ZMIŇ krizovou situaci v kontextu aktivity dané části.
+NIKDY neprezentuj den jako "normální" pokud existuje aktivní krize.`;
+    }
+
+    // ═══ SECURITY STATUS BLOCK ═══
+    let securityStatusBlock = "\n\n## BEZPEČNOSTNÍ STATUS\n";
+    if (crisisData.active.length > 0) {
+      securityStatusBlock += "🔴 AKTIVNÍ KRIZE – viz krizový blok výše.\n";
+      for (const a of crisisData.active) {
+        securityStatusBlock += `- ${a.part_name}: ${a.severity}, status: ${a.status}\n`;
+      }
+    } else if (crisisData.resolved.length > 0) {
+      for (const a of crisisData.resolved) {
+        securityStatusBlock += `⚠️ Dnes byla řešena krizová situace u ${a.part_name}. Status: vyřešeno v ${a.resolved_at || "?"}. Detaily v krizovém vlákně.\n`;
+      }
+    } else {
+      securityStatusBlock += "✅ Žádné krizové situace dnes detekovány.\n";
+    }
+
     // 2. BUILD PROMPT
+    const effectiveSystemPrompt = DASHBOARD_PROMPT + crisisSystemInjection;
+
     const userPrompt = `## DATUM: ${targetDate}
 
 ## AKTIVNÍ ČÁSTI (posledních 24h):
@@ -354,6 +437,9 @@ ${meetingsData}
 
 ## OPERATIVNÍ PLÁN:
 ${operativePlan}
+
+${crisisData.text ? `## KRIZOVÉ ALERTY DNES:\n${crisisData.text}` : ""}
+${securityStatusBlock}
 
 Sestav kompletní denní dashboard.`;
 
@@ -374,7 +460,7 @@ Sestav kompletní denní dashboard.`;
           body: JSON.stringify({
             model: "google/gemini-2.5-flash",
             messages: [
-              { role: "system", content: DASHBOARD_PROMPT },
+              { role: "system", content: effectiveSystemPrompt },
               { role: "user", content: userPrompt },
             ],
             temperature: 0.3,
