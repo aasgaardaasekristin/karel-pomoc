@@ -807,7 +807,7 @@ const HanaChatInner = () => {
       </div>
 
       {!chatStarted ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
+        <div className="flex-1 flex flex-col items-end justify-end px-6 pb-10">
           <div className="text-center max-w-sm space-y-5 animate-fade-in">
             
             <div className="space-y-1.5">
