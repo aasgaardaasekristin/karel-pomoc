@@ -736,7 +736,7 @@ const HanaChatInner = () => {
         style={{ backgroundImage: `url(${hanaBg})` }}
       />
       <div className="relative z-10 flex flex-col h-full">
-      {/* Toolbar with Správa + Vlákna – no border, visually merged with header */}
+      {/* Správa popover - rendered in header via Chat.tsx, removed from here */}
       <div className="bg-transparent">
         <div className="max-w-3xl mx-auto px-3 sm:px-4 py-1 flex items-center justify-end gap-2">
           <Popover open={spravaOpen} onOpenChange={setSpravaOpen}>
@@ -784,13 +784,6 @@ const HanaChatInner = () => {
               </div>
             </PopoverContent>
           </Popover>
-
-          <HanaThreadHistory
-            currentConversationId={conversationId}
-            onSwitchThread={handleSwitchThread}
-            onNewThread={handleNewConversation}
-            onMirrorToDrive={handleMirrorToDrive}
-          />
         </div>
         {bootstrapProgress && (
           <div className="max-w-3xl mx-auto px-3 sm:px-4 pb-2">
