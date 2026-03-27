@@ -69,7 +69,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [threadsRes, pendingWritesRes] = await Promise.all([
+      const [threadsRes, pendingWritesRes, crisisRes] = await Promise.all([
         supabase
           .from("did_threads")
           .select("id, part_name, last_activity_at, messages")
@@ -79,7 +79,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           .from("did_pending_drive_writes")
           .select("id", { count: "exact", head: true })
           .eq("status", "pending"),
+        supabase
+          .from("crisis_alerts")
+          .select("*")
+          .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+          .order("created_at", { ascending: false }),
       ]);
+
+      setActiveCrises(crisisRes.data || []);
 
       const threads = threadsRes.data || [];
       const now = Date.now();
