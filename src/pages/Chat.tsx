@@ -1547,7 +1547,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat',
-              opacity: 0.45,
+              opacity: 0.7,
             }}
           />
           {researchFlowState === "thread-list" ? (
