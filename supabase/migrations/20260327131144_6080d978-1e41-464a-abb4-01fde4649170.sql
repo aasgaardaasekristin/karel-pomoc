@@ -1,0 +1,1 @@
+ALTER TABLE public.crisis_alerts ADD COLUMN IF NOT EXISTS crisis_thread_id uuid;

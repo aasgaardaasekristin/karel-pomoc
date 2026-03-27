@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertTriangle, CheckCircle, X, Shield } from "lucide-react";
+import { AlertTriangle, CheckCircle, X, Shield, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { cs } from "date-fns/locale";
 
@@ -19,6 +19,7 @@ interface CrisisAlertData {
   acknowledged_at: string | null;
   resolved_at: string | null;
   resolution_notes: string | null;
+  crisis_thread_id: string | null;
 }
 
 interface CrisisTaskData {
@@ -167,13 +168,25 @@ const CrisisAlert: React.FC = () => {
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 flex-wrap">
                   <button
                     onClick={() => setDetailAlert(alert)}
                     className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors"
                   >
                     OTEVŘÍT DETAIL
                   </button>
+                  {alert.crisis_thread_id && (
+                    <button
+                      onClick={() => {
+                        // Navigate to chat with crisis thread context
+                        window.location.href = `/chat?crisisThread=${alert.crisis_thread_id}`;
+                      }}
+                      className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      KRIZOVÁ PORADA
+                    </button>
+                  )}
                   {!isAcknowledged && (
                     <button
                       onClick={() => handleAcknowledge(alert)}

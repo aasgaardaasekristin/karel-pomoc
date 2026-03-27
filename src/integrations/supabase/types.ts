@@ -384,6 +384,7 @@ export type Database = {
           conversation_excerpts: string | null
           conversation_id: string | null
           created_at: string
+          crisis_thread_id: string | null
           id: string
           intervention_plan: string | null
           karel_assessment: string | null
@@ -401,6 +402,7 @@ export type Database = {
           conversation_excerpts?: string | null
           conversation_id?: string | null
           created_at?: string
+          crisis_thread_id?: string | null
           id?: string
           intervention_plan?: string | null
           karel_assessment?: string | null
@@ -418,6 +420,7 @@ export type Database = {
           conversation_excerpts?: string | null
           conversation_id?: string | null
           created_at?: string
+          crisis_thread_id?: string | null
           id?: string
           intervention_plan?: string | null
           karel_assessment?: string | null
