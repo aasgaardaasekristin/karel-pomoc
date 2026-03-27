@@ -369,7 +369,9 @@ serve(async (req) => {
     let crisisSystemInjection = "";
     if (crisisData.active.length > 0) {
       const alertBlocks = crisisData.active.map((a: any) => {
-        return `- Část: ${a.part_name}, Úroveň: ${a.severity}, Status: ${a.status === "ACTIVE" ? "čeká na reakci" : "řeší se (potvrzeno ${a.acknowledged_by || "?"})"}\n  Souhrn: ${a.summary}\n  Plán intervence: ${a.intervention_plan || "(nebyl vygenerován)"}`;
+        const statusText = a.status === "ACTIVE" ? "čeká na reakci" : ("řeší se (potvrzeno " + (a.acknowledged_by || "?") + ")");
+        const plan = a.intervention_plan || "(nebyl vygenerován)";
+        return "- Část: " + a.part_name + ", Úroveň: " + a.severity + ", Status: " + statusText + "\n  Souhrn: " + a.summary + "\n  Plán intervence: " + plan;
       }).join("\n\n");
 
       crisisSystemInjection = `
