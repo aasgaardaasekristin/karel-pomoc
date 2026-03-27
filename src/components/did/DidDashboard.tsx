@@ -92,6 +92,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const now = Date.now();
       const latestByPart = new Map<string, ActiveThreadSummary>();
       const partRows: PartActivity[] = [];
+      const threadsByPart = new Map<string, typeof threads>();
+
+      for (const thread of threads) {
+        const key = (thread.part_name || "").toUpperCase();
+        const bucket = threadsByPart.get(key) || [];
+        bucket.push(thread);
+        threadsByPart.set(key, bucket);
+      }
 
       // Group by case-insensitive part name, keep the MOST RECENT activity
       const bestActivityByPart = new Map<string, { thread: typeof threads[0]; diffDays: number }>();
@@ -106,9 +114,16 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       }
 
       for (const [_key, { thread, diffDays }] of bestActivityByPart) {
+        const allThreadsForPart = threadsByPart.get(thread.part_name.toUpperCase()) || [thread];
+        const mostRecentActivity = Math.max(
+          ...allThreadsForPart.map((item) => new Date(item.last_activity_at || 0).getTime())
+        );
+        const daysSinceActive = Number.isFinite(mostRecentActivity)
+          ? (Date.now() - mostRecentActivity) / (1000 * 60 * 60 * 24)
+          : Number.POSITIVE_INFINITY;
         const lastSeen = thread.last_activity_at || null;
-        const status: PartActivity["status"] = diffDays <= 1 ? "active" : diffDays > 7 ? "warning" : "sleeping";
-        latestByPart.set(thread.part_name, {
+        const status: PartActivity["status"] = daysSinceActive <= 1 ? "active" : daysSinceActive > 7 ? "warning" : "sleeping";
+        latestByPart.set(thread.part_name.toUpperCase(), {
           id: thread.id,
           partName: thread.part_name,
           lastActivityAt: thread.last_activity_at,
