@@ -282,7 +282,7 @@ const TaskCard = ({
     : "bg-muted/40 border-border/40 text-foreground/90";
 
   return (
-    <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
+    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : "border-border/60 bg-card/40"}`}>
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (

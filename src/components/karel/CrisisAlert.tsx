@@ -43,11 +43,17 @@ const CrisisAlert: React.FC = () => {
   const [showResolveInput, setShowResolveInput] = useState(false);
 
   const fetchAlerts = useCallback(async () => {
-    const { data } = await supabase
+    console.log("[CrisisAlert] Fetching active alerts...");
+    const { data, error } = await supabase
       .from("crisis_alerts")
       .select("*")
       .in("status", ["ACTIVE", "ACKNOWLEDGED"])
       .order("created_at", { ascending: false });
+    if (error) {
+      console.error("[CrisisAlert] Fetch error:", error.message);
+      return;
+    }
+    console.log("[CrisisAlert] Found", data?.length || 0, "alerts");
     if (data) setAlerts(data as CrisisAlertData[]);
   }, []);
 
