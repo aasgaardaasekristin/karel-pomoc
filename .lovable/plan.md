@@ -1,27 +1,58 @@
 
+Cíl:
+- V režimu Hana opravit dvě věci přesně podle zadání:
+  1. uvítací blok („Ahoj, Hani…“, „Nová konverzace“, „Vlákna“) musí být opravdu v levém spodním rohu,
+  2. „Správa“ se musí přesunout do horní lišty vedle „← Zpět / Hana“ a zmizet z vnitřku stránky.
 
-## Plan: Fix diacritic inconsistency in subsection keys
+Co je teď špatně:
+- V `src/components/hana/HanaChat.tsx` je nahoře stále interní toolbar se „Správa“, takže zabírá vertikální prostor a rozhodí pozici welcome bloku.
+- Welcome část je sice oddělená `flex-1`, ale celý layout ještě obsahuje horní obsah uvnitř komponenty, proto blok nekončí skutečně dole.
+- `src/pages/Chat.tsx` horní lištu pro Hanu už renderuje, ale „Správa“ tam dosud není doplněná.
 
-### Problem
-`povedomí_o_systemu_a_role` (with diacritic `í`) is used in `sectionAUpdater.ts` and `threadAnalyzer.ts`, but the edge function `karel-thread-analyzer` uses `povedomi_o_systemu_a_role` (without diacritics). This causes AI-generated updates to fail matching.
+Plán úpravy:
+1. Vyčistit vršek stránky Hana
+- V `src/components/hana/HanaChat.tsx` odstranit celý interní horní řádek se `Popover` tlačítkem „Správa“.
+- Nechat v komponentě jen pozadí + hlavní obsah, bez vlastního headeru.
 
-### Changes
+2. Ukotvit welcome blok skutečně dole vlevo
+- V `HanaChat.tsx` přestavět neaktivní stav (`!chatStarted`) tak, aby hlavní wrapper zabíral celou dostupnou výšku a obsah byl zarovnán přes `justify-end` + `items-start`.
+- Welcome blok dát do kontejneru s jasným spodním odsazením (`pb-*`) a levým odsazením (`px-*`), bez prvků nad ním, které by ho zvedaly.
+- „Nová konverzace“ a „Vlákna“ ponechat pod textem ve stejném levém sloupci.
 
-**File 1: `src/services/cardUpdaters/sectionAUpdater.ts`**
-Replace all 10 occurrences of `povedomí_o_systemu_a_role` → `povedomi_o_systemu_a_role` (interface, defaults, parser return, rebuild, and update application).
+3. Přesunout „Správa“ do globální horní lišty
+- V `src/pages/Chat.tsx` do Hana headeru vedle tlačítka zpět a titulku „Hana“ přidat tlačítko/popover „Správa“.
+- Obsah popoveru zachovat funkčně stejný jako nyní v `HanaChat.tsx` (archiv, osvěžení paměti, bootstrap, kartotéka), jen přesunout renderování do skutečné horní lišty.
 
-**File 2: `src/services/threadAnalyzer.ts`** (line 93)
-Replace `povedomí_o_systemu_a_role` → `povedomi_o_systemu_a_role` in the prompt constant.
+4. Propojit akce „Správa“ s Hana obrazovkou
+- Protože logika akcí je nyní uvnitř `HanaChat.tsx`, zavedu čistý způsob sdílení:
+  - buď přes props/callback registraci z `HanaChat` do `Chat.tsx`,
+  - nebo přes malý lokální context pro Hana header actions.
+- Vyberu variantu, která zasáhne nejméně souborů a nerozbije současné chování.
 
-### Other diacritic keys found (consistent, no mismatch)
-- `TERAPEUTICKÝ_PROFIL` — used consistently in `karel-did-part-summary` and `DidPartCard.tsx`
-- `SPLNĚNÍ_HANKA`, `SPLNĚNÍ_KATA`, `HODNOCENÍ_TÝMU`, `NESPLNĚNÉ_3+_DNÍ`, `POZVÁNKA_NA_PORADU` — prompt-internal labels in `karel-did-daily-cycle`
-- `ZVÝŠENÁ_AKTIVITA`, `VYSOKÁ_AKTIVITA` — local string comparisons in `karel-did-context-prime`
-- `POSLEDNÍ_AKTUALIZACE` — sheet header in `karel-did-drive-write`
+5. Zachovat ostatní požadavky
+- Pozadí s nahranou fotkou zůstane napevno přes celou stránku.
+- „Vzhled“ zůstane pro Hanu skrytý.
+- „Vlákna“ zůstane dole vlevo pod „Nová konverzace“, ne v horní liště.
 
-These are all internally consistent (no mismatch between files), but per your rule they should also be ASCII-only. Changing them would require updating both the edge functions and the components that parse those keys. I can include those fixes now or defer them — let me know.
+Technické detaily:
+- Soubory:
+  - `src/components/hana/HanaChat.tsx`
+  - `src/pages/Chat.tsx`
+  - případně malý nový helper/context jen pokud bude potřeba pro přenos akcí „Správa“
+- Klíčová změna layoutu:
+```text
+Hana page
+┌ header (globální, sticky)
+│ ← Zpět | Hana | Správa | ...
+└ content area (full height)
+  └ bottom-left stack
+    - Ahoj, Hani
+    - podpůrný text
+    - Nová konverzace
+    - Vlákna
+```
 
-### Summary
-- 2 files changed, ~10 replacements total for the critical fix
-- No database or edge function changes needed (the edge function already uses the correct ASCII version)
-
+Výsledek po implementaci:
+- Texty už nebudou nahoře ani u čela postavy.
+- Budou opravdu vlevo dole, na tmavé části saka/ramene.
+- „Správa“ bude nahoře v liště vedle „← Zpět / Hana“, přesně jak požaduješ.
