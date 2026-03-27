@@ -1578,7 +1578,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           ) : (
             <div className="flex-1 flex flex-col relative z-10">
               {activeResearchThread && (
-                <div className="border-b border-border bg-card/30 backdrop-blur-sm">
+                <div className="border-b border-border/30 bg-card/20 backdrop-blur-md">
                   <div className="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
                     <div className="text-sm">
                       <span className="text-muted-foreground">Téma:</span>{" "}
