@@ -64,6 +64,10 @@ const Hub = () => {
     if (saved) {
       try { applyTemporaryTheme(JSON.parse(saved)); } catch {}
     }
+    try {
+      sessionStorage.removeItem(HANA_PIN_KEY);
+      sessionStorage.removeItem("karel_hana_pin_access_token");
+    } catch {}
     return () => { setLocalMode(null); restoreGlobalTheme(); };
   }, []);
 
@@ -81,14 +85,20 @@ const Hub = () => {
   }, [navigate]);
 
   const handleLogout = async () => {
-    try { sessionStorage.removeItem(HANA_PIN_KEY); } catch {}
+    try {
+      sessionStorage.removeItem(HANA_PIN_KEY);
+      sessionStorage.removeItem("karel_hana_pin_access_token");
+    } catch {}
     await supabase.auth.signOut();
     navigate("/");
   };
 
   const handleSectionClick = (key: string) => {
     if (key === "hana") {
-      // Always show PIN screen with video animation
+      try {
+        sessionStorage.removeItem(HANA_PIN_KEY);
+        sessionStorage.removeItem("karel_hana_pin_access_token");
+      } catch {}
       setShowPinEntry(true);
       return;
     }
@@ -99,7 +109,10 @@ const Hub = () => {
   const handlePinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (pin === CORRECT_PIN) {
-      try { sessionStorage.setItem(HANA_PIN_KEY, "1"); } catch {}
+      try {
+        sessionStorage.setItem(HANA_PIN_KEY, "1");
+        sessionStorage.setItem("karel_hana_pin_access_token", `${Date.now()}`);
+      } catch {}
       try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
       navigate("/chat");
     } else {
@@ -119,7 +132,10 @@ const Hub = () => {
 
   if (showPinEntry) {
     return <HanaPinScreen onSuccess={() => {
-      try { sessionStorage.setItem(HANA_PIN_KEY, "1"); } catch {}
+      try {
+        sessionStorage.setItem(HANA_PIN_KEY, "1");
+        sessionStorage.setItem("karel_hana_pin_access_token", `${Date.now()}`);
+      } catch {}
       try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
       navigate("/chat");
     }} onBack={() => { setShowPinEntry(false); setPin(""); setPinError(false); }} />;
