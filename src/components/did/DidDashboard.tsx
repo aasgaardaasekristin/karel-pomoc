@@ -53,6 +53,7 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 );
 
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
+  const navigate = useNavigate();
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
@@ -63,6 +64,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [isCleaningTasks, setIsCleaningTasks] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [activeCrises, setActiveCrises] = useState<any[]>([]);
 
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
