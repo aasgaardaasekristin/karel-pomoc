@@ -131,7 +131,7 @@ const isTodayCategory = (category?: string | null) => category === "today" || ca
 const isTomorrowCategory = (category?: string | null) => category === "tomorrow";
 const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
 const categoryLabel = (category?: string | null) => isTodayCategory(category) ? "Dnes" : isTomorrowCategory(category) ? "Zítra" : "Dlouhodobé";
-const priorityLabel = (priority?: string | null) => priority === "high" ? "Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
+const priorityLabel = (priority?: string | null) => priority === "urgent" ? "🔴 Urgentní" : priority === "high" ? "🟠 Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
 
 const aggregateTaskStatus = (task: TherapistTask): TrafficStatus => {
   if (normalizeAssignedTo(task.assigned_to) === "both") {
