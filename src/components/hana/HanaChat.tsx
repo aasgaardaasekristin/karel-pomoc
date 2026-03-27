@@ -831,7 +831,6 @@ const HanaChatInner = () => {
                   onMirrorToDrive={handleMirrorToDrive}
                 />
               </div>
-            </div>
           </div>
         </div>
       ) : (
