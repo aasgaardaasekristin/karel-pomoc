@@ -833,7 +833,7 @@ const HanaChatInner = () => {
               </div>
             </div>
           </div>
-        </>
+        </div>
       ) : (
         <>
           {/* Messages */}
