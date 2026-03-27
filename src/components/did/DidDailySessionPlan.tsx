@@ -76,6 +76,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [customPartName, setCustomPartName] = useState("");
   const [prevSession, setPrevSession] = useState<PreviousSession | null>(null);
+  const [activeCrises, setActiveCrises] = useState<any[]>([]);
 
   // Preference dialog state
   const [prefDialogOpen, setPrefDialogOpen] = useState(false);
