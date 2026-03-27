@@ -37,7 +37,7 @@ const handleApiError = async (response: Response) => {
   throw new Error(backendError || "Něco se pokazilo. Zkus to znovu.");
 };
 
-type IntroPhase = "avatar-in" | "avatar-grow" | "avatar-shrink" | "form-in" | "done";
+// Intro animation removed – now lives in HanaPinScreen
 
 const HanaChatInner = () => {
   const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();

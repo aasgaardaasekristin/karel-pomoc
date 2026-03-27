@@ -6,6 +6,7 @@ import { Sparkles, BookOpen, Heart, LogOut, Shield, Lock, ArrowRight, ChevronRig
 import karelAvatar from '@/assets/karel-avatar.png';
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelButton } from "@/components/ui/KarelButton";
+import HanaPinScreen from "@/components/hana/HanaPinScreen";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
