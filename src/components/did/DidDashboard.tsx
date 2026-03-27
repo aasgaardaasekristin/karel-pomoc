@@ -72,8 +72,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const [threadsRes, pendingWritesRes, crisisRes] = await Promise.all([
         supabase
           .from("did_threads")
-          .select("id, part_name, last_activity_at, messages")
-          .eq("sub_mode", "cast")
+          .select("id, part_name, last_activity_at, messages, sub_mode")
+          .in("sub_mode", ["cast", "crisis"])
           .order("last_activity_at", { ascending: false }),
         supabase
           .from("did_pending_drive_writes")
@@ -113,7 +113,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         }
       }
 
-      for (const [_key, { thread, diffDays }] of bestActivityByPart) {
+      for (const [_key, { thread }] of bestActivityByPart) {
         const allThreadsForPart = threadsByPart.get(thread.part_name.toUpperCase()) || [thread];
         const mostRecentActivity = Math.max(
           ...allThreadsForPart.map((item) => new Date(item.last_activity_at || 0).getTime())
