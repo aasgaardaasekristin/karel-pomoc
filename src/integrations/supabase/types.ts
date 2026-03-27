@@ -377,6 +377,60 @@ export type Database = {
         }
         Relationships: []
       }
+      crisis_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          conversation_excerpts: string | null
+          conversation_id: string | null
+          created_at: string
+          id: string
+          intervention_plan: string | null
+          karel_assessment: string | null
+          part_name: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          severity: string
+          status: string
+          summary: string
+          trigger_signals: string[] | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          conversation_excerpts?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          intervention_plan?: string | null
+          karel_assessment?: string | null
+          part_name: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          severity: string
+          status?: string
+          summary: string
+          trigger_signals?: string[] | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          conversation_excerpts?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          intervention_plan?: string | null
+          karel_assessment?: string | null
+          part_name?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          summary?: string
+          trigger_signals?: string[] | null
+        }
+        Relationships: []
+      }
       crisis_briefs: {
         Row: {
           created_at: string
@@ -442,6 +496,50 @@ export type Database = {
           time_dynamics?: Json
         }
         Relationships: []
+      }
+      crisis_tasks: {
+        Row: {
+          assigned_to: string
+          completed_at: string | null
+          created_at: string
+          crisis_alert_id: string
+          description: string | null
+          id: string
+          priority: string
+          status: string
+          title: string
+        }
+        Insert: {
+          assigned_to: string
+          completed_at?: string | null
+          created_at?: string
+          crisis_alert_id: string
+          description?: string | null
+          id?: string
+          priority?: string
+          status?: string
+          title: string
+        }
+        Update: {
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string
+          crisis_alert_id?: string
+          description?: string | null
+          id?: string
+          priority?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_tasks_crisis_alert_id_fkey"
+            columns: ["crisis_alert_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_conversations: {
         Row: {
