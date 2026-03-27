@@ -150,80 +150,7 @@ HIGH = závažný distres bez přímého ohrožení života`,
       const signalsList = (result.signals || []).map((s: string) => `  • ${s}`).join("\n");
       const totalMsgs = msgs.length;
 
-      const meetingKarelMessage = `⚠️ KRIZOVÁ PORADA – ${thread.part_name} – ${dateStr}
-
-Svolávám mimořádnou krizovou poradu. Situace je ${result.severity || "CRITICAL"}.
-
-CO SE STALO:
-${result.summary || "Detekována krizová situace."}
-
-DETEKOVANÉ SIGNÁLY:
-${signalsList || "  • (nespecifikováno)"}
-
-MOJE VYHODNOCENÍ:
-${result.assessment || "Vyhodnocení není k dispozici."}
-
----
-
-PŘÍMÉ CITACE Z ROZHOVORU S ${thread.part_name.toUpperCase()}:
-
-${quotesBlock}
-
-Na základě těchto výroků hodnotím situaci jako ${result.severity || "CRITICAL"}.
-
----
-
-DOSAVADNÍ PRŮBĚH KOMUNIKACE S ${thread.part_name.toUpperCase()}:
-${thread.part_name} kontaktoval/a Karla. Proběhlo ${totalMsgs} zpráv.
-${result.summary || ""}
-
----
-
-MŮJ NÁVRH OKAMŽITÉHO POSTUPU:
-
-1. PARALELNÍ KRIZOVÁ INTERVENCE (teď hned):
-
-   KÁŤO – PŘESNÝ POSTUP PŘI KONTAKTU S ${thread.part_name.toUpperCase()}:
-
-   Krok 1: Zavolej mu/jí. První věta DOSLOVA:
-     '${thread.part_name}, tady je Káťa. Mluvila jsem s Karlem,
-      vím co se děje. Jsem tu pro tebe.'
-
-   Krok 2: Poslouchej. Nech ho/ji mluvit. NEPŘERUŠUJ.
-
-   Krok 3: Zeptej se na bezpečí:
-     'Jsi teď v bezpečí? Kde teď jsi?'
-
-   Krok 4: Validuj emoce, NEZLEHČUJ:
-     'Rozumím. To co popisuješ není fér. Máš právo se bránit.'
-
-   Krok 5: Nabídni konkrétní krok:
-     'Dnes odpoledne se sejdeme – já, Karel a Hanička.
-      Společně to vyřešíme. Souhlasíš?'
-
-   Krok 6: Po hovoru mi IHNED napiš sem do porady:
-     - Jak ${thread.part_name} reagoval/a
-     - Zda je v bezpečí
-     - Co řekl/a o situaci
-     - Zda souhlasil/a se sezením
-
-2. KOORDINACE (Hanička):
-   Haničko – potřebuji abys připravila podklady pro krizové sezení:
-   - Historie ${thread.part_name}
-   - Předchozí krizové epizody
-   - Co fungovalo / nefungovalo v minulosti
-
-3. ODPOLEDNÍ KRIZOVÉ SEZENÍ (plán):
-   Sestavuji strukturu sezení. Zúčastníme se všichni tři + ${thread.part_name}.
-
----
-
-Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
-1. Kdo z vás může ${thread.part_name} kontaktovat TEĎ?
-2. Máte na něj/ni kontakt?
-3. Kdy jste s ním/ní naposledy komunikovaly?
-
-Čekám na vaše odpovědi. Čas běží.`;
+      const meetingKarelMessage = buildMeetingMessage(thread.part_name, result, signalsList, quotesBlock, totalMsgs, dateStr);
 
       // Insert crisis alert
       const { data: newAlert, error: alertErr } = await sb.from("crisis_alerts")
@@ -249,15 +176,15 @@ Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
       await sb.from("crisis_tasks").insert([
         {
           crisis_alert_id: newAlert!.id,
-          title: `KRIZOVÁ INTERVENCE – kontaktovat ${thread.part_name} IHNED`,
-          description: `Telefonát/audio/chat. Ověřit bezpečí. ${result.summary || ""}`,
+          title: `TELEFONÁT S ${thread.part_name.toUpperCase()} – krizová intervence`,
+          description: `Zavolej IHNED. Postup: 1) Validace 2) Poslouchej 3) Bezpečí 4) Nabídni sezení. ${result.summary || ""}`,
           assigned_to: "kata",
           priority: "CRITICAL",
         },
         {
           crisis_alert_id: newAlert!.id,
           title: `PŘÍPRAVA KRIZOVÉHO SEZENÍ – ${thread.part_name}`,
-          description: `Podklady, historie, předchozí epizody. ${result.summary || ""}`,
+          description: `Podklady do 17:00: historie, předchozí epizody, co fungovalo. ${result.summary || ""}`,
           assigned_to: "hanicka",
           priority: "CRITICAL",
         },
@@ -267,8 +194,8 @@ Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
       await sb.from("did_therapist_tasks").insert([
         {
           user_id: thread.user_id,
-          task: `⚠️ KRIZOVÁ INTERVENCE – kontaktovat ${thread.part_name} IHNED`,
-          detail_instruction: `Telefonát/audio/chat. Ověřit bezpečí. Začni validací: '${thread.part_name}, vím co se děje. Jsem tu.' Řeš BEZPEČÍ, ne příčinu. ${result.summary || ""}`,
+          task: `⚠️ TELEFONÁT S ${thread.part_name.toUpperCase()} – krizová intervence`,
+          detail_instruction: `KÁŤO – udělej TEĎKA tyto kroky:\n1. ZAVOLEJ ${thread.part_name} (pokud nezvedne → audio zpráva → text)\n2. První věta DOSLOVA: '${thread.part_name}, tady Káťa. Vím co se děje. Jsem tu pro tebe.'\n3. POSLOUCHEJ 2-3 minuty. Nepřerušuj. Říkej jen: 'Rozumím', 'Poslouchám tě'.\n4. Zeptej se: 'Jsi teď v bezpečí? Kde teď jsi?'\n5. Řekni: 'To co se děje není fér. Máš právo říct ne. A my ti s tím pomůžeme.'\n6. Nabídni: 'Dnes večer uděláme sezení – já, Karel a Hanička. Společně to vyřešíme. Souhlasíš?'\n7. PO HOVORU IHNED napiš do krizové porady:\n   - Zvedl/a telefon? (ano/ne)\n   - Jak reagoval/a? (klidný/rozrušený/plakal)\n   - Je v bezpečí? (ano/ne/nevím)\n   - Souhlasil/a se sezením? (ano/ne)`,
           assigned_to: "kata",
           priority: "urgent",
           status: "pending",
@@ -279,8 +206,8 @@ Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
         },
         {
           user_id: thread.user_id,
-          task: `⚠️ PŘÍPRAVA KRIZOVÉHO SEZENÍ – podklady o ${thread.part_name}`,
-          detail_instruction: `Připravit: historii, předchozí krizové epizody, co fungovalo/nefungovalo. ${result.summary || ""}`,
+          task: `⚠️ PŘÍPRAVA KRIZOVÉHO SEZENÍ – ${thread.part_name}`,
+          detail_instruction: `HANIČKO – připrav do 17:00 tyto podklady a napiš je do krizové porady:\n1. OTEVŘI ${thread.part_name} kartu a odpověz:\n   - Kdy proběhlo poslední sezení?\n   - Jaký byl stav na posledním sezení?\n   - Byly podobné krizové epizody? Jaké?\n2. PŘIPRAV strukturu večerního sezení:\n   - Úvodní check-in (5 min): Jak se cítí TEĎ\n   - Mapování situace (10 min): Co přesně se děje\n   - Hledání zdrojů (10 min): Kdo může pomoct\n   - Plán ochrany (10 min): Konkrétní kroky\n   - Závěr (5 min): Co udělá DNES večer\n3. NAPIŠ do krizové porady odpovědi a návrh struktury.`,
           assigned_to: "hanka",
           priority: "urgent",
           status: "pending",
@@ -291,9 +218,9 @@ Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
         },
         {
           user_id: thread.user_id,
-          task: `⚠️ KOORDINACE KRIZOVÉ INTERVENCE – ${thread.part_name}`,
-          detail_instruction: `Sledovat průběh intervence, ptát se terapeutek na stav, sestavit plán odpoledního sezení.`,
-          assigned_to: "both",
+          task: `⚠️ VEČERNÍ KRIZOVÉ SEZENÍ S ${thread.part_name.toUpperCase()}`,
+          detail_instruction: `KÁŤO – dnes večer proveď krizové sezení s ${thread.part_name}.\nStruktura sezení viz Haniččiny podklady v krizové poradě.\nBěhem sezení se zaměř na:\n- Aktuální bezpečí\n- Konkrétní plán (co udělá, kam půjde)\n- Kdo může pomoct (konkrétní osoby)\nPO SEZENÍ napiš do porady:\n- Jak sezení proběhlo\n- Aktuální stav\n- Na čem jste se dohodli\n- Co je další krok`,
+          assigned_to: "kata",
           priority: "urgent",
           status: "pending",
           status_hanka: "not_started",
@@ -365,3 +292,102 @@ Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
     });
   }
 });
+
+function buildMeetingMessage(partName: string, result: any, signalsList: string, quotesBlock: string, totalMsgs: number, dateStr: string): string {
+  return `⚠️ KRIZOVÁ PORADA – ${partName} – ${dateStr}
+
+Svolávám mimořádnou krizovou poradu. Situace je ${result.severity || "CRITICAL"}.
+
+CO SE STALO:
+${result.summary || "Detekována krizová situace."}
+
+DETEKOVANÉ SIGNÁLY:
+${signalsList || "  • (nespecifikováno)"}
+
+MOJE VYHODNOCENÍ:
+${result.assessment || "Vyhodnocení není k dispozici."}
+
+---
+
+PŘÍMÉ CITACE Z ROZHOVORU S ${partName.toUpperCase()}:
+
+${quotesBlock}
+
+Na základě těchto výroků hodnotím situaci jako ${result.severity || "CRITICAL"}.
+
+---
+
+DOSAVADNÍ PRŮBĚH KOMUNIKACE S ${partName.toUpperCase()}:
+${partName} kontaktoval/a Karla. Proběhlo ${totalMsgs} zpráv.
+${result.summary || ""}
+
+---
+
+MŮJ NÁVRH OKAMŽITÉHO POSTUPU:
+
+1. PARALELNÍ KRIZOVÁ INTERVENCE (teď hned):
+
+   KÁŤO – PŘESNÝ POSTUP PŘI KONTAKTU S ${partName.toUpperCase()}:
+
+   Krok 1: Zavolej mu/jí. První věta DOSLOVA:
+     '${partName}, tady je Káťa. Mluvila jsem s Karlem,
+      vím co se děje. Jsem tu pro tebe.'
+
+   Krok 2: Poslouchej. Nech ho/ji mluvit. NEPŘERUŠUJ.
+
+   Krok 3: Zeptej se na bezpečí:
+     'Jsi teď v bezpečí? Kde teď jsi?'
+
+   Krok 4: Validuj emoce, NEZLEHČUJ:
+     'Rozumím. To co popisuješ není fér. Máš právo se bránit.'
+
+   Krok 5: Nabídni konkrétní krok:
+     'Dnes odpoledne se sejdeme – já, Karel a Hanička.
+      Společně to vyřešíme. Souhlasíš?'
+
+   Krok 6: Po hovoru mi IHNED napiš sem do porady:
+     - Jak ${partName} reagoval/a
+     - Zda je v bezpečí
+     - Co řekl/a o situaci
+     - Zda souhlasil/a se sezením
+
+2. KOORDINACE (Hanička):
+   Haničko – potřebuji abys připravila podklady pro krizové sezení:
+   - Historie ${partName}
+   - Předchozí krizové epizody
+   - Co fungovalo / nefungovalo v minulosti
+
+3. ODPOLEDNÍ KRIZOVÉ SEZENÍ (plán):
+   Sestavuji strukturu sezení. Zúčastníme se všichni tři + ${partName}.
+
+---
+
+Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
+1. Kdo z vás může ${partName} kontaktovat TEĎ?
+2. Máte na něj/ni kontakt?
+3. Kdy jste s ním/ní naposledy komunikovaly?
+
+Čekám na vaše odpovědi. Čas běží.
+
+---
+
+SHRNUTÍ ÚKOLŮ:
+
+KÁŤA:
+☐ Zavolat ${partName} IHNED (postup viz výše)
+☐ Napsat do porady výsledek hovoru
+☐ Večer provést krizové sezení
+
+HANIČKA:
+☐ Připravit podklady do 17:00 (viz úkoly)
+☐ Napsat do porady historii a návrh struktury sezení
+
+KAREL (já):
+☐ Koordinuji, sleduji, vyhodnocuji
+☐ Po vašich odpovědích upřesním plán sezení
+
+DEADLINE: Káťa volá TEĎKA. Hanička podklady do 17:00.
+Sezení DNES VEČER.
+
+Odpovězte mi sem do porady. Každá za sebe. TEĎKA.`;
+}
