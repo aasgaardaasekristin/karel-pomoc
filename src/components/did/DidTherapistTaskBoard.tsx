@@ -131,7 +131,7 @@ const isTodayCategory = (category?: string | null) => category === "today" || ca
 const isTomorrowCategory = (category?: string | null) => category === "tomorrow";
 const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
 const categoryLabel = (category?: string | null) => isTodayCategory(category) ? "Dnes" : isTomorrowCategory(category) ? "Zítra" : "Dlouhodobé";
-const priorityLabel = (priority?: string | null) => priority === "high" ? "Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
+const priorityLabel = (priority?: string | null) => priority === "urgent" ? "🔴 Urgentní" : priority === "high" ? "🟠 Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
 
 const aggregateTaskStatus = (task: TherapistTask): TrafficStatus => {
   if (normalizeAssignedTo(task.assigned_to) === "both") {
@@ -282,7 +282,7 @@ const TaskCard = ({
     : "bg-muted/40 border-border/40 text-foreground/90";
 
   return (
-    <div className="group rounded-md border border-border/60 bg-card/40 px-2 py-1.5 transition-colors hover:bg-accent/30">
+    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : "border-border/60 bg-card/40"}`}>
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (
