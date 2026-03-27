@@ -732,7 +732,7 @@ const HanaChatInner = () => {
   return (
     <div className="relative flex flex-col h-full">
       <div
-        className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0"
+        className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0 opacity-80"
         style={{ backgroundImage: `url(${hanaBg})` }}
       />
       <div className="relative z-10 flex flex-col h-full">
@@ -807,8 +807,8 @@ const HanaChatInner = () => {
       </div>
 
       {!chatStarted ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-4">
-          <div className="text-center max-w-sm space-y-5 animate-fade-in">
+        <div className="flex-1 flex flex-col items-end justify-end px-6 pb-10">
+          <div className="text-left max-w-xs space-y-4 animate-fade-in">
             
             <div className="space-y-1.5">
               <h2 className="text-lg font-serif font-semibold text-foreground">
