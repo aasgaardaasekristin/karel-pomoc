@@ -197,3 +197,6 @@ verify_jwt = false
 
 [functions.karel-did-centrum-sync]
 verify_jwt = false
+
+[functions.crisis-retroactive-scan]
+verify_jwt = false
