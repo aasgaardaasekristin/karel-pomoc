@@ -35,6 +35,7 @@ interface CrisisTaskData {
 }
 
 const CrisisAlert: React.FC = () => {
+  const navigate = useNavigate();
   const [alerts, setAlerts] = useState<CrisisAlertData[]>([]);
   const [detailAlert, setDetailAlert] = useState<CrisisAlertData | null>(null);
   const [tasks, setTasks] = useState<CrisisTaskData[]>([]);
