@@ -123,86 +123,11 @@ const Hub = () => {
   }
 
   if (showPinEntry) {
-    return (
-      <div className="min-h-[100dvh] flex items-center justify-center bg-[hsl(var(--surface-secondary))] p-4">
-        <div className="max-w-sm w-full animate-fade-in">
-          <div className="flex justify-start mb-8">
-            <KarelButton
-              variant="ghost"
-              size="sm"
-              onClick={() => { setShowPinEntry(false); setPin(""); setPinError(false); }}
-              icon={<ArrowRight className="rotate-180" size={16} />}
-            >
-              Zpět
-            </KarelButton>
-          </div>
-
-          <div className="text-center mb-10">
-            <div className="w-16 h-16 rounded-full bg-[hsl(var(--accent-light))] flex items-center justify-center mx-auto mb-5">
-              <Lock className="w-7 h-7 text-[hsl(var(--accent-primary))]" />
-            </div>
-            <h2 className="text-xl font-semibold text-[hsl(var(--text-primary))]">Režim Hana</h2>
-            <p className="text-sm text-[hsl(var(--text-secondary))] mt-1.5">
-              Zadej PIN pro přístup k supervizním nástrojům
-            </p>
-          </div>
-
-          <form onSubmit={handlePinSubmit} className="space-y-4">
-            <div className="flex justify-center gap-3">
-              {[0, 1, 2, 3].map((i) => (
-                <input
-                  key={i}
-                  type="password"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={pin[i] || ""}
-                  readOnly
-                  className={`w-14 h-16 rounded-xl border-2 text-center text-2xl font-bold bg-[hsl(var(--surface-primary))] text-[hsl(var(--text-primary))] transition-all duration-200 focus:outline-none ${
-                    pinError
-                      ? "border-destructive animate-shake"
-                      : pin.length === i
-                        ? "border-[hsl(var(--border-focus))] shadow-glow-sm"
-                        : "border-[hsl(var(--border-default))]"
-                  }`}
-                />
-              ))}
-            </div>
-            {/* Hidden real input for keyboard */}
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={4}
-              value={pin}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 4);
-                setPin(val);
-                setPinError(false);
-                if (val.length === 4) {
-                  // Auto-submit
-                  if (val === CORRECT_PIN) {
-                    try { sessionStorage.setItem(HANA_PIN_KEY, "1"); } catch {}
-                    try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
-                    navigate("/chat");
-                  } else {
-                    setPinError(true);
-                    setTimeout(() => setPin(""), 300);
-                    toast.error("Nesprávný PIN");
-                  }
-                }
-              }}
-              autoFocus
-              className="sr-only"
-            />
-            {pinError && (
-              <p className="text-xs text-destructive text-center animate-fade-in">
-                Nesprávný PIN, zkus to znovu
-              </p>
-            )}
-          </form>
-        </div>
-      </div>
-    );
+    return <HanaPinScreen onSuccess={() => {
+      try { sessionStorage.setItem(HANA_PIN_KEY, "1"); } catch {}
+      try { sessionStorage.setItem("karel_hub_section", "hana"); } catch {}
+      navigate("/chat");
+    }} onBack={() => { setShowPinEntry(false); setPin(""); setPinError(false); }} />;
   }
 
   return (
