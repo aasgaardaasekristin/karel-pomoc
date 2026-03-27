@@ -356,15 +356,69 @@ serve(async (req) => {
 
     // 1. COLLECT ALL DATA (parallel)
     console.log("[Dashboard] Krok 1: Sběr dat server-side...");
-    const [activePartsData, tasksData, meetingsData, operativePlan, updatedCardsInfo] = await Promise.all([
+    const [activePartsData, tasksData, meetingsData, operativePlan, updatedCardsInfo, crisisData] = await Promise.all([
       fetchActiveParts24h(supabase),
       fetchTasksData(supabase),
       fetchMeetingsData(supabase),
       fetchOperativePlan(supabase),
       fetchUpdatedCardsInfo(supabase),
+      fetchCrisisAlerts(supabase),
     ]);
 
+    // ═══ CRISIS CONTEXT INJECTION ═══
+    let crisisSystemInjection = "";
+    if (crisisData.active.length > 0) {
+      const alertBlocks = crisisData.active.map((a: any) => {
+        return `- Část: ${a.part_name}, Úroveň: ${a.severity}, Status: ${a.status === "ACTIVE" ? "čeká na reakci" : "řeší se (potvrzeno ${a.acknowledged_by || "?"})"}\n  Souhrn: ${a.summary}\n  Plán intervence: ${a.intervention_plan || "(nebyl vygenerován)"}`;
+      }).join("\n\n");
+
+      crisisSystemInjection = `
+
+POZOR – KRIZOVÁ SITUACE:
+
+Dnes byla detekována krizová situace. Toto MUSÍ být PRVNÍ a NEJDŮLEŽITĚJŠÍ část tvého přehledu. Nezačínej přehled běžným shrnutím dne. Začni KRIZOVÝM BLOKEM.
+
+Aktivní krize:
+${alertBlocks}
+
+Tvůj přehled MUSÍ začínat takto:
+
+"🔴 KRIZOVÉ UPOZORNĚNÍ
+
+[part_name] je/byl dnes v akutním distresu. [summary]
+
+Úroveň rizika: [severity]
+Status: [status]
+
+OKAMŽITÉ KROKY:
+1. [z intervention_plan]
+2. [z intervention_plan]
+
+Krizová porada je otevřena – připojte se."
+
+Teprve PO krizovém bloku pokračuj s běžným přehledem dne.
+Ale i v běžném přehledu ZMIŇ krizovou situaci v kontextu aktivity dané části.
+NIKDY neprezentuj den jako "normální" pokud existuje aktivní krize.`;
+    }
+
+    // ═══ SECURITY STATUS BLOCK ═══
+    let securityStatusBlock = "\n\n## BEZPEČNOSTNÍ STATUS\n";
+    if (crisisData.active.length > 0) {
+      securityStatusBlock += "🔴 AKTIVNÍ KRIZE – viz krizový blok výše.\n";
+      for (const a of crisisData.active) {
+        securityStatusBlock += `- ${a.part_name}: ${a.severity}, status: ${a.status}\n`;
+      }
+    } else if (crisisData.resolved.length > 0) {
+      for (const a of crisisData.resolved) {
+        securityStatusBlock += `⚠️ Dnes byla řešena krizová situace u ${a.part_name}. Status: vyřešeno v ${a.resolved_at || "?"}. Detaily v krizovém vlákně.\n`;
+      }
+    } else {
+      securityStatusBlock += "✅ Žádné krizové situace dnes detekovány.\n";
+    }
+
     // 2. BUILD PROMPT
+    const effectiveSystemPrompt = DASHBOARD_PROMPT + crisisSystemInjection;
+
     const userPrompt = `## DATUM: ${targetDate}
 
 ## AKTIVNÍ ČÁSTI (posledních 24h):
@@ -381,6 +435,9 @@ ${meetingsData}
 
 ## OPERATIVNÍ PLÁN:
 ${operativePlan}
+
+${crisisData.text ? `## KRIZOVÉ ALERTY DNES:\n${crisisData.text}` : ""}
+${securityStatusBlock}
 
 Sestav kompletní denní dashboard.`;
 
