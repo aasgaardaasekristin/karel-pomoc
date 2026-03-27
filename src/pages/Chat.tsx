@@ -46,7 +46,7 @@ import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
-  STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY,
+  STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
   getRandomCastGreeting, saveMessages, loadMessages, clearMessages, handleApiError,
   parseSSEStream, WELCOME_MESSAGES,
 } from "@/lib/chatHelpers";
