@@ -915,7 +915,8 @@ const HanaChatInner = () => {
           </ScrollArea>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
+    </div>
   );
 };
 
