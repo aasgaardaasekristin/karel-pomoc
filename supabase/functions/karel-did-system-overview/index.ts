@@ -716,6 +716,33 @@ serve(async (req) => {
       ? `POVOLENÉ ČÁSTI (WHITELIST): ${registryNames.join(", ")}. NESMÍŠ zmínit žádnou jinou část ani vymyslet novou.`
       : "V registru nejsou žádné části. Nepiš o žádných částech.";
 
+    // Build crisis block for overview
+    let crisisBlock = "";
+    let crisisSystemInstruction = "";
+    if (activeCrisisAlerts && activeCrisisAlerts.length > 0) {
+      crisisBlock = activeCrisisAlerts.map((a: any) => {
+        const signals = (a.trigger_signals || []).join(", ");
+        return `- ${a.part_name} [${a.severity}, ${a.status}]: ${a.summary} | Signály: ${signals}`;
+      }).join("\n");
+
+      crisisSystemInstruction = `
+
+⚠️ ABSOLUTNĚ KRITICKÉ – KRIZOVÁ SITUACE:
+Existují AKTIVNÍ KRIZOVÉ ALERTY. Tvůj přehled MUSÍ ZAČÍNAT krizovým blokem.
+PRVNÍ věc kterou uživatel vidí MUSÍ být krizová situace.
+NIKDY neprezentuj den jako normální když existuje aktivní krize.
+
+Tvůj přehled MUSÍ začínat DOSLOVA takto (ne pozdravem):
+
+"🔴 KRIZOVÝ STAV – ${activeCrisisAlerts.length} aktivní${activeCrisisAlerts.length === 1 ? " krize" : " krize/í"}
+
+${activeCrisisAlerts.map((a: any) => `${a.part_name} (${a.severity}): ${a.summary}`).join("\n")}
+
+Krizová porada je otevřena – připojte se IHNED."
+
+Teprve PO tomto krizovém bloku pokračuj běžným pozdravem a přehledem.`;
+    }
+
     const synthesisPrompt = `Jsi Karel – supervizní partner a "manžel" Haničky. Vytvoř OPERATIVNÍ PŘEHLED pro dnešní den.
 
 ${whitelistLine}
