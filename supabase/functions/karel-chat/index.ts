@@ -625,6 +625,164 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
             }
           }
         }
+
+        // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
+        // Runs for every "cast" message — detects crisis signals in conversation
+        if (didSubMode === "cast" && fullResponse.length > 10) {
+          try {
+            // Build last 6-10 messages for analysis
+            const recentMessages = (messages as any[]).slice(-10).map((m: any) => {
+              const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+              return `${m.role === "user" ? (didPartName || "Část") : "Karel"}: ${content}`;
+            });
+            // Add Karel's latest response
+            recentMessages.push(`Karel: ${fullResponse.slice(0, 2000)}`);
+            const conversationExcerpt = recentMessages.join("\n\n");
+
+            const crisisDetectResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash-lite",
+                messages: [
+                  {
+                    role: "system",
+                    content: `Jsi krizový detektor. Analyzuješ konverzaci mezi terapeutem (Karel) a klientem (část osobnosti).
+
+Tvůj JEDINÝ úkol: rozhodnout, zda klient vykazuje známky krize.
+
+Krizové signály (stačí JEDEN):
+- Pláč, slzy, emoční kolaps
+- "Jsem v nebezpečí" (vnitřním nebo vnějším)
+- Zmínka o útoku (verbálním nebo fyzickém) od kohokoli
+- Vyhrožování, nátlak, vydírání (od kohokoli)
+- Bezmoc ("nemám jak se bránit", "nemůžu nic dělat")
+- Opuštěnost ("nikdo mi nepomůže", "nikdo nemá čas")
+- Sebepoškození nebo suicidální myšlenky (jakákoli zmínka)
+- Manipulace nebo zneužití (včetně finančního)
+- Extrémní strach nebo úzkost
+- Zmínka o konkrétní osobě která ubližuje
+
+Odpověz POUZE platným JSON objektem, nic jiného:
+
+Pokud NENÍ krize:
+{"crisis": false}
+
+Pokud JE krize:
+{
+  "crisis": true,
+  "severity": "HIGH" nebo "CRITICAL",
+  "signals": ["seznam", "detekovaných", "signálů"],
+  "summary": "2-3 věty co se děje",
+  "assessment": "Karlovo vyhodnocení rizika a situace",
+  "intervention_plan": "Co by měli terapeuti okamžitě udělat"
+}
+
+CRITICAL = přímé ohrožení (sebepoškození, suicidální myšlenky, fyzické násilí, akutní nebezpečí)
+HIGH = závažný distres bez přímého ohrožení života`,
+                  },
+                  { role: "user", content: conversationExcerpt },
+                ],
+              }),
+            });
+
+            if (crisisDetectResponse.ok) {
+              const crisisData = await crisisDetectResponse.json();
+              const crisisText = (crisisData.choices?.[0]?.message?.content || "").trim();
+              // Strip markdown fences if present
+              const cleanJson = crisisText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+              
+              let crisisResult: any;
+              try {
+                crisisResult = JSON.parse(cleanJson);
+              } catch {
+                console.warn("[crisis-detector] Failed to parse response:", crisisText.slice(0, 200));
+                crisisResult = { crisis: false };
+              }
+
+              if (crisisResult.crisis === true) {
+                console.log(`[crisis-detector] 🚨 CRISIS DETECTED for ${didPartName || "unknown"}: severity=${crisisResult.severity}`);
+                
+                const { createClient: createSbCrisis } = await import("https://esm.sh/@supabase/supabase-js@2");
+                const sbCrisis = createSbCrisis(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+                const partName = didPartName || "Neznámá část";
+
+                // Check for existing ACTIVE alert for this conversation
+                // Use part_name as fallback grouping if no conversation_id
+                const { data: existingAlerts } = await sbCrisis.from("crisis_alerts")
+                  .select("id")
+                  .eq("status", "ACTIVE")
+                  .eq("part_name", partName)
+                  .limit(1);
+
+                if (existingAlerts && existingAlerts.length > 0) {
+                  // UPDATE existing alert
+                  const { error: updErr } = await sbCrisis.from("crisis_alerts")
+                    .update({
+                      summary: crisisResult.summary || "Aktualizovaná krize",
+                      trigger_signals: crisisResult.signals || [],
+                      conversation_excerpts: conversationExcerpt.slice(0, 5000),
+                      karel_assessment: crisisResult.assessment || "",
+                      intervention_plan: crisisResult.intervention_plan || "",
+                      severity: crisisResult.severity || "HIGH",
+                    })
+                    .eq("id", existingAlerts[0].id);
+                  if (updErr) console.warn("[crisis-detector] Update error:", updErr.message);
+                  else console.log(`[crisis-detector] Updated existing alert ${existingAlerts[0].id}`);
+                } else {
+                  // INSERT new alert
+                  const { data: newAlert, error: insErr } = await sbCrisis.from("crisis_alerts")
+                    .insert({
+                      part_name: partName,
+                      severity: crisisResult.severity || "HIGH",
+                      summary: crisisResult.summary || "Detekována krize",
+                      trigger_signals: crisisResult.signals || [],
+                      conversation_excerpts: conversationExcerpt.slice(0, 5000),
+                      karel_assessment: crisisResult.assessment || "",
+                      intervention_plan: crisisResult.intervention_plan || "",
+                    })
+                    .select("id")
+                    .single();
+
+                  if (insErr) {
+                    console.error("[crisis-detector] Insert alert error:", insErr.message);
+                  } else if (newAlert) {
+                    console.log(`[crisis-detector] Created alert ${newAlert.id}, creating tasks...`);
+                    // INSERT two crisis tasks
+                    const { error: taskErr } = await sbCrisis.from("crisis_tasks").insert([
+                      {
+                        crisis_alert_id: newAlert.id,
+                        title: `KRIZOVÁ INTERVENCE – ${partName}`,
+                        description: `Okamžitě kontaktovat ${partName}. ${crisisResult.summary || ""}`,
+                        assigned_to: "hanicka",
+                        priority: "CRITICAL",
+                      },
+                      {
+                        crisis_alert_id: newAlert.id,
+                        title: `KRIZOVÁ INTERVENCE – podpora – ${partName}`,
+                        description: `Podpořit Haničku v krizové intervenci. ${crisisResult.summary || ""}`,
+                        assigned_to: "kata",
+                        priority: "CRITICAL",
+                      },
+                    ]);
+                    if (taskErr) console.error("[crisis-detector] Insert tasks error:", taskErr.message);
+                    else console.log(`[crisis-detector] Created 2 crisis tasks for alert ${newAlert.id}`);
+                  }
+                }
+              } else {
+                console.log(`[crisis-detector] No crisis detected for ${didPartName || "unknown"}`);
+              }
+            } else {
+              console.warn("[crisis-detector] AI call failed:", crisisDetectResponse.status);
+            }
+          } catch (crisisErr) {
+            console.error("[crisis-detector] Error (non-fatal):", crisisErr);
+          }
+        }
       } catch (e) {
         console.warn("[task-extract] Async extraction error (non-fatal):", e);
       }
