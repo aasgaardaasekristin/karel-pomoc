@@ -37,12 +37,16 @@ const handleApiError = async (response: Response) => {
   throw new Error(backendError || "Něco se pokazilo. Zkus to znovu.");
 };
 
+type IntroPhase = "avatar-in" | "avatar-grow" | "avatar-shrink" | "form-in" | "done";
+
 const HanaChatInner = () => {
   const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatStarted, setChatStarted] = useState(false);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [introPhase, setIntroPhase] = useState<IntroPhase>("avatar-in");
+  const introVideoRef = useRef<HTMLVideoElement>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isRefreshingMemory, setIsRefreshingMemory] = useState(false);
   const [drivePickerOpen, setDrivePickerOpen] = useState(false);
