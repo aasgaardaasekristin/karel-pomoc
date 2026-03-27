@@ -159,30 +159,68 @@ HIGH = závažný distres bez přímého ohrožení života`,
       await sb.from("crisis_tasks").insert([
         {
           crisis_alert_id: newAlert!.id,
-          title: `KRIZOVÁ INTERVENCE – ${thread.part_name}`,
-          description: `Okamžitě kontaktovat ${thread.part_name}. ${result.summary || ""}`,
-          assigned_to: "hanicka",
+          title: `KRIZOVÁ INTERVENCE – kontaktovat ${thread.part_name} IHNED`,
+          description: `Telefonát/audio/chat. Ověřit bezpečí. ${result.summary || ""}`,
+          assigned_to: "kata",
           priority: "CRITICAL",
         },
         {
           crisis_alert_id: newAlert!.id,
-          title: `KRIZOVÁ INTERVENCE – podpora – ${thread.part_name}`,
-          description: `Podpořit Haničku v krizové intervenci. ${result.summary || ""}`,
-          assigned_to: "kata",
+          title: `PŘÍPRAVA KRIZOVÉHO SEZENÍ – ${thread.part_name}`,
+          description: `Podklady, historie, předchozí epizody. ${result.summary || ""}`,
+          assigned_to: "hanicka",
           priority: "CRITICAL",
         },
       ]);
 
-      // Create crisis thread in did_threads
+      // Insert into did_therapist_tasks (visible on task board)
+      await sb.from("did_therapist_tasks").insert([
+        {
+          user_id: thread.user_id,
+          task: `⚠️ KRIZOVÁ INTERVENCE – kontaktovat ${thread.part_name} IHNED`,
+          detail_instruction: `Telefonát/audio/chat. Ověřit bezpečí. Začni validací: '${thread.part_name}, vím co se děje. Jsem tu.' Řeš BEZPEČÍ, ne příčinu. ${result.summary || ""}`,
+          assigned_to: "kata",
+          priority: "urgent",
+          status: "pending",
+          status_hanka: "not_started",
+          status_kata: "not_started",
+          task_tier: "operative",
+          category: "today",
+        },
+        {
+          user_id: thread.user_id,
+          task: `⚠️ PŘÍPRAVA KRIZOVÉHO SEZENÍ – podklady o ${thread.part_name}`,
+          detail_instruction: `Připravit: historii, předchozí krizové epizody, co fungovalo/nefungovalo. ${result.summary || ""}`,
+          assigned_to: "hanka",
+          priority: "urgent",
+          status: "pending",
+          status_hanka: "not_started",
+          status_kata: "not_started",
+          task_tier: "operative",
+          category: "today",
+        },
+        {
+          user_id: thread.user_id,
+          task: `⚠️ KOORDINACE KRIZOVÉ INTERVENCE – ${thread.part_name}`,
+          detail_instruction: `Sledovat průběh intervence, ptát se terapeutek na stav, sestavit plán odpoledního sezení.`,
+          assigned_to: "both",
+          priority: "urgent",
+          status: "pending",
+          status_hanka: "not_started",
+          status_kata: "not_started",
+          task_tier: "operative",
+          category: "today",
+        },
+      ]);
+
+      // Create crisis meeting in did_meetings
       const now = new Date();
       const dateStr = `${now.getDate()}.${now.getMonth()+1}.${now.getFullYear()}`;
       const signalsList = (result.signals || []).map((s: string) => `  • ${s}`).join("\n");
 
-      const karelMessage = `⚠️ KRIZOVÁ INTERVENCE – AKTIVOVÁNO (Retroaktivní detekce)
+      const meetingKarelMessage = `⚠️ KRIZOVÁ PORADA – ${thread.part_name} – ${dateStr}
 
-Část: ${thread.part_name}
-Čas detekce: ${dateStr}
-Úroveň rizika: ${result.severity || "HIGH"}
+Svolávám mimořádnou krizovou poradu. Situace je ${result.severity || "CRITICAL"}.
 
 CO SE STALO:
 ${result.summary || "Detekována krizová situace."}
@@ -193,29 +231,69 @@ ${signalsList || "  • (nespecifikováno)"}
 MOJE VYHODNOCENÍ:
 ${result.assessment || "Vyhodnocení není k dispozici."}
 
-NAVRŽENÝ PLÁN OKAMŽITÉ INTERVENCE:
-${result.intervention_plan || "Plán není k dispozici."}
+---
+
+MŮJ NÁVRH OKAMŽITÉHO POSTUPU:
+
+1. PARALELNÍ KRIZOVÁ INTERVENCE (teď hned):
+   Káťo – potřebuji, abys IHNED kontaktovala ${thread.part_name}.
+   Doporučuji tyto kanály v tomto pořadí:
+   a) Telefonát (nejefektivnější pro krizovou intervenci)
+   b) Audio zpráva přes chat (pokud telefon nezvedá)
+   c) Textová zpráva s jasným vzkazem že jsme tu pro něj/ni
+
+   Při kontaktu s ${thread.part_name}:
+   - Začni validací: '${thread.part_name}, vím co se děje. Jsem tu.'
+   - Neřeš příčinu, řeš BEZPEČÍ: 'Jsi teď v bezpečí?'
+   - Nabídni konkrétní pomoc, ne obecnou
+
+2. KOORDINACE (Hanička):
+   Haničko – potřebuji abys připravila podklady pro krizové sezení:
+   - Historie ${thread.part_name}
+   - Předchozí krizové epizody
+   - Co fungovalo / nefungovalo v minulosti
+
+3. ODPOLEDNÍ KRIZOVÉ SEZENÍ (plán):
+   Sestavuji strukturu sezení. Zúčastníme se všichni tři + ${thread.part_name}.
 
 ---
 
-Haničko, Káťo – tato krize byla detekována retroaktivním skenem.
-Prosím zkontrolujte vlákno s ${thread.part_name} a přijměte opatření.`;
+Káťo, Haničko – potřebuji od vás OKAMŽITOU odpověď:
+1. Kdo z vás může ${thread.part_name} kontaktovat TEĎ?
+2. Máte na něj/ni kontakt?
+3. Kdy jste s ním/ní naposledy komunikovaly?
 
+Čekám na vaše odpovědi. Čas běží.`;
+
+      const { data: crisisMeeting } = await sb.from("did_meetings").insert({
+        user_id: thread.user_id,
+        topic: `🔴 KRIZOVÁ PORADA – ${thread.part_name} – ${dateStr}`,
+        agenda: `Krizová intervence: ${result.summary || "Detekována krize"}`,
+        status: "open",
+        messages: [{ therapist: "karel", content: meetingKarelMessage, timestamp: now.toISOString() }],
+        triggered_by: "karel",
+      }).select("id").single();
+
+      // Create crisis thread in did_threads (for chat reference)
       const { data: crisisThread } = await sb.from("did_threads").insert({
         user_id: thread.user_id,
         part_name: thread.part_name,
         sub_mode: "crisis",
         thread_label: `🔴 KRIZOVÁ INTERVENCE – ${thread.part_name} – ${dateStr}`,
         thread_emoji: "🔴",
-        messages: [{ role: "assistant", content: karelMessage, timestamp: now.toISOString() }],
+        messages: [{ role: "assistant", content: meetingKarelMessage, timestamp: now.toISOString() }],
         last_activity_at: now.toISOString(),
         is_processed: false,
         theme_preset: "default",
       }).select("id").single();
 
-      if (crisisThread) {
+      // Link meeting and thread to alert
+      const updatePayload: any = {};
+      if (crisisThread) updatePayload.crisis_thread_id = crisisThread.id;
+      if (crisisMeeting) updatePayload.conversation_id = crisisMeeting.id;
+      if (Object.keys(updatePayload).length > 0) {
         await sb.from("crisis_alerts")
-          .update({ crisis_thread_id: crisisThread.id })
+          .update(updatePayload)
           .eq("id", newAlert!.id);
       }
 

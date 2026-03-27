@@ -20,6 +20,7 @@ interface CrisisAlertData {
   resolved_at: string | null;
   resolution_notes: string | null;
   crisis_thread_id: string | null;
+  conversation_id: string | null;
 }
 
 interface CrisisTaskData {
@@ -175,16 +176,27 @@ const CrisisAlert: React.FC = () => {
                   >
                     OTEVŘÍT DETAIL
                   </button>
-                  {alert.crisis_thread_id && (
+                   {alert.conversation_id && (
                     <button
                       onClick={() => {
-                        // Navigate to chat with crisis thread context
-                        window.location.href = `/chat?crisisThread=${alert.crisis_thread_id}`;
+                        // Navigate to meeting panel with crisis meeting
+                        window.location.href = `/chat?meeting=${alert.conversation_id}`;
                       }}
                       className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1"
                     >
                       <MessageSquare className="w-3 h-3" />
                       KRIZOVÁ PORADA
+                    </button>
+                  )}
+                  {!alert.conversation_id && alert.crisis_thread_id && (
+                    <button
+                      onClick={() => {
+                        window.location.href = `/chat?crisisThread=${alert.crisis_thread_id}`;
+                      }}
+                      className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      KRIZOVÉ VLÁKNO
                     </button>
                   )}
                   {!isAcknowledged && (

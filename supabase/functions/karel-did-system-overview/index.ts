@@ -291,6 +291,7 @@ serve(async (req) => {
       { data: hanaConversations24h },
       { data: researchThreads24h },
       { data: openMeetings },
+      { data: activeCrisisAlerts },
     ] = await Promise.all([
       sb
         .from("did_part_registry")
@@ -352,6 +353,12 @@ serve(async (req) => {
         .select("id, topic, agenda, status, created_at, deadline_at, hanka_joined_at, kata_joined_at, triggered_by")
         .eq("user_id", userId)
         .in("status", ["open", "in_progress"])
+        .order("created_at", { ascending: false })
+        .limit(10),
+      sb
+        .from("crisis_alerts")
+        .select("part_name, severity, status, summary, trigger_signals, karel_assessment, intervention_plan, created_at")
+        .in("status", ["ACTIVE", "ACKNOWLEDGED"])
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
@@ -709,6 +716,33 @@ serve(async (req) => {
       ? `POVOLENÉ ČÁSTI (WHITELIST): ${registryNames.join(", ")}. NESMÍŠ zmínit žádnou jinou část ani vymyslet novou.`
       : "V registru nejsou žádné části. Nepiš o žádných částech.";
 
+    // Build crisis block for overview
+    let crisisBlock = "";
+    let crisisSystemInstruction = "";
+    if (activeCrisisAlerts && activeCrisisAlerts.length > 0) {
+      crisisBlock = activeCrisisAlerts.map((a: any) => {
+        const signals = (a.trigger_signals || []).join(", ");
+        return `- ${a.part_name} [${a.severity}, ${a.status}]: ${a.summary} | Signály: ${signals}`;
+      }).join("\n");
+
+      crisisSystemInstruction = `
+
+⚠️ ABSOLUTNĚ KRITICKÉ – KRIZOVÁ SITUACE:
+Existují AKTIVNÍ KRIZOVÉ ALERTY. Tvůj přehled MUSÍ ZAČÍNAT krizovým blokem.
+PRVNÍ věc kterou uživatel vidí MUSÍ být krizová situace.
+NIKDY neprezentuj den jako normální když existuje aktivní krize.
+
+Tvůj přehled MUSÍ začínat DOSLOVA takto (ne pozdravem):
+
+"🔴 KRIZOVÝ STAV – ${activeCrisisAlerts.length} aktivní${activeCrisisAlerts.length === 1 ? " krize" : " krize/í"}
+
+${activeCrisisAlerts.map((a: any) => `${a.part_name} (${a.severity}): ${a.summary}`).join("\n")}
+
+Krizová porada je otevřena – připojte se IHNED."
+
+Teprve PO tomto krizovém bloku pokračuj běžným pozdravem a přehledem.`;
+    }
+
     const synthesisPrompt = `Jsi Karel – supervizní partner a "manžel" Haničky. Vytvoř OPERATIVNÍ PŘEHLED pro dnešní den.
 
 ${whitelistLine}
@@ -812,7 +846,11 @@ ${(openMeetings || []).length > 0
   : "(žádné otevřené porady)"}
 
 === POSLEDNÍ CYKLY ===
-${cycleInfo || "(bez dokončeného cyklu)"}`;
+${cycleInfo || "(bez dokončeného cyklu)"}
+
+${crisisBlock ? `=== 🔴 AKTIVNÍ KRIZOVÉ ALERTY ===\n${crisisBlock}` : ""}`;
+
+    const systemContent = `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. NIKDY nedávej úkoly navázané na konkrétní DID části. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.${crisisSystemInstruction}`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -823,11 +861,7 @@ ${cycleInfo || "(bez dokončeného cyklu)"}`;
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          {
-            role: "system",
-            content:
-              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. NIKDY nedávej úkoly navázané na konkrétní DID části. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.`
-          },
+          { role: "system", content: systemContent },
           { role: "user", content: synthesisPrompt },
         ],
         stream: true,
