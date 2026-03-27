@@ -34,6 +34,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <CrisisAlert />
           <MobileSwipeBack />
           <Routes>
             {isPomocSubdomain ? (
