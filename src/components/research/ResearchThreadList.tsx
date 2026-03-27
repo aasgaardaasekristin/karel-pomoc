@@ -51,7 +51,7 @@ const ResearchThreadList = ({ threads, onSelect, onDelete, onNew, loading }: Pro
               key={thread.id}
               variant="interactive"
               padding="none"
-              className="animate-fade-in group"
+              className="animate-fade-in group bg-card/50 backdrop-blur-sm"
               style={{ animationDelay: `${index * 40}ms`, animationFillMode: "both" }}
               onClick={() => onSelect(thread)}
             >
