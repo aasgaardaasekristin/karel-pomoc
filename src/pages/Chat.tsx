@@ -1531,9 +1531,19 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           />
         </>
       ) : hubSection === "research" ? (
-        <>
+        <div className="flex-1 flex flex-col relative overflow-hidden">
+          <div
+            className="absolute inset-0 z-0 pointer-events-none"
+            style={{
+              backgroundImage: 'url(/images/research-bg.png)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+              opacity: 0.18,
+            }}
+          />
           {researchFlowState === "thread-list" ? (
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 relative z-10">
               <div className="max-w-2xl mx-auto px-3 sm:px-4 pt-3 flex justify-end">
                 <ThemeQuickButton storageKey={chatStorageKey || undefined} />
               </div>
