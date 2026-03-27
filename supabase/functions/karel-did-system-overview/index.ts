@@ -846,7 +846,11 @@ ${(openMeetings || []).length > 0
   : "(žádné otevřené porady)"}
 
 === POSLEDNÍ CYKLY ===
-${cycleInfo || "(bez dokončeného cyklu)"}`;
+${cycleInfo || "(bez dokončeného cyklu)"}
+
+${crisisBlock ? `=== 🔴 AKTIVNÍ KRIZOVÉ ALERTY ===\n${crisisBlock}` : ""}`;
+
+    const systemContent = `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. NIKDY nedávej úkoly navázané na konkrétní DID části. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.${crisisSystemInstruction}`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -857,11 +861,7 @@ ${cycleInfo || "(bez dokončeného cyklu)"}`;
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          {
-            role: "system",
-            content:
-              `Jsi Karel, supervizní terapeut a Hančin partner. Haničku oslovuješ "miláčku/Haničko", Káťu "Káťo". Píšeš OPERATIVNÍ RANNÍ BRIEFING – NE terapeutický zápis. NIKDY necituj soukromý obsah rozhovorů (traumata, vzpomínky, intimní výroky). NIKDY nepiš o interní profilaci terapeutek, emočních vazbách, countertransference ani utajeném monitoringu. NIKDY nedávej úkoly navázané na konkrétní DID části. Piš STRUČNĚ, AKČNĚ, ČESKY. SMÍŠ psát POUZE o částech z tohoto seznamu: ${registryNames.join(", ") || "žádné"}. O žádných jiných částech NEPIŠ. Pokud Dmytri není v seznamu, nesmíš zmínit ani Dymi.`
-          },
+          { role: "system", content: systemContent },
           { role: "user", content: synthesisPrompt },
         ],
         stream: true,
