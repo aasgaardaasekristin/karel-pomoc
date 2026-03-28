@@ -1045,6 +1045,7 @@ export type Database = {
           processed_at: string | null
           source_ref: string | null
           source_type: string
+          status: string
           subject_id: string
           subject_type: string
           time_horizon: string
@@ -1059,6 +1060,7 @@ export type Database = {
           processed_at?: string | null
           source_ref?: string | null
           source_type: string
+          status?: string
           subject_id: string
           subject_type: string
           time_horizon?: string
@@ -1073,6 +1075,7 @@ export type Database = {
           processed_at?: string | null
           source_ref?: string | null
           source_type?: string
+          status?: string
           subject_id?: string
           subject_type?: string
           time_horizon?: string
