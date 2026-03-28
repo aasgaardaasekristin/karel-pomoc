@@ -295,6 +295,46 @@ ${pipelineBlock ? `\n═══ PIPELINE DATA (strukturovaná mezivrstva) ══�
       }
     }
 
+    // ═══ THERAPIST NOTES INJECTION ═══
+    // Load unread offline observations from therapists
+    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+      try {
+        const { createClient: createSbNotes } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const sbNotes = createSbNotes(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+        const { data: unreadNotes } = await sbNotes.from("therapist_notes")
+          .select("id, author, note_type, note_text, priority, session_date")
+          .eq("is_read_by_karel", false)
+          .or(`part_name.eq.${didPartName},part_name.is.null`)
+          .order("priority", { ascending: true })
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (unreadNotes && unreadNotes.length > 0) {
+          const noteTypeLabels: Record<string, string> = {
+            observation: "POZOROVÁNÍ", instruction: "INSTRUKCE", warning: "VAROVÁNÍ",
+            progress: "POKROK", offline_session: "OFFLINE SEZENÍ", medication: "MEDIKACE", context: "KONTEXT",
+          };
+          const notesBlock = unreadNotes.map((n: any) => {
+            const label = noteTypeLabels[n.note_type] || n.note_type.toUpperCase();
+            const prio = n.priority === "urgent" ? " 🔴URGENTNÍ" : n.priority === "high" ? " ⚠️DŮLEŽITÉ" : "";
+            return `[${label}${prio}] (${n.author}, ${n.session_date}): ${n.note_text}`;
+          }).join("\n");
+
+          systemPrompt += `\n\n═══ POZNÁMKY OD TERAPEUTŮ ═══\n${notesBlock}\n\nPOKYN: Tyto informace přirozeně zahrň do konverzace. NEŘÍKEJ "Hanka mi řekla..." — prostě je využij jako své vlastní pozorování a vědomosti. Instrukcemi se řiď závazně.`;
+
+          // Mark as read
+          const noteIds = unreadNotes.map((n: any) => n.id);
+          await sbNotes.from("therapist_notes")
+            .update({ is_read_by_karel: true, read_at: new Date().toISOString() })
+            .in("id", noteIds);
+
+          console.log(`[karel-chat] Therapist notes injected: ${unreadNotes.length} notes for ${didPartName}`);
+        }
+      } catch (notesErr) {
+        console.warn("[karel-chat] Therapist notes injection error (non-fatal):", notesErr);
+      }
+
     // ═══ FAST-PATH: supervision & live-session ═══
     // Skip all heavy operations (Drive, Perplexity, tasks) for live modes
     if (mode === "supervision" || mode === "live-session") {
