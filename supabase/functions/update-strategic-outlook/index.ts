@@ -70,14 +70,20 @@ serve(async (req) => {
 
     // Read DB data
     const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const [goalsRes, updateLogRes, sessionsRes] = await Promise.all([
+    const weekAgoDate = weekAgo.slice(0, 10);
+    const [goalsRes, updateLogRes, sessionsRes, weekMetricsRes] = await Promise.all([
       sb.from("strategic_goals").select("*").eq("status", "active"),
       sb.from("card_update_log").select("*").gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(50),
       sb.from("planned_sessions").select("*").gte("created_at", weekAgo).limit(100),
+      sb.from("daily_metrics").select("*").gte("metric_date", weekAgoDate).order("metric_date", { ascending: true }),
     ]);
 
     const goalsText = (goalsRes.data || []).map(g => `[${g.part_name || "systém"}] ${g.goal_text} (${g.progress_pct}%, ${g.category})`).join("\n");
     const statsText = `Card updates: ${updateLogRes.data?.length || 0}, Sessions: ${sessionsRes.data?.length || 0} (done: ${sessionsRes.data?.filter(s => s.status === "done").length || 0})`;
+    const weekMetrics = weekMetricsRes.data || [];
+    const metricsText = weekMetrics.length ? `\nKVANTITATIVNÍ METRIKY ZA TÝDEN:\n${weekMetrics.map((m: any) =>
+      `${m.metric_date} | ${m.part_name || "systém"} | zpráv: ${m.message_count} | valence: ${m.emotional_valence ?? "?"} | spolupráce: ${m.cooperation_level ?? "?"} | switching: ${m.switching_count}`
+    ).join("\n")}` : "";
 
     const prompt = `Jsi Karel — strategický koordinátor DID terapie.
 
@@ -127,7 +133,8 @@ STRATEGICKÉ CÍLE:
 ${goalsText || "(žádné)"}
 
 STATISTIKY ZA TÝDEN:
-${statsText}`;
+${statsText}
+${metricsText}`;
 
     const result = await callGemini(prompt);
     console.log(`[strategic] Gemini response: ${result.length} chars`);

@@ -888,6 +888,87 @@ export type Database = {
           },
         ]
       }
+      daily_metrics: {
+        Row: {
+          assistant_message_count: number | null
+          avg_message_length: number | null
+          computed_at: string | null
+          cooperation_level: number | null
+          created_at: string | null
+          emotional_arousal: number | null
+          emotional_valence: number | null
+          id: string
+          message_count: number | null
+          metric_date: string
+          new_topics_introduced: number | null
+          openness_level: number | null
+          part_name: string | null
+          positive_signals_count: number | null
+          promises_fulfilled: number | null
+          promises_made: number | null
+          raw_data: Json | null
+          risk_signals_count: number | null
+          session_count: number | null
+          source: string | null
+          switching_count: number | null
+          therapist_notes_count: number | null
+          unresolved_topics: number | null
+          user_message_count: number | null
+        }
+        Insert: {
+          assistant_message_count?: number | null
+          avg_message_length?: number | null
+          computed_at?: string | null
+          cooperation_level?: number | null
+          created_at?: string | null
+          emotional_arousal?: number | null
+          emotional_valence?: number | null
+          id?: string
+          message_count?: number | null
+          metric_date?: string
+          new_topics_introduced?: number | null
+          openness_level?: number | null
+          part_name?: string | null
+          positive_signals_count?: number | null
+          promises_fulfilled?: number | null
+          promises_made?: number | null
+          raw_data?: Json | null
+          risk_signals_count?: number | null
+          session_count?: number | null
+          source?: string | null
+          switching_count?: number | null
+          therapist_notes_count?: number | null
+          unresolved_topics?: number | null
+          user_message_count?: number | null
+        }
+        Update: {
+          assistant_message_count?: number | null
+          avg_message_length?: number | null
+          computed_at?: string | null
+          cooperation_level?: number | null
+          created_at?: string | null
+          emotional_arousal?: number | null
+          emotional_valence?: number | null
+          id?: string
+          message_count?: number | null
+          metric_date?: string
+          new_topics_introduced?: number | null
+          openness_level?: number | null
+          part_name?: string | null
+          positive_signals_count?: number | null
+          promises_fulfilled?: number | null
+          promises_made?: number | null
+          raw_data?: Json | null
+          risk_signals_count?: number | null
+          session_count?: number | null
+          source?: string | null
+          switching_count?: number | null
+          therapist_notes_count?: number | null
+          unresolved_topics?: number | null
+          user_message_count?: number | null
+        }
+        Relationships: []
+      }
       did_conversations: {
         Row: {
           created_at: string
