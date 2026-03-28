@@ -142,11 +142,36 @@ serve(async (req) => {
       }
     }
 
+    // ═══ LOAD SESSION MEMORY for richer analysis ═══
+    let memoryText = "";
+    try {
+      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+      const { data: recentMemory } = await sb.from("session_memory")
+        .select("*")
+        .eq("part_name", partName)
+        .gte("session_date", weekAgo)
+        .order("session_date", { ascending: false });
+
+      if (recentMemory?.length) {
+        memoryText = recentMemory.map((m: any) =>
+          `[${new Date(m.session_date).toLocaleDateString("cs")}] ` +
+          `Emoce: ${m.emotional_state || "?"}\n` +
+          `Body: ${(m.key_points || []).join("; ")}\n` +
+          `Nedořešené: ${(m.unresolved || []).join("; ")}\n` +
+          `Rizika: ${(m.risk_signals || []).join("; ")}`
+        ).join("\n\n");
+        console.log(`[update-card] Session memory loaded: ${recentMemory.length} entries for ${partName}`);
+      }
+    } catch (memErr) {
+      console.warn("[update-card] Session memory load error (non-fatal):", memErr);
+    }
+
     // ═══ PHASE 1: ANALYSIS ═══
     console.log(`[update-card] Phase 1: Analysis for ${partName}`);
     const analysisPrompt = `Jsi Karel — klinický psycholog specializovaný na DID, správce kartotéky. Dostáváš:
 1. Aktuální kartu části "${partName}" z kartotéky
 2. Nová nezpracovaná vlákna (rozhovory s touto částí)
+${memoryText ? "3. Strukturovanou paměť ze sezení za poslední týden" : ""}
 
 TVŮ ÚKOL — FÁZE ANALÝZY:
 Přečti vlákna a roztřiď informace podle sekcí A–M.
