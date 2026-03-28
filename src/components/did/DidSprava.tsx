@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain } from "lucide-react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
 import DidKartotekaTab from "./DidKartotekaTab";
 import DidPlanTab from "./DidPlanTab";
+import DidCrisisPanel from "./DidCrisisPanel";
 
 interface Props {
   onBootstrap: () => void;
