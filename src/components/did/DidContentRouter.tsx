@@ -641,6 +641,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             onStop={audioRecorder.stopRecording} onDiscard={audioRecorder.discardRecording}
             onSend={handleAudioAnalysis} disabled={isLoading || isSoapLoading}
           />
+          <QuickNoteDialog partName={activeThread?.partName} subMode={didSubMode} />
         </div>
         {messages.length > 1 && (
           <DidActionButtons
