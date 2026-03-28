@@ -113,7 +113,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes">("tools");
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
