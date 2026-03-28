@@ -56,7 +56,7 @@ export default function DidGoalsTab() {
 
   const loadGoals = useCallback(async () => {
     setLoading(true);
-    let query = supabase
+    let query = (supabase as any)
       .from("part_goals")
       .select("*")
       .order("sort_order", { ascending: true })
@@ -70,15 +70,17 @@ export default function DidGoalsTab() {
       supabase.from("did_part_registry").select("part_name").eq("status", "active"),
     ]);
 
-    setGoals((goalsRes.data as any) || []);
+    setGoals(goalsRes.data || []);
     setParts((partsRes.data || []).map((p: any) => p.part_name));
     setLoading(false);
   }, [filterPart, filterStatus]);
 
   useEffect(() => { loadGoals(); }, [loadGoals]);
 
+  const sb = supabase as any;
+
   async function approveGoal(id: string) {
-    await supabase.from("part_goals").update({
+    await sb.from("part_goals").update({
       status: "active", approved_by: "hanka", approved_at: new Date().toISOString(),
     }).eq("id", id);
     loadGoals();
@@ -86,20 +88,20 @@ export default function DidGoalsTab() {
   }
 
   async function rejectGoal(id: string) {
-    await supabase.from("part_goals").update({ status: "abandoned" }).eq("id", id);
+    await sb.from("part_goals").update({ status: "abandoned" }).eq("id", id);
     loadGoals();
     toast.success("Cíl odmítnut");
   }
 
   async function togglePause(id: string, currentStatus: string) {
-    await supabase.from("part_goals").update({
+    await sb.from("part_goals").update({
       status: currentStatus === "paused" ? "active" : "paused",
     }).eq("id", id);
     loadGoals();
   }
 
   async function completeGoal(id: string) {
-    await supabase.from("part_goals").update({
+    await sb.from("part_goals").update({
       status: "completed", progress_pct: 100, completed_at: new Date().toISOString(),
     }).eq("id", id);
     loadGoals();
@@ -107,26 +109,26 @@ export default function DidGoalsTab() {
   }
 
   async function updateProgress(id: string, pct: number) {
-    await supabase.from("part_goals").update({ progress_pct: pct }).eq("id", id);
+    await sb.from("part_goals").update({ progress_pct: pct }).eq("id", id);
     loadGoals();
   }
 
   async function handleSaveGoal() {
     if (!formText.trim() || !formPart) return;
     setSaving(true);
-    await supabase.from("part_goals").insert({
+    await sb.from("part_goals").insert({
       part_name: formPart, goal_text: formText.trim(),
       description: formDesc.trim() || null, category: formCategory,
       priority: formPriority, status: "active", proposed_by: "hanka",
       approved_by: "hanka", approved_at: new Date().toISOString(),
-    } as any);
+    });
     setFormText(""); setFormDesc(""); setShowForm(false); setSaving(false);
     loadGoals();
     toast.success("Cíl vytvořen");
   }
 
   async function deleteGoal(id: string) {
-    await supabase.from("part_goals").delete().eq("id", id);
+    await sb.from("part_goals").delete().eq("id", id);
     loadGoals();
     toast.success("Smazáno");
   }
