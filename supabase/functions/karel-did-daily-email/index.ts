@@ -334,6 +334,85 @@ serve(async (req) => {
       suppBlock += `\n${(todaySessionPlan.plan_markdown || "").slice(0, 4000)}`;
     }
 
+    // ═══ F7: ENRICHED REPORT SECTIONS ═══
+    // Metrics
+    if (todayMetrics.length > 0) {
+      suppBlock += `\n\n📊 ═══ DENNÍ METRIKY ═══\n`;
+      for (const m of todayMetrics) {
+        if (!m.part_name) continue;
+        const valIcon = m.emotional_valence != null
+          ? (m.emotional_valence >= 6 ? "🟢" : m.emotional_valence >= 3 ? "🟡" : "🔴")
+          : "⚪";
+        suppBlock += `${valIcon} ${m.part_name}: ${m.message_count || 0} zpráv, valence ${m.emotional_valence?.toFixed?.(1) || "?"}/10, spolupráce ${m.cooperation_level?.toFixed?.(1) || "?"}/10${m.switching_count ? `, ${m.switching_count} switchingů` : ""}${m.risk_signals_count ? `, ⚠️ ${m.risk_signals_count} rizik` : ""}\n`;
+      }
+    }
+
+    // Weekly trends
+    if (weekMetrics.length > 0) {
+      const partNames = [...new Set(weekMetrics.filter((m: any) => m.part_name).map((m: any) => m.part_name))];
+      if (partNames.length > 0) {
+        suppBlock += `\n📈 ═══ TÝDENNÍ TRENDY ═══\n`;
+        for (const pn of partNames) {
+          const partData = weekMetrics.filter((m: any) => m.part_name === pn);
+          if (partData.length < 2) continue;
+          const first = partData[0];
+          const last = partData[partData.length - 1];
+          const valTrend = first.emotional_valence != null && last.emotional_valence != null
+            ? (last.emotional_valence > first.emotional_valence + 0.5 ? "↗ zlepšuje se"
+              : last.emotional_valence < first.emotional_valence - 0.5 ? "↘ zhoršuje se" : "→ stabilní")
+            : "? nedostatek dat";
+          const totalMsgs = partData.reduce((s: number, m: any) => s + (m.message_count || 0), 0);
+          suppBlock += `${pn}: valence ${valTrend}, ${totalMsgs} zpráv za týden\n`;
+        }
+      }
+    }
+
+    // Goals
+    const activeGoalsList = allGoals.filter((g: any) => g.status === "active");
+    const completedGoals = allGoals.filter((g: any) => g.status === "completed");
+    const pendingGoals = allGoals.filter((g: any) => g.status === "proposed");
+    if (activeGoalsList.length > 0 || completedGoals.length > 0 || pendingGoals.length > 0) {
+      suppBlock += `\n🎯 ═══ CÍLE ═══\n`;
+      if (completedGoals.length > 0) {
+        suppBlock += `🎉 Dnes splněné:\n`;
+        for (const g of completedGoals) suppBlock += `  ✅ ${g.part_name}: ${g.goal_text}\n`;
+      }
+      if (pendingGoals.length > 0) {
+        suppBlock += `🆕 Čekají na schválení:\n`;
+        for (const g of pendingGoals) suppBlock += `  🤖 ${g.part_name}: ${g.goal_text}\n`;
+      }
+      if (activeGoalsList.length > 0) {
+        suppBlock += `Aktivní cíle:\n`;
+        for (const g of activeGoalsList) {
+          const bar = "█".repeat(Math.round((g.progress_pct || 0) / 10)) + "░".repeat(10 - Math.round((g.progress_pct || 0) / 10));
+          suppBlock += `  ${g.part_name}: ${g.goal_text} [${bar}] ${g.progress_pct}%${g.evaluation_notes ? ` — ${g.evaluation_notes}` : ""}\n`;
+        }
+      }
+    }
+
+    // Switching
+    if (todaySwitches.length > 0) {
+      suppBlock += `\n🔄 ═══ SWITCHING EVENTY (${todaySwitches.length}) ═══\n`;
+      for (const sw of todaySwitches.slice(0, 5)) {
+        suppBlock += `  ${sw.original_part} → ${sw.detected_part || "?"} (${sw.confidence}) ${new Date(sw.created_at).toLocaleTimeString("cs-CZ")}\n`;
+      }
+      if (todaySwitches.length > 5) suppBlock += `  ... a dalších ${todaySwitches.length - 5}\n`;
+    }
+
+    // Unread therapist notes
+    if (unreadNotes.length > 0) {
+      suppBlock += `\n📝 ═══ NEPŘEČTENÉ POZNÁMKY (${unreadNotes.length}) ═══\n`;
+      for (const n of unreadNotes) {
+        const prioIcon = n.priority === "urgent" ? "🔴" : n.priority === "high" ? "🟠" : "";
+        suppBlock += `  ${prioIcon} [${n.author}] ${n.part_name || "obecné"}: ${(n.note_text || "").slice(0, 100)}\n`;
+      }
+    }
+
+    // System status
+    if (aiErrorCount > 0) {
+      suppBlock += `\n🔧 SYSTÉM: ${aiErrorCount} AI chyb dnes\n`;
+    }
+
     // Motivation profiles
     const formatProfile = (p: any) => {
       if (!p) return "Žádný profil zatím.";
