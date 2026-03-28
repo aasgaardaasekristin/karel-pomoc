@@ -420,6 +420,22 @@ ${searchResultsText.slice(0, 10000)}`;
       processing_time_ms: processingTime,
     });
 
+    // Check if this part has active crisis → auto-evaluate
+    try {
+      const { data: activeCrisis } = await sb.from("crisis_events").select("id").eq("part_name", partName).not("phase", "eq", "closed").limit(1);
+      if (activeCrisis?.length) {
+        const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evaluate-crisis`;
+        await fetch(evalUrl, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${srvKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ crisisId: activeCrisis[0].id, sessionSummary: updateLog?.slice(0, 1000) }),
+        });
+        console.log(`[update-card] Crisis eval triggered for ${partName}`);
+      }
+    } catch (crisisErr) {
+      console.warn("[update-card] Crisis eval error:", crisisErr);
+    }
+
     console.log(`[update-card] ✅ Done: ${partName} in ${processingTime}ms`);
 
     return new Response(JSON.stringify({

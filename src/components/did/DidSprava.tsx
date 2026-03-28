@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain } from "lucide-react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
 import DidKartotekaTab from "./DidKartotekaTab";
 import DidPlanTab from "./DidPlanTab";
+import DidCrisisPanel from "./DidCrisisPanel";
 
 interface Props {
   onBootstrap: () => void;
@@ -110,9 +111,15 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis">("tools");
+  const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
+
+  useEffect(() => {
+    supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
+      .then(({ count }) => setHasCrisis((count || 0) > 0));
+  }, [refreshTrigger]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -143,6 +150,7 @@ const DidSprava = ({
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
          {([
             { key: "tools" as const, label: "🛠 Nástroje" },
+            ...(hasCrisis ? [{ key: "crisis" as const, label: "🚨 Krize" }] : []),
             { key: "plan" as const, label: "📅 Plán" },
             { key: "kartoteka" as const, label: "📋 Kartotéka" },
             { key: "health" as const, label: "❤️ Zdraví" },
@@ -268,6 +276,12 @@ const DidSprava = ({
         {activeTab === "plan" && (
           <div className="space-y-2">
             <DidPlanTab />
+          </div>
+        )}
+
+        {activeTab === "crisis" && (
+          <div className="space-y-2">
+            <DidCrisisPanel refreshTrigger={refreshTrigger} />
           </div>
         )}
 
