@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import ThemeEditorDialog from "@/components/ThemeEditorDialog";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
 
 interface Props {
