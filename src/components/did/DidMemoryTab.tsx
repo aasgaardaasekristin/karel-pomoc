@@ -48,6 +48,7 @@ interface SwitchingEvent {
 const DidMemoryTab = () => {
   const [memories, setMemories] = useState<SessionMemory[]>([]);
   const [promises, setPromises] = useState<Promise[]>([]);
+  const [switches, setSwitches] = useState<SwitchingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [partFilter, setPartFilter] = useState<string>("all");
   const [allParts, setAllParts] = useState<string[]>([]);
