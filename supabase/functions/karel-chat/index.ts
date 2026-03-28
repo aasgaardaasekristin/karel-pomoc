@@ -379,6 +379,34 @@ POKYN: Pokud valence klesá (↓), buď citlivější. Pokud spolupráce roste (
       }
     }
 
+    // ═══ GOALS INJECTION ═══
+    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+      try {
+        const { createClient: createSbGoals } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const sbGoals = createSbGoals(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+        const { data: partGoals } = await sbGoals
+          .from("part_goals")
+          .select("goal_text, category, progress_pct, milestones, evaluation_notes")
+          .eq("part_name", didPartName)
+          .eq("status", "active")
+          .order("priority", { ascending: true })
+          .limit(5);
+
+        if (partGoals && partGoals.length > 0) {
+          const goalsBlock = partGoals.map((g: any, i: number) => {
+            const ms = (g.milestones || []).map((m: any) => `  ${m.done ? "✅" : "⬜"} ${m.text}`).join("\n");
+            return `${i + 1}. [${g.progress_pct}%] ${g.goal_text}${g.evaluation_notes ? ` (${g.evaluation_notes})` : ""}${ms ? "\n" + ms : ""}`;
+          }).join("\n");
+
+          systemPrompt += `\n\n═══ AKTIVNÍ CÍLE PRO ${didPartName.toUpperCase()} ═══\n${goalsBlock}\n\nPOKYN: Přirozeně pracuj směrem k těmto cílům. Neříkej "máš cíl XY" — prostě veď konverzaci tak, aby se k nim přibližovala. Oceňuj pokrok.`;
+          console.log(`[karel-chat] Goals injected: ${partGoals.length} for ${didPartName}`);
+        }
+      } catch (goalsErr) {
+        console.warn("[karel-chat] Goals injection error:", goalsErr);
+      }
+    }
+
     // ═══ FAST-PATH: supervision & live-session ═══
     // Skip all heavy operations (Drive, Perplexity, tasks) for live modes
     if (mode === "supervision" || mode === "live-session") {

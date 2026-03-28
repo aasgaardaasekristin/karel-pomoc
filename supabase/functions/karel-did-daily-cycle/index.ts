@@ -5354,6 +5354,128 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Metrics computation error (non-fatal):", metricsErr);
     }
 
+    // ═══ FÁZE 6.9: AUTO-HODNOCENÍ CÍLŮ ═══
+    console.log("[daily-cycle] Evaluating goals...");
+    try {
+      const { data: activeGoals } = await sb.from("part_goals").select("*").eq("status", "active");
+
+      if (activeGoals && activeGoals.length > 0) {
+        const LOVABLE_API_KEY_GOALS = Deno.env.get("LOVABLE_API_KEY");
+
+        for (const goal of activeGoals) {
+          try {
+            const recentDate = new Date(Date.now() - 3 * 86400000).toISOString();
+            const [threadsRes, metricsRes, memoryRes] = await Promise.all([
+              sb.from("did_threads").select("messages").eq("part_name", goal.part_name).gte("updated_at", recentDate).order("updated_at", { ascending: false }).limit(3),
+              sb.from("daily_metrics").select("*").eq("part_name", goal.part_name).order("metric_date", { ascending: false }).limit(3),
+              sb.from("session_memory").select("key_points, emotional_state, positive_signals, risk_signals").eq("part_name", goal.part_name).gte("created_at", recentDate).limit(5),
+            ]);
+
+            let conversationSample = "";
+            for (const t of (threadsRes.data || [])) {
+              const msgs = Array.isArray(t.messages) ? t.messages : [];
+              conversationSample += msgs.slice(-6).map((m: any) => `[${m.role}]: ${(m.content || "").slice(0, 200)}`).join("\n") + "\n---\n";
+            }
+
+            const memoryContext = (memoryRes.data || []).map((m: any) => `Stav: ${m.emotional_state}, Klíčové: ${(m.key_points || []).join(", ")}`).join("\n");
+            const metricsContext = (metricsRes.data || []).map((m: any) => `${m.metric_date}: valence=${m.emotional_valence ?? "?"}, spolupráce=${m.cooperation_level ?? "?"}`).join("\n");
+
+            if (LOVABLE_API_KEY_GOALS && conversationSample.length > 50) {
+              const { callAiForJson } = await import("../_shared/aiCallWrapper.ts");
+
+              const evalResult = await callAiForJson({
+                systemPrompt: `Jsi hodnotitel terapeutických cílů. Máš cíl pro část "${goal.part_name}" a kontext z posledních 3 dnů. Ohodnoť pokrok.`,
+                userPrompt: `CÍL: ${goal.goal_text}\n${goal.description ? `POPIS: ${goal.description}` : ""}\nKATEGORIE: ${goal.category}\nAKTUÁLNÍ POKROK: ${goal.progress_pct}%\n${goal.milestones ? `MILNÍKY: ${JSON.stringify(goal.milestones)}` : ""}\n\nKONVERZACE:\n${conversationSample.slice(0, 3000)}\n\nPAMĚŤ:\n${memoryContext.slice(0, 1000)}\n\nMETRIKY:\n${metricsContext}\n\nVrať JSON:\n{"new_progress_pct": 0-100, "evaluation_text": "stručné hodnocení česky (max 2 věty)", "milestones_update": [{"text": "...", "done": true/false}], "should_complete": false, "reasoning": "proč"}\n\nPRAVIDLA: Pokrok max +15%/den, nemůže klesnout, should_complete jen při jasném splnění.`,
+                apiKey: LOVABLE_API_KEY_GOALS,
+                model: "google/gemini-2.5-flash-lite",
+                requiredKeys: ["new_progress_pct", "evaluation_text"],
+                maxRetries: 0,
+                fallback: null,
+                callerName: "goal-evaluation",
+              });
+
+              if (evalResult.success && evalResult.data) {
+                const ev = evalResult.data as any;
+                const oldPct = goal.progress_pct || 0;
+                let newPct = Math.min(100, Math.max(oldPct, Math.min(oldPct + 15, ev.new_progress_pct || oldPct)));
+
+                const updateData: any = {
+                  progress_pct: newPct,
+                  evaluation_notes: ev.evaluation_text,
+                  last_evaluated_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                };
+
+                if (ev.milestones_update?.length) updateData.milestones = ev.milestones_update;
+                if (ev.should_complete && newPct >= 90) {
+                  updateData.status = "completed";
+                  updateData.completed_at = new Date().toISOString();
+                  updateData.progress_pct = 100;
+                }
+
+                await sb.from("part_goals").update(updateData).eq("id", goal.id);
+                await sb.from("goal_evaluations").insert({
+                  goal_id: goal.id, previous_progress: oldPct, new_progress: newPct,
+                  evaluation_text: ev.evaluation_text, evidence: { reasoning: ev.reasoning },
+                }).catch(() => {});
+
+                console.log(`[daily-cycle] Goal "${(goal.goal_text || "").slice(0, 30)}": ${oldPct}% → ${newPct}%${ev.should_complete ? " (COMPLETED!)" : ""}`);
+              }
+            }
+          } catch (goalErr) {
+            console.warn(`[daily-cycle] Goal eval error:`, goalErr);
+          }
+        }
+      }
+      console.log("[daily-cycle] Goal evaluation done");
+    } catch (goalsErr) {
+      console.warn("[daily-cycle] Goals phase failed:", goalsErr);
+    }
+
+    // ═══ AUTO-NÁVRH NOVÝCH CÍLŮ ═══
+    try {
+      const todayStart = new Date().toISOString().slice(0, 10);
+      const { count: todayProposed } = await sb.from("part_goals").select("id", { count: "exact", head: true }).eq("proposed_by", "karel").gte("created_at", todayStart);
+
+      if ((todayProposed || 0) < 2) {
+        const { data: allActiveParts } = await sb.from("did_part_registry").select("part_name").eq("status", "active");
+        const { data: partsWithGoals } = await sb.from("part_goals").select("part_name").in("status", ["active", "proposed"]);
+        const partsWithGoalNames = [...new Set((partsWithGoals || []).map((g: any) => g.part_name))];
+        const partsWithoutGoals = (allActiveParts || []).filter((p: any) => !partsWithGoalNames.includes(p.part_name));
+
+        const LOVABLE_API_KEY_PROP = Deno.env.get("LOVABLE_API_KEY");
+        if (partsWithoutGoals.length > 0 && LOVABLE_API_KEY_PROP) {
+          const targetPart = partsWithoutGoals[0].part_name;
+          const { data: recentMem } = await sb.from("session_memory").select("key_points, unresolved, risk_signals, positive_signals").eq("part_name", targetPart).order("created_at", { ascending: false }).limit(5);
+
+          const { callAiForJson: callAiGoal } = await import("../_shared/aiCallWrapper.ts");
+          const proposalResult = await callAiGoal({
+            systemPrompt: `Jsi Karel — klinický psycholog. Navrhni JEDEN konkrétní, měřitelný terapeutický micro-cíl pro část "${targetPart}".`,
+            userPrompt: `POSLEDNÍ PAMĚŤ:\n${(recentMem || []).map((m: any) => `Klíčové: ${(m.key_points || []).join(", ")}\nNedořešené: ${(m.unresolved || []).join(", ")}`).join("\n---\n")}\n\nNavrhni JSON:\n{"goal_text": "stručný cíl (max 100 znaků)", "description": "popis a kritéria splnění", "category": "therapeutic|behavioral|emotional|relational|safety|integration|communication|daily_life", "priority": "low|normal|high", "milestones": [{"text": "první krok", "done": false}]}`,
+            apiKey: LOVABLE_API_KEY_PROP,
+            model: "google/gemini-2.5-flash",
+            requiredKeys: ["goal_text", "category"],
+            maxRetries: 0,
+            fallback: null,
+            callerName: "goal-proposal",
+          });
+
+          if (proposalResult.success && proposalResult.data) {
+            const p = proposalResult.data as any;
+            await sb.from("part_goals").insert({
+              part_name: targetPart, goal_text: (p.goal_text || "").slice(0, 200),
+              description: (p.description || "").slice(0, 500), category: p.category || "therapeutic",
+              priority: p.priority || "normal", milestones: p.milestones || [],
+              status: "proposed", proposed_by: "karel",
+            });
+            console.log(`[daily-cycle] Karel proposed goal for ${targetPart}: "${(p.goal_text || "").slice(0, 50)}"`);
+          }
+        }
+      }
+    } catch (propErr) {
+      console.warn("[daily-cycle] Goal proposal error:", propErr);
+    }
+
     // ═══ FÁZE 7: Aktualizace operativního plánu ═══
     try {
       const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;
