@@ -82,6 +82,22 @@ async function findKartotekaAndCentrum(token: string): Promise<{ centrumFiles: A
 
 const strip = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
+function buildClaimsSummary(claims: any[]): Record<string, any[]> {
+  const byPart: Record<string, any[]> = {};
+  for (const c of claims) {
+    if (!byPart[c.part_name]) byPart[c.part_name] = [];
+    byPart[c.part_name].push({
+      section: c.card_section,
+      type: c.claim_type,
+      text: c.claim_text?.slice(0, 150),
+      confidence: c.confidence,
+      confirmations: c.confirmation_count,
+      evidence: c.evidence_level,
+    });
+  }
+  return byPart;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
