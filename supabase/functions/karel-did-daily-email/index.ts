@@ -128,6 +128,15 @@ serve(async (req) => {
   const dateStr = new Date().toLocaleDateString("cs-CZ");
   const pragueHour = getPragueHour();
 
+  // Parse force parameter for manual resend bypass
+  let forceResend = false;
+  try {
+    const body = await req.clone().json();
+    forceResend = body?.force === true;
+  } catch { /* no body or not JSON */ }
+
+  console.log(`[daily-email] START | date=${reportDatePrague} | hour=${pragueHour} | force=${forceResend} | hanka=${MAMKA_EMAIL} | kata=${KATA_EMAIL}`);
+
   try {
     // ═══ DISPATCH DEDUP ═══
     const reserveSlot = async (recipient: "hanka" | "kata"): Promise<boolean> => {
@@ -138,9 +147,16 @@ serve(async (req) => {
         .eq("recipient", recipient)
         .maybeSingle();
 
-      if (existing?.status === "sent") {
+      if (existing?.status === "sent" && !forceResend) {
         console.log(`[daily-email] ${recipient} already sent for ${reportDatePrague}, skipping.`);
         return false;
+      }
+      if (existing?.status === "sent" && forceResend) {
+        console.log(`[daily-email] ${recipient} force resend — overriding "sent" status.`);
+        await (sb as any).from("did_daily_report_dispatches")
+          .update({ status: "pending", updated_at: nowIso, error_message: "force_resend" })
+          .eq("id", existing.id);
+        return true;
       }
 
       if (existing) {
@@ -726,12 +742,16 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
     if (hankaReserved) {
       try {
         const hankaHtml = await generateEmail("hanka");
-        await resend.emails.send({
+        const { data: sendData, error: sendError } = await resend.emails.send({
           from: "Karel <karel@hana-chlebcova.cz>",
           to: [MAMKA_EMAIL],
           subject: `Karel – denní report ${dateStr}`,
           html: hankaHtml,
         });
+        if (sendError) {
+          throw new Error(`Resend API error: ${sendError.message || JSON.stringify(sendError)}`);
+        }
+        console.log(`[daily-email] ✅ Resend ID (hanka): ${sendData?.id || "unknown"}`);
         await markSent("hanka");
         hankaResult = "sent";
         console.log(`[daily-email] ✅ Sent to Hanka: ${MAMKA_EMAIL}`);
@@ -745,12 +765,16 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
     if (kataReserved) {
       try {
         const kataHtml = await generateEmail("kata");
-        await resend.emails.send({
+        const { data: sendData, error: sendError } = await resend.emails.send({
           from: "Karel <karel@hana-chlebcova.cz>",
           to: [KATA_EMAIL],
           subject: `Karel – report pro Káťu ${dateStr}`,
           html: kataHtml,
         });
+        if (sendError) {
+          throw new Error(`Resend API error: ${sendError.message || JSON.stringify(sendError)}`);
+        }
+        console.log(`[daily-email] ✅ Resend ID (kata): ${sendData?.id || "unknown"}`);
         await markSent("kata");
         kataResult = "sent";
         console.log(`[daily-email] ✅ Sent to Káťa: ${KATA_EMAIL}`);
