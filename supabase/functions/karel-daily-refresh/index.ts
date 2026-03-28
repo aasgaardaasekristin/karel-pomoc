@@ -193,18 +193,28 @@ serve(async (req) => {
     }
 
     // ═══ 2. DB: Aggregate current state (POST-SYNC – reflects Drive index) ═══
+    const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
     const [
       { data: parts },
       { data: tasks },
       { data: recentThreads },
       { data: profiles },
       { data: recentSessions },
+      { data: planItems05A },
+      { data: openQuestions },
+      { data: activeClaims },
+      { data: recentObservations },
     ] = await Promise.all([
       sb.from("did_part_registry").select("part_name, display_name, status, last_seen_at, cluster, age_estimate, last_emotional_state, last_emotional_intensity, health_score").eq("user_id", userId),
       sb.from("did_therapist_tasks").select("task, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, category, escalation_level").eq("user_id", userId).neq("status", "done").order("priority", { ascending: false }),
       sb.from("did_threads").select("part_name, sub_mode, thread_label, last_activity_at, started_at").eq("user_id", userId).order("last_activity_at", { ascending: false }).limit(20),
       sb.from("did_motivation_profiles").select("therapist, preferred_style, tasks_completed, tasks_missed, streak_current, avg_completion_days").eq("user_id", userId),
       sb.from("did_part_sessions").select("part_name, therapist, session_date, session_type, methods_used").eq("user_id", userId).order("session_date", { ascending: false }).limit(10),
+      sb.from("did_plan_items").select("section, subject_id, content, priority, action_required, due_date").eq("plan_type", "05A").eq("status", "active").order("priority", { ascending: true }).limit(15),
+      sb.from("did_pending_questions").select("question, subject_id, context, directed_to, status").eq("status", "open").order("created_at", { ascending: false }).limit(10),
+      sb.from("did_profile_claims").select("part_name, card_section, claim_type, claim_text, confidence, confirmation_count, evidence_level").eq("status", "active").order("part_name", { ascending: true }).limit(30),
+      sb.from("did_observations").select("subject_id, fact, evidence_level, created_at, source_type").eq("status", "active").gte("created_at", twoDaysAgo).order("created_at", { ascending: false }).limit(15),
     ]);
 
     // ═══ 3. Build structured context JSON ═══
