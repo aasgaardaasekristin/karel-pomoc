@@ -2150,6 +2150,7 @@ export type Database = {
       did_threads: {
         Row: {
           created_at: string
+          current_detected_part: string | null
           entered_name: string | null
           id: string
           is_processed: boolean
@@ -2168,6 +2169,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          current_detected_part?: string | null
           entered_name?: string | null
           id?: string
           is_processed?: boolean
@@ -2186,6 +2188,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          current_detected_part?: string | null
           entered_name?: string | null
           id?: string
           is_processed?: boolean
@@ -3053,6 +3056,48 @@ export type Database = {
           status?: string | null
           target_date?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      switching_events: {
+        Row: {
+          acknowledged: boolean | null
+          confidence: string | null
+          created_at: string | null
+          detected_part: string
+          id: string
+          karel_response: string | null
+          message_index: number | null
+          original_part: string
+          signals: Json | null
+          thread_id: string
+          user_message_excerpt: string | null
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          confidence?: string | null
+          created_at?: string | null
+          detected_part: string
+          id?: string
+          karel_response?: string | null
+          message_index?: number | null
+          original_part: string
+          signals?: Json | null
+          thread_id: string
+          user_message_excerpt?: string | null
+        }
+        Update: {
+          acknowledged?: boolean | null
+          confidence?: string | null
+          created_at?: string | null
+          detected_part?: string
+          id?: string
+          karel_response?: string | null
+          message_index?: number | null
+          original_part?: string
+          signals?: Json | null
+          thread_id?: string
+          user_message_excerpt?: string | null
         }
         Relationships: []
       }
