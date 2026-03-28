@@ -760,6 +760,73 @@ Odpověz POUZE platným JSON:
         console.warn(`[retro-scan] Registry update warning:`, e);
       }
 
+      // ══════════════════════════════════════════
+      // STEP 9.5: Persist observations + plan_items
+      // ══════════════════════════════════════════
+      try {
+        const { createObservation, routeObservation } = await import("../_shared/observations.ts");
+
+        const obsId = await createObservation(sb, {
+          subject_type: "crisis",
+          subject_id: thread.part_name,
+          source_type: "thread",
+          source_ref: thread.id,
+          fact: `Krizová detekce: ${crisisResult.summary}. Signály: ${(crisisResult.signals || []).join(", ")}. Emoční intenzita: ${crisisResult.emotional_intensity || "?"}/5.`,
+          evidence_level: "D3",
+          confidence: 0.9,
+          time_horizon: "hours",
+        });
+
+        await routeObservation(sb, obsId, {
+          subject_type: "crisis",
+          subject_id: thread.part_name,
+          evidence_level: "D3",
+          time_horizon: "hours",
+          fact: `Krizová intervence pro ${thread.part_name}: ${crisisResult.summary}`,
+        }, "immediate_plan");
+
+        // 05A plan item – crisis watch
+        await sb.from("did_plan_items").insert({
+          plan_type: "05A",
+          section: "crisis_watch",
+          subject_type: "part",
+          subject_id: thread.part_name,
+          content: `KRIZE ${new Date().toISOString().slice(0, 10)}: ${crisisResult.summary}. Follow-up: 48-72h monitorace, ověřit odezvu na krizový zásah.`,
+          priority: "critical",
+          action_required: `1) Káťa: distanční check-in 2) Hanka: stabilizační sezení 3) Karel: vyžádat zpětnou vazbu do 24h`,
+          assigned_to: "karel,hanka,kata",
+          due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          status: "active",
+          review_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          source_observation_ids: [obsId],
+        });
+
+        // 05B plan item – strategic therapy line (if AI mentioned mid-term recommendations)
+        const hasMidTermSignal = (crisisResult.summary || "").length > 30;
+        if (hasMidTermSignal) {
+          await sb.from("did_plan_items").insert({
+            plan_type: "05B",
+            section: "therapy_lines",
+            subject_type: "part",
+            subject_id: thread.part_name,
+            content: `Stabilizační linie: série sezení po krizi ${new Date().toISOString().slice(0, 10)}. ${crisisResult.summary?.slice(0, 200) || ""}`,
+            priority: "high",
+            action_required: `Karel připraví 3-4 sezení s postupnou desenzibilizací. Zapojit Hanku (večerní sezení) i Káťu (distanční check-in).`,
+            assigned_to: "karel",
+            status: "active",
+            review_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            expires_at: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(),
+            activation_conditions: "Po stabilizaci akutní krize (min. 48h bez eskalace)",
+            promotion_criteria: "Povýšit do 05A jakmile je naplánováno konkrétní datum sezení",
+          });
+        }
+
+        console.log(`[retro-scan] STEP 9.5: Observation + plan_items persisted for ${thread.part_name} (obsId=${obsId})`);
+      } catch (obsErr) {
+        console.warn(`[retro-scan] STEP 9.5 warning (non-fatal):`, obsErr);
+      }
+
       results.push({
         thread_id: thread.id,
         part_name: thread.part_name,
@@ -773,6 +840,18 @@ Odpověz POUZE platným JSON:
 
     const crisisCount = results.filter(r => r.crisis).length;
     console.log(`[retro-scan] Done. Scanned: ${threads.length}, Crises found: ${crisisCount}`);
+
+    // ── Fire-and-forget: post-intervention-sync ──
+    try {
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/post-intervention-sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ trigger: "crisis-scan" }),
+      }).catch(e => console.warn("[retro-scan] post-intervention-sync fire-and-forget error:", e));
+    } catch { /* ignore */ }
 
     return new Response(JSON.stringify({ scanned: threads.length, crises: crisisCount, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
