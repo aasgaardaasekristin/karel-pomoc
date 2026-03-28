@@ -991,6 +991,22 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           }
         }
 
+        // ═══ ASYNC SAFETY PATTERN CHECK (non-blocking) ═══
+        if (didSubMode === "cast" && didPartName) {
+          try {
+            const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
+            const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
+            if (userText.length > 5) {
+              const safetyResult = await checkSafetyPatterns(userText, didPartName);
+              if (safetyResult.alert) {
+                console.warn(`[karel-chat] ⚠️ SAFETY ALERT: ${safetyResult.alert.alert_type} (${safetyResult.alert.severity}) for ${didPartName}`);
+              }
+            }
+          } catch (safetyErr) {
+            console.warn("[karel-chat] Safety check error (non-fatal):", safetyErr);
+          }
+        }
+
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
         if (didSubMode === "cast" && fullResponse.length > 10) {
