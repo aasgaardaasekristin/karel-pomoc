@@ -1,54 +1,102 @@
 
 
-## Oprava krizového detektoru – plán
+# Fáze 5: End-to-End Integrace a Validace
 
-### Diagnóza problému
+## Přehled
 
-Identifikovány **DVA** problémy:
+Poslední fáze propojí pipeline data s Karlovým kontextem, nastaví cron pro weekly-review a přidá monitoring. Karel už čte `did_daily_context` v `karel-chat/index.ts` (řádky 23-100) — potřebujeme rozšířit `karel-daily-refresh` o pipeline data a přidat instrukce do system promptu.
 
-1. **Časový nesoulad (root cause)**: Migrace `crisis_alerts` proběhla v 12:50 UTC, ale Arthurova konverzace skončila v 12:02 UTC. Detektor nemohl reagovat, protože v době konverzace ještě neexistoval.
+---
 
-2. **Špatná tabulka pro krizové vlákno**: Krizový detektor na řádku 824 vytváří krizové vlákno v `did_conversations`, ale frontend čte vlákna z `did_threads`. Krizové vlákno by se tedy nikdy nezobrazilo v UI.
+## Krok 1: Rozšířit `karel-daily-refresh` o pipeline kontext
 
-### Plán oprav (5 úkolů)
+**Soubor:** `supabase/functions/karel-daily-refresh/index.ts`
 
-#### ÚKOL 1 – Opravit krizový detektor v `karel-chat/index.ts`
-- Řádek 824: Změnit `sbCrisis.from("did_conversations").insert(...)` na `sbCrisis.from("did_threads").insert(...)`
-- Přizpůsobit sloupce pro `did_threads` schéma: `part_name`, `sub_mode: "crisis"`, `messages` (JSONB pole), `thread_label`, `last_activity_at`
-- Detektor samotný (řádky 631-704) je v pořádku — čte `messages` z request body, ne z databáze
+Za existující DB queries (řádek ~196), přidat 4 nové paralelní dotazy:
+- `did_plan_items` (05A, active, limit 15)
+- `did_pending_questions` (open, limit 10)
+- `did_profile_claims` (active, limit 30)
+- `did_observations` (active, last 48h, limit 15)
 
-#### ÚKOL 2 – Vytvořit `crisis-retroactive-scan` Edge Function
-- Nová funkce `supabase/functions/crisis-retroactive-scan/index.ts`
-- Načte všechna vlákna z `did_threads WHERE sub_mode = 'cast'`
-- Pro každé vlákno vezme posledních 15 zpráv z JSONB `messages`
-- Použije identický krizový detection prompt jako `karel-chat` (řádky 653-685)
-- Při detekci krize: INSERT do `crisis_alerts`, `crisis_tasks`, vytvoření krizového vlákna v `did_threads`
+Do `contextJson` (řádek ~218) přidat nové sekce:
+- `pipeline.plan_items_05A` — operativní plán
+- `pipeline.open_questions` — otevřené otázky
+- `pipeline.recent_observations` — nedávná pozorování
+- `pipeline.active_claims_summary` — shrnutí aktivních claims per part
 
-#### ÚKOL 3 – Deploy a spuštění retroaktivního skenu
-- Deploy obou funkcí (`karel-chat` opravený + `crisis-retroactive-scan` nový)
-- Zavolat `crisis-retroactive-scan` přes HTTP POST
-- Zobrazit výsledek
+---
 
-#### ÚKOL 4 – Ověření SQL dotazy
-- `SELECT * FROM crisis_alerts;`
-- `SELECT * FROM crisis_tasks;`
-- Ověřit neprázdné výsledky
+## Krok 2: Rozšířit kontext injekci v `karel-chat/index.ts`
 
-#### ÚKOL 5 – Přegenerovat Karlův přehled
-- Zavolat `karel-daily-dashboard`
-- Zobrazit celý text – musí obsahovat krizový blok o Arthurovi
+**Soubor:** `supabase/functions/karel-chat/index.ts` (řádky 50-94)
 
-### Technické detaily
+Po existujících blocích (driveBlock), přidat rendering nových pipeline dat z `ctx.pipeline`:
+- `planBlock` — formátuje plan_items_05A s prioritami
+- `questionsBlock` — formátuje open_questions
+- `observationsBlock` — formátuje recent_observations s evidence labels
+- `claimsBlock` — formátuje claims pro aktuální část (pokud známe `partName` z konverzace)
 
-**did_threads schéma** (pro krizové vlákno):
-```text
-part_name: "ARTHUR"          (text, NOT NULL)
-sub_mode: "crisis"           (text)
-messages: [{role, content, timestamp}]  (jsonb)
-thread_label: "🔴 KRIZOVÁ INTERVENCE – ARTHUR – 27.3.2026"
-last_activity_at: now()
-is_processed: false
+Přidat `PIPELINE_INSTRUCTIONS` konstantu s pravidly pro Karla (jak používat ✅/❓/🔴 data, co neříkat).
+
+---
+
+## Krok 3: Cron job pro `karel-weekly-review`
+
+SQL insert (ne migrace) pro pg_cron:
 ```
+cron.schedule('weekly-review', '0 20 * * 0', ...)
+```
+Neděle 20:00 UTC. Ověřit že existující cron jobs pro daily-cycle a crisis-retroactive-scan jsou aktivní. Přidat komentář do `config.toml`.
 
-**Retroaktivní sken** – zpracuje `messages` JSONB pole přímo z `did_threads`, ne z request body. Formát zpráv v JSONB: `[{role: "user"|"assistant", content: "..."}]`
+---
+
+## Krok 4: Pipeline health check v `karel-did-daily-cycle`
+
+**Soubor:** `supabase/functions/karel-did-daily-cycle/index.ts`
+
+Před trigger karel-daily-refresh (řádek ~5156), přidat health check blok:
+- Count active observations, claims, plan_items, open questions
+- Warn pokud 0 observations za 48h
+- Log summary
+
+---
+
+## Krok 5: Dokumentace
+
+**Nový soubor:** `docs/PIPELINE_ARCHITECTURE.md`
+
+Strukturovaný markdown popis celé 5-fázové pipeline:
+- Diagram toku (observation → implication → plan_item / profile_claim)
+- Tabulky a jejich role
+- Cron schedule
+- Evidence levels a routing pravidla
+
+---
+
+## Krok 6: End-to-end test
+
+Po implementaci:
+1. Insert testovacích dat (observation + plan_item + pending_question)
+2. Invoke `karel-daily-refresh` → ověřit pipeline sekce v context_json
+3. Invoke `update-part-profile` s test claimem
+4. Invoke `karel-weekly-review` → ověřit stats
+5. Cleanup testovacích dat
+
+---
+
+## Pořadí implementace
+
+1. `karel-daily-refresh` — pipeline queries + context enrichment
+2. `karel-chat/index.ts` — pipeline rendering + PIPELINE_INSTRUCTIONS
+3. `karel-did-daily-cycle` — health check
+4. Cron job SQL insert pro weekly-review
+5. `docs/PIPELINE_ARCHITECTURE.md`
+6. Config.toml komentáře
+7. End-to-end test + cleanup
+
+## Technické poznámky
+
+- `karel-chat` už ví `partName` z konverzace (mode context) — použijeme pro filtrování claims
+- Pipeline kontext se PŘIDÁVÁ k existujícím Drive dokumentům, nenahrazuje je
+- Celková velikost context_json se zvýší o ~2-4KB — v limitu
 
