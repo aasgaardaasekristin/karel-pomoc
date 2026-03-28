@@ -150,6 +150,7 @@ const DidSprava = ({
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
          {([
             { key: "tools" as const, label: "🛠 Nástroje" },
+            ...(hasCrisis ? [{ key: "crisis" as const, label: "🚨 Krize" }] : []),
             { key: "plan" as const, label: "📅 Plán" },
             { key: "kartoteka" as const, label: "📋 Kartotéka" },
             { key: "health" as const, label: "❤️ Zdraví" },
