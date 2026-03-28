@@ -2403,6 +2403,102 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_update_log: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          goals_updated: number | null
+          id: string
+          parts_included: string[] | null
+          plan_type: string
+          processing_time_ms: number | null
+          sessions_completed: number | null
+          sessions_planned: number | null
+          web_searches: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          goals_updated?: number | null
+          id?: string
+          parts_included?: string[] | null
+          plan_type: string
+          processing_time_ms?: number | null
+          sessions_completed?: number | null
+          sessions_planned?: number | null
+          web_searches?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          goals_updated?: number | null
+          id?: string
+          parts_included?: string[] | null
+          plan_type?: string
+          processing_time_ms?: number | null
+          sessions_completed?: number | null
+          sessions_planned?: number | null
+          web_searches?: number | null
+        }
+        Relationships: []
+      }
+      planned_sessions: {
+        Row: {
+          actual_outcome: string | null
+          completed_date: string | null
+          created_at: string | null
+          description: string | null
+          expected_outcome: string | null
+          horizon: string | null
+          id: string
+          method_name: string
+          method_source: string | null
+          notes: string | null
+          part_name: string
+          priority: string | null
+          scheduled_date: string | null
+          status: string | null
+          therapist: string
+          updated_at: string | null
+        }
+        Insert: {
+          actual_outcome?: string | null
+          completed_date?: string | null
+          created_at?: string | null
+          description?: string | null
+          expected_outcome?: string | null
+          horizon?: string | null
+          id?: string
+          method_name: string
+          method_source?: string | null
+          notes?: string | null
+          part_name: string
+          priority?: string | null
+          scheduled_date?: string | null
+          status?: string | null
+          therapist: string
+          updated_at?: string | null
+        }
+        Update: {
+          actual_outcome?: string | null
+          completed_date?: string | null
+          created_at?: string | null
+          description?: string | null
+          expected_outcome?: string | null
+          horizon?: string | null
+          id?: string
+          method_name?: string
+          method_source?: string | null
+          notes?: string | null
+          part_name?: string
+          priority?: string | null
+          scheduled_date?: string | null
+          status?: string | null
+          therapist?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       research_threads: {
         Row: {
           created_at: string
@@ -2647,6 +2743,51 @@ export type Database = {
           therapist?: string
           threads_deleted?: number | null
           threads_processed?: number | null
+        }
+        Relationships: []
+      }
+      strategic_goals: {
+        Row: {
+          achieved_date: string | null
+          category: string | null
+          created_at: string | null
+          evidence: string[] | null
+          goal_text: string
+          id: string
+          notes: string | null
+          part_name: string | null
+          progress_pct: number | null
+          status: string | null
+          target_date: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          achieved_date?: string | null
+          category?: string | null
+          created_at?: string | null
+          evidence?: string[] | null
+          goal_text: string
+          id?: string
+          notes?: string | null
+          part_name?: string | null
+          progress_pct?: number | null
+          status?: string | null
+          target_date?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          achieved_date?: string | null
+          category?: string | null
+          created_at?: string | null
+          evidence?: string[] | null
+          goal_text?: string
+          id?: string
+          notes?: string | null
+          part_name?: string | null
+          progress_pct?: number | null
+          status?: string | null
+          target_date?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }

@@ -5262,7 +5262,22 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Card updates error (non-fatal):", cardUpdateErr);
     }
 
-    // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
+    // ═══ FÁZE 7: Aktualizace operativního plánu ═══
+    try {
+      const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;
+      const planRes = await fetch(planUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ source: "daily-cycle" }),
+      });
+      console.log(`[daily-cycle] Plan update: ${planRes.status}`);
+    } catch (planErr) {
+      console.warn("[daily-cycle] Plan update error (non-fatal):", planErr);
+    }
+
     try {
       const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;
       const refreshRes = await fetch(refreshUrl, {
