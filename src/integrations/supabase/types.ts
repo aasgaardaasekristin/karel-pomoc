@@ -2970,6 +2970,69 @@ export type Database = {
         }
         Relationships: []
       }
+      safety_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_type: string
+          created_at: string | null
+          description: string | null
+          detected_signals: Json | null
+          id: string
+          message_content: string | null
+          notification_channel: string | null
+          notification_sent: boolean | null
+          notification_sent_at: string | null
+          part_name: string | null
+          recommended_action: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          severity: string
+          status: string | null
+          thread_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type: string
+          created_at?: string | null
+          description?: string | null
+          detected_signals?: Json | null
+          id?: string
+          message_content?: string | null
+          notification_channel?: string | null
+          notification_sent?: boolean | null
+          notification_sent_at?: string | null
+          part_name?: string | null
+          recommended_action?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string | null
+          thread_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type?: string
+          created_at?: string | null
+          description?: string | null
+          detected_signals?: Json | null
+          id?: string
+          message_content?: string | null
+          notification_channel?: string | null
+          notification_sent?: boolean | null
+          notification_sent_at?: string | null
+          part_name?: string | null
+          recommended_action?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string | null
+          thread_id?: string | null
+        }
+        Relationships: []
+      }
       session_materials: {
         Row: {
           analysis: string | null
