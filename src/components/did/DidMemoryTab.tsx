@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Pencil, Trash2, Check, X, Filter } from "lucide-react";
+import { Loader2, Pencil, Trash2, Check, X, Filter, Shuffle } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 interface SessionMemory {
   id: string;
@@ -32,9 +33,22 @@ interface Promise {
   created_at: string;
 }
 
+interface SwitchingEvent {
+  id: string;
+  thread_id: string;
+  original_part: string;
+  detected_part: string;
+  confidence: string;
+  signals: any;
+  user_message_excerpt: string | null;
+  acknowledged: boolean;
+  created_at: string;
+}
+
 const DidMemoryTab = () => {
   const [memories, setMemories] = useState<SessionMemory[]>([]);
   const [promises, setPromises] = useState<Promise[]>([]);
+  const [switches, setSwitches] = useState<SwitchingEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [partFilter, setPartFilter] = useState<string>("all");
   const [allParts, setAllParts] = useState<string[]>([]);
@@ -49,13 +63,15 @@ const DidMemoryTab = () => {
       .limit(30);
     if (partFilter !== "all") memQuery = memQuery.eq("part_name", partFilter);
     
-    const [memRes, promRes] = await window.Promise.all([
+    const [memRes, promRes, switchRes] = await window.Promise.all([
       memQuery,
       supabase.from("karel_promises").select("*").eq("status", "active").order("created_at", { ascending: false }),
+      supabase.from("switching_events").select("*").order("created_at", { ascending: false }).limit(20),
     ]);
 
     setMemories((memRes.data || []) as SessionMemory[]);
     setPromises((promRes.data || []) as Promise[]);
+    setSwitches((switchRes.data || []) as SwitchingEvent[]);
 
     // Collect unique part names
     if (partFilter === "all" && memRes.data?.length) {
@@ -206,6 +222,51 @@ const DidMemoryTab = () => {
                   <X className="w-3 h-3" /> Zrušit
                 </Button>
               </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Switching Log */}
+      {switches.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-medium flex items-center gap-1.5">
+            <Shuffle className="w-3.5 h-3.5 text-primary" />
+            Detekované přepnutí (switching)
+          </h3>
+          {switches.map(sw => (
+            <div key={sw.id} className={cn(
+              "p-3 rounded-lg border text-sm",
+              sw.confidence === "high"
+                ? "bg-destructive/10 border-destructive/30"
+                : "bg-amber-500/10 border-amber-500/30"
+            )}>
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-medium text-xs">
+                  {sw.original_part} → {sw.detected_part}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Badge variant={sw.confidence === "high" ? "destructive" : "secondary"} className="text-[9px] h-4 px-1.5">
+                    {sw.confidence}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground">
+                    {new Date(sw.created_at).toLocaleString("cs")}
+                  </span>
+                </div>
+              </div>
+              {Array.isArray(sw.signals) && sw.signals.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {sw.signals.map((s: string, i: number) => (
+                    <Badge key={i} variant="outline" className="text-[8px] h-3.5 px-1">{s}</Badge>
+                  ))}
+                </div>
+              )}
+              {sw.user_message_excerpt && (
+                <p className="text-[10px] text-muted-foreground mt-2 italic">"{sw.user_message_excerpt}"</p>
+              )}
+              {sw.acknowledged && (
+                <span className="text-[10px] text-green-600 mt-1 block">✅ Potvrzeno</span>
+              )}
             </div>
           ))}
         </div>

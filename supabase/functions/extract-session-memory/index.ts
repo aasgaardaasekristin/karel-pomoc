@@ -138,6 +138,24 @@ Vrať POUZE validní JSON, nic jiného.`;
       console.warn("[extract-session-memory] JSON parse failed, using fallback");
     }
 
+    // Enrich with switching events from this thread
+    if (threadId) {
+      try {
+        const { data: threadSwitches } = await sb.from("switching_events")
+          .select("original_part, detected_part, confidence")
+          .eq("thread_id", threadId);
+        if (threadSwitches?.length) {
+          const switchNotes = threadSwitches.map((s: any) =>
+            `[SWITCHING] Detekován přechod: ${s.original_part} → ${s.detected_part} (jistota: ${s.confidence})`
+          );
+          parsed.key_points = [...(parsed.key_points || []), ...switchNotes];
+          parsed.risk_signals = [...(parsed.risk_signals || []), `Switching detekován (${threadSwitches.length}×)`];
+        }
+      } catch (e) {
+        console.warn("[extract-session-memory] Switching events fetch error:", e);
+      }
+    }
+
     // Insert session memory
     const { data: newMemory, error: insertErr } = await sb.from("session_memory").insert({
       part_name: partName,

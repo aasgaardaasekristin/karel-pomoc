@@ -697,6 +697,93 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
       systemPrompt += perplexityContext;
     }
 
+    // ═══ SWITCHING DETECTION (F2) ═══
+    if (didSubMode === "cast" && didPartName && messages.length >= 2) {
+      try {
+        const lastUserMsg = [...messages].reverse().find((m: any) => m.role === "user");
+        const lastUserText = lastUserMsg && typeof lastUserMsg.content === "string" ? lastUserMsg.content : "";
+        const userMsgCount = messages.filter((m: any) => m.role === "user").length;
+
+        // Performance optimization: skip first 2 messages, short messages, and only detect every 3rd unless suspicious
+        let shouldDetect = false;
+        if (userMsgCount <= 2) {
+          shouldDetect = false;
+        } else if (lastUserText.length < 10) {
+          shouldDetect = false;
+        } else if (/kdo|kde jsem|nejsem|to jsem|já jsem|pomoc|kdo jsi/i.test(lastUserText)) {
+          shouldDetect = true; // Always detect on suspicious phrases
+        } else if (userMsgCount % 3 === 0) {
+          shouldDetect = true; // Every 3rd message
+        }
+
+        if (shouldDetect && lastUserText.length >= 10) {
+          const { detectSwitching } = await import("../_shared/switchingDetector.ts");
+          const { createClient: createSbSwitch } = await import("https://esm.sh/@supabase/supabase-js@2");
+          const sbSwitch = createSbSwitch(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+          // Load known parts from registry
+          let knownParts: any[] = [];
+          try {
+            const { data: registry } = await sbSwitch.from("did_part_registry")
+              .select("part_name, display_name, age_estimate, language, known_triggers, known_strengths, cluster, role_in_system")
+              .eq("status", "active");
+            knownParts = (registry || []).map((p: any) => ({
+              name: p.display_name || p.part_name,
+              age: p.age_estimate || "neznámý",
+              language_style: p.language || "cs",
+              typical_topics: [],
+              emotional_baseline: "neznámý",
+              vocabulary_markers: (p.known_triggers || []).concat(p.known_strengths || []),
+            }));
+          } catch { knownParts = []; }
+
+          const switchResult = await detectSwitching(
+            didPartName,
+            messages.slice(-8).map((m: any) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "(multimodal)" })),
+            lastUserText,
+            knownParts,
+            LOVABLE_API_KEY!,
+          );
+
+          if (!switchResult.isSamePart && switchResult.confidence !== "low") {
+            const switchedTo = switchResult.detectedPart || "neznámá část";
+            console.log(`[karel-chat] SWITCH DETECTED: ${didPartName} → ${switchedTo} (${switchResult.confidence})`);
+
+            // Log to DB
+            await sbSwitch.from("switching_events").insert({
+              thread_id: messages[0]?.threadId || "unknown",
+              original_part: didPartName,
+              detected_part: switchedTo,
+              confidence: switchResult.confidence,
+              signals: switchResult.signals,
+              message_index: messages.length - 1,
+              user_message_excerpt: lastUserText.slice(0, 200),
+            }).then(() => {}).catch((e: any) => console.warn("[switching] DB insert error:", e));
+
+            // Inject switching alert into system prompt
+            systemPrompt += `\n\n═══ ⚠️ UPOZORNĚNÍ: DETEKOVÁN SWITCHING ═══
+Původní část: ${didPartName}
+Detekovaná část: ${switchedTo}
+Jistota: ${switchResult.confidence}
+Signály: ${switchResult.signals.join(", ")}
+POKYN: ${switchResult.recommendation}
+
+DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
+1. NEŘÍKEJ "detekoval jsem switching" — to by bylo neterapeutické
+2. Jemně ověř kdo mluví: "Ahoj... kdo je tu teď se mnou?" nebo "Cítím že se něco změnilo... jak se cítíš?"
+3. Přizpůsob tón a slovník NOVÉ části
+4. Pokud je nová část dítě — zjednoduš jazyk, buď laskavý a bezpečný
+5. Pokud je nová část ochranná/agresivní — buď klidný, respektuj hranice
+6. NIKDY nenuť přepnutí zpět na původní část
+7. Zapiš si co se stalo pro pozdější analýzu
+═══════════════════════════════════════════════════`;
+          }
+        }
+      } catch (switchErr) {
+        console.warn("[karel-chat] Switching detection error (non-fatal):", switchErr);
+      }
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {

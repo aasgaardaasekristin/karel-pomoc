@@ -139,6 +139,7 @@ const Chat = () => {
   const [isEnrichingContext, setIsEnrichingContext] = useState(false);
   const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
   const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
+  const [switchAlert, setSwitchAlert] = useState<{ from: string; to: string; confidence: string; threadId: string } | null>(null);
   const [didLiveSession, setDidLiveSession] = useState<{ partName: string; therapistName: string } | null>(null);
   const [didLiveSessionReady, setDidLiveSessionReady] = useState(false);
   const [didLivePartContext, setDidLivePartContext] = useState<string>("");
@@ -1277,8 +1278,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         });
       });
 
-      // ═══ SWITCH DETECTION ═══
+      // ═══ SWITCH DETECTION (tag-based + DB-based) ═══
       if (activeThread && didSubMode === "cast" && assistantContent) {
+        // Tag-based detection from Karel's response
         const switchMatch = assistantContent.match(/\[SWITCH:([^\]]+)\]/);
         if (switchMatch) {
           const newPartName = switchMatch[1].trim();
@@ -1297,6 +1299,28 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
             return n;
           });
+        }
+
+        // DB-based detection (from switching_events logged by karel-chat)
+        try {
+          const { data: switchEvent } = await supabase
+            .from("switching_events")
+            .select("*")
+            .eq("thread_id", activeThread.id)
+            .eq("acknowledged", false)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (switchEvent) {
+            setSwitchAlert({
+              from: switchEvent.original_part,
+              to: switchEvent.detected_part,
+              confidence: switchEvent.confidence || "medium",
+              threadId: activeThread.id,
+            });
+          }
+        } catch (e) {
+          console.warn("[switch-detect] DB check error:", e);
         }
       }
 
@@ -1486,6 +1510,47 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
       {hubSection === "did" ? (
         <>
+          {/* Switching Alert Banner */}
+          {switchAlert && (
+            <div className="mx-4 mt-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🔄</span>
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    Možný switching: {switchAlert.from} → {switchAlert.to}
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Jistota: {switchAlert.confidence} — Karel se přizpůsobí automaticky
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7"
+                  onClick={async () => {
+                    await supabase
+                      .from("switching_events")
+                      .update({ acknowledged: true })
+                      .eq("thread_id", switchAlert.threadId)
+                      .eq("acknowledged", false);
+                    setSwitchAlert(null);
+                  }}
+                >
+                  ✅ Beru na vědomí
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-7 px-2"
+                  onClick={() => setSwitchAlert(null)}
+                >
+                  ✕
+                </Button>
+              </div>
+            </div>
+          )}
           <CrisisBriefPanel />
           <DidContentRouter
             didFlowState={didFlowState}
