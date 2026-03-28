@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_error_log: {
+        Row: {
+          caller: string
+          context: Json | null
+          created_at: string | null
+          error_message: string | null
+          error_type: string
+          id: string
+          raw_input: string | null
+          raw_output: string | null
+        }
+        Insert: {
+          caller: string
+          context?: Json | null
+          created_at?: string | null
+          error_message?: string | null
+          error_type: string
+          id?: string
+          raw_input?: string | null
+          raw_output?: string | null
+        }
+        Update: {
+          caller?: string
+          context?: Json | null
+          created_at?: string | null
+          error_message?: string | null
+          error_type?: string
+          id?: string
+          raw_input?: string | null
+          raw_output?: string | null
+        }
+        Relationships: []
+      }
       calm_access_tokens: {
         Row: {
           created_at: string
