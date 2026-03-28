@@ -2,6 +2,56 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { getSystemPrompt, ConversationMode } from "./systemPrompts.ts";
 
+// ═══ TASK EXTRACTION HELPERS ═══
+function extractTasksFromResponse(responseText: string, subMode: string): Array<Record<string, any>> {
+  const taskPatterns = [
+    /(?:Potřebuji (?:vědět|znát|ověřit|zjistit))[^.!?\n]+[.!?]/gi,
+    /(?:Můžeš mi (?:říct|sdělit|popsat))[^.!?\n]+[.!?]/gi,
+    /(?:Zeptej se)[^.!?\n]+[.!?]/gi,
+    /(?:Úkol(?:\s+pro\s+tebe)?:)[^.!?\n]+[.!?]/gi,
+    /(?:Zpětná vazba:)[^.!?\n]+[.!?]/gi,
+    /(?:Jak to (?:dopadlo|proběhlo))[^.!?\n]+[.!?]/gi,
+    /(?:Navrhuji sezení:)[^.!?\n]+[.!?]/gi,
+    /(?:🔶 HYPOTÉZA:)[^.!?\n]+[.!?]/gi,
+    /(?:❓)[^.!?\n]+[.!?]/gi,
+  ];
+  const tasks: Array<Record<string, any>> = [];
+  const seen = new Set<string>();
+  for (const pattern of taskPatterns) {
+    const matches = responseText.matchAll(pattern);
+    for (const match of matches) {
+      const desc = match[0].trim();
+      if (desc.length < 10 || seen.has(desc)) continue;
+      seen.add(desc);
+      tasks.push({
+        assigned_to: subMode === "mamka" ? "hanka" : subMode === "kata" ? "kata" : "both",
+        task_type: determineTaskType(desc),
+        description: desc.slice(0, 500),
+        priority: /🔴|akutní|krize|kritick/i.test(responseText) ? "high" : "medium",
+        due_date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        status: "pending",
+        source: "chat_auto_extract",
+        related_part: extractPartName(desc),
+      });
+    }
+  }
+  return tasks.slice(0, 10);
+}
+
+function determineTaskType(text: string): string {
+  if (/zpětná vazba|jak to|dopadlo|proběhlo/i.test(text)) return "feedback";
+  if (/sezení|plán/i.test(text)) return "session";
+  if (/zeptej se|potřebuji vědět|potřebuji znát/i.test(text)) return "question";
+  if (/hypotéza|ověřit/i.test(text)) return "observation";
+  return "followup";
+}
+
+function extractPartName(text: string): string | null {
+  const knownParts = ["Arthur", "Clark", "Tundrupek", "Gustík", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Dmytri", "Dymi"];
+  for (const part of knownParts) { if (text.includes(part)) return part; }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
