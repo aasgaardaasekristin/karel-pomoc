@@ -789,6 +789,92 @@ export type Database = {
         }
         Relationships: []
       }
+      did_doc_sync_log: {
+        Row: {
+          content_written: string
+          created_at: string
+          error_message: string | null
+          id: string
+          source_id: string
+          source_type: string
+          success: boolean | null
+          target_document: string
+        }
+        Insert: {
+          content_written: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          source_id: string
+          source_type: string
+          success?: boolean | null
+          target_document: string
+        }
+        Update: {
+          content_written?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          source_id?: string
+          source_type?: string
+          success?: boolean | null
+          target_document?: string
+        }
+        Relationships: []
+      }
+      did_implications: {
+        Row: {
+          created_at: string
+          destinations: string[]
+          expires_at: string | null
+          id: string
+          impact_type: string
+          implication_text: string
+          observation_id: string
+          owner: string | null
+          review_at: string | null
+          status: string | null
+          synced: boolean | null
+          synced_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          destinations?: string[]
+          expires_at?: string | null
+          id?: string
+          impact_type: string
+          implication_text: string
+          observation_id: string
+          owner?: string | null
+          review_at?: string | null
+          status?: string | null
+          synced?: boolean | null
+          synced_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          destinations?: string[]
+          expires_at?: string | null
+          id?: string
+          impact_type?: string
+          implication_text?: string
+          observation_id?: string
+          owner?: string | null
+          review_at?: string | null
+          status?: string | null
+          synced?: boolean | null
+          synced_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_implications_observation_id_fkey"
+            columns: ["observation_id"]
+            isOneToOne: false
+            referencedRelation: "did_observations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_kartoteka_health: {
         Row: {
           created_at: string
@@ -945,6 +1031,51 @@ export type Database = {
           therapist?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      did_observations: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          evidence_level: string
+          fact: string
+          id: string
+          processed: boolean | null
+          processed_at: string | null
+          source_ref: string | null
+          source_type: string
+          subject_id: string
+          subject_type: string
+          time_horizon: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          evidence_level?: string
+          fact: string
+          id?: string
+          processed?: boolean | null
+          processed_at?: string | null
+          source_ref?: string | null
+          source_type: string
+          subject_id: string
+          subject_type: string
+          time_horizon?: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          evidence_level?: string
+          fact?: string
+          id?: string
+          processed?: boolean | null
+          processed_at?: string | null
+          source_ref?: string | null
+          source_type?: string
+          subject_id?: string
+          subject_type?: string
+          time_horizon?: string
         }
         Relationships: []
       }
@@ -1242,6 +1373,190 @@ export type Database = {
           write_type?: string | null
         }
         Relationships: []
+      }
+      did_pending_questions: {
+        Row: {
+          answer: string | null
+          answer_destinations: string[] | null
+          answered_at: string | null
+          answered_by: string | null
+          blocking: string | null
+          context: string | null
+          created_at: string
+          directed_to: string | null
+          expires_at: string | null
+          id: string
+          question: string
+          status: string | null
+          subject_id: string | null
+          subject_type: string | null
+        }
+        Insert: {
+          answer?: string | null
+          answer_destinations?: string[] | null
+          answered_at?: string | null
+          answered_by?: string | null
+          blocking?: string | null
+          context?: string | null
+          created_at?: string
+          directed_to?: string | null
+          expires_at?: string | null
+          id?: string
+          question: string
+          status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Update: {
+          answer?: string | null
+          answer_destinations?: string[] | null
+          answered_at?: string | null
+          answered_by?: string | null
+          blocking?: string | null
+          context?: string | null
+          created_at?: string
+          directed_to?: string | null
+          expires_at?: string | null
+          id?: string
+          question?: string
+          status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Relationships: []
+      }
+      did_plan_items: {
+        Row: {
+          action_required: string | null
+          activation_conditions: string | null
+          assigned_to: string | null
+          content: string
+          created_at: string
+          due_date: string | null
+          expires_at: string | null
+          id: string
+          plan_type: string
+          priority: string | null
+          promotion_criteria: string | null
+          review_at: string
+          section: string
+          source_implication_id: string | null
+          source_observation_ids: string[] | null
+          status: string | null
+          subject_id: string | null
+          subject_type: string | null
+          updated_at: string
+        }
+        Insert: {
+          action_required?: string | null
+          activation_conditions?: string | null
+          assigned_to?: string | null
+          content: string
+          created_at?: string
+          due_date?: string | null
+          expires_at?: string | null
+          id?: string
+          plan_type: string
+          priority?: string | null
+          promotion_criteria?: string | null
+          review_at: string
+          section: string
+          source_implication_id?: string | null
+          source_observation_ids?: string[] | null
+          status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
+          updated_at?: string
+        }
+        Update: {
+          action_required?: string | null
+          activation_conditions?: string | null
+          assigned_to?: string | null
+          content?: string
+          created_at?: string
+          due_date?: string | null
+          expires_at?: string | null
+          id?: string
+          plan_type?: string
+          priority?: string | null
+          promotion_criteria?: string | null
+          review_at?: string
+          section?: string
+          source_implication_id?: string | null
+          source_observation_ids?: string[] | null
+          status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_plan_items_source_implication_id_fkey"
+            columns: ["source_implication_id"]
+            isOneToOne: false
+            referencedRelation: "did_implications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      did_profile_claims: {
+        Row: {
+          card_section: string
+          claim_text: string
+          claim_type: string
+          confidence: number | null
+          confirmation_count: number | null
+          created_at: string
+          evidence_level: string
+          id: string
+          last_confirmed_at: string | null
+          part_name: string
+          source_observation_ids: string[] | null
+          status: string | null
+          superseded_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          card_section: string
+          claim_text: string
+          claim_type: string
+          confidence?: number | null
+          confirmation_count?: number | null
+          created_at?: string
+          evidence_level?: string
+          id?: string
+          last_confirmed_at?: string | null
+          part_name: string
+          source_observation_ids?: string[] | null
+          status?: string | null
+          superseded_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          card_section?: string
+          claim_text?: string
+          claim_type?: string
+          confidence?: number | null
+          confirmation_count?: number | null
+          created_at?: string
+          evidence_level?: string
+          id?: string
+          last_confirmed_at?: string | null
+          part_name?: string
+          source_observation_ids?: string[] | null
+          status?: string | null
+          superseded_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_profile_claims_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "did_profile_claims"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_pulse_checks: {
         Row: {
