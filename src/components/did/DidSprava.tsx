@@ -155,6 +155,7 @@ const DidSprava = ({
             ...(hasCrisis ? [{ key: "crisis" as const, label: "🚨 Krize" }] : []),
             { key: "plan" as const, label: "📅 Plán" },
             { key: "kartoteka" as const, label: "📋 Kartotéka" },
+            { key: "memory" as const, label: "🧠 Paměť" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
