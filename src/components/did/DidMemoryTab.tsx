@@ -227,6 +227,51 @@ const DidMemoryTab = () => {
         </div>
       )}
 
+      {/* Switching Log */}
+      {switches.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-medium flex items-center gap-1.5">
+            <Shuffle className="w-3.5 h-3.5 text-primary" />
+            Detekované přepnutí (switching)
+          </h3>
+          {switches.map(sw => (
+            <div key={sw.id} className={cn(
+              "p-3 rounded-lg border text-sm",
+              sw.confidence === "high"
+                ? "bg-destructive/10 border-destructive/30"
+                : "bg-amber-500/10 border-amber-500/30"
+            )}>
+              <div className="flex justify-between items-center mb-1">
+                <span className="font-medium text-xs">
+                  {sw.original_part} → {sw.detected_part}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Badge variant={sw.confidence === "high" ? "destructive" : "secondary"} className="text-[9px] h-4 px-1.5">
+                    {sw.confidence}
+                  </Badge>
+                  <span className="text-[10px] text-muted-foreground">
+                    {new Date(sw.created_at).toLocaleString("cs")}
+                  </span>
+                </div>
+              </div>
+              {Array.isArray(sw.signals) && sw.signals.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {sw.signals.map((s: string, i: number) => (
+                    <Badge key={i} variant="outline" className="text-[8px] h-3.5 px-1">{s}</Badge>
+                  ))}
+                </div>
+              )}
+              {sw.user_message_excerpt && (
+                <p className="text-[10px] text-muted-foreground mt-2 italic">"{sw.user_message_excerpt}"</p>
+              )}
+              {sw.acknowledged && (
+                <span className="text-[10px] text-green-600 mt-1 block">✅ Potvrzeno</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Edit Dialog */}
       <Dialog open={!!editingMemory} onOpenChange={() => setEditingMemory(null)}>
         <DialogContent className="max-w-md">
