@@ -255,7 +255,8 @@ ${cardContent.slice(0, 80000)}
 
 VLÁKNA:
 ${threadsText.slice(0, 40000)}
-${memoryText ? `\nSTRUKTUROVANÁ PAMĚŤ ZE SEZENÍ (posledních 7 dní):\n${memoryText.slice(0, 10000)}` : ""}`;
+${memoryText ? `\nSTRUKTUROVANÁ PAMĚŤ ZE SEZENÍ (posledních 7 dní):\n${memoryText.slice(0, 10000)}` : ""}
+${therapistNotesText ? `\nPOZNÁMKY OD TERAPEUTŮ (posledních 14 dní):\n${therapistNotesText.slice(0, 8000)}` : ""}`;
 
     const analysisRaw = await callGemini(
       "Jsi Karel, klinický psycholog a odborník na DID. Analyzuj kartu a vlákna. Odpověz POUZE JSON.",
