@@ -166,7 +166,26 @@ serve(async (req) => {
       console.warn("[update-card] Session memory load error (non-fatal):", memErr);
     }
 
-    // ═══ PHASE 1: ANALYSIS ═══
+    // ═══ LOAD THERAPIST NOTES for richer analysis ═══
+    let therapistNotesText = "";
+    try {
+      const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+      const { data: tNotes } = await sb.from("therapist_notes")
+        .select("author, note_type, note_text, priority, session_date")
+        .or(`part_name.eq.${partName},part_name.is.null`)
+        .gte("session_date", twoWeeksAgo)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (tNotes?.length) {
+        therapistNotesText = tNotes.map((n: any) =>
+          `[${n.note_type.toUpperCase()}] (${n.author}, ${n.session_date}): ${n.note_text}`
+        ).join("\n");
+        console.log(`[update-card] Therapist notes loaded: ${tNotes.length} for ${partName}`);
+      }
+    } catch (tnErr) {
+      console.warn("[update-card] Therapist notes load error (non-fatal):", tnErr);
+    }
     console.log(`[update-card] Phase 1: Analysis for ${partName}`);
     const analysisPrompt = `Jsi Karel — klinický psycholog specializovaný na DID, správce kartotéky. Dostáváš:
 1. Aktuální kartu části "${partName}" z kartotéky
