@@ -125,6 +125,14 @@ const DidSprava = ({
   useEffect(() => {
     supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
       .then(({ count }) => setHasCrisis((count || 0) > 0));
+    
+    const loadAlertCount = async () => {
+      const { count } = await (supabase as any).from("safety_alerts").select("id", { count: "exact", head: true }).eq("status", "new");
+      setNewAlertCount(count || 0);
+    };
+    loadAlertCount();
+    const interval = setInterval(loadAlertCount, 30000);
+    return () => clearInterval(interval);
   }, [refreshTrigger]);
 
   return (
