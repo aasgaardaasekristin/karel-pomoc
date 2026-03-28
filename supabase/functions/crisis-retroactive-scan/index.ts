@@ -6,6 +6,365 @@ const corsHeaders = {
 };
 
 const AI_GATEWAY = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
+
+type DriveFile = { id: string; name: string; mimeType?: string };
+
+async function getAccessToken(): Promise<string> {
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Missing Google OAuth credentials");
+  }
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const data = await res.json();
+  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
+  return data.access_token;
+}
+
+const stripDiacritics = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+const canonicalText = (value: string) =>
+  stripDiacritics(value || "")
+    .toLowerCase()
+    .replace(/\.(txt|md|doc|docx|xls|xlsx)$/gi, "")
+    .replace(/[^a-z0-9]/g, "");
+
+async function listFilesInFolder(token: string, folderId: string): Promise<DriveFile[]> {
+  const q = `'${folderId}' in parents and trashed=false`;
+  const allFiles: DriveFile[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const params = new URLSearchParams({
+      q,
+      fields: "nextPageToken,files(id,name,mimeType)",
+      pageSize: "200",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    if (pageToken) params.set("pageToken", pageToken);
+
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    allFiles.push(...(data.files || []));
+    pageToken = data.nextPageToken || undefined;
+  } while (pageToken);
+
+  return allFiles;
+}
+
+async function readFileContent(token: string, fileId: string, mimeType?: string): Promise<string> {
+  const isGoogleSheet = mimeType === "application/vnd.google-apps.spreadsheet";
+  const isGoogleWorkspace = mimeType?.startsWith("application/vnd.google-apps.");
+
+  if (isGoogleSheet) {
+    const exportRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!exportRes.ok) throw new Error(`Cannot export sheet ${fileId}: ${exportRes.status}`);
+    return await exportRes.text();
+  }
+
+  if (isGoogleWorkspace) {
+    const exportRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!exportRes.ok) throw new Error(`Cannot export workspace file ${fileId}: ${exportRes.status}`);
+    return await exportRes.text();
+  }
+
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Cannot read file ${fileId}: ${res.status}`);
+  return await res.text();
+}
+
+async function resolveKartotekaRoot(token: string): Promise<string | null> {
+  const variants = ["kartoteka_DID", "Kartoteka_DID", "Kartotéka_DID", "KARTOTEKA_DID"];
+
+  for (const name of variants) {
+    const q = `name='${name}' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
+    const params = new URLSearchParams({
+      q,
+      fields: "files(id)",
+      pageSize: "10",
+      supportsAllDrives: "true",
+      includeItemsFromAllDrives: "true",
+    });
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (data.files?.[0]?.id) return data.files[0].id;
+  }
+
+  return null;
+}
+
+async function findBestNamedFile(token: string, folderId: string, matcher: (file: DriveFile, canonical: string) => boolean): Promise<DriveFile | null> {
+  const files = await listFilesInFolder(token, folderId);
+  return files.find((file) => matcher(file, canonicalText(file.name))) || null;
+}
+
+async function readPartCardFromDrive(token: string, partName: string): Promise<string> {
+  const rootFolderId = await resolveKartotekaRoot(token);
+  if (!rootFolderId) return "";
+
+  const rootChildren = await listFilesInFolder(token, rootFolderId);
+  const searchFolders = rootChildren
+    .filter((f) => f.mimeType === DRIVE_FOLDER_MIME)
+    .filter((f) => /^01/.test(f.name.trim()) || /^03/.test(f.name.trim()) || canonicalText(f.name).includes("aktiv") || canonicalText(f.name).includes("archiv"))
+    .map((f) => f.id);
+  searchFolders.push(rootFolderId);
+
+  const target = canonicalText(partName);
+  const seen = new Set<string>();
+
+  const walk = async (folderId: string): Promise<DriveFile | null> => {
+    if (seen.has(folderId)) return null;
+    seen.add(folderId);
+
+    const files = await listFilesInFolder(token, folderId);
+    const direct = files.find((file) => {
+      if (file.mimeType === DRIVE_FOLDER_MIME) return false;
+      const fileName = canonicalText(file.name);
+      return fileName === target || fileName.includes(target) || target.includes(fileName);
+    });
+    if (direct) return direct;
+
+    for (const folder of files.filter((file) => file.mimeType === DRIVE_FOLDER_MIME)) {
+      const nested = await walk(folder.id);
+      if (nested) return nested;
+    }
+
+    return null;
+  };
+
+  for (const folderId of searchFolders) {
+    const match = await walk(folderId);
+    if (match) {
+      return await readFileContent(token, match.id, match.mimeType);
+    }
+  }
+
+  return "";
+}
+
+async function readCentrumAndMemoryContext(token: string): Promise<{
+  registryText: string;
+  operationalPlan: string;
+  strategicPlan: string;
+  therapistMemory: string;
+}> {
+  const rootFolderId = await resolveKartotekaRoot(token);
+  if (!rootFolderId) {
+    return { registryText: "", operationalPlan: "", strategicPlan: "", therapistMemory: "" };
+  }
+
+  const rootChildren = await listFilesInFolder(token, rootFolderId);
+  const centrumFolder = rootChildren.find((f) => f.mimeType === DRIVE_FOLDER_MIME && (/^00/.test(f.name.trim()) || canonicalText(f.name).includes("centrum")));
+  const pametFolder = rootChildren.find((f) => f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes("pametkarel"));
+
+  let registryText = "";
+  let operationalPlan = "";
+  let strategicPlan = "";
+  let therapistMemory = "";
+
+  if (centrumFolder) {
+    const centrumFiles = await listFilesInFolder(token, centrumFolder.id);
+    const registryFile = centrumFiles.find((f) => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("indexvsechcasti"));
+    if (registryFile) {
+      try {
+        registryText = await readFileContent(token, registryFile.id, registryFile.mimeType);
+      } catch (e) {
+        console.warn("[retro-scan] Failed to read registry:", e);
+      }
+    }
+
+    const planFolder = centrumFiles.find((f) => f.mimeType === DRIVE_FOLDER_MIME && (/^05/.test(f.name.trim()) || canonicalText(f.name).includes("05plan")));
+    if (planFolder) {
+      const planFiles = await listFilesInFolder(token, planFolder.id);
+      const opFile = planFiles.find((f) => canonicalText(f.name).includes("operativniplan"));
+      const stratFile = planFiles.find((f) => canonicalText(f.name).includes("strategickyvyhled") || canonicalText(f.name).includes("strategickvyhled"));
+
+      if (opFile) {
+        try {
+          operationalPlan = await readFileContent(token, opFile.id, opFile.mimeType);
+        } catch (e) {
+          console.warn("[retro-scan] Failed to read operational plan:", e);
+        }
+      }
+      if (stratFile) {
+        try {
+          strategicPlan = await readFileContent(token, stratFile.id, stratFile.mimeType);
+        } catch (e) {
+          console.warn("[retro-scan] Failed to read strategic plan:", e);
+        }
+      }
+    }
+  }
+
+  if (pametFolder) {
+    try {
+      const didFolder = await findBestNamedFile(token, pametFolder.id, (file, c) => file.mimeType === DRIVE_FOLDER_MIME && c === "did");
+      const targetFolderId = didFolder?.id || pametFolder.id;
+      const memoryFile = await findBestNamedFile(
+        token,
+        targetFolderId,
+        (file, c) => file.mimeType !== DRIVE_FOLDER_MIME && (c.includes("stavterapeutu") || c.includes("karlovypoznatky") || c.includes("vlaknaposledni")),
+      );
+      if (memoryFile) {
+        therapistMemory = await readFileContent(token, memoryFile.id, memoryFile.mimeType);
+      }
+    } catch (e) {
+      console.warn("[retro-scan] Failed to read therapist memory:", e);
+    }
+  }
+
+  return { registryText, operationalPlan, strategicPlan, therapistMemory };
+}
+
+function extractMessagesText(messages: unknown): string {
+  return Array.isArray(messages)
+    ? messages
+        .map((m: any) => (typeof m?.content === "string" ? m.content : ""))
+        .filter(Boolean)
+        .join(" ")
+    : "";
+}
+
+function buildCrossThreadContext(thread: any, allThreads: any[]): string {
+  const keywords = [
+    canonicalText(thread.part_name || ""),
+    "velikonoce",
+    "riha",
+    "emma",
+    "strach",
+    "boji",
+    "sol",
+    "slzy",
+    "palimeoci",
+    "natlak",
+    "vydirani",
+    "nucen",
+  ].filter(Boolean);
+
+  let crossThreadContext = "";
+  for (const item of allThreads) {
+    if (item.id === thread.id) continue;
+
+    const text = canonicalText(extractMessagesText(item.messages));
+    const matched = keywords.filter((keyword) => text.includes(keyword));
+    if (matched.length < 2) continue;
+
+    const relevantMsgs = (Array.isArray(item.messages) ? item.messages : [])
+      .slice(-5)
+      .map((m: any) => `${m.role || m.therapist || "unknown"}: ${typeof m.content === "string" ? m.content.slice(0, 300) : ""}`)
+      .join("\n");
+
+    crossThreadContext += `\n\n--- Vlákno: ${item.part_name || "?"} (${item.sub_mode || "?"}) ---\n${relevantMsgs}`;
+  }
+
+  return crossThreadContext.trim();
+}
+
+async function buildPlanningContext(sb: ReturnType<typeof createClient>, thread: any): Promise<string> {
+  let partCard = "";
+  let registryText = "";
+  let operationalPlan = "";
+  let strategicPlan = "";
+  let therapistMemory = "";
+  let webResearch = "";
+
+  try {
+    const token = await getAccessToken();
+    partCard = await readPartCardFromDrive(token, thread.part_name || "");
+    const centrum = await readCentrumAndMemoryContext(token);
+    registryText = centrum.registryText;
+    operationalPlan = centrum.operationalPlan;
+    strategicPlan = centrum.strategicPlan;
+    therapistMemory = centrum.therapistMemory;
+  } catch (e) {
+    console.warn(`[retro-scan] Context Drive read failed for ${thread.part_name}:`, e);
+  }
+
+  const { data: regData } = await sb
+    .from("did_part_registry")
+    .select("*")
+    .ilike("part_name", `%${thread.part_name}%`)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: allThreads } = await sb
+    .from("did_threads")
+    .select("id, part_name, sub_mode, messages, last_activity_at, thread_label")
+    .gte("last_activity_at", cutoff)
+    .order("last_activity_at", { ascending: false });
+
+  const crossThreadContext = buildCrossThreadContext(thread, allThreads || []);
+
+  const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
+  if (PERPLEXITY_API_KEY) {
+    try {
+      const q = `krizová intervence DID dětská část trauma zneužívání triggery sůl slzy ${thread.part_name}`;
+      const pxRes = await fetch("https://api.perplexity.ai/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "sonar-pro",
+          messages: [
+            {
+              role: "system",
+              content: "Shrň stručně klinicky relevantní doporučení pro krizovou stabilizaci DID klienta. Zaměř se na akutní bezpečí, práci s triggery a doporučené terapeutické postupy.",
+            },
+            { role: "user", content: q },
+          ],
+        }),
+      });
+
+      if (pxRes.ok) {
+        const pxData = await pxRes.json();
+        webResearch = pxData.choices?.[0]?.message?.content?.trim?.() || "";
+      }
+    } catch (e) {
+      console.warn(`[retro-scan] Perplexity enrichment failed for ${thread.part_name}:`, e);
+    }
+  }
+
+  return [
+    `=== KARTA ČÁSTI ${thread.part_name} ===\n${partCard || "(karta nenalezena – MUSÍŠ požádat terapeutky o aktualizaci kartotéky)"}`,
+    `=== REGISTR ČÁSTI ===\n${regData ? JSON.stringify(regData, null, 2) : registryText || "(nenalezeno)"}`,
+    `=== 00_CENTRUM / INDEX ČÁSTÍ ===\n${registryText || "(nenalezeno)"}`,
+    `=== OPERATIVNÍ PLÁN (05A) ===\n${operationalPlan || "(prázdný – po intervenci MUSÍŠ zapsat!)"}`,
+    `=== STRATEGICKÝ VÝHLED (05B) ===\n${strategicPlan || "(prázdný – po intervenci MUSÍŠ zapsat!)"}`,
+    `=== STAV TERAPEUTEK / PAMĚŤ KARLA ===\n${therapistMemory || "(neznámý – zohledni to v plánu)"}`,
+    `=== SOUVISLOSTI Z JINÝCH VLÁKEN (14 dní) ===\n${crossThreadContext || "(žádné nalezeny)"}`,
+    `=== DOPLŇKOVÉ WEB RESEARCH ===\n${webResearch || "(nenačteno)"}`,
+  ].join("\n\n");
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -141,6 +500,10 @@ HIGH = závažný distres bez přímého ohrožení života`,
         ? lastUserQuotes.map((q: string) => `> ${q.slice(0, 300)}`).join("\n\n")
         : "> (žádné přímé citace k dispozici)";
 
+      // ── STEP 1.5: Karel reads ALL context before planning ──
+      console.log(`[retro-scan] Loading full context for ${thread.part_name} before planning...`);
+      const fullContext = await buildPlanningContext(sb, thread);
+
       // ── STEP 2: Karel AI generates COMPLETE session plans ──
       console.log(`[retro-scan] Generating intervention plans for ${thread.part_name}...`);
 
@@ -155,6 +518,17 @@ HIGH = závažný distres bez přímého ohrožení života`,
               content: `Jsi Karel, vedoucí terapeutického týmu pro klienta s DID. Právě jsi detekoval krizi u části jménem ${thread.part_name}.
 
 Tvoje role: TY sám analyzuješ, TY sám sestavuješ plány, TY sám formuluješ otázky. Terapeutky (Káťa a Hanička) PROVÁDĚJÍ tvé plány – NEPROHLEDÁVAJÍ kartotéku, NESESTAVUJÍ plány, NEVYMÝŠLEJÍ co dělat.
+
+PŘED SESTAVENÍM PLÁNU JSI PROSTUDOVAL TYTO MATERIÁLY:
+
+${fullContext}
+
+POVINNĚ VYUŽIJ informace z karty části – zejména:
+- známé triggery, trauma, klíčové osoby
+- co v minulosti fungovalo/nefungovalo
+- vazby na Velikonoce, Říhu, Emmu, sůl/slzy a podobné motivy
+
+POVINNĚ VYUŽIJ souvislosti z jiných vláken – zejména osobní vlákna terapeutek, krizová vlákna a předchozí zmínky o stejném motivu.
 
 Detekované signály: ${(crisisResult.signals || []).join(", ")}
 Shrnutí krize: ${crisisResult.summary || "Krizová situace detekována"}
