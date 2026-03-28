@@ -742,12 +742,16 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
     if (hankaReserved) {
       try {
         const hankaHtml = await generateEmail("hanka");
-        await resend.emails.send({
+        const { data: sendData, error: sendError } = await resend.emails.send({
           from: "Karel <karel@hana-chlebcova.cz>",
           to: [MAMKA_EMAIL],
           subject: `Karel – denní report ${dateStr}`,
           html: hankaHtml,
         });
+        if (sendError) {
+          throw new Error(`Resend API error: ${sendError.message || JSON.stringify(sendError)}`);
+        }
+        console.log(`[daily-email] ✅ Resend ID (hanka): ${sendData?.id || "unknown"}`);
         await markSent("hanka");
         hankaResult = "sent";
         console.log(`[daily-email] ✅ Sent to Hanka: ${MAMKA_EMAIL}`);
@@ -761,12 +765,16 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
     if (kataReserved) {
       try {
         const kataHtml = await generateEmail("kata");
-        await resend.emails.send({
+        const { data: sendData, error: sendError } = await resend.emails.send({
           from: "Karel <karel@hana-chlebcova.cz>",
           to: [KATA_EMAIL],
           subject: `Karel – report pro Káťu ${dateStr}`,
           html: kataHtml,
         });
+        if (sendError) {
+          throw new Error(`Resend API error: ${sendError.message || JSON.stringify(sendError)}`);
+        }
+        console.log(`[daily-email] ✅ Resend ID (kata): ${sendData?.id || "unknown"}`);
         await markSent("kata");
         kataResult = "sent";
         console.log(`[daily-email] ✅ Sent to Káťa: ${KATA_EMAIL}`);
