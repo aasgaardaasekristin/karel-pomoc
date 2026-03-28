@@ -160,6 +160,7 @@ const DidSprava = ({
             { key: "memory" as const, label: "🧠 Paměť" },
             { key: "notes" as const, label: "📝 Poznámky" },
             { key: "trends" as const, label: "📈 Trendy" },
+            { key: "goals" as const, label: "🎯 Cíle" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
