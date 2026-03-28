@@ -384,6 +384,7 @@ ${pipelineBlock ? `\n═══ PIPELINE DATA (strukturovaná mezivrstva) ══�
       } catch (notesErr) {
         console.warn("[karel-chat] Therapist notes injection error (non-fatal):", notesErr);
       }
+    }
 
     // ═══ METRICS CONTEXT INJECTION ═══
     if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
@@ -1041,58 +1042,19 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           }
         }
 
-        // ═══ ASYNC SAFETY PATTERN CHECK (non-blocking) ═══
+        // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
         if (didSubMode === "cast" && didPartName) {
-          try {
-            const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
-            const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
-            if (userText.length > 5) {
-              const safetyPatterns: Record<string, { re: RegExp[]; sev: string }> = {
-                suicidal_ideation: { re: [/nechci\s+\u017e\u00edt/i, /chci\s+um\u0159\u00edt/i, /zabij\s+m[e\u011b]/i, /skon\u010dit\s+se\s+v\u0161\u00edm/i, /nem\u00e1\s+to\s+(cenu|smysl)/i, /chci\s+zmizet\s+nav\u017edy/i, /p\u0159eji\s+si\s+smrt/i, /chci\s+se\s+zab\u00edt/i], sev: "critical" },
-                self_harm: { re: [/\u0159e\u017e[ue]\s+se/i, /ubli\u017euj[ue]\s+si/i, /bolest\s+pom\u00e1h\u00e1/i, /chci\s+si\s+ubl\u00ed\u017eit/i, /p\u00e1l\u00edm\s+se/i, /\u0161kr\u00e1b[ue]\s+se/i, /bouch\u00e1m\s+hlavou/i], sev: "high" },
-                dissociative_crisis: { re: [/nev\u00edm\s+kde\s+jsem/i, /kdo\s+jsem/i, /nepozn\u00e1v\u00e1m/i, /jsem\s+mimo\s+t\u011blo/i, /nevid\u00edm\s+se/i, /ztr\u00e1ta\s+\u010dasu/i, /nem\u016f\u017eu\s+se\s+h\u00fdbat/i], sev: "high" },
-                severe_distress: { re: [/nem\u016f\u017eu\s+d\u00fdchat/i, /panika/i, /hr\u016fza/i, /t\u0159esu\s+se/i, /nevydr\u017e\u00edm/i, /je\s+mi\s+hrozn\u011b/i, /chci\s+k\u0159i\u010det/i], sev: "medium" },
-                aggressive_outburst: { re: [/zabiju\s+(t\u011b|ho|ji|je)/i, /chci\s+n\u011bkomu\s+ubl\u00ed\u017eit/i, /zni\u010d\u00edm/i, /nen\u00e1vid\u00edm/i], sev: "high" },
-                abuse_disclosure: { re: [/n\u011bkdo\s+mi\s+ubli\u017euje/i, /bil\s+m[e\u011b]/i, /osah\u00e1val/i, /zn\u00e1silnil/i, /nesm\u00edm\s+\u0159\u00edct/i], sev: "critical" },
-                substance_mention: { re: [/vzal\s+jsem\s+(si\s+)?(pr\u00e1\u0161ky|l\u00e9ky|drogy)/i, /p\u0159ed\u00e1vkoval/i], sev: "high" },
-                runaway_intent: { re: [/ute\u010dou/i, /odejdu\s+z\s+domu/i, /zmiz\u00edm/i, /nikdo\s+m\u011b\s+nenajde/i], sev: "medium" },
-              };
-              const detected: Array<{ type: string; severity: string }> = [];
-              for (const [aType, cfg] of Object.entries(safetyPatterns)) {
-                for (const re of cfg.re) { if (re.test(userText)) { detected.push({ type: aType, severity: cfg.sev }); break; } }
-              }
-              if (detected.length > 0) {
-                const sevOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-                const highest = detected.reduce((mx, s) => (sevOrder[s.severity] || 0) > (sevOrder[mx] || 0) ? s.severity : mx, "low");
-                const primary = detected[0].type;
-                const actions: Record<string, string> = { critical: "OKAMŽITĚ kontaktovat Hanku.", high: "Upozornit Hanku co nejdříve.", medium: "Zaznamenat a sledovat.", low: "Zaznamenat." };
-                const { createClient: createSbSafety } = await import("https://esm.sh/@supabase/supabase-js@2");
-                const sbSafety = createSbSafety(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-                const { data: alertRow, error: alertErr } = await sbSafety.from("safety_alerts").insert({
-                  part_name: didPartName, alert_type: primary, severity: highest,
-                  message_content: userText.slice(0, 500),
-                  description: `Detekováno ${detected.length} signálů: ${detected.map(s => s.type).join(", ")}`,
-                  detected_signals: detected, recommended_action: actions[highest] || actions.medium,
-                  status: "new", notification_sent: false,
-                }).select("id").single();
-                if (alertErr) { console.error("[safety] Insert error:", alertErr); }
-                else {
-                  console.warn(`[karel-chat] ⚠️ SAFETY ALERT: ${primary} (${highest}) for ${didPartName}`);
-                  if (highest === "critical" || highest === "high") {
-                    try {
-                      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-safety-alert`, {
-                        method: "POST",
-                        headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ alert_id: alertRow.id, part_name: didPartName, alert_type: primary, severity: highest, message_preview: userText.slice(0, 200), recommended_action: actions[highest] }),
-                      });
-                      await sbSafety.from("safety_alerts").update({ notification_sent: true, notification_sent_at: new Date().toISOString(), notification_channel: "email" }).eq("id", alertRow.id);
-                    } catch (notifErr) { console.warn("[safety] Notification error:", notifErr); }
-                  }
-                }
-              }
-            }
-          } catch (safetyErr) {
-            console.warn("[karel-chat] Safety check error (non-fatal):", safetyErr);
+          const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
+          const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
+          if (userText.length > 5) {
+            fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/safety-check`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ userText, partName: didPartName }),
+            }).catch(e => console.warn("[safety] check failed:", e));
           }
         }
 
