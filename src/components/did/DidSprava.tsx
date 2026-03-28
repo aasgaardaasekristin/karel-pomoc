@@ -14,6 +14,7 @@ import DidKartotekaTab from "./DidKartotekaTab";
 import DidPlanTab from "./DidPlanTab";
 import DidCrisisPanel from "./DidCrisisPanel";
 import DidMemoryTab from "./DidMemoryTab";
+import DidTherapistNotes from "./DidTherapistNotes";
 
 interface Props {
   onBootstrap: () => void;
@@ -112,7 +113,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes">("tools");
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
@@ -155,6 +156,7 @@ const DidSprava = ({
             { key: "plan" as const, label: "📅 Plán" },
             { key: "kartoteka" as const, label: "📋 Kartotéka" },
             { key: "memory" as const, label: "🧠 Paměť" },
+            { key: "notes" as const, label: "📝 Poznámky" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
@@ -290,6 +292,12 @@ const DidSprava = ({
         {activeTab === "memory" && (
           <div className="space-y-2">
             <DidMemoryTab />
+          </div>
+        )}
+
+        {activeTab === "notes" && (
+          <div className="space-y-2">
+            <DidTherapistNotes />
           </div>
         )}
 

@@ -166,12 +166,32 @@ serve(async (req) => {
       console.warn("[update-card] Session memory load error (non-fatal):", memErr);
     }
 
-    // ═══ PHASE 1: ANALYSIS ═══
+    // ═══ LOAD THERAPIST NOTES for richer analysis ═══
+    let therapistNotesText = "";
+    try {
+      const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+      const { data: tNotes } = await sb.from("therapist_notes")
+        .select("author, note_type, note_text, priority, session_date")
+        .or(`part_name.eq.${partName},part_name.is.null`)
+        .gte("session_date", twoWeeksAgo)
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      if (tNotes?.length) {
+        therapistNotesText = tNotes.map((n: any) =>
+          `[${n.note_type.toUpperCase()}] (${n.author}, ${n.session_date}): ${n.note_text}`
+        ).join("\n");
+        console.log(`[update-card] Therapist notes loaded: ${tNotes.length} for ${partName}`);
+      }
+    } catch (tnErr) {
+      console.warn("[update-card] Therapist notes load error (non-fatal):", tnErr);
+    }
     console.log(`[update-card] Phase 1: Analysis for ${partName}`);
     const analysisPrompt = `Jsi Karel — klinický psycholog specializovaný na DID, správce kartotéky. Dostáváš:
 1. Aktuální kartu části "${partName}" z kartotéky
 2. Nová nezpracovaná vlákna (rozhovory s touto částí)
 ${memoryText ? "3. Strukturovanou paměť ze sezení za poslední týden" : ""}
+${therapistNotesText ? `${memoryText ? "4" : "3"}. Poznámky od terapeutek (offline pozorování, instrukce, varování)` : ""}
 
 TVŮ ÚKOL — FÁZE ANALÝZY:
 Přečti vlákna a roztřiď informace podle sekcí A–M.
@@ -235,7 +255,8 @@ ${cardContent.slice(0, 80000)}
 
 VLÁKNA:
 ${threadsText.slice(0, 40000)}
-${memoryText ? `\nSTRUKTUROVANÁ PAMĚŤ ZE SEZENÍ (posledních 7 dní):\n${memoryText.slice(0, 10000)}` : ""}`;
+${memoryText ? `\nSTRUKTUROVANÁ PAMĚŤ ZE SEZENÍ (posledních 7 dní):\n${memoryText.slice(0, 10000)}` : ""}
+${therapistNotesText ? `\nPOZNÁMKY OD TERAPEUTŮ (posledních 14 dní):\n${therapistNotesText.slice(0, 8000)}` : ""}`;
 
     const analysisRaw = await callGemini(
       "Jsi Karel, klinický psycholog a odborník na DID. Analyzuj kartu a vlákna. Odpověz POUZE JSON.",
@@ -445,6 +466,21 @@ ${searchResultsText.slice(0, 10000)}`;
       cross_writes: crossWriteLabels,
       processing_time_ms: processingTime,
     });
+
+    // Mark therapist notes as incorporated
+    if (therapistNotesText) {
+      try {
+        const incorporatedLabel = `card_update_${new Date().toISOString().slice(0, 10)}`;
+        await sb.from("therapist_notes")
+          .update({ incorporated_into: incorporatedLabel })
+          .or(`part_name.eq.${partName},part_name.is.null`)
+          .is("incorporated_into", null)
+          .gte("session_date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10));
+        console.log(`[update-card] Therapist notes marked as incorporated for ${partName}`);
+      } catch (tnErr) {
+        console.warn("[update-card] Therapist notes mark error:", tnErr);
+      }
+    }
 
     // Check if this part has active crisis → auto-evaluate
     try {

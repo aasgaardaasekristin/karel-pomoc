@@ -5306,6 +5306,26 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Memory cleanup error (non-fatal):", memCleanErr);
     }
 
+    // ═══ FÁZE 6.7: CHECK UNREAD THERAPIST NOTES ═══
+    try {
+      const { count: unreadNotes } = await sb.from("therapist_notes")
+        .select("id", { count: "exact", head: true })
+        .eq("is_read_by_karel", false);
+
+      const { data: urgentNotes } = await sb.from("therapist_notes")
+        .select("author, part_name, note_text, priority")
+        .eq("is_read_by_karel", false)
+        .eq("priority", "urgent")
+        .limit(5);
+
+      if (urgentNotes?.length) {
+        console.log(`[daily-cycle] ⚠️ ${urgentNotes.length} URGENT unread therapist notes!`);
+      }
+      console.log(`[daily-cycle] Unread therapist notes: ${unreadNotes || 0} (urgent: ${urgentNotes?.length || 0})`);
+    } catch (tnErr) {
+      console.warn("[daily-cycle] Therapist notes check error (non-fatal):", tnErr);
+    }
+
     // ═══ FÁZE 7: Aktualizace operativního plánu ═══
     try {
       const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;

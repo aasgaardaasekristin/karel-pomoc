@@ -3101,6 +3101,51 @@ export type Database = {
         }
         Relationships: []
       }
+      therapist_notes: {
+        Row: {
+          author: string
+          created_at: string | null
+          id: string
+          incorporated_into: string | null
+          is_read_by_karel: boolean | null
+          note_text: string
+          note_type: string
+          part_name: string | null
+          priority: string | null
+          read_at: string | null
+          session_date: string | null
+          tags: string[] | null
+        }
+        Insert: {
+          author?: string
+          created_at?: string | null
+          id?: string
+          incorporated_into?: string | null
+          is_read_by_karel?: boolean | null
+          note_text: string
+          note_type?: string
+          part_name?: string | null
+          priority?: string | null
+          read_at?: string | null
+          session_date?: string | null
+          tags?: string[] | null
+        }
+        Update: {
+          author?: string
+          created_at?: string | null
+          id?: string
+          incorporated_into?: string | null
+          is_read_by_karel?: boolean | null
+          note_text?: string
+          note_type?: string
+          part_name?: string | null
+          priority?: string | null
+          read_at?: string | null
+          session_date?: string | null
+          tags?: string[] | null
+        }
+        Relationships: []
+      }
       thread_processing_log: {
         Row: {
           created_at: string
