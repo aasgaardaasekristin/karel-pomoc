@@ -128,6 +128,15 @@ serve(async (req) => {
   const dateStr = new Date().toLocaleDateString("cs-CZ");
   const pragueHour = getPragueHour();
 
+  // Parse force parameter for manual resend bypass
+  let forceResend = false;
+  try {
+    const body = await req.clone().json();
+    forceResend = body?.force === true;
+  } catch { /* no body or not JSON */ }
+
+  console.log(`[daily-email] START | date=${reportDatePrague} | hour=${pragueHour} | force=${forceResend} | hanka=${MAMKA_EMAIL} | kata=${KATA_EMAIL}`);
+
   try {
     // ═══ DISPATCH DEDUP ═══
     const reserveSlot = async (recipient: "hanka" | "kata"): Promise<boolean> => {
