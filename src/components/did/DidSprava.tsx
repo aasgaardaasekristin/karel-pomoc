@@ -14,7 +14,6 @@ import DidKartotekaTab from "./DidKartotekaTab";
 import DidPlanTab from "./DidPlanTab";
 import DidCrisisPanel from "./DidCrisisPanel";
 import DidMemoryTab from "./DidMemoryTab";
-import DidCrisisPanel from "./DidCrisisPanel";
 
 interface Props {
   onBootstrap: () => void;
