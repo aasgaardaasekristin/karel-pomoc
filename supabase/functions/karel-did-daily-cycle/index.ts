@@ -4805,6 +4805,116 @@ ESKALACE: level ${task.escalation_level || 0}`,
 
     // shadowSync moved to standalone CRON — see karel-did-context-prime (runs daily at 5:30 UTC)
 
+    // ═══════════════════════════════════════════════════════════
+    // DENNÍ REVIZE 05A/05B – expirace, downgrade, promotion
+    // ═══════════════════════════════════════════════════════════
+    try {
+      const reviewNow = new Date().toISOString();
+
+      // 1. Expire old plan_items
+      const { data: expiredItems } = await sb.from("did_plan_items")
+        .update({ status: "expired" })
+        .eq("status", "active")
+        .lt("expires_at", reviewNow)
+        .select("id");
+      if (expiredItems?.length) console.log(`[daily-cycle] Expired ${expiredItems.length} plan items`);
+
+      // 2. Review items where review_at < now
+      const { data: reviewItems } = await sb.from("did_plan_items")
+        .select("*")
+        .eq("status", "active")
+        .lt("review_at", reviewNow);
+
+      for (const item of (reviewItems || [])) {
+        // Check last thread activity for this part
+        const { data: lastThread } = await sb.from("did_threads")
+          .select("last_activity_at")
+          .eq("part_name", item.subject_id || "")
+          .order("last_activity_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const lastActivity = lastThread?.last_activity_at ? new Date(lastThread.last_activity_at) : null;
+        const hoursSinceActivity = lastActivity ? (Date.now() - lastActivity.getTime()) / (1000 * 60 * 60) : Infinity;
+
+        // crisis_watch + no activity 72h → downgrade to active_parts
+        if (item.plan_type === "05A" && item.section === "crisis_watch" && hoursSinceActivity > 72) {
+          await sb.from("did_plan_items").update({
+            section: "active_parts",
+            priority: "normal",
+            review_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          }).eq("id", item.id);
+          console.log(`[daily-cycle] Downgraded crisis_watch → active_parts: ${item.subject_id}`);
+        }
+
+        // active_parts + no activity 14d → demote to 05B
+        if (item.plan_type === "05A" && hoursSinceActivity > 14 * 24) {
+          await sb.from("did_plan_items").update({
+            plan_type: "05B",
+            section: "parts_readiness",
+            status: "active",
+            content: item.content + " [PŘESUNUTO Z 05A – neaktivní >14d]",
+            review_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          }).eq("id", item.id);
+          console.log(`[daily-cycle] Demoted 05A → 05B: ${item.subject_id}`);
+        }
+      }
+
+      // 3. Check 05B promotion criteria
+      const { data: promotable } = await sb.from("did_plan_items")
+        .select("*")
+        .eq("plan_type", "05B")
+        .eq("status", "active")
+        .not("promotion_criteria", "is", null);
+
+      for (const item of (promotable || [])) {
+        const { data: recentThread } = await sb.from("did_threads")
+          .select("id")
+          .eq("part_name", item.subject_id || "")
+          .gte("last_activity_at", new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+          .limit(1)
+          .maybeSingle();
+
+        if (recentThread) {
+          await sb.from("did_plan_items").insert({
+            plan_type: "05A",
+            section: "active_parts",
+            subject_type: item.subject_type,
+            subject_id: item.subject_id,
+            content: `[POVÝŠENO Z 05B] ${item.content}`,
+            priority: "high",
+            action_required: item.action_required,
+            assigned_to: item.assigned_to,
+            status: "active",
+            review_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+            expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            source_observation_ids: item.source_observation_ids,
+          });
+          await sb.from("did_plan_items").update({ status: "promoted" }).eq("id", item.id);
+          console.log(`[daily-cycle] Promoted 05B → 05A: ${item.subject_id}`);
+        }
+      }
+
+      // 4. Trigger post-intervention-sync to write updated plans to Drive
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/post-intervention-sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ trigger: "daily-cycle" }),
+      }).catch(e => console.warn("[daily-cycle] post-intervention-sync fire-and-forget error:", e));
+
+      console.log("[daily-cycle] Plan review completed");
+    } catch (reviewErr) {
+      console.warn("[daily-cycle] Plan review error (non-fatal):", reviewErr);
+    }
+
+    // TODO [FÁZE 4]: Zde vytvářet observations z denního scanu vláken
+    // Pro každé vlákno s novou aktivitou: createObservation({source_type: 'thread', ...})
+    // Logistický kontext (výlet, škola, svátky) → subject_type: 'logistics', time_horizon: '0_14d'
+    // Zmínka o strachu/obavě → subject_type: 'part', evidence_level: 'D1' nebo 'D2'
+
     // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
     try {
       const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;

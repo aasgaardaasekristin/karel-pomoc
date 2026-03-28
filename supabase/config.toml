@@ -200,3 +200,6 @@ verify_jwt = false
 
 [functions.crisis-retroactive-scan]
 verify_jwt = false
+
+[functions.post-intervention-sync]
+verify_jwt = false

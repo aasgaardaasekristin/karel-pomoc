@@ -158,6 +158,19 @@ RIZIKA: [identifikovaná rizika]
 
     if (insertError) console.error("Insert error:", insertError);
 
+    // TODO [FÁZE 4]: Persist observation from completed session
+    // import { createObservation, routeObservation } from '../_shared/observations.ts';
+    // const obsId = await createObservation(supabase, {
+    //   subject_type: 'part',
+    //   subject_id: clientName || clientId,
+    //   source_type: 'session',
+    //   source_ref: clientId,
+    //   fact: `Sezení dokončeno: ${report?.slice(0, 300)}`,
+    //   evidence_level: 'D1',
+    //   time_horizon: '0_14d',
+    // });
+    // await routeObservation(supabase, obsId, {...}, 'part_profile');
+
     return new Response(JSON.stringify({ report, tasks: [...therapistTasks, ...clientTasks] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -173,6 +173,19 @@ ${message}`;
         .eq("id", profile.id);
     }
 
+    // TODO [FÁZE 4]: Persist observation from task feedback
+    // import { createObservation, routeObservation } from '../_shared/observations.ts';
+    // const obsId = await createObservation(supabaseAdmin, {
+    //   subject_type: 'part',
+    //   subject_id: task.related_part || task.assigned_to,
+    //   source_type: 'task_feedback',
+    //   source_ref: taskId,
+    //   fact: `Feedback na úkol "${task.task}": ${message.slice(0, 200)}`,
+    //   evidence_level: isPositive ? 'D1' : 'I1',
+    //   time_horizon: '0_14d',
+    // });
+    // await routeObservation(supabaseAdmin, obsId, {...}, isPositive ? 'context_only' : 'immediate_plan');
+
     return new Response(JSON.stringify({ reply: karelMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
