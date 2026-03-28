@@ -139,11 +139,12 @@ const DidSprava = ({
         <StatusBar cycleStatus={cycleStatus} unprocessedThreads={stats.unprocessedThreads} />
 
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
-          {([
+         {([
             { key: "tools" as const, label: "🛠 Nástroje" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
+            { key: "cleanup" as const, label: "🧹 Cleanup" },
             { key: "theme" as const, label: "🎨 Vzhled" },
           ]).map(tab => (
             <button
