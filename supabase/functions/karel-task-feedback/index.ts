@@ -173,18 +173,74 @@ ${message}`;
         .eq("id", profile.id);
     }
 
-    // TODO [FÁZE 4]: Persist observation from task feedback
-    // import { createObservation, routeObservation } from '../_shared/observations.ts';
-    // const obsId = await createObservation(supabaseAdmin, {
-    //   subject_type: 'part',
-    //   subject_id: task.related_part || task.assigned_to,
-    //   source_type: 'task_feedback',
-    //   source_ref: taskId,
-    //   fact: `Feedback na úkol "${task.task}": ${message.slice(0, 200)}`,
-    //   evidence_level: isPositive ? 'D1' : 'I1',
-    //   time_horizon: '0_14d',
-    // });
-    // await routeObservation(supabaseAdmin, obsId, {...}, isPositive ? 'context_only' : 'immediate_plan');
+    // ── FÁZE 4: Persist observation from task feedback ──
+    try {
+      const { createObservation, routeObservation } = await import("../_shared/observations.ts");
+      const msgLower2 = message.toLowerCase();
+      const isPositive2 = /hotovo|splněno|udělal|dokončen|zvládl|povedlo|ok|ano|yes|done/i.test(msgLower2);
+
+      const factText = `Feedback na úkol "${task.task?.slice(0, 100)}": ${message.slice(0, 200)}`;
+      const partId = task.related_part || task.assigned_to || author;
+
+      const obsId = await createObservation(supabaseAdmin, {
+        subject_type: "part",
+        subject_id: partId,
+        source_type: "task_feedback",
+        source_ref: taskId,
+        fact: factText,
+        evidence_level: isPositive2 ? "D1" : "I1",
+        confidence: 0.8,
+        time_horizon: "0_14d",
+      });
+
+      await routeObservation(supabaseAdmin, obsId, {
+        subject_type: "part",
+        subject_id: partId,
+        evidence_level: isPositive2 ? "D1" : "I1",
+        time_horizon: "0_14d",
+        fact: factText,
+      }, isPositive2 ? "context_only" : "immediate_plan");
+
+      // Pokud úkol splněn s feedbackem → claim therapeutic_response
+      if (isPositive2 && message.length > 10) {
+        fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/update-part-profile`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            part_name: partId,
+            claims: [{
+              card_section: "K",
+              claim_type: "therapeutic_response",
+              claim_text: `Reakce na úkol "${task.task?.slice(0, 80)}": ${message.slice(0, 150)}`,
+              evidence_level: "D3",
+              confidence: 0.8,
+            }],
+          }),
+        }).catch(() => { /* fire-and-forget */ });
+      }
+
+      // Pokud úkol nesplněn → plan_item 05A
+      if (!isPositive2) {
+        await supabaseAdmin.from("did_plan_items").insert({
+          plan_type: "05A",
+          section: "open_questions",
+          subject_type: "part",
+          subject_id: partId,
+          content: `Nesplněný/problematický úkol: ${task.task?.slice(0, 150)}. Feedback: ${message.slice(0, 150)}`,
+          priority: "normal",
+          action_required: "Zjistit proč úkol nebyl splněn. Zvážit úpravu přístupu.",
+          assigned_to: "karel",
+          status: "active",
+          review_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        }).catch(e => console.warn("[task-feedback] Plan item insert error:", e));
+      }
+    } catch (obsErr) {
+      console.warn("[task-feedback] Observation pipeline error (non-fatal):", obsErr);
+    }
 
     return new Response(JSON.stringify({ reply: karelMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
