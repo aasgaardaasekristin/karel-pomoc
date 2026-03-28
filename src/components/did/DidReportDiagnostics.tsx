@@ -41,16 +41,25 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [aiErrors, setAiErrors] = useState<any[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const { data } = await supabase
-      .from("did_daily_report_dispatches")
-      .select("*")
-      .gte("report_date", since)
-      .order("report_date", { ascending: false });
-    setDispatches((data as unknown as Dispatch[]) || []);
+    const [dispatchRes, errRes] = await Promise.all([
+      supabase
+        .from("did_daily_report_dispatches")
+        .select("*")
+        .gte("report_date", since)
+        .order("report_date", { ascending: false }),
+      supabase
+        .from("ai_error_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+    setDispatches((dispatchRes.data as unknown as Dispatch[]) || []);
+    setAiErrors((errRes.data as any[]) || []);
     setLoading(false);
   };
 
