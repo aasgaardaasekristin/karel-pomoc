@@ -41,16 +41,25 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [aiErrors, setAiErrors] = useState<any[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const { data } = await supabase
-      .from("did_daily_report_dispatches")
-      .select("*")
-      .gte("report_date", since)
-      .order("report_date", { ascending: false });
-    setDispatches((data as unknown as Dispatch[]) || []);
+    const [dispatchRes, errRes] = await Promise.all([
+      supabase
+        .from("did_daily_report_dispatches")
+        .select("*")
+        .gte("report_date", since)
+        .order("report_date", { ascending: false }),
+      supabase
+        .from("ai_error_log")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+    setDispatches((dispatchRes.data as unknown as Dispatch[]) || []);
+    setAiErrors((errRes.data as any[]) || []);
     setLoading(false);
   };
 
@@ -180,6 +189,29 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
           ))
         )}
       </div>
+
+      {/* AI Error Log */}
+      {aiErrors.length > 0 && (
+        <details className="mt-4">
+          <summary className="text-xs font-medium cursor-pointer text-muted-foreground">
+            🔧 AI Error Log (posledních {aiErrors.length})
+          </summary>
+          <div className="mt-2 space-y-1">
+            {aiErrors.map((err: any) => (
+              <div key={err.id} className="text-xs p-2 bg-muted rounded">
+                <span className="font-mono">{err.caller}</span>
+                <span className="text-destructive ml-2">{err.error_type}</span>
+                <span className="text-muted-foreground ml-2">
+                  {new Date(err.created_at).toLocaleString("cs")}
+                </span>
+                {err.error_message && (
+                  <p className="text-muted-foreground mt-1">{String(err.error_message).slice(0, 200)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

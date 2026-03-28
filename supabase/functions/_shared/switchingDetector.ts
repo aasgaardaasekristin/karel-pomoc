@@ -1,4 +1,4 @@
-const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+import { callAiForJson } from "./aiCallWrapper.ts";
 
 export interface SwitchingAnalysis {
   isSamePart: boolean;
@@ -73,43 +73,34 @@ ODPOVĚZ POUZE tímto JSON:
 
 Pokud si NEJSI JISTÝ, odpověz is_same_part: true s confidence: low. NIKDY neoznačuj switch pokud si nejsi alespoň medium jistý.`;
 
-  try {
-    const res = await fetch(AI_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-lite",
-        messages: [
-          { role: "system", content: "Jsi analytický modul. Odpovídej POUZE validním JSON." },
-          { role: "user", content: prompt },
-        ],
-      }),
-    });
+  const result = await callAiForJson({
+    systemPrompt: "Jsi analytický modul. Odpovídej POUZE validním JSON.",
+    userPrompt: prompt,
+    model: "google/gemini-2.5-flash-lite",
+    apiKey,
+    requiredKeys: ["is_same_part", "confidence"],
+    knownPartNames: knownParts.map(p => p.name),
+    maxRetries: 0,
+    fallback: {
+      is_same_part: true,
+      detected_part: null,
+      confidence: "low",
+      signals: [],
+      recommendation: "Pokračuj normálně",
+    },
+    callerName: "switching-detector",
+  });
 
-    if (!res.ok) throw new Error(`AI error: ${res.status}`);
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content || "";
-
-    let parsed: any;
-    try {
-      let clean = raw.trim().replace(/^```json?\s*/i, "").replace(/```\s*$/, "");
-      const start = clean.indexOf("{");
-      const end = clean.lastIndexOf("}");
-      if (start !== -1 && end !== -1) clean = clean.slice(start, end + 1);
-      parsed = JSON.parse(clean);
-    } catch {
-      return { isSamePart: true, detectedPart: null, confidence: "low", signals: ["JSON parse failed"], recommendation: "Pokračuj normálně" };
-    }
-
-    return {
-      isSamePart: parsed.is_same_part !== false,
-      detectedPart: parsed.detected_part || null,
-      confidence: parsed.confidence || "low",
-      signals: Array.isArray(parsed.signals) ? parsed.signals : [],
-      recommendation: parsed.recommendation || "",
-    };
-  } catch (err) {
-    console.warn("[switching] Detection failed:", err);
-    return { isSamePart: true, detectedPart: null, confidence: "low", signals: ["detection_error"], recommendation: "Pokračuj normálně" };
+  if (!result.success) {
+    return { isSamePart: true, detectedPart: null, confidence: "low", signals: ["detection_failed"], recommendation: "Pokračuj normálně" };
   }
+
+  const parsed = result.data;
+  return {
+    isSamePart: parsed.is_same_part !== false,
+    detectedPart: parsed.detected_part || null,
+    confidence: parsed.confidence || "low",
+    signals: Array.isArray(parsed.signals) ? parsed.signals : [],
+    recommendation: parsed.recommendation || "",
+  };
 }

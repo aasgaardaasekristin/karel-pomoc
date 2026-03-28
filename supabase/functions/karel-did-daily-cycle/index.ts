@@ -5306,6 +5306,15 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Memory cleanup error (non-fatal):", memCleanErr);
     }
 
+    // ═══ FÁZE 6.6: AI ERROR LOG CLEANUP ═══
+    try {
+      const logCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      await sb.from("ai_error_log").delete().lt("created_at", logCutoff);
+      console.log("[daily-cycle] AI error log cleanup done");
+    } catch (e) {
+      console.warn("[daily-cycle] AI error log cleanup failed:", e);
+    }
+
     // ═══ FÁZE 6.7: CHECK UNREAD THERAPIST NOTES ═══
     try {
       const { count: unreadNotes } = await sb.from("therapist_notes")
