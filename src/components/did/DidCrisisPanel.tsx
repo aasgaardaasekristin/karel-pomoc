@@ -37,6 +37,7 @@ interface SessionLog {
   summary: string | null;
   risk_signals: string[] | null;
   positive_signals: string[] | null;
+  scaling_score: number | null;
 }
 
 const PHASE_COLORS: Record<string, string> = {
