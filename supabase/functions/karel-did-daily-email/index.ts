@@ -259,7 +259,15 @@ serve(async (req) => {
     const taskFeedback = feedbackRes.data || [];
     const todaySessionPlan = sessionPlanRes.data || null;
 
-    console.log(`[daily-email] Supplementary: ${threads.length} threads, ${tasks.length} tasks, analysis: ${hasAnalysis}`);
+    // F7: enriched data
+    const todayMetrics: any[] = metricsRes.data || [];
+    const weekMetrics: any[] = weekMetricsRes.data || [];
+    const allGoals: any[] = goalsRes.data || [];
+    const todaySwitches: any[] = switchesRes.data || [];
+    const unreadNotes: any[] = unreadNotesRes.data || [];
+    const aiErrorCount: number = aiErrorCountRes.count || 0;
+
+    console.log(`[daily-email] F7 enriched: metrics=${todayMetrics.length}, goals=${allGoals.length}, switches=${todaySwitches.length}, notes=${unreadNotes.length}, aiErrors=${aiErrorCount}`);
 
     // ═══ SPLIT THREADS ═══
     const now = new Date();
