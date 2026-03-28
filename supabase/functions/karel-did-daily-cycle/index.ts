@@ -4915,6 +4915,13 @@ ESKALACE: level ${task.escalation_level || 0}`,
     // Logistický kontext (výlet, škola, svátky) → subject_type: 'logistics', time_horizon: '0_14d'
     // Zmínka o strachu/obavě → subject_type: 'part', evidence_level: 'D1' nebo 'D2'
 
+    // TODO [FÁZE 3]: Po analýze každého vlákna extrahovat claims
+    // a volat update-part-profile. Denní cyklus NESMÍ přepisovat
+    // stable_trait claims bez kumulativního ověření.
+    // Smí okamžitě měnit: current_state, risk, trigger, therapeutic_response.
+    // Kumulativní typy (stable_trait, preference, relationship, goal)
+    // se zapisují jako hypothesis a povyšují po 3 potvrzeních.
+
     // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
     try {
       const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;
