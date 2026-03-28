@@ -17,6 +17,7 @@ import DidMemoryTab from "./DidMemoryTab";
 import DidTrendsTab from "./DidTrendsTab";
 import DidTherapistNotes from "./DidTherapistNotes";
 import DidGoalsTab from "./DidGoalsTab";
+import DidSafetyAlerts from "./DidSafetyAlerts";
 
 interface Props {
   onBootstrap: () => void;
