@@ -109,33 +109,39 @@ Vrať POUZE validní JSON, nic jiného.`;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const aiRes = await fetch(AI_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Jsi analytický modul Karla. Extrahuj strukturovanou paměť ze sezení. Odpovídej POUZE ve formátu JSON." },
-          { role: "user", content: prompt },
-        ],
-      }),
+    const memoryFallback = {
+      key_points: ["(automatická extrakce selhala)"],
+      emotional_state: "neznámý",
+      topics: [],
+      unresolved: [],
+      promises: [],
+      fulfilled_promises: [],
+      risk_signals: [],
+      positive_signals: [],
+    };
+
+    const aiResult = await callAiForJson({
+      systemPrompt: "Jsi analytický modul Karla. Extrahuj strukturovanou paměť ze sezení. Odpovídej POUZE ve formátu JSON.",
+      userPrompt: prompt,
+      apiKey: LOVABLE_API_KEY,
+      requiredKeys: ["key_points", "emotional_state", "topics"],
+      knownPartNames: [partName],
+      maxRetries: 1,
+      fallback: memoryFallback,
+      callerName: "extract-session-memory",
     });
 
-    if (!aiRes.ok) throw new Error(`AI error: ${aiRes.status}`);
-    const aiData = await aiRes.json();
-    const rawContent = aiData.choices?.[0]?.message?.content || "{}";
-
-    // Safe JSON parsing
-    let parsed: any = {};
-    try {
-      const cleaned = rawContent.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
-    } catch {
-      // Fallback: store raw as single key_point
-      parsed = { key_points: [rawContent.slice(0, 500)] };
-      console.warn("[extract-session-memory] JSON parse failed, using fallback");
+    if (!aiResult.success) {
+      await sb.from("ai_error_log").insert({
+        caller: "extract-session-memory",
+        error_type: "json_parse_failed",
+        error_message: aiResult.error,
+        raw_output: aiResult.data ? JSON.stringify(aiResult.data) : null,
+        context: { partName, messageCount: messages.length },
+      }).catch(() => {});
     }
+
+    const parsed: any = aiResult.data || memoryFallback;
 
     // Enrich with switching events from this thread
     if (threadId) {
