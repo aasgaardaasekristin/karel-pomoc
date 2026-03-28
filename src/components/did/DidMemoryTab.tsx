@@ -63,9 +63,10 @@ const DidMemoryTab = () => {
       .limit(30);
     if (partFilter !== "all") memQuery = memQuery.eq("part_name", partFilter);
     
-    const [memRes, promRes] = await window.Promise.all([
+    const [memRes, promRes, switchRes] = await window.Promise.all([
       memQuery,
       supabase.from("karel_promises").select("*").eq("status", "active").order("created_at", { ascending: false }),
+      supabase.from("switching_events").select("*").order("created_at", { ascending: false }).limit(20),
     ]);
 
     setMemories((memRes.data || []) as SessionMemory[]);
