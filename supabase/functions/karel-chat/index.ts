@@ -384,6 +384,7 @@ ${pipelineBlock ? `\n═══ PIPELINE DATA (strukturovaná mezivrstva) ══�
       } catch (notesErr) {
         console.warn("[karel-chat] Therapist notes injection error (non-fatal):", notesErr);
       }
+    }
 
     // ═══ METRICS CONTEXT INJECTION ═══
     if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
