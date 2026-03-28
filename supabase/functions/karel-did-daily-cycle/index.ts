@@ -5035,7 +5035,7 @@ Pokud nejsou žádné nové klinicky relevantní fakty, vrať: []`;
               method: "POST",
               headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
               body: JSON.stringify({
-                model: "google/gemini-2.5-flash-lite",
+                model: "google/gemini-2.5-flash",
                 messages: [
                   { role: "system", content: "Jsi analytický asistent Karla. Extrahuj strukturovaná data z konverzací. Odpovídej POUZE ve formátu JSON." },
                   { role: "user", content: extractionPrompt },
