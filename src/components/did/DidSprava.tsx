@@ -188,6 +188,12 @@ const DidSprava = ({
           ))}
         </div>
 
+        {activeTab === "safety" && (
+          <div className="space-y-2">
+            <DidSafetyAlerts />
+          </div>
+        )}
+
         {activeTab === "tools" && (
           <div className="space-y-2">
             {onRefreshMemory && (
