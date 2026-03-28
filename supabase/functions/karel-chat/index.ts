@@ -2,6 +2,56 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { getSystemPrompt, ConversationMode } from "./systemPrompts.ts";
 
+// ═══ TASK EXTRACTION HELPERS ═══
+function extractTasksFromResponse(responseText: string, subMode: string): Array<Record<string, any>> {
+  const taskPatterns = [
+    /(?:Potřebuji (?:vědět|znát|ověřit|zjistit))[^.!?\n]+[.!?]/gi,
+    /(?:Můžeš mi (?:říct|sdělit|popsat))[^.!?\n]+[.!?]/gi,
+    /(?:Zeptej se)[^.!?\n]+[.!?]/gi,
+    /(?:Úkol(?:\s+pro\s+tebe)?:)[^.!?\n]+[.!?]/gi,
+    /(?:Zpětná vazba:)[^.!?\n]+[.!?]/gi,
+    /(?:Jak to (?:dopadlo|proběhlo))[^.!?\n]+[.!?]/gi,
+    /(?:Navrhuji sezení:)[^.!?\n]+[.!?]/gi,
+    /(?:🔶 HYPOTÉZA:)[^.!?\n]+[.!?]/gi,
+    /(?:❓)[^.!?\n]+[.!?]/gi,
+  ];
+  const tasks: Array<Record<string, any>> = [];
+  const seen = new Set<string>();
+  for (const pattern of taskPatterns) {
+    const matches = responseText.matchAll(pattern);
+    for (const match of matches) {
+      const desc = match[0].trim();
+      if (desc.length < 10 || seen.has(desc)) continue;
+      seen.add(desc);
+      tasks.push({
+        assigned_to: subMode === "mamka" ? "hanka" : subMode === "kata" ? "kata" : "both",
+        task_type: determineTaskType(desc),
+        description: desc.slice(0, 500),
+        priority: /🔴|akutní|krize|kritick/i.test(responseText) ? "high" : "medium",
+        due_date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        status: "pending",
+        source: "chat_auto_extract",
+        related_part: extractPartName(desc),
+      });
+    }
+  }
+  return tasks.slice(0, 10);
+}
+
+function determineTaskType(text: string): string {
+  if (/zpětná vazba|jak to|dopadlo|proběhlo/i.test(text)) return "feedback";
+  if (/sezení|plán/i.test(text)) return "session";
+  if (/zeptej se|potřebuji vědět|potřebuji znát/i.test(text)) return "question";
+  if (/hypotéza|ověřit/i.test(text)) return "observation";
+  return "followup";
+}
+
+function extractPartName(text: string): string | null {
+  const knownParts = ["Arthur", "Clark", "Tundrupek", "Gustík", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Dmytri", "Dymi"];
+  for (const part of knownParts) { if (text.includes(part)) return part; }
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -991,6 +1041,61 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           }
         }
 
+        // ═══ ASYNC SAFETY PATTERN CHECK (non-blocking) ═══
+        if (didSubMode === "cast" && didPartName) {
+          try {
+            const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
+            const userText = typeof lastUserMsg?.content === "string" ? lastUserMsg.content : "";
+            if (userText.length > 5) {
+              const safetyPatterns: Record<string, { re: RegExp[]; sev: string }> = {
+                suicidal_ideation: { re: [/nechci\s+\u017e\u00edt/i, /chci\s+um\u0159\u00edt/i, /zabij\s+m[e\u011b]/i, /skon\u010dit\s+se\s+v\u0161\u00edm/i, /nem\u00e1\s+to\s+(cenu|smysl)/i, /chci\s+zmizet\s+nav\u017edy/i, /p\u0159eji\s+si\s+smrt/i, /chci\s+se\s+zab\u00edt/i], sev: "critical" },
+                self_harm: { re: [/\u0159e\u017e[ue]\s+se/i, /ubli\u017euj[ue]\s+si/i, /bolest\s+pom\u00e1h\u00e1/i, /chci\s+si\s+ubl\u00ed\u017eit/i, /p\u00e1l\u00edm\s+se/i, /\u0161kr\u00e1b[ue]\s+se/i, /bouch\u00e1m\s+hlavou/i], sev: "high" },
+                dissociative_crisis: { re: [/nev\u00edm\s+kde\s+jsem/i, /kdo\s+jsem/i, /nepozn\u00e1v\u00e1m/i, /jsem\s+mimo\s+t\u011blo/i, /nevid\u00edm\s+se/i, /ztr\u00e1ta\s+\u010dasu/i, /nem\u016f\u017eu\s+se\s+h\u00fdbat/i], sev: "high" },
+                severe_distress: { re: [/nem\u016f\u017eu\s+d\u00fdchat/i, /panika/i, /hr\u016fza/i, /t\u0159esu\s+se/i, /nevydr\u017e\u00edm/i, /je\s+mi\s+hrozn\u011b/i, /chci\s+k\u0159i\u010det/i], sev: "medium" },
+                aggressive_outburst: { re: [/zabiju\s+(t\u011b|ho|ji|je)/i, /chci\s+n\u011bkomu\s+ubl\u00ed\u017eit/i, /zni\u010d\u00edm/i, /nen\u00e1vid\u00edm/i], sev: "high" },
+                abuse_disclosure: { re: [/n\u011bkdo\s+mi\s+ubli\u017euje/i, /bil\s+m[e\u011b]/i, /osah\u00e1val/i, /zn\u00e1silnil/i, /nesm\u00edm\s+\u0159\u00edct/i], sev: "critical" },
+                substance_mention: { re: [/vzal\s+jsem\s+(si\s+)?(pr\u00e1\u0161ky|l\u00e9ky|drogy)/i, /p\u0159ed\u00e1vkoval/i], sev: "high" },
+                runaway_intent: { re: [/ute\u010dou/i, /odejdu\s+z\s+domu/i, /zmiz\u00edm/i, /nikdo\s+m\u011b\s+nenajde/i], sev: "medium" },
+              };
+              const detected: Array<{ type: string; severity: string }> = [];
+              for (const [aType, cfg] of Object.entries(safetyPatterns)) {
+                for (const re of cfg.re) { if (re.test(userText)) { detected.push({ type: aType, severity: cfg.sev }); break; } }
+              }
+              if (detected.length > 0) {
+                const sevOrder: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+                const highest = detected.reduce((mx, s) => (sevOrder[s.severity] || 0) > (sevOrder[mx] || 0) ? s.severity : mx, "low");
+                const primary = detected[0].type;
+                const actions: Record<string, string> = { critical: "OKAMŽITĚ kontaktovat Hanku.", high: "Upozornit Hanku co nejdříve.", medium: "Zaznamenat a sledovat.", low: "Zaznamenat." };
+                const { createClient: createSbSafety } = await import("https://esm.sh/@supabase/supabase-js@2");
+                const sbSafety = createSbSafety(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const { data: alertRow, error: alertErr } = await sbSafety.from("safety_alerts").insert({
+                  part_name: didPartName, alert_type: primary, severity: highest,
+                  message_content: userText.slice(0, 500),
+                  description: `Detekováno ${detected.length} signálů: ${detected.map(s => s.type).join(", ")}`,
+                  detected_signals: detected, recommended_action: actions[highest] || actions.medium,
+                  status: "new", notification_sent: false,
+                }).select("id").single();
+                if (alertErr) { console.error("[safety] Insert error:", alertErr); }
+                else {
+                  console.warn(`[karel-chat] ⚠️ SAFETY ALERT: ${primary} (${highest}) for ${didPartName}`);
+                  if (highest === "critical" || highest === "high") {
+                    try {
+                      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/send-safety-alert`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ alert_id: alertRow.id, part_name: didPartName, alert_type: primary, severity: highest, message_preview: userText.slice(0, 200), recommended_action: actions[highest] }),
+                      });
+                      await sbSafety.from("safety_alerts").update({ notification_sent: true, notification_sent_at: new Date().toISOString(), notification_channel: "email" }).eq("id", alertRow.id);
+                    } catch (notifErr) { console.warn("[safety] Notification error:", notifErr); }
+                  }
+                }
+              }
+            }
+          } catch (safetyErr) {
+            console.warn("[karel-chat] Safety check error (non-fatal):", safetyErr);
+          }
+        }
+
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
         if (didSubMode === "cast" && fullResponse.length > 10) {
@@ -1250,55 +1355,4 @@ Dokud se nepřipojíte, pokračuji ve stabilizaci ${partName} v probíhajícím 
   }
 });
 
-// ═══ TASK EXTRACTION HELPERS ═══
-function extractTasksFromResponse(responseText: string, subMode: string): Array<Record<string, any>> {
-  const taskPatterns = [
-    /(?:Potřebuji (?:vědět|znát|ověřit|zjistit))[^.!?\n]+[.!?]/gi,
-    /(?:Můžeš mi (?:říct|sdělit|popsat))[^.!?\n]+[.!?]/gi,
-    /(?:Zeptej se)[^.!?\n]+[.!?]/gi,
-    /(?:Úkol(?:\s+pro\s+tebe)?:)[^.!?\n]+[.!?]/gi,
-    /(?:Zpětná vazba:)[^.!?\n]+[.!?]/gi,
-    /(?:Jak to (?:dopadlo|proběhlo))[^.!?\n]+[.!?]/gi,
-    /(?:Navrhuji sezení:)[^.!?\n]+[.!?]/gi,
-    /(?:🔶 HYPOTÉZA:)[^.!?\n]+[.!?]/gi,
-    /(?:❓)[^.!?\n]+[.!?]/gi,
-  ];
-  const tasks: Array<Record<string, any>> = [];
-  const seen = new Set<string>();
-  
-  for (const pattern of taskPatterns) {
-    const matches = responseText.matchAll(pattern);
-    for (const match of matches) {
-      const desc = match[0].trim();
-      if (desc.length < 10 || seen.has(desc)) continue;
-      seen.add(desc);
-      tasks.push({
-        assigned_to: subMode === "mamka" ? "hanka" : subMode === "kata" ? "kata" : "both",
-        task_type: determineTaskType(desc),
-        description: desc.slice(0, 500),
-        priority: /🔴|akutní|krize|kritick/i.test(responseText) ? "high" : "medium",
-        due_date: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-        status: "pending",
-        source: "chat_auto_extract",
-        related_part: extractPartName(desc),
-      });
-    }
-  }
-  return tasks.slice(0, 10); // cap at 10 per response
-}
 
-function determineTaskType(text: string): string {
-  if (/zpětná vazba|jak to|dopadlo|proběhlo/i.test(text)) return "feedback";
-  if (/sezení|plán/i.test(text)) return "session";
-  if (/zeptej se|potřebuji vědět|potřebuji znát/i.test(text)) return "question";
-  if (/hypotéza|ověřit/i.test(text)) return "observation";
-  return "followup";
-}
-
-function extractPartName(text: string): string | null {
-  const knownParts = ["Arthur", "Clark", "Tundrupek", "Gustík", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Dmytri", "Dymi"];
-  for (const part of knownParts) {
-    if (text.includes(part)) return part;
-  }
-  return null;
-}

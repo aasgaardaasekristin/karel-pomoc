@@ -5492,6 +5492,15 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Plan update error (non-fatal):", planErr);
     }
 
+    // ═══ FÁZE 7.5: CLEANUP OLD SAFETY ALERTS ═══
+    try {
+      const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
+      await sb.from("safety_alerts").delete().in("status", ["resolved", "false_positive"]).lt("created_at", alertCutoff);
+      console.log("[daily-cycle] Old safety alerts cleanup done");
+    } catch (e) {
+      console.warn("[daily-cycle] Safety alerts cleanup failed:", e);
+    }
+
     try {
       const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;
       const refreshRes = await fetch(refreshUrl, {

@@ -17,6 +17,7 @@ import DidMemoryTab from "./DidMemoryTab";
 import DidTrendsTab from "./DidTrendsTab";
 import DidTherapistNotes from "./DidTherapistNotes";
 import DidGoalsTab from "./DidGoalsTab";
+import DidSafetyAlerts from "./DidSafetyAlerts";
 
 interface Props {
   onBootstrap: () => void;
@@ -115,7 +116,8 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety">("tools");
+  const [newAlertCount, setNewAlertCount] = useState(0);
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
@@ -123,6 +125,14 @@ const DidSprava = ({
   useEffect(() => {
     supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
       .then(({ count }) => setHasCrisis((count || 0) > 0));
+    
+    const loadAlertCount = async () => {
+      const { count } = await (supabase as any).from("safety_alerts").select("id", { count: "exact", head: true }).eq("status", "new");
+      setNewAlertCount(count || 0);
+    };
+    loadAlertCount();
+    const interval = setInterval(loadAlertCount, 30000);
+    return () => clearInterval(interval);
   }, [refreshTrigger]);
 
   return (
@@ -153,6 +163,7 @@ const DidSprava = ({
 
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
          {([
+            { key: "safety" as const, label: `🚨 Bezpečnost${newAlertCount > 0 ? ` (${newAlertCount})` : ""}` },
             { key: "tools" as const, label: "🛠 Nástroje" },
             ...(hasCrisis ? [{ key: "crisis" as const, label: "🚨 Krize" }] : []),
             { key: "plan" as const, label: "📅 Plán" },
@@ -176,6 +187,12 @@ const DidSprava = ({
             </button>
           ))}
         </div>
+
+        {activeTab === "safety" && (
+          <div className="space-y-2">
+            <DidSafetyAlerts />
+          </div>
+        )}
 
         {activeTab === "tools" && (
           <div className="space-y-2">
