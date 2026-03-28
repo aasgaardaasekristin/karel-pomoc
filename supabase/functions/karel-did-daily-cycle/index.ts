@@ -5244,6 +5244,31 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Health check error:", healthErr);
     }
 
+    // ═══ FÁZE 5.5: VYHODNOCENÍ AKTIVNÍCH KRIZÍ ═══
+    try {
+      const { data: activeCrises } = await sb
+        .from("crisis_events")
+        .select("*")
+        .not("phase", "eq", "closed");
+
+      for (const crisis of (activeCrises || [])) {
+        const daysActive = Math.ceil((Date.now() - new Date(crisis.opened_at).getTime()) / 86400000);
+        await sb.from("crisis_events").update({ days_active: daysActive, updated_at: new Date().toISOString() }).eq("id", crisis.id);
+
+        try {
+          const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evaluate-crisis`;
+          await fetch(evalUrl, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ crisisId: crisis.id }),
+          });
+        } catch (e) { console.warn(`[daily-cycle] Crisis eval error for ${crisis.part_name}:`, e); }
+      }
+      console.log(`[daily-cycle] Crisis eval: ${activeCrises?.length || 0} active crises`);
+    } catch (crisisErr) {
+      console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
+    }
+
     // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET ═══
     try {
       console.log("[daily-cycle] Triggering autonomous card updates...");
