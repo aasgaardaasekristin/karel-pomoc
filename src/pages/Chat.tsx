@@ -139,6 +139,7 @@ const Chat = () => {
   const [isEnrichingContext, setIsEnrichingContext] = useState(false);
   const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
   const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
+  const [switchAlert, setSwitchAlert] = useState<{ from: string; to: string; confidence: string; threadId: string } | null>(null);
   const [didLiveSession, setDidLiveSession] = useState<{ partName: string; therapistName: string } | null>(null);
   const [didLiveSessionReady, setDidLiveSessionReady] = useState(false);
   const [didLivePartContext, setDidLivePartContext] = useState<string>("");
