@@ -279,6 +279,12 @@ const DidSprava = ({
           </div>
         )}
 
+        {activeTab === "crisis" && (
+          <div className="space-y-2">
+            <DidCrisisPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
         {activeTab === "theme" && (
           <div className="flex flex-col items-center gap-3 py-4">
             <p className="text-xs text-muted-foreground">Nastavení vzhledu bylo přesunuto do vlastního dialogu.</p>
