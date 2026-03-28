@@ -43,11 +43,21 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [aiErrors, setAiErrors] = useState<any[]>([]);
+  const [enrichedStats, setEnrichedStats] = useState<{
+    metricsCount: number;
+    goalsActive: number;
+    goalsPending: number;
+    goalsCompleted: number;
+    switchingCount: number;
+    unreadNotes: number;
+  } | null>(null);
+  const [triggeringCycle, setTriggeringCycle] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const [dispatchRes, errRes] = await Promise.all([
+    const today = new Date().toISOString().split("T")[0];
+    const [dispatchRes, errRes, metricsRes, goalsRes, switchRes, notesRes] = await Promise.all([
       supabase
         .from("did_daily_report_dispatches")
         .select("*")
@@ -58,13 +68,41 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(20),
+      supabase.from("daily_metrics").select("id", { count: "exact", head: true }).eq("metric_date", today),
+      supabase.from("part_goals").select("status"),
+      supabase.from("switching_events" as any).select("id", { count: "exact", head: true }).gte("created_at", today),
+      supabase.from("therapist_notes").select("id", { count: "exact", head: true }).eq("is_read_by_karel", false),
     ]);
     setDispatches((dispatchRes.data as unknown as Dispatch[]) || []);
     setAiErrors((errRes.data as any[]) || []);
+    const goals = (goalsRes.data || []) as any[];
+    setEnrichedStats({
+      metricsCount: metricsRes.count || 0,
+      goalsActive: goals.filter(g => g.status === "active").length,
+      goalsPending: goals.filter(g => g.status === "proposed").length,
+      goalsCompleted: goals.filter(g => g.status === "completed").length,
+      switchingCount: switchRes.count || 0,
+      unreadNotes: notesRes.count || 0,
+    });
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { fetchData(); }, [refreshTrigger]);
+  useEffect(() => { fetchData(); }, [refreshTrigger, fetchData]);
+
+  const handleTriggerCycle = async () => {
+    setTriggeringCycle(true);
+    toast.info("Spouštím denní email report...");
+    try {
+      const res = await supabase.functions.invoke("karel-did-daily-email", { body: { force: true } });
+      if (res.error) throw res.error;
+      toast.success("Report odeslán");
+      fetchData();
+    } catch (e) {
+      toast.error("Chyba: " + String(e));
+    } finally {
+      setTriggeringCycle(false);
+    }
+  };
 
   // Stats
   const last7days = dispatches.filter(d => {
