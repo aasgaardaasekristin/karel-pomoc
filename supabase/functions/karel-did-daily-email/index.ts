@@ -516,6 +516,18 @@ Neopisuj celou historii, nevyjmenovávej VŠECHNY části. Soustřeď se na to, 
 - V mailu buď POUZE: vedoucí týmu, koordinátor, odborný supervizor.
 - Partnerství s Haničkou a její soukromá témata do mailu NEPATŘÍ.
 - NIKDY necituj doslovně výroky z konverzací – místo citátů piš OPERATIVNÍ INSTRUKCE.
+
+═══ NOVÉ DATOVÉ SEKCE (pokud jsou k dispozici) ═══
+Report MUSÍ obsahovat tyto sekce, pokud mají data:
+1. 📊 Souhrnné metriky dne (valence, spolupráce, aktivita)
+2. 📈 Trendy (zlepšení/zhoršení za týden — emoji šipky)
+3. 🎯 Pokrok v cílech (progress bary textové █░, procenta)
+4. 🔄 Switching eventy (pokud byly — stručně)
+5. ⚠️ Varování a rizika
+6. ✅ Pozitivní signály a pokroky
+7. 📝 Akční body pro zítřek
+8. 🆕 Cíle ke schválení (pokud Karel navrhl nové micro-cíle)
+Neincluduj prázdné sekce. Integruj data přirozeně do textu.
 ` : "";
 
       const systemPrompt = isHanka
