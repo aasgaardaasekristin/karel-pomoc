@@ -158,18 +158,37 @@ RIZIKA: [identifikovaná rizika]
 
     if (insertError) console.error("Insert error:", insertError);
 
-    // TODO [FÁZE 4]: Persist observation from completed session
-    // import { createObservation, routeObservation } from '../_shared/observations.ts';
-    // const obsId = await createObservation(supabase, {
-    //   subject_type: 'part',
-    //   subject_id: clientName || clientId,
-    //   source_type: 'session',
-    //   source_ref: clientId,
-    //   fact: `Sezení dokončeno: ${report?.slice(0, 300)}`,
-    //   evidence_level: 'D1',
-    //   time_horizon: '0_14d',
-    // });
-    // await routeObservation(supabase, obsId, {...}, 'part_profile');
+    // ── FÁZE 4: Persist observation from completed session ──
+    try {
+      const { createObservation, routeObservation } = await import("../_shared/observations.ts");
+
+      // Use service_role for observation insert (bypass RLS)
+      const sbAdmin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+      const sessionFact = `Sezení dokončeno s ${clientName}: ${report?.slice(0, 300)}`;
+      const obsId = await createObservation(sbAdmin, {
+        subject_type: "context",
+        subject_id: clientName || clientId,
+        source_type: "session",
+        source_ref: clientId,
+        fact: sessionFact,
+        evidence_level: "D2",
+        confidence: 0.85,
+        time_horizon: "0_14d",
+      });
+
+      await routeObservation(sbAdmin, obsId, {
+        subject_type: "context",
+        subject_id: clientName || clientId,
+        evidence_level: "D2",
+        time_horizon: "0_14d",
+        fact: sessionFact,
+      }, "context_only");
+
+      console.log(`[session-finalize] Observation created for ${clientName}`);
+    } catch (obsErr) {
+      console.warn("[session-finalize] Observation pipeline error (non-fatal):", obsErr);
+    }
 
     return new Response(JSON.stringify({ report, tasks: [...therapistTasks, ...clientTasks] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

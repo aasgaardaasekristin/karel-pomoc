@@ -4910,17 +4910,248 @@ ESKALACE: level ${task.escalation_level || 0}`,
       console.warn("[daily-cycle] Plan review error (non-fatal):", reviewErr);
     }
 
-    // TODO [FÁZE 4]: Zde vytvářet observations z denního scanu vláken
-    // Pro každé vlákno s novou aktivitou: createObservation({source_type: 'thread', ...})
-    // Logistický kontext (výlet, škola, svátky) → subject_type: 'logistics', time_horizon: '0_14d'
-    // Zmínka o strachu/obavě → subject_type: 'part', evidence_level: 'D1' nebo 'D2'
+    // ═══════════════════════════════════════════════════════════
+    // FÁZE 4: OBSERVATION + CLAIM EXTRACTION Z DENNÍCH VLÁKEN
+    // ═══════════════════════════════════════════════════════════
+    try {
+      const { createObservation, routeObservation } = await import("../_shared/observations.ts");
 
-    // TODO [FÁZE 3]: Po analýze každého vlákna extrahovat claims
-    // a volat update-part-profile. Denní cyklus NESMÍ přepisovat
-    // stable_trait claims bez kumulativního ověření.
-    // Smí okamžitě měnit: current_state, risk, trigger, therapeutic_response.
-    // Kumulativní typy (stable_trait, preference, relationship, goal)
-    // se zapisují jako hypothesis a povyšují po 3 potvrzeních.
+      // Rate limit: max 100 observations per day
+      const todayDate = new Date().toISOString().slice(0, 10);
+      const { count: todayObsCount } = await sb.from("did_observations")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", todayDate);
+
+      const obsLimitReached = (todayObsCount || 0) >= 100;
+      if (obsLimitReached) {
+        console.log("[daily-cycle] Daily observation limit reached (100). Skipping extraction.");
+      }
+
+      // Process allRecentThreads (max 20) for observation + claim extraction
+      const threadsForObs = (allRecentThreads || []).slice(0, 20);
+      let obsCreated = 0;
+      let claimsSent = 0;
+
+      for (const thread of threadsForObs) {
+        if (obsLimitReached) break;
+        const partName = thread.part_name || "";
+        if (!partName) continue;
+
+        const msgs = Array.isArray(thread.messages) ? (thread.messages as any[]) : [];
+        const recentMsgs = msgs.slice(-20);
+        if (recentMsgs.length < 2) continue;
+
+        // 12h cooldown: skip if already processed recently
+        const { data: recentObs } = await sb.from("did_observations")
+          .select("id")
+          .eq("source_ref", thread.id)
+          .gte("created_at", new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString())
+          .limit(1)
+          .maybeSingle();
+        if (recentObs) {
+          console.log(`[daily-cycle] Thread ${thread.id} already processed <12h ago, skipping`);
+          continue;
+        }
+
+        // ── AI extraction of observations ──
+        try {
+          const messagesText = recentMsgs.map((m: any) => `[${m.role}]: ${m.content}`).join("\n");
+          const extractionPrompt = `Analyzuj následující konverzaci s částí "${partName}" a extrahuj POZOROVATELNÉ FAKTY (ne interpretace).
+
+Pro každý fakt urči:
+- fact: co přesně bylo řečeno nebo pozorováno
+- evidence_level: D1 (přímý výrok části), D2 (pozorování terapeutky), D3 (objektivní událost)
+- time_horizon: "hours" (akutní), "0_14d" (operativní), "15_60d" (strategické)
+- category: jedna z [emotional_state, behavior, trigger, relationship, logistics, preference, therapeutic_response, risk_signal]
+
+PRAVIDLA:
+- POUZE fakta, NE inference
+- "Řekla že se bojí" = D1 (přímý výrok)
+- "Zdá se úzkostná" = D2 (pozorování)
+- "Zítra má školu" = D3 (objektivní)
+- NEEXTRAHUJ obecné konverzační obraty
+- MAX 5 faktů na vlákno
+
+Konverzace:
+${messagesText}
+
+Odpověz POUZE jako JSON array:
+[{"fact": "...", "evidence_level": "D1|D2|D3", "time_horizon": "hours|0_14d|15_60d", "category": "..."}]
+Pokud nejsou žádné nové pozorovatelné fakty, vrať: []`;
+
+          const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+          if (LOVABLE_API_KEY) {
+            const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                model: "google/gemini-2.5-flash-lite",
+                messages: [
+                  { role: "system", content: "Jsi analytický asistent Karla. Extrahuj strukturovaná data z konverzací. Odpovídej POUZE ve formátu JSON." },
+                  { role: "user", content: extractionPrompt },
+                ],
+              }),
+            });
+
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              const rawContent = aiData.choices?.[0]?.message?.content || "[]";
+              let facts: Array<{ fact: string; evidence_level: string; time_horizon: string; category: string }> = [];
+              try {
+                const jsonMatch = rawContent.match(/\[[\s\S]*\]/);
+                if (jsonMatch) facts = JSON.parse(jsonMatch[0]);
+              } catch { /* parse error */ }
+
+              facts = facts.slice(0, 5);
+
+              for (const fact of facts) {
+                if (!["D1", "D2", "D3", "I1", "H1"].includes(fact.evidence_level)) fact.evidence_level = "D2";
+                if (!["hours", "0_14d", "15_60d", "long_term"].includes(fact.time_horizon)) fact.time_horizon = "0_14d";
+
+                try {
+                  const obsId = await createObservation(sb, {
+                    subject_type: fact.category === "logistics" ? "logistics" : "part",
+                    subject_id: partName,
+                    source_type: "thread",
+                    source_ref: thread.id,
+                    fact: fact.fact,
+                    evidence_level: fact.evidence_level as any,
+                    confidence: fact.evidence_level === "D1" ? 0.9 : fact.evidence_level === "D2" ? 0.7 : 0.8,
+                    time_horizon: fact.time_horizon as any,
+                  });
+
+                  const impactType = fact.category === "risk_signal" ? "risk" as const
+                    : (fact.time_horizon === "hours" ? "immediate_plan" as const
+                    : fact.time_horizon === "15_60d" ? "part_profile" as const
+                    : "context_only" as const);
+
+                  await routeObservation(sb, obsId, {
+                    subject_type: fact.category === "logistics" ? "logistics" : "part",
+                    subject_id: partName,
+                    evidence_level: fact.evidence_level,
+                    time_horizon: fact.time_horizon,
+                    fact: fact.fact,
+                  }, impactType);
+                  obsCreated++;
+                } catch (obsErr) {
+                  console.warn(`[daily-cycle] Single observation error for ${partName}:`, obsErr);
+                }
+              }
+            }
+
+            // ── AI extraction of profile claims ──
+            try {
+              const claimPrompt = `Analyzuj konverzaci s částí "${partName}" a extrahuj PROFILOVÁ TVRZENÍ.
+
+TYPY: current_state, stable_trait, trigger, risk, preference, relationship, therapeutic_response, goal
+PRAVIDLA:
+- current_state: VŽDY extrahuj pokud se změnil
+- stable_trait: POUZE pokud je JASNÝ vzorec
+- evidence_level: D1 pokud to část ŘEKLA, D2 pokud pozorování, I1 pokud inference
+- MAX 3 claims
+
+Konverzace:
+${messagesText}
+
+Odpověz jako JSON array:
+[{"card_section": "A|B|C|D|F|G|H|K", "claim_type": "current_state|stable_trait|trigger|risk|preference|therapeutic_response|goal", "claim_text": "...", "evidence_level": "D1|D2|I1"}]
+Pokud nejsou žádné nové claims, vrať: []`;
+
+              const claimRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "system", content: "Extrahuj profilová tvrzení z konverzace. Odpovídej POUZE JSON." },
+                    { role: "user", content: claimPrompt },
+                  ],
+                }),
+              });
+
+              if (claimRes.ok) {
+                const claimData = await claimRes.json();
+                const claimContent = claimData.choices?.[0]?.message?.content || "[]";
+                let claims: any[] = [];
+                try {
+                  const jsonMatch = claimContent.match(/\[[\s\S]*\]/);
+                  if (jsonMatch) claims = JSON.parse(jsonMatch[0]).slice(0, 3);
+                } catch { /* parse error */ }
+
+                if (claims.length > 0) {
+                  const profileUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-part-profile`;
+                  await fetch(profileUrl, {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      part_name: partName,
+                      claims: claims.map((c: any) => ({
+                        ...c,
+                        confidence: c.evidence_level === "D1" ? 0.85 : c.evidence_level === "D2" ? 0.7 : 0.5,
+                      })),
+                    }),
+                  }).catch(e => console.warn("[daily-cycle] Profile claim fire-and-forget error:", e));
+                  claimsSent += claims.length;
+                }
+              }
+            } catch (claimErr) {
+              console.warn(`[daily-cycle] Claim extraction error for ${partName}:`, claimErr);
+            }
+          }
+        } catch (obsErr) {
+          console.warn(`[daily-cycle] Observation extraction error for ${partName}:`, obsErr);
+        }
+      }
+
+      console.log(`[daily-cycle] Observations created: ${obsCreated}, claims sent: ${claimsSent}`);
+
+      // ═══ DENNÍ REVIZE PENDING QUESTIONS ═══
+      try {
+        const pqNow = new Date().toISOString();
+        // 1. Expiruj staré otázky
+        await sb.from("did_pending_questions")
+          .update({ status: "expired" })
+          .eq("status", "open")
+          .lt("expires_at", pqNow);
+
+        // 2. Načti otevřené otázky
+        const { data: openQuestions } = await sb.from("did_pending_questions")
+          .select("*")
+          .eq("status", "open")
+          .order("created_at", { ascending: true });
+
+        // 3. Pro každou otázku zkontroluj zda existuje nová evidence
+        for (const q of (openQuestions || []).slice(0, 20)) {
+          if (!q.subject_id) continue;
+          const { data: newObs } = await sb.from("did_observations")
+            .select("id, fact")
+            .eq("subject_id", q.subject_id)
+            .gt("created_at", q.created_at)
+            .order("created_at", { ascending: false })
+            .limit(5);
+
+          if (newObs && newObs.length >= 2) {
+            await sb.from("did_pending_questions")
+              .update({
+                status: "partially_answered",
+                answer: `Nalezeno ${newObs.length} nových pozorování od položení otázky. Nejnovější: ${newObs[0].fact?.slice(0, 200)}`,
+                answered_at: pqNow,
+                answered_by: "system_daily_review",
+              })
+              .eq("id", q.id);
+          }
+        }
+
+        console.log(`[daily-cycle] Pending questions reviewed: ${openQuestions?.length || 0} open`);
+      } catch (pqErr) {
+        console.warn("[daily-cycle] Pending questions review error (non-fatal):", pqErr);
+      }
+    } catch (phase4Err) {
+      console.warn("[daily-cycle] FÁZE 4 observation pipeline error (non-fatal):", phase4Err);
+    }
 
     // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
     try {
