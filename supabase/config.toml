@@ -203,3 +203,6 @@ verify_jwt = false
 
 [functions.post-intervention-sync]
 verify_jwt = false
+
+[functions.update-part-profile]
+verify_jwt = false

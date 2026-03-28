@@ -822,9 +822,63 @@ Odpověz POUZE platným JSON:
           });
         }
 
-        console.log(`[retro-scan] STEP 9.5: Observation + plan_items persisted for ${thread.part_name} (obsId=${obsId})`);
+      console.log(`[retro-scan] STEP 9.5: Observation + plan_items persisted for ${thread.part_name} (obsId=${obsId})`);
       } catch (obsErr) {
         console.warn(`[retro-scan] STEP 9.5 warning (non-fatal):`, obsErr);
+      }
+
+      // ══════════════════════════════════════════
+      // STEP 9.6: Update part profile claims
+      // ══════════════════════════════════════════
+      try {
+        const profileClaims: Array<{card_section: string; claim_type: string; claim_text: string; evidence_level: string; confidence: number}> = [];
+
+        // A/current_state – vždy
+        profileClaims.push({
+          card_section: "A",
+          claim_type: "current_state",
+          claim_text: `Krizový stav ${new Date().toISOString().slice(0, 10)}: ${crisisResult.summary || "krizová detekce"}`,
+          evidence_level: "D3",
+          confidence: 0.9,
+        });
+
+        // C/trigger – pro každý signál
+        if (crisisResult.signals?.length > 0) {
+          for (const signal of crisisResult.signals.slice(0, 5)) {
+            profileClaims.push({
+              card_section: "C",
+              claim_type: "trigger",
+              claim_text: `Krizový signál: ${signal}`,
+              evidence_level: "D3",
+              confidence: 0.7,
+            });
+          }
+        }
+
+        // C/risk – pokud vysoká emoční intenzita
+        if ((crisisResult.emotional_intensity || 0) >= 4) {
+          profileClaims.push({
+            card_section: "C",
+            claim_type: "risk",
+            claim_text: `Vysoká emoční intenzita (${crisisResult.emotional_intensity}/5) při krizi ${new Date().toISOString().slice(0, 10)}`,
+            evidence_level: "D3",
+            confidence: 0.85,
+          });
+        }
+
+        if (profileClaims.length > 0) {
+          fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/update-part-profile`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ part_name: thread.part_name, claims: profileClaims }),
+          }).catch(e => console.warn(`[retro-scan] STEP 9.6 fire-and-forget error:`, e));
+          console.log(`[retro-scan] STEP 9.6: Sent ${profileClaims.length} claims for ${thread.part_name}`);
+        }
+      } catch (profileErr) {
+        console.warn(`[retro-scan] STEP 9.6 warning:`, profileErr);
       }
 
       results.push({
