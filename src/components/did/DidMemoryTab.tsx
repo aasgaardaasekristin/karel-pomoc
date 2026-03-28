@@ -71,6 +71,7 @@ const DidMemoryTab = () => {
 
     setMemories((memRes.data || []) as SessionMemory[]);
     setPromises((promRes.data || []) as Promise[]);
+    setSwitches((switchRes.data || []) as SwitchingEvent[]);
 
     // Collect unique part names
     if (partFilter === "all" && memRes.data?.length) {
