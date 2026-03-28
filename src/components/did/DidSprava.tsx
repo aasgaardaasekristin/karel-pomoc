@@ -11,6 +11,7 @@ import DidRegistryOverview from "./DidRegistryOverview";
 import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
 import DidKartotekaTab from "./DidKartotekaTab";
+import DidPlanTab from "./DidPlanTab";
 
 interface Props {
   onBootstrap: () => void;
