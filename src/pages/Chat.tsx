@@ -1278,8 +1278,9 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
         });
       });
 
-      // ═══ SWITCH DETECTION ═══
+      // ═══ SWITCH DETECTION (tag-based + DB-based) ═══
       if (activeThread && didSubMode === "cast" && assistantContent) {
+        // Tag-based detection from Karel's response
         const switchMatch = assistantContent.match(/\[SWITCH:([^\]]+)\]/);
         if (switchMatch) {
           const newPartName = switchMatch[1].trim();
@@ -1298,6 +1299,28 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             if (n[n.length - 1]?.role === "assistant") n[n.length - 1] = { ...n[n.length - 1], content: assistantContent };
             return n;
           });
+        }
+
+        // DB-based detection (from switching_events logged by karel-chat)
+        try {
+          const { data: switchEvent } = await supabase
+            .from("switching_events")
+            .select("*")
+            .eq("thread_id", activeThread.id)
+            .eq("acknowledged", false)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (switchEvent) {
+            setSwitchAlert({
+              from: switchEvent.original_part,
+              to: switchEvent.detected_part,
+              confidence: switchEvent.confidence || "medium",
+              threadId: activeThread.id,
+            });
+          }
+        } catch (e) {
+          console.warn("[switch-detect] DB check error:", e);
         }
       }
 
