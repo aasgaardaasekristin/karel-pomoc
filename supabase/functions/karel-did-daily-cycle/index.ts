@@ -4962,8 +4962,6 @@ ESKALACE: level ${task.escalation_level || 0}`,
           : "work";
 
         // ── AI extraction of observations ──
-        const PHASE4_TIMEOUT = 45000;
-        const phase4Start = (typeof phase4Start !== "undefined") ? phase4Start : Date.now();
         try {
           if (Date.now() - phase4Start > PHASE4_TIMEOUT) {
             console.warn("[daily-cycle] Phase 4 timeout, stopping extraction");
