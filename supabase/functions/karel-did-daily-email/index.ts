@@ -223,6 +223,9 @@ serve(async (req) => {
       sessionsRes, crisisRes,
       profilesRes, feedbackRes,
       sessionPlanRes,
+      metricsRes, weekMetricsRes,
+      goalsRes, switchesRes,
+      unreadNotesRes, aiErrorCountRes,
     ] = await Promise.all([
       sb.from("did_threads").select("*").gte("last_activity_at", cutoff24h),
       sb.from("did_conversations").select("*").gte("saved_at", cutoff24h),
@@ -235,6 +238,13 @@ serve(async (req) => {
       sb.from("did_motivation_profiles").select("*"),
       sb.from("did_task_feedback").select("*").gte("created_at", cutoff24h),
       (sb as any).from("did_daily_session_plans").select("selected_part, urgency_score, urgency_breakdown, plan_markdown, therapist").eq("plan_date", reportDatePrague).maybeSingle(),
+      // F7: enriched data
+      (sb as any).from("daily_metrics").select("*").eq("metric_date", reportDatePrague),
+      (sb as any).from("daily_metrics").select("part_name, emotional_valence, cooperation_level, message_count").gte("metric_date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)).order("metric_date", { ascending: true }),
+      (sb as any).from("part_goals").select("part_name, goal_text, progress_pct, evaluation_notes, status, milestones, proposed_by").in("status", ["active", "proposed", "completed"]).order("part_name"),
+      (sb as any).from("switching_events").select("original_part, detected_part, confidence, created_at").gte("created_at", reportDatePrague).order("created_at", { ascending: false }),
+      (sb as any).from("therapist_notes").select("author, part_name, note_type, note_text, priority").eq("is_read_by_karel", false).order("priority", { ascending: true }).limit(10),
+      (sb as any).from("ai_error_log").select("id", { count: "exact", head: true }).gte("created_at", reportDatePrague),
     ]);
 
     const threads = threadsRes.data || [];
