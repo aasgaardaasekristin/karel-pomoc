@@ -116,6 +116,11 @@ const DidSprava = ({
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
 
+  useEffect(() => {
+    supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
+      .then(({ count }) => setHasCrisis((count || 0) > 0));
+  }, [refreshTrigger]);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
