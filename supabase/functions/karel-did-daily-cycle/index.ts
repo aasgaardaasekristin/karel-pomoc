@@ -5326,6 +5326,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Therapist notes check error (non-fatal):", tnErr);
     }
 
+    // ═══ FÁZE 7: Aktualizace operativního plánu ═══
     try {
       const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;
       const planRes = await fetch(planUrl, {
