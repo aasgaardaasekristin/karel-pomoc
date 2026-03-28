@@ -249,6 +249,12 @@ const DidSprava = ({
           </div>
         )}
 
+        {activeTab === "cleanup" && (
+          <div className="space-y-2">
+            <DidCardCleanup />
+          </div>
+        )}
+
         {activeTab === "theme" && (
           <div className="flex flex-col items-center gap-3 py-4">
             <p className="text-xs text-muted-foreground">Nastavení vzhledu bylo přesunuto do vlastního dialogu.</p>
