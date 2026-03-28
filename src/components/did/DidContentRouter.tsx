@@ -22,6 +22,7 @@ import DidThreadList from "@/components/did/DidThreadList";
 import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
 import DidActionButtons from "@/components/did/DidActionButtons";
+import QuickNoteDialog from "@/components/did/QuickNoteDialog";
 import ChatInputArea from "@/components/chat/ChatInputArea";
 import AudioRecordButton from "@/components/AudioRecordButton";
 import ChatMessage from "@/components/ChatMessage";
