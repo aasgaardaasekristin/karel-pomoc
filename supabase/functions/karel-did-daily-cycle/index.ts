@@ -4953,31 +4953,81 @@ ESKALACE: level ${task.escalation_level || 0}`,
           continue;
         }
 
+        // ── Determine context_mode from thread metadata ──
+        const subMode = thread.sub_mode || "";
+        const contextMode = subMode === "cast" ? "did_parts"
+          : subMode === "mamka" ? "did_therapist"
+          : subMode === "kata" ? "did_therapist"
+          : subMode === "general" ? "personal"
+          : "work";
+
         // ── AI extraction of observations ──
+        const PHASE4_TIMEOUT = 45000;
+        const phase4Start = (typeof phase4Start !== "undefined") ? phase4Start : Date.now();
         try {
+          if (Date.now() - phase4Start > PHASE4_TIMEOUT) {
+            console.warn("[daily-cycle] Phase 4 timeout, stopping extraction");
+            break;
+          }
+
           const messagesText = recentMsgs.map((m: any) => `[${m.role}]: ${m.content}`).join("\n");
-          const extractionPrompt = `Analyzuj následující konverzaci s částí "${partName}" a extrahuj POZOROVATELNÉ FAKTY (ne interpretace).
+          const extractionPrompt = `Analyzuj následující konverzaci a extrahuj KLINICKY RELEVANTNÍ FAKTY.
 
-Pro každý fakt urči:
+KONTEXT KONVERZACE:
+- Část/osoba: "${partName}"
+- Režim: ${contextMode === "did_parts" ? "přímá konverzace s částí DID systému (může být dítě!)" : contextMode === "did_therapist" ? "konverzace s terapeutkou o klientech" : contextMode === "personal" ? "osobní konverzace s Hankou (mix osobních a terapeutických témat)" : "pracovní konverzace"}
+
+═══ KLINICKÉ PRIORITY ═══
+Zaměř se na fakta indikující:
+- Změnu identity (přepnutí části, signály switche)
+- Sebepoškozující tendence nebo suicidální myšlenky
+- Známky stabilizace nebo co-consciousness
+- Emoční regulaci (úspěšnou i neúspěšnou)
+- Vztahové vzorce (attachment, přenos, odpor)
+
+═══ DISTINKCE: POZOROVÁNÍ vs SELF-REPORT ═══
+- OBSERVATION = vnější pozorovatelný fakt ("Změnila tón hlasu", "Přišla pozdě")
+- SELF-REPORT = co část/osoba přímo řekla o sobě ("Cítím se jako malá holka", "Mám strach")
+Toto rozlišení se promítne do source_type a evidence_level.
+
+═══ EVIDENCE LEVELS ═══
+- D1 = část/osoba to PŘÍMO ŘEKLA (citace nebo parafráze výroku)
+  Příklad: "Řekla: 'Bojím se tmy'" → D1
+  Příklad: "Zmínila že má strach ze školy" → D1
+- D2 = terapeutka to POZOROVALA (behaviorální popis)
+  Příklad: "Začala se třást" → D2
+  Příklad: "Změnila tón hlasu na dětský" → D2
+- D3 = OBJEKTIVNÍ FAKT (čas, frekvence, logistika)
+  Příklad: "Zítra má vyšetření v 10:00" → D3
+  Příklad: "Třetí sezení tento týden" → D3
+- I1 = INFERENCE z kontextu (Karel/AI usoudil na základě vzorce)
+  Příklad: "Pravděpodobně se aktivoval trigger z minulého týdne" → I1
+
+═══ POLE PRO KAŽDÝ FAKT ═══
 - fact: co přesně bylo řečeno nebo pozorováno
-- evidence_level: D1 (přímý výrok části), D2 (pozorování terapeutky), D3 (objektivní událost)
+- evidence_level: D1 | D2 | D3 | I1
+- source_type: "self_report" (D1) | "observation" (D2/D3) | "inference" (I1)
 - time_horizon: "hours" (akutní), "0_14d" (operativní), "15_60d" (strategické)
-- category: jedna z [emotional_state, behavior, trigger, relationship, logistics, preference, therapeutic_response, risk_signal]
+- category: jedna z [identity_switch, self_harm, stabilization, co_consciousness, emotional_regulation, emotional_state, behavior, trigger, relationship, logistics, preference, therapeutic_response, risk_signal]
+- context_mode: "${contextMode}"
 
-PRAVIDLA:
-- POUZE fakta, NE inference
-- "Řekla že se bojí" = D1 (přímý výrok)
-- "Zdá se úzkostná" = D2 (pozorování)
-- "Zítra má školu" = D3 (objektivní)
-- NEEXTRAHUJ obecné konverzační obraty
+═══ PRAVIDLA ═══
+- POUZE klinicky relevantní fakta
+- "Řekla že se bojí" = D1, source_type: "self_report"
+- "Zdá se úzkostná" = D2, source_type: "observation"
+- "Zítra má školu" = D3, source_type: "observation"
+- NEEXTRAHUJ obecné konverzační obraty ("Ahoj", "Jak se máš")
 - MAX 5 faktů na vlákno
+- Pokud je vlákno krátké (< 3 zprávy), o banalitách, nebo neobsahuje klinicky relevantní informace, vrať prázdné pole []. Neplýtvej kredity na bezvýznamná pozorování.
+${contextMode === "personal" ? "- V osobní konverzaci extrahuj OBOJÍ: osobní fakta o Hance I DID-relevantní pozorování pokud Hanka mluví o klucích" : ""}
+${contextMode === "did_parts" ? "- U dětských částí věnuj zvláštní pozornost signálům bezpečí/nebezpečí, regulaci a attachment vzorcům" : ""}
 
 Konverzace:
 ${messagesText}
 
 Odpověz POUZE jako JSON array:
-[{"fact": "...", "evidence_level": "D1|D2|D3", "time_horizon": "hours|0_14d|15_60d", "category": "..."}]
-Pokud nejsou žádné nové pozorovatelné fakty, vrať: []`;
+[{"fact": "...", "evidence_level": "D1|D2|D3|I1", "source_type": "self_report|observation|inference", "time_horizon": "hours|0_14d|15_60d", "category": "...", "context_mode": "${contextMode}"}]
+Pokud nejsou žádné nové klinicky relevantní fakty, vrať: []`;
 
           const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
           if (LOVABLE_API_KEY) {
