@@ -189,6 +189,29 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
           ))
         )}
       </div>
+
+      {/* AI Error Log */}
+      {aiErrors.length > 0 && (
+        <details className="mt-4">
+          <summary className="text-xs font-medium cursor-pointer text-muted-foreground">
+            🔧 AI Error Log (posledních {aiErrors.length})
+          </summary>
+          <div className="mt-2 space-y-1">
+            {aiErrors.map((err: any) => (
+              <div key={err.id} className="text-xs p-2 bg-muted rounded">
+                <span className="font-mono">{err.caller}</span>
+                <span className="text-destructive ml-2">{err.error_type}</span>
+                <span className="text-muted-foreground ml-2">
+                  {new Date(err.created_at).toLocaleString("cs")}
+                </span>
+                {err.error_message && (
+                  <p className="text-muted-foreground mt-1">{String(err.error_message).slice(0, 200)}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
