@@ -223,6 +223,9 @@ serve(async (req) => {
       sessionsRes, crisisRes,
       profilesRes, feedbackRes,
       sessionPlanRes,
+      metricsRes, weekMetricsRes,
+      goalsRes, switchesRes,
+      unreadNotesRes, aiErrorCountRes,
     ] = await Promise.all([
       sb.from("did_threads").select("*").gte("last_activity_at", cutoff24h),
       sb.from("did_conversations").select("*").gte("saved_at", cutoff24h),
@@ -235,6 +238,13 @@ serve(async (req) => {
       sb.from("did_motivation_profiles").select("*"),
       sb.from("did_task_feedback").select("*").gte("created_at", cutoff24h),
       (sb as any).from("did_daily_session_plans").select("selected_part, urgency_score, urgency_breakdown, plan_markdown, therapist").eq("plan_date", reportDatePrague).maybeSingle(),
+      // F7: enriched data
+      (sb as any).from("daily_metrics").select("*").eq("metric_date", reportDatePrague),
+      (sb as any).from("daily_metrics").select("part_name, emotional_valence, cooperation_level, message_count").gte("metric_date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)).order("metric_date", { ascending: true }),
+      (sb as any).from("part_goals").select("part_name, goal_text, progress_pct, evaluation_notes, status, milestones, proposed_by").in("status", ["active", "proposed", "completed"]).order("part_name"),
+      (sb as any).from("switching_events").select("original_part, detected_part, confidence, created_at").gte("created_at", reportDatePrague).order("created_at", { ascending: false }),
+      (sb as any).from("therapist_notes").select("author, part_name, note_type, note_text, priority").eq("is_read_by_karel", false).order("priority", { ascending: true }).limit(10),
+      (sb as any).from("ai_error_log").select("id", { count: "exact", head: true }).gte("created_at", reportDatePrague),
     ]);
 
     const threads = threadsRes.data || [];
@@ -249,7 +259,15 @@ serve(async (req) => {
     const taskFeedback = feedbackRes.data || [];
     const todaySessionPlan = sessionPlanRes.data || null;
 
-    console.log(`[daily-email] Supplementary: ${threads.length} threads, ${tasks.length} tasks, analysis: ${hasAnalysis}`);
+    // F7: enriched data
+    const todayMetrics: any[] = metricsRes.data || [];
+    const weekMetrics: any[] = weekMetricsRes.data || [];
+    const allGoals: any[] = goalsRes.data || [];
+    const todaySwitches: any[] = switchesRes.data || [];
+    const unreadNotes: any[] = unreadNotesRes.data || [];
+    const aiErrorCount: number = aiErrorCountRes.count || 0;
+
+    console.log(`[daily-email] F7 enriched: metrics=${todayMetrics.length}, goals=${allGoals.length}, switches=${todaySwitches.length}, notes=${unreadNotes.length}, aiErrors=${aiErrorCount}`);
 
     // ═══ SPLIT THREADS ═══
     const now = new Date();
@@ -314,6 +332,85 @@ serve(async (req) => {
       suppBlock += `\n\n🎯 ═══ AUTOMATICKÝ PLÁN SEZENÍ ═══\n`;
       suppBlock += `Vybraná část: ${todaySessionPlan.selected_part} | Naléhavost: ${todaySessionPlan.urgency_score} | Důvody: ${bpStr}\n`;
       suppBlock += `\n${(todaySessionPlan.plan_markdown || "").slice(0, 4000)}`;
+    }
+
+    // ═══ F7: ENRICHED REPORT SECTIONS ═══
+    // Metrics
+    if (todayMetrics.length > 0) {
+      suppBlock += `\n\n📊 ═══ DENNÍ METRIKY ═══\n`;
+      for (const m of todayMetrics) {
+        if (!m.part_name) continue;
+        const valIcon = m.emotional_valence != null
+          ? (m.emotional_valence >= 6 ? "🟢" : m.emotional_valence >= 3 ? "🟡" : "🔴")
+          : "⚪";
+        suppBlock += `${valIcon} ${m.part_name}: ${m.message_count || 0} zpráv, valence ${m.emotional_valence?.toFixed?.(1) || "?"}/10, spolupráce ${m.cooperation_level?.toFixed?.(1) || "?"}/10${m.switching_count ? `, ${m.switching_count} switchingů` : ""}${m.risk_signals_count ? `, ⚠️ ${m.risk_signals_count} rizik` : ""}\n`;
+      }
+    }
+
+    // Weekly trends
+    if (weekMetrics.length > 0) {
+      const partNames = [...new Set(weekMetrics.filter((m: any) => m.part_name).map((m: any) => m.part_name))];
+      if (partNames.length > 0) {
+        suppBlock += `\n📈 ═══ TÝDENNÍ TRENDY ═══\n`;
+        for (const pn of partNames) {
+          const partData = weekMetrics.filter((m: any) => m.part_name === pn);
+          if (partData.length < 2) continue;
+          const first = partData[0];
+          const last = partData[partData.length - 1];
+          const valTrend = first.emotional_valence != null && last.emotional_valence != null
+            ? (last.emotional_valence > first.emotional_valence + 0.5 ? "↗ zlepšuje se"
+              : last.emotional_valence < first.emotional_valence - 0.5 ? "↘ zhoršuje se" : "→ stabilní")
+            : "? nedostatek dat";
+          const totalMsgs = partData.reduce((s: number, m: any) => s + (m.message_count || 0), 0);
+          suppBlock += `${pn}: valence ${valTrend}, ${totalMsgs} zpráv za týden\n`;
+        }
+      }
+    }
+
+    // Goals
+    const activeGoalsList = allGoals.filter((g: any) => g.status === "active");
+    const completedGoals = allGoals.filter((g: any) => g.status === "completed");
+    const pendingGoals = allGoals.filter((g: any) => g.status === "proposed");
+    if (activeGoalsList.length > 0 || completedGoals.length > 0 || pendingGoals.length > 0) {
+      suppBlock += `\n🎯 ═══ CÍLE ═══\n`;
+      if (completedGoals.length > 0) {
+        suppBlock += `🎉 Dnes splněné:\n`;
+        for (const g of completedGoals) suppBlock += `  ✅ ${g.part_name}: ${g.goal_text}\n`;
+      }
+      if (pendingGoals.length > 0) {
+        suppBlock += `🆕 Čekají na schválení:\n`;
+        for (const g of pendingGoals) suppBlock += `  🤖 ${g.part_name}: ${g.goal_text}\n`;
+      }
+      if (activeGoalsList.length > 0) {
+        suppBlock += `Aktivní cíle:\n`;
+        for (const g of activeGoalsList) {
+          const bar = "█".repeat(Math.round((g.progress_pct || 0) / 10)) + "░".repeat(10 - Math.round((g.progress_pct || 0) / 10));
+          suppBlock += `  ${g.part_name}: ${g.goal_text} [${bar}] ${g.progress_pct}%${g.evaluation_notes ? ` — ${g.evaluation_notes}` : ""}\n`;
+        }
+      }
+    }
+
+    // Switching
+    if (todaySwitches.length > 0) {
+      suppBlock += `\n🔄 ═══ SWITCHING EVENTY (${todaySwitches.length}) ═══\n`;
+      for (const sw of todaySwitches.slice(0, 5)) {
+        suppBlock += `  ${sw.original_part} → ${sw.detected_part || "?"} (${sw.confidence}) ${new Date(sw.created_at).toLocaleTimeString("cs-CZ")}\n`;
+      }
+      if (todaySwitches.length > 5) suppBlock += `  ... a dalších ${todaySwitches.length - 5}\n`;
+    }
+
+    // Unread therapist notes
+    if (unreadNotes.length > 0) {
+      suppBlock += `\n📝 ═══ NEPŘEČTENÉ POZNÁMKY (${unreadNotes.length}) ═══\n`;
+      for (const n of unreadNotes) {
+        const prioIcon = n.priority === "urgent" ? "🔴" : n.priority === "high" ? "🟠" : "";
+        suppBlock += `  ${prioIcon} [${n.author}] ${n.part_name || "obecné"}: ${(n.note_text || "").slice(0, 100)}\n`;
+      }
+    }
+
+    // System status
+    if (aiErrorCount > 0) {
+      suppBlock += `\n🔧 SYSTÉM: ${aiErrorCount} AI chyb dnes\n`;
     }
 
     // Motivation profiles
@@ -419,6 +516,18 @@ Neopisuj celou historii, nevyjmenovávej VŠECHNY části. Soustřeď se na to, 
 - V mailu buď POUZE: vedoucí týmu, koordinátor, odborný supervizor.
 - Partnerství s Haničkou a její soukromá témata do mailu NEPATŘÍ.
 - NIKDY necituj doslovně výroky z konverzací – místo citátů piš OPERATIVNÍ INSTRUKCE.
+
+═══ NOVÉ DATOVÉ SEKCE (pokud jsou k dispozici) ═══
+Report MUSÍ obsahovat tyto sekce, pokud mají data:
+1. 📊 Souhrnné metriky dne (valence, spolupráce, aktivita)
+2. 📈 Trendy (zlepšení/zhoršení za týden — emoji šipky)
+3. 🎯 Pokrok v cílech (progress bary textové █░, procenta)
+4. 🔄 Switching eventy (pokud byly — stručně)
+5. ⚠️ Varování a rizika
+6. ✅ Pozitivní signály a pokroky
+7. 📝 Akční body pro zítřek
+8. 🆕 Cíle ke schválení (pokud Karel navrhl nové micro-cíle)
+Neincluduj prázdné sekce. Integruj data přirozeně do textu.
 ` : "";
 
       const systemPrompt = isHanka

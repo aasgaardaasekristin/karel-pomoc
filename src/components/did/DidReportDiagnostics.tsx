@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface Dispatch {
   id: string;
@@ -42,11 +43,21 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [aiErrors, setAiErrors] = useState<any[]>([]);
+  const [enrichedStats, setEnrichedStats] = useState<{
+    metricsCount: number;
+    goalsActive: number;
+    goalsPending: number;
+    goalsCompleted: number;
+    switchingCount: number;
+    unreadNotes: number;
+  } | null>(null);
+  const [triggeringCycle, setTriggeringCycle] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-    const [dispatchRes, errRes] = await Promise.all([
+    const today = new Date().toISOString().split("T")[0];
+    const [dispatchRes, errRes, metricsRes, goalsRes, switchRes, notesRes] = await Promise.all([
       supabase
         .from("did_daily_report_dispatches")
         .select("*")
@@ -57,13 +68,41 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
         .select("*")
         .order("created_at", { ascending: false })
         .limit(20),
+      supabase.from("daily_metrics").select("id", { count: "exact", head: true }).eq("metric_date", today),
+      supabase.from("part_goals").select("status"),
+      supabase.from("switching_events" as any).select("id", { count: "exact", head: true }).gte("created_at", today),
+      supabase.from("therapist_notes").select("id", { count: "exact", head: true }).eq("is_read_by_karel", false),
     ]);
     setDispatches((dispatchRes.data as unknown as Dispatch[]) || []);
     setAiErrors((errRes.data as any[]) || []);
+    const goals = (goalsRes.data || []) as any[];
+    setEnrichedStats({
+      metricsCount: metricsRes.count || 0,
+      goalsActive: goals.filter(g => g.status === "active").length,
+      goalsPending: goals.filter(g => g.status === "proposed").length,
+      goalsCompleted: goals.filter(g => g.status === "completed").length,
+      switchingCount: switchRes.count || 0,
+      unreadNotes: notesRes.count || 0,
+    });
     setLoading(false);
-  };
+  }, []);
 
-  useEffect(() => { fetchData(); }, [refreshTrigger]);
+  useEffect(() => { fetchData(); }, [refreshTrigger, fetchData]);
+
+  const handleTriggerCycle = async () => {
+    setTriggeringCycle(true);
+    toast.info("Spouštím denní email report...");
+    try {
+      const res = await supabase.functions.invoke("karel-did-daily-email", { body: { force: true } });
+      if (res.error) throw res.error;
+      toast.success("Report odeslán");
+      fetchData();
+    } catch (e) {
+      toast.error("Chyba: " + String(e));
+    } finally {
+      setTriggeringCycle(false);
+    }
+  };
 
   // Stats
   const last7days = dispatches.filter(d => {
@@ -95,6 +134,55 @@ export default function DidReportDiagnostics({ refreshTrigger = 0 }: Props) {
         <StatCard label="Odesláno (7d)" value={sentCount} icon={<CheckCircle2 className="w-3.5 h-3.5 text-green-600" />} />
         <StatCard label="Selhání (7d)" value={failedCount} icon={<XCircle className="w-3.5 h-3.5 text-destructive" />} />
         <StatCard label="Retry (7d)" value={retriedCount} icon={<RefreshCw className="w-3.5 h-3.5 text-primary" />} />
+      </div>
+
+      {/* Enriched data stats */}
+      {enrichedStats && (
+        <div className="rounded-lg border border-border p-2.5 bg-muted/30">
+          <p className="text-[0.625rem] font-medium text-muted-foreground mb-1.5">📊 Dnešní obohacená data</p>
+          <div className="flex gap-1.5 flex-wrap">
+            <Badge variant="outline" className="text-[9px] h-4 px-1.5">
+              📈 {enrichedStats.metricsCount} metrik
+            </Badge>
+            <Badge variant="outline" className="text-[9px] h-4 px-1.5">
+              🎯 {enrichedStats.goalsActive} cílů
+            </Badge>
+            {enrichedStats.goalsPending > 0 && (
+              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-blue-500/30 text-blue-600">
+                🆕 {enrichedStats.goalsPending} ke schválení
+              </Badge>
+            )}
+            {enrichedStats.goalsCompleted > 0 && (
+              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-green-500/30 text-green-600">
+                🎉 {enrichedStats.goalsCompleted} splněno
+              </Badge>
+            )}
+            {enrichedStats.switchingCount > 0 && (
+              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-amber-500/30 text-amber-600">
+                🔄 {enrichedStats.switchingCount} switchingů
+              </Badge>
+            )}
+            {enrichedStats.unreadNotes > 0 && (
+              <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-purple-500/30 text-purple-600">
+                📝 {enrichedStats.unreadNotes} poznámek
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Manual trigger */}
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-[0.625rem] gap-1 flex-1"
+          disabled={triggeringCycle}
+          onClick={handleTriggerCycle}
+        >
+          {triggeringCycle ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          📧 Odeslat denní report (force)
+        </Button>
       </div>
 
       {/* Target emails */}
