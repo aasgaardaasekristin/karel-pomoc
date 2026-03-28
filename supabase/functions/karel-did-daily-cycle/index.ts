@@ -5153,6 +5153,30 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] FÁZE 4 observation pipeline error (non-fatal):", phase4Err);
     }
 
+    // ═══ PIPELINE HEALTH CHECK (Fáze 5) ═══
+    try {
+      const twoDaysAgoHealth = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+      const [
+        { count: obsCount },
+        { count: claimCount },
+        { count: planCount },
+        { count: questionCount },
+        { count: recentObsCount },
+      ] = await Promise.all([
+        sb.from("did_observations").select("id", { count: "exact", head: true }).eq("status", "active"),
+        sb.from("did_profile_claims").select("id", { count: "exact", head: true }).eq("status", "active"),
+        sb.from("did_plan_items").select("id", { count: "exact", head: true }).eq("status", "active"),
+        sb.from("did_pending_questions").select("id", { count: "exact", head: true }).eq("status", "open"),
+        sb.from("did_observations").select("id", { count: "exact", head: true }).eq("status", "active").gte("created_at", twoDaysAgoHealth),
+      ]);
+      console.log(`[daily-cycle] Pipeline health: obs=${obsCount}, claims=${claimCount}, plans=${planCount}, questions=${questionCount}, recent48h=${recentObsCount}`);
+      if ((recentObsCount || 0) === 0) {
+        console.warn("[daily-cycle] ⚠️ ALERT: Zero observations in last 48h. Pipeline may be stalled.");
+      }
+    } catch (healthErr) {
+      console.warn("[daily-cycle] Health check error:", healthErr);
+    }
+
     // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
     try {
       const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;

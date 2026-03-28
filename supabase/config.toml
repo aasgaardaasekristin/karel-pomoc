@@ -209,3 +209,9 @@ verify_jwt = false
 
 [functions.karel-weekly-review]
 verify_jwt = false
+
+# ═══ Cron schedule (set via pg_cron in DB) ═══
+# karel-did-daily-cycle: 0 5 * * * (daily 5:00 UTC / 7:00 CET)
+# karel-weekly-review: 0 20 * * 0 (Sunday 20:00 UTC / 22:00 CET)
+# karel-kartoteka-cron: 0 */6 * * * (every 6h)
+# crisis-retroactive-scan: 0 */4 * * * (every 4h)

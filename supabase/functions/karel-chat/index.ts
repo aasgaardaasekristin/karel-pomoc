@@ -80,6 +80,48 @@ ${ctx.pending_tasks.slice(0, 8).map((t: any) => `• [${t.priority}${t.escalatio
               ctx.drive_documents?.pamet_karel ? `PAMĚŤ KARLA: ${ctx.drive_documents.pamet_karel.slice(0, 1000)}` : null,
             ].filter(Boolean).join("\n\n");
 
+            // ═══ PIPELINE CONTEXT (Fáze 5) ═══
+            const pipelinePlan = ctx.pipeline?.plan_items_05A?.length ? `
+PIPELINE – OPERATIVNÍ PLÁN (05A):
+${ctx.pipeline.plan_items_05A.map((i: any) => `• [${(i.priority || "normal").toUpperCase()}] ${i.subject || "systém"}: ${i.content}${i.action ? ` → ${i.action}` : ""}${i.due ? ` (do ${i.due})` : ""}`).join("\n")}` : "";
+
+            const pipelineQuestions = ctx.pipeline?.open_questions?.length ? `
+PIPELINE – OTEVŘENÉ OTÁZKY:
+${ctx.pipeline.open_questions.map((q: any) => `• [${q.subject || "systém"}] ${q.question}${q.directed_to && q.directed_to !== "self" ? ` (čeká na: ${q.directed_to})` : ""}`).join("\n")}` : "";
+
+            const pipelineObs = ctx.pipeline?.recent_observations?.length ? `
+PIPELINE – NEDÁVNÁ POZOROVÁNÍ (48h):
+${ctx.pipeline.recent_observations.map((o: any) => `• [${o.evidence}] ${o.subject}: ${o.fact} (${o.at})`).join("\n")}` : "";
+
+            // Claims for current part (if known from didPartName)
+            let pipelineClaims = "";
+            const currentPartForClaims = didPartName || didEnteredName;
+            if (currentPartForClaims && ctx.pipeline?.active_claims_summary?.[currentPartForClaims]?.length) {
+              const partClaims = ctx.pipeline.active_claims_summary[currentPartForClaims];
+              pipelineClaims = `
+PIPELINE – PROFIL ČÁSTI ${currentPartForClaims}:
+${partClaims.map((c: any) => {
+  const icon = c.type === "hypothesis" ? "❓" : c.type === "stable_trait" ? "✅" : c.type === "risk" ? "🔴" : "📍";
+  return `${icon} [${c.section}] ${c.text} (${Math.round((c.confidence || 0.5) * 100)}%, ${c.confirmations || 1}×)`;
+}).join("\n")}`;
+            }
+
+            const pipelineBlock = [pipelinePlan, pipelineQuestions, pipelineObs, pipelineClaims].filter(Boolean).join("\n");
+
+            const PIPELINE_INSTRUCTIONS = pipelineBlock ? `
+═══ JAK POUŽÍVAT PIPELINE DATA ═══
+• ✅ POTVRZENÝ RYS = spolehlivý, můžeš se opřít
+• ❓ HYPOTÉZA = ověřuj přirozeně, neptej se přímo
+• 🔴 RIZIKO = buď obezřetný
+• 📍 AKTUÁLNÍ STAV = platí teď, zítra může být jinak
+• [D1] = část to ŘEKLA → můžeš citovat
+• [D2] = pozorování terapeutky → zmíň opatrně
+• [D3] = objektivní fakt → můžeš volně
+• NIKDY neříkej "podle mých dat" nebo "v mé databázi"
+• NIKDY neodkazuj na pipeline, observations, claims
+• Mluv přirozeně jako terapeut co si pamatuje kontext
+• Otevřené otázky zakomponuj DO konverzace, ne mechanicky` : "";
+
             systemPrompt += `\n\n═══ KARLŮV DENNÍ PROFIL (z did_daily_context, ${dailyCtx.context_date}) ═══
 Vygenerováno: ${ctx.generated_at || dailyCtx.updated_at}
 Toto je tvá STRUKTUROVANÁ PAMĚŤ na dnešní den. Pracuj s ní AKTIVNĚ.
@@ -91,6 +133,7 @@ ${tasksBlock}
 
 ═══ DOKUMENTY Z DRIVE ═══
 ${driveBlock || "(Drive dokumenty nebyly načteny)"}
+${pipelineBlock ? `\n═══ PIPELINE DATA (strukturovaná mezivrstva) ═══${PIPELINE_INSTRUCTIONS}\n${pipelineBlock}` : ""}
 ═══ KONEC DENNÍHO PROFILU ═══`;
 
             console.log(`[karel-chat] Daily context injected: date=${dailyCtx.context_date}, size=${JSON.stringify(ctx).length}ch`);
