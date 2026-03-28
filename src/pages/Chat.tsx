@@ -1510,6 +1510,47 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
 
       {hubSection === "did" ? (
         <>
+          {/* Switching Alert Banner */}
+          {switchAlert && (
+            <div className="mx-4 mt-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🔄</span>
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                    Možný switching: {switchAlert.from} → {switchAlert.to}
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Jistota: {switchAlert.confidence} — Karel se přizpůsobí automaticky
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7"
+                  onClick={async () => {
+                    await supabase
+                      .from("switching_events")
+                      .update({ acknowledged: true })
+                      .eq("thread_id", switchAlert.threadId)
+                      .eq("acknowledged", false);
+                    setSwitchAlert(null);
+                  }}
+                >
+                  ✅ Beru na vědomí
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-xs h-7 px-2"
+                  onClick={() => setSwitchAlert(null)}
+                >
+                  ✕
+                </Button>
+              </div>
+            </div>
+          )}
           <CrisisBriefPanel />
           <DidContentRouter
             didFlowState={didFlowState}
