@@ -80,6 +80,45 @@ export type Database = {
         }
         Relationships: []
       }
+      card_cleanup_log: {
+        Row: {
+          cleanup_summary: string | null
+          created_at: string | null
+          duplicates_removed: number | null
+          id: string
+          moved_entity_names: string[] | null
+          moved_to_other_card: number | null
+          part_name: string
+          redistributions_integrated: number | null
+          tests_removed: number | null
+          user_id: string | null
+        }
+        Insert: {
+          cleanup_summary?: string | null
+          created_at?: string | null
+          duplicates_removed?: number | null
+          id?: string
+          moved_entity_names?: string[] | null
+          moved_to_other_card?: number | null
+          part_name: string
+          redistributions_integrated?: number | null
+          tests_removed?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          cleanup_summary?: string | null
+          created_at?: string | null
+          duplicates_removed?: number | null
+          id?: string
+          moved_entity_names?: string[] | null
+          moved_to_other_card?: number | null
+          part_name?: string
+          redistributions_integrated?: number | null
+          tests_removed?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       card_update_queue: {
         Row: {
           action: string

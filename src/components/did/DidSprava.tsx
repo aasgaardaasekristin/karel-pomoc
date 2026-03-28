@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import ThemeEditorDialog from "@/components/ThemeEditorDialog";
 import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
+import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
 
 interface Props {
@@ -107,7 +108,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup">("tools");
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
 
@@ -138,11 +139,12 @@ const DidSprava = ({
         <StatusBar cycleStatus={cycleStatus} unprocessedThreads={stats.unprocessedThreads} />
 
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
-          {([
+         {([
             { key: "tools" as const, label: "🛠 Nástroje" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
+            { key: "cleanup" as const, label: "🧹 Cleanup" },
             { key: "theme" as const, label: "🎨 Vzhled" },
           ]).map(tab => (
             <button
@@ -244,6 +246,12 @@ const DidSprava = ({
         {activeTab === "reports" && (
           <div className="space-y-2">
             <DidReportDiagnostics refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "cleanup" && (
+          <div className="space-y-2">
+            <DidCardCleanup />
           </div>
         )}
 
