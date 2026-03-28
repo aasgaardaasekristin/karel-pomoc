@@ -147,9 +147,16 @@ serve(async (req) => {
         .eq("recipient", recipient)
         .maybeSingle();
 
-      if (existing?.status === "sent") {
+      if (existing?.status === "sent" && !forceResend) {
         console.log(`[daily-email] ${recipient} already sent for ${reportDatePrague}, skipping.`);
         return false;
+      }
+      if (existing?.status === "sent" && forceResend) {
+        console.log(`[daily-email] ${recipient} force resend — overriding "sent" status.`);
+        await (sb as any).from("did_daily_report_dispatches")
+          .update({ status: "pending", updated_at: nowIso, error_message: "force_resend" })
+          .eq("id", existing.id);
+        return true;
       }
 
       if (existing) {
