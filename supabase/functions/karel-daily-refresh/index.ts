@@ -309,6 +309,30 @@ serve(async (req) => {
         instrukce_karel: instrukceText ? `[loaded, ${instrukceText.length} chars]` : null,
         pamet_karel: pametKarelText ? pametKarelText.slice(0, 2000) : null,
       },
+
+      // ═══ PIPELINE DATA (Fáze 5) ═══
+      pipeline: {
+        plan_items_05A: (planItems05A || []).map((i: any) => ({
+          subject: i.subject_id,
+          content: i.content?.slice(0, 200),
+          priority: i.priority,
+          action: i.action_required?.slice(0, 150),
+          due: i.due_date,
+        })),
+        open_questions: (openQuestions || []).map((q: any) => ({
+          subject: q.subject_id,
+          question: q.question,
+          directed_to: q.directed_to,
+        })),
+        recent_observations: (recentObservations || []).map((o: any) => ({
+          subject: o.subject_id,
+          fact: o.fact?.slice(0, 200),
+          evidence: o.evidence_level,
+          source: o.source_type,
+          at: o.created_at?.slice(0, 16),
+        })),
+        active_claims_summary: buildClaimsSummary(activeClaims || []),
+      },
     };
 
     // ═══ 4. Upsert into did_daily_context ═══
