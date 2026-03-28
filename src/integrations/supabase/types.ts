@@ -2381,6 +2381,47 @@ export type Database = {
         }
         Relationships: []
       }
+      goal_evaluations: {
+        Row: {
+          created_at: string | null
+          evaluated_by: string | null
+          evaluation_text: string | null
+          evidence: Json | null
+          goal_id: string
+          id: string
+          new_progress: number | null
+          previous_progress: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          evaluated_by?: string | null
+          evaluation_text?: string | null
+          evidence?: Json | null
+          goal_id: string
+          id?: string
+          new_progress?: number | null
+          previous_progress?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          evaluated_by?: string | null
+          evaluation_text?: string | null
+          evidence?: Json | null
+          goal_id?: string
+          id?: string
+          new_progress?: number | null
+          previous_progress?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goal_evaluations_goal_id_fkey"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "part_goals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       karel_episodes: {
         Row: {
           actions_taken: string[]
@@ -2725,6 +2766,69 @@ export type Database = {
           required_tags_any?: string[]
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      part_goals: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          category: string | null
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          evaluation_notes: string | null
+          goal_text: string
+          id: string
+          last_evaluated_at: string | null
+          milestones: Json | null
+          part_name: string
+          priority: string | null
+          progress_pct: number | null
+          proposed_by: string | null
+          sort_order: number | null
+          status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          category?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          evaluation_notes?: string | null
+          goal_text: string
+          id?: string
+          last_evaluated_at?: string | null
+          milestones?: Json | null
+          part_name: string
+          priority?: string | null
+          progress_pct?: number | null
+          proposed_by?: string | null
+          sort_order?: number | null
+          status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          category?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          evaluation_notes?: string | null
+          goal_text?: string
+          id?: string
+          last_evaluated_at?: string | null
+          milestones?: Json | null
+          part_name?: string
+          priority?: string | null
+          progress_pct?: number | null
+          proposed_by?: string | null
+          sort_order?: number | null
+          status?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
