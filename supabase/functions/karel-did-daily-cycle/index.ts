@@ -5091,29 +5091,46 @@ Pokud nejsou žádné nové klinicky relevantní fakty, vrať: []`;
 
             // ── AI extraction of profile claims ──
             try {
-              const claimPrompt = `Analyzuj konverzaci s částí "${partName}" a extrahuj PROFILOVÁ TVRZENÍ.
+              const claimPrompt = `Analyzuj konverzaci s částí/osobou "${partName}" (režim: ${contextMode}) a extrahuj PROFILOVÁ TVRZENÍ.
 
-TYPY: current_state, stable_trait, trigger, risk, preference, relationship, therapeutic_response, goal
+TYPY CLAIMS:
+- current_state: aktuální stav (VŽDY extrahuj pokud se změnil)
+- stable_trait: stabilní rys (POUZE pokud je JASNÝ vzorec potvrzený opakovaně)
+- trigger: identifikovaný spouštěč
+- risk: rizikový faktor (sebepoškození, dekompenzace, ztráta kontaktu)
+- preference: preference části/osoby
+- relationship: vztahový vzorec
+- therapeutic_response: reakce na terapeutický přístup
+- goal: terapeutický cíl
+- pattern: OPAKUJÍCÍ SE VZOREC (používej pokud se podobný jev objevil min. 2× za posledních 7 dní)
+- progress: POZITIVNÍ ZMĚNA oproti předchozímu stavu (stabilizace, nová schopnost, zlepšení)
+
+EVIDENCE LEVELS:
+- D1: část/osoba to PŘÍMO ŘEKLA
+- D2: terapeutka to pozorovala
+- I1: inference z kontextu
+
 PRAVIDLA:
-- current_state: VŽDY extrahuj pokud se změnil
-- stable_trait: POUZE pokud je JASNÝ vzorec
-- evidence_level: D1 pokud to část ŘEKLA, D2 pokud pozorování, I1 pokud inference
 - MAX 3 claims
+- V režimu "personal": extrahuj claims o Hance (ne o klucích — ty jdou do observations)
+- V režimu "did_parts": zaměř se na terapeuticky relevantní claims pro kartu části
+- V režimu "did_therapist": extrahuj claims o částech na základě toho co terapeutka reportuje
+- Pokud je vlákno banální nebo krátké, vrať []
 
 Konverzace:
 ${messagesText}
 
 Odpověz jako JSON array:
-[{"card_section": "A|B|C|D|F|G|H|K", "claim_type": "current_state|stable_trait|trigger|risk|preference|therapeutic_response|goal", "claim_text": "...", "evidence_level": "D1|D2|I1"}]
+[{"card_section": "A|B|C|D|F|G|H|K", "claim_type": "current_state|stable_trait|trigger|risk|preference|therapeutic_response|goal|pattern|progress", "claim_text": "...", "evidence_level": "D1|D2|I1", "context_mode": "${contextMode}"}]
 Pokud nejsou žádné nové claims, vrať: []`;
 
               const claimRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
                 method: "POST",
                 headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  model: "google/gemini-2.5-flash-lite",
+                  model: "google/gemini-2.5-flash",
                   messages: [
-                    { role: "system", content: "Extrahuj profilová tvrzení z konverzace. Odpovídej POUZE JSON." },
+                    { role: "system", content: "Jsi analytický modul Karla (inspirovaný C.G. Jungem). Extrahuj profilová tvrzení z konverzací s klinickou přesností. Odpovídej POUZE JSON." },
                     { role: "user", content: claimPrompt },
                   ],
                 }),
