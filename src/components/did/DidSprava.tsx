@@ -13,6 +13,7 @@ import DidReportDiagnostics from "./DidReportDiagnostics";
 import DidKartotekaTab from "./DidKartotekaTab";
 import DidPlanTab from "./DidPlanTab";
 import DidCrisisPanel from "./DidCrisisPanel";
+import DidMemoryTab from "./DidMemoryTab";
 
 interface Props {
   onBootstrap: () => void;
@@ -111,7 +112,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory">("tools");
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
@@ -153,6 +154,7 @@ const DidSprava = ({
             ...(hasCrisis ? [{ key: "crisis" as const, label: "🚨 Krize" }] : []),
             { key: "plan" as const, label: "📅 Plán" },
             { key: "kartoteka" as const, label: "📋 Kartotéka" },
+            { key: "memory" as const, label: "🧠 Paměť" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
@@ -282,6 +284,12 @@ const DidSprava = ({
         {activeTab === "crisis" && (
           <div className="space-y-2">
             <DidCrisisPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "memory" && (
+          <div className="space-y-2">
+            <DidMemoryTab />
           </div>
         )}
 

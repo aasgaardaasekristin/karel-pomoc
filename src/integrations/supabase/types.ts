@@ -2411,6 +2411,47 @@ export type Database = {
         }
         Relationships: []
       }
+      karel_promises: {
+        Row: {
+          context: string | null
+          created_at: string | null
+          fulfilled_at: string | null
+          id: string
+          part_name: string
+          promise_text: string
+          source_session_id: string | null
+          status: string | null
+        }
+        Insert: {
+          context?: string | null
+          created_at?: string | null
+          fulfilled_at?: string | null
+          id?: string
+          part_name: string
+          promise_text: string
+          source_session_id?: string | null
+          status?: string | null
+        }
+        Update: {
+          context?: string | null
+          created_at?: string | null
+          fulfilled_at?: string | null
+          id?: string
+          part_name?: string
+          promise_text?: string
+          source_session_id?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "karel_promises_source_session_id_fkey"
+            columns: ["source_session_id"]
+            isOneToOne: false
+            referencedRelation: "session_memory"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       karel_semantic_entities: {
         Row: {
           created_at: string
@@ -2798,6 +2839,63 @@ export type Database = {
           session_date?: string
           storage_path?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      session_memory: {
+        Row: {
+          auto_generated: boolean | null
+          created_at: string | null
+          emotional_state: string | null
+          id: string
+          key_points: string[]
+          manually_edited: boolean | null
+          part_name: string
+          positive_signals: string[] | null
+          promises: string[] | null
+          risk_signals: string[] | null
+          session_date: string | null
+          session_duration_msgs: number | null
+          session_mode: string | null
+          thread_id: string | null
+          topics: string[] | null
+          unresolved: string[] | null
+        }
+        Insert: {
+          auto_generated?: boolean | null
+          created_at?: string | null
+          emotional_state?: string | null
+          id?: string
+          key_points?: string[]
+          manually_edited?: boolean | null
+          part_name: string
+          positive_signals?: string[] | null
+          promises?: string[] | null
+          risk_signals?: string[] | null
+          session_date?: string | null
+          session_duration_msgs?: number | null
+          session_mode?: string | null
+          thread_id?: string | null
+          topics?: string[] | null
+          unresolved?: string[] | null
+        }
+        Update: {
+          auto_generated?: boolean | null
+          created_at?: string | null
+          emotional_state?: string | null
+          id?: string
+          key_points?: string[]
+          manually_edited?: boolean | null
+          part_name?: string
+          positive_signals?: string[] | null
+          promises?: string[] | null
+          risk_signals?: string[] | null
+          session_date?: string | null
+          session_duration_msgs?: number | null
+          session_mode?: string | null
+          thread_id?: string | null
+          topics?: string[] | null
+          unresolved?: string[] | null
         }
         Relationships: []
       }

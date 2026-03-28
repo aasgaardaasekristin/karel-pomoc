@@ -694,10 +694,28 @@ const Chat = () => {
 
   const handleLeaveThread = useCallback(async () => {
     const threadToProcess = activeThread;
+    const currentMessages = [...messages];
     if (activeThread && messages.length >= 2) {
       await didThreads.updateThreadMessages(activeThread.id, messages);
       triggerEpisodeGeneration(activeThread.id);
     }
+
+    // ═══ SESSION MEMORY EXTRACTION ═══
+    // Extract structured memory when leaving a thread with 3+ messages
+    if (threadToProcess && currentMessages.length >= 3 && threadToProcess.partName) {
+      supabase.functions.invoke("extract-session-memory", {
+        body: {
+          partName: threadToProcess.partName,
+          threadId: threadToProcess.id,
+          messages: currentMessages.map(m => ({ role: m.role, content: m.content })),
+          sessionMode: didSubMode === "mamka" ? "hanka" : didSubMode === "kata" ? "kata" : "karel",
+        },
+      }).then(res => {
+        if (res.error) console.warn("[session-memory] Extraction failed:", res.error);
+        else console.log("[session-memory] Extracted:", res.data);
+      }).catch(err => console.warn("[session-memory] Extraction error:", err));
+    }
+
     // Theme cleanup is handled by DidContentRouter's useEffect when didStorageKey changes
     setActiveThread(null);
     setMessages([]);

@@ -5287,6 +5287,25 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Card updates error (non-fatal):", cardUpdateErr);
     }
 
+    // ═══ FÁZE 6.5: CLEANUP STARÉ PAMĚTI ═══
+    try {
+      const cutoff90 = new Date(Date.now() - 90 * 86400000).toISOString();
+      const { count: deletedMem } = await sb.from("session_memory")
+        .delete()
+        .lt("session_date", cutoff90)
+        .eq("manually_edited", false);
+
+      const promiseCutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+      await sb.from("karel_promises")
+        .update({ status: "cancelled" })
+        .eq("status", "active")
+        .lt("created_at", promiseCutoff);
+
+      console.log(`[daily-cycle] Memory cleanup: deleted ${deletedMem || 0} old memories`);
+    } catch (memCleanErr) {
+      console.warn("[daily-cycle] Memory cleanup error (non-fatal):", memCleanErr);
+    }
+
     // ═══ FÁZE 7: Aktualizace operativního plánu ═══
     try {
       const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;
