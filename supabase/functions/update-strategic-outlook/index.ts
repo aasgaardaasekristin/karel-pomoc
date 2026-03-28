@@ -133,7 +133,8 @@ STRATEGICKÉ CÍLE:
 ${goalsText || "(žádné)"}
 
 STATISTIKY ZA TÝDEN:
-${statsText}`;
+${statsText}
+${metricsText}`;
 
     const result = await callGemini(prompt);
     console.log(`[strategic] Gemini response: ${result.length} chars`);

@@ -5335,6 +5335,25 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Therapist notes check error (non-fatal):", tnErr);
     }
 
+    // ═══ FÁZE 6.8: COMPUTE DAILY METRICS ═══
+    try {
+      const metricsUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/compute-daily-metrics`;
+      const metricsRes = await fetch(metricsUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          date: new Date(Date.now() - 86400000).toISOString().slice(0, 10),
+        }),
+      });
+      const metricsData = await metricsRes.json();
+      console.log(`[daily-cycle] Metrics computed: ${metricsRes.status}`, metricsData);
+    } catch (metricsErr) {
+      console.warn("[daily-cycle] Metrics computation error (non-fatal):", metricsErr);
+    }
+
     // ═══ FÁZE 7: Aktualizace operativního plánu ═══
     try {
       const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;
