@@ -644,6 +644,173 @@ export type Database = {
         }
         Relationships: []
       }
+      crisis_events: {
+        Row: {
+          banner_dismissed: boolean | null
+          banner_dismissed_at: string | null
+          closed_at: string | null
+          closure_approved_at: string | null
+          closure_approved_by: string[] | null
+          closure_proposed_at: string | null
+          closure_proposed_by: string | null
+          closure_reason: string | null
+          created_at: string | null
+          days_active: number | null
+          diagnostic_date: string | null
+          diagnostic_report: string | null
+          diagnostic_score: number | null
+          diagnostic_session_id: string | null
+          id: string
+          indicator_coherence: number | null
+          indicator_emotional_regulation: number | null
+          indicator_safety: number | null
+          indicator_time_orientation: number | null
+          indicator_trust: number | null
+          opened_at: string | null
+          part_name: string
+          phase: string
+          sessions_count: number | null
+          severity: string
+          trigger_description: string
+          trigger_source: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          banner_dismissed?: boolean | null
+          banner_dismissed_at?: string | null
+          closed_at?: string | null
+          closure_approved_at?: string | null
+          closure_approved_by?: string[] | null
+          closure_proposed_at?: string | null
+          closure_proposed_by?: string | null
+          closure_reason?: string | null
+          created_at?: string | null
+          days_active?: number | null
+          diagnostic_date?: string | null
+          diagnostic_report?: string | null
+          diagnostic_score?: number | null
+          diagnostic_session_id?: string | null
+          id?: string
+          indicator_coherence?: number | null
+          indicator_emotional_regulation?: number | null
+          indicator_safety?: number | null
+          indicator_time_orientation?: number | null
+          indicator_trust?: number | null
+          opened_at?: string | null
+          part_name: string
+          phase?: string
+          sessions_count?: number | null
+          severity?: string
+          trigger_description: string
+          trigger_source?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          banner_dismissed?: boolean | null
+          banner_dismissed_at?: string | null
+          closed_at?: string | null
+          closure_approved_at?: string | null
+          closure_approved_by?: string[] | null
+          closure_proposed_at?: string | null
+          closure_proposed_by?: string | null
+          closure_reason?: string | null
+          created_at?: string | null
+          days_active?: number | null
+          diagnostic_date?: string | null
+          diagnostic_report?: string | null
+          diagnostic_score?: number | null
+          diagnostic_session_id?: string | null
+          id?: string
+          indicator_coherence?: number | null
+          indicator_emotional_regulation?: number | null
+          indicator_safety?: number | null
+          indicator_time_orientation?: number | null
+          indicator_trust?: number | null
+          opened_at?: string | null
+          part_name?: string
+          phase?: string
+          sessions_count?: number | null
+          severity?: string
+          trigger_description?: string
+          trigger_source?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      crisis_session_logs: {
+        Row: {
+          coherence_score: number | null
+          color_test_result: string | null
+          created_at: string | null
+          crisis_id: string | null
+          emotional_regulation_ok: boolean | null
+          future_mentions: boolean | null
+          id: string
+          karel_notes: string | null
+          positive_signals: string[] | null
+          projective_story_result: string | null
+          reality_testing_ok: boolean | null
+          risk_signals: string[] | null
+          safety_ok: boolean | null
+          scaling_score: number | null
+          session_date: string | null
+          session_type: string | null
+          summary: string | null
+          tree_test_result: string | null
+          trust_level: number | null
+        }
+        Insert: {
+          coherence_score?: number | null
+          color_test_result?: string | null
+          created_at?: string | null
+          crisis_id?: string | null
+          emotional_regulation_ok?: boolean | null
+          future_mentions?: boolean | null
+          id?: string
+          karel_notes?: string | null
+          positive_signals?: string[] | null
+          projective_story_result?: string | null
+          reality_testing_ok?: boolean | null
+          risk_signals?: string[] | null
+          safety_ok?: boolean | null
+          scaling_score?: number | null
+          session_date?: string | null
+          session_type?: string | null
+          summary?: string | null
+          tree_test_result?: string | null
+          trust_level?: number | null
+        }
+        Update: {
+          coherence_score?: number | null
+          color_test_result?: string | null
+          created_at?: string | null
+          crisis_id?: string | null
+          emotional_regulation_ok?: boolean | null
+          future_mentions?: boolean | null
+          id?: string
+          karel_notes?: string | null
+          positive_signals?: string[] | null
+          projective_story_result?: string | null
+          reality_testing_ok?: boolean | null
+          risk_signals?: string[] | null
+          safety_ok?: boolean | null
+          scaling_score?: number | null
+          session_date?: string | null
+          session_type?: string | null
+          summary?: string | null
+          tree_test_result?: string | null
+          trust_level?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_session_logs_crisis_id_fkey"
+            columns: ["crisis_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crisis_tasks: {
         Row: {
           assigned_to: string
