@@ -5244,6 +5244,24 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Health check error:", healthErr);
     }
 
+    // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET ═══
+    try {
+      console.log("[daily-cycle] Triggering autonomous card updates...");
+      const cardUpdateUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/run-daily-card-updates`;
+      const cardUpdateRes = await fetch(cardUpdateUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      const cardUpdateData = await cardUpdateRes.json().catch(() => ({}));
+      console.log(`[daily-cycle] Card updates: ${cardUpdateRes.status}, processed=${cardUpdateData.partsProcessed || 0}`);
+    } catch (cardUpdateErr) {
+      console.warn("[daily-cycle] Card updates error (non-fatal):", cardUpdateErr);
+    }
+
     // ═══ TRIGGER: karel-daily-refresh to update did_daily_context ═══
     try {
       const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;

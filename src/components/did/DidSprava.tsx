@@ -10,6 +10,7 @@ import DidKartotekaHealth from "./DidKartotekaHealth";
 import DidRegistryOverview from "./DidRegistryOverview";
 import DidCardCleanup from "./DidCardCleanup";
 import DidReportDiagnostics from "./DidReportDiagnostics";
+import DidKartotekaTab from "./DidKartotekaTab";
 
 interface Props {
   onBootstrap: () => void;
@@ -108,7 +109,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka">("tools");
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
 
@@ -141,6 +142,7 @@ const DidSprava = ({
         <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
          {([
             { key: "tools" as const, label: "🛠 Nástroje" },
+            { key: "kartoteka" as const, label: "📋 Kartotéka" },
             { key: "health" as const, label: "❤️ Zdraví" },
             { key: "registry" as const, label: "📋 Registr" },
             { key: "reports" as const, label: "📧 Reporty" },
@@ -252,6 +254,12 @@ const DidSprava = ({
         {activeTab === "cleanup" && (
           <div className="space-y-2">
             <DidCardCleanup />
+          </div>
+        )}
+
+        {activeTab === "kartoteka" && (
+          <div className="space-y-2">
+            <DidKartotekaTab />
           </div>
         )}
 

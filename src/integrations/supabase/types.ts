@@ -119,6 +119,111 @@ export type Database = {
         }
         Relationships: []
       }
+      card_crosswrite_queue: {
+        Row: {
+          action: string
+          content: string
+          created_at: string | null
+          id: string
+          processed_at: string | null
+          source_part: string
+          status: string | null
+          target_file: string
+        }
+        Insert: {
+          action: string
+          content: string
+          created_at?: string | null
+          id?: string
+          processed_at?: string | null
+          source_part: string
+          status?: string | null
+          target_file: string
+        }
+        Update: {
+          action?: string
+          content?: string
+          created_at?: string | null
+          id?: string
+          processed_at?: string | null
+          source_part?: string
+          status?: string | null
+          target_file?: string
+        }
+        Relationships: []
+      }
+      card_update_log: {
+        Row: {
+          contradictions_found: number | null
+          created_at: string | null
+          cross_writes: string[] | null
+          error: string | null
+          id: string
+          new_therapy_methods_added: number | null
+          part_name: string
+          processing_time_ms: number | null
+          profile_updated: boolean | null
+          sections_skipped: string[] | null
+          sections_updated: string[] | null
+          web_searches_performed: number | null
+        }
+        Insert: {
+          contradictions_found?: number | null
+          created_at?: string | null
+          cross_writes?: string[] | null
+          error?: string | null
+          id?: string
+          new_therapy_methods_added?: number | null
+          part_name: string
+          processing_time_ms?: number | null
+          profile_updated?: boolean | null
+          sections_skipped?: string[] | null
+          sections_updated?: string[] | null
+          web_searches_performed?: number | null
+        }
+        Update: {
+          contradictions_found?: number | null
+          created_at?: string | null
+          cross_writes?: string[] | null
+          error?: string | null
+          id?: string
+          new_therapy_methods_added?: number | null
+          part_name?: string
+          processing_time_ms?: number | null
+          profile_updated?: boolean | null
+          sections_skipped?: string[] | null
+          sections_updated?: string[] | null
+          web_searches_performed?: number | null
+        }
+        Relationships: []
+      }
+      card_update_processed_threads: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_processed_at: string | null
+          last_processed_message_id: string | null
+          part_name: string
+          thread_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_processed_at?: string | null
+          last_processed_message_id?: string | null
+          part_name: string
+          thread_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_processed_at?: string | null
+          last_processed_message_id?: string | null
+          part_name?: string
+          thread_id?: string
+        }
+        Relationships: []
+      }
       card_update_queue: {
         Row: {
           action: string
