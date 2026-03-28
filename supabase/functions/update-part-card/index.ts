@@ -191,6 +191,7 @@ serve(async (req) => {
 1. Aktuální kartu části "${partName}" z kartotéky
 2. Nová nezpracovaná vlákna (rozhovory s touto částí)
 ${memoryText ? "3. Strukturovanou paměť ze sezení za poslední týden" : ""}
+${therapistNotesText ? `${memoryText ? "4" : "3"}. Poznámky od terapeutek (offline pozorování, instrukce, varování)` : ""}
 
 TVŮ ÚKOL — FÁZE ANALÝZY:
 Přečti vlákna a roztřiď informace podle sekcí A–M.
