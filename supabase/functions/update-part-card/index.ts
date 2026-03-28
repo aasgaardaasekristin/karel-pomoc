@@ -467,6 +467,21 @@ ${searchResultsText.slice(0, 10000)}`;
       processing_time_ms: processingTime,
     });
 
+    // Mark therapist notes as incorporated
+    if (therapistNotesText) {
+      try {
+        const incorporatedLabel = `card_update_${new Date().toISOString().slice(0, 10)}`;
+        await sb.from("therapist_notes")
+          .update({ incorporated_into: incorporatedLabel })
+          .or(`part_name.eq.${partName},part_name.is.null`)
+          .is("incorporated_into", null)
+          .gte("session_date", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10));
+        console.log(`[update-card] Therapist notes marked as incorporated for ${partName}`);
+      } catch (tnErr) {
+        console.warn("[update-card] Therapist notes mark error:", tnErr);
+      }
+    }
+
     // Check if this part has active crisis → auto-evaluate
     try {
       const { data: activeCrisis } = await sb.from("crisis_events").select("id").eq("part_name", partName).not("phase", "eq", "closed").limit(1);
