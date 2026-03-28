@@ -4931,6 +4931,8 @@ ESKALACE: level ${task.escalation_level || 0}`,
       const threadsForObs = (allRecentThreads || []).slice(0, 20);
       let obsCreated = 0;
       let claimsSent = 0;
+      const PHASE4_TIMEOUT = 45000;
+      const phase4Start = Date.now();
 
       for (const thread of threadsForObs) {
         if (obsLimitReached) break;
