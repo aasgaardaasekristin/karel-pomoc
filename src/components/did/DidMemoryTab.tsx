@@ -34,6 +34,18 @@ interface Promise {
   created_at: string;
 }
 
+interface SwitchingEvent {
+  id: string;
+  thread_id: string;
+  original_part: string;
+  detected_part: string;
+  confidence: string;
+  signals: any;
+  user_message_excerpt: string | null;
+  acknowledged: boolean;
+  created_at: string;
+}
+
 const DidMemoryTab = () => {
   const [memories, setMemories] = useState<SessionMemory[]>([]);
   const [promises, setPromises] = useState<Promise[]>([]);
