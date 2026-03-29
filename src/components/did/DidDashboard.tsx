@@ -101,6 +101,23 @@ const SkeletonBlock = ({ className }: { className?: string }) => (
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+const playAlertSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.frequency.value = 800;
+    oscillator.type = "sine";
+    gainNode.gain.value = 0.3;
+    oscillator.start();
+    setTimeout(() => { gainNode.gain.value = 0; }, 150);
+    setTimeout(() => { gainNode.gain.value = 0.3; }, 250);
+    setTimeout(() => { gainNode.gain.value = 0; oscillator.stop(); audioCtx.close(); }, 400);
+  } catch { /* Audio not available */ }
+};
+
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const navigate = useNavigate();
   const [parts, setParts] = useState<PartActivity[]>([]);
