@@ -576,7 +576,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* Unread therapist notes */}
       {unreadNotes > 0 && (
-        <div className="rounded-lg border border-amber-400/30 bg-amber-50 dark:bg-amber-950/20 p-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+        <div className="rounded-xl border border-amber-400/30 bg-amber-50 dark:bg-amber-950/20 backdrop-blur-sm shadow-sm p-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
           <MessageSquare className="w-4 h-4 shrink-0" />
           <span className="font-medium">📝 {unreadNotes} nepřečtených poznámek terapeutek</span>
         </div>
