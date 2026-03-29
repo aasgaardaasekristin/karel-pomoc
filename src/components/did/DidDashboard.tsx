@@ -23,6 +23,7 @@ import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
 import PartQuickView from "./PartQuickView";
+import CrisisTimeline from "./CrisisTimeline";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
