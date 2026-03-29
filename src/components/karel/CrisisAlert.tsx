@@ -59,6 +59,35 @@ const CrisisAlert: React.FC = () => {
   const [resolveNotes, setResolveNotes] = useState("");
   const [showResolveInput, setShowResolveInput] = useState(false);
 
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("dismissed_crisis_alerts");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  const handleDismissAlert = (alertId: string) => {
+    setDismissedAlertIds(prev => {
+      const next = new Set(prev).add(alertId);
+      localStorage.setItem("dismissed_crisis_alerts", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // Re-show dismissed alerts when status changes
+  useEffect(() => {
+    const statusMap = new Map(alerts.map(a => [a.id, a.status]));
+    setDismissedAlertIds(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of prev) {
+        if (!statusMap.has(id)) { next.delete(id); changed = true; }
+      }
+      if (changed) localStorage.setItem("dismissed_crisis_alerts", JSON.stringify([...next]));
+      return changed ? next : prev;
+    });
+  }, [alerts]);
+
   const fetchAlerts = useCallback(async () => {
     const { data } = await supabase
       .from("crisis_alerts")
@@ -165,7 +194,9 @@ const CrisisAlert: React.FC = () => {
     return Date.now() - dismissTime > 24 * 60 * 60 * 1000;
   });
 
-  if (alerts.length === 0 && visibleCrisisEvents.length === 0) return null;
+  const visibleAlerts = alerts.filter(a => !dismissedAlertIds.has(a.id));
+
+  if (visibleAlerts.length === 0 && visibleCrisisEvents.length === 0) return null;
 
   return (
     <>
@@ -191,7 +222,7 @@ const CrisisAlert: React.FC = () => {
         ))}
 
         {/* Legacy crisis_alerts banners */}
-        {alerts.map((alert) => {
+        {visibleAlerts.map((alert) => {
           const isAcknowledged = alert.status === "ACKNOWLEDGED";
           return (
             <div key={alert.id} className={`${isAcknowledged ? "bg-orange-500" : "bg-red-600 animate-pulse"} text-white px-4 py-3 shadow-lg`}>
@@ -218,6 +249,13 @@ const CrisisAlert: React.FC = () => {
                   {!isAcknowledged && (
                     <button onClick={() => handleAcknowledge(alert)} className="bg-white text-red-700 text-xs font-bold px-3 py-1.5 rounded hover:bg-white/90 transition-colors">PŘEBÍRÁM ŘÍZENÍ</button>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDismissAlert(alert.id); }}
+                    className="bg-white/10 hover:bg-white/20 p-1 rounded ml-auto shrink-0"
+                    title="Skrýt banner (krizový stav trvá)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>

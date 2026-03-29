@@ -562,10 +562,15 @@ export type Database = {
           conversation_id: string | null
           created_at: string
           crisis_thread_id: string | null
+          days_in_crisis: number | null
           id: string
           intervention_plan: string | null
           karel_assessment: string | null
           part_name: string
+          post_crisis_monitoring_until: string | null
+          resolution_assessment_id: string | null
+          resolution_date: string | null
+          resolution_method: string | null
           resolution_notes: string | null
           resolved_at: string | null
           severity: string
@@ -580,10 +585,15 @@ export type Database = {
           conversation_id?: string | null
           created_at?: string
           crisis_thread_id?: string | null
+          days_in_crisis?: number | null
           id?: string
           intervention_plan?: string | null
           karel_assessment?: string | null
           part_name: string
+          post_crisis_monitoring_until?: string | null
+          resolution_assessment_id?: string | null
+          resolution_date?: string | null
+          resolution_method?: string | null
           resolution_notes?: string | null
           resolved_at?: string | null
           severity: string
@@ -598,10 +608,15 @@ export type Database = {
           conversation_id?: string | null
           created_at?: string
           crisis_thread_id?: string | null
+          days_in_crisis?: number | null
           id?: string
           intervention_plan?: string | null
           karel_assessment?: string | null
           part_name?: string
+          post_crisis_monitoring_until?: string | null
+          resolution_assessment_id?: string | null
+          resolution_date?: string | null
+          resolution_method?: string | null
           resolution_notes?: string | null
           resolved_at?: string | null
           severity?: string
@@ -676,6 +691,92 @@ export type Database = {
           time_dynamics?: Json
         }
         Relationships: []
+      }
+      crisis_daily_assessments: {
+        Row: {
+          assessment_date: string
+          assessment_method: string | null
+          created_at: string | null
+          crisis_alert_id: string
+          day_number: number
+          id: string
+          karel_decision: string | null
+          karel_reasoning: string | null
+          karel_risk_assessment: string | null
+          next_day_plan: Json | null
+          part_cooperation_level: string | null
+          part_emotional_state: number | null
+          part_interview_summary: string | null
+          part_name: string
+          part_risk_indicators: Json | null
+          tests_administered: Json | null
+          therapist_hana_input: string | null
+          therapist_hana_observation: string | null
+          therapist_hana_risk_rating: number | null
+          therapist_kata_input: string | null
+          therapist_kata_observation: string | null
+          therapist_kata_risk_rating: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          assessment_date?: string
+          assessment_method?: string | null
+          created_at?: string | null
+          crisis_alert_id: string
+          day_number?: number
+          id?: string
+          karel_decision?: string | null
+          karel_reasoning?: string | null
+          karel_risk_assessment?: string | null
+          next_day_plan?: Json | null
+          part_cooperation_level?: string | null
+          part_emotional_state?: number | null
+          part_interview_summary?: string | null
+          part_name: string
+          part_risk_indicators?: Json | null
+          tests_administered?: Json | null
+          therapist_hana_input?: string | null
+          therapist_hana_observation?: string | null
+          therapist_hana_risk_rating?: number | null
+          therapist_kata_input?: string | null
+          therapist_kata_observation?: string | null
+          therapist_kata_risk_rating?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          assessment_date?: string
+          assessment_method?: string | null
+          created_at?: string | null
+          crisis_alert_id?: string
+          day_number?: number
+          id?: string
+          karel_decision?: string | null
+          karel_reasoning?: string | null
+          karel_risk_assessment?: string | null
+          next_day_plan?: Json | null
+          part_cooperation_level?: string | null
+          part_emotional_state?: number | null
+          part_interview_summary?: string | null
+          part_name?: string
+          part_risk_indicators?: Json | null
+          tests_administered?: Json | null
+          therapist_hana_input?: string | null
+          therapist_hana_observation?: string | null
+          therapist_hana_risk_rating?: number | null
+          therapist_kata_input?: string | null
+          therapist_kata_observation?: string | null
+          therapist_kata_risk_rating?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_daily_assessments_crisis_alert_id_fkey"
+            columns: ["crisis_alert_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crisis_events: {
         Row: {
@@ -769,6 +870,75 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      crisis_intervention_sessions: {
+        Row: {
+          assessment_id: string | null
+          conducted_at: string | null
+          created_at: string | null
+          crisis_alert_id: string
+          follow_up_needed: boolean | null
+          follow_up_notes: string | null
+          id: string
+          key_findings: Json | null
+          part_name: string
+          protective_factors_found: Json | null
+          risk_indicators_found: Json | null
+          session_outcome: string | null
+          session_summary: string | null
+          session_type: string
+          thread_id: string | null
+        }
+        Insert: {
+          assessment_id?: string | null
+          conducted_at?: string | null
+          created_at?: string | null
+          crisis_alert_id: string
+          follow_up_needed?: boolean | null
+          follow_up_notes?: string | null
+          id?: string
+          key_findings?: Json | null
+          part_name: string
+          protective_factors_found?: Json | null
+          risk_indicators_found?: Json | null
+          session_outcome?: string | null
+          session_summary?: string | null
+          session_type: string
+          thread_id?: string | null
+        }
+        Update: {
+          assessment_id?: string | null
+          conducted_at?: string | null
+          created_at?: string | null
+          crisis_alert_id?: string
+          follow_up_needed?: boolean | null
+          follow_up_notes?: string | null
+          id?: string
+          key_findings?: Json | null
+          part_name?: string
+          protective_factors_found?: Json | null
+          risk_indicators_found?: Json | null
+          session_outcome?: string | null
+          session_summary?: string | null
+          session_type?: string
+          thread_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_intervention_sessions_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_daily_assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crisis_intervention_sessions_crisis_alert_id_fkey"
+            columns: ["crisis_alert_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crisis_session_logs: {
         Row: {

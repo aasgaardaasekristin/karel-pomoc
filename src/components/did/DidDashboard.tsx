@@ -23,6 +23,7 @@ import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
 import PartQuickView from "./PartQuickView";
+import CrisisTimeline from "./CrisisTimeline";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
@@ -145,7 +146,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [todayAiErrors, setTodayAiErrors] = useState(0);
   const [activePartsCount, setActivePartsCount] = useState(0);
   const [expandedPart, setExpandedPart] = useState<string | null>(null);
-
+  const [assessingCrisisId, setAssessingCrisisId] = useState<string | null>(null);
   const loadDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -457,6 +458,27 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
   const maxWeekMsgs = useMemo(() => Math.max(1, ...weekActivity.map(([, c]) => c)), [weekActivity]);
 
+  const runCrisisAssessment = useCallback(async (crisisId: string) => {
+    setAssessingCrisisId(crisisId);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-crisis-daily-assessment`, {
+        method: "POST", headers, body: JSON.stringify({ crisis_alert_id: crisisId, manual: true }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      const result = data.results?.[0];
+      if (result) {
+        toast.success(`Hodnocení den ${result.day_number}: ${result.decision} | Risk: ${result.risk_level} | ${result.tasks_created} úkolů`);
+      }
+      setRefreshTrigger(p => p + 1);
+    } catch (e: any) {
+      toast.error(`Krizové hodnocení selhalo: ${e.message}`);
+    } finally {
+      setAssessingCrisisId(null);
+    }
+  }, []);
+
   const valenceEmoji = (v: number | null) => v == null ? "⚪" : v >= 7 ? "😊" : v >= 4 ? "😐" : "😟";
 
   if (loading) {
@@ -517,10 +539,16 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
             <div key={c.id} className="rounded-lg bg-destructive/5 border border-destructive/30 p-2 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-destructive">{c.part_name} ({c.severity})</span>
-                <span className="text-[10px] text-muted-foreground">{c.status}</span>
+                <span className="text-[10px] text-muted-foreground">{c.status}{c.days_in_crisis ? ` · den ${c.days_in_crisis}` : ""}</span>
               </div>
               <p className="text-[10px] text-foreground">{c.summary}</p>
               <button onClick={() => navigate(c.conversation_id ? `/chat?meeting=${c.conversation_id}` : `/chat?sub=meeting`)} className="text-[10px] bg-destructive text-destructive-foreground px-2 py-1 rounded font-semibold">Otevřít krizovou poradu</button>
+              <CrisisTimeline
+                crisisAlertId={c.id}
+                partName={c.part_name}
+                onRunAssessment={() => runCrisisAssessment(c.id)}
+                isAssessing={assessingCrisisId === c.id}
+              />
             </div>
           ))}
         </div>
