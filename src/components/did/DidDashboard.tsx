@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
 import DidDailySessionPlan from "./DidDailySessionPlan";
