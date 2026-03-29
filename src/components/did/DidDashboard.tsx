@@ -499,7 +499,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-3" data-no-swipe-back="true">
 
       {/* ═══ SEKCE 1: REFRESH BAR ═══ */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pb-2 border-b border-border/30">
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground">
             Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
