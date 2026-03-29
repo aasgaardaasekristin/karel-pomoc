@@ -206,8 +206,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       setActiveThreads(Array.from(latestByPart.values()));
       setPendingWriteCount(pendingWritesRes.count || 0);
 
-      // ── Registry + active parts ──
-      const registry = registryRes.data || [];
+      // ── Registry + active parts (filter out non-DID entities) ──
+      const registry = (registryRes.data || []).filter((r: any) => !isNonDidEntity(r.part_name));
       setActivePartsCount(registry.length);
 
       // ── Today metrics aggregation ──
