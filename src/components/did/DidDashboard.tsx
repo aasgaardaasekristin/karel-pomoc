@@ -596,12 +596,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Části systému</SectionLabel>
           <div className="space-y-1">
             {heatmapRows.map(row => (
-              <div key={row.partName} className={cn("rounded-md border overflow-hidden cursor-pointer transition-colors", expandedPart === row.partName && "border-primary/40")} onClick={() => setExpandedPart(expandedPart === row.partName ? null : row.partName)}>
-                <div className="flex items-center gap-2 p-2 text-xs hover:bg-muted/50">
+              <div key={row.partName} className={cn("rounded-lg border border-border/40 overflow-hidden cursor-pointer bg-card/30 backdrop-blur-sm transition-colors", expandedPart === row.partName && "border-primary/40")} onClick={() => setExpandedPart(expandedPart === row.partName ? null : row.partName)}>
+                <div className="flex items-center gap-2 p-2 text-xs hover:bg-primary/5 transition-colors">
                   <span className="text-base w-6 text-center">👤</span>
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium truncate">{row.partName}</span>
-                    {row.role && <span className="text-[9px] text-muted-foreground ml-1">({row.role})</span>}
+                    <span className="text-[13px] font-semibold truncate">{row.partName}</span>
+                    {row.role && <span className="text-[10px] italic text-muted-foreground ml-1">({row.role})</span>}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className={cn("w-3 h-3 rounded-full", row.valence == null ? "bg-muted" : row.valence >= 7 ? "bg-green-400" : row.valence >= 4 ? "bg-amber-400" : "bg-red-400")} />
