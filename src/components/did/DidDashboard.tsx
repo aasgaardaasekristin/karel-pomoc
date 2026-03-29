@@ -648,11 +648,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       {weekActivity.length > 0 && (
         <div>
           <SectionLabel>Týdenní aktivita</SectionLabel>
-          <div className="flex items-end gap-1 h-16 p-2 rounded-md border">
+          <div className="flex items-end gap-1 h-16 p-2 rounded-md border bg-card/20 backdrop-blur-sm">
             {weekActivity.map(([date, count]) => (
               <div key={date} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
                 {count > 0 && <span className="text-[8px] text-muted-foreground">{count}</span>}
-                <div className="w-full bg-primary/70 rounded-t min-h-[2px]" style={{ height: `${(count / maxWeekMsgs) * 100}%` }} />
+                <div className="w-full bg-gradient-to-t from-primary/80 to-primary/40 rounded-sm min-h-[2px]" style={{ height: `${(count / maxWeekMsgs) * 100}%` }} />
                 <span className="text-[8px] text-muted-foreground">{new Date(date + "T12:00:00").toLocaleDateString("cs", { weekday: "narrow" })}</span>
               </div>
             ))}
