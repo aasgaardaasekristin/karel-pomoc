@@ -568,7 +568,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* Proposed goals banner */}
       {proposedGoals > 0 && (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 p-2 flex items-center gap-2 text-xs text-primary">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 backdrop-blur-sm shadow-sm p-2 flex items-center gap-2 text-xs text-primary">
           <Target className="w-4 h-4 shrink-0" />
           <span className="font-medium">🎯 {proposedGoals} navrhovaných cílů čeká na schválení</span>
         </div>
