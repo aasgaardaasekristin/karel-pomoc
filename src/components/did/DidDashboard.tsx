@@ -556,7 +556,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* Safety alerts banner */}
       {metrics.newAlerts > 0 && (
-        <div className={cn("rounded-lg border p-2 flex items-center gap-2 text-xs",
+        <div className={cn("rounded-xl border p-2 flex items-center gap-2 text-xs backdrop-blur-sm shadow-sm",
           metrics.criticalAlerts > 0 ? "border-destructive bg-destructive/10 text-destructive" : "border-amber-500 bg-amber-500/10 text-amber-700"
         )}>
           <AlertTriangle className="w-4 h-4 shrink-0" />
