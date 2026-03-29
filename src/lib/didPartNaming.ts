@@ -58,6 +58,10 @@ export const sanitizePartName = (raw: string | null | undefined): string | null 
 
   if (!base) return null;
 
+  // Filter out non-part names like "Dokument bez názvu", "Untitled document"
+  const lowerBase = stripDiacritics(base).toLowerCase();
+  if (lowerBase.includes("dokument bez nazvu") || lowerBase.includes("untitled")) return null;
+
   const tokens = base
     .split(/[\n,;|]+/)
     .map(cleanToken)
