@@ -176,7 +176,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       setActiveCrises(crisisRes.data || []);
 
       // ── Process threads (original logic) ──
-      const threads = threadsRes.data || [];
+      const threads = (threadsRes.data || []).filter((t: any) => !isNonDidEntity(t.part_name || ""));
       const latestByPart = new Map<string, ActiveThreadSummary>();
       const partRows: PartActivity[] = [];
       const threadsByPart = new Map<string, typeof threads>();
