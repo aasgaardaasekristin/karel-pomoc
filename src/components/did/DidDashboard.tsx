@@ -295,7 +295,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       console.error("Failed to load DID dashboard data:", error);
       toast.error("Nepodařilo se načíst DID dashboard");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
