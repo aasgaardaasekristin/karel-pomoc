@@ -539,10 +539,16 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
             <div key={c.id} className="rounded-lg bg-destructive/5 border border-destructive/30 p-2 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-destructive">{c.part_name} ({c.severity})</span>
-                <span className="text-[10px] text-muted-foreground">{c.status}</span>
+                <span className="text-[10px] text-muted-foreground">{c.status}{c.days_in_crisis ? ` · den ${c.days_in_crisis}` : ""}</span>
               </div>
               <p className="text-[10px] text-foreground">{c.summary}</p>
               <button onClick={() => navigate(c.conversation_id ? `/chat?meeting=${c.conversation_id}` : `/chat?sub=meeting`)} className="text-[10px] bg-destructive text-destructive-foreground px-2 py-1 rounded font-semibold">Otevřít krizovou poradu</button>
+              <CrisisTimeline
+                crisisAlertId={c.id}
+                partName={c.part_name}
+                onRunAssessment={() => runCrisisAssessment(c.id)}
+                isAssessing={assessingCrisisId === c.id}
+              />
             </div>
           ))}
         </div>
