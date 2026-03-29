@@ -22,6 +22,7 @@ import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
+import PartQuickView from "./PartQuickView";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
