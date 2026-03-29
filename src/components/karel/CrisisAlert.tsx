@@ -194,7 +194,9 @@ const CrisisAlert: React.FC = () => {
     return Date.now() - dismissTime > 24 * 60 * 60 * 1000;
   });
 
-  if (alerts.length === 0 && visibleCrisisEvents.length === 0) return null;
+  const visibleAlerts = alerts.filter(a => !dismissedAlertIds.has(a.id));
+
+  if (visibleAlerts.length === 0 && visibleCrisisEvents.length === 0) return null;
 
   return (
     <>
