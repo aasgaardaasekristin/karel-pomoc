@@ -103,7 +103,9 @@ const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing 
                 </div>
 
                 {a.part_interview_summary && (
-                  <p className="text-[10px] text-muted-foreground line-clamp-2">{a.part_interview_summary}</p>
+                  <div className="max-h-32 overflow-y-auto text-[10px] text-muted-foreground whitespace-pre-wrap">
+                    {a.part_interview_summary}
+                  </div>
                 )}
 
                 <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
@@ -122,9 +124,9 @@ const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing 
                 )}
 
                 {a.karel_reasoning && (
-                  <p className="text-[10px] italic text-muted-foreground border-l-2 border-muted pl-2 line-clamp-2">
+                  <div className="max-h-24 overflow-y-auto text-[10px] italic text-muted-foreground border-l-2 border-muted pl-2 whitespace-pre-wrap">
                     "{a.karel_reasoning}"
-                  </p>
+                  </div>
                 )}
 
                 {/* Therapist feedback buttons */}
