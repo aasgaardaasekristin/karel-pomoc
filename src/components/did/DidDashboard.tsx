@@ -721,10 +721,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Dnešní switching</SectionLabel>
           <div className="space-y-1">
             {todaySwitches.map(s => (
-              <div key={s.id} className="flex items-center gap-2 p-2 rounded-md border text-xs">
+              <div key={s.id} className="flex items-center gap-2 p-2 rounded-md border text-xs bg-card/20 hover:bg-card/40 transition-colors">
                 <span className="text-[10px] text-muted-foreground">{new Date(s.createdAt).toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}</span>
                 <span className="font-medium">{s.originalPart}</span>
-                <span className="text-muted-foreground">→</span>
+                <ArrowRight className="w-3 h-3 text-muted-foreground" />
                 <span className="font-medium">{s.detectedPart}</span>
                 <Badge variant={s.confidence === "high" ? "destructive" : "secondary"} className="text-[8px] h-4 px-1 ml-auto">{s.confidence}</Badge>
               </div>
