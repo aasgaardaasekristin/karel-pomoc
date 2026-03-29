@@ -629,14 +629,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Aktivní cíle</SectionLabel>
           <div className="space-y-1.5">
             {goals.slice(0, 5).map(g => (
-              <div key={g.id} className="p-2 rounded-md border text-xs space-y-1">
+              <div key={g.id} className="p-2 rounded-lg border border-border/30 bg-card/20 backdrop-blur-sm text-xs space-y-1">
                 <div className="flex items-center gap-1.5">
                   {g.partName && <Badge variant="secondary" className="text-[9px] h-4 px-1">{g.partName}</Badge>}
                   <span className="truncate flex-1">{g.goalText}</span>
                   <span className="text-[10px] text-muted-foreground font-medium">{g.progressPct}%</span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div className={cn("h-full rounded-full transition-all", g.progressPct >= 75 ? "bg-green-500" : g.progressPct >= 40 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(100, g.progressPct)}%` }} />
+                <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                  <div className={cn("h-full rounded-full transition-all duration-500", g.progressPct >= 75 ? "bg-green-500" : g.progressPct >= 40 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(100, g.progressPct)}%` }} />
                 </div>
               </div>
             ))}
