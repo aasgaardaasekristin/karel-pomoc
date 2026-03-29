@@ -222,7 +222,7 @@ const CrisisAlert: React.FC = () => {
         ))}
 
         {/* Legacy crisis_alerts banners */}
-        {alerts.map((alert) => {
+        {visibleAlerts.map((alert) => {
           const isAcknowledged = alert.status === "ACKNOWLEDGED";
           return (
             <div key={alert.id} className={`${isAcknowledged ? "bg-orange-500" : "bg-red-600 animate-pulse"} text-white px-4 py-3 shadow-lg`}>
