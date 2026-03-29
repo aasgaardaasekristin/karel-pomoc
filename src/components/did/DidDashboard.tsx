@@ -496,7 +496,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-2" data-no-swipe-back="true">
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-3" data-no-swipe-back="true">
 
       {/* ═══ SEKCE 1: REFRESH BAR ═══ */}
       <div className="flex items-center justify-between">
