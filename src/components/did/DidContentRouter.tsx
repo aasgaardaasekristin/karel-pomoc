@@ -196,6 +196,27 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     };
   }, [didStorageKey]);
 
+  // ═══ CRISIS INDICATOR STATE ═══
+  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string; days_in_crisis: number; summary: string } | null>(null);
+
+  useEffect(() => {
+    if (didSubMode !== "cast" || !activeThread?.partName) {
+      setActiveCrisisBanner(null);
+      return;
+    }
+    (supabase as any)
+      .from("crisis_alerts")
+      .select("severity, days_in_crisis, summary")
+      .eq("part_name", activeThread.partName)
+      .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        setActiveCrisisBanner(data || null);
+      });
+  }, [didSubMode, activeThread?.partName]);
+
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {
     return (
