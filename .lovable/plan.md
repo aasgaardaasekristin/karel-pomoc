@@ -1,51 +1,28 @@
 
 
-## Problém
+## Oprava: "Dokument bez názvu" a nefunkční týdenní aktivita
 
-Screenshot ukazuje taby v dialogu "Správa" kde:
-- Emoji ikony zabírají místo a tlačí text
-- Slova se lámou uprostřed (Bez-peč-nost, Ná-stroje, Kar-toté-ka, Po-znám-ky, Tren-dy, Zdra-ví, Re-porty, Vzle-d)
-- `flex-1` nutí všechny taby mít stejnou šířku → příliš úzké
+### Problém 1: "Dokument bez názvu"
+Toto se zobrazuje jako titulek stránky v prohlížeči — `index.html` má `<title>Lovable App</title>`, ale uživatel pravděpodobně vidí "Dokument bez názvu" jako text v dashboardu pocházející z thread_label fallbacku v jiné komponentě, nebo z Google Drive dat zobrazených v přehledu. Potřebuji ověřit screenshotem, co přesně uživatel vidí.
 
-## Řešení
+**Akce:** Změnit `<title>` na "Karel — DID Asistent" a prověřit, zda se "bez názvu" zobrazuje někde v UI dashboardu.
 
-### Soubor: `src/components/did/DidSprava.tsx` (řádky 164–188)
+### Problém 2: Týdenní aktivita — prázdný graf
+Sekce 6 (ř. 648-661) zobrazuje sloupce na základě `daily_metrics`. Pokud tabulka nemá data (což je pravděpodobné — metrika se plní edge funkcí `compute-daily-metrics`), zobrazí se jen prázdné sloupce s písmenky PÚSČPSN a nic užitečného.
 
-**Změny:**
+**Akce:**
+1. Pokud `weekActivity` má VŠECHNY hodnoty 0 → **skryj celou sekci** (stejně jako heatmapa se skrývá při `length === 0`)
+2. Alternativně: spadni na počítání zpráv z `did_threads` místo `daily_metrics`, aby graf měl reálná data
 
-1. **Odstranit emoji** ze všech tab labels — ponechat jen text
-2. **Zrušit `flex-1`** → taby budou mít auto-šířku podle obsahu
-3. **Přidat `whitespace-nowrap`** — zakáže lámání slov
-4. **Zmenšit font na `text-[10px]`** a padding na `px-2 py-1`
+### Plán změn
 
-**Před:**
-```tsx
-<div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
-  { key: "safety", label: "🚨 Bezpečnost..." },
-  { key: "tools", label: "🛠 Nástroje" },
-  ...
-  className={`flex-1 text-xs py-1.5 rounded-md ...`}
-```
+**Soubor 1: `index.html`**
+- Změnit `<title>` na "Karel — DID Asistent"
 
-**Po:**
-```tsx
-<div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
-  { key: "safety", label: newAlertCount > 0 ? `Bezpečnost (${newAlertCount})` : "Bezpečnost" },
-  { key: "tools", label: "Nástroje" },
-  { key: "plan", label: "Plán" },
-  { key: "kartoteka", label: "Kartotéka" },
-  { key: "memory", label: "Paměť" },
-  { key: "notes", label: "Poznámky" },
-  { key: "trends", label: "Trendy" },
-  { key: "goals", label: "Cíle" },
-  { key: "health", label: "Zdraví" },
-  { key: "registry", label: "Registr" },
-  { key: "reports", label: "Reporty" },
-  { key: "cleanup", label: "Cleanup" },
-  { key: "theme", label: "Vzhled" },
-  ...
-  className={`px-2 py-1 text-[10px] whitespace-nowrap rounded-md ...`}
-```
+**Soubor 2: `src/components/did/DidDashboard.tsx`**
+- Sekce 6: přidat podmínku `weekActivity.some(([, c]) => c > 0)` — pokud jsou všechny hodnoty 0, sekci nezobrazovat
+- Alternativně: fallback na počítání zpráv z threadů pokud daily_metrics nemá data
 
-Jeden soubor, jeden blok změn (~25 řádků).
+**Soubor 3: Ověření "dokument bez názvu"**
+- Prověřit screenshot, co konkrétně uživatel vidí — jestli jde o titulek stránky, nebo obsah generovaný AI (z thread_label fallbacku)
 
