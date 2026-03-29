@@ -478,9 +478,15 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* ═══ SEKCE 1: REFRESH BAR ═══ */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted-foreground">
-          Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">
+            Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+          <div className="flex items-center gap-1">
+            <div className={cn("w-1.5 h-1.5 rounded-full", realtimeConnected ? "bg-green-500 animate-pulse" : "bg-muted-foreground")} />
+            <span className="text-[9px] text-muted-foreground">{realtimeConnected ? "live" : "offline"}</span>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1" onClick={() => { setRefreshTrigger(p => p + 1); }}>
             <RefreshCw className="w-3 h-3" /> Obnovit
