@@ -161,27 +161,27 @@ const DidSprava = ({
         {/* Status bar */}
         <StatusBar cycleStatus={cycleStatus} unprocessedThreads={stats.unprocessedThreads} />
 
-        <div className="flex gap-1 mb-3 p-0.5 rounded-lg bg-muted flex-wrap">
+        <div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
          {([
-            { key: "safety" as const, label: `🚨 Bezpečnost${newAlertCount > 0 ? ` (${newAlertCount})` : ""}` },
-            { key: "tools" as const, label: "🛠 Nástroje" },
-            ...(hasCrisis ? [{ key: "crisis" as const, label: "🚨 Krize" }] : []),
-            { key: "plan" as const, label: "📅 Plán" },
-            { key: "kartoteka" as const, label: "📋 Kartotéka" },
-            { key: "memory" as const, label: "🧠 Paměť" },
-            { key: "notes" as const, label: "📝 Poznámky" },
-            { key: "trends" as const, label: "📈 Trendy" },
-            { key: "goals" as const, label: "🎯 Cíle" },
-            { key: "health" as const, label: "❤️ Zdraví" },
-            { key: "registry" as const, label: "📋 Registr" },
-            { key: "reports" as const, label: "📧 Reporty" },
-            { key: "cleanup" as const, label: "🧹 Cleanup" },
-            { key: "theme" as const, label: "🎨 Vzhled" },
+            { key: "safety" as const, label: newAlertCount > 0 ? `Bezpečnost (${newAlertCount})` : "Bezpečnost" },
+            { key: "tools" as const, label: "Nástroje" },
+            ...(hasCrisis ? [{ key: "crisis" as const, label: "Krize" }] : []),
+            { key: "plan" as const, label: "Plán" },
+            { key: "kartoteka" as const, label: "Kartotéka" },
+            { key: "memory" as const, label: "Paměť" },
+            { key: "notes" as const, label: "Poznámky" },
+            { key: "trends" as const, label: "Trendy" },
+            { key: "goals" as const, label: "Cíle" },
+            { key: "health" as const, label: "Zdraví" },
+            { key: "registry" as const, label: "Registr" },
+            { key: "reports" as const, label: "Reporty" },
+            { key: "cleanup" as const, label: "Cleanup" },
+            { key: "theme" as const, label: "Vzhled" },
           ]).map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${activeTab === tab.key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+              className={`px-2 py-1 text-[10px] whitespace-nowrap rounded-md transition-colors ${activeTab === tab.key ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
             >
               {tab.label}
             </button>
