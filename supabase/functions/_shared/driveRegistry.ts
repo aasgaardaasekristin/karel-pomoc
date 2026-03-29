@@ -203,7 +203,8 @@ export async function loadDriveRegistryEntries(token: string): Promise<DriveRegi
         status: String(row[statusCol] ?? "").trim(),
       });
     }
-    return entries;
+    // Filter out non-DID entities (therapists)
+    return entries.filter(e => !isNonDidEntity(e.primaryName));
   } catch (e) {
     console.error("[driveRegistry] Drive registry read error:", e);
     return [];
