@@ -646,7 +646,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       )}
 
       {/* ═══ SEKCE 6: TÝDENNÍ AKTIVITA ═══ */}
-      {weekActivity.length > 0 && (
+      {weekActivity.length > 0 && weekActivity.some(([, c]) => c > 0) && (
         <div>
           <SectionLabel>Týdenní aktivita</SectionLabel>
           <div className="flex items-end gap-1 h-16 p-2 rounded-md border bg-card/20 backdrop-blur-sm">
