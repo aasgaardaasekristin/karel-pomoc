@@ -134,19 +134,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
       const todayStart = today + "T00:00:00";
 
-      const [
-        threadsRes, pendingWritesRes, crisisRes,
-        registryRes, todayMetricsRes, weekMetricsRes,
-        activeGoalsRes, proposedGoalsRes,
-        safetyRes, switchesRes,
-        unreadNotesRes, todayThreadsRes,
-        lastDispatchRes, aiErrorsRes,
-      ] = await Promise.all([
-        // Original queries
+      const results = await Promise.all([
         supabase.from("did_threads").select("id, part_name, last_activity_at, messages, sub_mode").in("sub_mode", ["cast", "crisis"]).order("last_activity_at", { ascending: false }),
         supabase.from("did_pending_drive_writes").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
-        // New queries
         supabase.from("did_part_registry").select("part_name, display_name, status, role_in_system, last_seen_at, known_strengths, known_triggers").eq("status", "active"),
         supabase.from("daily_metrics").select("part_name, message_count, emotional_valence, switching_count, risk_signals_count").eq("metric_date", today),
         supabase.from("daily_metrics").select("part_name, metric_date, message_count, emotional_valence").gte("metric_date", weekAgo).order("metric_date", { ascending: true }),
@@ -154,10 +145,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         supabase.from("strategic_goals").select("id", { count: "exact", head: true }).eq("status", "proposed"),
         (supabase as any).from("safety_alerts").select("id, severity, part_name, status").in("status", ["new", "notified"]),
         supabase.from("switching_events").select("id, original_part, detected_part, confidence, created_at").gte("created_at", todayStart).order("created_at", { ascending: false }),
+        (supabase as any).from("therapist_notes").select("id", { count: "exact", head: true }).eq("is_read_by_karel", false),
         supabase.from("did_threads").select("id, part_name", { count: "exact" }).in("sub_mode", ["cast", "crisis"]).gte("last_activity_at", todayStart),
         supabase.from("did_daily_report_dispatches").select("status").order("created_at", { ascending: false }).limit(1),
         supabase.from("ai_error_log").select("id", { count: "exact", head: true }).gte("created_at", todayStart),
       ]);
+      const [threadsRes, pendingWritesRes, crisisRes, registryRes, todayMetricsRes, weekMetricsRes, activeGoalsRes, proposedGoalsRes, safetyRes, switchesRes, unreadNotesRes, todayThreadsRes, lastDispatchRes, aiErrorsRes] = results as any;
 
       setActiveCrises(crisisRes.data || []);
 
