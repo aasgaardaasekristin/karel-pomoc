@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,13 +6,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
-const LOVABLE_GW = "https://api-gateway.lovable.dev/ai";
+const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 
-async function callAI(systemPrompt: string, userMessage: string): Promise<any> {
-  const resp = await fetch(LOVABLE_GW, {
+async function callAI(systemPrompt: string, userMessage: string, apiKey: string): Promise<any> {
+  const resp = await fetch(AI_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
     body: JSON.stringify({
       model: "google/gemini-2.5-flash",
       messages: [
@@ -23,23 +25,67 @@ async function callAI(systemPrompt: string, userMessage: string): Promise<any> {
       response_format: { type: "json_object" },
     }),
   });
-  if (!resp.ok) throw new Error(`AI call failed: ${resp.status} ${await resp.text()}`);
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error("AI call failed:", resp.status, errText);
+    throw new Error(`AI call failed: ${resp.status}`);
+  }
+
   const data = await resp.json();
   const content = data.choices?.[0]?.message?.content || "{}";
-  // Strip markdown fences
   const cleaned = content.replace(/```json\s*/g, "").replace(/```/g, "").trim();
-  return JSON.parse(cleaned);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (parseErr) {
+    console.error("JSON parse failed, raw:", cleaned.slice(0, 500));
+    return {
+      part_interview_summary: "Hodnoceni se nepodarilo zpracovat",
+      part_emotional_state: 5,
+      part_cooperation_level: "mixed",
+      risk_indicators: [],
+      protective_factors: [],
+      tests_to_administer: [],
+      questions_for_hana: [],
+      tasks_for_hana: [],
+      questions_for_kata: [],
+      tasks_for_kata: [],
+      risk_assessment: "moderate",
+      reasoning: "AI odpoved nebyla validni JSON. Nastaveno vychozi hodnoceni.",
+      decision: "needs_more_data",
+      next_day_plan: {},
+      conversation_starters: [],
+    };
+  }
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
 
   try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Missing env vars" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!LOVABLE_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "Missing LOVABLE_API_KEY" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
     const body = await req.json().catch(() => ({}));
     const { crisis_alert_id } = body;
 
@@ -54,7 +100,7 @@ Deno.serve(async (req) => {
     }
 
     if (crises.length === 0) {
-      return new Response(JSON.stringify({ message: "Žádné aktivní krize" }), {
+      return new Response(JSON.stringify({ message: "Zadne aktivni krize" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -122,68 +168,68 @@ Deno.serve(async (req) => {
         .limit(5);
 
       // 9. AI assessment
-      const systemPrompt = `Jsi Karel, AI terapeut specializovaný na DID. Provádíš DENNÍ KRIZOVÉ HODNOCENÍ pro část "${crisis.part_name}".
+      const systemPrompt = `Jsi Karel, AI terapeut specializovany na DID. Provadis DENNI KRIZOVE HODNOCENI pro cast "${crisis.part_name}".
 
-DIAGNOSTICKÉ NÁSTROJE:
-- Projektivní testy (kresba, nedokončené věty, asociace)
-- Strukturovaný rozhovor
-- Behaviorální pozorování
-- Sebehodnotící škály (1-10)
-- Stabilizační cvičení (grounding, kontejnment)
-- Kognitivní screening
-- Sledování vzorců
+DIAGNOSTICKE NASTROJE:
+- Projektivni testy (kresba, nedokoncene vety, asociace)
+- Strukturovany rozhovor
+- Behavioralni pozorovani
+- Sebehodnotici skaly (1-10)
+- Stabilizacni cviceni (grounding, kontejnment)
+- Kognitivni screening
+- Sledovani vzorcu
 
-KRITÉRIA PRO UKONČENÍ KRIZE:
-- Emoční valence stabilně >= 5 po 2+ dny
-- Žádné rizikové signály
-- Kooperativní postoj
-- Pozitivní hodnocení od obou terapeutek
-- Žádné krizové switching incidenty
-- Část dokáže regulovat emoce
-- Ochranné faktory převažují
+KRITERIA PRO UKONCENI KRIZE:
+- Emocni valence stabilne >= 5 po 2+ dny
+- Zadne rizikove signaly
+- Kooperativni postoj
+- Pozitivni hodnoceni od obou terapeutek
+- Zadne krizove switching incidenty
+- Cast dokaze regulovat emoce
+- Ochranne faktory prevazuji
 
-ODPOVĚZ PŘESNĚ V TOMTO JSON FORMÁTU:
+ODPOVEZ PRESNE V TOMTO JSON FORMATU:
 {
-  "part_interview_summary": "shrnutí stavu části",
+  "part_interview_summary": "shrnuti stavu casti",
   "part_emotional_state": 1-10,
   "part_cooperation_level": "cooperative|resistant|avoidant|hostile|mixed",
-  "risk_indicators": ["rizikový faktor"],
-  "protective_factors": ["ochranný faktor"],
+  "risk_indicators": ["rizikovy faktor"],
+  "protective_factors": ["ochranny faktor"],
   "tests_to_administer": [{"test_name": "...", "test_type": "projective|interview|behavioral|self_report|observational", "description": "...", "purpose": "..."}],
-  "questions_for_hana": ["otázka"],
-  "tasks_for_hana": ["úkol"],
-  "questions_for_kata": ["otázka"],
-  "tasks_for_kata": ["úkol"],
+  "questions_for_hana": ["otazka"],
+  "tasks_for_hana": ["ukol"],
+  "questions_for_kata": ["otazka"],
+  "tasks_for_kata": ["ukol"],
   "risk_assessment": "critical|high|moderate|low|minimal",
-  "reasoning": "zdůvodnění (min 3 věty)",
+  "reasoning": "zduvodneni (min 3 vety)",
   "decision": "crisis_continues|crisis_improving|crisis_resolved|needs_more_data",
   "next_day_plan": {"planned_session_type": "...", "planned_tests": [], "therapist_tasks": [], "focus_areas": [], "intervention_strategy": "..."},
-  "conversation_starters": ["otázka pro zahájení"]
+  "conversation_starters": ["otazka pro zahajeni"]
 }`;
 
       const userMessage = `KRIZE: ${crisis.summary || "bez popisu"}
 SEVERITY: ${crisis.severity}
 DEN KRIZE: ${dayNumber}
-ČÁST: ${crisis.part_name}
+CAST: ${crisis.part_name}
 
-KARTOTÉKA: ${kartoteka ? JSON.stringify(kartoteka, null, 2).slice(0, 2000) : "Není k dispozici"}
+KARTOTEKA: ${kartoteka ? JSON.stringify(kartoteka, null, 2).slice(0, 2000) : "Neni k dispozici"}
 
-REGISTRY: ${registry ? JSON.stringify({ role: registry.role_in_system, strengths: registry.known_strengths, triggers: registry.known_triggers }, null, 2) : "Není k dispozici"}
+REGISTRY: ${registry ? JSON.stringify({ role: registry.role_in_system, strengths: registry.known_strengths, triggers: registry.known_triggers }, null, 2) : "Neni k dispozici"}
 
-PŘEDCHOZÍ HODNOCENÍ:
-${prevData?.length ? prevData.map((p: any) => `Den ${p.day_number}: risk=${p.karel_risk_assessment}, decision=${p.karel_decision}, valence=${p.part_emotional_state}`).join("\n") : "Žádná"}
+PREDCHOZI HODNOCENI:
+${prevData?.length ? prevData.map((p: any) => `Den ${p.day_number}: risk=${p.karel_risk_assessment}, decision=${p.karel_decision}, valence=${p.part_emotional_state}`).join("\n") : "Zadna"}
 
-METRIKY: ${recentMetrics ? JSON.stringify(recentMetrics, null, 2).slice(0, 1500) : "Žádné"}
+METRIKY: ${recentMetrics ? JSON.stringify(recentMetrics, null, 2).slice(0, 1500) : "Zadne"}
 
-POSLEDNÍ ZPRÁVY:
-${recentMessages.length > 0 ? recentMessages.map((m: any) => `[${m.role}]: ${(typeof m.content === "string" ? m.content : "...").slice(0, 200)}`).join("\n") : "Žádné"}
+POSLEDNI ZPRAVY:
+${recentMessages.length > 0 ? recentMessages.map((m: any) => `[${m.role}]: ${(typeof m.content === "string" ? m.content : "...").slice(0, 200)}`).join("\n") : "Zadne"}
 
-POZNÁMKY TERAPEUTEK:
-${therapistNotes?.length ? therapistNotes.map((n: any) => `[${n.note_type}] ${(n.note_text || "").slice(0, 200)}`).join("\n") : "Žádné"}
+POZNAMKY TERAPEUTEK:
+${therapistNotes?.length ? therapistNotes.map((n: any) => `[${n.note_type}] ${(n.note_text || "").slice(0, 200)}`).join("\n") : "Zadne"}
 
-Proveď denní krizové hodnocení.`;
+Proved denni krizove hodnoceni.`;
 
-      const assessment = await callAI(systemPrompt, userMessage);
+      const assessment = await callAI(systemPrompt, userMessage, LOVABLE_API_KEY);
 
       // 10. Save assessment
       const { data: savedAssessment } = await supabase
@@ -211,9 +257,9 @@ Proveď denní krizové hodnocení.`;
 
       if (assessment.questions_for_hana?.length || assessment.tasks_for_hana?.length) {
         therapistTasks.push({
-          task: `[KRIZE den ${dayNumber}] Úkoly pro Haničku — ${crisis.part_name}`,
+          task: `[KRIZE den ${dayNumber}] Ukoly pro Hanicku — ${crisis.part_name}`,
           assigned_to: "hanka",
-          description: ["OTÁZKY:", ...(assessment.questions_for_hana || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "ÚKOLY:", ...(assessment.tasks_for_hana || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
+          description: ["OTAZKY:", ...(assessment.questions_for_hana || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "UKOLY:", ...(assessment.tasks_for_hana || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
           priority: "critical",
           status: "not_started",
           category: "crisis",
@@ -222,9 +268,9 @@ Proveď denní krizové hodnocení.`;
 
       if (assessment.questions_for_kata?.length || assessment.tasks_for_kata?.length) {
         therapistTasks.push({
-          task: `[KRIZE den ${dayNumber}] Úkoly pro Káťu — ${crisis.part_name}`,
+          task: `[KRIZE den ${dayNumber}] Ukoly pro Katu — ${crisis.part_name}`,
           assigned_to: "kata",
-          description: ["OTÁZKY:", ...(assessment.questions_for_kata || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "ÚKOLY:", ...(assessment.tasks_for_kata || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
+          description: ["OTAZKY:", ...(assessment.questions_for_kata || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "UKOLY:", ...(assessment.tasks_for_kata || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
           priority: "critical",
           status: "not_started",
           category: "crisis",
@@ -235,7 +281,7 @@ Proveď denní krizové hodnocení.`;
         therapistTasks.push({
           task: `[KRIZE] Test: ${test.test_name}`,
           assigned_to: "both",
-          description: `TYP: ${test.test_type}\n\n${test.description}\n\nÚČEL: ${test.purpose}`,
+          description: `TYP: ${test.test_type}\n\n${test.description}\n\nUCEL: ${test.purpose}`,
           priority: "critical",
           status: "not_started",
           category: "crisis",
@@ -246,7 +292,7 @@ Proveď denní krizové hodnocení.`;
         await supabase.from("did_therapist_tasks").insert(therapistTasks);
       }
 
-      // 12. If RESOLVED → close crisis
+      // 12. If RESOLVED -> close crisis
       if (assessment.decision === "crisis_resolved") {
         const monitoringUntil = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
         await supabase.from("crisis_alerts").update({
@@ -262,7 +308,7 @@ Proveď denní krizové hodnocení.`;
         await supabase.from("did_therapist_tasks").insert({
           task: `[POST-KRIZE] Monitoring ${crisis.part_name} do ${monitoringUntil}`,
           assigned_to: "both",
-          description: `Krize vyřešena po ${dayNumber} dnech.\n\nDůvod: ${assessment.reasoning}\n\nSLEDUJTE:\n- Emoční stabilitu\n- Případné relapsy\n- Návrat rizikových signálů\n- Monitoring do: ${monitoringUntil}`,
+          description: `Krize vyresena po ${dayNumber} dnech.\n\nDuvod: ${assessment.reasoning}\n\nSLEDUJTE:\n- Emocni stabilitu\n- Pripadne relapsy\n- Navrat rizikovych signalu\n- Monitoring do: ${monitoringUntil}`,
           priority: "high",
           status: "not_started",
           category: "crisis",
@@ -287,10 +333,10 @@ Proveď denní krizové hodnocení.`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error: any) {
-    console.error("Crisis assessment error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("Top-level crisis assessment error:", error);
+    return new Response(
+      JSON.stringify({ error: error.message, stack: error.stack }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });

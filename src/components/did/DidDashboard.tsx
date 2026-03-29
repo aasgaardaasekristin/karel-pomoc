@@ -778,12 +778,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 // ── Summary card component ──
 function SummaryCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
   return (
-    <div className="rounded-lg border p-2.5 space-y-1">
+    <div className="rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm p-2.5 space-y-1">
       <div className="flex items-center gap-1.5">
         {icon}
-        <span className="text-[10px] text-muted-foreground">{label}</span>
+        <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
-      <p className="text-lg font-bold text-foreground leading-none">{value}</p>
+      <p className="text-base font-bold text-foreground leading-none">{value}</p>
       <p className="text-[10px] text-muted-foreground">{sub}</p>
     </div>
   );
