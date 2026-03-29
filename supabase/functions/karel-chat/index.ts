@@ -1121,6 +1121,113 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           }
         }
 
+        // ═══ ASYNC CRISIS CONVERSATION ANALYSIS (fire-and-forget) ═══
+        // If the part has an active crisis, analyze each exchange for risk signals
+        if (didSubMode === "cast" && didPartName && fullResponse.length > 10) {
+          try {
+            const { createClient: createSbCrisisPost } = await import("https://esm.sh/@supabase/supabase-js@2");
+            const sbCrisisPost = createSbCrisisPost(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+            const { data: activeCrisisPost } = await sbCrisisPost
+              .from("crisis_alerts")
+              .select("id, days_in_crisis, severity, summary")
+              .eq("part_name", didPartName)
+              .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (activeCrisisPost) {
+              const lastUserMsgCrisis = (messages as any[]).filter((m: any) => m.role === "user").pop();
+              const userTextCrisis = typeof lastUserMsgCrisis?.content === "string" ? lastUserMsgCrisis.content : "";
+
+              const analysisPrompt = `Analyzuj tuto zprávu od části "${didPartName}" v kontextu aktivní krize. Identifikuj:
+
+ZPRÁVA ČÁSTI: "${userTextCrisis.slice(0, 500)}"
+ODPOVĚĎ KARLA: "${fullResponse.slice(0, 500)}"
+
+Odpověz v JSON:
+{
+  "risk_signals": ["signal1"],
+  "protective_factors": ["factor1"],
+  "emotional_indicators": {"valence": 1-10, "arousal": 1-10, "stability": 1-10},
+  "cooperation_level": "cooperative|resistant|avoidant|hostile|mixed",
+  "immediate_danger": false,
+  "test_results": [],
+  "session_notes": "stručné poznámky"
+}`;
+
+              const analysisResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "system", content: analysisPrompt },
+                    { role: "user", content: "Analyzuj." },
+                  ],
+                  temperature: 0.1,
+                  response_format: { type: "json_object" },
+                }),
+              });
+
+              if (analysisResp.ok) {
+                const analysisData = await analysisResp.json();
+                const rawContent = analysisData.choices?.[0]?.message?.content || "{}";
+                const cleaned = rawContent.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+                const analysis = JSON.parse(cleaned);
+
+                // Get last assessment id
+                const { data: lastAssessmentForSession } = await sbCrisisPost
+                  .from("crisis_daily_assessments")
+                  .select("id")
+                  .eq("crisis_alert_id", activeCrisisPost.id)
+                  .order("day_number", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                await sbCrisisPost.from("crisis_intervention_sessions").insert({
+                  crisis_alert_id: activeCrisisPost.id,
+                  assessment_id: lastAssessmentForSession?.id || null,
+                  session_type: "safety_check_in",
+                  part_name: didPartName,
+                  session_summary: analysis.session_notes,
+                  key_findings: [
+                    ...(analysis.risk_signals || []).map((s: string) => ({ type: "risk", detail: s })),
+                    ...(analysis.protective_factors || []).map((f: string) => ({ type: "protective", detail: f })),
+                  ],
+                  risk_indicators_found: analysis.risk_signals || [],
+                  protective_factors_found: analysis.protective_factors || [],
+                  session_outcome: analysis.immediate_danger ? "alarming"
+                    : (analysis.emotional_indicators?.valence || 5) < 3 ? "concerning"
+                    : (analysis.emotional_indicators?.valence || 5) >= 6 ? "positive"
+                    : "neutral",
+                  follow_up_needed: analysis.immediate_danger || (analysis.risk_signals || []).length > 0,
+                  follow_up_notes: analysis.immediate_danger ? "OKAMŽITÁ ESKALACE POTŘEBNÁ" : null,
+                });
+
+                if (analysis.immediate_danger) {
+                  await sbCrisisPost.from("safety_alerts").insert({
+                    part_name: didPartName,
+                    alert_type: "immediate_danger_during_crisis",
+                    severity: "critical",
+                    status: "new",
+                    description: `Během krizového rozhovoru detekováno okamžité nebezpečí. Signály: ${(analysis.risk_signals || []).join(", ")}`,
+                    source: "crisis_conversation",
+                  });
+                }
+
+                console.log(`[karel-chat] Crisis conversation analysis saved for ${didPartName}: danger=${analysis.immediate_danger}`);
+              }
+            }
+          } catch (crisisPostErr) {
+            console.error("[karel-chat] Crisis post-processing error (non-fatal):", crisisPostErr);
+          }
+        }
+
         // ═══ ASYNC CRISIS DETECTOR (non-blocking) ═══
         // Runs for every "cast" message — detects crisis signals in conversation
         if (didSubMode === "cast" && fullResponse.length > 10) {
