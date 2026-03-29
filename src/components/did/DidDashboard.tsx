@@ -530,7 +530,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       {/* ═══ SEKCE 2: URGENTNÍ BANNERY ═══ */}
       {/* Crisis alerts */}
       {activeCrises.length > 0 && (
-        <div className="rounded-xl border-2 border-destructive bg-destructive/10 p-3 space-y-2">
+        <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-destructive" />
             <span className="text-xs font-bold text-destructive">🔴 AKTIVNÍ KRIZE – {activeCrises.length}</span>
