@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import CrisisTherapistFeedback from "./CrisisTherapistFeedback";
 
 interface CrisisTimelineProps {
   crisisAlertId: string;
@@ -23,6 +24,10 @@ interface Assessment {
   karel_decision: string | null;
   tests_administered: any[] | null;
   next_day_plan: any;
+  therapist_hana_input: string | null;
+  therapist_hana_risk_rating: number | null;
+  therapist_kata_input: string | null;
+  therapist_kata_risk_rating: number | null;
 }
 
 const RISK_COLORS: Record<string, string> = {
@@ -43,8 +48,9 @@ const DECISION_LABELS: Record<string, { emoji: string; label: string }> = {
 const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing }: CrisisTimelineProps) => {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showFeedback, setShowFeedback] = useState<string | null>(null);
 
-  useEffect(() => {
+  const reloadAssessments = () => {
     (supabase as any)
       .from("crisis_daily_assessments")
       .select("*")
@@ -54,6 +60,10 @@ const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing 
         setAssessments(data || []);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    reloadAssessments();
   }, [crisisAlertId]);
 
   if (loading) {
@@ -115,6 +125,67 @@ const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing 
                   <p className="text-[10px] italic text-muted-foreground border-l-2 border-muted pl-2 line-clamp-2">
                     "{a.karel_reasoning}"
                   </p>
+                )}
+
+                {/* Therapist feedback buttons */}
+                <div className="flex gap-2 mt-1">
+                  {!a.therapist_hana_input ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-[10px] h-6"
+                      onClick={() => setShowFeedback(showFeedback === `${a.id}-hana` ? null : `${a.id}-hana`)}
+                    >
+                      📝 Hanička
+                    </Button>
+                  ) : (
+                    <span className="text-[10px] text-green-600 dark:text-green-400">
+                      ✅ Hanička (risk: {a.therapist_hana_risk_rating}/10)
+                    </span>
+                  )}
+
+                  {!a.therapist_kata_input ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-[10px] h-6"
+                      onClick={() => setShowFeedback(showFeedback === `${a.id}-kata` ? null : `${a.id}-kata`)}
+                    >
+                      📝 Káťa
+                    </Button>
+                  ) : (
+                    <span className="text-[10px] text-green-600 dark:text-green-400">
+                      ✅ Káťa (risk: {a.therapist_kata_risk_rating}/10)
+                    </span>
+                  )}
+                </div>
+
+                {/* Expanded feedback form */}
+                {showFeedback === `${a.id}-hana` && (
+                  <CrisisTherapistFeedback
+                    crisisAlertId={crisisAlertId}
+                    partName={partName}
+                    dayNumber={a.day_number}
+                    assessmentId={a.id}
+                    therapistName="hana"
+                    onSubmitted={() => {
+                      setShowFeedback(null);
+                      reloadAssessments();
+                    }}
+                  />
+                )}
+                {showFeedback === `${a.id}-kata` && (
+                  <CrisisTherapistFeedback
+                    crisisAlertId={crisisAlertId}
+                    partName={partName}
+                    dayNumber={a.day_number}
+                    assessmentId={a.id}
+                    therapistName="kata"
+                    onSubmitted={() => {
+                      setShowFeedback(null);
+                      reloadAssessments();
+                    }}
+                  />
                 )}
               </div>
             </div>
