@@ -525,6 +525,25 @@ Sestav kompletní denní dashboard.`;
 
     console.log(`[Dashboard] ═══ Dashboard pro ${targetDate} dokončen ═══`);
 
+    // 7. CRISIS DAILY ASSESSMENT — auto-trigger for active crises
+    try {
+      const crisisResp = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-daily-assessment`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({}),
+        }
+      );
+      const crisisData = await crisisResp.json();
+      console.log("[Dashboard] Crisis assessments:", JSON.stringify(crisisData));
+    } catch (e) {
+      console.error("[Dashboard] Crisis assessment failed:", e);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       date: targetDate,
