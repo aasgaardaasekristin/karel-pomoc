@@ -90,7 +90,7 @@ interface Props {
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-2.5 pb-1 relative after:absolute after:bottom-0 after:left-0 after:w-8 after:h-px after:bg-primary/30">
     {children}
   </h3>
 );
@@ -496,10 +496,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-2" data-no-swipe-back="true">
+    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-3" data-no-swipe-back="true">
 
       {/* ═══ SEKCE 1: REFRESH BAR ═══ */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between pb-2 border-b border-border/30">
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-muted-foreground">
             Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
@@ -530,7 +530,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       {/* ═══ SEKCE 2: URGENTNÍ BANNERY ═══ */}
       {/* Crisis alerts */}
       {activeCrises.length > 0 && (
-        <div className="rounded-xl border-2 border-destructive bg-destructive/10 p-3 space-y-2">
+        <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-destructive" />
             <span className="text-xs font-bold text-destructive">🔴 AKTIVNÍ KRIZE – {activeCrises.length}</span>
@@ -556,7 +556,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* Safety alerts banner */}
       {metrics.newAlerts > 0 && (
-        <div className={cn("rounded-lg border p-2 flex items-center gap-2 text-xs",
+        <div className={cn("rounded-xl border p-2 flex items-center gap-2 text-xs backdrop-blur-sm shadow-sm",
           metrics.criticalAlerts > 0 ? "border-destructive bg-destructive/10 text-destructive" : "border-amber-500 bg-amber-500/10 text-amber-700"
         )}>
           <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -568,7 +568,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* Proposed goals banner */}
       {proposedGoals > 0 && (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 p-2 flex items-center gap-2 text-xs text-primary">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 backdrop-blur-sm shadow-sm p-2 flex items-center gap-2 text-xs text-primary">
           <Target className="w-4 h-4 shrink-0" />
           <span className="font-medium">🎯 {proposedGoals} navrhovaných cílů čeká na schválení</span>
         </div>
@@ -576,7 +576,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* Unread therapist notes */}
       {unreadNotes > 0 && (
-        <div className="rounded-lg border border-amber-400/30 bg-amber-50 dark:bg-amber-950/20 p-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+        <div className="rounded-xl border border-amber-400/30 bg-amber-50 dark:bg-amber-950/20 backdrop-blur-sm shadow-sm p-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
           <MessageSquare className="w-4 h-4 shrink-0" />
           <span className="font-medium">📝 {unreadNotes} nepřečtených poznámek terapeutek</span>
         </div>
@@ -596,12 +596,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Části systému</SectionLabel>
           <div className="space-y-1">
             {heatmapRows.map(row => (
-              <div key={row.partName} className={cn("rounded-md border overflow-hidden cursor-pointer transition-colors", expandedPart === row.partName && "border-primary/40")} onClick={() => setExpandedPart(expandedPart === row.partName ? null : row.partName)}>
-                <div className="flex items-center gap-2 p-2 text-xs hover:bg-muted/50">
+              <div key={row.partName} className={cn("rounded-lg border border-border/40 overflow-hidden cursor-pointer bg-card/30 backdrop-blur-sm transition-colors", expandedPart === row.partName && "border-primary/40")} onClick={() => setExpandedPart(expandedPart === row.partName ? null : row.partName)}>
+                <div className="flex items-center gap-2 p-2 text-xs hover:bg-primary/5 transition-colors">
                   <span className="text-base w-6 text-center">👤</span>
                   <div className="flex-1 min-w-0">
-                    <span className="font-medium truncate">{row.partName}</span>
-                    {row.role && <span className="text-[9px] text-muted-foreground ml-1">({row.role})</span>}
+                    <span className="text-[13px] font-semibold truncate">{row.partName}</span>
+                    {row.role && <span className="text-[10px] italic text-muted-foreground ml-1">({row.role})</span>}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className={cn("w-3 h-3 rounded-full", row.valence == null ? "bg-muted" : row.valence >= 7 ? "bg-green-400" : row.valence >= 4 ? "bg-amber-400" : "bg-red-400")} />
@@ -629,14 +629,14 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Aktivní cíle</SectionLabel>
           <div className="space-y-1.5">
             {goals.slice(0, 5).map(g => (
-              <div key={g.id} className="p-2 rounded-md border text-xs space-y-1">
+              <div key={g.id} className="p-2 rounded-lg border border-border/30 bg-card/20 backdrop-blur-sm text-xs space-y-1">
                 <div className="flex items-center gap-1.5">
                   {g.partName && <Badge variant="secondary" className="text-[9px] h-4 px-1">{g.partName}</Badge>}
                   <span className="truncate flex-1">{g.goalText}</span>
                   <span className="text-[10px] text-muted-foreground font-medium">{g.progressPct}%</span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
-                  <div className={cn("h-full rounded-full transition-all", g.progressPct >= 75 ? "bg-green-500" : g.progressPct >= 40 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(100, g.progressPct)}%` }} />
+                <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
+                  <div className={cn("h-full rounded-full transition-all duration-500", g.progressPct >= 75 ? "bg-green-500" : g.progressPct >= 40 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(100, g.progressPct)}%` }} />
                 </div>
               </div>
             ))}
@@ -648,11 +648,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       {weekActivity.length > 0 && (
         <div>
           <SectionLabel>Týdenní aktivita</SectionLabel>
-          <div className="flex items-end gap-1 h-16 p-2 rounded-md border">
+          <div className="flex items-end gap-1 h-16 p-2 rounded-md border bg-card/20 backdrop-blur-sm">
             {weekActivity.map(([date, count]) => (
               <div key={date} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
                 {count > 0 && <span className="text-[8px] text-muted-foreground">{count}</span>}
-                <div className="w-full bg-primary/70 rounded-t min-h-[2px]" style={{ height: `${(count / maxWeekMsgs) * 100}%` }} />
+                <div className="w-full bg-gradient-to-t from-primary/80 to-primary/40 rounded-sm min-h-[2px]" style={{ height: `${(count / maxWeekMsgs) * 100}%` }} />
                 <span className="text-[8px] text-muted-foreground">{new Date(date + "T12:00:00").toLocaleDateString("cs", { weekday: "narrow" })}</span>
               </div>
             ))}
@@ -721,10 +721,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Dnešní switching</SectionLabel>
           <div className="space-y-1">
             {todaySwitches.map(s => (
-              <div key={s.id} className="flex items-center gap-2 p-2 rounded-md border text-xs">
+              <div key={s.id} className="flex items-center gap-2 p-2 rounded-md border text-xs bg-card/20 hover:bg-card/40 transition-colors">
                 <span className="text-[10px] text-muted-foreground">{new Date(s.createdAt).toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}</span>
                 <span className="font-medium">{s.originalPart}</span>
-                <span className="text-muted-foreground">→</span>
+                <ArrowRight className="w-3 h-3 text-muted-foreground" />
                 <span className="font-medium">{s.detectedPart}</span>
                 <Badge variant={s.confidence === "high" ? "destructive" : "secondary"} className="text-[8px] h-4 px-1 ml-auto">{s.confidence}</Badge>
               </div>
@@ -766,7 +766,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       )}
 
       {/* ═══ SEKCE 8: SYSTÉMOVÝ STAV FOOTER ═══ */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-md bg-muted/50 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-card/30 backdrop-blur-sm border border-border/30 text-[10px] text-muted-foreground">
         <span>Report: <strong className={lastReportStatus === "sent" ? "text-green-600" : lastReportStatus === "failed" ? "text-destructive" : "text-foreground"}>{lastReportStatus || "—"}</strong></span>
         <span>AI chyby dnes: <strong className={todayAiErrors > 0 ? "text-amber-600" : "text-foreground"}>{todayAiErrors}</strong></span>
         <span>Aktivní části: <strong className="text-foreground">{activePartsCount}</strong></span>
@@ -778,12 +778,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 // ── Summary card component ──
 function SummaryCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
   return (
-    <div className="rounded-lg border p-2.5 space-y-1">
+    <div className="rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm p-2.5 space-y-1">
       <div className="flex items-center gap-1.5">
         {icon}
-        <span className="text-[10px] text-muted-foreground">{label}</span>
+        <span className="text-[11px] text-muted-foreground">{label}</span>
       </div>
-      <p className="text-lg font-bold text-foreground leading-none">{value}</p>
+      <p className="text-base font-bold text-foreground leading-none">{value}</p>
       <p className="text-[10px] text-muted-foreground">{sub}</p>
     </div>
   );
