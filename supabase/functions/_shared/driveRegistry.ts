@@ -10,6 +10,16 @@ export function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
 }
 
+// ── Non-DID entity filter (therapists, not parts) ──
+const NON_DID_NORMALIZED = new Set([
+  "hanicka", "hanka", "hana",
+  "kata", "katka", "kaca",
+]);
+
+export function isNonDidEntity(name: string): boolean {
+  return NON_DID_NORMALIZED.has(normalize(name));
+}
+
 // ── Parse "PRIMARY (ALIAS1, ALIAS2)" format from Column B ──
 export function parseAliases(raw: string): { primary: string; aliases: string[] } {
   const trimmed = raw.trim();
