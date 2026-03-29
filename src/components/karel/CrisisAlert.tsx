@@ -59,6 +59,35 @@ const CrisisAlert: React.FC = () => {
   const [resolveNotes, setResolveNotes] = useState("");
   const [showResolveInput, setShowResolveInput] = useState(false);
 
+  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("dismissed_crisis_alerts");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  const handleDismissAlert = (alertId: string) => {
+    setDismissedAlertIds(prev => {
+      const next = new Set(prev).add(alertId);
+      localStorage.setItem("dismissed_crisis_alerts", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  // Re-show dismissed alerts when status changes
+  useEffect(() => {
+    const statusMap = new Map(alerts.map(a => [a.id, a.status]));
+    setDismissedAlertIds(prev => {
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of prev) {
+        if (!statusMap.has(id)) { next.delete(id); changed = true; }
+      }
+      if (changed) localStorage.setItem("dismissed_crisis_alerts", JSON.stringify([...next]));
+      return changed ? next : prev;
+    });
+  }, [alerts]);
+
   const fetchAlerts = useCallback(async () => {
     const { data } = await supabase
       .from("crisis_alerts")
