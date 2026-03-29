@@ -458,6 +458,27 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
   const maxWeekMsgs = useMemo(() => Math.max(1, ...weekActivity.map(([, c]) => c)), [weekActivity]);
 
+  const runCrisisAssessment = useCallback(async (crisisId: string) => {
+    setAssessingCrisisId(crisisId);
+    try {
+      const headers = await getAuthHeaders();
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-crisis-daily-assessment`, {
+        method: "POST", headers, body: JSON.stringify({ crisis_alert_id: crisisId, manual: true }),
+      });
+      if (!resp.ok) throw new Error(await resp.text());
+      const data = await resp.json();
+      const result = data.results?.[0];
+      if (result) {
+        toast.success(`Hodnocení den ${result.day_number}: ${result.decision} | Risk: ${result.risk_level} | ${result.tasks_created} úkolů`);
+      }
+      setRefreshTrigger(p => p + 1);
+    } catch (e: any) {
+      toast.error(`Krizové hodnocení selhalo: ${e.message}`);
+    } finally {
+      setAssessingCrisisId(null);
+    }
+  }, []);
+
   const valenceEmoji = (v: number | null) => v == null ? "⚪" : v >= 7 ? "😊" : v >= 4 ? "😐" : "😟";
 
   if (loading) {
