@@ -249,6 +249,13 @@ const CrisisAlert: React.FC = () => {
                   {!isAcknowledged && (
                     <button onClick={() => handleAcknowledge(alert)} className="bg-white text-red-700 text-xs font-bold px-3 py-1.5 rounded hover:bg-white/90 transition-colors">PŘEBÍRÁM ŘÍZENÍ</button>
                   )}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDismissAlert(alert.id); }}
+                    className="bg-white/10 hover:bg-white/20 p-1 rounded ml-auto shrink-0"
+                    title="Skrýt banner (krizový stav trvá)"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
