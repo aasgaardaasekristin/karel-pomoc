@@ -90,7 +90,7 @@ interface Props {
 }
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-2.5 pb-1 relative after:absolute after:bottom-0 after:left-0 after:w-8 after:h-px after:bg-primary/30">
     {children}
   </h3>
 );
