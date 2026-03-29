@@ -101,6 +101,23 @@ const SkeletonBlock = ({ className }: { className?: string }) => (
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+const playAlertSound = () => {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.frequency.value = 800;
+    oscillator.type = "sine";
+    gainNode.gain.value = 0.3;
+    oscillator.start();
+    setTimeout(() => { gainNode.gain.value = 0; }, 150);
+    setTimeout(() => { gainNode.gain.value = 0.3; }, 250);
+    setTimeout(() => { gainNode.gain.value = 0; oscillator.stop(); audioCtx.close(); }, 400);
+  } catch { /* Audio not available */ }
+};
+
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const navigate = useNavigate();
   const [parts, setParts] = useState<PartActivity[]>([]);
@@ -129,8 +146,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [activePartsCount, setActivePartsCount] = useState(0);
   const [expandedPart, setExpandedPart] = useState<string | null>(null);
 
-  const loadDashboardData = useCallback(async () => {
-    setLoading(true);
+  const loadDashboardData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const today = todayISO();
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
@@ -295,15 +312,76 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       console.error("Failed to load DID dashboard data:", error);
       toast.error("Nepodařilo se načíst DID dashboard");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   // Auto-refresh every 60s
   useEffect(() => { loadDashboardData(); }, [loadDashboardData, refreshTrigger]);
   useEffect(() => {
-    const interval = setInterval(() => { loadDashboardData(); }, 60000);
+    const interval = setInterval(() => { loadDashboardData(true); }, 60000);
     return () => clearInterval(interval);
+  }, [loadDashboardData]);
+
+  // ── Realtime subscriptions ──
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+
+  useEffect(() => {
+    const alertChannel = supabase
+      .channel("dashboard-safety-alerts")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "safety_alerts" }, (payload: any) => {
+        const severity = payload.new?.severity;
+        const partName = payload.new?.part_name;
+        if (severity === "critical") {
+          playAlertSound();
+          toast.error(`🚨 KRITICKÝ ALERT: ${payload.new?.alert_type} — ${partName || "neznámá část"}`, { duration: 15000 });
+        } else if (severity === "high") {
+          toast.warning(`⚠️ Vysoký alert: ${payload.new?.alert_type} — ${partName || "?"}`, { duration: 10000 });
+        }
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    const switchChannel = supabase
+      .channel("dashboard-switching")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "switching_events" }, (payload: any) => {
+        const from = payload.new?.original_part;
+        const to = payload.new?.detected_part;
+        const confidence = payload.new?.confidence;
+        if (confidence === "high" || confidence === "confirmed") {
+          toast.info(`🔄 Switching: ${from} → ${to}`, { duration: 5000 });
+        }
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    const crisisChannel = supabase
+      .channel("dashboard-crisis")
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, (payload: any) => {
+        if (payload.eventType === "INSERT") {
+          playAlertSound();
+          toast.error(`🔴 NOVÁ KRIZE: ${payload.new?.part_name || "?"} — ${payload.new?.severity || "?"}`, { duration: 20000 });
+        }
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    const notesChannel = supabase
+      .channel("dashboard-notes")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "therapist_notes" }, () => {
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    setRealtimeConnected(true);
+
+    return () => {
+      setRealtimeConnected(false);
+      supabase.removeChannel(alertChannel);
+      supabase.removeChannel(switchChannel);
+      supabase.removeChannel(crisisChannel);
+      supabase.removeChannel(notesChannel);
+    };
   }, [loadDashboardData]);
 
   // ── Action callbacks (kept from original) ──
@@ -400,9 +478,15 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       {/* ═══ SEKCE 1: REFRESH BAR ═══ */}
       <div className="flex items-center justify-between">
-        <span className="text-[10px] text-muted-foreground">
-          Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-muted-foreground">
+            Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+          <div className="flex items-center gap-1">
+            <div className={cn("w-1.5 h-1.5 rounded-full", realtimeConnected ? "bg-green-500 animate-pulse" : "bg-muted-foreground")} />
+            <span className="text-[9px] text-muted-foreground">{realtimeConnected ? "live" : "offline"}</span>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1" onClick={() => { setRefreshTrigger(p => p + 1); }}>
             <RefreshCw className="w-3 h-3" /> Obnovit
