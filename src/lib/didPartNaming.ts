@@ -12,10 +12,27 @@ const STATUS_TOKENS = new Set([
   "pozor",
 ]);
 
+/**
+ * Names that are NOT DID parts — they are therapists/team members.
+ * Normalized (lowercase, no diacritics) for case-insensitive matching.
+ */
+const NON_DID_ENTITIES = new Set([
+  "hanicka", "hanka", "hana", "hanička",
+  "kata", "katka", "kata", "káťa", "kaca", "káča",
+]);
+
 const DMYTRI_ALIASES = new Set(["dmytri", "dymi", "dymytri", "dymitri"]);
 
 export const stripDiacritics = (value: string) =>
   value.normalize("NFD").replace(DIACRITICS_REGEX, "");
+
+/**
+ * Returns true if the name belongs to a therapist/team member, NOT a DID part.
+ */
+export const isNonDidEntity = (name: string): boolean => {
+  const norm = stripDiacritics(name).toLowerCase().trim();
+  return NON_DID_ENTITIES.has(norm);
+};
 
 export const canonicalizePartAlias = (value: string) => {
   const normalized = stripDiacritics(value).toLowerCase().trim();

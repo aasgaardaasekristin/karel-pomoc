@@ -10,6 +10,16 @@ export function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "").trim();
 }
 
+// ── Non-DID entity filter (therapists, not parts) ──
+const NON_DID_NORMALIZED = new Set([
+  "hanicka", "hanka", "hana",
+  "kata", "katka", "kaca",
+]);
+
+export function isNonDidEntity(name: string): boolean {
+  return NON_DID_NORMALIZED.has(normalize(name));
+}
+
 // ── Parse "PRIMARY (ALIAS1, ALIAS2)" format from Column B ──
 export function parseAliases(raw: string): { primary: string; aliases: string[] } {
   const trimmed = raw.trim();
@@ -40,6 +50,7 @@ export function levenshtein(a: string, b: string): number {
 }
 
 // ── Score input against a single candidate (both already normalized) ──
+// Supports partial/substring matching for alias resolution
 export function scoreName(input: string, candidate: string): number {
   if (!input || !candidate) return 0;
   if (input === candidate) return 100;
@@ -51,6 +62,7 @@ export function scoreName(input: string, candidate: string): number {
     if (dist === 0) return 100;
     if (dist === 1) return 90;
     if (dist === 2 && shorter >= 4) return 75;
+    if (dist === 3 && shorter >= 6) return 65;
   }
 
   if (input.length >= 3 && candidate.length >= 3) {
@@ -191,7 +203,8 @@ export async function loadDriveRegistryEntries(token: string): Promise<DriveRegi
         status: String(row[statusCol] ?? "").trim(),
       });
     }
-    return entries;
+    // Filter out non-DID entities (therapists)
+    return entries.filter(e => !isNonDidEntity(e.primaryName));
   } catch (e) {
     console.error("[driveRegistry] Drive registry read error:", e);
     return [];

@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
 import DidDailySessionPlan from "./DidDailySessionPlan";
@@ -175,7 +176,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       setActiveCrises(crisisRes.data || []);
 
       // ── Process threads (original logic) ──
-      const threads = threadsRes.data || [];
+      const threads = (threadsRes.data || []).filter((t: any) => !isNonDidEntity(t.part_name || ""));
       const latestByPart = new Map<string, ActiveThreadSummary>();
       const partRows: PartActivity[] = [];
       const threadsByPart = new Map<string, typeof threads>();
@@ -205,8 +206,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       setActiveThreads(Array.from(latestByPart.values()));
       setPendingWriteCount(pendingWritesRes.count || 0);
 
-      // ── Registry + active parts ──
-      const registry = registryRes.data || [];
+      // ── Registry + active parts (filter out non-DID entities) ──
+      const registry = (registryRes.data || []).filter((r: any) => !isNonDidEntity(r.part_name));
       setActivePartsCount(registry.length);
 
       // ── Today metrics aggregation ──
