@@ -345,6 +345,69 @@ ${pipelineBlock ? `\n═══ PIPELINE DATA (strukturovaná mezivrstva) ══�
       }
     }
 
+    // ═══ CRISIS CONTEXT INJECTION ═══
+    // If the part has an active crisis, inject crisis context into system prompt
+    if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
+      try {
+        const { createClient: createSbCrisisCtx } = await import("https://esm.sh/@supabase/supabase-js@2");
+        const sbCrisisCtx = createSbCrisisCtx(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+        const { data: activeCrisis } = await sbCrisisCtx
+          .from("crisis_alerts")
+          .select("*")
+          .eq("part_name", didPartName)
+          .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (activeCrisis) {
+          // Load last assessment
+          const { data: lastAssessmentData } = await sbCrisisCtx
+            .from("crisis_daily_assessments")
+            .select("*")
+            .eq("crisis_alert_id", activeCrisis.id)
+            .order("day_number", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const lastAssessment = lastAssessmentData as any;
+
+          systemPrompt += `\n\n═══ ⚠️ AKTIVNÍ KRIZE — DEN ${activeCrisis.days_in_crisis || 1} ═══
+Severity: ${activeCrisis.severity}
+Popis: ${activeCrisis.summary || "?"}
+${lastAssessment ? `
+Poslední hodnocení (den ${lastAssessment.day_number}):
+- Risk: ${lastAssessment.karel_risk_assessment}
+- Rozhodnutí: ${lastAssessment.karel_decision}
+- Emoční stav: ${lastAssessment.part_emotional_state}/10
+- Spolupráce: ${lastAssessment.part_cooperation_level}
+- Reasoning: ${lastAssessment.karel_reasoning}
+` : ""}
+INSTRUKCE PRO KRIZOVÝ ROZHOVOR:
+1. Buď empatický ale strukturovaný
+2. Sleduj rizikové signály v odpovědích
+3. Používej otevřené otázky
+4. Zkoumej emoce, myšlenky a impulzy
+5. Hledej ochranné faktory
+6. Pokud část zmíní sebepoškození nebo suicidální myšlenky → OKAMŽITĚ eskaluj
+7. Na konci rozhovoru shrň pozorování
+8. Pokud máš naplánované testy, proveď je přirozeně v rámci konverzace
+
+NAPLÁNOVANÉ TESTY/AKTIVITY:
+${lastAssessment?.tests_administered ? JSON.stringify(lastAssessment.tests_administered, null, 2).slice(0, 1000) : "Žádné specifické testy"}
+
+TÉMATA PRO ZAHÁJENÍ:
+${lastAssessment?.next_day_plan?.focus_areas ? lastAssessment.next_day_plan.focus_areas.join(", ") : "Obecný check-in"}
+═══════════════════════════════════════════════════`;
+
+          console.log(`[karel-chat] Crisis context injected for ${didPartName}: severity=${activeCrisis.severity}, day=${activeCrisis.days_in_crisis}`);
+        }
+      } catch (crisisCtxErr) {
+        console.warn("[karel-chat] Crisis context injection error (non-fatal):", crisisCtxErr);
+      }
+    }
+
     // ═══ THERAPIST NOTES INJECTION ═══
     // Load unread offline observations from therapists
     if ((mode === "childcare" || effectiveMode === "kata") && didSubMode === "cast" && didPartName) {
@@ -1055,6 +1118,113 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
               },
               body: JSON.stringify({ userText, partName: didPartName }),
             }).catch(e => console.warn("[safety] check failed:", e));
+          }
+        }
+
+        // ═══ ASYNC CRISIS CONVERSATION ANALYSIS (fire-and-forget) ═══
+        // If the part has an active crisis, analyze each exchange for risk signals
+        if (didSubMode === "cast" && didPartName && fullResponse.length > 10) {
+          try {
+            const { createClient: createSbCrisisPost } = await import("https://esm.sh/@supabase/supabase-js@2");
+            const sbCrisisPost = createSbCrisisPost(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+            const { data: activeCrisisPost } = await sbCrisisPost
+              .from("crisis_alerts")
+              .select("id, days_in_crisis, severity, summary")
+              .eq("part_name", didPartName)
+              .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (activeCrisisPost) {
+              const lastUserMsgCrisis = (messages as any[]).filter((m: any) => m.role === "user").pop();
+              const userTextCrisis = typeof lastUserMsgCrisis?.content === "string" ? lastUserMsgCrisis.content : "";
+
+              const analysisPrompt = `Analyzuj tuto zprávu od části "${didPartName}" v kontextu aktivní krize. Identifikuj:
+
+ZPRÁVA ČÁSTI: "${userTextCrisis.slice(0, 500)}"
+ODPOVĚĎ KARLA: "${fullResponse.slice(0, 500)}"
+
+Odpověz v JSON:
+{
+  "risk_signals": ["signal1"],
+  "protective_factors": ["factor1"],
+  "emotional_indicators": {"valence": 1-10, "arousal": 1-10, "stability": 1-10},
+  "cooperation_level": "cooperative|resistant|avoidant|hostile|mixed",
+  "immediate_danger": false,
+  "test_results": [],
+  "session_notes": "stručné poznámky"
+}`;
+
+              const analysisResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "system", content: analysisPrompt },
+                    { role: "user", content: "Analyzuj." },
+                  ],
+                  temperature: 0.1,
+                  response_format: { type: "json_object" },
+                }),
+              });
+
+              if (analysisResp.ok) {
+                const analysisData = await analysisResp.json();
+                const rawContent = analysisData.choices?.[0]?.message?.content || "{}";
+                const cleaned = rawContent.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+                const analysis = JSON.parse(cleaned);
+
+                // Get last assessment id
+                const { data: lastAssessmentForSession } = await sbCrisisPost
+                  .from("crisis_daily_assessments")
+                  .select("id")
+                  .eq("crisis_alert_id", activeCrisisPost.id)
+                  .order("day_number", { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                await sbCrisisPost.from("crisis_intervention_sessions").insert({
+                  crisis_alert_id: activeCrisisPost.id,
+                  assessment_id: lastAssessmentForSession?.id || null,
+                  session_type: "safety_check_in",
+                  part_name: didPartName,
+                  session_summary: analysis.session_notes,
+                  key_findings: [
+                    ...(analysis.risk_signals || []).map((s: string) => ({ type: "risk", detail: s })),
+                    ...(analysis.protective_factors || []).map((f: string) => ({ type: "protective", detail: f })),
+                  ],
+                  risk_indicators_found: analysis.risk_signals || [],
+                  protective_factors_found: analysis.protective_factors || [],
+                  session_outcome: analysis.immediate_danger ? "alarming"
+                    : (analysis.emotional_indicators?.valence || 5) < 3 ? "concerning"
+                    : (analysis.emotional_indicators?.valence || 5) >= 6 ? "positive"
+                    : "neutral",
+                  follow_up_needed: analysis.immediate_danger || (analysis.risk_signals || []).length > 0,
+                  follow_up_notes: analysis.immediate_danger ? "OKAMŽITÁ ESKALACE POTŘEBNÁ" : null,
+                });
+
+                if (analysis.immediate_danger) {
+                  await sbCrisisPost.from("safety_alerts").insert({
+                    part_name: didPartName,
+                    alert_type: "immediate_danger_during_crisis",
+                    severity: "critical",
+                    status: "new",
+                    description: `Během krizového rozhovoru detekováno okamžité nebezpečí. Signály: ${(analysis.risk_signals || []).join(", ")}`,
+                    source: "crisis_conversation",
+                  });
+                }
+
+                console.log(`[karel-chat] Crisis conversation analysis saved for ${didPartName}: danger=${analysis.immediate_danger}`);
+              }
+            }
+          } catch (crisisPostErr) {
+            console.error("[karel-chat] Crisis post-processing error (non-fatal):", crisisPostErr);
           }
         }
 

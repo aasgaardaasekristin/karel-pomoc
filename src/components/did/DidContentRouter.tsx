@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
@@ -195,6 +195,27 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
       }
     };
   }, [didStorageKey]);
+
+  // ═══ CRISIS INDICATOR STATE ═══
+  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string; days_in_crisis: number; summary: string } | null>(null);
+
+  useEffect(() => {
+    if (didSubMode !== "cast" || !activeThread?.partName) {
+      setActiveCrisisBanner(null);
+      return;
+    }
+    (supabase as any)
+      .from("crisis_alerts")
+      .select("severity, days_in_crisis, summary")
+      .eq("part_name", activeThread.partName)
+      .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        setActiveCrisisBanner(data || null);
+      });
+  }, [didSubMode, activeThread?.partName]);
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {
@@ -603,6 +624,18 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
                   </button>
                 }
               />
+            </div>
+          )}
+          {/* Crisis indicator banner */}
+          {activeCrisisBanner && didSubMode === "cast" && (
+            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 flex items-center gap-2 text-xs">
+              <span className="text-destructive font-bold">🔴 KRIZOVÝ REŽIM</span>
+              <span className="text-destructive/80">
+                Den {activeCrisisBanner.days_in_crisis || 1} — {activeCrisisBanner.severity}
+              </span>
+              <span className="text-muted-foreground ml-auto text-[10px]">
+                Karel sleduje rizikové signály
+              </span>
             </div>
           )}
           {messages.map((message, index) => (
