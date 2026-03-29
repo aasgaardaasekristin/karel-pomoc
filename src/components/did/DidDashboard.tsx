@@ -129,8 +129,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [activePartsCount, setActivePartsCount] = useState(0);
   const [expandedPart, setExpandedPart] = useState<string | null>(null);
 
-  const loadDashboardData = useCallback(async () => {
-    setLoading(true);
+  const loadDashboardData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const today = todayISO();
       const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
