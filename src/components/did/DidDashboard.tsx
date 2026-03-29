@@ -127,6 +127,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [lastReportStatus, setLastReportStatus] = useState<string | null>(null);
   const [todayAiErrors, setTodayAiErrors] = useState(0);
   const [activePartsCount, setActivePartsCount] = useState(0);
+  const [expandedPart, setExpandedPart] = useState<string | null>(null);
 
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
