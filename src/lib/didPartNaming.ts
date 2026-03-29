@@ -12,6 +12,15 @@ const STATUS_TOKENS = new Set([
   "pozor",
 ]);
 
+/**
+ * Names that are NOT DID parts — they are therapists/team members.
+ * Normalized (lowercase, no diacritics) for case-insensitive matching.
+ */
+const NON_DID_ENTITIES = new Set([
+  "hanicka", "hanka", "hana", "hanička",
+  "kata", "katka", "kata", "káťa", "kaca", "káča",
+]);
+
 const DMYTRI_ALIASES = new Set(["dmytri", "dymi", "dymytri", "dymitri"]);
 
 export const stripDiacritics = (value: string) =>
