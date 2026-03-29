@@ -302,8 +302,69 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   // Auto-refresh every 60s
   useEffect(() => { loadDashboardData(); }, [loadDashboardData, refreshTrigger]);
   useEffect(() => {
-    const interval = setInterval(() => { loadDashboardData(); }, 60000);
+    const interval = setInterval(() => { loadDashboardData(true); }, 60000);
     return () => clearInterval(interval);
+  }, [loadDashboardData]);
+
+  // ── Realtime subscriptions ──
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+
+  useEffect(() => {
+    const alertChannel = supabase
+      .channel("dashboard-safety-alerts")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "safety_alerts" }, (payload: any) => {
+        const severity = payload.new?.severity;
+        const partName = payload.new?.part_name;
+        if (severity === "critical") {
+          playAlertSound();
+          toast.error(`🚨 KRITICKÝ ALERT: ${payload.new?.alert_type} — ${partName || "neznámá část"}`, { duration: 15000 });
+        } else if (severity === "high") {
+          toast.warning(`⚠️ Vysoký alert: ${payload.new?.alert_type} — ${partName || "?"}`, { duration: 10000 });
+        }
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    const switchChannel = supabase
+      .channel("dashboard-switching")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "switching_events" }, (payload: any) => {
+        const from = payload.new?.original_part;
+        const to = payload.new?.detected_part;
+        const confidence = payload.new?.confidence;
+        if (confidence === "high" || confidence === "confirmed") {
+          toast.info(`🔄 Switching: ${from} → ${to}`, { duration: 5000 });
+        }
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    const crisisChannel = supabase
+      .channel("dashboard-crisis")
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, (payload: any) => {
+        if (payload.eventType === "INSERT") {
+          playAlertSound();
+          toast.error(`🔴 NOVÁ KRIZE: ${payload.new?.part_name || "?"} — ${payload.new?.severity || "?"}`, { duration: 20000 });
+        }
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    const notesChannel = supabase
+      .channel("dashboard-notes")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "therapist_notes" }, () => {
+        loadDashboardData(true);
+      })
+      .subscribe();
+
+    setRealtimeConnected(true);
+
+    return () => {
+      setRealtimeConnected(false);
+      supabase.removeChannel(alertChannel);
+      supabase.removeChannel(switchChannel);
+      supabase.removeChannel(crisisChannel);
+      supabase.removeChannel(notesChannel);
+    };
   }, [loadDashboardData]);
 
   // ── Action callbacks (kept from original) ──

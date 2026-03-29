@@ -32,7 +32,7 @@ const App = () => (
       <ThemeProvider>
       <ChatProvider>
         <Toaster />
-        <Sonner />
+        <Sonner position="top-right" richColors closeButton />
         <BrowserRouter>
           <CrisisAlert />
           <MobileSwipeBack />
