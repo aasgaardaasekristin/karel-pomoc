@@ -22,6 +22,7 @@ import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
+import PartQuickView from "./PartQuickView";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
@@ -126,6 +127,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [lastReportStatus, setLastReportStatus] = useState<string | null>(null);
   const [todayAiErrors, setTodayAiErrors] = useState(0);
   const [activePartsCount, setActivePartsCount] = useState(0);
+  const [expandedPart, setExpandedPart] = useState<string | null>(null);
 
   const loadDashboardData = useCallback(async () => {
     setLoading(true);
@@ -482,22 +484,27 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <SectionLabel>Části systému</SectionLabel>
           <div className="space-y-1">
             {heatmapRows.map(row => (
-              <div key={row.partName} className="flex items-center gap-2 p-2 rounded-md border text-xs">
-                <span className="text-base w-6 text-center">👤</span>
-                <div className="flex-1 min-w-0">
-                  <span className="font-medium truncate">{row.partName}</span>
-                  {row.role && <span className="text-[9px] text-muted-foreground ml-1">({row.role})</span>}
+              <div key={row.partName} className={cn("rounded-md border overflow-hidden cursor-pointer transition-colors", expandedPart === row.partName && "border-primary/40")} onClick={() => setExpandedPart(expandedPart === row.partName ? null : row.partName)}>
+                <div className="flex items-center gap-2 p-2 text-xs hover:bg-muted/50">
+                  <span className="text-base w-6 text-center">👤</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium truncate">{row.partName}</span>
+                    {row.role && <span className="text-[9px] text-muted-foreground ml-1">({row.role})</span>}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className={cn("w-3 h-3 rounded-full", row.valence == null ? "bg-muted" : row.valence >= 7 ? "bg-green-400" : row.valence >= 4 ? "bg-amber-400" : "bg-red-400")} />
+                    {row.trendArrow && (
+                      <span className={cn("text-xs font-bold", row.trendArrow === "↗" && "text-green-600", row.trendArrow === "↘" && "text-red-600", row.trendArrow === "→" && "text-muted-foreground")}>{row.trendArrow}</span>
+                    )}
+                    <span className="text-[10px] text-muted-foreground">{row.msgCount}💬</span>
+                    {row.goalCount > 0 && <span className="text-[10px]">🎯{row.goalCount}</span>}
+                    {row.alertCount > 0 && <Badge variant="destructive" className="text-[8px] h-3.5 px-1">⚠️{row.alertCount}</Badge>}
+                    {row.switchCount > 0 && <span className="text-[10px] text-amber-500">🔄{row.switchCount}</span>}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={cn("w-3 h-3 rounded-full", row.valence == null ? "bg-muted" : row.valence >= 7 ? "bg-green-400" : row.valence >= 4 ? "bg-amber-400" : "bg-red-400")} />
-                  {row.trendArrow && (
-                    <span className={cn("text-xs font-bold", row.trendArrow === "↗" && "text-green-600", row.trendArrow === "↘" && "text-red-600", row.trendArrow === "→" && "text-muted-foreground")}>{row.trendArrow}</span>
-                  )}
-                  <span className="text-[10px] text-muted-foreground">{row.msgCount}💬</span>
-                  {row.goalCount > 0 && <span className="text-[10px]">🎯{row.goalCount}</span>}
-                  {row.alertCount > 0 && <Badge variant="destructive" className="text-[8px] h-3.5 px-1">⚠️{row.alertCount}</Badge>}
-                  {row.switchCount > 0 && <span className="text-[10px] text-amber-500">🔄{row.switchCount}</span>}
-                </div>
+                {expandedPart === row.partName && (
+                  <PartQuickView partName={row.partName} onClose={() => setExpandedPart(null)} />
+                )}
               </div>
             ))}
           </div>
