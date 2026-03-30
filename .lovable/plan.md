@@ -1,28 +1,85 @@
 
 
-## Oprava: "Dokument bez názvu" a nefunkční týdenní aktivita
+## F15 — Systémová pravidla a oprava denního briefingu
 
-### Problém 1: "Dokument bez názvu"
-Toto se zobrazuje jako titulek stránky v prohlížeči — `index.html` má `<title>Lovable App</title>`, ale uživatel pravděpodobně vidí "Dokument bez názvu" jako text v dashboardu pocházející z thread_label fallbacku v jiné komponentě, nebo z Google Drive dat zobrazených v přehledu. Potřebuji ověřit screenshotem, co přesně uživatel vidí.
+### Přehled
 
-**Akce:** Změnit `<title>` na "Karel — DID Asistent" a prověřit, zda se "bez názvu" zobrazuje někde v UI dashboardu.
+Vytvoření sdíleného souboru `system-rules.ts` s tvrdými pravidly pro Karla, úprava denního dashboardu na dva separátní briefingy, a injekce pravidel do všech klíčových edge funkcí.
 
-### Problém 2: Týdenní aktivita — prázdný graf
-Sekce 6 (ř. 648-661) zobrazuje sloupce na základě `daily_metrics`. Pokud tabulka nemá data (což je pravděpodobné — metrika se plní edge funkcí `compute-daily-metrics`), zobrazí se jen prázdné sloupce s písmenky PÚSČPSN a nic užitečného.
+---
 
-**Akce:**
-1. Pokud `weekActivity` má VŠECHNY hodnoty 0 → **skryj celou sekci** (stejně jako heatmapa se skrývá při `length === 0`)
-2. Alternativně: spadni na počítání zpráv z `did_threads` místo `daily_metrics`, aby graf měl reálná data
+### Soubor 1: `supabase/functions/_shared/system-rules.ts` (NOVÝ)
 
-### Plán změn
+Vytvoří se nový soubor obsahující:
+- `SYSTEM_RULES` — kompletní konstanta s 7 pravidly (role v týmu, dva briefingy, oddělení terapie od koordinace, Locík = pes, aktivní vs neaktivní části, deduplikace, formát briefingu)
+- `KNOWN_NON_PARTS` — pole řetězců (Locík variace)
+- `isKnownNonPart(name)` — case-insensitive helper funkce
 
-**Soubor 1: `index.html`**
-- Změnit `<title>` na "Karel — DID Asistent"
+Přesný obsah dle zadání.
 
-**Soubor 2: `src/components/did/DidDashboard.tsx`**
-- Sekce 6: přidat podmínku `weekActivity.some(([, c]) => c > 0)` — pokud jsou všechny hodnoty 0, sekci nezobrazovat
-- Alternativně: fallback na počítání zpráv z threadů pokud daily_metrics nemá data
+---
 
-**Soubor 3: Ověření "dokument bez názvu"**
-- Prověřit screenshot, co konkrétně uživatel vidí — jestli jde o titulek stránky, nebo obsah generovaný AI (z thread_label fallbacku)
+### Soubor 2: `supabase/functions/karel-daily-dashboard/index.ts`
+
+**A) Import** — přidat `import { SYSTEM_RULES, isKnownNonPart } from "../_shared/system-rules.ts";`
+
+**B) Deduplikační helper** — přidat `deduplicateTasks()` funkci před handler
+
+**C) Filtrace aktivních částí** — v `fetchActiveParts24h` odfiltrovat entity kde `isKnownNonPart(t.part_name)` vrací true
+
+**D) Filtrace úkolů** — v `fetchTasksData` odfiltrovat non-part entity
+
+**E) Dva separátní briefingy** — hlavní změna v handleru (řádky ~448-500):
+- Místo jednoho AI volání se provedou DVĚ volání:
+  1. `SYSTEM_RULES + briefing pro Haničku prompt + briefingContext` → `hanaBriefing`
+  2. `SYSTEM_RULES + briefing pro Káťu prompt + briefingContext` → `kataBriefing`
+- Spojený výstup: `aiContent = "# BRIEFING PRO HANIČKU\n\n" + hanaBriefing + "\n\n---\n\n# BRIEFING PRO KÁŤU\n\n" + kataBriefing`
+- `appData` se extrahuje z obou briefinků (JSON bloky)
+
+**F) Uložení** — do Drive se uloží spojený markdown; `applyAppUpdates` zpracuje tasky z obou briefinků
+
+---
+
+### Soubor 3: `supabase/functions/karel-chat/index.ts`
+
+**A) Import** — přidat `import { SYSTEM_RULES } from "../_shared/system-rules.ts";`
+
+**B) Injekce** — na řádku 193 změnit:
+```typescript
+// Před:
+systemPrompt = DID_MASTER_PROMPT + "\n\n" + systemPrompt;
+// Po:
+systemPrompt = SYSTEM_RULES + "\n\n" + DID_MASTER_PROMPT + "\n\n" + systemPrompt;
+```
+
+---
+
+### Soubor 4: `supabase/functions/karel-crisis-daily-assessment/index.ts`
+
+**A) Import** — přidat `import { SYSTEM_RULES } from "../_shared/system-rules.ts";`
+
+**B) Injekce** — v callAI volání na řádku ~153 přidat SYSTEM_RULES na začátek systemPrompt:
+```typescript
+const fullSystemPrompt = SYSTEM_RULES + "\n\n" + systemPrompt;
+const assessment = await callAI(fullSystemPrompt, userMessage, LOVABLE_API_KEY);
+```
+
+---
+
+### Deployment
+
+Po implementaci deploy tří edge funkcí:
+1. `karel-chat`
+2. `karel-daily-dashboard`
+3. `karel-crisis-daily-assessment`
+
+---
+
+### Technické detaily
+
+- `SYSTEM_RULES` se vždy předřazuje PŘED vše ostatní (je to "ústavní zákon" systému)
+- Pořadí v karel-chat: `SYSTEM_RULES → DID_MASTER_PROMPT → contextual prompt`
+- Deduplikace úkolů: klíč = `assigned_to|part_name|first30chars`
+- Filtr neaktivních částí: dashboard prompt již obsahuje instrukci; fyzický filtr v `fetchActiveParts24h` odstraní non-part entity
+- Žádná existující logika se nemaže — pouze přidání importů, pravidel a rozdělení AI volání
 
