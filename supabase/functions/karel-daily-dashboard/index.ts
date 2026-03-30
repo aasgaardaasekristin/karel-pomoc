@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { SYSTEM_RULES, isKnownNonPart, deduplicateTasks } from "../_shared/system-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -103,7 +104,11 @@ async function fetchActiveParts24h(supabase: ReturnType<typeof createClient>): P
 
     if (error || !data?.length) return "(žádná aktivita)";
 
-    return data.map((t: any) => {
+    const filtered = data.filter((t: any) => !isKnownNonPart(t.part_name || ""));
+
+    if (!filtered.length) return "(žádná aktivita)";
+
+    return filtered.map((t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       const userMsgs = msgs.filter((m: any) => m.role === "user").length;
       return `- **${t.part_name}** (${t.thread_label || "bez názvu"}): ${userMsgs} zpráv, posl. aktivita ${t.last_activity_at}`;
@@ -445,70 +450,88 @@ Sestav kompletní denní dashboard.`;
 
     console.log(`[Dashboard] Data sebrána. Prompt ~${userPrompt.length} chars. Volám AI...`);
 
-    // 3. CALL AI (with retry)
-    let aiContent = "";
-    let lastError = "";
+    // 3. CALL AI — TWO SEPARATE BRIEFINGS
+    const callBriefingAI = async (therapistPrompt: string, userMsg: string): Promise<string> => {
+      let content = "";
+      let lastErr = "";
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                { role: "system", content: therapistPrompt },
+                { role: "user", content: userMsg },
+              ],
+              temperature: 0.3,
+            }),
+          });
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: effectiveSystemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            temperature: 0.3,
-          }),
-        });
-
-        if (!aiResponse.ok) {
-          const errText = await aiResponse.text();
-          lastError = `AI error ${aiResponse.status}: ${errText}`;
-          console.warn(`[Dashboard] Attempt ${attempt}/3: ${lastError}`);
-
-          if (aiResponse.status === 429) {
-            return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-              status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
-          }
-          if (aiResponse.status === 402) {
-            return new Response(JSON.stringify({ error: "Payment required" }), {
-              status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-            });
+          if (!aiResponse.ok) {
+            const errText = await aiResponse.text();
+            lastErr = `AI error ${aiResponse.status}: ${errText}`;
+            console.warn(`[Dashboard] Attempt ${attempt}/3: ${lastErr}`);
+            if (aiResponse.status === 429 || aiResponse.status === 402) {
+              throw new Error(lastErr);
+            }
+            if (attempt < 3) { await new Promise(r => setTimeout(r, 3000)); continue; }
+            throw new Error(lastErr);
           }
 
+          const aiData = await aiResponse.json();
+          content = aiData.choices?.[0]?.message?.content ?? "";
+          break;
+        } catch (e) {
+          lastErr = String(e);
           if (attempt < 3) { await new Promise(r => setTimeout(r, 3000)); continue; }
-          throw new Error(lastError);
         }
-
-        const aiData = await aiResponse.json();
-        aiContent = aiData.choices?.[0]?.message?.content ?? "";
-        break;
-      } catch (e) {
-        lastError = String(e);
-        if (attempt < 3) { await new Promise(r => setTimeout(r, 3000)); continue; }
       }
+      return content;
+    };
+
+    const hanaSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + "\n\nGenerujes DENNI BRIEFING pro terapeutku HANICKU.\nZahrn POUZE ukoly prirazene Hanicce nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Katu.\nNERIKEJ Hanicce aby koordinovala Katu — to je TVOJE prace.";
+    const kataSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + "\n\nGenerujes DENNI BRIEFING pro terapeutku KATU.\nZahrn POUZE ukoly prirazene Kate nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Hanicku.\nPokud ma Kata zpozdene ukoly, upozorni JI PRIMO — neposilej upozorneni pres Hanicku.";
+
+    console.log("[Dashboard] Generuji dva separátní briefingy...");
+    const [hanaBriefing, kataBriefing] = await Promise.all([
+      callBriefingAI(hanaSystemPrompt, userPrompt + "\n\nVygeneruj briefing pro Hanicku."),
+      callBriefingAI(kataSystemPrompt, userPrompt + "\n\nVygeneruj briefing pro Katu."),
+    ]);
+
+    if (!hanaBriefing && !kataBriefing) {
+      throw new Error("Both briefings failed to generate");
     }
 
-    if (!aiContent) {
-      throw new Error(`All 3 attempts failed: ${lastError}`);
-    }
+    const aiContent = "# BRIEFING PRO HANIČKU\n\n" + (hanaBriefing || "(nepodařilo se vygenerovat)") + "\n\n---\n\n# BRIEFING PRO KÁŤU\n\n" + (kataBriefing || "(nepodařilo se vygenerovat)");
 
-    // 4. EXTRACT APP DATA from section 8
+    // 4. EXTRACT APP DATA from both briefings
     let appData: any = null;
     const jsonMatch = aiContent.match(/```json\s*([\s\S]*?)```/);
     if (jsonMatch) {
       try {
         appData = JSON.parse(jsonMatch[1].trim());
       } catch {
-        console.warn("[Dashboard] Failed to parse app data JSON from section 8");
+        console.warn("[Dashboard] Failed to parse app data JSON");
       }
+    }
+    // Try second briefing if first had no JSON
+    if (!appData) {
+      const jsonMatch2 = kataBriefing.match(/```json\s*([\s\S]*?)```/);
+      if (jsonMatch2) {
+        try {
+          const appData2 = JSON.parse(jsonMatch2[1].trim());
+          appData = appData2;
+        } catch { /* ignore */ }
+      }
+    }
+    // Deduplicate tasks if found
+    if (appData?.todayTasks) {
+      appData.todayTasks = deduplicateTasks(appData.todayTasks);
     }
 
     console.log(`[Dashboard] AI vygenerováno: ${aiContent.length} chars, appData: ${appData ? "yes" : "no"}`);
