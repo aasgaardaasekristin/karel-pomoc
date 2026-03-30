@@ -191,7 +191,7 @@ serve(async (req) => {
 
     // ═══ DID MASTER PROMPT INJECTION ═══
     if (mode === "childcare" || effectiveMode === "kata") {
-      systemPrompt = DID_MASTER_PROMPT + "\n\n" + systemPrompt;
+      systemPrompt = SYSTEM_RULES + "\n\n" + DID_MASTER_PROMPT + "\n\n" + systemPrompt;
     }
 
     // ═══ DID DAILY CONTEXT INJECTION ═══

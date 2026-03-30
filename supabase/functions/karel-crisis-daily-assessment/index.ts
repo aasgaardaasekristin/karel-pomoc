@@ -230,7 +230,8 @@ ${therapistNotes?.length ? therapistNotes.map((n: any) => `[${n.note_type}] ${(n
 
 Proved denni krizove hodnoceni.`;
 
-      const assessment = await callAI(systemPrompt, userMessage, LOVABLE_API_KEY);
+      const fullSystemPrompt = SYSTEM_RULES + "\n\n" + systemPrompt;
+      const assessment = await callAI(fullSystemPrompt, userMessage, LOVABLE_API_KEY);
 
       // 10. Save assessment
       const { data: savedAssessment } = await supabase
