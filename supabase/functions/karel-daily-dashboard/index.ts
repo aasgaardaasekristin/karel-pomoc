@@ -104,7 +104,11 @@ async function fetchActiveParts24h(supabase: ReturnType<typeof createClient>): P
 
     if (error || !data?.length) return "(žádná aktivita)";
 
-    return data.map((t: any) => {
+    const filtered = data.filter((t: any) => !isKnownNonPart(t.part_name || ""));
+
+    if (!filtered.length) return "(žádná aktivita)";
+
+    return filtered.map((t: any) => {
       const msgs = Array.isArray(t.messages) ? t.messages : [];
       const userMsgs = msgs.filter((m: any) => m.role === "user").length;
       return `- **${t.part_name}** (${t.thread_label || "bez názvu"}): ${userMsgs} zpráv, posl. aktivita ${t.last_activity_at}`;
