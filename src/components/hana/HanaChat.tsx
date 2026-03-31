@@ -21,6 +21,7 @@ import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useAuthReady } from "@/hooks/useAuthReady";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -61,12 +62,17 @@ const HanaChatInner = () => {
   const [archiveSummaries, setArchiveSummaries] = useState<{ id: string; summary: string; created_at: string }[]>([]);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [spravaOpen, setSpravaOpen] = useState(false);
+  const { isAuthReady, session, authEventCount } = useAuthReady();
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const audioRecorder = useAudioRecorder();
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
   const lastSavedRef = useRef<string>("");
+
+  useEffect(() => {
+    console.warn(`[F15-debug] Auth state: ready=${isAuthReady}, session=${session ? "exists" : "null"}`);
+  }, [isAuthReady, session]);
 
   const persistConversation = useCallback(async (
     targetConversationId: string | null,
@@ -133,14 +139,20 @@ const HanaChatInner = () => {
     return () => { setLocalMode(null); restoreGlobalTheme(); };
   }, [hanaStorageKey]);
 
-  // Load or create active conversation (always start with clean canvas - no messages shown)
   useEffect(() => {
-    const loadActiveConversation = async () => {
-      try {
-        // Wait for auth session to be available before querying RLS-protected table
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return; // will retry via onAuthStateChange
+    const loadActiveConversation = async (trigger: "mount" | "auth_event" | "retry") => {
+      console.warn(`[F15-debug] Fetch triggered: authReady=${isAuthReady}, trigger=${trigger}`);
 
+      if (!isAuthReady) return;
+
+      if (!session) {
+        setConversationId(null);
+        setMessages([]);
+        setChatStarted(false);
+        return;
+      }
+
+      try {
         const { data } = await supabase
           .from("karel_hana_conversations")
           .select("id, messages")
@@ -148,6 +160,8 @@ const HanaChatInner = () => {
           .order("last_activity_at", { ascending: false })
           .limit(1)
           .maybeSingle();
+
+        console.warn(`[F15-debug] Fetch result: rows=${data ? 1 : 0}, sessionExists=${session ? "true" : "false"}`);
 
         // Archive any active thread with content
         if (data && Array.isArray(data.messages) && data.messages.length > 1) {
@@ -166,17 +180,8 @@ const HanaChatInner = () => {
       }
     };
 
-    loadActiveConversation();
-
-    // Retry when auth session becomes available (fixes cold-load race condition)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        loadActiveConversation();
-      }
-    });
-
-    return () => { subscription.unsubscribe(); };
-  }, []);
+    void loadActiveConversation(authEventCount > 0 ? "auth_event" : "mount");
+  }, [isAuthReady, session, authEventCount]);
 
   // ═══ Auto-trigger context prime on mount and new thread ═══
   const runContextPrime = useCallback(async (silent = true) => {
@@ -211,8 +216,9 @@ const HanaChatInner = () => {
     return () => clearTimeout(timer);
   }, [runContextPrime]);
 
-  // Fetch archived episodes count
   useEffect(() => {
+    if (!isAuthReady || !session) return;
+
     const fetchArchiveStats = async () => {
       try {
         const { count } = await supabase
@@ -224,8 +230,8 @@ const HanaChatInner = () => {
         console.warn("Failed to fetch archive stats:", e);
       }
     };
-    fetchArchiveStats();
-  }, []);
+    void fetchArchiveStats();
+  }, [isAuthReady, session]);
 
   const loadArchiveSummaries = useCallback(async () => {
     try {
