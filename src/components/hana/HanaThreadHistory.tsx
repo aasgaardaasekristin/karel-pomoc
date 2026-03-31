@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { History, Trash2, MessageCircle, Plus, Database, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuthReady } from "@/hooks/useAuthReady";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,8 +56,23 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
   const [isOpen, setIsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<HanaThread | null>(null);
   const [isMirroring, setIsMirroring] = useState(false);
+  const [hasFetchedThreads, setHasFetchedThreads] = useState(false);
+  const { isAuthReady, session, authEventCount } = useAuthReady();
 
-  const fetchThreads = useCallback(async () => {
+  useEffect(() => {
+    console.warn(`[F15-debug] Auth state: ready=${isAuthReady}, session=${session ? "exists" : "null"}`);
+  }, [isAuthReady, session]);
+
+  const fetchThreads = useCallback(async (trigger: "mount" | "auth_event" | "retry") => {
+    console.warn(`[F15-debug] Fetch triggered: authReady=${isAuthReady}, trigger=${trigger}`);
+
+    if (!isAuthReady) return;
+
+    if (!session) {
+      setHasFetchedThreads(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from("karel_hana_conversations")
       .select("id, messages, is_active, last_activity_at, started_at")
@@ -68,7 +84,10 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
       return;
     }
 
+    console.warn(`[F15-debug] Fetch result: rows=${data?.length ?? 0}, sessionExists=${session ? "true" : "false"}`);
+
     if (data) {
+      setHasFetchedThreads(true);
       setThreads(data.map(r => ({
         id: r.id,
         messages: (r.messages ?? []) as { role: string; content: string }[],
@@ -77,39 +96,37 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
         startedAt: r.started_at,
       })));
     }
-  }, []);
+  }, [isAuthReady, session]);
 
-  // Always fetch on open
   useEffect(() => {
-    if (isOpen) fetchThreads();
-  }, [isOpen, fetchThreads]);
+    if (!isOpen || !isAuthReady || !session) return;
+    void fetchThreads("retry");
+  }, [isOpen, isAuthReady, session, fetchThreads]);
 
-  // Realtime subscription - ALWAYS active for cross-device sync
   useEffect(() => {
-    // Initial fetch so threads are ready before panel opens
-    fetchThreads();
+    if (!isAuthReady) return;
 
-    // Re-fetch when auth session is restored (fixes race condition on cold load)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        fetchThreads();
-      }
-    });
+    if (!session) {
+      setThreads([]);
+      setHasFetchedThreads(false);
+      return;
+    }
+
+    void fetchThreads(authEventCount > 0 ? "auth_event" : "mount");
 
     const channel = supabase
-      .channel("hana_threads_realtime")
+      .channel(`hana_threads_realtime_${authEventCount}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "karel_hana_conversations" },
-        () => { fetchThreads(); }
+        () => { void fetchThreads("retry"); }
       )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
       supabase.removeChannel(channel);
     };
-  }, [fetchThreads]);
+  }, [isAuthReady, session, authEventCount, fetchThreads]);
 
   const handleDeleteClick = (e: React.MouseEvent, thread: HanaThread) => {
     e.stopPropagation();
@@ -192,7 +209,11 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
               </div>
             </div>
 
-            {meaningfulThreads.length === 0 ? (
+            {!isAuthReady || (session && !hasFetchedThreads) ? (
+              <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground text-center">
+                Načítám vlákna…
+              </div>
+            ) : meaningfulThreads.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground text-center">
                 Zatím žádná vlákna. Začni novou konverzaci.
               </div>

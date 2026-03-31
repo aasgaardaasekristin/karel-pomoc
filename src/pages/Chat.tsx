@@ -44,6 +44,7 @@ import { useManualUpdate } from "@/hooks/useManualUpdate";
 import DidContentRouter from "@/components/did/DidContentRouter";
 import TherapistAvatarBar from "@/components/did/TherapistAvatarBar";
 import { ThemeStorageKeyProvider } from "@/contexts/ThemeStorageKeyContext";
+import { useAuthReady } from "@/hooks/useAuthReady";
 import {
   type ConversationMode, type HubSection, type DidFlowState, type ResearchFlowState,
   STORAGE_KEY_PREFIX, ACTIVE_MODE_KEY, DID_DOCS_LOADED_KEY, DID_SESSION_ID_KEY, HANA_PIN_KEY, HANA_PIN_ACCESS_TOKEN_KEY,
@@ -64,6 +65,8 @@ const LoadingSkeleton = () => (
     </div>
   </div>
 );
+
+const HANA_PIN_ACCESS_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 const Chat = () => {
   const {
@@ -231,10 +234,30 @@ const Chat = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const navigate = useNavigate();
   const [authChecked, setAuthChecked] = useState(false);
+  const { isAuthReady, session } = useAuthReady();
 
   useEffect(() => {
+    console.warn(`[F15-debug] Auth state: ready=${isAuthReady}, session=${session ? "exists" : "null"}`);
+  }, [isAuthReady, session]);
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    const hasValidHanaPinToken = () => {
+      try {
+        const rawToken = sessionStorage.getItem(HANA_PIN_ACCESS_TOKEN_KEY);
+        if (!rawToken) return false;
+
+        const issuedAt = Number(rawToken);
+        if (!Number.isFinite(issuedAt)) return false;
+
+        return Date.now() - issuedAt < HANA_PIN_ACCESS_TOKEN_TTL_MS;
+      } catch {
+        return false;
+      }
+    };
+
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
       if (!session) navigate("/", { replace: true });
       else {
         if (!hubSection && !activeSession) {
@@ -244,12 +267,12 @@ const Chat = () => {
         if (hubSection === "hana") {
           try {
             const hasVerifiedPin = sessionStorage.getItem(HANA_PIN_KEY) === "1";
-            const hasFreshAccessToken = Boolean(sessionStorage.getItem(HANA_PIN_ACCESS_TOKEN_KEY));
+            const hasFreshAccessToken = hasValidHanaPinToken();
+            console.warn(`[F15-debug] Hana gate: pinToken=${hasFreshAccessToken ? "exists" : "null"}, supabaseSession=${session ? "exists" : "null"}`);
             if (!hasVerifiedPin || !hasFreshAccessToken) {
               navigate("/hub", { replace: true });
               return;
             }
-            sessionStorage.removeItem(HANA_PIN_ACCESS_TOKEN_KEY);
           } catch {
             navigate("/hub", { replace: true });
             return;
@@ -266,12 +289,14 @@ const Chat = () => {
         setAuthChecked(true);
       }
     };
-    checkAuth();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) navigate("/", { replace: true });
-    });
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    void checkAuth();
+  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads]);
+
+  useEffect(() => {
+    if (authChecked && !session) {
+      navigate("/", { replace: true });
+    }
+  }, [authChecked, session, navigate]);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
