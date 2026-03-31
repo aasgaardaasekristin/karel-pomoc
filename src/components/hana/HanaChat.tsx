@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import ThemeQuickButton from "@/components/ThemeQuickButton";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -8,7 +8,7 @@ import hanaBg from "@/assets/hana-bg.png";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
-import { Send, Loader2, Brain, Database, Archive, Settings, ChevronDown } from "lucide-react";
+import { Send, Loader2, Brain, Database, Archive, Settings, ChevronDown, ArrowLeft, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
@@ -19,11 +19,24 @@ import { useUniversalUpload, buildAttachmentContent } from "@/hooks/useUniversal
 import UniversalAttachmentBar from "@/components/UniversalAttachmentBar";
 import GoogleDrivePickerDialog from "@/components/GoogleDrivePickerDialog";
 import HanaThreadHistory from "@/components/hana/HanaThreadHistory";
+import HanaSavedTopics, { type SavedTopicSummary } from "@/components/hana/HanaSavedTopics";
+import SaveTopicButton from "@/components/hana/SaveTopicButton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuthReady } from "@/hooks/useAuthReady";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Message = { role: "user" | "assistant"; content: string };
+type HanaViewState = "list" | "thread-detail";
 
 const WELCOME_MESSAGE = "Hani, jsem tady pro tebe. Pojďme si popovídat – co tě dneska trápí, těší, nebo co bys chtěla probrat? 💛";
 
@@ -44,7 +57,7 @@ const handleApiError = async (response: Response) => {
 const HanaChatInner = () => {
   const { applyTemporaryTheme, restoreGlobalTheme, setLocalMode } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
-  const [chatStarted, setChatStarted] = useState(false);
+  const [viewState, setViewState] = useState<HanaViewState>("list");
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   // intro animation removed – now in HanaPinScreen
@@ -62,6 +75,8 @@ const HanaChatInner = () => {
   const [archiveSummaries, setArchiveSummaries] = useState<{ id: string; summary: string; created_at: string }[]>([]);
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [spravaOpen, setSpravaOpen] = useState(false);
+  const [isSavingTopic, setIsSavingTopic] = useState(false);
+  const [deleteThreadOpen, setDeleteThreadOpen] = useState(false);
   const { isAuthReady, session, authEventCount } = useAuthReady();
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -69,6 +84,11 @@ const HanaChatInner = () => {
   const audioRecorder = useAudioRecorder();
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
   const lastSavedRef = useRef<string>("");
+  const chatStarted = viewState === "thread-detail" && !!conversationId;
+  const currentThreadTitle = useMemo(() => {
+    const firstUser = messages.find((message) => message.role === "user")?.content?.trim();
+    return firstUser ? firstUser.split(/[.!?\n]/)[0].slice(0, 80) : "Vlákno";
+  }, [messages]);
 
   useEffect(() => {
     console.warn(`[F15-debug] Auth state: ready=${isAuthReady}, session=${session ? "exists" : "null"}`);
@@ -148,7 +168,7 @@ const HanaChatInner = () => {
       if (!session) {
         setConversationId(null);
         setMessages([]);
-        setChatStarted(false);
+        setViewState("list");
         return;
       }
 
@@ -163,18 +183,9 @@ const HanaChatInner = () => {
 
         console.warn(`[F15-debug] Fetch result: rows=${data ? 1 : 0}, sessionExists=${session ? "true" : "false"}`);
 
-        // Archive any active thread with content
-        if (data && Array.isArray(data.messages) && data.messages.length > 1) {
-          await supabase
-            .from("karel_hana_conversations")
-            .update({ is_active: false })
-            .eq("id", data.id);
-        }
-
-        // Always start clean - no conversation loaded, no messages
         setConversationId(null);
         setMessages([]);
-        setChatStarted(false);
+        setViewState("list");
       } catch (e) {
         console.warn("Failed to load Hana conversation:", e);
       }
@@ -316,7 +327,7 @@ const HanaChatInner = () => {
         }
         activeConversationId = created.id;
         setConversationId(created.id);
-        setChatStarted(true);
+        setViewState("thread-detail");
       }
 
       await persistConversation(activeConversationId, nextMessages);
@@ -402,7 +413,7 @@ const HanaChatInner = () => {
 
     setConversationId(created.id);
     setMessages(created.welcomeMessages);
-    setChatStarted(true);
+    setViewState("thread-detail");
     toast.success("Nová konverzace zahájena");
     setTimeout(() => runContextPrime(true), 500);
   }, [conversationId, messages, createConversation, persistConversation, runContextPrime]);
@@ -424,11 +435,100 @@ const HanaChatInner = () => {
 
     setConversationId(threadId);
     setMessages(threadMessages as Message[]);
-    setChatStarted(true);
+    setViewState("thread-detail");
     lastSavedRef.current = JSON.stringify(threadMessages);
     toast.success("Vlákno načteno");
     setTimeout(() => runContextPrime(true), 500);
   }, [conversationId, messages, persistConversation, runContextPrime]);
+
+  const handleBackToList = useCallback(async () => {
+    if (conversationId && messages.length > 1) {
+      await persistConversation(conversationId, messages, { isActive: true });
+    }
+    setViewState("list");
+  }, [conversationId, messages, persistConversation]);
+
+  const handleDeleteCurrentThread = useCallback(async () => {
+    if (!conversationId) return;
+    const deletingCurrentId = conversationId;
+    const { error } = await supabase.from("karel_hana_conversations").delete().eq("id", deletingCurrentId);
+    if (error) {
+      toast.error("Nepodařilo se smazat vlákno");
+      return;
+    }
+    setDeleteThreadOpen(false);
+    setConversationId(null);
+    setMessages([]);
+    setViewState("list");
+    lastSavedRef.current = "";
+    toast.success("Vlákno bylo smazáno");
+  }, [conversationId]);
+
+  const handleSaveTopic = useCallback(async (title: string | null) => {
+    if (!conversationId) return;
+    setIsSavingTopic(true);
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-save-topic`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ conversationId, requestedTitle: title, section: "hana", subMode: "personal" }),
+      });
+      if (!response.ok) await handleApiError(response);
+      const payload = await response.json();
+      toast.success(`Téma „${payload.topic?.title || title || "téma"}“ uloženo do Rozpracovaných témat`);
+    } catch (error) {
+      console.error("Save topic error:", error);
+      toast.error(error instanceof Error ? error.message : "Nepodařilo se uložit téma");
+    } finally {
+      setIsSavingTopic(false);
+    }
+  }, [conversationId]);
+
+  const handleContinueTopic = useCallback(async (topic: SavedTopicSummary) => {
+    if (conversationId && messages.length > 1) {
+      await persistConversation(conversationId, messages, { isActive: false });
+    }
+
+    const seededMessages: Message[] = [
+      { role: "assistant", content: WELCOME_MESSAGE },
+      {
+        role: "assistant",
+        content: `Uživatel se vrací k rozpracovanému tématu: ${topic.title}. Zde je kontext z předchozího rozhovoru:\n\n${topic.extracted_context}\n\nPokračuj přirozeně v tomto tématu.`,
+      },
+    ];
+
+    await supabase.from("karel_hana_conversations").update({ is_active: false }).eq("is_active", true);
+
+    const { data: created, error } = await supabase
+      .from("karel_hana_conversations")
+      .insert({
+        is_active: true,
+        messages: seededMessages as any,
+        thread_label: topic.title,
+        section: "hana",
+        sub_mode: "personal",
+        source_topic_id: topic.id,
+      })
+      .select("id")
+      .single();
+
+    if (error || !created) {
+      toast.error("Nepodařilo se otevřít pokračování tématu");
+      return;
+    }
+
+    await supabase
+      .from("karel_saved_topics")
+      .update({ last_continued_at: new Date().toISOString(), pending_drive_sync: true })
+      .eq("id", topic.id);
+
+    setConversationId(created.id);
+    setMessages(seededMessages);
+    setViewState("thread-detail");
+    lastSavedRef.current = JSON.stringify(seededMessages);
+    toast.success(`Pokračuješ v tématu „${topic.title}“`);
+  }, [conversationId, messages, persistConversation]);
 
   const handleRefreshMemory = useCallback(async () => {
     if (isRefreshingMemory) return;
@@ -738,7 +838,7 @@ const HanaChatInner = () => {
 
   return (
     <div className="relative flex flex-col h-full">
-      {!chatStarted && (
+      {viewState === "list" && (
         <div
           className="fixed inset-0 bg-cover bg-center bg-no-repeat pointer-events-none z-0 opacity-80"
           style={{ backgroundImage: `url(${hanaBg})` }}
@@ -812,9 +912,10 @@ const HanaChatInner = () => {
         </div>
       )}
 
-      {!chatStarted ? (
-        <div className="flex-1 flex flex-col justify-end items-start px-6 pb-8 animate-fade-in">
-          <div className="text-left max-w-xs space-y-3">
+      {viewState === "list" ? (
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 animate-fade-in">
+          <div className="max-w-3xl mx-auto space-y-4">
+            <div className="text-left max-w-xl space-y-3">
               <div className="space-y-1.5">
                 <h2 className="text-lg font-serif font-semibold text-foreground">
                   Ahoj, Hani 💛
@@ -823,26 +924,49 @@ const HanaChatInner = () => {
                   Jsem tady pro tebe. Začni novou konverzaci nebo se vrať k předchozímu vláknu.
                 </p>
               </div>
-              <Button
-                onClick={handleNewConversation}
-                size="sm"
-                className="rounded-xl gap-1.5 text-xs"
-              >
+              <Button onClick={handleNewConversation} size="sm" className="rounded-xl gap-1.5 text-xs">
                 <Send className="w-3.5 h-3.5" />
                 Nová konverzace
               </Button>
-              <div>
-                <HanaThreadHistory
-                  currentConversationId={conversationId}
-                  onSwitchThread={handleSwitchThread}
-                  onNewThread={handleNewConversation}
-                  onMirrorToDrive={handleMirrorToDrive}
-                />
-              </div>
+            </div>
+
+            <HanaSavedTopics onContinueTopic={handleContinueTopic} />
+
+            <div>
+              <HanaThreadHistory
+                currentConversationId={conversationId}
+                onSwitchThread={handleSwitchThread}
+                onNewThread={handleNewConversation}
+                onMirrorToDrive={handleMirrorToDrive}
+              />
+            </div>
           </div>
         </div>
       ) : (
         <>
+          <div className="border-b border-border bg-background/80 backdrop-blur-sm">
+            <div className="max-w-3xl mx-auto px-2 sm:px-4 py-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Button variant="ghost" size="sm" onClick={() => void handleBackToList()} className="h-8 rounded-xl gap-1.5">
+                  <ArrowLeft className="w-4 h-4" />
+                  <span className="hidden sm:inline">Zpět</span>
+                </Button>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-foreground truncate">{currentThreadTitle}</div>
+                  <div className="text-[0.6875rem] text-muted-foreground">Vlákno Hana / Osobní</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="outline" size="sm" onClick={() => setDeleteThreadOpen(true)} className="h-8 rounded-xl gap-1.5">
+                  <Trash2 className="text-destructive" />
+                  <span className="hidden sm:inline">Smazat vlákno</span>
+                </Button>
+                <SaveTopicButton disabled={!conversationId || isLoading} isSaving={isSavingTopic} onSave={handleSaveTopic} />
+              </div>
+            </div>
+          </div>
+
           {/* Messages */}
           <ScrollArea className="flex-1 px-2 sm:px-4">
             <div ref={scrollRef} className="max-w-3xl mx-auto py-4 sm:py-7 space-y-3 sm:space-y-4">
@@ -928,6 +1052,23 @@ const HanaChatInner = () => {
           </ScrollArea>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={deleteThreadOpen} onOpenChange={setDeleteThreadOpen}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Opravdu smazat toto vlákno?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Smazání odstraní celé aktuální vlákno. Pokud si chceš uchovat jen důležité části, nejdřív použij Zachovej téma.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Zrušit</AlertDialogCancel>
+            <AlertDialogAction className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => void handleDeleteCurrentThread()}>
+              Smazat vlákno
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
     </div>
   );
