@@ -2666,8 +2666,14 @@ export type Database = {
           id: string
           is_active: boolean
           last_activity_at: string
+          message_count: number
           messages: Json
+          preview: string
+          section: string
+          source_topic_id: string | null
           started_at: string
+          sub_mode: string
+          thread_label: string
           user_id: string
         }
         Insert: {
@@ -2677,8 +2683,14 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_activity_at?: string
+          message_count?: number
           messages?: Json
+          preview?: string
+          section?: string
+          source_topic_id?: string | null
           started_at?: string
+          sub_mode?: string
+          thread_label?: string
           user_id?: string
         }
         Update: {
@@ -2688,8 +2700,14 @@ export type Database = {
           id?: string
           is_active?: boolean
           last_activity_at?: string
+          message_count?: number
           messages?: Json
+          preview?: string
+          section?: string
+          source_topic_id?: string | null
           started_at?: string
+          sub_mode?: string
+          thread_label?: string
           user_id?: string
         }
         Relationships: []
@@ -2779,6 +2797,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      karel_saved_topics: {
+        Row: {
+          created_at: string
+          extracted_context: string
+          id: string
+          is_active: boolean
+          last_continued_at: string | null
+          pending_drive_sync: boolean
+          section: string
+          source_thread_id: string | null
+          sub_mode: string
+          synced_to_drive_at: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          extracted_context?: string
+          id?: string
+          is_active?: boolean
+          last_continued_at?: string | null
+          pending_drive_sync?: boolean
+          section?: string
+          source_thread_id?: string | null
+          sub_mode?: string
+          synced_to_drive_at?: string | null
+          title: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          extracted_context?: string
+          id?: string
+          is_active?: boolean
+          last_continued_at?: string | null
+          pending_drive_sync?: boolean
+          section?: string
+          source_thread_id?: string | null
+          sub_mode?: string
+          synced_to_drive_at?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       karel_semantic_entities: {
         Row: {
