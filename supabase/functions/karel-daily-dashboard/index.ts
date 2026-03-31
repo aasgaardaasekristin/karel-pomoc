@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES, isKnownNonPart, deduplicateTasks } from "../_shared/system-rules.ts";
+import { appendToDoc, findFolder, findFileByName, getAccessToken } from "../_shared/driveHelpers.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -338,6 +339,61 @@ async function applyAppUpdates(supabase: ReturnType<typeof createClient>, appDat
   }
 }
 
+async function syncSavedTopicsToDrive(supabase: ReturnType<typeof createClient>): Promise<{ scanned: number; synced: number; pending: number }> {
+  const { data: topics, error } = await supabase
+    .from("karel_saved_topics")
+    .select("id, title, extracted_context, synced_to_drive_at, pending_drive_sync, section, sub_mode")
+    .eq("is_active", true)
+    .or("pending_drive_sync.eq.true,synced_to_drive_at.is.null")
+    .limit(20);
+
+  if (error || !topics?.length) {
+    if (error) console.warn("[Dashboard] Saved topics sync load failed:", error);
+    return { scanned: 0, synced: 0, pending: 0 };
+  }
+
+  let synced = 0;
+  let pending = 0;
+
+  try {
+    const token = await getAccessToken();
+    const kartotekaRoot = await findFolder(token, "kartoteka_DID");
+    const memoryRoot = await findFolder(token, "PAMET_KAREL");
+
+    for (const topic of topics) {
+      const destinationRoot = /did|část|fragment|vnitřn/i.test(topic.extracted_context) ? kartotekaRoot : memoryRoot;
+      if (!destinationRoot) {
+        pending++;
+        await supabase.from("karel_saved_topics").update({ pending_drive_sync: true }).eq("id", topic.id);
+        continue;
+      }
+
+      const existingFileId = await findFileByName(token, topic.title, destinationRoot);
+      if (!existingFileId) {
+        pending++;
+        await supabase.from("karel_saved_topics").update({ pending_drive_sync: true }).eq("id", topic.id);
+        continue;
+      }
+
+      await appendToDoc(token, existingFileId, `\n\n## Rozpracované téma: ${topic.title}\n${topic.extracted_context}\n`);
+      await supabase
+        .from("karel_saved_topics")
+        .update({ synced_to_drive_at: new Date().toISOString(), pending_drive_sync: false })
+        .eq("id", topic.id);
+      synced++;
+    }
+  } catch (driveError) {
+    console.warn("[Dashboard] Saved topics drive sync deferred:", driveError);
+    pending = topics.length;
+    await supabase
+      .from("karel_saved_topics")
+      .update({ pending_drive_sync: true })
+      .in("id", topics.map((topic: any) => topic.id));
+  }
+
+  return { scanned: topics.length, synced, pending };
+}
+
 /* ================================================================
    MAIN HANDLER
    ================================================================ */
@@ -546,6 +602,9 @@ Sestav kompletní denní dashboard.`;
       await applyAppUpdates(supabase, appData);
     }
 
+    const topicSync = await syncSavedTopicsToDrive(supabase);
+    console.log(`[Dashboard] Saved topics sync: scanned=${topicSync.scanned}, synced=${topicSync.synced}, pending=${topicSync.pending}`);
+
     console.log(`[Dashboard] ═══ Dashboard pro ${targetDate} dokončen ═══`);
 
     // 7. CRISIS DAILY ASSESSMENT — auto-trigger for active crises
@@ -573,7 +632,7 @@ Sestav kompletní denní dashboard.`;
       trigger: triggerSource,
       dashboardLength: aiContent.length,
       appDataExtracted: !!appData,
-      summary: `Dashboard pro ${targetDate} vygenerován (${aiContent.length} znaků), ${appData?.todayTasks?.length || 0} úkolů vytvořeno.`,
+      summary: `Dashboard pro ${targetDate} vygenerován (${aiContent.length} znaků), ${appData?.todayTasks?.length || 0} úkolů vytvořeno, témata: ${topicSync.synced} synchronizována / ${topicSync.pending} čeká.`,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
