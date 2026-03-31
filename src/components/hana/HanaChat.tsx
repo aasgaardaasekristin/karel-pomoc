@@ -35,10 +35,30 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-type Message = { role: "user" | "assistant"; content: string };
+type MessageContentPart = {
+  type?: string;
+  text?: string;
+  image_url?: { url?: string };
+};
+
+type Message = { role: "user" | "assistant"; content: string | MessageContentPart[] };
 type HanaViewState = "list" | "thread-detail";
 
 const WELCOME_MESSAGE = "Hani, jsem tady pro tebe. Pojďme si popovídat – co tě dneska trápí, těší, nebo co bys chtěla probrat? 💛";
+
+const getMessageText = (content: Message["content"]): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((part) => {
+      if (part?.type === "text" && typeof part.text === "string") return part.text;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+};
 
 const handleApiError = async (response: Response) => {
   if (response.status === 429) throw new Error("Karel je momentálně přetížený. Zkus to prosím za chvilku.");
@@ -86,7 +106,7 @@ const HanaChatInner = () => {
   const lastSavedRef = useRef<string>("");
   const chatStarted = viewState === "thread-detail" && !!conversationId;
   const currentThreadTitle = useMemo(() => {
-    const firstUser = messages.find((message) => message.role === "user")?.content?.trim();
+    const firstUser = getMessageText(messages.find((message) => message.role === "user")?.content ?? "");
     return firstUser ? firstUser.split(/[.!?\n]/)[0].slice(0, 80) : "Vlákno";
   }, [messages]);
 
@@ -418,7 +438,7 @@ const HanaChatInner = () => {
     setTimeout(() => runContextPrime(true), 500);
   }, [conversationId, messages, createConversation, persistConversation, runContextPrime]);
 
-  const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string }[]) => {
+  const handleSwitchThread = useCallback(async (threadId: string, threadMessages: { role: string; content: string | MessageContentPart[] }[]) => {
     if (conversationId && messages.length > 1) {
       await persistConversation(conversationId, messages, { isActive: false });
     }
