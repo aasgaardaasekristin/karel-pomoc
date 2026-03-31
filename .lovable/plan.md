@@ -1,85 +1,47 @@
 
+Jednoduše: znamená to, že backend tvé aplikace už jede skoro “na doraz”.
 
-## F15 — Systémová pravidla a oprava denního briefingu
+Co se tím myslí:
+- dochází výkon nebo kapacita
+- aplikace může začít být pomalá
+- může se stát, že některé věci budou timeoutovat nebo se nenačtou
+- v horším případě něco přestane dočasně fungovat
 
-### Přehled
+Lovable tě varuje typicky když je skoro plný některý z těchto limitů:
+- málo volného místa
+- vysoké zatížení CPU
+- slabá zbývající kapacita pro operace databáze / disku
 
-Vytvoření sdíleného souboru `system-rules.ts` s tvrdými pravidly pro Karla, úprava denního dashboardu na dva separátní briefingy, a injekce pravidel do všech klíčových edge funkcí.
+Co s tím udělat:
+1. Otevři Cloud
+2. Jdi do Overview
+3. Otevři Advanced settings
+4. Vyber větší instance size
 
----
+Co se stane potom:
+- backend dostane víc výkonu a kapacity
+- obvykle pár minut trvá, než se změna projeví
+- potom by se měly zlepšit pomalé načítání, timeouty a nestabilita
 
-### Soubor 1: `supabase/functions/_shared/system-rules.ts` (NOVÝ)
+Na co myslet:
+- větší instance = vyšší cloud náklady
+- pokud teď aplikace funguje pomalu nebo občas padá, upgrade dává smysl
+- pokud je projekt malý a warning se objevil jen jednou, stačí to sledovat, ale ignorovat dlouhodobě to není dobré
 
-Vytvoří se nový soubor obsahující:
-- `SYSTEM_RULES` — kompletní konstanta s 7 pravidly (role v týmu, dva briefingy, oddělení terapie od koordinace, Locík = pes, aktivní vs neaktivní části, deduplikace, formát briefingu)
-- `KNOWN_NON_PARTS` — pole řetězců (Locík variace)
-- `isKnownNonPart(name)` — case-insensitive helper funkce
+Moje praktické doporučení:
+- pokud už vidíš bugy typu nenačítání dat, blank screen, pomalé dashboardy nebo padání edge funkcí, upgrade udělej hned
+- pokud nic nepadá, ale warning se opakuje, stejně bych šel aspoň o jeden stupeň výš
 
-Přesný obsah dle zadání.
+Jak to najdeš:
+- Desktop: v projektu otevři Cloud → Overview → Advanced settings
+- Mobile: v chatu klepni na … → Cloud → Overview → Advanced settings
 
----
+Technická poznámka:
+- nejde o chybu v UI, ale o varování, že kapacita backendu je skoro vyčerpaná
+- po změně velikosti může trvat několik minut, než se data začnou znovu načítat normálně
 
-### Soubor 2: `supabase/functions/karel-daily-dashboard/index.ts`
-
-**A) Import** — přidat `import { SYSTEM_RULES, isKnownNonPart } from "../_shared/system-rules.ts";`
-
-**B) Deduplikační helper** — přidat `deduplicateTasks()` funkci před handler
-
-**C) Filtrace aktivních částí** — v `fetchActiveParts24h` odfiltrovat entity kde `isKnownNonPart(t.part_name)` vrací true
-
-**D) Filtrace úkolů** — v `fetchTasksData` odfiltrovat non-part entity
-
-**E) Dva separátní briefingy** — hlavní změna v handleru (řádky ~448-500):
-- Místo jednoho AI volání se provedou DVĚ volání:
-  1. `SYSTEM_RULES + briefing pro Haničku prompt + briefingContext` → `hanaBriefing`
-  2. `SYSTEM_RULES + briefing pro Káťu prompt + briefingContext` → `kataBriefing`
-- Spojený výstup: `aiContent = "# BRIEFING PRO HANIČKU\n\n" + hanaBriefing + "\n\n---\n\n# BRIEFING PRO KÁŤU\n\n" + kataBriefing`
-- `appData` se extrahuje z obou briefinků (JSON bloky)
-
-**F) Uložení** — do Drive se uloží spojený markdown; `applyAppUpdates` zpracuje tasky z obou briefinků
-
----
-
-### Soubor 3: `supabase/functions/karel-chat/index.ts`
-
-**A) Import** — přidat `import { SYSTEM_RULES } from "../_shared/system-rules.ts";`
-
-**B) Injekce** — na řádku 193 změnit:
-```typescript
-// Před:
-systemPrompt = DID_MASTER_PROMPT + "\n\n" + systemPrompt;
-// Po:
-systemPrompt = SYSTEM_RULES + "\n\n" + DID_MASTER_PROMPT + "\n\n" + systemPrompt;
-```
-
----
-
-### Soubor 4: `supabase/functions/karel-crisis-daily-assessment/index.ts`
-
-**A) Import** — přidat `import { SYSTEM_RULES } from "../_shared/system-rules.ts";`
-
-**B) Injekce** — v callAI volání na řádku ~153 přidat SYSTEM_RULES na začátek systemPrompt:
-```typescript
-const fullSystemPrompt = SYSTEM_RULES + "\n\n" + systemPrompt;
-const assessment = await callAI(fullSystemPrompt, userMessage, LOVABLE_API_KEY);
-```
-
----
-
-### Deployment
-
-Po implementaci deploy tří edge funkcí:
-1. `karel-chat`
-2. `karel-daily-dashboard`
-3. `karel-crisis-daily-assessment`
-
----
-
-### Technické detaily
-
-- `SYSTEM_RULES` se vždy předřazuje PŘED vše ostatní (je to "ústavní zákon" systému)
-- Pořadí v karel-chat: `SYSTEM_RULES → DID_MASTER_PROMPT → contextual prompt`
-- Deduplikace úkolů: klíč = `assigned_to|part_name|first30chars`
-- Filtr neaktivních částí: dashboard prompt již obsahuje instrukci; fyzický filtr v `fetchActiveParts24h` odstraní non-part entity
-- Žádná existující logika se nemaže — pouze přidání importů, pravidel a rozdělení AI volání
-
+<lov-actions>
+<lov-suggestion message="Test the app end-to-end after upgrading the Cloud instance to confirm dashboards, chat, and edge functions load correctly.">Verify that it works</lov-suggestion>
+<lov-suggestion message="Explain which Cloud instance size is the safest next step for this project based on likely load, dashboard usage, and AI functions.">Doporuč mi velikost instance</lov-suggestion>
+<lov-suggestion message="Show me step-by-step where to find Cloud → Overview → Advanced settings on desktop and mobile.">Ukaž mi to krok za krokem</lov-suggestion>
+</lov-actions>
