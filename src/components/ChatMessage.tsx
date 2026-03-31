@@ -6,9 +6,15 @@ import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { parseTaskSuggestions, TaskSuggestInline } from "@/components/did/TaskSuggestButtons";
 
+interface MessageContentPart {
+  type?: string;
+  text?: string;
+  image_url?: { url?: string };
+}
+
 interface Message {
   role: "user" | "assistant";
-  content: string;
+  content: string | MessageContentPart[];
 }
 
 interface ChatMessageProps {
@@ -58,6 +64,17 @@ const cleanForDisplay = (text: string): string => {
 
 const cleanForCopy = (text: string): string => {
   return text.replace(/<!-- \/?SECTION:\w+ -->/g, "").trim();
+};
+
+const getMessageText = (content: Message["content"]): string => {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((part) => (part?.type === "text" && typeof part.text === "string" ? part.text : ""))
+    .filter(Boolean)
+    .join("\n")
+    .trim();
 };
 
 const CopyButton = ({ text, label, onCopied }: { text: string; label: string; onCopied?: () => void }) => {
@@ -201,7 +218,8 @@ const ChatMessage = ({ message, onNotebookCopied, onTaskAdded }: ChatMessageProp
     );
   }
 
-  const { cleanContent: contentWithoutTasks, suggestions: taskSuggestions } = parseTaskSuggestions(message.content);
+  const assistantText = getMessageText(message.content);
+  const { cleanContent: contentWithoutTasks, suggestions: taskSuggestions } = parseTaskSuggestions(assistantText);
   const { beforeSections, sections } = parseSections(contentWithoutTasks);
 
   if (sections.length === 0) {
