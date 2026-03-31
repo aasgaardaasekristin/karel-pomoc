@@ -16,10 +16,12 @@ import {
 
 interface HanaThread {
   id: string;
-  messages: { role: string; content: string }[];
   isActive: boolean;
   lastActivityAt: string;
   startedAt: string;
+  preview: string;
+  threadLabel: string;
+  messageCount: number;
 }
 
 interface Props {
@@ -29,17 +31,11 @@ interface Props {
   onMirrorToDrive: () => Promise<void>;
 }
 
-/** Extract a short topic label from the conversation content */
 const getTopicLabel = (thread: HanaThread): string => {
-  // Find first user message as topic indicator
-  const firstUser = thread.messages.find(m => m.role === "user");
-  if (firstUser && typeof firstUser.content === "string") {
-    const text = firstUser.content.trim();
-    // Take first sentence or first 50 chars
-    const sentence = text.split(/[.!?\n]/)[0].trim();
-    return sentence.length > 50 ? sentence.slice(0, 47) + "…" : sentence;
-  }
-  return "Nová konverzace";
+  const base = thread.threadLabel?.trim() || thread.preview?.trim();
+  if (!base) return "Nová konverzace";
+  const sentence = base.split(/[.!?\n]/)[0].trim();
+  return sentence.length > 50 ? sentence.slice(0, 47) + "…" : sentence;
 };
 
 const formatDate = (isoStr: string) => {
@@ -53,17 +49,19 @@ const formatDate = (isoStr: string) => {
 
 const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread, onMirrorToDrive }: Props) => {
   const [threads, setThreads] = useState<HanaThread[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<HanaThread | null>(null);
   const [isMirroring, setIsMirroring] = useState(false);
   const [hasFetchedThreads, setHasFetchedThreads] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const { isAuthReady, session, authEventCount } = useAuthReady();
+  const PAGE_SIZE = 20;
 
   useEffect(() => {
     console.warn(`[F15-debug] Auth state: ready=${isAuthReady}, session=${session ? "exists" : "null"}`);
   }, [isAuthReady, session]);
 
-  const fetchThreads = useCallback(async (trigger: "mount" | "auth_event" | "retry") => {
+  const fetchThreads = useCallback(async (trigger: "mount" | "auth_event" | "retry", offset = 0, append = false) => {
     console.warn(`[F15-debug] Fetch triggered: authReady=${isAuthReady}, trigger=${trigger}`);
 
     if (!isAuthReady) return;
@@ -75,9 +73,9 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
 
     const { data, error } = await supabase
       .from("karel_hana_conversations")
-      .select("id, messages, is_active, last_activity_at, started_at")
+      .select("id, is_active, last_activity_at, started_at, preview, thread_label, message_count")
       .order("last_activity_at", { ascending: false })
-      .limit(50);
+      .range(offset, offset + PAGE_SIZE - 1);
 
     if (error) {
       console.error("[HanaThreadHistory] Fetch error:", error);
@@ -88,20 +86,24 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
 
     if (data) {
       setHasFetchedThreads(true);
-      setThreads(data.map(r => ({
+      setHasMore(data.length === PAGE_SIZE);
+      const mapped = data.map(r => ({
         id: r.id,
-        messages: (r.messages ?? []) as { role: string; content: string }[],
         isActive: r.is_active,
         lastActivityAt: r.last_activity_at,
         startedAt: r.started_at,
-      })));
+        preview: r.preview ?? "",
+        threadLabel: r.thread_label ?? "",
+        messageCount: r.message_count ?? 0,
+      }));
+      setThreads(prev => append ? [...prev, ...mapped] : mapped);
     }
   }, [isAuthReady, session]);
 
   useEffect(() => {
-    if (!isOpen || !isAuthReady || !session) return;
+    if (!isAuthReady || !session) return;
     void fetchThreads("retry");
-  }, [isOpen, isAuthReady, session, fetchThreads]);
+  }, [isAuthReady, session, fetchThreads]);
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -109,6 +111,7 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
     if (!session) {
       setThreads([]);
       setHasFetchedThreads(false);
+      setHasMore(false);
       return;
     }
 
@@ -156,106 +159,111 @@ const HanaThreadHistory = ({ currentConversationId, onSwitchThread, onNewThread,
     setDeleteTarget(null);
   };
 
-  const handleSelectThread = (thread: HanaThread) => {
-    onSwitchThread(thread.id, thread.messages as { role: string; content: string }[]);
-    setIsOpen(false);
+  const handleSelectThread = async (thread: HanaThread) => {
+    const { data, error } = await supabase
+      .from("karel_hana_conversations")
+      .select("messages")
+      .eq("id", thread.id)
+      .single();
+
+    if (error) {
+      console.error("[HanaThreadHistory] Load thread error:", error);
+      return;
+    }
+
+    onSwitchThread(thread.id, ((data?.messages ?? []) as { role: string; content: string }[]));
   };
 
-  if (!isOpen) {
-    return (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setIsOpen(true)}
-        className="h-8 px-3 text-xs gap-1.5 rounded-xl"
-      >
-        <History className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Vlákna</span>
-      </Button>
-    );
-  }
+  const handleLoadMore = async () => {
+    if (isFetchingMore || !hasMore) return;
+    setIsFetchingMore(true);
+    try {
+      await fetchThreads("retry", threads.length, true);
+    } finally {
+      setIsFetchingMore(false);
+    }
+  };
 
-  // Filter out threads with only the welcome message (no real content)
-  const meaningfulThreads = threads.filter(t => t.messages.some(m => m.role === "user"));
+  const meaningfulThreads = threads.filter(t => t.messageCount > 1 || t.preview.trim().length > 0);
 
   return (
     <>
-      <div className="border-b border-border bg-background/80 backdrop-blur-sm">
-        <div className="max-w-5xl mx-auto px-3 sm:px-4 py-3">
-          <div className="rounded-2xl border border-border bg-card/80 px-4 py-4 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
-                <History className="w-4 h-4 text-primary" />
-                Vlákna konverzací
-              </h3>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { onNewThread(); setIsOpen(false); }}
-                  className="h-8 text-xs gap-1.5 rounded-xl"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Nové vlákno
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsOpen(false)}
-                  className="h-8 text-xs rounded-xl"
-                >
-                  Zavřít
-                </Button>
-              </div>
+      <div className="rounded-2xl border border-border bg-card/80 px-4 py-4 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-foreground flex items-center gap-2">
+            <History className="w-4 h-4 text-primary" />
+            Vlákna konverzací
+          </h3>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onNewThread}
+              className="h-8 text-xs gap-1.5 rounded-xl"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Nové vlákno
+            </Button>
+          </div>
+        </div>
+
+        {!isAuthReady || (session && !hasFetchedThreads) ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground text-center">
+            Načítám vlákna…
+          </div>
+        ) : meaningfulThreads.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground text-center">
+            Zatím žádná vlákna. Začni novou konverzaci.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="space-y-1.5 max-h-[24rem] overflow-y-auto pr-1">
+              {meaningfulThreads.map(thread => {
+                const isCurrent = thread.id === currentConversationId;
+                return (
+                  <div
+                    key={thread.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors group ${
+                      isCurrent
+                        ? "bg-primary/8 border border-primary/20"
+                        : "hover:bg-muted/50 border border-transparent"
+                    }`}
+                    onClick={() => !isCurrent && void handleSelectThread(thread)}
+                  >
+                    <MessageCircle className="w-4 h-4 text-primary/60 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm text-foreground truncate leading-snug">
+                        {getTopicLabel(thread)}
+                      </div>
+                      <div className="text-[0.6875rem] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>{formatDate(thread.startedAt)}</span>
+                        <span>{thread.messageCount} zpráv</span>
+                        {isCurrent && <span className="text-primary font-medium">● aktivní</span>}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      onClick={(e) => handleDeleteClick(e, thread)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
 
-            {!isAuthReady || (session && !hasFetchedThreads) ? (
-              <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground text-center">
-                Načítám vlákna…
-              </div>
-            ) : meaningfulThreads.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-6 text-sm text-muted-foreground text-center">
-                Zatím žádná vlákna. Začni novou konverzaci.
-              </div>
-            ) : (
-              <div className="space-y-1.5 max-h-[20rem] overflow-y-auto">
-                {meaningfulThreads.map(thread => {
-                  const isCurrent = thread.id === currentConversationId;
-                  return (
-                    <div
-                      key={thread.id}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors group ${
-                        isCurrent
-                          ? "bg-primary/8 border border-primary/20"
-                          : "hover:bg-muted/50 border border-transparent"
-                      }`}
-                      onClick={() => !isCurrent && handleSelectThread(thread)}
-                    >
-                      <MessageCircle className="w-4 h-4 text-primary/60 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm text-foreground truncate leading-snug">
-                          {getTopicLabel(thread)}
-                        </div>
-                        <div className="text-[0.6875rem] text-muted-foreground mt-0.5">
-                          {formatDate(thread.startedAt)}
-                          {isCurrent && <span className="text-primary ml-2 font-medium">● aktivní</span>}
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => handleDeleteClick(e, thread)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  );
-                })}
+            {hasMore && (
+              <div className="flex justify-center pt-1">
+                <Button variant="outline" size="sm" className="rounded-xl" disabled={isFetchingMore} onClick={() => void handleLoadMore()}>
+                  {isFetchingMore ? <Loader2 className="animate-spin" /> : null}
+                  Načíst další
+                </Button>
               </div>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
