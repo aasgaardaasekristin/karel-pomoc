@@ -554,6 +554,36 @@ export type Database = {
         }
         Relationships: []
       }
+      context_cache: {
+        Row: {
+          cache_key: string
+          context_data: Json
+          created_at: string
+          expires_at: string
+          function_name: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          cache_key?: string
+          context_data: Json
+          created_at?: string
+          expires_at: string
+          function_name: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          cache_key?: string
+          context_data?: Json
+          created_at?: string
+          expires_at?: string
+          function_name?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       crisis_alerts: {
         Row: {
           acknowledged_at: string | null
