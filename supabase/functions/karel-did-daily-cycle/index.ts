@@ -1469,6 +1469,25 @@ async function updateCardSections(
       console.log(`[updateCardSections] ${mode} section ${ul} for "${partName}" (${newContent.length} chars)`);
       continue;
     }
+
+    // DEEPEN mode: append only new insights, preserve existing content
+    if (mode === "DEEPEN") {
+      const hash = contentHash(newContent.trim());
+      if (existing && hasKhash(existing, hash)) {
+        console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" (DEEPEN mode) – hash ${hash} already present`);
+        dedupSkips++;
+        continue;
+      }
+      const timestampedDeepen = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
+      if (existing && existing !== "(zatím prázdné)") {
+        existingSections[ul] = existing + "\n\n---\n\n" + timestampedDeepen;
+      } else {
+        existingSections[ul] = timestampedDeepen;
+      }
+      updatedKeys.push(ul);
+      console.log(`[updateCardSections] DEEPEN section ${ul} for "${partName}" (${newContent.length} chars appended to ${existing.length} chars existing)`);
+      continue;
+    }
     
     // APPEND mode (default): standard behavior
     const hash = contentHash(newContent.trim());
