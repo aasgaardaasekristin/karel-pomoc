@@ -5704,43 +5704,157 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Goals phase failed:", goalsErr);
     }
 
-    // ═══ AUTO-NÁVRH NOVÝCH CÍLŮ ═══
+    // ═══ AUTO-NÁVRH CÍLŮ — STATE-AWARE (F17-C5) ═══
     try {
       const todayStart = new Date().toISOString().slice(0, 10);
       const { count: todayProposed } = await sb.from("part_goals").select("id", { count: "exact", head: true }).eq("proposed_by", "karel").gte("created_at", todayStart);
 
-      if ((todayProposed || 0) < 2) {
+      if ((todayProposed || 0) < 3) {
         const { data: allActiveParts } = await sb.from("did_part_registry").select("part_name").eq("status", "active");
-        const { data: partsWithGoals } = await sb.from("part_goals").select("part_name").in("status", ["active", "proposed"]);
-        const partsWithGoalNames = [...new Set((partsWithGoals || []).map((g: any) => g.part_name))];
-        const partsWithoutGoals = (allActiveParts || []).filter((p: any) => !partsWithGoalNames.includes(p.part_name));
-
+        const { data: allActiveGoals } = await sb.from("part_goals").select("id, part_name, goal_type, goal_text, status, category").in("status", ["active", "proposed"]);
         const LOVABLE_API_KEY_PROP = Deno.env.get("LOVABLE_API_KEY");
-        if (partsWithoutGoals.length > 0 && LOVABLE_API_KEY_PROP) {
-          const targetPart = partsWithoutGoals[0].part_name;
-          const { data: recentMem } = await sb.from("session_memory").select("key_points, unresolved, risk_signals, positive_signals").eq("part_name", targetPart).order("created_at", { ascending: false }).limit(5);
 
+        // ── Klasifikace stavu každé části ──
+        const goalTypeMap: Record<string, string[]> = {
+          crisis: ["safety"],
+          unstable: ["stabilization", "safety"],
+          stabilizing: ["consolidation", "stabilization"],
+          stable: ["development", "consolidation"],
+          progressing: ["integration", "development"],
+          integrating: ["integration"],
+        };
+
+        const goalTypeForState: Record<string, string> = {
+          crisis: "safety", unstable: "stabilization", stabilizing: "consolidation",
+          stable: "development", progressing: "integration", integrating: "integration",
+        };
+
+        // Load crisis events once
+        const { data: openCrises } = await sb.from("crisis_events").select("part_name, phase").not("phase", "eq", "closed");
+        const crisisSet = new Set((openCrises || []).map((c: any) => c.part_name));
+
+        const partsToPropose: Array<{ partName: string; stateCategory: string; reason: string }> = [];
+
+        for (const part of (allActiveParts || [])) {
+          const pn = part.part_name;
+
+          // 1. Crisis check
+          const isInCrisis = crisisSet.has(pn);
+
+          // 2. Load 7-day metrics for trend
+          const { data: recentMetrics } = await sb.from("daily_metrics")
+            .select("metric_date, emotional_valence")
+            .eq("part_name", pn)
+            .gte("metric_date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
+            .order("metric_date", { ascending: true });
+
+          let trendDirection: "improving" | "stable" | "declining" = "stable";
+          const vals = (recentMetrics || []).filter((m: any) => m.emotional_valence != null).map((m: any) => m.emotional_valence);
+          if (vals.length >= 3) {
+            const firstHalf = vals.slice(0, Math.floor(vals.length / 2));
+            const secondHalf = vals.slice(Math.floor(vals.length / 2));
+            const avgFirst = firstHalf.reduce((a: number, b: number) => a + b, 0) / firstHalf.length;
+            const avgSecond = secondHalf.reduce((a: number, b: number) => a + b, 0) / secondHalf.length;
+            if (avgSecond > avgFirst + 0.5) trendDirection = "improving";
+            else if (avgSecond < avgFirst - 0.5) trendDirection = "declining";
+          }
+
+          // 3. Classify state
+          let stateCategory = "stable";
+          if (isInCrisis) {
+            stateCategory = "crisis";
+          } else if (trendDirection === "declining") {
+            stateCategory = "unstable";
+          } else if (trendDirection === "improving") {
+            const { data: lastCrisis } = await sb.from("crisis_events")
+              .select("opened_at").eq("part_name", pn).eq("phase", "closed")
+              .order("opened_at", { ascending: false }).limit(1);
+            const daysSinceCrisis = lastCrisis?.[0]
+              ? Math.floor((Date.now() - new Date(lastCrisis[0].opened_at).getTime()) / 86400000) : 999;
+            stateCategory = daysSinceCrisis < 14 ? "stabilizing" : "progressing";
+          }
+
+          console.log(`[PART STATE] ${pn}: ${stateCategory} (trend: ${trendDirection})`);
+
+          // 4. Check existing goals compatibility
+          const partGoals = (allActiveGoals || []).filter((g: any) => g.part_name === pn);
+          const allowedTypes = goalTypeMap[stateCategory] || [];
+
+          if (partGoals.length === 0) {
+            // No active goals → propose new
+            partsToPropose.push({ partName: pn, stateCategory, reason: "no_goals" });
+          } else {
+            // Check if existing goals are compatible
+            let pausedCount = 0;
+            for (const goal of partGoals) {
+              const gt = goal.goal_type || goal.category || "";
+              if (gt && !allowedTypes.includes(gt) && !allowedTypes.some((a: string) => gt.includes(a))) {
+                // Pause incompatible goal
+                await sb.from("part_goals").update({
+                  status: "paused",
+                  pause_reason: `state_change: ${stateCategory}`,
+                  updated_at: new Date().toISOString(),
+                } as any).eq("id", goal.id);
+                pausedCount++;
+                console.log(`[GOAL PAUSED] ${pn}: "${(goal.goal_text || "").slice(0, 40)}" (type ${gt} incompatible with ${stateCategory})`);
+              }
+            }
+            if (pausedCount > 0 && pausedCount >= partGoals.length) {
+              partsToPropose.push({ partName: pn, stateCategory, reason: "all_paused" });
+            }
+          }
+        }
+
+        // ── Propose goals for parts that need them ──
+        if (LOVABLE_API_KEY_PROP && partsToPropose.length > 0) {
           const { callAiForJson: callAiGoal } = await import("../_shared/aiCallWrapper.ts");
-          const proposalResult = await callAiGoal({
-            systemPrompt: `Jsi Karel — klinický psycholog. Navrhni JEDEN konkrétní, měřitelný terapeutický micro-cíl pro část "${targetPart}".`,
-            userPrompt: `POSLEDNÍ PAMĚŤ:\n${(recentMem || []).map((m: any) => `Klíčové: ${(m.key_points || []).join(", ")}\nNedořešené: ${(m.unresolved || []).join(", ")}`).join("\n---\n")}\n\nNavrhni JSON:\n{"goal_text": "stručný cíl (max 100 znaků)", "description": "popis a kritéria splnění", "category": "therapeutic|behavioral|emotional|relational|safety|integration|communication|daily_life", "priority": "low|normal|high", "milestones": [{"text": "první krok", "done": false}]}`,
-            apiKey: LOVABLE_API_KEY_PROP,
-            model: "google/gemini-2.5-flash",
-            requiredKeys: ["goal_text", "category"],
-            maxRetries: 0,
-            fallback: null,
-            callerName: "goal-proposal",
-          });
 
-          if (proposalResult.success && proposalResult.data) {
-            const p = proposalResult.data as any;
-            await sb.from("part_goals").insert({
-              part_name: targetPart, goal_text: (p.goal_text || "").slice(0, 200),
-              description: (p.description || "").slice(0, 500), category: p.category || "therapeutic",
-              priority: p.priority || "normal", milestones: p.milestones || [],
-              status: "proposed", proposed_by: "karel",
-            });
-            console.log(`[daily-cycle] Karel proposed goal for ${targetPart}: "${(p.goal_text || "").slice(0, 50)}"`);
+          for (const pp of partsToPropose.slice(0, 3)) {
+            try {
+              const { data: recentMem } = await sb.from("session_memory")
+                .select("key_points, unresolved, risk_signals, positive_signals")
+                .eq("part_name", pp.partName).order("created_at", { ascending: false }).limit(5);
+
+              const targetGoalType = goalTypeForState[pp.stateCategory] || "development";
+
+              const stateRules = `
+PRAVIDLA PRO NÁVRH CÍLŮ PODLE STAVU ČÁSTI:
+Aktuální stav: ${pp.stateCategory.toUpperCase()}
+
+CRISIS → Typ: SAFETY. Příklady: 'Bezpečně komunikovat 2x tento týden', 'Použít grounding techniku při flashbacku'. ZAKÁZÁNO: explorační, integrační.
+UNSTABLE → Typ: STABILIZATION. Příklady: 'Dodržet denní rutinu 3 dny', 'Pojmenovat 1 emoci denně'. ZAKÁZÁNO: trauma processing.
+STABILIZING → Typ: CONSOLIDATION. Příklady: 'Rozšířit bezpečné místo', 'Komunikovat s 1 další částí'.
+STABLE → Typ: DEVELOPMENT. Příklady: 'Prozkoumat vztah k jiné části', 'Sdílet vzpomínku v bezpečném kontextu'.
+PROGRESSING → Typ: INTEGRATION. Příklady: 'Spolupracovat s jinou částí na společném úkolu', 'Fungovat v ko-prezenci 10 min'.
+
+Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nenavrhuj integrační cíl pro část v krizi.`;
+
+              const proposalResult = await callAiGoal({
+                systemPrompt: `Jsi Karel — klinický psycholog. ${stateRules}`,
+                userPrompt: `Část: "${pp.partName}" | Stav: ${pp.stateCategory} | Důvod návrhu: ${pp.reason}\n\nPOSLEDNÍ PAMĚŤ:\n${(recentMem || []).map((m: any) => `Klíčové: ${(m.key_points || []).join(", ")}\nNedořešené: ${(m.unresolved || []).join(", ")}`).join("\n---\n")}\n\nNavrhni JSON:\n{"goal_text": "stručný cíl (max 100 znaků)", "description": "popis a kritéria splnění", "goal_type": "${targetGoalType}", "category": "therapeutic|behavioral|emotional|relational|safety|integration|communication|daily_life", "priority": "${pp.stateCategory === "crisis" ? "high" : "normal"}", "milestones": [{"text": "první krok", "done": false}]}`,
+                apiKey: LOVABLE_API_KEY_PROP,
+                model: "google/gemini-2.5-flash",
+                requiredKeys: ["goal_text", "category"],
+                maxRetries: 0,
+                fallback: null,
+                callerName: "goal-proposal-stateful",
+              });
+
+              if (proposalResult.success && proposalResult.data) {
+                const p = proposalResult.data as any;
+                await sb.from("part_goals").insert({
+                  part_name: pp.partName, goal_text: (p.goal_text || "").slice(0, 200),
+                  description: (p.description || "").slice(0, 500), category: p.category || "therapeutic",
+                  priority: p.priority || "normal", milestones: p.milestones || [],
+                  status: "proposed", proposed_by: "karel",
+                  goal_type: p.goal_type || targetGoalType,
+                  state_at_creation: pp.stateCategory,
+                } as any);
+                console.log(`[daily-cycle] Karel proposed ${targetGoalType} goal for ${pp.partName} (state: ${pp.stateCategory}): "${(p.goal_text || "").slice(0, 50)}"`);
+              }
+            } catch (singleErr) {
+              console.warn(`[daily-cycle] Goal proposal error for ${pp.partName}:`, singleErr);
+            }
           }
         }
       }
