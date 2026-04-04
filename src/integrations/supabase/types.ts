@@ -2219,6 +2219,42 @@ export type Database = {
         }
         Relationships: []
       }
+      did_research_cache: {
+        Row: {
+          citations: string[] | null
+          created_at: string
+          id: string
+          part_name: string
+          query: string
+          result: string
+          tags: string[] | null
+          used_in_cards: boolean | null
+          user_id: string
+        }
+        Insert: {
+          citations?: string[] | null
+          created_at?: string
+          id?: string
+          part_name: string
+          query: string
+          result: string
+          tags?: string[] | null
+          used_in_cards?: boolean | null
+          user_id: string
+        }
+        Update: {
+          citations?: string[] | null
+          created_at?: string
+          id?: string
+          part_name?: string
+          query?: string
+          result?: string
+          tags?: string[] | null
+          used_in_cards?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_supervision_reports: {
         Row: {
           created_at: string
