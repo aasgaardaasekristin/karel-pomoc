@@ -35,7 +35,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
 
       const [
         registryRes, kartotekaRes, goalsRes, weekMetricsRes,
-        recentThreadsRes, alertsRes, switchesRes, notesRes,
+        recentThreadsRes, alertsRes, switchesRes, notesRes, crisisRes,
       ] = await Promise.all([
         sb.from("did_part_registry").select("*").eq("part_name", partName).maybeSingle(),
         sb.from("did_kartoteka").select("*").eq("part_name", partName).maybeSingle().then((r: any) => r).catch(() => ({ data: null })),
@@ -45,6 +45,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         sb.from("safety_alerts").select("id, alert_type, severity, status, created_at, description").eq("part_name", partName).in("status", ["new", "acknowledged"]).order("created_at", { ascending: false }).limit(5),
         sb.from("switching_events").select("id, original_part, detected_part, confidence, created_at").or(`original_part.eq.${partName},detected_part.eq.${partName}`).gte("created_at", today + "T00:00:00").order("created_at", { ascending: false }).limit(5),
         sb.from("therapist_notes").select("id, note_text, note_type, created_at").eq("part_name", partName).order("created_at", { ascending: false }).limit(3),
+        sb.from("crisis_events").select("part_name, phase").eq("part_name", partName).not("phase", "eq", "closed").limit(1),
       ]);
 
       setData({
