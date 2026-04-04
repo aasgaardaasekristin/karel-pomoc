@@ -3368,6 +3368,14 @@ SEKCE D – Terapeutická doporučení a metody [REŽIM: DEEPEN]
 
 → Použij [SEKCE:D:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
+═══ ZNAČKA REŠERŠE POTŘEBA (pouze v sekci D) ═══
+Pokud při analýze části narazíš na situaci, stav nebo potřebu, pro kterou NEMÁŠ v kartě vhodnou metodu/aktivitu/terapeutický postup, přidej na konec sekce D značku:
+🔍 REŠERŠE POTŘEBA: [stručný popis co hledat]
+Příklady:
+🔍 REŠERŠE POTŘEBA: metody stabilizace pro dětskou část po noční můře (věk 5-7)
+🔍 REŠERŠE POTŘEBA: techniky pro práci s protektorem který odmítá komunikaci
+Tuto značku přidej POUZE pokud v sekci D a v existujících datech OPRAVDU chybí vhodný postup. Nepřidávej ji zbytečně.
+
 SEKCE E – Záznam události (Deník vláken) [REŽIM: APPEND]
 
 Přidej nový řádek:
