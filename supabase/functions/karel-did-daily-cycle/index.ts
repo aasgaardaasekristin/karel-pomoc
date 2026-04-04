@@ -424,7 +424,7 @@ async function updateGoogleDocInPlace(token: string, fileId: string, content: st
           }
         }
         // Section headers (═══ SEKCE A – ...)
-        else if (/^═*\s*SEKCE\s+[A-M]\s*[–\-:]/i.test(line)) {
+        else if (/^═*\s*SEKCE\s+[A-N]\s*[–\-:]/i.test(line)) {
           const range = clampRange(charIndex, charIndex + lineLen);
           if (range) {
             formatRequests.push({
