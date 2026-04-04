@@ -4865,29 +4865,39 @@ Vrať POUZE validní JSON (bez markdown):
             console.log(`[daily-cycle] ✅ Auto-created meeting: "${meetingTopic}" (id: ${newMeeting.id})`);
 
             // Send invitation emails
-            const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
-            if (RESEND_KEY) {
-              const resendClient = new Resend(RESEND_KEY);
-              const APP_URL = "https://karel-pomoc.lovable.app";
-              const meetingLink = `${APP_URL}/chat?meeting=${newMeeting.id}`;
-              const emailHtml = (name: string) => `
-                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-                  <h2>📋 Karel svolává poradu</h2>
-                  <p><strong>Téma:</strong> ${meetingTopic}</p>
-                  ${meetingAgenda ? `<p><strong>Agenda:</strong></p><p>${meetingAgenda.replace(/\n/g, "<br>")}</p>` : ""}
-                  <p>${name}, Karel tě zve k asynchronní poradě. Odpovědět můžeš kdykoliv v průběhu dne – Karel shrnuje průběžně.</p>
-                  <p style="margin: 24px 0;">
-                    <a href="${meetingLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-                      Připojit se k poradě →
-                    </a>
-                  </p>
-                  <p style="color: #666; font-size: 13px;">Odkaz tě přesměruje do aplikace Karel. Pro přístup je nutné být přihlášena.</p>
-                  <p>Karel</p>
-                </div>
-              `;
-              try { await resendClient.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: MAMKA_EMAIL, subject: `Karel – porada: ${meetingTopic}`, html: emailHtml("Haničko") }); } catch (e) { console.warn("Meeting invite email (Hanka):", e); }
-              try { await resendClient.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: KATA_EMAIL, subject: `Karel – porada: ${meetingTopic}`, html: emailHtml("Káťo") }); } catch (e) { console.warn("Meeting invite email (Kata):", e); }
-            }
+            const APP_URL = "https://karel-pomoc.lovable.app";
+            const meetingLink = `${APP_URL}/chat?meeting=${newMeeting.id}`;
+            const emailHtml = (name: string) => `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2>📋 Karel svolává poradu</h2>
+                <p><strong>Téma:</strong> ${meetingTopic}</p>
+                ${meetingAgenda ? `<p><strong>Agenda:</strong></p><p>${meetingAgenda.replace(/\n/g, "<br>")}</p>` : ""}
+                <p>${name}, Karel tě zve k asynchronní poradě. Odpovědět můžeš kdykoliv v průběhu dne – Karel shrnuje průběžně.</p>
+                <p style="margin: 24px 0;">
+                  <a href="${meetingLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                    Připojit se k poradě →
+                  </a>
+                </p>
+                <p style="color: #666; font-size: 13px;">Odkaz tě přesměruje do aplikace Karel. Pro přístup je nutné být přihlášena.</p>
+                <p>Karel</p>
+              </div>
+            `;
+            await sendOrQueueEmail(sb!, {
+              toEmail: MAMKA_EMAIL,
+              toName: "Hanka",
+              subject: `Karel – porada: ${meetingTopic}`,
+              bodyHtml: emailHtml("Haničko"),
+              emailType: "meeting_invite",
+              fromAddress: "Karel <karel@hana-chlebcova.cz>",
+            });
+            await sendOrQueueEmail(sb!, {
+              toEmail: KATA_EMAIL,
+              toName: "Káťa",
+              subject: `Karel – porada: ${meetingTopic}`,
+              bodyHtml: emailHtml("Káťo"),
+              emailType: "meeting_invite",
+              fromAddress: "Karel <karel@hana-chlebcova.cz>",
+            });
           }
         } catch (meetErr) {
           console.warn("[daily-cycle] Meeting auto-create error:", meetErr);
