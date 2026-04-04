@@ -2333,6 +2333,34 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     sb = createClient(supabaseUrl, supabaseKey);
 
+    // ═══ ENV DIAGNOSTICS ═══
+    const envDiag = {
+      RESEND_API_KEY: !!RESEND_API_KEY,
+      KATA_EMAIL: KATA_EMAIL || null,
+      MAMKA_EMAIL: !!MAMKA_EMAIL,
+      LOVABLE_API_KEY: !!LOVABLE_API_KEY,
+      PERPLEXITY_API_KEY: !!Deno.env.get("PERPLEXITY_API_KEY"),
+      GOOGLE_CLIENT_ID: !!Deno.env.get("GOOGLE_CLIENT_ID"),
+    };
+    console.log("[ENV DIAG]", JSON.stringify(envDiag));
+
+    const missingCritical: string[] = [];
+    if (!RESEND_API_KEY) missingCritical.push("RESEND_API_KEY");
+    if (!KATA_EMAIL && !MAMKA_EMAIL) missingCritical.push("KATA_EMAIL nebo MAMKA_EMAIL (žádný email pro terapeutky)");
+    if (!LOVABLE_API_KEY) missingCritical.push("LOVABLE_API_KEY");
+
+    if (missingCritical.length > 0) {
+      console.error(`[ENV CRITICAL] Chybí: ${missingCritical.join(", ")}`);
+      try {
+        await sb.from("system_health_log").insert({
+          event_type: "missing_env",
+          severity: "critical",
+          message: `Chybějící env proměnné: ${missingCritical.join(", ")}`,
+          details: envDiag,
+        });
+      } catch {}
+    }
+
     const reportDatePrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
     const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
     let emailSentToHanka = false;
