@@ -368,6 +368,7 @@ serve(async (req) => {
       console.warn("[email] Failed to load section N plans:", planErr);
     }
 
+    // ═══ F7: ENRICHED REPORT SECTIONS ═══
     // Metrics
     if (todayMetrics.length > 0) {
       suppBlock += `\n\n📊 ═══ DENNÍ METRIKY ═══\n`;
