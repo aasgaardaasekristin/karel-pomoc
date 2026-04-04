@@ -6102,6 +6102,49 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
       console.warn("[daily-cycle] Task escalation email error:", escErr);
     }
 
+    // ═══ FÁZE 7.6a: EMAIL RETRY — zpracuj pending emaily z did_pending_emails ═══
+    try {
+      const { data: pendingEmails } = await sb.from("did_pending_emails")
+        .select("*")
+        .eq("status", "pending")
+        .lte("next_retry_at", new Date().toISOString())
+        .lt("retry_count", 3)
+        .order("created_at", { ascending: true })
+        .limit(5);
+
+      if (pendingEmails && pendingEmails.length > 0) {
+        console.log(`[EMAIL RETRY] Processing ${pendingEmails.length} pending emails`);
+        for (const pe of pendingEmails) {
+          const result = await sendOrQueueEmail(sb, {
+            toEmail: pe.to_email,
+            toName: pe.to_name || "",
+            subject: pe.subject,
+            bodyHtml: pe.body_html,
+            bodyText: pe.body_text || "",
+            emailType: pe.email_type,
+            isRetry: true,
+          });
+
+          if (result.sent) {
+            await sb.from("did_pending_emails").update({
+              status: "sent",
+              sent_at: new Date().toISOString(),
+            }).eq("id", pe.id);
+          } else {
+            const newRetryCount = (pe.retry_count || 0) + 1;
+            await sb.from("did_pending_emails").update({
+              retry_count: newRetryCount,
+              error_message: result.error || "retry failed",
+              next_retry_at: new Date(Date.now() + newRetryCount * 60 * 60000).toISOString(),
+              status: newRetryCount >= 3 ? "failed" : "pending",
+            }).eq("id", pe.id);
+          }
+        }
+      }
+    } catch (retryErr) {
+      console.warn("[EMAIL RETRY] Error:", retryErr);
+    }
+
     // ═══ FÁZE 7.6: CLEANUP OLD SAFETY ALERTS ═══
     try {
       const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
