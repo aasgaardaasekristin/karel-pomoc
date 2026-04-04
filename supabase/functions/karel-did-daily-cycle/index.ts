@@ -5764,7 +5764,106 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Plan update error (non-fatal):", planErr);
     }
 
-    // ═══ FÁZE 7.5: CLEANUP OLD SAFETY ALERTS ═══
+    // ═══ FÁZE 7.5: ESKALAČNÍ EMAIL PRO ZPOŽDĚNÉ ÚKOLY ═══
+    try {
+      if (overdueTasks.length > 0) {
+        const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
+        const MAMKA_EMAIL = Deno.env.get("KATA_EMAIL") ? undefined : undefined; // loaded below
+        const hankaEmail = Deno.env.get("MAMKA_PHONE")?.includes("@") ? Deno.env.get("MAMKA_PHONE") : null;
+        const kataEmail = Deno.env.get("KATA_EMAIL") || null;
+
+        // Group by assignee
+        const byAssignee: Record<string, typeof overdueTasks> = {};
+        for (const ot of overdueTasks) {
+          const targets = ot.assignee === "both" ? ["hanka", "kata"] : [ot.assignee];
+          for (const t of targets) {
+            if (!byAssignee[t]) byAssignee[t] = [];
+            byAssignee[t].push(ot);
+          }
+        }
+
+        for (const [assignee, tasks] of Object.entries(byAssignee)) {
+          const hasCritical = tasks.some(t => t.escalationLevel === "critical");
+          const maxLevel = hasCritical ? "critical" : "warning";
+
+          // Frequency control: critical=1x/day, warning=1x/3days
+          const maxFrequencyMs = maxLevel === "critical" ? 86400000 : 3 * 86400000;
+          const lastEmailAt = tasks[0]?.task?.last_escalation_email_at;
+          if (lastEmailAt && (Date.now() - new Date(lastEmailAt).getTime()) < maxFrequencyMs) {
+            console.log(`[TASK ESCALATION] Skipping email for ${assignee} — too recent (last: ${lastEmailAt})`);
+            continue;
+          }
+
+          const criticalTasks = tasks.filter(t => t.escalationLevel === "critical");
+          const warningTasks = tasks.filter(t => t.escalationLevel === "warning");
+
+          const subject = hasCritical
+            ? `Karel: 🚨 URGENT — ${criticalTasks.length} kriticky zpožděných úkolů!`
+            : `Karel: ⏰ ${warningTasks.length} úkolů čeká na vyřízení`;
+
+          let body = `<h2 style="color: ${hasCritical ? '#dc2626' : '#d97706'}">`;
+          body += hasCritical ? `🚨 ${criticalTasks.length} kriticky zpožděných úkolů` : `⏰ ${warningTasks.length} úkolů čeká`;
+          body += `</h2><p>Ahoj ${assignee === "hanka" ? "Hanko" : "Káťo"},</p>`;
+          body += `<p>Tyto úkoly čekají na tvou pozornost:</p>`;
+
+          if (criticalTasks.length > 0) {
+            body += `<h3 style="color: #dc2626">🔴 KRITICKÉ (7+ dní)</h3><ul>`;
+            for (const ct of criticalTasks) {
+              body += `<li><strong>${ct.task.task}</strong> — ${ct.daysOverdue} dní`;
+              if (ct.task.detail_instruction) body += `<br><small>Zadání: ${ct.task.detail_instruction}</small>`;
+              body += `</li>`;
+            }
+            body += `</ul>`;
+          }
+
+          if (warningTasks.length > 0) {
+            body += `<h3 style="color: #d97706">🟡 UPOZORNĚNÍ (3+ dní)</h3><ul>`;
+            for (const wt of warningTasks) {
+              body += `<li><strong>${wt.task.task}</strong> — ${wt.daysOverdue} dní</li>`;
+            }
+            body += `</ul>`;
+          }
+
+          body += `<p>Karel</p>`;
+
+          if (RESEND_KEY) {
+            const targetEmail = assignee === "hanka" ? hankaEmail : kataEmail;
+            if (targetEmail) {
+              try {
+                const { Resend } = await import("npm:resend@2.0.0");
+                const resend = new Resend(RESEND_KEY);
+                const { error: sendErr } = await resend.emails.send({
+                  from: "Karel <karel@hana-chlebcova.cz>",
+                  to: [targetEmail],
+                  subject,
+                  html: body,
+                });
+                if (sendErr) throw new Error(String(sendErr));
+                console.log(`[TASK ESCALATION] ✅ Email sent to ${assignee} (${targetEmail})`);
+              } catch (emailErr) {
+                console.error(`[TASK ESCALATION] Email failed for ${assignee}:`, emailErr);
+              }
+            }
+          } else {
+            console.log(`[EMAIL QUEUED] Eskalační email pro ${assignee} — RESEND_API_KEY not available`);
+          }
+
+          // Update last_escalation_email_at for these tasks
+          const taskIds = tasks.map(t => t.task.id).filter(Boolean);
+          if (taskIds.length > 0) {
+            for (const tid of taskIds) {
+              await sb.from("did_therapist_tasks").update({
+                last_escalation_email_at: new Date().toISOString(),
+              } as any).eq("id", tid);
+            }
+          }
+        }
+      }
+    } catch (escErr) {
+      console.warn("[daily-cycle] Task escalation email error:", escErr);
+    }
+
+    // ═══ FÁZE 7.6: CLEANUP OLD SAFETY ALERTS ═══
     try {
       const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
       await sb.from("safety_alerts").delete().in("status", ["resolved", "false_positive"]).lt("created_at", alertCutoff);
