@@ -273,7 +273,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const systemPrompt = `Jsi Karel, AI asistent specializovaný na DID (disociativní porucha identity).
+    const systemPrompt = SYSTEM_RULES + `\n\nJsi Karel, AI asistent specializovaný na DID (disociativní porucha identity).
 Provádíš MĚSÍČNÍ ANALÝZU systému za posledních 30 dní.
 
 ═══ KRITICKÁ PRAVIDLA (NESMÍŠ PORUŠIT) ═══

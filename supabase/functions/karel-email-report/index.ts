@@ -57,7 +57,7 @@ serve(async (req) => {
             messages: [
               {
                 role: "system",
-                content: "Přeformátuj následující zápis do čistého HTML emailu. Zachovej obsah beze změny, pouze přidej základní HTML formátování (h2, p, ul, li, strong). Vrať POUZE HTML kód bez vysvětlení.",
+                content: SYSTEM_RULES + "\n\nPřeformátuj následující zápis do čistého HTML emailu. Zachovej obsah beze změny, pouze přidej základní HTML formátování (h2, p, ul, li, strong). Vrať POUZE HTML kód bez vysvětlení.",
               },
               { role: "user", content: reportContent },
             ],

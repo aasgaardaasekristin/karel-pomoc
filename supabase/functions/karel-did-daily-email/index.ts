@@ -733,7 +733,7 @@ Shrň klíčové body z pohledu Káti.` : ""}
 
 Podpis: "Karel"
 
-Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
+Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
       // ═══ FILTER: only parts that are truly active + recommended ═══
       const BANNED_PART_NAMES = new Set([
         "LOCIK","LOCÍK","LOCEK", // pes – NIKDY DID část

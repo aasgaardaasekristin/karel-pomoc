@@ -937,7 +937,7 @@ async function phaseNotify(sb: any, cycleId: string) {
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
           messages: [
-            { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID případ. Vytvoř profesionální TÝDENNÍ BRIEFING ve formátu HTML emailu.
+            { role: "system", content: SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro DID případ. Vytvoř profesionální TÝDENNÍ BRIEFING ve formátu HTML emailu.
 
 FORMÁT: Simulace konzilia / týdenní porady vedoucího týmu. Píšeš PRO CELÝ TÝM (Hanka + Káťa), ne intimní dopis.
 
