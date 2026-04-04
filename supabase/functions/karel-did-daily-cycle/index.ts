@@ -4004,14 +4004,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               });
 
               // Send alert email – only from cron
-              if (shouldSendEmails && RESEND_API_KEY) {
-                try {
-                  const resend = new Resend(RESEND_API_KEY);
-                  await resend.emails.send({
-                    from: "Karel <karel@hana-chlebcova.cz>",
-                    to: [MAMKA_EMAIL],
-                    subject: `⚠️ Karel ALERT: Karta "${resolvedPartName}" nenalezena`,
-                    html: `<div style="font-family:sans-serif;padding:20px;">
+              if (shouldSendEmails) {
+                const alertHtml = `<div style="font-family:sans-serif;padding:20px;">
                       <h2 style="color:#dc2626;">⚠️ Karta nenalezena</h2>
                       <p><strong>Část:</strong> ${resolvedPartName}</p>
                       <p><strong>ID z registru:</strong> ${target.registryEntry.id}</p>
@@ -4021,12 +4015,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
                       <hr/>
                       <p>Karel zápis <strong>neprovedl</strong>, aby nevznikl duplicitní soubor. Zkontroluj prosím, zda karta existuje ve správné složce na Google Drive.</p>
                       <p><strong>Sekce k zápisu (odložené):</strong> ${Object.keys(newSections).join(", ")}</p>
-                    </div>`,
-                  });
-                  console.log(`Alert email sent for missing card: ${resolvedPartName}`);
-                } catch (emailErr) {
-                  console.error(`Failed to send alert email for ${resolvedPartName}:`, emailErr);
-                }
+                    </div>`;
+                await sendOrQueueEmail(sb!, {
+                  toEmail: MAMKA_EMAIL,
+                  toName: "Hanka",
+                  subject: `⚠️ Karel ALERT: Karta "${resolvedPartName}" nenalezena`,
+                  bodyHtml: alertHtml,
+                  emailType: "card_alert",
+                });
               }
               continue; // Skip this card entirely
             }
