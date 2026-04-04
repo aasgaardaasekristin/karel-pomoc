@@ -199,7 +199,7 @@ serve(async (req) => {
               messages: [
                 {
                   role: "system",
-                  content: `Jsi Karel – moderátor asynchronní porady DID terapeutického týmu. Vedete poradu na téma: "${meeting.topic}".
+                  content: SYSTEM_RULES + `\n\nJsi Karel – moderátor asynchronní porady DID terapeutického týmu. Vedete poradu na téma: "${meeting.topic}".
 
 TVOJE ROLE:
 - Aktivně veď poradu: shrň co řekla ${therapistName}, polož další otázky, navrhni brainstorming
