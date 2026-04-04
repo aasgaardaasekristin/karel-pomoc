@@ -436,7 +436,46 @@ const TaskCard = ({
             </div>
           )}
 
-          {/* Legacy completed_note display */}
+          {/* Auto-feedback from Karel's daily analysis */}
+          {autoFeedback && (
+            <div className={`rounded border px-2 py-1.5 ${
+              (autoFeedback.quality_score ?? 3) <= 2 ? "border-orange-400/50 bg-orange-50/30 dark:bg-orange-950/20" :
+              (autoFeedback.quality_score ?? 3) >= 4 ? "border-green-400/50 bg-green-50/30 dark:bg-green-950/20" :
+              "border-border bg-muted/30"
+            } ${autoFeedback.acknowledged ? "opacity-50" : ""}`}>
+              <div className="flex items-center justify-between gap-1 mb-0.5">
+                <span className="text-[0.5625rem] font-semibold">🤖 Karlova zpětná vazba</span>
+                <span className="text-[0.5rem] text-muted-foreground flex items-center gap-0.5">
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <span key={i} className={i < (autoFeedback.quality_score ?? 0) ? "text-yellow-500" : "text-muted-foreground/30"}>★</span>
+                  ))}
+                </span>
+              </div>
+              <p className="text-[0.5625rem] leading-relaxed whitespace-pre-line">{autoFeedback.feedback_text}</p>
+              {autoFeedback.suggestions && autoFeedback.suggestions.length > 0 && (
+                <div className="mt-1">
+                  <span className="text-[0.5rem] font-medium text-muted-foreground">Doporučené další kroky:</span>
+                  <ul className="list-disc list-inside text-[0.5rem] text-muted-foreground mt-0.5">
+                    {autoFeedback.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                </div>
+              )}
+              {!autoFeedback.acknowledged && (
+                <button
+                  type="button"
+                  className="mt-1 text-[0.5rem] text-primary hover:underline"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await supabase.from("did_task_auto_feedback").update({ acknowledged: true }).eq("id", autoFeedback.id);
+                    setAutoFeedback(prev => prev ? { ...prev, acknowledged: true } : null);
+                  }}
+                >
+                  ✓ Beru na vědomí
+                </button>
+              )}
+            </div>
+          )}
+
           {task.completed_note && feedback.length === 0 && (
             <div className="whitespace-pre-line rounded bg-muted/40 px-1.5 py-1 text-[0.5625rem] text-muted-foreground">
               <MessageSquare className="mr-0.5 inline h-2.5 w-2.5 opacity-60" />
