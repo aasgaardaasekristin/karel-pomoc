@@ -3205,7 +3205,7 @@ d) OCHRANNÉ MECHANISMY:
 
 → Pro odstavec "Aktuální stav" použij tag [SEKCE:A:REPLACE], pro zbytek sekce A použij [SEKCE:A] (append).
 
-SEKCE B – Charakter a psychologický profil [REŽIM: ROTATE pro aktuální stav, REPLACE pro profilaci]
+SEKCE B – Charakter a psychologický profil [REŽIM: DEEPEN]
 
 AKTUÁLNÍ STAV (dynamické body):
 - Odstraň 3 chronologicky nejstarší body
@@ -3236,9 +3236,9 @@ Pokud profilace EXISTUJE:
 OBRANNÉ MECHANISMY A REAKCE NA KONTAKT:
 - Stejný % princip jako u psychologických charakteristik
 
-→ Pro celou sekci B použij [SEKCE:B:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci B.
+→ Použij [SEKCE:B:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
-SEKCE C – Jádrové potřeby, strachy, triggery, konflikty, rizika [REŽIM: REPLACE]
+SEKCE C – Jádrové potřeby, strachy, triggery, konflikty, rizika [REŽIM: DEEPEN]
 
 Pro KAŽDÝ odstavec (potřeby, strachy, triggery, konflikty, rizika):
 1. Zhodnoť, který z bodů nejméně odpovídá (je nejvíce v rozporu) s projevem ve vlákně
@@ -3247,9 +3247,9 @@ Pro KAŽDÝ odstavec (potřeby, strachy, triggery, konflikty, rizika):
 4. Pokud prvek je na ústupu: přidej poznámku "Indicie z [datum]: tento prvek je momentálně na ústupu"
 5. Pokud se část explicitně zmiňuje, že se něčeho už nebojí: přidej poznámku k danému bodu
 
-→ Použij [SEKCE:C:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci C.
+→ Použij [SEKCE:C:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
-SEKCE D – Terapeutická doporučení a metody [REŽIM: REPLACE]
+SEKCE D – Terapeutická doporučení a metody [REŽIM: DEEPEN]
 
 1. Přečti obsah sekce D z karty
 2. Přečti vlákno/vlákna
@@ -3262,7 +3262,7 @@ SEKCE D – Terapeutická doporučení a metody [REŽIM: REPLACE]
 6. Pokud najdeš vhodnou techniku: zapiš ji do sekce D
 7. ZÁROVEŇ tuto techniku zapiš do operativního plánu v [CENTRUM:05_Operativni_Plan]
 
-→ Použij [SEKCE:D:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci D.
+→ Použij [SEKCE:D:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
 SEKCE E – Záznam události (Deník vláken) [REŽIM: APPEND]
 
