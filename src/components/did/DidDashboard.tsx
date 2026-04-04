@@ -310,6 +310,15 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       setLastReportStatus(lastDispatchRes.data?.[0]?.status || null);
       setTodayAiErrors(aiErrorsRes.count || 0);
 
+      // ── Escalated tasks ──
+      try {
+        const { data: escTasks } = await supabase.from("did_therapist_tasks")
+          .select("id, task, assigned_to, created_at, escalation_level, priority, status, status_hanka, status_kata")
+          .in("escalation_level" as any, ["warning", "critical"])
+          .in("status", ["pending", "in_progress", "not_started"] as any);
+        setEscalatedTasks(escTasks || []);
+      } catch { setEscalatedTasks([]); }
+
       setLastRefreshAt(new Date());
     } catch (error) {
       console.error("Failed to load DID dashboard data:", error);
