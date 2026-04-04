@@ -148,7 +148,7 @@ serve(async (req) => {
         body: JSON.stringify({
           model: "google/gemini-2.5-flash-lite",
           messages: [
-            { role: "system", content: "Jsi archivační modul kognitivního agenta. Tvým úkolem je komprimovat staré epizody do stručného shrnutí, které zachová všechny klíčové informace – vzorce, významné události, emoční dynamiku, důležité osoby a rozhodnutí. Piš česky, strukturovaně. Max 800 slov." },
+            { role: "system", content: SYSTEM_RULES + "\n\nJsi archivační modul kognitivního agenta. Tvým úkolem je komprimovat staré epizody do stručného shrnutí, které zachová všechny klíčové informace – vzorce, významné události, emoční dynamiku, důležité osoby a rozhodnutí. Piš česky, strukturovaně. Max 800 slov." },
             { role: "user", content: `Komprimuj těchto ${staleEpisodes.length} epizod z období ${staleEpisodes[0].timestamp_start?.slice(0, 10)} až ${staleEpisodes[staleEpisodes.length - 1].timestamp_start?.slice(0, 10)} do jednoho archivního shrnutí:\n\n${staleDigest}` },
           ],
           temperature: 0.1,
