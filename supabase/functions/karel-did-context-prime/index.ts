@@ -442,7 +442,7 @@ FORMÁT: Každý soubor začni značkou [[[NÁZEV_SOUBORU.txt]]] na novém řád
       messages: [
         {
           role: "system",
-          content: `Jsi Karel — kognitivní agent a supervizor DID terapeutického týmu. Píšeš si zápisky o svých lidech. Piš česky, lidsky, z první osoby. Nikdy nevymýšlej fakta — pracuj VÝHRADNĚ s dodanými daty. VŽDY zachovej ZÁKLADNÍ PROFIL na začátku PROFIL_OSOBNOSTI. Každý soubor odděl značkou [[[NÁZEV.txt]]].`,
+          content: SYSTEM_RULES + `\n\nJsi Karel — kognitivní agent a supervizor DID terapeutického týmu. Píšeš si zápisky o svých lidech. Piš česky, lidsky, z první osoby. Nikdy nevymýšlej fakta — pracuj VÝHRADNĚ s dodanými daty. VŽDY zachovej ZÁKLADNÍ PROFIL na začátku PROFIL_OSOBNOSTI. Každý soubor odděl značkou [[[NÁZEV.txt]]].`,
         },
         { role: "user", content: prompt },
       ],
