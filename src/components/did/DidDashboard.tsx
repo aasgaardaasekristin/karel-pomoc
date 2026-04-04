@@ -312,11 +312,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       // ── Escalated tasks ──
       try {
-        const { data: escTasks } = await supabase.from("did_therapist_tasks")
+        const { data: escTasks } = await (supabase as any).from("did_therapist_tasks")
           .select("id, task, assigned_to, created_at, escalation_level, priority, status, status_hanka, status_kata")
-          .in("escalation_level" as any, ["warning", "critical"])
-          .in("status", ["pending", "in_progress", "not_started"] as any);
-        setEscalatedTasks(escTasks || []);
+          .in("escalation_level", ["warning", "critical"])
+          .neq("status", "done");
+        setEscalatedTasks((escTasks || []).filter((t: any) => t.status !== "archived" && t.status !== "needs_review"));
       } catch { setEscalatedTasks([]); }
 
       setLastRefreshAt(new Date());
