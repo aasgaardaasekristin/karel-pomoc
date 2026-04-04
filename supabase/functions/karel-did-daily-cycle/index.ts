@@ -2447,19 +2447,26 @@ serve(async (req) => {
     };
 
     const sendEmailOnce = async (recipient: "hanka" | "kata", to: string, subject: string, html: string): Promise<boolean> => {
-      if (!shouldSendEmails || !resend) return false;
+      if (!shouldSendEmails) return false;
       const reserved = await reserveDispatchSlot(recipient);
       if (!reserved) return false;
 
       try {
-        await resend.emails.send({
-          from: "Karel <karel@hana-chlebcova.cz>",
-          to: [to],
+        const result = await sendOrQueueEmail(sb!, {
+          toEmail: to,
+          toName: recipient,
           subject,
-          html,
+          bodyHtml: html,
+          emailType: "daily_report",
         });
-        await markDispatchSent(recipient);
-        return true;
+        if (result.sent) {
+          await markDispatchSent(recipient);
+          return true;
+        } else if (result.queued) {
+          await markDispatchFailed(recipient, result.error || "queued");
+          return false;
+        }
+        return false;
       } catch (e) {
         await markDispatchFailed(recipient, e instanceof Error ? e.message : String(e));
         throw e;
