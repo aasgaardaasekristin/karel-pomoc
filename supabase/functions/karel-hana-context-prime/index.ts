@@ -457,7 +457,7 @@ ${newsDigest || "(nedostupné)"}`;
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi analytický modul. Vytvářej přesné, datově podložené kontextové briefy. Nikdy nevymýšlej. Buď stručný ale kompletní." },
+          { role: "system", content: SYSTEM_RULES + "\n\nJsi analytický modul. Vytvářej přesné, datově podložené kontextové briefy. Nikdy nevymýšlej. Buď stručný ale kompletní." },
           { role: "user", content: synthesisPrompt },
         ],
         temperature: 0.15,

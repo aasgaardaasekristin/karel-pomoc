@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Jsi Karel – vedoucí terapeutického týmu pro práci s DID systémem.
+const SYSTEM_PROMPT = SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro práci s DID systémem.
 Provádíš INTERNÍ analýzu, která je DŮVĚRNÁ a slouží VÝHRADNĚ pro tvé vlastní rozhodování.
 
 PRAVIDLA:

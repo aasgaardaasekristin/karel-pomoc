@@ -360,7 +360,7 @@ Odpověz POUZE "YES" nebo "NO". YES = zmíněna konkrétní informace o stavu/ch
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: `Extrahuj DID-relevantní informace z konverzace Hanky s Karlem (osobní režim). Zaměř se POUZE na zmínky o částech/fragmentech DID systému, jejich stavu, chování, pokrocích. Ignoruj osobní témata Hanky nesouvisející s DID.` },
+                { role: "system", content: SYSTEM_RULES + `\n\nExtrahuj DID-relevantní informace z konverzace Hanky s Karlem (osobní režim). Zaměř se POUZE na zmínky o částech/fragmentech DID systému, jejich stavu, chování, pokrocích. Ignoruj osobní témata Hanky nesouvisející s DID.` },
                 { role: "user", content: conversationText.slice(0, 6000) },
               ],
               tools: [{

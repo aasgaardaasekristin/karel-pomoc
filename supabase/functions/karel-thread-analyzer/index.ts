@@ -7,7 +7,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const THREAD_ANALYSIS_PROMPT = `Jsi Karel – AI vedoucí terapeutického týmu pro DID systém.
+const THREAD_ANALYSIS_PROMPT = SYSTEM_RULES + `\n\nJsi Karel – AI vedoucí terapeutického týmu pro DID systém.
 Tvým úkolem je analyzovat vlákna (rozhovory DID části s Karlem) a roztřídit informace do sekcí A-M kartotéky.
 
 ## PRAVIDLA ENTITY SEPARACE

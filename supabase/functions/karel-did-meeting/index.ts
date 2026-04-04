@@ -324,7 +324,7 @@ AGENDA: ${meeting.agenda || meeting.topic}`,
               messages: [
                 {
                   role: "system",
-                  content: `Jsi Karel. Uzavíráš poradu DID týmu. Vygeneruj:
+                  content: SYSTEM_RULES + `\n\nJsi Karel. Uzavíráš poradu DID týmu. Vygeneruj:
 
 1. SHRNUTÍ (2-3 odstavce) – co se projednalo, na čem se dohodly
 2. ÚKOLY – JSON pole ve formátu:

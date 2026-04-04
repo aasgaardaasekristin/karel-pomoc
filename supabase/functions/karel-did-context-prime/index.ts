@@ -1291,7 +1291,7 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         messages: [
-          { role: "system", content: "Jsi analytický modul pro DID terapeutický systém. Vytvářej přesné, datově podložené kontextové briefy. Nikdy nevymýšlej. Buď stručný ale kompletní. Piš česky." },
+          { role: "system", content: SYSTEM_RULES + "\n\nJsi analytický modul pro DID terapeutický systém. Vytvářej přesné, datově podložené kontextové briefy. Nikdy nevymýšlej. Buď stručný ale kompletní. Piš česky." },
           { role: "user", content: synthesisPrompt },
         ],
         temperature: 0.15,
