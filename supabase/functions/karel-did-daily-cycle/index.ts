@@ -6072,26 +6072,19 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
 
           body += `<p>Karel</p>`;
 
-          if (RESEND_KEY) {
+          {
             const targetEmail = assignee === "hanka" ? hankaEmail : kataEmail;
             if (targetEmail) {
-              try {
-                const { Resend } = await import("npm:resend@2.0.0");
-                const resend = new Resend(RESEND_KEY);
-                const { error: sendErr } = await resend.emails.send({
-                  from: "Karel <karel@hana-chlebcova.cz>",
-                  to: [targetEmail],
-                  subject,
-                  html: body,
-                });
-                if (sendErr) throw new Error(String(sendErr));
-                console.log(`[TASK ESCALATION] ✅ Email sent to ${assignee} (${targetEmail})`);
-              } catch (emailErr) {
-                console.error(`[TASK ESCALATION] Email failed for ${assignee}:`, emailErr);
-              }
+              await sendOrQueueEmail(sb!, {
+                toEmail: targetEmail,
+                toName: assignee === "hanka" ? "Hanka" : "Káťa",
+                subject,
+                bodyHtml: body,
+                emailType: "escalation",
+              });
+            } else {
+              console.warn(`[TASK ESCALATION] No email for ${assignee}`);
             }
-          } else {
-            console.log(`[EMAIL QUEUED] Eskalační email pro ${assignee} — RESEND_API_KEY not available`);
           }
 
           // Update last_escalation_email_at for these tasks
