@@ -226,17 +226,28 @@ const TaskCard = ({
   const [feedback, setFeedback] = useState<TaskFeedbackEntry[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [autoFeedback, setAutoFeedback] = useState<AutoFeedbackEntry | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isExpanded) return;
     const loadFeedback = async () => {
-      const { data } = await supabase
-        .from("did_task_feedback")
-        .select("*")
-        .eq("task_id", task.id)
-        .order("created_at", { ascending: true });
+      const [{ data }, { data: afData }] = await Promise.all([
+        supabase
+          .from("did_task_feedback")
+          .select("*")
+          .eq("task_id", task.id)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("did_task_auto_feedback")
+          .select("*")
+          .eq("task_id", task.id)
+          .limit(1)
+          .maybeSingle(),
+      ]);
       setFeedback((data as TaskFeedbackEntry[]) || []);
+      setAutoFeedback(afData as AutoFeedbackEntry | null);
+    };
     };
     void loadFeedback();
   }, [isExpanded, task.id]);
