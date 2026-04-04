@@ -4367,7 +4367,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
                       // Skip blacklisted names
                       if (isBlacklisted(partName)) continue;
 
-                      const sectionRegex = /\[SEKCE:([A-M])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
+                      const sectionRegex = /\[SEKCE:([A-N])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
                       const newSections: Record<string, string> = {};
                       for (const sm of block.matchAll(sectionRegex)) {
                         const content = sm[2].trim();
