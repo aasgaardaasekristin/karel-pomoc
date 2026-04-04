@@ -3377,9 +3377,9 @@ Pro KAŽDOU část vypiš VŠECHNY sekce kde jsou nové informace:
 [KARTA:jméno_části]
 [SEKCE:A:REPLACE] kompletní nový obsah sekce A (odstavec aktuální stav)
 [SEKCE:A] doplňkový obsah pro zbytek sekce A (vztahy, mechanismy...)
-[SEKCE:B:REPLACE] kompletní nová sekce B
-[SEKCE:C:REPLACE] kompletní nová sekce C
-[SEKCE:D:REPLACE] kompletní nová sekce D
+[SEKCE:B:DEEPEN] pouze nové poznatky pro sekci B
+[SEKCE:C:DEEPEN] pouze nové poznatky pro sekci C
+[SEKCE:D:DEEPEN] pouze nové poznatky pro sekci D
 [SEKCE:E] nový append záznam
 [SEKCE:F:REPLACE] kompletní nová sekce F
 [SEKCE:G] zápis do deníku (POUZE na žádost části!)
@@ -3394,6 +3394,7 @@ Pro KAŽDOU část vypiš VŠECHNY sekce kde jsou nové informace:
 Režimy zápisu:
 - [SEKCE:X:REPLACE] = celá sekce se PŘEPÍŠE novým obsahem (Karel generuje KOMPLETNÍ sekci)
 - [SEKCE:X:ROTATE] = sekce se inteligentně sloučí (Karel už provedl rotaci bodů)
+- [SEKCE:X:DEEPEN] = NEMAŽ existující obsah, přidej POUZE nové poznatky na konec (oddělené ---). Pokud poznatek POTVRZUJE existující, přidej ✓ datum. Pokud ODPORUJE, přidej ⚡REVIZE. Pokud nemáš nic nového, VYNECH sekci.
 - [SEKCE:X] = standardní APPEND (nový obsah se přidá na konec existujícího)
 
 ═══ AKTUALIZACE DOKUMENTŮ 00_CENTRUM ═══
