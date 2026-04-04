@@ -320,6 +320,17 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         setEscalatedTasks((escTasks || []).filter((t: any) => t.status !== "archived" && t.status !== "needs_review"));
       } catch { setEscalatedTasks([]); }
 
+      // ── System health issues ──
+      try {
+        const { data: healthData } = await supabase.from("system_health_log")
+          .select("id, event_type, severity, message, created_at")
+          .eq("severity", "critical")
+          .eq("resolved", false)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        setHealthIssues(healthData || []);
+      } catch { setHealthIssues([]); }
+
       setLastRefreshAt(new Date());
     } catch (error) {
       console.error("Failed to load DID dashboard data:", error);
