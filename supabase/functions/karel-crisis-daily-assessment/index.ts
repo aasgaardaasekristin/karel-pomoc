@@ -204,6 +204,11 @@ ODPOVEZ PRESNE V TOMTO JSON FORMATU:
   "risk_assessment": "critical|high|moderate|low|minimal",
   "reasoning": "zduvodneni (min 3 vety)",
   "decision": "crisis_continues|crisis_improving|crisis_resolved|needs_more_data",
+  "interview_request": true/false,
+  "interview_type": "diagnostic|projective_test|stabilization|check_in",
+  "interview_reason": "proc Karel potrebuje rozhovor (1 veta)",
+  "therapist_interview_needed": true/false,
+  "therapist_questions_specific": ["konkretni otazka pro terapeutku - napr. 'Hanko, vsimla sis u Arthura dnes zmeny nalady?'"],
   "next_day_plan": {"planned_session_type": "...", "planned_tests": [], "therapist_tasks": [], "focus_areas": [], "intervention_strategy": "..."},
   "conversation_starters": ["otazka pro zahajeni"]
 }`;
@@ -292,6 +297,81 @@ Proved denni krizove hodnoceni.`;
 
       if (therapistTasks.length > 0) {
         await supabase.from("did_therapist_tasks").insert(therapistTasks);
+      }
+
+      // 11b. Therapist-specific interview tasks (from AI)
+      if (assessment.therapist_interview_needed) {
+        const specificQuestions = assessment.therapist_questions_specific || [];
+        if (specificQuestions.length > 0) {
+          await supabase.from("did_therapist_tasks").insert({
+            task: `[KRIZE den ${dayNumber}] Karel VYZADUJE informace od terapeutek — ${crisis.part_name}`,
+            assigned_to: "both",
+            description: `Karel potrebuje odpovedi na nasledujici otazky:\n\n${specificQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join("\n")}\n\nProsim odpovezte v poznamkach k casti ${crisis.part_name}.`,
+            priority: "urgent",
+            status: "not_started",
+            category: "interview",
+          });
+        }
+      }
+
+      // 11c. Plan sessions based on assessment
+      const shouldPlanSession =
+        assessment.risk_assessment === "critical" // critical → every day
+        || (assessment.decision === "crisis_continues" && dayNumber % 2 === 0) // continues → every 2nd day
+        || (dayNumber >= 7) // 7+ days → always plan
+        || assessment.interview_request; // Karel explicitly requests interview
+
+      if (shouldPlanSession) {
+        // Check if session already planned in last 48h
+        const { data: recentPlanned } = await supabase
+          .from("did_daily_session_plans")
+          .select("id")
+          .eq("selected_part", crisis.part_name)
+          .gte("created_at", new Date(Date.now() - 48 * 3600000).toISOString())
+          .limit(1);
+
+        if (!recentPlanned || recentPlanned.length === 0) {
+          const sessionFormat = assessment.interview_request
+            ? (assessment.interview_type || "diagnostic")
+            : "crisis_check_in";
+          const planMarkdown = [
+            `# Krizové sezení — ${crisis.part_name} (den ${dayNumber})`,
+            ``,
+            `**Typ:** ${sessionFormat}`,
+            `**Důvod:** ${assessment.interview_request ? assessment.interview_reason : `Krize trvá ${dayNumber} dní, risk=${assessment.risk_assessment}`}`,
+            ``,
+            `## Zaměření`,
+            ...(assessment.next_day_plan?.focus_areas || ["Stabilizace, grounding, evaluace stavu"]).map((f: string) => `- ${f}`),
+            ``,
+            `## Strategie`,
+            assessment.next_day_plan?.intervention_strategy || "Stabilizační techniky, neotevírat traumatický materiál.",
+            ``,
+            `## Plánované testy`,
+            ...(assessment.next_day_plan?.planned_tests || []).map((t: string) => `- ${t}`),
+            ``,
+            `## Otevírací otázky`,
+            ...(assessment.conversation_starters || []).map((q: string) => `- "${q}"`),
+          ].join("\n");
+
+          await supabase.from("did_daily_session_plans").insert({
+            selected_part: crisis.part_name,
+            plan_date: new Date().toISOString().slice(0, 10),
+            plan_markdown: planMarkdown,
+            plan_html: `<pre>${planMarkdown}</pre>`,
+            session_format: sessionFormat,
+            session_lead: "karel",
+            therapist: "both",
+            urgency_score: assessment.risk_assessment === "critical" ? 100 : 80,
+            urgency_breakdown: { risk: assessment.risk_assessment, day: dayNumber, decision: assessment.decision },
+            status: "pending",
+            generated_by: "crisis_assessment",
+            part_tier: "crisis",
+          });
+
+          console.log(`[CRISIS SESSION PLANNED] ${crisis.part_name} day ${dayNumber}: format=${sessionFormat}`);
+        } else {
+          console.log(`[CRISIS SESSION SKIP] ${crisis.part_name}: session already planned in last 48h`);
+        }
       }
 
       // 12. If RESOLVED -> close crisis

@@ -5633,8 +5633,97 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Health check error:", healthErr);
     }
 
-    // ═══ FÁZE 5.5: VYHODNOCENÍ AKTIVNÍCH KRIZÍ ═══
+    // ═══ FÁZE 5.5: BRIDGE crisis_alerts → crisis_events + VYHODNOCENÍ AKTIVNÍCH KRIZÍ ═══
     try {
+      // ── BRIDGE: Sync crisis_alerts (System A) → crisis_events (System B) ──
+      const { data: activeAlerts } = await sb
+        .from("crisis_alerts")
+        .select("*")
+        .in("status", ["ACTIVE", "ACKNOWLEDGED"]);
+
+      for (const alert of (activeAlerts || [])) {
+        // Check if crisis_events record already exists for this part
+        const { data: existingEvent } = await sb
+          .from("crisis_events")
+          .select("id")
+          .eq("part_name", alert.part_name)
+          .not("phase", "eq", "closed")
+          .limit(1);
+
+        if (!existingEvent || existingEvent.length === 0) {
+          // Create bridge record in crisis_events
+          await sb.from("crisis_events").insert({
+            part_name: alert.part_name,
+            phase: "acute",
+            severity: alert.severity || "high",
+            trigger_description: alert.summary || "Automaticky přemostěno z crisis_alerts",
+            trigger_source: "crisis_alert_bridge",
+            opened_at: alert.created_at || new Date().toISOString(),
+          });
+          console.log(`[BRIDGE] Created crisis_events for "${alert.part_name}" from crisis_alert ${alert.id}`);
+        }
+      }
+
+      // ── PHASE TRANSITION: Analyze assessments and update crisis_events phases ──
+      const { data: allOpenEvents } = await sb
+        .from("crisis_events")
+        .select("*")
+        .not("phase", "eq", "closed");
+
+      for (const event of (allOpenEvents || [])) {
+        // Load last 5 assessments for this part
+        const { data: recentAssessments } = await sb
+          .from("crisis_daily_assessments")
+          .select("karel_decision, karel_risk_assessment, part_emotional_state, part_risk_indicators, day_number")
+          .eq("part_name", event.part_name)
+          .order("assessment_date", { ascending: false })
+          .limit(5);
+
+        if (recentAssessments && recentAssessments.length >= 3) {
+          const lastThree = recentAssessments.slice(0, 3);
+          const decisions = lastThree.map((a: any) => a.karel_decision);
+          const risks = lastThree.map((a: any) => a.karel_risk_assessment);
+          const hasAnyCritical = risks.some((r: string) => r === "critical");
+          const allImproving = decisions.every((d: string) => d === "crisis_improving");
+          const allLowRisk = risks.every((r: string) => r === "low" || r === "minimal");
+          const noRiskIndicators = lastThree.every((a: any) => {
+            const indicators = a.part_risk_indicators;
+            return !indicators || (Array.isArray(indicators) && indicators.length === 0);
+          });
+
+          let newPhase = event.phase;
+
+          // Relapse detection: any critical after stabilization → reset to acute
+          if (hasAnyCritical && event.phase !== "acute") {
+            newPhase = "acute";
+            console.log(`[PHASE TRANSITION] ${event.part_name}: RELAPSE → acute (critical risk detected)`);
+          }
+          // acute → stabilizing: 3+ days improving
+          else if (event.phase === "acute" && allImproving) {
+            newPhase = "stabilizing";
+            console.log(`[PHASE TRANSITION] ${event.part_name}: acute → stabilizing (3 consecutive improving)`);
+          }
+          // stabilizing → diagnostic: 3+ days low risk + no risk indicators
+          else if (event.phase === "stabilizing" && allLowRisk && noRiskIndicators) {
+            newPhase = "diagnostic";
+            console.log(`[PHASE TRANSITION] ${event.part_name}: stabilizing → diagnostic (3 days low risk, no indicators)`);
+          }
+          // diagnostic → closing: diagnostic score ≥ 65
+          else if (event.phase === "diagnostic" && event.diagnostic_score && event.diagnostic_score >= 65) {
+            newPhase = "closing";
+            console.log(`[PHASE TRANSITION] ${event.part_name}: diagnostic → closing (score=${event.diagnostic_score})`);
+          }
+
+          if (newPhase !== event.phase) {
+            await sb.from("crisis_events").update({
+              phase: newPhase,
+              updated_at: new Date().toISOString(),
+            }).eq("id", event.id);
+          }
+        }
+      }
+
+      // ── Original crisis_events evaluation ──
       const { data: activeCrises } = await sb
         .from("crisis_events")
         .select("*")
