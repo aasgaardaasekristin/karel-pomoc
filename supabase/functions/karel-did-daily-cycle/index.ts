@@ -5131,7 +5131,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash",
                   messages: [
-                    { role: "system", content: "Jsi analytický modul Karla (inspirovaný C.G. Jungem). Extrahuj profilová tvrzení z konverzací s klinickou přesností. Odpovídej POUZE JSON." },
+                    { role: "system", content: SYSTEM_RULES + "\n\nJsi analytický modul Karla (inspirovaný C.G. Jungem). Extrahuj profilová tvrzení z konverzací s klinickou přesností. Odpovídej POUZE JSON." },
                     { role: "user", content: claimPrompt },
                   ],
                 }),
