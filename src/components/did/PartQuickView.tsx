@@ -97,10 +97,27 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       </div>
     );
   }
+  const stateConfig: Record<string, { emoji: string; label: string; className: string }> = {
+    crisis:      { emoji: "🔴", label: "KRIZE",          className: "bg-destructive/20 text-destructive border-destructive/30" },
+    unstable:    { emoji: "🟠", label: "NESTABILNÍ",     className: "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30" },
+    stabilizing: { emoji: "🟡", label: "STABILIZUJE SE", className: "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30" },
+    stable:      { emoji: "🟢", label: "STABILNÍ",       className: "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30" },
+    progressing: { emoji: "🔵", label: "PROGREDUJE",     className: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30" },
+    integrating: { emoji: "🟣", label: "INTEGRACE",      className: "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30" },
+  };
+
+  const goalTypeBadge: Record<string, { label: string; className: string }> = {
+    safety:        { label: "Safety",        className: "bg-destructive/20 text-destructive" },
+    stabilization: { label: "Stabilizace",   className: "bg-orange-500/20 text-orange-700 dark:text-orange-400" },
+    consolidation: { label: "Upevnění",      className: "bg-amber-500/20 text-amber-700 dark:text-amber-400" },
+    development:   { label: "Rozvoj",        className: "bg-green-500/20 text-green-700 dark:text-green-400" },
+    integration:   { label: "Integrace",     className: "bg-purple-500/20 text-purple-700 dark:text-purple-400" },
+  };
 
   if (!data) return null;
 
   const isEmpty = !data.kartoteka && data.goals.length === 0 && data.weekMetrics.length === 0 && data.alerts.length === 0 && data.notes.length === 0 && data.recentThreads.length === 0 && !data.registry?.next_session_plan;
+  const sc = data.partState ? stateConfig[data.partState] : null;
 
   return (
     <div
