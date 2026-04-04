@@ -1,47 +1,56 @@
 
-Jednoduše: znamená to, že backend tvé aplikace už jede skoro “na doraz”.
 
-Co se tím myslí:
-- dochází výkon nebo kapacita
-- aplikace může začít být pomalá
-- může se stát, že některé věci budou timeoutovat nebo se nenačtou
-- v horším případě něco přestane dočasně fungovat
+# F17-A — Přidání SYSTEM_RULES do všech výstupních Edge funkcí
 
-Lovable tě varuje typicky když je skoro plný některý z těchto limitů:
-- málo volného místa
-- vysoké zatížení CPU
-- slabá zbývající kapacita pro operace databáze / disku
+## Problém
 
-Co s tím udělat:
-1. Otevři Cloud
-2. Jdi do Overview
-3. Otevři Advanced settings
-4. Vyber větší instance size
+SYSTEM_RULES (pravidla zakazující míchání terapeutických dat, zveřejňování obsahu v mailech atd.) jsou importovány pouze ve **3 ze 70+ funkcí**. Ostatní funkce generují výstupy bez těchto pravidel — proto Karel v mailech a briefingách porušuje pravidla.
 
-Co se stane potom:
-- backend dostane víc výkonu a kapacity
-- obvykle pár minut trvá, než se změna projeví
-- potom by se měly zlepšit pomalé načítání, timeouty a nestabilita
+## Rozsah změn
 
-Na co myslet:
-- větší instance = vyšší cloud náklady
-- pokud teď aplikace funguje pomalu nebo občas padá, upgrade dává smysl
-- pokud je projekt malý a warning se objevil jen jednou, stačí to sledovat, ale ignorovat dlouhodobě to není dobré
+Žádná logika se nemaže ani nemění. Pouze se přidá import a prepend `SYSTEM_RULES` do system promptů AI volání.
 
-Moje praktické doporučení:
-- pokud už vidíš bugy typu nenačítání dat, blank screen, pomalé dashboardy nebo padání edge funkcí, upgrade udělej hned
-- pokud nic nepadá, ale warning se opakuje, stejně bych šel aspoň o jeden stupeň výš
+### Vzor (z karel-chat):
+```typescript
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+// ...
+systemPrompt = SYSTEM_RULES + "\n\n" + systemPrompt;
+```
 
-Jak to najdeš:
-- Desktop: v projektu otevři Cloud → Overview → Advanced settings
-- Mobile: v chatu klepni na … → Cloud → Overview → Advanced settings
+## FÁZE 1 — Kritické (výstup pro uživatele / mail)
 
-Technická poznámka:
-- nejde o chybu v UI, ale o varování, že kapacita backendu je skoro vyčerpaná
-- po změně velikosti může trvat několik minut, než se data začnou znovu načítat normálně
+| # | Funkce | AI volání | Aktuálně má SYSTEM_RULES? |
+|---|--------|-----------|--------------------------|
+| 1 | `karel-did-daily-cycle` | ~9 (briefing gen, analysis, feedback, claims, handbook, card updates...) | ❌ NE |
+| 2 | `karel-did-daily-email` | 1 | ❌ NE |
+| 3 | `karel-email-report` | 1 | ❌ NE |
+| 4 | `karel-did-morning-brief` | 1 | ❌ NE |
+| 5 | `karel-did-weekly-cycle` | 2 (analysis + email) | ❌ NE |
+| 6 | `karel-did-monthly-cycle` | 1 | ❌ NE |
+| 7 | `karel-hana-chat` | 3 (detect, context build, main response) | ❌ NE |
 
-<lov-actions>
-<lov-suggestion message="Test the app end-to-end after upgrading the Cloud instance to confirm dashboards, chat, and edge functions load correctly.">Verify that it works</lov-suggestion>
-<lov-suggestion message="Explain which Cloud instance size is the safest next step for this project based on likely load, dashboard usage, and AI functions.">Doporuč mi velikost instance</lov-suggestion>
-<lov-suggestion message="Show me step-by-step where to find Cloud → Overview → Advanced settings on desktop and mobile.">Ukaž mi to krok za krokem</lov-suggestion>
-</lov-actions>
+## FÁZE 2 — Analytické funkce
+
+| # | Funkce | AI volání | Aktuálně má SYSTEM_RULES? |
+|---|--------|-----------|--------------------------|
+| 8 | `karel-thread-analyzer` | 1 | ❌ NE |
+| 9 | `karel-internal-analysis` | 1 | ❌ NE |
+| 10 | `karel-did-context-prime` | 3 (compress, bonds, main) | ❌ NE |
+| 11 | `karel-hana-context-prime` | 2 (compress, main) | ❌ NE |
+| 12 | `karel-did-episode-generate` | 3 (main, classify, cross-mode) | ❌ NE |
+| 13 | `karel-did-meeting` | 2 (moderation, final) | ❌ NE |
+
+## Postup pro každou funkci
+
+1. Přidat `import { SYSTEM_RULES } from "../_shared/system-rules.ts";` na začátek souboru
+2. U **každého** AI volání v té funkci: přidat `SYSTEM_RULES + "\n\n"` na začátek system prompt stringu
+3. Neměnit nic jiného
+
+## Souhrn
+
+- **Celkem funkcí k úpravě:** 13
+- **Celkem AI volání která dostanou SYSTEM_RULES:** ~21
+- **Před:** 3 funkce měly SYSTEM_RULES (karel-chat, karel-daily-dashboard, karel-crisis-daily-assessment)
+- **Po:** 16 funkcí bude mít SYSTEM_RULES
+- **Žádná logika se nemaže, žádná struktura se nemění**
+
