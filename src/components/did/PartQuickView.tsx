@@ -102,6 +102,24 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
           </Button>
         </div>
 
+        {/* 📋 PLÁN PŘÍŠTÍHO SEZENÍ — vždy NAHOŘE */}
+        {data.registry?.next_session_plan && (
+          <div className={cn(
+            "rounded-md border-2 p-2.5",
+            data.isInCrisis ? "border-destructive bg-destructive/5" : "border-primary/40 bg-primary/5"
+          )}>
+            <span className={cn(
+              "text-[11px] font-semibold",
+              data.isInCrisis ? "text-destructive" : "text-primary"
+            )}>
+              📋 Karlův plán příštího sezení
+            </span>
+            <div className="mt-1.5 text-[10px] leading-relaxed text-foreground prose-sm max-w-none">
+              <RichMarkdown content={data.registry.next_session_plan} />
+            </div>
+          </div>
+        )}
+
         {/* KARTOTÉKA SOUHRN */}
         {data.kartoteka && (
           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[10px]">
