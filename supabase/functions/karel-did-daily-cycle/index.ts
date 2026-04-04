@@ -245,7 +245,7 @@ async function semanticDedupCheck(
         messages: [
           {
             role: "system",
-            content: `Porovnej NOSNOU MYŠLENKU nového záznamu s existujícím obsahem sekce. Odpověz isDuplicate=true POUZE pokud je JÁDRO VÝZNAMU (ne formulace) již přítomno. Různá slova pro stejný fakt = DUPLICITA. Nový detail k existujícímu faktu = NENÍ DUPLICITA.`,
+            content: SYSTEM_RULES + `\n\nPorovnej NOSNOU MYŠLENKU nového záznamu s existujícím obsahem sekce. Odpověz isDuplicate=true POUZE pokud je JÁDRO VÝZNAMU (ne formulace) již přítomno. Různá slova pro stejný fakt = DUPLICITA. Nový detail k existujícímu faktu = NENÍ DUPLICITA.`,
           },
           {
             role: "user",
