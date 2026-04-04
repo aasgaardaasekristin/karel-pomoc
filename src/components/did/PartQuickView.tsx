@@ -41,7 +41,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       ] = await Promise.all([
         sb.from("did_part_registry").select("*").eq("part_name", partName).maybeSingle(),
         sb.from("did_kartoteka").select("*").eq("part_name", partName).maybeSingle().then((r: any) => r).catch(() => ({ data: null })),
-        sb.from("strategic_goals").select("*").eq("part_name", partName).eq("status", "active").order("created_at", { ascending: false }),
+        sb.from("strategic_goals").select("*").eq("part_name", partName).in("status", ["active", "proposed", "paused"]).order("created_at", { ascending: false }),
         sb.from("daily_metrics").select("metric_date, emotional_valence, cooperation_level, message_count, switching_count, risk_signals_count").eq("part_name", partName).gte("metric_date", weekAgo).order("metric_date", { ascending: true }),
         sb.from("did_threads").select("id, last_activity_at, sub_mode, messages").eq("part_name", partName).order("last_activity_at", { ascending: false }).limit(3),
         sb.from("safety_alerts").select("id, alert_type, severity, status, created_at, description").eq("part_name", partName).in("status", ["new", "acknowledged"]).order("created_at", { ascending: false }).limit(5),
