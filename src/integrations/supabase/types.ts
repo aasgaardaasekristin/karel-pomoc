@@ -2005,6 +2005,57 @@ export type Database = {
         }
         Relationships: []
       }
+      did_pending_emails: {
+        Row: {
+          body_html: string
+          body_text: string | null
+          created_at: string | null
+          email_type: string
+          error_message: string | null
+          id: string
+          max_retries: number | null
+          next_retry_at: string | null
+          retry_count: number | null
+          sent_at: string | null
+          status: string
+          subject: string
+          to_email: string
+          to_name: string | null
+        }
+        Insert: {
+          body_html: string
+          body_text?: string | null
+          created_at?: string | null
+          email_type?: string
+          error_message?: string | null
+          id?: string
+          max_retries?: number | null
+          next_retry_at?: string | null
+          retry_count?: number | null
+          sent_at?: string | null
+          status?: string
+          subject: string
+          to_email: string
+          to_name?: string | null
+        }
+        Update: {
+          body_html?: string
+          body_text?: string | null
+          created_at?: string | null
+          email_type?: string
+          error_message?: string | null
+          id?: string
+          max_retries?: number | null
+          next_retry_at?: string | null
+          retry_count?: number | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          to_email?: string
+          to_name?: string | null
+        }
+        Relationships: []
+      }
       did_pending_questions: {
         Row: {
           answer: string | null
@@ -3699,6 +3750,36 @@ export type Database = {
           signals?: Json | null
           thread_id?: string
           user_message_excerpt?: string | null
+        }
+        Relationships: []
+      }
+      system_health_log: {
+        Row: {
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          id: string
+          message: string
+          resolved: boolean | null
+          severity: string
+        }
+        Insert: {
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          id?: string
+          message: string
+          resolved?: boolean | null
+          severity?: string
+        }
+        Update: {
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          id?: string
+          message?: string
+          resolved?: boolean | null
+          severity?: string
         }
         Relationships: []
       }

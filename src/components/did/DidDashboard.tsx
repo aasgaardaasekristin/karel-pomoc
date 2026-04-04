@@ -149,6 +149,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [expandedPart, setExpandedPart] = useState<string | null>(null);
   const [assessingCrisisId, setAssessingCrisisId] = useState<string | null>(null);
   const [escalatedTasks, setEscalatedTasks] = useState<any[]>([]);
+  const [healthIssues, setHealthIssues] = useState<any[]>([]);
   const loadDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
@@ -318,6 +319,17 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           .neq("status", "done");
         setEscalatedTasks((escTasks || []).filter((t: any) => t.status !== "archived" && t.status !== "needs_review"));
       } catch { setEscalatedTasks([]); }
+
+      // ── System health issues ──
+      try {
+        const { data: healthData } = await supabase.from("system_health_log")
+          .select("id, event_type, severity, message, created_at")
+          .eq("severity", "critical")
+          .eq("resolved", false)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        setHealthIssues(healthData || []);
+      } catch { setHealthIssues([]); }
 
       setLastRefreshAt(new Date());
     } catch (error) {
@@ -537,6 +549,33 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           />
         </div>
       </div>
+
+      {/* ═══ SYSTÉMOVÝ HEALTH BANNER ═══ */}
+      {healthIssues.length > 0 && (
+        <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-destructive" />
+            <span className="text-xs font-bold text-destructive">⚙️ SYSTÉMOVÝ PROBLÉM</span>
+          </div>
+          {healthIssues.map((h: any) => (
+            <div key={h.id} className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-destructive/90 pl-6">• {h.message}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-[10px] h-5 px-2 text-destructive hover:bg-destructive/20"
+                onClick={async () => {
+                  await supabase.from("system_health_log").update({ resolved: true }).eq("id", h.id);
+                  setHealthIssues(prev => prev.filter(x => x.id !== h.id));
+                  toast.success("Označeno jako vyřešeno");
+                }}
+              >
+                Vyřešeno
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ═══ ESKALOVANÉ ÚKOLY BANNER ═══ */}
       {escalatedTasks.length > 0 && (() => {

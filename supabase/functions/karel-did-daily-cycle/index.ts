@@ -2051,6 +2051,97 @@ async function logAuditResults(token: string, rootFolderId: string, results: Aud
     console.warn("[AUDIT-0B-LOG] Failed to log to Drive (non-fatal):", e);
   }
 }
+// ═══ HELPER: sendOrQueueEmail — sends via Resend or queues to did_pending_emails ═══
+async function sendOrQueueEmail(
+  sb: any,
+  params: {
+    toEmail: string;
+    toName: string;
+    subject: string;
+    bodyHtml: string;
+    bodyText?: string;
+    emailType: string;
+    fromAddress?: string;
+    isRetry?: boolean;
+  }
+): Promise<{ sent: boolean; queued: boolean; error?: string }> {
+  const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
+  const fromAddr = params.fromAddress || "Karel <karel@hana-chlebcova.cz>";
+
+  if (!params.toEmail) {
+    console.warn(`[EMAIL SKIP] No email address for ${params.toName}`);
+    return { sent: false, queued: false, error: "No email address" };
+  }
+
+  if (RESEND_KEY) {
+    try {
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RESEND_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddr,
+          to: [params.toEmail],
+          subject: params.subject,
+          html: params.bodyHtml,
+          text: params.bodyText || "",
+        }),
+      });
+
+      if (resendRes.ok) {
+        console.log(`[EMAIL SENT] → ${params.toName} (${params.toEmail}): ${params.subject}`);
+        return { sent: true, queued: false };
+      } else {
+        const errText = await resendRes.text();
+        throw new Error(`Resend ${resendRes.status}: ${errText.slice(0, 200)}`);
+      }
+    } catch (e: any) {
+      console.error(`[EMAIL FAILED] ${params.toEmail}: ${e.message}`);
+      if (!params.isRetry) {
+        try {
+          await sb.from("did_pending_emails").insert({
+            to_email: params.toEmail,
+            to_name: params.toName,
+            subject: params.subject,
+            body_html: params.bodyHtml,
+            body_text: params.bodyText || "",
+            email_type: params.emailType,
+            status: "pending",
+            error_message: e.message,
+            next_retry_at: new Date(Date.now() + 30 * 60000).toISOString(),
+          });
+          console.log(`[EMAIL QUEUED] ${params.subject} → did_pending_emails`);
+        } catch (queueErr) {
+          console.warn("[EMAIL QUEUE INSERT FAILED]", queueErr);
+        }
+      }
+      return { sent: false, queued: !params.isRetry, error: e.message };
+    }
+  } else {
+    // No Resend key → queue
+    if (!params.isRetry) {
+      try {
+        await sb.from("did_pending_emails").insert({
+          to_email: params.toEmail,
+          to_name: params.toName,
+          subject: params.subject,
+          body_html: params.bodyHtml,
+          body_text: params.bodyText || "",
+          email_type: params.emailType,
+          status: "pending",
+          error_message: "Missing RESEND_API_KEY",
+          next_retry_at: new Date(Date.now() + 60 * 60000).toISOString(),
+        });
+        console.log(`[EMAIL QUEUED] No RESEND_API_KEY — ${params.subject} → did_pending_emails`);
+      } catch (queueErr) {
+        console.warn("[EMAIL QUEUE INSERT FAILED]", queueErr);
+      }
+    }
+    return { sent: false, queued: !params.isRetry, error: "No RESEND_API_KEY" };
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -2242,6 +2333,34 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     sb = createClient(supabaseUrl, supabaseKey);
 
+    // ═══ ENV DIAGNOSTICS ═══
+    const envDiag = {
+      RESEND_API_KEY: !!RESEND_API_KEY,
+      KATA_EMAIL: KATA_EMAIL || null,
+      MAMKA_EMAIL: !!MAMKA_EMAIL,
+      LOVABLE_API_KEY: !!LOVABLE_API_KEY,
+      PERPLEXITY_API_KEY: !!Deno.env.get("PERPLEXITY_API_KEY"),
+      GOOGLE_CLIENT_ID: !!Deno.env.get("GOOGLE_CLIENT_ID"),
+    };
+    console.log("[ENV DIAG]", JSON.stringify(envDiag));
+
+    const missingCritical: string[] = [];
+    if (!RESEND_API_KEY) missingCritical.push("RESEND_API_KEY");
+    if (!KATA_EMAIL && !MAMKA_EMAIL) missingCritical.push("KATA_EMAIL nebo MAMKA_EMAIL (žádný email pro terapeutky)");
+    if (!LOVABLE_API_KEY) missingCritical.push("LOVABLE_API_KEY");
+
+    if (missingCritical.length > 0) {
+      console.error(`[ENV CRITICAL] Chybí: ${missingCritical.join(", ")}`);
+      try {
+        await sb.from("system_health_log").insert({
+          event_type: "missing_env",
+          severity: "critical",
+          message: `Chybějící env proměnné: ${missingCritical.join(", ")}`,
+          details: envDiag,
+        });
+      } catch {}
+    }
+
     const reportDatePrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
     const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
     let emailSentToHanka = false;
@@ -2328,19 +2447,26 @@ serve(async (req) => {
     };
 
     const sendEmailOnce = async (recipient: "hanka" | "kata", to: string, subject: string, html: string): Promise<boolean> => {
-      if (!shouldSendEmails || !resend) return false;
+      if (!shouldSendEmails) return false;
       const reserved = await reserveDispatchSlot(recipient);
       if (!reserved) return false;
 
       try {
-        await resend.emails.send({
-          from: "Karel <karel@hana-chlebcova.cz>",
-          to: [to],
+        const result = await sendOrQueueEmail(sb!, {
+          toEmail: to,
+          toName: recipient,
           subject,
-          html,
+          bodyHtml: html,
+          emailType: "daily_report",
         });
-        await markDispatchSent(recipient);
-        return true;
+        if (result.sent) {
+          await markDispatchSent(recipient);
+          return true;
+        } else if (result.queued) {
+          await markDispatchFailed(recipient, result.error || "queued");
+          return false;
+        }
+        return false;
       } catch (e) {
         await markDispatchFailed(recipient, e instanceof Error ? e.message : String(e));
         throw e;
@@ -3878,14 +4004,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               });
 
               // Send alert email – only from cron
-              if (shouldSendEmails && RESEND_API_KEY) {
-                try {
-                  const resend = new Resend(RESEND_API_KEY);
-                  await resend.emails.send({
-                    from: "Karel <karel@hana-chlebcova.cz>",
-                    to: [MAMKA_EMAIL],
-                    subject: `⚠️ Karel ALERT: Karta "${resolvedPartName}" nenalezena`,
-                    html: `<div style="font-family:sans-serif;padding:20px;">
+              if (shouldSendEmails) {
+                const alertHtml = `<div style="font-family:sans-serif;padding:20px;">
                       <h2 style="color:#dc2626;">⚠️ Karta nenalezena</h2>
                       <p><strong>Část:</strong> ${resolvedPartName}</p>
                       <p><strong>ID z registru:</strong> ${target.registryEntry.id}</p>
@@ -3895,12 +4015,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
                       <hr/>
                       <p>Karel zápis <strong>neprovedl</strong>, aby nevznikl duplicitní soubor. Zkontroluj prosím, zda karta existuje ve správné složce na Google Drive.</p>
                       <p><strong>Sekce k zápisu (odložené):</strong> ${Object.keys(newSections).join(", ")}</p>
-                    </div>`,
-                  });
-                  console.log(`Alert email sent for missing card: ${resolvedPartName}`);
-                } catch (emailErr) {
-                  console.error(`Failed to send alert email for ${resolvedPartName}:`, emailErr);
-                }
+                    </div>`;
+                await sendOrQueueEmail(sb!, {
+                  toEmail: MAMKA_EMAIL,
+                  toName: "Hanka",
+                  subject: `⚠️ Karel ALERT: Karta "${resolvedPartName}" nenalezena`,
+                  bodyHtml: alertHtml,
+                  emailType: "card_alert",
+                });
               }
               continue; // Skip this card entirely
             }
@@ -4743,29 +4865,39 @@ Vrať POUZE validní JSON (bez markdown):
             console.log(`[daily-cycle] ✅ Auto-created meeting: "${meetingTopic}" (id: ${newMeeting.id})`);
 
             // Send invitation emails
-            const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
-            if (RESEND_KEY) {
-              const resendClient = new Resend(RESEND_KEY);
-              const APP_URL = "https://karel-pomoc.lovable.app";
-              const meetingLink = `${APP_URL}/chat?meeting=${newMeeting.id}`;
-              const emailHtml = (name: string) => `
-                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-                  <h2>📋 Karel svolává poradu</h2>
-                  <p><strong>Téma:</strong> ${meetingTopic}</p>
-                  ${meetingAgenda ? `<p><strong>Agenda:</strong></p><p>${meetingAgenda.replace(/\n/g, "<br>")}</p>` : ""}
-                  <p>${name}, Karel tě zve k asynchronní poradě. Odpovědět můžeš kdykoliv v průběhu dne – Karel shrnuje průběžně.</p>
-                  <p style="margin: 24px 0;">
-                    <a href="${meetingLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
-                      Připojit se k poradě →
-                    </a>
-                  </p>
-                  <p style="color: #666; font-size: 13px;">Odkaz tě přesměruje do aplikace Karel. Pro přístup je nutné být přihlášena.</p>
-                  <p>Karel</p>
-                </div>
-              `;
-              try { await resendClient.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: MAMKA_EMAIL, subject: `Karel – porada: ${meetingTopic}`, html: emailHtml("Haničko") }); } catch (e) { console.warn("Meeting invite email (Hanka):", e); }
-              try { await resendClient.emails.send({ from: "Karel <karel@karel-pomoc.lovable.app>", to: KATA_EMAIL, subject: `Karel – porada: ${meetingTopic}`, html: emailHtml("Káťo") }); } catch (e) { console.warn("Meeting invite email (Kata):", e); }
-            }
+            const APP_URL = "https://karel-pomoc.lovable.app";
+            const meetingLink = `${APP_URL}/chat?meeting=${newMeeting.id}`;
+            const emailHtml = (name: string) => `
+              <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2>📋 Karel svolává poradu</h2>
+                <p><strong>Téma:</strong> ${meetingTopic}</p>
+                ${meetingAgenda ? `<p><strong>Agenda:</strong></p><p>${meetingAgenda.replace(/\n/g, "<br>")}</p>` : ""}
+                <p>${name}, Karel tě zve k asynchronní poradě. Odpovědět můžeš kdykoliv v průběhu dne – Karel shrnuje průběžně.</p>
+                <p style="margin: 24px 0;">
+                  <a href="${meetingLink}" style="background: #6366f1; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold;">
+                    Připojit se k poradě →
+                  </a>
+                </p>
+                <p style="color: #666; font-size: 13px;">Odkaz tě přesměruje do aplikace Karel. Pro přístup je nutné být přihlášena.</p>
+                <p>Karel</p>
+              </div>
+            `;
+            await sendOrQueueEmail(sb!, {
+              toEmail: MAMKA_EMAIL,
+              toName: "Hanka",
+              subject: `Karel – porada: ${meetingTopic}`,
+              bodyHtml: emailHtml("Haničko"),
+              emailType: "meeting_invite",
+              fromAddress: "Karel <karel@hana-chlebcova.cz>",
+            });
+            await sendOrQueueEmail(sb!, {
+              toEmail: KATA_EMAIL,
+              toName: "Káťa",
+              subject: `Karel – porada: ${meetingTopic}`,
+              bodyHtml: emailHtml("Káťo"),
+              emailType: "meeting_invite",
+              fromAddress: "Karel <karel@hana-chlebcova.cz>",
+            });
           }
         } catch (meetErr) {
           console.warn("[daily-cycle] Meeting auto-create error:", meetErr);
@@ -5940,26 +6072,19 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
 
           body += `<p>Karel</p>`;
 
-          if (RESEND_KEY) {
+          {
             const targetEmail = assignee === "hanka" ? hankaEmail : kataEmail;
             if (targetEmail) {
-              try {
-                const { Resend } = await import("npm:resend@2.0.0");
-                const resend = new Resend(RESEND_KEY);
-                const { error: sendErr } = await resend.emails.send({
-                  from: "Karel <karel@hana-chlebcova.cz>",
-                  to: [targetEmail],
-                  subject,
-                  html: body,
-                });
-                if (sendErr) throw new Error(String(sendErr));
-                console.log(`[TASK ESCALATION] ✅ Email sent to ${assignee} (${targetEmail})`);
-              } catch (emailErr) {
-                console.error(`[TASK ESCALATION] Email failed for ${assignee}:`, emailErr);
-              }
+              await sendOrQueueEmail(sb!, {
+                toEmail: targetEmail,
+                toName: assignee === "hanka" ? "Hanka" : "Káťa",
+                subject,
+                bodyHtml: body,
+                emailType: "escalation",
+              });
+            } else {
+              console.warn(`[TASK ESCALATION] No email for ${assignee}`);
             }
-          } else {
-            console.log(`[EMAIL QUEUED] Eskalační email pro ${assignee} — RESEND_API_KEY not available`);
           }
 
           // Update last_escalation_email_at for these tasks
@@ -5975,6 +6100,49 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
       }
     } catch (escErr) {
       console.warn("[daily-cycle] Task escalation email error:", escErr);
+    }
+
+    // ═══ FÁZE 7.6a: EMAIL RETRY — zpracuj pending emaily z did_pending_emails ═══
+    try {
+      const { data: pendingEmails } = await sb.from("did_pending_emails")
+        .select("*")
+        .eq("status", "pending")
+        .lte("next_retry_at", new Date().toISOString())
+        .lt("retry_count", 3)
+        .order("created_at", { ascending: true })
+        .limit(5);
+
+      if (pendingEmails && pendingEmails.length > 0) {
+        console.log(`[EMAIL RETRY] Processing ${pendingEmails.length} pending emails`);
+        for (const pe of pendingEmails) {
+          const result = await sendOrQueueEmail(sb, {
+            toEmail: pe.to_email,
+            toName: pe.to_name || "",
+            subject: pe.subject,
+            bodyHtml: pe.body_html,
+            bodyText: pe.body_text || "",
+            emailType: pe.email_type,
+            isRetry: true,
+          });
+
+          if (result.sent) {
+            await sb.from("did_pending_emails").update({
+              status: "sent",
+              sent_at: new Date().toISOString(),
+            }).eq("id", pe.id);
+          } else {
+            const newRetryCount = (pe.retry_count || 0) + 1;
+            await sb.from("did_pending_emails").update({
+              retry_count: newRetryCount,
+              error_message: result.error || "retry failed",
+              next_retry_at: new Date(Date.now() + newRetryCount * 60 * 60000).toISOString(),
+              status: newRetryCount >= 3 ? "failed" : "pending",
+            }).eq("id", pe.id);
+          }
+        }
+      }
+    } catch (retryErr) {
+      console.warn("[EMAIL RETRY] Error:", retryErr);
     }
 
     // ═══ FÁZE 7.6: CLEANUP OLD SAFETY ALERTS ═══
