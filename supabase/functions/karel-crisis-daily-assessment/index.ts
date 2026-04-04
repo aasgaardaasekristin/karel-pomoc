@@ -204,6 +204,11 @@ ODPOVEZ PRESNE V TOMTO JSON FORMATU:
   "risk_assessment": "critical|high|moderate|low|minimal",
   "reasoning": "zduvodneni (min 3 vety)",
   "decision": "crisis_continues|crisis_improving|crisis_resolved|needs_more_data",
+  "interview_request": true/false,
+  "interview_type": "diagnostic|projective_test|stabilization|check_in",
+  "interview_reason": "proc Karel potrebuje rozhovor (1 veta)",
+  "therapist_interview_needed": true/false,
+  "therapist_questions_specific": ["konkretni otazka pro terapeutku - napr. 'Hanko, vsimla sis u Arthura dnes zmeny nalady?'"],
   "next_day_plan": {"planned_session_type": "...", "planned_tests": [], "therapist_tasks": [], "focus_areas": [], "intervention_strategy": "..."},
   "conversation_starters": ["otazka pro zahajeni"]
 }`;
