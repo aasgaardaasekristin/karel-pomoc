@@ -77,7 +77,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
 
   if (!data) return null;
 
-  const isEmpty = !data.kartoteka && data.goals.length === 0 && data.weekMetrics.length === 0 && data.alerts.length === 0 && data.notes.length === 0 && data.recentThreads.length === 0;
+  const isEmpty = !data.kartoteka && data.goals.length === 0 && data.weekMetrics.length === 0 && data.alerts.length === 0 && data.notes.length === 0 && data.recentThreads.length === 0 && !data.registry?.next_session_plan;
 
   return (
     <div
