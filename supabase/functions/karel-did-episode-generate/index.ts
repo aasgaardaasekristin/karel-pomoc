@@ -340,7 +340,7 @@ INSTRUKCE:
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: `Analyzuj konverzaci Hanky s Karlem. Obsahuje KLINICKY RELEVANTNÍ informace o DID systému (částech, fragmentech, terapeutické práci s nimi)?
+                { role: "system", content: SYSTEM_RULES + `\n\nAnalyzuj konverzaci Hanky s Karlem. Obsahuje KLINICKY RELEVANTNÍ informace o DID systému (částech, fragmentech, terapeutické práci s nimi)?
 Odpověz POUZE "YES" nebo "NO". YES = zmíněna konkrétní informace o stavu/chování/vývoji nějaké části, která by měla být zaznamenána.` },
                 { role: "user", content: conversationText.slice(0, 4000) },
               ],
