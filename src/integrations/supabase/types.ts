@@ -3878,6 +3878,51 @@ export type Database = {
         }
         Relationships: []
       }
+      therapist_profiles: {
+        Row: {
+          communication_style: string | null
+          experience_areas: string[] | null
+          generated_by: string | null
+          id: string
+          last_updated: string | null
+          limitations: string[] | null
+          preferred_methods: string[] | null
+          preferred_part_types: string[] | null
+          raw_analysis: string | null
+          strengths: string[] | null
+          therapist_name: string
+          workload_capacity: string | null
+        }
+        Insert: {
+          communication_style?: string | null
+          experience_areas?: string[] | null
+          generated_by?: string | null
+          id?: string
+          last_updated?: string | null
+          limitations?: string[] | null
+          preferred_methods?: string[] | null
+          preferred_part_types?: string[] | null
+          raw_analysis?: string | null
+          strengths?: string[] | null
+          therapist_name: string
+          workload_capacity?: string | null
+        }
+        Update: {
+          communication_style?: string | null
+          experience_areas?: string[] | null
+          generated_by?: string | null
+          id?: string
+          last_updated?: string | null
+          limitations?: string[] | null
+          preferred_methods?: string[] | null
+          preferred_part_types?: string[] | null
+          raw_analysis?: string | null
+          strengths?: string[] | null
+          therapist_name?: string
+          workload_capacity?: string | null
+        }
+        Relationships: []
+      }
       thread_processing_log: {
         Row: {
           created_at: string
