@@ -14,6 +14,17 @@ interface TaskFeedbackEntry {
   created_at: string;
 }
 
+interface AutoFeedbackEntry {
+  id: string;
+  task_id: string;
+  feedback_text: string;
+  feedback_type: string;
+  quality_score: number | null;
+  suggestions: string[] | null;
+  acknowledged: boolean;
+  created_at: string;
+}
+
 interface TherapistTask {
   id: string;
   task: string;
