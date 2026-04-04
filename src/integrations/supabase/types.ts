@@ -2402,6 +2402,53 @@ export type Database = {
         }
         Relationships: []
       }
+      did_task_auto_feedback: {
+        Row: {
+          acknowledged: boolean | null
+          created_at: string | null
+          feedback_text: string
+          feedback_type: string
+          generated_by: string | null
+          id: string
+          part_name: string | null
+          quality_score: number | null
+          suggestions: string[] | null
+          task_id: string
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          created_at?: string | null
+          feedback_text: string
+          feedback_type?: string
+          generated_by?: string | null
+          id?: string
+          part_name?: string | null
+          quality_score?: number | null
+          suggestions?: string[] | null
+          task_id: string
+        }
+        Update: {
+          acknowledged?: boolean | null
+          created_at?: string | null
+          feedback_text?: string
+          feedback_type?: string
+          generated_by?: string | null
+          id?: string
+          part_name?: string | null
+          quality_score?: number | null
+          suggestions?: string[] | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_task_auto_feedback_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "did_therapist_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       did_task_feedback: {
         Row: {
           author: string
