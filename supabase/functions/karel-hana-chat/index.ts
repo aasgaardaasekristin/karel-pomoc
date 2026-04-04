@@ -184,7 +184,7 @@ ${episodeSummaries || "(žádné epizody zatím)"}`;
         messages: [
           {
             role: "system",
-            content: `Jsi analytický modul kognitivního agenta. Analyzuj zprávu a vrať JSON.
+            content: SYSTEM_RULES + `\n\nJsi analytický modul kognitivního agenta. Analyzuj zprávu a vrať JSON.
 
 DOMÉNY:
 - HANA = osobní, partnerské, emoční téma, úleva, psychohygiena, vztah s Karlem
