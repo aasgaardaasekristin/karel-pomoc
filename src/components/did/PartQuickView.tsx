@@ -127,12 +127,17 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       <div className="p-3 space-y-3">
         {/* HEADER */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
               {data.registry?.display_name || partName}
             </span>
+            {sc && (
+              <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full border", sc.className)}>
+                {sc.emoji} {sc.label}
+              </span>
+            )}
             {data.registry?.role_in_system && (
-              <span className="text-[9px] text-muted-foreground ml-2">
+              <span className="text-[9px] text-muted-foreground">
                 {data.registry.role_in_system}
               </span>
             )}
