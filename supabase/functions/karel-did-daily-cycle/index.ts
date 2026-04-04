@@ -4411,7 +4411,7 @@ Vrať POUZE validní JSON (bez markdown):
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: "Jsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
+                    { role: "system", content: SYSTEM_RULES + "\n\nJsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
                     { role: "user", content: profilePrompt },
                   ],
                   temperature: 0.2,
