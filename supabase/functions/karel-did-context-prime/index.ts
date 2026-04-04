@@ -699,6 +699,33 @@ serve(async (req) => {
     console.log(`[did-context-prime] Starting for user: ${userId}, part: ${partName || "none"}, subMode: ${subMode || "none"}`);
     const startTime = Date.now();
     const now = new Date();
+
+    // ═══ CACHE CHECK ═══
+    const cacheKey = `${partName || "none"}|${subMode || "none"}`;
+    if (!forceRefresh) {
+      const { data: cached } = await sb
+        .from("context_cache")
+        .select("context_data, created_at")
+        .eq("user_id", userId)
+        .eq("function_name", "did-context-prime")
+        .eq("cache_key", cacheKey)
+        .gt("expires_at", now.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cached?.context_data) {
+        console.log(`[did-context-prime] CACHE HIT (created: ${cached.created_at}), skipping AI calls`);
+        return new Response(JSON.stringify({
+          ...cached.context_data,
+          fromCache: true,
+          cacheCreatedAt: cached.created_at,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      console.log("[did-context-prime] CACHE MISS, running full prime");
+    } else {
+      console.log("[did-context-prime] forceRefresh=true, skipping cache");
+    }
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1360,7 +1387,7 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
       },
     });
 
-    return new Response(JSON.stringify({
+    const responsePayload = {
       contextBrief,
       partCard: partCardContent,
       systemState,
@@ -1379,7 +1406,26 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
         totalMs: totalTime,
         newsAvailable: newsDigest.length > 0,
       },
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    };
+
+    // ═══ CACHE SAVE (TTL 6 hours) ═══
+    const cacheKey = `${partName || "none"}|${subMode || "none"}`;
+    try {
+      // Delete old cache for this function+key
+      await sb.from("context_cache").delete().eq("user_id", userId).eq("function_name", "did-context-prime").eq("cache_key", cacheKey);
+      await sb.from("context_cache").insert({
+        user_id: userId,
+        function_name: "did-context-prime",
+        cache_key: cacheKey,
+        context_data: responsePayload,
+        expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      });
+      console.log(`[did-context-prime] Cache saved (TTL 6h, key: ${cacheKey})`);
+    } catch (cacheErr) {
+      console.warn("[did-context-prime] Cache save failed (non-fatal):", cacheErr);
+    }
+
+    return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("[did-context-prime] Error:", error);

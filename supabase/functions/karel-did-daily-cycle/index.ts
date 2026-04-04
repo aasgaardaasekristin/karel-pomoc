@@ -2066,6 +2066,21 @@ serve(async (req) => {
     resolvedUserId = anyThread?.user_id || null;
   }
 
+  // ═══ CACHE INVALIDATION: Clear context-prime caches so fresh context is generated ═══
+  if (resolvedUserId) {
+    const cacheInvalidSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    try {
+      const { count } = await cacheInvalidSb
+        .from("context_cache")
+        .delete({ count: "exact" })
+        .eq("user_id", resolvedUserId)
+        .in("function_name", ["did-context-prime", "hana-context-prime"]);
+      console.log(`[daily-cycle] Cache invalidated: ${count ?? 0} entries deleted for context-prime functions`);
+    } catch (cacheErr) {
+      console.warn("[daily-cycle] Cache invalidation failed (non-fatal):", cacheErr);
+    }
+  }
+
   // ═══ EMAIL GUARD: Daily report emails must only go out in the afternoon slot (14:00 Prague) or catch-up runs ═══
   const isTestEmail = requestBody?.testEmail === true;
   const isCatchup = requestBody?.catchup === true;

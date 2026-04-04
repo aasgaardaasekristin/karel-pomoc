@@ -119,6 +119,29 @@ serve(async (req) => {
 
   try {
     console.log("[context-prime] Starting for user:", userId);
+
+    // ═══ CACHE CHECK ═══
+    const { data: cached } = await sb
+      .from("context_cache")
+      .select("context_data, created_at")
+      .eq("user_id", userId)
+      .eq("function_name", "hana-context-prime")
+      .eq("cache_key", "")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (cached?.context_data) {
+      console.log(`[context-prime] CACHE HIT (created: ${cached.created_at}), skipping AI calls`);
+      return new Response(JSON.stringify({
+        ...cached.context_data,
+        fromCache: true,
+        cacheCreatedAt: cached.created_at,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    console.log("[context-prime] CACHE MISS, running full prime");
+
     const startTime = Date.now();
 
     // ═══ PHASE 0: Gradual Forgetting – archive episodes > 90 days ═══
@@ -517,7 +540,7 @@ ${patterns.map((p: any) => `[${p.domain}] ${p.description}`).join("\n")}`;
       },
     });
 
-    return new Response(JSON.stringify({
+    const responsePayload = {
       contextBrief,
       generatedAt: now.toISOString(),
       stats: {
@@ -533,7 +556,24 @@ ${patterns.map((p: any) => `[${p.domain}] ${p.description}`).join("\n")}`;
         totalMs: totalTime,
         newsAvailable: newsDigest.length > 0,
       },
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    };
+
+    // ═══ CACHE SAVE (TTL 6 hours) ═══
+    try {
+      await sb.from("context_cache").delete().eq("user_id", userId).eq("function_name", "hana-context-prime").eq("cache_key", "");
+      await sb.from("context_cache").insert({
+        user_id: userId,
+        function_name: "hana-context-prime",
+        cache_key: "",
+        context_data: responsePayload,
+        expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      });
+      console.log(`[context-prime] Cache saved (TTL 6h)`);
+    } catch (cacheErr) {
+      console.warn("[context-prime] Cache save failed (non-fatal):", cacheErr);
+    }
+
+    return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("[context-prime] Error:", error);
