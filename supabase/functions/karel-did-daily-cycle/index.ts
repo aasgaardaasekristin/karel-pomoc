@@ -4142,7 +4142,7 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
                     messages: [
                       {
                         role: "system",
-                        content: `Jsi Karel – analytik DID systému. Tvým úkolem je projít příručky uložené v 07_Knihovna a pro KAŽDOU příručku, která se JAKKOLIV týká DID systému, určit KAM v kartotéce by měly být informace zapsány.
+                        content: SYSTEM_RULES + `\n\nJsi Karel – analytik DID systému. Tvým úkolem je projít příručky uložené v 07_Knihovna a pro KAŽDOU příručku, která se JAKKOLIV týká DID systému, určit KAM v kartotéce by měly být informace zapsány.
 
 ═══ CO JE DID-RELEVANTNÍ ═══
 - Metoda/technika použitelná pro konkrétní fragment/část (např. hra pro dětskou část, stabilizační technika)
