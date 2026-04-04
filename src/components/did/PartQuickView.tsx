@@ -50,16 +50,38 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         sb.from("crisis_events").select("part_name, phase").eq("part_name", partName).not("phase", "eq", "closed").limit(1),
       ]);
 
+      // Determine part state from metrics trend
+      const wm = weekMetricsRes.data || [];
+      const crisisActive = (crisisRes.data || []).length > 0;
+      let partState: string | null = null;
+      if (crisisActive) {
+        partState = "crisis";
+      } else {
+        const vals = wm.filter((m: any) => m.emotional_valence != null).map((m: any) => m.emotional_valence);
+        if (vals.length >= 3) {
+          const firstHalf = vals.slice(0, Math.floor(vals.length / 2));
+          const secondHalf = vals.slice(Math.floor(vals.length / 2));
+          const avgF = firstHalf.reduce((a: number, b: number) => a + b, 0) / firstHalf.length;
+          const avgS = secondHalf.reduce((a: number, b: number) => a + b, 0) / secondHalf.length;
+          if (avgS < avgF - 0.5) partState = "unstable";
+          else if (avgS > avgF + 0.5) partState = "progressing";
+          else partState = "stable";
+        } else {
+          partState = "stable";
+        }
+      }
+
       setData({
         registry: registryRes.data,
         kartoteka: kartotekaRes?.data ?? null,
         goals: goalsRes.data || [],
-        weekMetrics: weekMetricsRes.data || [],
+        weekMetrics: wm,
         recentThreads: recentThreadsRes.data || [],
         alerts: alertsRes.data || [],
         switches: switchesRes.data || [],
         notes: notesRes.data || [],
-        isInCrisis: (crisisRes.data || []).length > 0,
+        isInCrisis: crisisActive,
+        partState,
       });
       setLoading(false);
     };
