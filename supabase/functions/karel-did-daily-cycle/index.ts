@@ -6102,6 +6102,102 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
       console.warn("[daily-cycle] Task escalation email error:", escErr);
     }
 
+    // ═══ FÁZE 7.6b: AUTO-FEEDBACK PRO SPLNĚNÉ/REVIEW ÚKOLY ═══
+    try {
+      const { data: feedbackCandidates } = await sb
+        .from("did_therapist_tasks")
+        .select("id, task, detail_instruction, assigned_to, status, created_at, completed_at, note")
+        .in("status", ["done", "needs_review"])
+        .order("completed_at", { ascending: false })
+        .limit(10);
+
+      const candidateIds = (feedbackCandidates || []).map((c: any) => c.id);
+      const { data: existingAutoFb } = candidateIds.length > 0
+        ? await sb.from("did_task_auto_feedback").select("task_id").in("task_id", candidateIds)
+        : { data: [] };
+
+      const alreadyHasFeedback = new Set((existingAutoFb || []).map((f: any) => f.task_id));
+      const needsFeedback = (feedbackCandidates || []).filter((c: any) => !alreadyHasFeedback.has(c.id));
+
+      if (needsFeedback.length > 0) {
+        const LOVABLE_KEY_FB = Deno.env.get("LOVABLE_API_KEY");
+        if (LOVABLE_KEY_FB) {
+          const { callAiForJson: callAiFeedback } = await import("../_shared/aiCallWrapper.ts");
+
+          for (const task of needsFeedback.slice(0, 5)) {
+            try {
+              // Gather context from session_memory
+              const { data: recentMem } = await sb
+                .from("session_memory")
+                .select("key_points, positive_signals, risk_signals")
+                .order("created_at", { ascending: false })
+                .limit(3);
+
+              const contextStr = (recentMem || []).map((m: any) =>
+                [(m.key_points || []).join(", "), (m.positive_signals || []).join(", ")].filter(Boolean).join(" | ")
+              ).join("\n").slice(0, 600);
+
+              const fbResult = await callAiFeedback({
+                systemPrompt: `Jsi Karel \u2014 klinick\u00fd psycholog. Generujes stru\u010dnou, konkr\u00e9tn\u00ed zp\u011btnou vazbu k spln\u011bn\u00fdm terapeutick\u00fdm \u00fakol\u016fm.
+
+PRAVIDLA:
+- Bu\u010f konkr\u00e9tn\u00ed, ne obecn\u00fd ("Dobr\u00e1 pr\u00e1ce" je ZAK\u00c1Z\u00c1NO)
+- Zhodno\u0165 zda \u00fakol p\u0159isp\u011bl k terapeutick\u00e9mu c\u00edli
+- Pokud \u00fakol byl spln\u011bn jen \u010d\u00e1ste\u010dn\u011b (status needs_review), \u0159ekni co je\u0161t\u011b chyb\u00ed
+- Navrhni 1-2 konkr\u00e9tn\u00ed follow-up kroky
+- quality_score: 1=nespln\u011bno, 2=\u010d\u00e1ste\u010dn\u011b, 3=spln\u011bno, 4=dob\u0159e spln\u011bno, 5=v\u00fdborn\u011b`,
+
+                userPrompt: `\u00daKOL: "${task.task}"
+DETAIL: ${task.detail_instruction || "\u017e\u00e1dn\u00fd"}
+P\u0158I\u0158AZENO: ${task.assigned_to}
+STATUS: ${task.status}
+POZN\u00c1MKA TERAPEUTKY: ${task.note || "\u017e\u00e1dn\u00e1"}
+VYTVO\u0158ENO: ${task.created_at}
+
+KONTEXT:
+${contextStr || "\u017d\u00e1dn\u00fd kontext k dispozici."}
+
+Vra\u0165 JSON:
+{
+  "feedback_text": "2-4 v\u011bty konkr\u00e9tn\u00ed zp\u011btn\u00e9 vazby",
+  "quality_score": 1-5,
+  "suggestions": ["follow-up krok 1", "follow-up krok 2"]
+}`,
+                apiKey: LOVABLE_KEY_FB,
+                model: "google/gemini-2.5-flash-lite",
+                requiredKeys: ["feedback_text", "quality_score"],
+                maxRetries: 0,
+                fallback: null,
+                callerName: "task-auto-feedback",
+              });
+
+              if (fbResult.success && fbResult.data) {
+                const fb = fbResult.data as any;
+                await sb.from("did_task_auto_feedback").insert({
+                  task_id: task.id,
+                  part_name: null,
+                  feedback_text: String(fb.feedback_text || "").slice(0, 1000),
+                  feedback_type: task.status === "needs_review" ? "partial_review" : "completion",
+                  quality_score: Math.min(5, Math.max(1, Number(fb.quality_score) || 3)),
+                  suggestions: (Array.isArray(fb.suggestions) ? fb.suggestions : []).slice(0, 3),
+                  generated_by: "karel_daily_cycle",
+                });
+                console.log(`[TASK FEEDBACK] "${(task.task || "").slice(0, 30)}" \u2192 score ${fb.quality_score}`);
+              }
+            } catch (singleFbErr) {
+              console.warn(`[TASK FEEDBACK] Error for task ${task.id}:`, singleFbErr);
+            }
+          }
+        } else {
+          console.log("[TASK FEEDBACK] No LOVABLE_API_KEY, skipping");
+        }
+      } else {
+        console.log("[TASK FEEDBACK] No tasks need feedback");
+      }
+    } catch (fbErr) {
+      console.warn("[TASK FEEDBACK] Error:", fbErr);
+    }
+
     // ═══ FÁZE 7.6a: EMAIL RETRY — zpracuj pending emaily z did_pending_emails ═══
     try {
       const { data: pendingEmails } = await sb.from("did_pending_emails")
