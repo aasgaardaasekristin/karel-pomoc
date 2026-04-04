@@ -138,7 +138,7 @@ async function processForUser(sb: any, userId: string, apiKey: string, body: any
         body: JSON.stringify({
           model: "google/gemini-2.5-flash-lite",
           messages: [
-            { role: "system", content: `Jsi analytický modul kognitivního agenta Karla. Extrahuj strukturovanou epizodu z DID konverzace.
+            { role: "system", content: SYSTEM_RULES + `\n\nJsi analytický modul kognitivního agenta Karla. Extrahuj strukturovanou epizodu z DID konverzace.
 
 KONTEXT: Toto je rozhovor z DID režimu (disociativní porucha identity u dětí).
 - part_name: "${thread.part_name}" (jméno aktivní části/fragmentu)
