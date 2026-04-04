@@ -3760,7 +3760,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
 
         // Parse sections with optional mode tags: [SEKCE:X], [SEKCE:X:REPLACE], [SEKCE:X:ROTATE]
-        const sectionRegex = /\[SEKCE:([A-M])(?::(\w+))?\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
+        const sectionRegex = /\[SEKCE:([A-N])(?::(\w+))?\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
         const newSections: Record<string, string> = {};
         const sectionModes: Record<string, string> = {};
         for (const sm of cardBlock.matchAll(sectionRegex)) {
