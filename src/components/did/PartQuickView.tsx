@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface PartQuickViewProps {
   partName: string;
