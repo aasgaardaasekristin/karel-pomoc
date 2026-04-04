@@ -4705,7 +4705,7 @@ Vrať POUZE validní JSON (bez markdown):
                     model: "google/gemini-2.5-flash-lite",
                     messages: [{
                       role: "system",
-                      content: `Jsi Karel — vedoucí terapeutického týmu. Generuješ PROAKTIVNÍ zpětnou vazbu k úkolu, který je ${ageDays} dní starý a stále nesplněný.
+                      content: SYSTEM_RULES + `\n\nJsi Karel — vedoucí terapeutického týmu. Generuješ PROAKTIVNÍ zpětnou vazbu k úkolu, který je ${ageDays} dní starý a stále nesplněný.
 
 PRAVIDLA:
 - Max 2-3 věty, profesionální ale lidský tón
