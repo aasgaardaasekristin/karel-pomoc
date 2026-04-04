@@ -149,6 +149,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [expandedPart, setExpandedPart] = useState<string | null>(null);
   const [assessingCrisisId, setAssessingCrisisId] = useState<string | null>(null);
   const [escalatedTasks, setEscalatedTasks] = useState<any[]>([]);
+  const [healthIssues, setHealthIssues] = useState<any[]>([]);
   const loadDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
