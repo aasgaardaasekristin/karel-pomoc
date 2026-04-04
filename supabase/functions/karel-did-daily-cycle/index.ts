@@ -2416,12 +2416,77 @@ serve(async (req) => {
 
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
-      .select("task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
+      .select("id, task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note, escalation_level, escalated_at, last_escalation_email_at")
       .neq("status", "done")
       .order("created_at", { ascending: true });
+
+    // ═══ HEURISTICKÁ KONTROLA SPLNĚNÍ ÚKOLŮ ═══
+    try {
+      const { data: recentNotes } = await sb.from("therapist_notes")
+        .select("author, note_text, created_at, part_name")
+        .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
+        .order("created_at", { ascending: false });
+
+      for (const task of (pendingTasks || [])) {
+        if (task.status === "done" || task.status === "needs_review") continue;
+        const taskWords = (task.task || "").toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+        if (taskWords.length === 0) continue;
+
+        const assignee = (task.assigned_to || "").toLowerCase();
+        const relevantNotes = (recentNotes || []).filter((n: any) => {
+          if (new Date(n.created_at) <= new Date(task.created_at)) return false;
+          const authorMatch = assignee === "both" || (n.author || "").toLowerCase().includes(assignee);
+          if (!authorMatch) return false;
+          const noteText = (n.note_text || "").toLowerCase();
+          const matchCount = taskWords.filter((w: string) => noteText.includes(w)).length;
+          return matchCount / taskWords.length >= 0.4;
+        });
+
+        if (relevantNotes.length > 0) {
+          await sb.from("did_therapist_tasks").update({
+            status: "needs_review",
+            note: `Možná splněno — Karel nalezl související aktivitu od ${new Date(relevantNotes[0].created_at).toLocaleDateString("cs-CZ")}`,
+          } as any).eq("id", task.id);
+          console.log(`[TASK HEURISTIC] "${(task.task || "").slice(0, 40)}" → needs_review`);
+        }
+      }
+    } catch (heuErr) {
+      console.warn("[daily-cycle] Heuristic task check error:", heuErr);
+    }
+
+    // ═══ SYSTÉMOVÁ ESKALACE NESPLNĚNÝCH ÚKOLŮ ═══
+    const overdueTasks: Array<{ task: any; daysOverdue: number; assignee: string; escalationLevel: string }> = [];
+    for (const task of (pendingTasks || [])) {
+      if (task.status === "done" || task.status === "needs_review") continue;
+      const createdAt = new Date(task.created_at);
+      const daysOld = Math.floor((Date.now() - createdAt.getTime()) / 86400000);
+
+      let escalationLevel = "none";
+      if (daysOld >= 7) {
+        escalationLevel = "critical";
+        await sb.from("did_therapist_tasks").update({
+          priority: "urgent",
+          escalation_level: "critical",
+          escalated_at: new Date().toISOString(),
+        } as any).eq("id", task.id);
+      } else if (daysOld >= 3) {
+        escalationLevel = "warning";
+        await sb.from("did_therapist_tasks").update({
+          escalation_level: "warning",
+          escalated_at: new Date().toISOString(),
+        } as any).eq("id", task.id);
+      }
+
+      if (escalationLevel !== "none") {
+        overdueTasks.push({ task, daysOverdue: daysOld, assignee: task.assigned_to || "nespecifikováno", escalationLevel });
+      }
+    }
+    console.log(`[TASK ESCALATION] ${overdueTasks.length} úkolů eskalováno (${overdueTasks.filter(t => t.escalationLevel === "critical").length} critical)`);
+
     const pendingTasksSummary = (pendingTasks || []).map((t: any) => {
       const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-      return `- [${age}d] ${t.task} | pro: ${t.assigned_to} | Hanka: ${t.status_hanka} | Káťa: ${t.status_kata} | priorita: ${t.priority}${age >= 3 ? " ⚠️ ESKALACE" : ""}`;
+      const escLabel = age >= 7 ? " 🔴 CRITICAL" : age >= 3 ? " ⚠️ ESKALACE" : "";
+      return `- [${age}d] ${t.task} | pro: ${t.assigned_to} | Hanka: ${t.status_hanka} | Káťa: ${t.status_kata} | priorita: ${t.priority}${escLabel}`;
     }).join("\n");
     console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
 
@@ -5699,7 +5764,106 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Plan update error (non-fatal):", planErr);
     }
 
-    // ═══ FÁZE 7.5: CLEANUP OLD SAFETY ALERTS ═══
+    // ═══ FÁZE 7.5: ESKALAČNÍ EMAIL PRO ZPOŽDĚNÉ ÚKOLY ═══
+    try {
+      if (overdueTasks.length > 0) {
+        const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
+        const MAMKA_EMAIL = Deno.env.get("KATA_EMAIL") ? undefined : undefined; // loaded below
+        const hankaEmail = Deno.env.get("MAMKA_PHONE")?.includes("@") ? Deno.env.get("MAMKA_PHONE") : null;
+        const kataEmail = Deno.env.get("KATA_EMAIL") || null;
+
+        // Group by assignee
+        const byAssignee: Record<string, typeof overdueTasks> = {};
+        for (const ot of overdueTasks) {
+          const targets = ot.assignee === "both" ? ["hanka", "kata"] : [ot.assignee];
+          for (const t of targets) {
+            if (!byAssignee[t]) byAssignee[t] = [];
+            byAssignee[t].push(ot);
+          }
+        }
+
+        for (const [assignee, tasks] of Object.entries(byAssignee)) {
+          const hasCritical = tasks.some(t => t.escalationLevel === "critical");
+          const maxLevel = hasCritical ? "critical" : "warning";
+
+          // Frequency control: critical=1x/day, warning=1x/3days
+          const maxFrequencyMs = maxLevel === "critical" ? 86400000 : 3 * 86400000;
+          const lastEmailAt = tasks[0]?.task?.last_escalation_email_at;
+          if (lastEmailAt && (Date.now() - new Date(lastEmailAt).getTime()) < maxFrequencyMs) {
+            console.log(`[TASK ESCALATION] Skipping email for ${assignee} — too recent (last: ${lastEmailAt})`);
+            continue;
+          }
+
+          const criticalTasks = tasks.filter(t => t.escalationLevel === "critical");
+          const warningTasks = tasks.filter(t => t.escalationLevel === "warning");
+
+          const subject = hasCritical
+            ? `Karel: 🚨 URGENT — ${criticalTasks.length} kriticky zpožděných úkolů!`
+            : `Karel: ⏰ ${warningTasks.length} úkolů čeká na vyřízení`;
+
+          let body = `<h2 style="color: ${hasCritical ? '#dc2626' : '#d97706'}">`;
+          body += hasCritical ? `🚨 ${criticalTasks.length} kriticky zpožděných úkolů` : `⏰ ${warningTasks.length} úkolů čeká`;
+          body += `</h2><p>Ahoj ${assignee === "hanka" ? "Hanko" : "Káťo"},</p>`;
+          body += `<p>Tyto úkoly čekají na tvou pozornost:</p>`;
+
+          if (criticalTasks.length > 0) {
+            body += `<h3 style="color: #dc2626">🔴 KRITICKÉ (7+ dní)</h3><ul>`;
+            for (const ct of criticalTasks) {
+              body += `<li><strong>${ct.task.task}</strong> — ${ct.daysOverdue} dní`;
+              if (ct.task.detail_instruction) body += `<br><small>Zadání: ${ct.task.detail_instruction}</small>`;
+              body += `</li>`;
+            }
+            body += `</ul>`;
+          }
+
+          if (warningTasks.length > 0) {
+            body += `<h3 style="color: #d97706">🟡 UPOZORNĚNÍ (3+ dní)</h3><ul>`;
+            for (const wt of warningTasks) {
+              body += `<li><strong>${wt.task.task}</strong> — ${wt.daysOverdue} dní</li>`;
+            }
+            body += `</ul>`;
+          }
+
+          body += `<p>Karel</p>`;
+
+          if (RESEND_KEY) {
+            const targetEmail = assignee === "hanka" ? hankaEmail : kataEmail;
+            if (targetEmail) {
+              try {
+                const { Resend } = await import("npm:resend@2.0.0");
+                const resend = new Resend(RESEND_KEY);
+                const { error: sendErr } = await resend.emails.send({
+                  from: "Karel <karel@hana-chlebcova.cz>",
+                  to: [targetEmail],
+                  subject,
+                  html: body,
+                });
+                if (sendErr) throw new Error(String(sendErr));
+                console.log(`[TASK ESCALATION] ✅ Email sent to ${assignee} (${targetEmail})`);
+              } catch (emailErr) {
+                console.error(`[TASK ESCALATION] Email failed for ${assignee}:`, emailErr);
+              }
+            }
+          } else {
+            console.log(`[EMAIL QUEUED] Eskalační email pro ${assignee} — RESEND_API_KEY not available`);
+          }
+
+          // Update last_escalation_email_at for these tasks
+          const taskIds = tasks.map(t => t.task.id).filter(Boolean);
+          if (taskIds.length > 0) {
+            for (const tid of taskIds) {
+              await sb.from("did_therapist_tasks").update({
+                last_escalation_email_at: new Date().toISOString(),
+              } as any).eq("id", tid);
+            }
+          }
+        }
+      }
+    } catch (escErr) {
+      console.warn("[daily-cycle] Task escalation email error:", escErr);
+    }
+
+    // ═══ FÁZE 7.6: CLEANUP OLD SAFETY ALERTS ═══
     try {
       const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
       await sb.from("safety_alerts").delete().in("status", ["resolved", "false_positive"]).lt("created_at", alertCutoff);
