@@ -3124,7 +3124,7 @@ Datum: ${dateStr}` },
         messages: [
           {
             role: "system",
-            content: `Jsi Karel – analytik DID systému a terapeutický supervizor. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
+            content: SYSTEM_RULES + `\n\nJsi Karel – analytik DID systému a terapeutický supervizor. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
 
 ═══ KRITICKÉ PRAVIDLO: DETEKCE SWITCHŮ VE VLÁKNECH ═══
 ⚠️ Pokud je ve vlákně označen SWITCH (např. "vlákno začalo jako Lincoln ale část se představila jako Adam"):
