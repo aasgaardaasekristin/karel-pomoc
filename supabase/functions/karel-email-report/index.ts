@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -56,7 +57,7 @@ serve(async (req) => {
             messages: [
               {
                 role: "system",
-                content: "Přeformátuj následující zápis do čistého HTML emailu. Zachovej obsah beze změny, pouze přidej základní HTML formátování (h2, p, ul, li, strong). Vrať POUZE HTML kód bez vysvětlení.",
+                content: SYSTEM_RULES + "\n\nPřeformátuj následující zápis do čistého HTML emailu. Zachovej obsah beze změny, pouze přidej základní HTML formátování (h2, p, ul, li, strong). Vrať POUZE HTML kód bez vysvětlení.",
               },
               { role: "user", content: reportContent },
             ],

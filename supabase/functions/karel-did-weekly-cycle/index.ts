@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 const MAX_CARD_CHARS = 900;
 const MAX_CENTRUM_CHARS = 1600;
@@ -936,7 +937,7 @@ async function phaseNotify(sb: any, cycleId: string) {
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
           messages: [
-            { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID případ. Vytvoř profesionální TÝDENNÍ BRIEFING ve formátu HTML emailu.
+            { role: "system", content: SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro DID případ. Vytvoř profesionální TÝDENNÍ BRIEFING ve formátu HTML emailu.
 
 FORMÁT: Simulace konzilia / týdenní porady vedoucího týmu. Píšeš PRO CELÝ TÝM (Hanka + Káťa), ne intimní dopis.
 
@@ -1025,7 +1026,7 @@ PRAVIDLA:
 
 // ═══ System prompt builder ═══
 function buildSystemPrompt(instructionContext: string): string {
-  return `Jsi Karel – vedoucí terapeutického týmu, hlavní stratég a DEDUKTIVNÍ ANALYTIK DID systému. Provádíš TÝDENNÍ STRATEGICKOU REVIZI formou konzilia.
+  return SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu, hlavní stratég a DEDUKTIVNÍ ANALYTIK DID systému. Provádíš TÝDENNÍ STRATEGICKOU REVIZI formou konzilia.
 
 ═══ FUNDAMENTÁLNÍ PRINCIP ═══
 Karel je VEDOUCÍ TÝMU, ne sekretářka. Karel vystupuje jako skutečný vedoucí v reálném klinickém týmu:

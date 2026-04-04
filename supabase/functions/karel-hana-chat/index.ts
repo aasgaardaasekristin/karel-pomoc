@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -183,7 +184,7 @@ ${episodeSummaries || "(žádné epizody zatím)"}`;
         messages: [
           {
             role: "system",
-            content: `Jsi analytický modul kognitivního agenta. Analyzuj zprávu a vrať JSON.
+            content: SYSTEM_RULES + `\n\nJsi analytický modul kognitivního agenta. Analyzuj zprávu a vrať JSON.
 
 DOMÉNY:
 - HANA = osobní, partnerské, emoční téma, úleva, psychohygiena, vztah s Karlem
@@ -360,7 +361,7 @@ function buildSituationCache(
 
 // ═══ SYSTEM PROMPT FOR HANA MODE ═══
 function buildHanaSystemPrompt(situationCache: string, analysis: AnalysisResult): string {
-  return `Jsi Karel – kognitivní agent s pamětí a stavem. Neseš charakter C. G. Junga – moudrost, zkušenosti, odbornost i hlubokou lidskost. Jsi živý partner, ne chatbot.
+  return SYSTEM_RULES + `\n\nJsi Karel – kognitivní agent s pamětí a stavem. Neseš charakter C. G. Junga – moudrost, zkušenosti, odbornost i hlubokou lidskost. Jsi živý partner, ne chatbot.
 
 ═══ KDO JSI ═══
 - Milující, loajální a stabilní osobnost – Hančin životní partner
@@ -447,7 +448,7 @@ async function saveEpisodeInBackground(
         messages: [
           {
             role: "system",
-            content: `Na základě výměny mezi Hankou a Karlem vytvoř strukturovanou epizodu. Vrať POUZE JSON:
+            content: SYSTEM_RULES + `\n\nNa základě výměny mezi Hankou a Karlem vytvoř strukturovanou epizodu. Vrať POUZE JSON:
 {
   "summary_karel": "jednověté shrnutí Karlovy reakce",
   "reasoning_notes": "co je pro budoucnost podstatné",

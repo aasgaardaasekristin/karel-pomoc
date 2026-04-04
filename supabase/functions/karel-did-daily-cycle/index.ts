@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -244,7 +245,7 @@ async function semanticDedupCheck(
         messages: [
           {
             role: "system",
-            content: `Porovnej NOSNOU MYŠLENKU nového záznamu s existujícím obsahem sekce. Odpověz isDuplicate=true POUZE pokud je JÁDRO VÝZNAMU (ne formulace) již přítomno. Různá slova pro stejný fakt = DUPLICITA. Nový detail k existujícímu faktu = NENÍ DUPLICITA.`,
+            content: SYSTEM_RULES + `\n\nPorovnej NOSNOU MYŠLENKU nového záznamu s existujícím obsahem sekce. Odpověz isDuplicate=true POUZE pokud je JÁDRO VÝZNAMU (ne formulace) již přítomno. Různá slova pro stejný fakt = DUPLICITA. Nový detail k existujícímu faktu = NENÍ DUPLICITA.`,
           },
           {
             role: "user",
@@ -2706,7 +2707,7 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID. Vygeneruj krátký denní report pro celý tým. Profesionální, věcný tón vedoucího.
+                    { role: "system", content: SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro DID. Vygeneruj krátký denní report pro celý tým. Profesionální, věcný tón vedoucího.
 Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
 - Shrnutí stavu (klidný den, žádná aktivita)
 - Případné připomenutí otevřených úkolů
@@ -2734,7 +2735,7 @@ Datum: ${dateStr}` },
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu. Vygeneruj krátký denní report pro Káťu. Profesionální, vstřícný tón.
+                    { role: "system", content: SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu. Vygeneruj krátký denní report pro Káťu. Profesionální, vstřícný tón.
 Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
 - Shrnutí stavu (klidný den)
 - Připomenutí otevřených úkolů pokud existují
@@ -3123,7 +3124,7 @@ Datum: ${dateStr}` },
         messages: [
           {
             role: "system",
-            content: `Jsi Karel – analytik DID systému a terapeutický supervizor. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
+            content: SYSTEM_RULES + `\n\nJsi Karel – analytik DID systému a terapeutický supervizor. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
 
 ═══ KRITICKÉ PRAVIDLO: DETEKCE SWITCHŮ VE VLÁKNECH ═══
 ⚠️ Pokud je ve vlákně označen SWITCH (např. "vlákno začalo jako Lincoln ale část se představila jako Adam"):
@@ -4141,7 +4142,7 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
                     messages: [
                       {
                         role: "system",
-                        content: `Jsi Karel – analytik DID systému. Tvým úkolem je projít příručky uložené v 07_Knihovna a pro KAŽDOU příručku, která se JAKKOLIV týká DID systému, určit KAM v kartotéce by měly být informace zapsány.
+                        content: SYSTEM_RULES + `\n\nJsi Karel – analytik DID systému. Tvým úkolem je projít příručky uložené v 07_Knihovna a pro KAŽDOU příručku, která se JAKKOLIV týká DID systému, určit KAM v kartotéce by měly být informace zapsány.
 
 ═══ CO JE DID-RELEVANTNÍ ═══
 - Metoda/technika použitelná pro konkrétní fragment/část (např. hra pro dětskou část, stabilizační technika)
@@ -4410,7 +4411,7 @@ Vrať POUZE validní JSON (bez markdown):
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: "Jsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
+                    { role: "system", content: SYSTEM_RULES + "\n\nJsi klinický psycholog specializující se na DID. Analyzuješ komunikační vzorce a vytváříš psychologické profily fragmentů/částí DID systému. Odpovídej VÝHRADNĚ validním JSON." },
                     { role: "user", content: profilePrompt },
                   ],
                   temperature: 0.2,
@@ -4704,7 +4705,7 @@ Vrať POUZE validní JSON (bez markdown):
                     model: "google/gemini-2.5-flash-lite",
                     messages: [{
                       role: "system",
-                      content: `Jsi Karel — vedoucí terapeutického týmu. Generuješ PROAKTIVNÍ zpětnou vazbu k úkolu, který je ${ageDays} dní starý a stále nesplněný.
+                      content: SYSTEM_RULES + `\n\nJsi Karel — vedoucí terapeutického týmu. Generuješ PROAKTIVNÍ zpětnou vazbu k úkolu, který je ${ageDays} dní starý a stále nesplněný.
 
 PRAVIDLA:
 - Max 2-3 věty, profesionální ale lidský tón
@@ -5037,7 +5038,7 @@ Pokud nejsou žádné nové klinicky relevantní fakty, vrať: []`;
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash",
                 messages: [
-                  { role: "system", content: "Jsi analytický asistent Karla. Extrahuj strukturovaná data z konverzací. Odpovídej POUZE ve formátu JSON." },
+                  { role: "system", content: SYSTEM_RULES + "\n\nJsi analytický asistent Karla. Extrahuj strukturovaná data z konverzací. Odpovídej POUZE ve formátu JSON." },
                   { role: "user", content: extractionPrompt },
                 ],
               }),
@@ -5130,7 +5131,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash",
                   messages: [
-                    { role: "system", content: "Jsi analytický modul Karla (inspirovaný C.G. Jungem). Extrahuj profilová tvrzení z konverzací s klinickou přesností. Odpovídej POUZE JSON." },
+                    { role: "system", content: SYSTEM_RULES + "\n\nJsi analytický modul Karla (inspirovaný C.G. Jungem). Extrahuj profilová tvrzení z konverzací s klinickou přesností. Odpovídej POUZE JSON." },
                     { role: "user", content: claimPrompt },
                   ],
                 }),

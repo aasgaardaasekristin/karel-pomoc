@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 /**
  * Karel DID Episode Generator
@@ -137,7 +138,7 @@ async function processForUser(sb: any, userId: string, apiKey: string, body: any
         body: JSON.stringify({
           model: "google/gemini-2.5-flash-lite",
           messages: [
-            { role: "system", content: `Jsi analytický modul kognitivního agenta Karla. Extrahuj strukturovanou epizodu z DID konverzace.
+            { role: "system", content: SYSTEM_RULES + `\n\nJsi analytický modul kognitivního agenta Karla. Extrahuj strukturovanou epizodu z DID konverzace.
 
 KONTEXT: Toto je rozhovor z DID režimu (disociativní porucha identity u dětí).
 - part_name: "${thread.part_name}" (jméno aktivní části/fragmentu)
@@ -339,7 +340,7 @@ INSTRUKCE:
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: `Analyzuj konverzaci Hanky s Karlem. Obsahuje KLINICKY RELEVANTNÍ informace o DID systému (částech, fragmentech, terapeutické práci s nimi)?
+                { role: "system", content: SYSTEM_RULES + `\n\nAnalyzuj konverzaci Hanky s Karlem. Obsahuje KLINICKY RELEVANTNÍ informace o DID systému (částech, fragmentech, terapeutické práci s nimi)?
 Odpověz POUZE "YES" nebo "NO". YES = zmíněna konkrétní informace o stavu/chování/vývoji nějaké části, která by měla být zaznamenána.` },
                 { role: "user", content: conversationText.slice(0, 4000) },
               ],
@@ -359,7 +360,7 @@ Odpověz POUZE "YES" nebo "NO". YES = zmíněna konkrétní informace o stavu/ch
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: `Extrahuj DID-relevantní informace z konverzace Hanky s Karlem (osobní režim). Zaměř se POUZE na zmínky o částech/fragmentech DID systému, jejich stavu, chování, pokrocích. Ignoruj osobní témata Hanky nesouvisející s DID.` },
+                { role: "system", content: SYSTEM_RULES + `\n\nExtrahuj DID-relevantní informace z konverzace Hanky s Karlem (osobní režim). Zaměř se POUZE na zmínky o částech/fragmentech DID systému, jejich stavu, chování, pokrocích. Ignoruj osobní témata Hanky nesouvisející s DID.` },
                 { role: "user", content: conversationText.slice(0, 6000) },
               ],
               tools: [{

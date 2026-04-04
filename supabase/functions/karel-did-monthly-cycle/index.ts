@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -272,7 +273,7 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY not configured");
 
-    const systemPrompt = `Jsi Karel, AI asistent specializovaný na DID (disociativní porucha identity).
+    const systemPrompt = SYSTEM_RULES + `\n\nJsi Karel, AI asistent specializovaný na DID (disociativní porucha identity).
 Provádíš MĚSÍČNÍ ANALÝZU systému za posledních 30 dní.
 
 ═══ KRITICKÁ PRAVIDLA (NESMÍŠ PORUŠIT) ═══

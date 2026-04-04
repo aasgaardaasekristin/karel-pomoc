@@ -1,11 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = `Jsi Karel – vedoucí terapeutického týmu pro práci s DID systémem.
+const SYSTEM_PROMPT = SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro práci s DID systémem.
 Provádíš INTERNÍ analýzu, která je DŮVĚRNÁ a slouží VÝHRADNĚ pro tvé vlastní rozhodování.
 
 PRAVIDLA:

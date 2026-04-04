@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 /**
  * karel-did-morning-brief — Morning brief for therapists.
@@ -250,7 +251,7 @@ KRITICKÁ PRAVIDLA:
 9. U každého návrhu sezení MUSÍŠ uvést: konkrétní techniku, cíle, otevírací větu.
 ` : "";
 
-      const systemPrompt = `Jsi Karel, AI terapeut specializovaný na DID. Píšeš ranní brief pro ${therapist === "Hanka" ? "Haničku (mamka, denní péče, Písek, emoční zázemí)" : "Káťu (koordinace na dálku, Budějovice, škola Townshend, senzorická terapie)"}.
+      const systemPrompt = SYSTEM_RULES + `\n\nJsi Karel, AI terapeut specializovaný na DID. Píšeš ranní brief pro ${therapist === "Hanka" ? "Haničku (mamka, denní péče, Písek, emoční zázemí)" : "Káťu (koordinace na dálku, Budějovice, škola Townshend, senzorická terapie)"}.
 ${analysisRules}
 FORMÁT (max 20 řádků, stručný, motivační, konkrétní):
 

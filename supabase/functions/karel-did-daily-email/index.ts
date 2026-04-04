@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 /**
  * karel-did-daily-email — Standalone email function for DID daily reports.
@@ -530,7 +531,7 @@ Report MUSÍ obsahovat tyto sekce, pokud mají data:
 Neincluduj prázdné sekce. Integruj data přirozeně do textu.
 ` : "";
 
-      const systemPrompt = isHanka
+      const systemPrompt = SYSTEM_RULES + "\n\n" + (isHanka
         ? `Jsi Karel – vedoucí terapeutického týmu pro DID případ.
 Píšeš DENNÍ BRIEFING přímo Hance. Oslovuj ji „Hani" nebo „Haničko".
 Jsi její mentor, vedoucí týmu a supervizor – ne neutrální zprávodaj.
@@ -732,7 +733,7 @@ Shrň klíčové body z pohledu Káti.` : ""}
 
 Podpis: "Karel"
 
-Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`;
+Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
       // ═══ FILTER: only parts that are truly active + recommended ═══
       const BANNED_PART_NAMES = new Set([
         "LOCIK","LOCÍK","LOCEK", // pes – NIKDY DID část

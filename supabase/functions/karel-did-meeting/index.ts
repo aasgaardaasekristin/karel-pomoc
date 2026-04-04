@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -198,7 +199,7 @@ serve(async (req) => {
               messages: [
                 {
                   role: "system",
-                  content: `Jsi Karel – moderátor asynchronní porady DID terapeutického týmu. Vedete poradu na téma: "${meeting.topic}".
+                  content: SYSTEM_RULES + `\n\nJsi Karel – moderátor asynchronní porady DID terapeutického týmu. Vedete poradu na téma: "${meeting.topic}".
 
 TVOJE ROLE:
 - Aktivně veď poradu: shrň co řekla ${therapistName}, polož další otázky, navrhni brainstorming
@@ -323,7 +324,7 @@ AGENDA: ${meeting.agenda || meeting.topic}`,
               messages: [
                 {
                   role: "system",
-                  content: `Jsi Karel. Uzavíráš poradu DID týmu. Vygeneruj:
+                  content: SYSTEM_RULES + `\n\nJsi Karel. Uzavíráš poradu DID týmu. Vygeneruj:
 
 1. SHRNUTÍ (2-3 odstavce) – co se projednalo, na čem se dohodly
 2. ÚKOLY – JSON pole ve formátu:
