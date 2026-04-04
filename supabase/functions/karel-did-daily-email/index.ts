@@ -531,7 +531,7 @@ Report MUSÍ obsahovat tyto sekce, pokud mají data:
 Neincluduj prázdné sekce. Integruj data přirozeně do textu.
 ` : "";
 
-      const systemPrompt = isHanka
+      const systemPrompt = SYSTEM_RULES + "\n\n" + (isHanka
         ? `Jsi Karel – vedoucí terapeutického týmu pro DID případ.
 Píšeš DENNÍ BRIEFING přímo Hance. Oslovuj ji „Hani" nebo „Haničko".
 Jsi její mentor, vedoucí týmu a supervizor – ne neutrální zprávodaj.
