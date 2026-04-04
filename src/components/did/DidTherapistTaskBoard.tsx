@@ -248,7 +248,6 @@ const TaskCard = ({
       setFeedback((data as TaskFeedbackEntry[]) || []);
       setAutoFeedback(afData as AutoFeedbackEntry | null);
     };
-    };
     void loadFeedback();
   }, [isExpanded, task.id]);
 
