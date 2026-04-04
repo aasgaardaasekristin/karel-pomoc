@@ -2443,8 +2443,10 @@ export type Database = {
           created_at: string
           detail_instruction: string | null
           due_date: string | null
-          escalation_level: number | null
+          escalated_at: string | null
+          escalation_level: string | null
           id: string
+          last_escalation_email_at: string | null
           note: string | null
           priority: string | null
           source_agreement: string | null
@@ -2464,8 +2466,10 @@ export type Database = {
           created_at?: string
           detail_instruction?: string | null
           due_date?: string | null
-          escalation_level?: number | null
+          escalated_at?: string | null
+          escalation_level?: string | null
           id?: string
+          last_escalation_email_at?: string | null
           note?: string | null
           priority?: string | null
           source_agreement?: string | null
@@ -2485,8 +2489,10 @@ export type Database = {
           created_at?: string
           detail_instruction?: string | null
           due_date?: string | null
-          escalation_level?: number | null
+          escalated_at?: string | null
+          escalation_level?: string | null
           id?: string
+          last_escalation_email_at?: string | null
           note?: string | null
           priority?: string | null
           source_agreement?: string | null
