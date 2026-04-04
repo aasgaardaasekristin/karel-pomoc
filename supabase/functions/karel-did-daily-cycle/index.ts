@@ -5669,6 +5669,86 @@ Pokud nejsou žádné nové claims, vrať: []`;
       }
 
       console.log(`[daily-cycle] Crisis eval: ${activeCrises?.length || 0} active crises`);
+
+      // ═══ KRIZOVÝ EMAIL — notifikace pro nové/aktivní krize ═══
+      for (const crisis of (activeCrises || [])) {
+        const partName = crisis.part_name;
+        const daysActive = crisis.days_active || 0;
+
+        // Skip if crisis email was already sent for this part in last 24h
+        try {
+          const { data: recentCrisisEmail } = await sb
+            .from("did_pending_emails")
+            .select("id")
+            .eq("email_type", "crisis")
+            .ilike("subject", `%${partName}%`)
+            .gte("created_at", new Date(Date.now() - 24 * 3600000).toISOString())
+            .limit(1);
+
+          if (recentCrisisEmail && recentCrisisEmail.length > 0) {
+            console.log(`[CRISIS EMAIL] Skipped — already sent for ${partName} in last 24h`);
+            continue;
+          }
+
+          // Only send email for NEW crises (days_active <= 1) or critical escalations (7+ days)
+          const isNewCrisis = daysActive <= 1;
+          const isCriticalEscalation = daysActive >= 7;
+          if (!isNewCrisis && !isCriticalEscalation) continue;
+
+          const emailLabel = isNewCrisis ? "NOVÁ KRIZE" : "KRITICKÁ ESKALACE";
+          const crisisSubject = isNewCrisis
+            ? `\u{1F6A8} Karel: KRIZE \u2014 ${partName}`
+            : `\u{1F6A8} Karel: KRIZE ${daysActive}. den \u2014 ${partName}`;
+
+          const crisisBody = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+  <div style="background:#dc2626;color:#fff;padding:16px 20px;border-radius:8px 8px 0 0;text-align:center">
+    <h1 style="margin:0;font-size:20px">\u{1F6A8} ${emailLabel}</h1>
+  </div>
+  <div style="border:1px solid #fca5a5;border-top:none;padding:20px;border-radius:0 0 8px 8px">
+    <p style="margin:0 0 8px"><strong>\u010c\u00e1st:</strong> ${partName}</p>
+    <p style="margin:0 0 8px"><strong>F\u00e1ze:</strong> ${crisis.phase || "acute"}</p>
+    <p style="margin:0 0 8px"><strong>Trigger:</strong> ${crisis.trigger_description || "Nespecifikov\u00e1no"}</p>
+    <p style="margin:0 0 8px"><strong>Z\u00e1va\u017enost:</strong> ${crisis.severity || "nespecifikov\u00e1na"}</p>
+    ${daysActive > 1 ? `<p style="margin:0 0 8px"><strong>Dn\u00ed aktivn\u00ed:</strong> ${daysActive}</p>` : ""}
+    <div style="margin:16px 0;padding:12px;background:#fef2f2;border-radius:6px;border-left:4px solid #dc2626">
+      <strong>\u26A0\uFE0F Doporu\u010den\u00ed Karla:</strong><br/>
+      P\u0159i krizi prioritizuj STABILIZACI. Neotev\u00edrej traumatick\u00fd materi\u00e1l.
+      Pou\u017eij grounding techniky. Detailn\u00ed pl\u00e1n je na dashboardu.
+    </div>
+    <div style="text-align:center;margin-top:16px">
+      <a href="https://karel-pomoc.lovable.app/hub" style="display:inline-block;background:#dc2626;color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-weight:bold">
+        Otev\u0159\u00edt dashboard \u2192
+      </a>
+    </div>
+  </div>
+</div>`;
+
+          const crisisTextPlain = `\u{1F6A8} ${emailLabel} \u2014 ${partName}\nF\u00e1ze: ${crisis.phase || "acute"}\nTrigger: ${crisis.trigger_description || "Nespecifikov\u00e1no"}\nDoporu\u010den\u00ed: Stabilizace, grounding, neotev\u00edrat trauma.`;
+
+          const kataEmail = Deno.env.get("KATA_EMAIL");
+          const mamkaEmail = Deno.env.get("MAMKA_EMAIL") || Deno.env.get("HANKA_EMAIL");
+
+          for (const recipient of [
+            { email: kataEmail, name: "K\u00e1\u0165a" },
+            { email: mamkaEmail, name: "Hanka" },
+          ]) {
+            if (recipient.email && recipient.email.includes("@")) {
+              await sendOrQueueEmail(sb, {
+                toEmail: recipient.email,
+                toName: recipient.name,
+                subject: crisisSubject,
+                bodyHtml: crisisBody,
+                bodyText: crisisTextPlain,
+                emailType: "crisis",
+              });
+            }
+          }
+          console.log(`[CRISIS EMAIL] Sent for ${partName} (${emailLabel})`);
+        } catch (crisisEmailErr) {
+          console.warn(`[CRISIS EMAIL] Error for ${partName}:`, crisisEmailErr);
+        }
+      }
+      console.log("[INFO] No webhook configured \u2014 crisis notification via email only");
     } catch (crisisErr) {
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
     }
