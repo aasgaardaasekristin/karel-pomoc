@@ -1788,6 +1788,7 @@ export type Database = {
           last_emotional_intensity: number | null
           last_emotional_state: string | null
           last_seen_at: string | null
+          next_session_plan: string | null
           notes: string | null
           part_name: string
           role_in_system: string | null
@@ -1811,6 +1812,7 @@ export type Database = {
           last_emotional_intensity?: number | null
           last_emotional_state?: string | null
           last_seen_at?: string | null
+          next_session_plan?: string | null
           notes?: string | null
           part_name: string
           role_in_system?: string | null
@@ -1834,6 +1836,7 @@ export type Database = {
           last_emotional_intensity?: number | null
           last_emotional_state?: string | null
           last_seen_at?: string | null
+          next_session_plan?: string | null
           notes?: string | null
           part_name?: string
           role_in_system?: string | null

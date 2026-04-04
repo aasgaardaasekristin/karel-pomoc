@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface PartQuickViewProps {
   partName: string;
@@ -19,6 +20,7 @@ interface QuickViewData {
   alerts: any[];
   switches: any[];
   notes: any[];
+  isInCrisis: boolean;
 }
 
 const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
@@ -34,7 +36,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
 
       const [
         registryRes, kartotekaRes, goalsRes, weekMetricsRes,
-        recentThreadsRes, alertsRes, switchesRes, notesRes,
+        recentThreadsRes, alertsRes, switchesRes, notesRes, crisisRes,
       ] = await Promise.all([
         sb.from("did_part_registry").select("*").eq("part_name", partName).maybeSingle(),
         sb.from("did_kartoteka").select("*").eq("part_name", partName).maybeSingle().then((r: any) => r).catch(() => ({ data: null })),
@@ -44,6 +46,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         sb.from("safety_alerts").select("id, alert_type, severity, status, created_at, description").eq("part_name", partName).in("status", ["new", "acknowledged"]).order("created_at", { ascending: false }).limit(5),
         sb.from("switching_events").select("id, original_part, detected_part, confidence, created_at").or(`original_part.eq.${partName},detected_part.eq.${partName}`).gte("created_at", today + "T00:00:00").order("created_at", { ascending: false }).limit(5),
         sb.from("therapist_notes").select("id, note_text, note_type, created_at").eq("part_name", partName).order("created_at", { ascending: false }).limit(3),
+        sb.from("crisis_events").select("part_name, phase").eq("part_name", partName).not("phase", "eq", "closed").limit(1),
       ]);
 
       setData({
@@ -55,6 +58,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         alerts: alertsRes.data || [],
         switches: switchesRes.data || [],
         notes: notesRes.data || [],
+        isInCrisis: (crisisRes.data || []).length > 0,
       });
       setLoading(false);
     };
@@ -73,7 +77,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
 
   if (!data) return null;
 
-  const isEmpty = !data.kartoteka && data.goals.length === 0 && data.weekMetrics.length === 0 && data.alerts.length === 0 && data.notes.length === 0 && data.recentThreads.length === 0;
+  const isEmpty = !data.kartoteka && data.goals.length === 0 && data.weekMetrics.length === 0 && data.alerts.length === 0 && data.notes.length === 0 && data.recentThreads.length === 0 && !data.registry?.next_session_plan;
 
   return (
     <div
@@ -97,6 +101,24 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
             <X className="w-3.5 h-3.5" />
           </Button>
         </div>
+
+        {/* 📋 PLÁN PŘÍŠTÍHO SEZENÍ — vždy NAHOŘE */}
+        {data.registry?.next_session_plan && (
+          <div className={cn(
+            "rounded-md border-2 p-2.5",
+            data.isInCrisis ? "border-destructive bg-destructive/5" : "border-primary/40 bg-primary/5"
+          )}>
+            <span className={cn(
+              "text-[11px] font-semibold",
+              data.isInCrisis ? "text-destructive" : "text-primary"
+            )}>
+              📋 Karlův plán příštího sezení
+            </span>
+            <div className="mt-1.5 text-[10px] leading-relaxed text-foreground prose-sm max-w-none">
+              <RichMarkdown compact>{data.registry.next_session_plan}</RichMarkdown>
+            </div>
+          </div>
+        )}
 
         {/* KARTOTÉKA SOUHRN */}
         {data.kartoteka && (
