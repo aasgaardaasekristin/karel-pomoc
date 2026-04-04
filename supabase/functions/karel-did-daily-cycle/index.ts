@@ -621,8 +621,9 @@ const SECTION_DEFINITIONS: Record<string, string> = {
   G: "Deník sezení", H: "Dlouhodobé cíle", I: "Terapeutické metody a přístupy",
   J: "Krátkodobé cíle a aktuální intervence", K: "Výstupy ze sezení a zpětná vazba",
   L: "Aktivita a přítomnost části", M: "Karlova analytická poznámka",
+  N: "Karlův plán příštího sezení",
 };
-const SECTION_ORDER = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
+const SECTION_ORDER = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N"];
 
 function sectionHeader(letter: string): string {
   return `SEKCE ${letter} – ${SECTION_DEFINITIONS[letter]}`;
