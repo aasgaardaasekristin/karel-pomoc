@@ -634,7 +634,7 @@ function parseCardSections(content: string): Record<string, string> {
   const strictRegex = /(?:═+\s*)?SEKCE\s+([A-N])\s*[–\-:]/gi;
   let matches = [...content.matchAll(strictRegex)];
   if (matches.length === 0) {
-    const looseRegex = /^##?\s*([A-M])\s*[–\-:)]\s*/gmi;
+    const looseRegex = /^##?\s*([A-N])\s*[–\-:)]\s*/gmi;
     matches = [...content.matchAll(looseRegex)];
   }
   if (matches.length === 0) { sections["_preamble"] = content.trim(); return sections; }
