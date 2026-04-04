@@ -631,7 +631,7 @@ function sectionHeader(letter: string): string {
 
 function parseCardSections(content: string): Record<string, string> {
   const sections: Record<string, string> = {};
-  const strictRegex = /(?:═+\s*)?SEKCE\s+([A-M])\s*[–\-:]/gi;
+  const strictRegex = /(?:═+\s*)?SEKCE\s+([A-N])\s*[–\-:]/gi;
   let matches = [...content.matchAll(strictRegex)];
   if (matches.length === 0) {
     const looseRegex = /^##?\s*([A-M])\s*[–\-:)]\s*/gmi;
