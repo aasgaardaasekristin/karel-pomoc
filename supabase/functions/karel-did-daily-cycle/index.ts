@@ -3869,6 +3869,19 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               actionType: effectiveAction,
             });
             console.log(`[card] ${actionLabel}: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
+
+            // ═══ SAVE SECTION N (session plan) TO DB for dashboard access ═══
+            if (newSections["N"] && resolvedUserId) {
+              try {
+                await sb.from("did_part_registry")
+                  .update({ next_session_plan: newSections["N"], updated_at: new Date().toISOString() })
+                  .eq("part_name", resolvedPartName)
+                  .eq("user_id", resolvedUserId);
+                console.log(`[section-N] Saved session plan for "${resolvedPartName}" to did_part_registry`);
+              } catch (nErr) {
+                console.warn(`[section-N] Failed to save for "${resolvedPartName}":`, nErr);
+              }
+            }
           } catch (e) {
             hadCardUpdateErrors = true;
             console.error(`Failed to update card for ${rawPartName}:`, e);
