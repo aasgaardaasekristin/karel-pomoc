@@ -1585,7 +1585,7 @@ function isTextCandidateFile(file: DriveFile): boolean {
 function looksLikeDidCard(fileName: string, content: string): boolean {
   if (fileName.toLowerCase().startsWith("karta_")) return true;
   if (/^\d{3,}[_-]/i.test(fileName)) return true;
-  return /SEKCE\s+[A-M]\s*[–\-:]/i.test(content) || /KARTA\s+ČÁSTI/i.test(content);
+  return /SEKCE\s+[A-N]\s*[–\-:]/i.test(content) || /KARTA\s+ČÁSTI/i.test(content);
 }
 
 function partNameFromFileName(fileName: string): string {
