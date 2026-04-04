@@ -1387,7 +1387,7 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
       },
     });
 
-    return new Response(JSON.stringify({
+    const responsePayload = {
       contextBrief,
       partCard: partCardContent,
       systemState,
@@ -1406,7 +1406,26 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
         totalMs: totalTime,
         newsAvailable: newsDigest.length > 0,
       },
-    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    };
+
+    // ═══ CACHE SAVE (TTL 6 hours) ═══
+    const cacheKey = `${partName || "none"}|${subMode || "none"}`;
+    try {
+      // Delete old cache for this function+key
+      await sb.from("context_cache").delete().eq("user_id", userId).eq("function_name", "did-context-prime").eq("cache_key", cacheKey);
+      await sb.from("context_cache").insert({
+        user_id: userId,
+        function_name: "did-context-prime",
+        cache_key: cacheKey,
+        context_data: responsePayload,
+        expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+      });
+      console.log(`[did-context-prime] Cache saved (TTL 6h, key: ${cacheKey})`);
+    } catch (cacheErr) {
+      console.warn("[did-context-prime] Cache save failed (non-fatal):", cacheErr);
+    }
+
+    return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
     console.error("[did-context-prime] Error:", error);
