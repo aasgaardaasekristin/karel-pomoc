@@ -25,6 +25,7 @@ import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
 import PartQuickView from "./PartQuickView";
 import CrisisTimeline from "./CrisisTimeline";
+import DidTherapistProfiles from "./DidTherapistProfiles";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
@@ -856,6 +857,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           <p className="text-xs text-muted-foreground">{warningParts.map(p => p.name).join(", ")} – neaktivní více než 7 dní.</p>
         </KarelCard>
       )}
+
+      {/* ═══ SEKCE 7.5: PROFILY TERAPEUTEK ═══ */}
+      <ErrorBoundary>
+        <DidTherapistProfiles />
+      </ErrorBoundary>
 
       {/* ═══ SEKCE 8: SYSTÉMOVÝ STAV FOOTER ═══ */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-card/30 backdrop-blur-sm border border-border/30 text-[10px] text-muted-foreground">
