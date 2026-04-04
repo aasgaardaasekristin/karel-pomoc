@@ -20,6 +20,7 @@ interface QuickViewData {
   alerts: any[];
   switches: any[];
   notes: any[];
+  isInCrisis: boolean;
 }
 
 const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
