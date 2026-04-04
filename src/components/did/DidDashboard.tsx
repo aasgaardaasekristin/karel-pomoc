@@ -538,6 +538,48 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         </div>
       </div>
 
+      {/* ═══ ESKALOVANÉ ÚKOLY BANNER ═══ */}
+      {escalatedTasks.length > 0 && (() => {
+        const criticalTasks = escalatedTasks.filter((t: any) => t.escalation_level === "critical");
+        const warningTasks = escalatedTasks.filter((t: any) => t.escalation_level === "warning");
+        return (
+          <div className="space-y-2">
+            {criticalTasks.length > 0 && (
+              <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-destructive" />
+                  <span className="text-xs font-bold text-destructive">🚨 {criticalTasks.length} úkolů je KRITICKY zpožděno!</span>
+                </div>
+                {criticalTasks.map((t: any) => {
+                  const daysOld = Math.floor((Date.now() - new Date(t.created_at).getTime()) / 86400000);
+                  return (
+                    <div key={t.id} className="text-[11px] text-destructive/90 pl-6 cursor-pointer hover:underline" onClick={() => navigate("/chat?sub=sprava")}>
+                      • {t.task} — {t.assigned_to} — {daysOld} dní
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {warningTasks.length > 0 && (
+              <div className="rounded-xl border-2 border-amber-500/50 bg-amber-500/10 backdrop-blur-sm shadow-sm p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-xs font-bold text-amber-700 dark:text-amber-400">⏰ {warningTasks.length} úkolů čeká déle než 3 dny</span>
+                </div>
+                {warningTasks.map((t: any) => {
+                  const daysOld = Math.floor((Date.now() - new Date(t.created_at).getTime()) / 86400000);
+                  return (
+                    <div key={t.id} className="text-[11px] text-amber-700/90 dark:text-amber-400/90 pl-6 cursor-pointer hover:underline" onClick={() => navigate("/chat?sub=sprava")}>
+                      • {t.task} — {t.assigned_to} — {daysOld} dní
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ═══ SEKCE 2: URGENTNÍ BANNERY ═══ */}
       {/* Crisis alerts */}
       {activeCrises.length > 0 && (
