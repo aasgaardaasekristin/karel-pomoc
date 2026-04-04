@@ -228,25 +228,42 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
           </div>
         )}
 
-        {/* AKTIVNÍ CÍLE */}
+        {/* CÍLE */}
         {data.goals.length > 0 && (
           <div>
             <span className="text-[10px] font-medium">🎯 Cíle ({data.goals.length})</span>
-            <div className="space-y-1 mt-1">
-              {data.goals.slice(0, 3).map((g: any) => (
-                <div key={g.id} className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] truncate">{g.goal_text}</p>
-                    <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", (g.progress_pct || 0) >= 75 ? "bg-green-500" : (g.progress_pct || 0) >= 40 ? "bg-amber-500" : "bg-primary")}
-                        style={{ width: `${Math.min(g.progress_pct || 0, 100)}%` }}
-                      />
+            <div className="space-y-1.5 mt-1">
+              {data.goals.slice(0, 5).map((g: any) => {
+                const isPaused = g.status === "paused";
+                const gtBadge = g.goal_type ? goalTypeBadge[g.goal_type] : null;
+                const stateChanged = g.state_at_creation && data.partState && g.state_at_creation !== data.partState;
+                return (
+                  <div key={g.id} className={cn("flex items-center gap-2", isPaused && "opacity-50")}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <p className={cn("text-[10px] truncate", isPaused && "line-through")}>{g.goal_text}</p>
+                        {gtBadge && (
+                          <span className={cn("text-[7px] px-1 py-0.5 rounded shrink-0", gtBadge.className)}>
+                            {gtBadge.label}
+                          </span>
+                        )}
+                        {stateChanged && <span title={`Vytvořeno ve stavu: ${g.state_at_creation}`}>⚡</span>}
+                      </div>
+                      {isPaused ? (
+                        <p className="text-[9px] text-muted-foreground">⏸ Pozastaveno: {g.pause_reason || "změna stavu"}</p>
+                      ) : (
+                        <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full", (g.progress_pct || 0) >= 75 ? "bg-green-500" : (g.progress_pct || 0) >= 40 ? "bg-amber-500" : "bg-primary")}
+                            style={{ width: `${Math.min(g.progress_pct || 0, 100)}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
+                    {!isPaused && <span className="text-[9px] text-muted-foreground shrink-0">{g.progress_pct || 0}%</span>}
                   </div>
-                  <span className="text-[9px] text-muted-foreground shrink-0">{g.progress_pct || 0}%</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
