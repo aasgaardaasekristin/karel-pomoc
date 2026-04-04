@@ -3110,43 +3110,128 @@ Datum: ${dateStr}` },
     let perplexityContext = "";
     const PERPLEXITY_API_KEY = Deno.env.get("PERPLEXITY_API_KEY");
     if (PERPLEXITY_API_KEY && allSummaries.trim().length > 40) {
-      try {
-        const perplexityPrompt = allSummaries.length > 7000 ? `${allSummaries.slice(0, 7000)}…` : allSummaries;
-        const pRes = await fetch("https://api.perplexity.ai/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "sonar-pro",
-            messages: [
-              {
-                role: "system",
-                content: "Jsi klinický rešeršista pro DID. Vrať pouze stručné, praktické body: metody, kontraindikace, rizika a odkazy relevantní k dnešním konverzacím. Žádné domýšlení bez zdroje.",
-              },
-              { role: "user", content: perplexityPrompt },
-            ],
-            search_mode: "academic",
-            search_recency_filter: "year",
-          }),
-        });
+      // ═══ RESEARCH SCHEDULING: Decide whether to call Perplexity today ═══
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0=Sunday
+      const isResearchDay = dayOfWeek === 0; // Sunday = batch research day
 
-        if (pRes.ok) {
-          const pData = await pRes.json();
-          const text = pData.choices?.[0]?.message?.content || "";
-          const citations: string[] = pData.citations || [];
-          if (text) {
-            perplexityContext = `\n\n═══ REŠERŠNÍ KONTEXT (Perplexity) ═══\n${text}`;
-            if (citations.length > 0) {
-              perplexityContext += `\n\nCitace:\n${citations.map((c, i) => `[${i + 1}] ${c}`).join("\n")}`;
+      // Check for 🔍 REŠERŠE POTŘEBA tags in existing cards
+      const researchNeedParts = new Set<string>();
+      for (const [cardName, cardContent] of Object.entries(existingCards)) {
+        if (cardContent.includes("REŠERŠE POTŘEBA")) {
+          researchNeedParts.add(cardName);
+        }
+      }
+
+      // Check for active crises
+      let crisisPartNamesForResearch: string[] = [];
+      try {
+        const { data: activeCrisesForResearch } = await sb
+          .from("crisis_events")
+          .select("part_name")
+          .not("phase", "eq", "closed");
+        crisisPartNamesForResearch = (activeCrisesForResearch || []).map(c => c.part_name);
+      } catch {}
+
+      const shouldResearchNow = isResearchDay
+        || researchNeedParts.size > 0
+        || crisisPartNamesForResearch.length > 0;
+
+      if (shouldResearchNow) {
+        try {
+          const perplexityPrompt = allSummaries.length > 7000 ? `${allSummaries.slice(0, 7000)}…` : allSummaries;
+
+          // ═══ CACHE CHECK: Look for recent matching research ═══
+          const queryWords = perplexityPrompt.toLowerCase().replace(/[^\wěščřžýáíéúůďťňó]/g, " ").split(/\s+/).filter(w => w.length > 3);
+          let cacheHit = false;
+
+          if (resolvedUserId) {
+            const cacheCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+            const { data: cachedResults } = await sb
+              .from("did_research_cache")
+              .select("query, result, citations, created_at")
+              .eq("user_id", resolvedUserId)
+              .gte("created_at", cacheCutoff)
+              .order("created_at", { ascending: false })
+              .limit(10);
+
+            if (cachedResults && cachedResults.length > 0) {
+              for (const cached of cachedResults) {
+                const cachedWords = cached.query.toLowerCase().replace(/[^\wěščřžýáíéúůďťňó]/g, " ").split(/\s+/).filter((w: string) => w.length > 3);
+                const overlap = queryWords.filter(w => cachedWords.includes(w)).length;
+                const similarity = queryWords.length > 0 ? overlap / queryWords.length : 0;
+
+                if (similarity >= 0.6) {
+                  console.log(`[CACHE HIT] Používám uloženou rešerši z ${cached.created_at} (shoda ${Math.round(similarity * 100)}%)`);
+                  perplexityContext = `\n\n═══ REŠERŠNÍ KONTEXT (cache z ${cached.created_at.slice(0, 10)}) ═══\n${cached.result}`;
+                  if (cached.citations && cached.citations.length > 0) {
+                    perplexityContext += `\n\nCitace:\n${cached.citations.map((c: string, i: number) => `[${i + 1}] ${c}`).join("\n")}`;
+                  }
+                  cacheHit = true;
+                  break;
+                }
+              }
             }
           }
-        } else {
-          console.warn(`[perplexity] API error ${pRes.status}: ${(await pRes.text()).slice(0, 400)}`);
+
+          if (!cacheHit) {
+            const pRes = await fetch("https://api.perplexity.ai/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${PERPLEXITY_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: "sonar-pro",
+                messages: [
+                  {
+                    role: "system",
+                    content: "Jsi klinický rešeršista pro DID. Vrať pouze stručné, praktické body: metody, kontraindikace, rizika a odkazy relevantní k dnešním konverzacím. Žádné domýšlení bez zdroje.",
+                  },
+                  { role: "user", content: perplexityPrompt },
+                ],
+                search_mode: "academic",
+                search_recency_filter: "year",
+              }),
+            });
+
+            if (pRes.ok) {
+              const pData = await pRes.json();
+              const text = pData.choices?.[0]?.message?.content || "";
+              const citations: string[] = pData.citations || [];
+              if (text) {
+                perplexityContext = `\n\n═══ REŠERŠNÍ KONTEXT (Perplexity) ═══\n${text}`;
+                if (citations.length > 0) {
+                  perplexityContext += `\n\nCitace:\n${citations.map((c, i) => `[${i + 1}] ${c}`).join("\n")}`;
+                }
+
+                // ═══ SAVE TO CACHE ═══
+                if (resolvedUserId) {
+                  const tags = queryWords.slice(0, 5);
+                  try {
+                    await sb.from("did_research_cache").insert({
+                      user_id: resolvedUserId,
+                      part_name: "_daily_cycle",
+                      query: perplexityPrompt.slice(0, 2000),
+                      result: text,
+                      citations: citations,
+                      tags: tags,
+                    });
+                    console.log(`[CACHE SAVE] Rešerše uložena do did_research_cache (${tags.length} tagů)`);
+                  } catch (cacheErr) {
+                    console.warn("[CACHE SAVE] Failed to save research cache:", cacheErr);
+                  }
+                }
+              }
+            } else {
+              console.warn(`[perplexity] API error ${pRes.status}: ${(await pRes.text()).slice(0, 400)}`);
+            }
+          }
+        } catch (e) {
+          console.warn("[perplexity] Rešerše selhala:", e);
         }
-      } catch (e) {
-        console.warn("[perplexity] Rešerše selhala:", e);
+      } else {
+        console.log(`[RESEARCH SKIP] Not research day (${dayOfWeek}), no crisis, no 🔍 tags – skipping Perplexity`);
       }
     }
 
@@ -3282,6 +3367,14 @@ SEKCE D – Terapeutická doporučení a metody [REŽIM: DEEPEN]
 7. ZÁROVEŇ tuto techniku zapiš do operativního plánu v [CENTRUM:05_Operativni_Plan]
 
 → Použij [SEKCE:D:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
+
+═══ ZNAČKA REŠERŠE POTŘEBA (pouze v sekci D) ═══
+Pokud při analýze části narazíš na situaci, stav nebo potřebu, pro kterou NEMÁŠ v kartě vhodnou metodu/aktivitu/terapeutický postup, přidej na konec sekce D značku:
+🔍 REŠERŠE POTŘEBA: [stručný popis co hledat]
+Příklady:
+🔍 REŠERŠE POTŘEBA: metody stabilizace pro dětskou část po noční můře (věk 5-7)
+🔍 REŠERŠE POTŘEBA: techniky pro práci s protektorem který odmítá komunikaci
+Tuto značku přidej POUZE pokud v sekci D a v existujících datech OPRAVDU chybí vhodný postup. Nepřidávej ji zbytečně.
 
 SEKCE E – Záznam události (Deník vláken) [REŽIM: APPEND]
 
