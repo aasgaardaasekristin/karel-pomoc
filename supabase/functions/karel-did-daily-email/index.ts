@@ -335,7 +335,39 @@ serve(async (req) => {
       suppBlock += `\n${(todaySessionPlan.plan_markdown || "").slice(0, 4000)}`;
     }
 
-    // ═══ F7: ENRICHED REPORT SECTIONS ═══
+    // ═══ SECTION N: Karlovy plány sezení z karet částí ═══
+    try {
+      const { data: partsWithPlans } = await sb.from("did_part_registry")
+        .select("part_name, display_name, next_session_plan, status")
+        .not("next_session_plan", "is", null)
+        .order("status", { ascending: true });
+
+      if (partsWithPlans && partsWithPlans.length > 0) {
+        // Check which parts are in crisis
+        const { data: crisisEvents } = await sb.from("crisis_events")
+          .select("part_name")
+          .not("phase", "eq", "closed");
+        const crisisSet = new Set((crisisEvents || []).map((c: any) => c.part_name));
+
+        // Sort: crisis first, then by status
+        const sorted = partsWithPlans.sort((a: any, b: any) => {
+          const aCrisis = crisisSet.has(a.part_name) ? 0 : 1;
+          const bCrisis = crisisSet.has(b.part_name) ? 0 : 1;
+          return aCrisis - bCrisis;
+        });
+
+        suppBlock += `\n\n📋 ═══ KARLOVY PLÁNY SEZENÍ ═══\n`;
+        for (const p of sorted) {
+          const isCrisis = crisisSet.has(p.part_name);
+          const prefix = isCrisis ? "🔴 " : "";
+          suppBlock += `\n${prefix}▸ ${p.display_name || p.part_name}${isCrisis ? " [KRIZE]" : ""}\n`;
+          suppBlock += `${(p.next_session_plan || "").slice(0, 2000)}\n`;
+        }
+      }
+    } catch (planErr) {
+      console.warn("[email] Failed to load section N plans:", planErr);
+    }
+
     // Metrics
     if (todayMetrics.length > 0) {
       suppBlock += `\n\n📊 ═══ DENNÍ METRIKY ═══\n`;
