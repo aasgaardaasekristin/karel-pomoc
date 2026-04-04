@@ -3090,14 +3090,17 @@ export type Database = {
           description: string | null
           evaluation_notes: string | null
           goal_text: string
+          goal_type: string | null
           id: string
           last_evaluated_at: string | null
           milestones: Json | null
           part_name: string
+          pause_reason: string | null
           priority: string | null
           progress_pct: number | null
           proposed_by: string | null
           sort_order: number | null
+          state_at_creation: string | null
           status: string | null
           updated_at: string | null
         }
@@ -3110,14 +3113,17 @@ export type Database = {
           description?: string | null
           evaluation_notes?: string | null
           goal_text: string
+          goal_type?: string | null
           id?: string
           last_evaluated_at?: string | null
           milestones?: Json | null
           part_name: string
+          pause_reason?: string | null
           priority?: string | null
           progress_pct?: number | null
           proposed_by?: string | null
           sort_order?: number | null
+          state_at_creation?: string | null
           status?: string | null
           updated_at?: string | null
         }
@@ -3130,14 +3136,17 @@ export type Database = {
           description?: string | null
           evaluation_notes?: string | null
           goal_text?: string
+          goal_type?: string | null
           id?: string
           last_evaluated_at?: string | null
           milestones?: Json | null
           part_name?: string
+          pause_reason?: string | null
           priority?: string | null
           progress_pct?: number | null
           proposed_by?: string | null
           sort_order?: number | null
+          state_at_creation?: string | null
           status?: string | null
           updated_at?: string | null
         }
