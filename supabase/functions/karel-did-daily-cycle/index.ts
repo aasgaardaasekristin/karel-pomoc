@@ -3474,6 +3474,35 @@ SEKCE M – Směrové poznámky / Trendy [REŽIM: REPLACE]
 
 → Použij [SEKCE:M:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci M.
 
+SEKCE N – Karlův plán příštího sezení [REŽIM: REPLACE]
+
+Pro každou část která byla dnes AKTIVNÍ (komunikovala, měla sezení, nebo je v krizi) vygeneruj KONKRÉTNÍ plán příštího sezení.
+
+Formát:
+📋 PLÁN SEZENÍ — {datum příštího sezení nebo 'NEJBLIŽŠÍ MOŽNÉ'}
+👩‍⚕️ DOPORUČENÝ TERAPEUT: {Hanka/Káťa/obě} — důvod
+🎯 CÍL SEZENÍ: {1 věta — co chceme dosáhnout}
+
+POSTUP (krok za krokem):
+1. ZAHÁJENÍ (5 min): {jak začít, jak navázat kontakt s částí, jaký tón, co říct}
+2. HLAVNÍ AKTIVITA (15-25 min): {konkrétní metoda/technika/aktivita — NE obecně 'pracovat na traumatu' ale PŘESNĚ co dělat, např. 'kresba bezpečného místa s popisem kdo tam smí a kdo ne'}
+3. ZÁLOŽNÍ PLÁN: {pokud část odmítne nebo se stáhne — co dělat místo toho}
+4. UZAVŘENÍ (5 min): {jak ukončit, grounding technika, co říct na rozloučenou}
+
+⚠️ POZOR: {specifická rizika pro tuto část při tomto sezení — triggery, čemu se vyhnout}
+📊 MĚŘITELNÝ VÝSLEDEK: {jak poznat že sezení bylo úspěšné — konkrétní indikátor}
+🔗 NÁVAZNOST: {jak toto sezení souvisí s dlouhodobým cílem z operativního plánu}
+
+PRAVIDLA pro sekci N:
+- REPLACE režim — vždy aktuální plán
+- Generuj POUZE pro části které jsou aktivní nebo v krizi
+- Metody/aktivity MUSÍ být konkrétní (ne 'terapeutická práce' ale 'technika bezpečného kontejneru s vizualizací')
+- Pokud nemáš vhodnou metodu → přidej 🔍 REŠERŠE POTŘEBA do sekce D
+- HLAVNÍ AKTIVITA musí vycházet z: aktuálního stavu části (sekce A), existujících doporučení (sekce D), aktivních cílů (sekce J), Perplexity rešerše (pokud proběhla)
+- U částí v KRIZI: plán musí být STABILIZAČNÍ (ne explorační/integrační)
+
+→ Použij [SEKCE:N:REPLACE] – vygeneruj KOMPLETNÍ plán příštího sezení.
+
 ═══ FORMÁTOVÁNÍ OBSAHU SEKCÍ – STRIKTNĚ DODRŽUJ ═══
 
 1. STRUKTUROVANÉ POLE s prefix "* " (hvězdička + mezera)
