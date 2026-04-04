@@ -448,7 +448,7 @@ async function saveEpisodeInBackground(
         messages: [
           {
             role: "system",
-            content: `Na základě výměny mezi Hankou a Karlem vytvoř strukturovanou epizodu. Vrať POUZE JSON:
+            content: SYSTEM_RULES + `\n\nNa základě výměny mezi Hankou a Karlem vytvoř strukturovanou epizodu. Vrať POUZE JSON:
 {
   "summary_karel": "jednověté shrnutí Karlovy reakce",
   "reasoning_notes": "co je pro budoucnost podstatné",
