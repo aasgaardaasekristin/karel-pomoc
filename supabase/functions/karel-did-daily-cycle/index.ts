@@ -5038,7 +5038,7 @@ Pokud nejsou žádné nové klinicky relevantní fakty, vrať: []`;
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash",
                 messages: [
-                  { role: "system", content: "Jsi analytický asistent Karla. Extrahuj strukturovaná data z konverzací. Odpovídej POUZE ve formátu JSON." },
+                  { role: "system", content: SYSTEM_RULES + "\n\nJsi analytický asistent Karla. Extrahuj strukturovaná data z konverzací. Odpovídej POUZE ve formátu JSON." },
                   { role: "user", content: extractionPrompt },
                 ],
               }),
