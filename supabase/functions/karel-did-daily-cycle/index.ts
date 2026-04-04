@@ -2735,7 +2735,7 @@ Datum: ${dateStr}` },
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu. Vygeneruj krátký denní report pro Káťu. Profesionální, vstřícný tón.
+                    { role: "system", content: SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu. Vygeneruj krátký denní report pro Káťu. Profesionální, vstřícný tón.
 Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
 - Shrnutí stavu (klidný den)
 - Připomenutí otevřených úkolů pokud existují
