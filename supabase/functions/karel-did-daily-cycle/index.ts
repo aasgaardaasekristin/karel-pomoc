@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {

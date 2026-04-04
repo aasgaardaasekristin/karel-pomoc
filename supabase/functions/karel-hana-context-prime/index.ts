@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 /**
  * Karel Context Prime – Dynamická 3D mezipaměť

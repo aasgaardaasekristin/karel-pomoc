@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
 import { corsHeaders } from "../_shared/auth.ts";
+import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 /**
  * karel-did-daily-email — Standalone email function for DID daily reports.
