@@ -21,6 +21,7 @@ interface QuickViewData {
   switches: any[];
   notes: any[];
   isInCrisis: boolean;
+  partState: string | null;
 }
 
 const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
@@ -40,7 +41,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       ] = await Promise.all([
         sb.from("did_part_registry").select("*").eq("part_name", partName).maybeSingle(),
         sb.from("did_kartoteka").select("*").eq("part_name", partName).maybeSingle().then((r: any) => r).catch(() => ({ data: null })),
-        sb.from("strategic_goals").select("*").eq("part_name", partName).eq("status", "active").order("created_at", { ascending: false }),
+        sb.from("strategic_goals").select("*").eq("part_name", partName).in("status", ["active", "proposed", "paused"]).order("created_at", { ascending: false }),
         sb.from("daily_metrics").select("metric_date, emotional_valence, cooperation_level, message_count, switching_count, risk_signals_count").eq("part_name", partName).gte("metric_date", weekAgo).order("metric_date", { ascending: true }),
         sb.from("did_threads").select("id, last_activity_at, sub_mode, messages").eq("part_name", partName).order("last_activity_at", { ascending: false }).limit(3),
         sb.from("safety_alerts").select("id, alert_type, severity, status, created_at, description").eq("part_name", partName).in("status", ["new", "acknowledged"]).order("created_at", { ascending: false }).limit(5),
@@ -49,16 +50,38 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         sb.from("crisis_events").select("part_name, phase").eq("part_name", partName).not("phase", "eq", "closed").limit(1),
       ]);
 
+      // Determine part state from metrics trend
+      const wm = weekMetricsRes.data || [];
+      const crisisActive = (crisisRes.data || []).length > 0;
+      let partState: string | null = null;
+      if (crisisActive) {
+        partState = "crisis";
+      } else {
+        const vals = wm.filter((m: any) => m.emotional_valence != null).map((m: any) => m.emotional_valence);
+        if (vals.length >= 3) {
+          const firstHalf = vals.slice(0, Math.floor(vals.length / 2));
+          const secondHalf = vals.slice(Math.floor(vals.length / 2));
+          const avgF = firstHalf.reduce((a: number, b: number) => a + b, 0) / firstHalf.length;
+          const avgS = secondHalf.reduce((a: number, b: number) => a + b, 0) / secondHalf.length;
+          if (avgS < avgF - 0.5) partState = "unstable";
+          else if (avgS > avgF + 0.5) partState = "progressing";
+          else partState = "stable";
+        } else {
+          partState = "stable";
+        }
+      }
+
       setData({
         registry: registryRes.data,
         kartoteka: kartotekaRes?.data ?? null,
         goals: goalsRes.data || [],
-        weekMetrics: weekMetricsRes.data || [],
+        weekMetrics: wm,
         recentThreads: recentThreadsRes.data || [],
         alerts: alertsRes.data || [],
         switches: switchesRes.data || [],
         notes: notesRes.data || [],
-        isInCrisis: (crisisRes.data || []).length > 0,
+        isInCrisis: crisisActive,
+        partState,
       });
       setLoading(false);
     };
@@ -74,10 +97,27 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       </div>
     );
   }
+  const stateConfig: Record<string, { emoji: string; label: string; className: string }> = {
+    crisis:      { emoji: "🔴", label: "KRIZE",          className: "bg-destructive/20 text-destructive border-destructive/30" },
+    unstable:    { emoji: "🟠", label: "NESTABILNÍ",     className: "bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30" },
+    stabilizing: { emoji: "🟡", label: "STABILIZUJE SE", className: "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30" },
+    stable:      { emoji: "🟢", label: "STABILNÍ",       className: "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30" },
+    progressing: { emoji: "🔵", label: "PROGREDUJE",     className: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30" },
+    integrating: { emoji: "🟣", label: "INTEGRACE",      className: "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30" },
+  };
+
+  const goalTypeBadge: Record<string, { label: string; className: string }> = {
+    safety:        { label: "Safety",        className: "bg-destructive/20 text-destructive" },
+    stabilization: { label: "Stabilizace",   className: "bg-orange-500/20 text-orange-700 dark:text-orange-400" },
+    consolidation: { label: "Upevnění",      className: "bg-amber-500/20 text-amber-700 dark:text-amber-400" },
+    development:   { label: "Rozvoj",        className: "bg-green-500/20 text-green-700 dark:text-green-400" },
+    integration:   { label: "Integrace",     className: "bg-purple-500/20 text-purple-700 dark:text-purple-400" },
+  };
 
   if (!data) return null;
 
   const isEmpty = !data.kartoteka && data.goals.length === 0 && data.weekMetrics.length === 0 && data.alerts.length === 0 && data.notes.length === 0 && data.recentThreads.length === 0 && !data.registry?.next_session_plan;
+  const sc = data.partState ? stateConfig[data.partState] : null;
 
   return (
     <div
@@ -87,12 +127,17 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       <div className="p-3 space-y-3">
         {/* HEADER */}
         <div className="flex items-center justify-between">
-          <div>
+          <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
               {data.registry?.display_name || partName}
             </span>
+            {sc && (
+              <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full border", sc.className)}>
+                {sc.emoji} {sc.label}
+              </span>
+            )}
             {data.registry?.role_in_system && (
-              <span className="text-[9px] text-muted-foreground ml-2">
+              <span className="text-[9px] text-muted-foreground">
                 {data.registry.role_in_system}
               </span>
             )}
@@ -183,25 +228,42 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
           </div>
         )}
 
-        {/* AKTIVNÍ CÍLE */}
+        {/* CÍLE */}
         {data.goals.length > 0 && (
           <div>
             <span className="text-[10px] font-medium">🎯 Cíle ({data.goals.length})</span>
-            <div className="space-y-1 mt-1">
-              {data.goals.slice(0, 3).map((g: any) => (
-                <div key={g.id} className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] truncate">{g.goal_text}</p>
-                    <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", (g.progress_pct || 0) >= 75 ? "bg-green-500" : (g.progress_pct || 0) >= 40 ? "bg-amber-500" : "bg-primary")}
-                        style={{ width: `${Math.min(g.progress_pct || 0, 100)}%` }}
-                      />
+            <div className="space-y-1.5 mt-1">
+              {data.goals.slice(0, 5).map((g: any) => {
+                const isPaused = g.status === "paused";
+                const gtBadge = g.goal_type ? goalTypeBadge[g.goal_type] : null;
+                const stateChanged = g.state_at_creation && data.partState && g.state_at_creation !== data.partState;
+                return (
+                  <div key={g.id} className={cn("flex items-center gap-2", isPaused && "opacity-50")}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <p className={cn("text-[10px] truncate", isPaused && "line-through")}>{g.goal_text}</p>
+                        {gtBadge && (
+                          <span className={cn("text-[7px] px-1 py-0.5 rounded shrink-0", gtBadge.className)}>
+                            {gtBadge.label}
+                          </span>
+                        )}
+                        {stateChanged && <span title={`Vytvořeno ve stavu: ${g.state_at_creation}`}>⚡</span>}
+                      </div>
+                      {isPaused ? (
+                        <p className="text-[9px] text-muted-foreground">⏸ Pozastaveno: {g.pause_reason || "změna stavu"}</p>
+                      ) : (
+                        <div className="w-full h-1 rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full", (g.progress_pct || 0) >= 75 ? "bg-green-500" : (g.progress_pct || 0) >= 40 ? "bg-amber-500" : "bg-primary")}
+                            style={{ width: `${Math.min(g.progress_pct || 0, 100)}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
+                    {!isPaused && <span className="text-[9px] text-muted-foreground shrink-0">{g.progress_pct || 0}%</span>}
                   </div>
-                  <span className="text-[9px] text-muted-foreground shrink-0">{g.progress_pct || 0}%</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
