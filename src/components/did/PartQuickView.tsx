@@ -115,7 +115,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
               📋 Karlův plán příštího sezení
             </span>
             <div className="mt-1.5 text-[10px] leading-relaxed text-foreground prose-sm max-w-none">
-              <RichMarkdown content={data.registry.next_session_plan} />
+              <RichMarkdown compact>{data.registry.next_session_plan}</RichMarkdown>
             </div>
           </div>
         )}
