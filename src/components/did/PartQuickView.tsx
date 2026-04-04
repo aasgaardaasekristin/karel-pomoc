@@ -57,6 +57,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         alerts: alertsRes.data || [],
         switches: switchesRes.data || [],
         notes: notesRes.data || [],
+        isInCrisis: (crisisRes.data || []).length > 0,
       });
       setLoading(false);
     };
