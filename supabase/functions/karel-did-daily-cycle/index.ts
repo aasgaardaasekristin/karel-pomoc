@@ -2707,7 +2707,7 @@ Poznámky Karla: ${p.notes || "(žádné)"}`;
                 body: JSON.stringify({
                   model: "google/gemini-2.5-flash-lite",
                   messages: [
-                    { role: "system", content: `Jsi Karel – vedoucí terapeutického týmu pro DID. Vygeneruj krátký denní report pro celý tým. Profesionální, věcný tón vedoucího.
+                    { role: "system", content: SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro DID. Vygeneruj krátký denní report pro celý tým. Profesionální, věcný tón vedoucího.
 Formát HTML emailu. Dnes nebyla žádná nová aktivita částí ani konverzace. Napiš klidný report:
 - Shrnutí stavu (klidný den, žádná aktivita)
 - Případné připomenutí otevřených úkolů
