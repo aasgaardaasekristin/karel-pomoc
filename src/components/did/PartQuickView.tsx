@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { X } from "lucide-react";
+import { X, Pencil, RotateCcw } from "lucide-react";
 import RichMarkdown from "@/components/ui/RichMarkdown";
 
 interface PartQuickViewProps {
@@ -24,9 +24,21 @@ interface QuickViewData {
   partState: string | null;
 }
 
+const STATE_OPTIONS = [
+  { value: "crisis", emoji: "🔴", label: "KRIZE" },
+  { value: "unstable", emoji: "🟠", label: "NESTABILNÍ" },
+  { value: "stabilizing", emoji: "🟡", label: "STABILIZUJE SE" },
+  { value: "stable", emoji: "🟢", label: "STABILNÍ" },
+  { value: "progressing", emoji: "🔵", label: "PROGREDUJE" },
+  { value: "integrating", emoji: "🟣", label: "INTEGRACE" },
+];
+
 const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
   const [data, setData] = useState<QuickViewData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showStateEditor, setShowStateEditor] = useState(false);
+  const [manualOverride, setManualOverride] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -50,11 +62,17 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         sb.from("crisis_events").select("part_name, phase").eq("part_name", partName).not("phase", "eq", "closed").limit(1),
       ]);
 
-      // Determine part state from metrics trend
+      const reg = registryRes.data;
+      setManualOverride(reg?.manual_state_override || null);
+
+      // Determine part state from metrics trend (or manual override)
       const wm = weekMetricsRes.data || [];
       const crisisActive = (crisisRes.data || []).length > 0;
       let partState: string | null = null;
-      if (crisisActive) {
+
+      if (reg?.manual_state_override) {
+        partState = reg.manual_state_override;
+      } else if (crisisActive) {
         partState = "crisis";
       } else {
         const vals = wm.filter((m: any) => m.emotional_valence != null).map((m: any) => m.emotional_valence);
@@ -72,7 +90,7 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       }
 
       setData({
-        registry: registryRes.data,
+        registry: reg,
         kartoteka: kartotekaRes?.data ?? null,
         goals: goalsRes.data || [],
         weekMetrics: wm,
@@ -87,6 +105,33 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
     };
     load();
   }, [partName]);
+
+  const handleSetManualState = async (state: string) => {
+    setSaving(true);
+    const sb = supabase as any;
+    await sb.from("did_part_registry")
+      .update({ manual_state_override: state, updated_at: new Date().toISOString() })
+      .eq("part_name", partName);
+    setManualOverride(state);
+    if (data) {
+      setData({ ...data, partState: state });
+    }
+    setShowStateEditor(false);
+    setSaving(false);
+  };
+
+  const handleResetToAuto = async () => {
+    setSaving(true);
+    const sb = supabase as any;
+    await sb.from("did_part_registry")
+      .update({ manual_state_override: null, updated_at: new Date().toISOString() })
+      .eq("part_name", partName);
+    setManualOverride(null);
+    setShowStateEditor(false);
+    setSaving(false);
+    // Reload to recalculate auto state
+    window.location.reload();
+  };
 
   if (loading) {
     return (
@@ -127,15 +172,27 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
       <div className="p-3 space-y-3">
         {/* HEADER */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-foreground">
               {data.registry?.display_name || partName}
             </span>
             {sc && (
-              <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full border", sc.className)}>
+              <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded-full border inline-flex items-center gap-1", sc.className)}>
                 {sc.emoji} {sc.label}
+                {manualOverride && (
+                  <span className="text-[8px] opacity-70">(manuální)</span>
+                )}
               </span>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-5 w-5 p-0"
+              onClick={() => setShowStateEditor(!showStateEditor)}
+              title="Změnit stav části"
+            >
+              <Pencil className="w-3 h-3" />
+            </Button>
             {data.registry?.role_in_system && (
               <span className="text-[9px] text-muted-foreground">
                 {data.registry.role_in_system}
@@ -146,6 +203,35 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
             <X className="w-3.5 h-3.5" />
           </Button>
         </div>
+
+        {/* STATE EDITOR DROPDOWN */}
+        {showStateEditor && (
+          <div className="flex flex-wrap gap-1 p-2 rounded-md border bg-background">
+            {STATE_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value}
+                variant={data.partState === opt.value ? "default" : "outline"}
+                size="sm"
+                className="h-6 text-[10px] px-2"
+                disabled={saving}
+                onClick={() => handleSetManualState(opt.value)}
+              >
+                {opt.emoji} {opt.label}
+              </Button>
+            ))}
+            {manualOverride && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-[10px] px-2 gap-1"
+                disabled={saving}
+                onClick={handleResetToAuto}
+              >
+                <RotateCcw className="w-3 h-3" /> Auto
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* 📋 PLÁN PŘÍŠTÍHO SEZENÍ — vždy NAHOŘE */}
         {data.registry?.next_session_plan && (

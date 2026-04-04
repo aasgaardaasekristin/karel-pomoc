@@ -5950,43 +5950,211 @@ Pokud nejsou žádné nové claims, vrať: []`;
         for (const part of (allActiveParts || [])) {
           const pn = part.part_name;
 
-          // 1. Crisis check
-          const isInCrisis = crisisSet.has(pn);
-
-          // 2. Load 7-day metrics for trend
-          const { data: recentMetrics } = await sb.from("daily_metrics")
-            .select("metric_date, emotional_valence")
+          // 0. Check manual override
+          const { data: regData } = await sb
+            .from("did_part_registry")
+            .select("manual_state_override")
             .eq("part_name", pn)
-            .gte("metric_date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
-            .order("metric_date", { ascending: true });
+            .maybeSingle();
 
-          let trendDirection: "improving" | "stable" | "declining" = "stable";
-          const vals = (recentMetrics || []).filter((m: any) => m.emotional_valence != null).map((m: any) => m.emotional_valence);
-          if (vals.length >= 3) {
-            const firstHalf = vals.slice(0, Math.floor(vals.length / 2));
-            const secondHalf = vals.slice(Math.floor(vals.length / 2));
-            const avgFirst = firstHalf.reduce((a: number, b: number) => a + b, 0) / firstHalf.length;
-            const avgSecond = secondHalf.reduce((a: number, b: number) => a + b, 0) / secondHalf.length;
-            if (avgSecond > avgFirst + 0.5) trendDirection = "improving";
-            else if (avgSecond < avgFirst - 0.5) trendDirection = "declining";
-          }
-
-          // 3. Classify state
           let stateCategory = "stable";
-          if (isInCrisis) {
-            stateCategory = "crisis";
-          } else if (trendDirection === "declining") {
-            stateCategory = "unstable";
-          } else if (trendDirection === "improving") {
-            const { data: lastCrisis } = await sb.from("crisis_events")
-              .select("opened_at").eq("part_name", pn).eq("phase", "closed")
-              .order("opened_at", { ascending: false }).limit(1);
-            const daysSinceCrisis = lastCrisis?.[0]
-              ? Math.floor((Date.now() - new Date(lastCrisis[0].opened_at).getTime()) / 86400000) : 999;
-            stateCategory = daysSinceCrisis < 14 ? "stabilizing" : "progressing";
+          let skipAutoClassification = false;
+
+          if (regData?.manual_state_override) {
+            stateCategory = regData.manual_state_override;
+            skipAutoClassification = true;
+            console.log(`[PART STATE] ${pn}: MANUAL OVERRIDE → ${stateCategory}`);
           }
 
-          console.log(`[PART STATE] ${pn}: ${stateCategory} (trend: ${trendDirection})`);
+          if (!skipAutoClassification) {
+            // 1. Crisis check
+            const isInCrisis = crisisSet.has(pn);
+
+            // 2. Load 7-day metrics for trend
+            const { data: recentMetrics } = await sb.from("daily_metrics")
+              .select("metric_date, emotional_valence")
+              .eq("part_name", pn)
+              .gte("metric_date", new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10))
+              .order("metric_date", { ascending: true });
+
+            let trendDirection: "improving" | "stable" | "declining" = "stable";
+            const vals = (recentMetrics || []).filter((m: any) => m.emotional_valence != null).map((m: any) => m.emotional_valence);
+            if (vals.length >= 3) {
+              const firstHalf = vals.slice(0, Math.floor(vals.length / 2));
+              const secondHalf = vals.slice(Math.floor(vals.length / 2));
+              const avgFirst = firstHalf.reduce((a: number, b: number) => a + b, 0) / firstHalf.length;
+              const avgSecond = secondHalf.reduce((a: number, b: number) => a + b, 0) / secondHalf.length;
+              if (avgSecond > avgFirst + 0.5) trendDirection = "improving";
+              else if (avgSecond < avgFirst - 0.5) trendDirection = "declining";
+            }
+
+            // 3. Classify state
+            if (isInCrisis) {
+              stateCategory = "crisis";
+            } else if (trendDirection === "declining") {
+              stateCategory = "unstable";
+            } else if (trendDirection === "improving") {
+              const { data: lastCrisis } = await sb.from("crisis_events")
+                .select("opened_at").eq("part_name", pn).eq("phase", "closed")
+                .order("opened_at", { ascending: false }).limit(1);
+              const daysSinceCrisis = lastCrisis?.[0]
+                ? Math.floor((Date.now() - new Date(lastCrisis[0].opened_at).getTime()) / 86400000) : 999;
+              stateCategory = daysSinceCrisis < 14 ? "stabilizing" : "progressing";
+            }
+
+            // ── INTEGRATING DETECTION (F17-D4) ──
+            if (stateCategory === "stable" || stateCategory === "progressing") {
+              let qualifiesForIntegrating = true;
+
+              // Criterion 1: 21 days without crisis or instability
+              const { data: recentCrises21d } = await sb
+                .from("crisis_events")
+                .select("id")
+                .eq("part_name", pn)
+                .gte("opened_at", new Date(Date.now() - 21 * 86400000).toISOString())
+                .limit(1);
+
+              if (recentCrises21d && recentCrises21d.length > 0) {
+                qualifiesForIntegrating = false;
+              }
+
+              // Criterion 2: Evidence of cooperation in last 14 days
+              if (qualifiesForIntegrating) {
+                const cooperationKeywords = [
+                  "spolupráce", "společně", "ko-prezence", "koprezence",
+                  "sdílení", "integrace", "propojení", "komunikace mezi",
+                  "vzájemně", "cooperation", "co-presence", "spolu",
+                  "s jinou částí", "s částí",
+                ];
+
+                const { data: recentMemory } = await sb
+                  .from("session_memory")
+                  .select("key_points, positive_signals")
+                  .eq("part_name", pn)
+                  .gte("created_at", new Date(Date.now() - 14 * 86400000).toISOString());
+
+                const { data: recentCoopNotes } = await sb
+                  .from("therapist_notes")
+                  .select("note_text")
+                  .eq("part_name", pn)
+                  .gte("created_at", new Date(Date.now() - 14 * 86400000).toISOString());
+
+                const allText = [
+                  ...(recentMemory || []).map((m: any) =>
+                    [...(m.key_points || []), ...(m.positive_signals || [])].join(" ")
+                  ),
+                  ...(recentCoopNotes || []).map((n: any) => n.note_text || ""),
+                ].join(" ").toLowerCase();
+
+                const hasCooperation = cooperationKeywords.some(kw =>
+                  allText.includes(kw.toLowerCase())
+                );
+
+                if (!hasCooperation) {
+                  qualifiesForIntegrating = false;
+                }
+              }
+
+              // Criterion 3: At least 1 completed development/integration goal
+              if (qualifiesForIntegrating) {
+                const { data: completedGoals } = await sb
+                  .from("part_goals")
+                  .select("id")
+                  .eq("part_name", pn)
+                  .eq("status", "completed")
+                  .in("goal_type", ["development", "integration"])
+                  .limit(1);
+
+                if (!completedGoals || completedGoals.length === 0) {
+                  qualifiesForIntegrating = false;
+                }
+              }
+
+              // Criterion 4: No safety alerts in last 30 days
+              if (qualifiesForIntegrating) {
+                const { data: recentAlerts30d } = await sb
+                  .from("safety_alerts")
+                  .select("id")
+                  .eq("part_name", pn)
+                  .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString())
+                  .not("status", "eq", "false_positive")
+                  .limit(1);
+
+                if (recentAlerts30d && recentAlerts30d.length > 0) {
+                  qualifiesForIntegrating = false;
+                }
+              }
+
+              if (qualifiesForIntegrating) {
+                stateCategory = "integrating";
+                console.log(
+                  `[PART STATE] ${pn}: UPGRADED to integrating `
+                  + `(21d stable, cooperation found, goal completed, no alerts)`
+                );
+
+                // First-time notification
+                const { data: prevIntLog } = await sb
+                  .from("system_health_log")
+                  .select("id")
+                  .eq("event_type", "part_integrating")
+                  .ilike("message", `%${pn}%`)
+                  .limit(1);
+
+                if (!prevIntLog || prevIntLog.length === 0) {
+                  try {
+                    await sb.from("system_health_log").insert({
+                      event_type: "part_integrating",
+                      severity: "info",
+                      message: `Část ${pn} dosáhla stavu INTEGRACE`,
+                      details: { part_name: pn, criteria: "21d_stable, cooperation, goal_completed, no_alerts" },
+                    });
+
+                    const kataEmail = Deno.env.get("KATA_EMAIL");
+                    const hankaEmail = Deno.env.get("HANKA_EMAIL") || Deno.env.get("MAMKA_PHONE");
+
+                    const intSubject = `🟣 Karel: ${pn} je připravena na integraci!`;
+                    const intBody = `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px">
+                      <div style="background:#7c3aed;color:white;padding:16px;border-radius:8px 8px 0 0;text-align:center">
+                        <h2 style="margin:0">🟣 INTEGRACE — ${pn}</h2>
+                      </div>
+                      <div style="padding:16px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+                        <p><strong>Část ${pn}</strong> splnila všechna kritéria pro stav integrace:</p>
+                        <ul>
+                          <li>✅ 21+ dní stabilní (žádná krize)</li>
+                          <li>✅ Evidence spolupráce s jinou částí</li>
+                          <li>✅ Splněný rozvojový/integrační cíl</li>
+                          <li>✅ Žádný bezpečnostní alert za 30 dní</li>
+                        </ul>
+                        <p>Doporučení: Zvažte integrační aktivity — ko-prezenci, sdílené vzpomínky, společné úkoly.</p>
+                      </div>
+                    </div>`;
+                    const intText = `🟣 INTEGRACE — ${pn}\nSplněná kritéria: 21d stabilní, spolupráce, splněný cíl, bez alertů.\nDoporučení: Integrační aktivity.`;
+
+                    for (const recipient of [
+                      { email: kataEmail, name: "Káťa" },
+                      { email: hankaEmail, name: "Hanka" },
+                    ]) {
+                      if (recipient.email && recipient.email.includes("@")) {
+                        await sendOrQueueEmail(sb, {
+                          toEmail: recipient.email,
+                          toName: recipient.name,
+                          subject: intSubject,
+                          bodyHtml: intBody,
+                          bodyText: intText,
+                          emailType: "integrating",
+                        });
+                      }
+                    }
+                    console.log(`[INTEGRATING EMAIL] First-time notification sent for ${pn}`);
+                  } catch (intNotifErr) {
+                    console.warn(`[INTEGRATING EMAIL] Error:`, intNotifErr);
+                  }
+                }
+              }
+            }
+
+            console.log(`[PART STATE] ${pn}: ${stateCategory}`);
+          } // end skipAutoClassification
 
           // 4. Check existing goals compatibility
           const partGoals = (allActiveGoals || []).filter((g: any) => g.part_name === pn);
