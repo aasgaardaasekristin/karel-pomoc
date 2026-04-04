@@ -3531,6 +3531,7 @@ Pro KAŽDOU část vypiš VŠECHNY sekce kde jsou nové informace:
 [SEKCE:K] signifikantní jev (pokud existuje)
 [SEKCE:L:REPLACE] kompletní nová sekce L
 [SEKCE:M:REPLACE] kompletní nová sekce M
+[SEKCE:N:REPLACE] plán příštího sezení (POUZE pro aktivní/krizové části)
 [/KARTA]
 
 Režimy zápisu:
