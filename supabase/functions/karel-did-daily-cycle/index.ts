@@ -2051,6 +2051,97 @@ async function logAuditResults(token: string, rootFolderId: string, results: Aud
     console.warn("[AUDIT-0B-LOG] Failed to log to Drive (non-fatal):", e);
   }
 }
+// ═══ HELPER: sendOrQueueEmail — sends via Resend or queues to did_pending_emails ═══
+async function sendOrQueueEmail(
+  sb: any,
+  params: {
+    toEmail: string;
+    toName: string;
+    subject: string;
+    bodyHtml: string;
+    bodyText?: string;
+    emailType: string;
+    fromAddress?: string;
+    isRetry?: boolean;
+  }
+): Promise<{ sent: boolean; queued: boolean; error?: string }> {
+  const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
+  const fromAddr = params.fromAddress || "Karel <karel@hana-chlebcova.cz>";
+
+  if (!params.toEmail) {
+    console.warn(`[EMAIL SKIP] No email address for ${params.toName}`);
+    return { sent: false, queued: false, error: "No email address" };
+  }
+
+  if (RESEND_KEY) {
+    try {
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RESEND_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromAddr,
+          to: [params.toEmail],
+          subject: params.subject,
+          html: params.bodyHtml,
+          text: params.bodyText || "",
+        }),
+      });
+
+      if (resendRes.ok) {
+        console.log(`[EMAIL SENT] → ${params.toName} (${params.toEmail}): ${params.subject}`);
+        return { sent: true, queued: false };
+      } else {
+        const errText = await resendRes.text();
+        throw new Error(`Resend ${resendRes.status}: ${errText.slice(0, 200)}`);
+      }
+    } catch (e: any) {
+      console.error(`[EMAIL FAILED] ${params.toEmail}: ${e.message}`);
+      if (!params.isRetry) {
+        try {
+          await sb.from("did_pending_emails").insert({
+            to_email: params.toEmail,
+            to_name: params.toName,
+            subject: params.subject,
+            body_html: params.bodyHtml,
+            body_text: params.bodyText || "",
+            email_type: params.emailType,
+            status: "pending",
+            error_message: e.message,
+            next_retry_at: new Date(Date.now() + 30 * 60000).toISOString(),
+          });
+          console.log(`[EMAIL QUEUED] ${params.subject} → did_pending_emails`);
+        } catch (queueErr) {
+          console.warn("[EMAIL QUEUE INSERT FAILED]", queueErr);
+        }
+      }
+      return { sent: false, queued: !params.isRetry, error: e.message };
+    }
+  } else {
+    // No Resend key → queue
+    if (!params.isRetry) {
+      try {
+        await sb.from("did_pending_emails").insert({
+          to_email: params.toEmail,
+          to_name: params.toName,
+          subject: params.subject,
+          body_html: params.bodyHtml,
+          body_text: params.bodyText || "",
+          email_type: params.emailType,
+          status: "pending",
+          error_message: "Missing RESEND_API_KEY",
+          next_retry_at: new Date(Date.now() + 60 * 60000).toISOString(),
+        });
+        console.log(`[EMAIL QUEUED] No RESEND_API_KEY — ${params.subject} → did_pending_emails`);
+      } catch (queueErr) {
+        console.warn("[EMAIL QUEUE INSERT FAILED]", queueErr);
+      }
+    }
+    return { sent: false, queued: !params.isRetry, error: "No RESEND_API_KEY" };
+  }
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
