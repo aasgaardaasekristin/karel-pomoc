@@ -2621,11 +2621,11 @@ serve(async (req) => {
       .select("therapist, preferred_style, praise_effectiveness, deadline_effectiveness, instruction_effectiveness, streak_current, streak_best, tasks_completed, tasks_missed, avg_completion_days, last_active_at, notes");
     const motivationProfiles = motivationProfileRows ?? [];
     console.log(`[daily-cycle] Motivation profiles loaded: ${motivationProfiles.length}`);
-    const therapistProfileContext = motivationProfiles.map((p: any) => {
+    const motivationContext = motivationProfiles.map((p: any) => {
       const completionRate = (p.tasks_completed + p.tasks_missed) > 0
         ? Math.round((p.tasks_completed / (p.tasks_completed + p.tasks_missed)) * 100)
         : 0;
-      return `═ Profil terapeuta: ${p.therapist} ═
+      return `═ Motivační profil: ${p.therapist} ═
 Preferovaný styl vedení: ${p.preferred_style}
 Efektivita motivace – pochvaly: ${p.praise_effectiveness}/5, termíny: ${p.deadline_effectiveness}/5, instrukce: ${p.instruction_effectiveness}/5
 Streak (aktuální/nejlepší): ${p.streak_current}/${p.streak_best}
@@ -2634,6 +2634,25 @@ Průměrná doba splnění: ${p.avg_completion_days || "?"} dní
 Poslední aktivita: ${p.last_active_at || "neznámo"}
 Poznámky Karla: ${p.notes || "(žádné)"}`;
     }).join("\n\n");
+
+    // ═══ THERAPIST PROFILES: Load AI-generated profiles (F17-D5) ═══
+    const { data: therapistProfileRows } = await sb.from("therapist_profiles")
+      .select("therapist_name, strengths, preferred_methods, preferred_part_types, communication_style, experience_areas, limitations, workload_capacity");
+    const tpContext = (therapistProfileRows || []).map((tp: any) => `═ Profil terapeutky: ${tp.therapist_name === "hanka" ? "Hanka" : "Káťa"} ═
+Silné stránky: ${(tp.strengths || []).join(", ") || "N/A"}
+Metody: ${(tp.preferred_methods || []).join(", ") || "N/A"}
+Typy částí: ${(tp.preferred_part_types || []).join(", ") || "N/A"}
+Styl komunikace: ${tp.communication_style || "N/A"}
+Oblasti zkušeností: ${(tp.experience_areas || []).join(", ") || "N/A"}
+Limitace: ${(tp.limitations || []).join(", ") || "N/A"}
+Kapacita: ${tp.workload_capacity || "normal"}
+
+Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
+- Přiřazuj části terapeutkám podle preferred_part_types a preferred_methods
+- Zohledni aktuální workload_capacity
+- Pokud obě terapeutky jsou vhodné, preferuj tu s nižším workloadem`).join("\n\n");
+
+    const therapistProfileContext = [motivationContext, tpContext].filter(Boolean).join("\n\n");
 
     // ═══ SLOT-BASED COOLDOWN + CATCH-UP: Allow both 06:00 and 14:00 CET cycles ═══
     // INVARIANT: Každý příjemce (hanka, kata) dostane MAXIMÁLNĚ 1 denní report za den.
