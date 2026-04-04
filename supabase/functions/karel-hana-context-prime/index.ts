@@ -119,6 +119,29 @@ serve(async (req) => {
 
   try {
     console.log("[context-prime] Starting for user:", userId);
+
+    // ═══ CACHE CHECK ═══
+    const { data: cached } = await sb
+      .from("context_cache")
+      .select("context_data, created_at")
+      .eq("user_id", userId)
+      .eq("function_name", "hana-context-prime")
+      .eq("cache_key", "")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (cached?.context_data) {
+      console.log(`[context-prime] CACHE HIT (created: ${cached.created_at}), skipping AI calls`);
+      return new Response(JSON.stringify({
+        ...cached.context_data,
+        fromCache: true,
+        cacheCreatedAt: cached.created_at,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    console.log("[context-prime] CACHE MISS, running full prime");
+
     const startTime = Date.now();
 
     // ═══ PHASE 0: Gradual Forgetting – archive episodes > 90 days ═══
