@@ -5300,6 +5300,40 @@ Pokud nejsou žádné nové claims, vrať: []`;
           });
         } catch (e) { console.warn(`[daily-cycle] Crisis eval error for ${crisis.part_name}:`, e); }
       }
+
+      // Fallback escalation for long-running crises without recent action
+      for (const crisis of (activeCrises || [])) {
+        const daysActive = crisis.days_active || 0;
+        if (daysActive >= 7) {
+          const lastAction = crisis.diagnostic_date || crisis.updated_at;
+          const daysSinceAction = lastAction
+            ? Math.floor((Date.now() - new Date(lastAction).getTime()) / 86400000)
+            : daysActive;
+
+          if (daysSinceAction >= 3) {
+            const escalationNote = `⚠️ ESKALACE ${new Date().toISOString().slice(0,10)}: `
+              + `Krize "${crisis.trigger_description}" trvá ${daysActive} dní. `
+              + `Poslední akce před ${daysSinceAction} dny. `
+              + `VYŽADOVÁNA okamžitá pozornost: diagnostický rozhovor s částí, `
+              + `konzultace s oběma terapeutkami, revize krizového plánu.`;
+
+            const partName = crisis.part_name;
+            if (partName) {
+              // Write escalation to pending Drive writes (section J – priorities)
+              await sb.from("did_pending_drive_writes").insert({
+                target_document: `KARTA_${partName}`,
+                content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
+                write_type: "crisis_escalation",
+                priority: "urgent",
+                user_id: userId,
+              });
+            }
+
+            console.log(`[CRISIS ESCALATION] ${partName}: ${daysActive} days active, ${daysSinceAction} days since last action – escalating`);
+          }
+        }
+      }
+
       console.log(`[daily-cycle] Crisis eval: ${activeCrises?.length || 0} active crises`);
     } catch (crisisErr) {
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
