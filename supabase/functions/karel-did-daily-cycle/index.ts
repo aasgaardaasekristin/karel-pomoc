@@ -1469,6 +1469,25 @@ async function updateCardSections(
       console.log(`[updateCardSections] ${mode} section ${ul} for "${partName}" (${newContent.length} chars)`);
       continue;
     }
+
+    // DEEPEN mode: append only new insights, preserve existing content
+    if (mode === "DEEPEN") {
+      const hash = contentHash(newContent.trim());
+      if (existing && hasKhash(existing, hash)) {
+        console.log(`[KHASH-dedup] Skipping section ${ul} for "${partName}" (DEEPEN mode) – hash ${hash} already present`);
+        dedupSkips++;
+        continue;
+      }
+      const timestampedDeepen = `[${dateStr}] ${newContent} [KHASH:${hash}]`;
+      if (existing && existing !== "(zatím prázdné)") {
+        existingSections[ul] = existing + "\n\n---\n\n" + timestampedDeepen;
+      } else {
+        existingSections[ul] = timestampedDeepen;
+      }
+      updatedKeys.push(ul);
+      console.log(`[updateCardSections] DEEPEN section ${ul} for "${partName}" (${newContent.length} chars appended to ${existing.length} chars existing)`);
+      continue;
+    }
     
     // APPEND mode (default): standard behavior
     const hash = contentHash(newContent.trim());
@@ -3205,7 +3224,7 @@ d) OCHRANNÉ MECHANISMY:
 
 → Pro odstavec "Aktuální stav" použij tag [SEKCE:A:REPLACE], pro zbytek sekce A použij [SEKCE:A] (append).
 
-SEKCE B – Charakter a psychologický profil [REŽIM: ROTATE pro aktuální stav, REPLACE pro profilaci]
+SEKCE B – Charakter a psychologický profil [REŽIM: DEEPEN]
 
 AKTUÁLNÍ STAV (dynamické body):
 - Odstraň 3 chronologicky nejstarší body
@@ -3236,9 +3255,9 @@ Pokud profilace EXISTUJE:
 OBRANNÉ MECHANISMY A REAKCE NA KONTAKT:
 - Stejný % princip jako u psychologických charakteristik
 
-→ Pro celou sekci B použij [SEKCE:B:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci B.
+→ Použij [SEKCE:B:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
-SEKCE C – Jádrové potřeby, strachy, triggery, konflikty, rizika [REŽIM: REPLACE]
+SEKCE C – Jádrové potřeby, strachy, triggery, konflikty, rizika [REŽIM: DEEPEN]
 
 Pro KAŽDÝ odstavec (potřeby, strachy, triggery, konflikty, rizika):
 1. Zhodnoť, který z bodů nejméně odpovídá (je nejvíce v rozporu) s projevem ve vlákně
@@ -3247,9 +3266,9 @@ Pro KAŽDÝ odstavec (potřeby, strachy, triggery, konflikty, rizika):
 4. Pokud prvek je na ústupu: přidej poznámku "Indicie z [datum]: tento prvek je momentálně na ústupu"
 5. Pokud se část explicitně zmiňuje, že se něčeho už nebojí: přidej poznámku k danému bodu
 
-→ Použij [SEKCE:C:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci C.
+→ Použij [SEKCE:C:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
-SEKCE D – Terapeutická doporučení a metody [REŽIM: REPLACE]
+SEKCE D – Terapeutická doporučení a metody [REŽIM: DEEPEN]
 
 1. Přečti obsah sekce D z karty
 2. Přečti vlákno/vlákna
@@ -3262,7 +3281,7 @@ SEKCE D – Terapeutická doporučení a metody [REŽIM: REPLACE]
 6. Pokud najdeš vhodnou techniku: zapiš ji do sekce D
 7. ZÁROVEŇ tuto techniku zapiš do operativního plánu v [CENTRUM:05_Operativni_Plan]
 
-→ Použij [SEKCE:D:REPLACE] – vygeneruj KOMPLETNÍ aktualizovanou sekci D.
+→ Použij [SEKCE:D:DEEPEN] – piš POUZE nové poznatky (viz pravidla DEEPEN níže).
 
 SEKCE E – Záznam události (Deník vláken) [REŽIM: APPEND]
 
@@ -3377,9 +3396,9 @@ Pro KAŽDOU část vypiš VŠECHNY sekce kde jsou nové informace:
 [KARTA:jméno_části]
 [SEKCE:A:REPLACE] kompletní nový obsah sekce A (odstavec aktuální stav)
 [SEKCE:A] doplňkový obsah pro zbytek sekce A (vztahy, mechanismy...)
-[SEKCE:B:REPLACE] kompletní nová sekce B
-[SEKCE:C:REPLACE] kompletní nová sekce C
-[SEKCE:D:REPLACE] kompletní nová sekce D
+[SEKCE:B:DEEPEN] pouze nové poznatky pro sekci B
+[SEKCE:C:DEEPEN] pouze nové poznatky pro sekci C
+[SEKCE:D:DEEPEN] pouze nové poznatky pro sekci D
 [SEKCE:E] nový append záznam
 [SEKCE:F:REPLACE] kompletní nová sekce F
 [SEKCE:G] zápis do deníku (POUZE na žádost části!)
@@ -3394,6 +3413,7 @@ Pro KAŽDOU část vypiš VŠECHNY sekce kde jsou nové informace:
 Režimy zápisu:
 - [SEKCE:X:REPLACE] = celá sekce se PŘEPÍŠE novým obsahem (Karel generuje KOMPLETNÍ sekci)
 - [SEKCE:X:ROTATE] = sekce se inteligentně sloučí (Karel už provedl rotaci bodů)
+- [SEKCE:X:DEEPEN] = NEMAŽ existující obsah, přidej POUZE nové poznatky na konec (oddělené ---). Pokud poznatek POTVRZUJE existující, přidej ✓ datum. Pokud ODPORUJE, přidej ⚡REVIZE. Pokud nemáš nic nového, VYNECH sekci.
 - [SEKCE:X] = standardní APPEND (nový obsah se přidá na konec existujícího)
 
 ═══ AKTUALIZACE DOKUMENTŮ 00_CENTRUM ═══
@@ -5280,6 +5300,40 @@ Pokud nejsou žádné nové claims, vrať: []`;
           });
         } catch (e) { console.warn(`[daily-cycle] Crisis eval error for ${crisis.part_name}:`, e); }
       }
+
+      // Fallback escalation for long-running crises without recent action
+      for (const crisis of (activeCrises || [])) {
+        const daysActive = crisis.days_active || 0;
+        if (daysActive >= 7) {
+          const lastAction = crisis.diagnostic_date || crisis.updated_at;
+          const daysSinceAction = lastAction
+            ? Math.floor((Date.now() - new Date(lastAction).getTime()) / 86400000)
+            : daysActive;
+
+          if (daysSinceAction >= 3) {
+            const escalationNote = `⚠️ ESKALACE ${new Date().toISOString().slice(0,10)}: `
+              + `Krize "${crisis.trigger_description}" trvá ${daysActive} dní. `
+              + `Poslední akce před ${daysSinceAction} dny. `
+              + `VYŽADOVÁNA okamžitá pozornost: diagnostický rozhovor s částí, `
+              + `konzultace s oběma terapeutkami, revize krizového plánu.`;
+
+            const partName = crisis.part_name;
+            if (partName) {
+              // Write escalation to pending Drive writes (section J – priorities)
+              await sb.from("did_pending_drive_writes").insert({
+                target_document: `KARTA_${partName}`,
+                content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
+                write_type: "crisis_escalation",
+                priority: "urgent",
+                user_id: userId,
+              });
+            }
+
+            console.log(`[CRISIS ESCALATION] ${partName}: ${daysActive} days active, ${daysSinceAction} days since last action – escalating`);
+          }
+        }
+      }
+
       console.log(`[daily-cycle] Crisis eval: ${activeCrises?.length || 0} active crises`);
     } catch (crisisErr) {
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
