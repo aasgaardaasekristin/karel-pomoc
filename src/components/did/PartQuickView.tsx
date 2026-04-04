@@ -21,6 +21,7 @@ interface QuickViewData {
   switches: any[];
   notes: any[];
   isInCrisis: boolean;
+  partState: string | null;
 }
 
 const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
