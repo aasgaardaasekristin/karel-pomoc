@@ -2416,12 +2416,77 @@ serve(async (req) => {
 
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
-      .select("task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note")
+      .select("id, task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note, escalation_level, escalated_at, last_escalation_email_at")
       .neq("status", "done")
       .order("created_at", { ascending: true });
+
+    // ═══ HEURISTICKÁ KONTROLA SPLNĚNÍ ÚKOLŮ ═══
+    try {
+      const { data: recentNotes } = await sb.from("therapist_notes")
+        .select("author, note_text, created_at, part_name")
+        .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString())
+        .order("created_at", { ascending: false });
+
+      for (const task of (pendingTasks || [])) {
+        if (task.status === "done" || task.status === "needs_review") continue;
+        const taskWords = (task.task || "").toLowerCase().split(/\s+/).filter((w: string) => w.length > 3);
+        if (taskWords.length === 0) continue;
+
+        const assignee = (task.assigned_to || "").toLowerCase();
+        const relevantNotes = (recentNotes || []).filter((n: any) => {
+          if (new Date(n.created_at) <= new Date(task.created_at)) return false;
+          const authorMatch = assignee === "both" || (n.author || "").toLowerCase().includes(assignee);
+          if (!authorMatch) return false;
+          const noteText = (n.note_text || "").toLowerCase();
+          const matchCount = taskWords.filter((w: string) => noteText.includes(w)).length;
+          return matchCount / taskWords.length >= 0.4;
+        });
+
+        if (relevantNotes.length > 0) {
+          await sb.from("did_therapist_tasks").update({
+            status: "needs_review",
+            note: `Možná splněno — Karel nalezl související aktivitu od ${new Date(relevantNotes[0].created_at).toLocaleDateString("cs-CZ")}`,
+          } as any).eq("id", task.id);
+          console.log(`[TASK HEURISTIC] "${(task.task || "").slice(0, 40)}" → needs_review`);
+        }
+      }
+    } catch (heuErr) {
+      console.warn("[daily-cycle] Heuristic task check error:", heuErr);
+    }
+
+    // ═══ SYSTÉMOVÁ ESKALACE NESPLNĚNÝCH ÚKOLŮ ═══
+    const overdueTasks: Array<{ task: any; daysOverdue: number; assignee: string; escalationLevel: string }> = [];
+    for (const task of (pendingTasks || [])) {
+      if (task.status === "done" || task.status === "needs_review") continue;
+      const createdAt = new Date(task.created_at);
+      const daysOld = Math.floor((Date.now() - createdAt.getTime()) / 86400000);
+
+      let escalationLevel = "none";
+      if (daysOld >= 7) {
+        escalationLevel = "critical";
+        await sb.from("did_therapist_tasks").update({
+          priority: "urgent",
+          escalation_level: "critical",
+          escalated_at: new Date().toISOString(),
+        } as any).eq("id", task.id);
+      } else if (daysOld >= 3) {
+        escalationLevel = "warning";
+        await sb.from("did_therapist_tasks").update({
+          escalation_level: "warning",
+          escalated_at: new Date().toISOString(),
+        } as any).eq("id", task.id);
+      }
+
+      if (escalationLevel !== "none") {
+        overdueTasks.push({ task, daysOverdue: daysOld, assignee: task.assigned_to || "nespecifikováno", escalationLevel });
+      }
+    }
+    console.log(`[TASK ESCALATION] ${overdueTasks.length} úkolů eskalováno (${overdueTasks.filter(t => t.escalationLevel === "critical").length} critical)`);
+
     const pendingTasksSummary = (pendingTasks || []).map((t: any) => {
       const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-      return `- [${age}d] ${t.task} | pro: ${t.assigned_to} | Hanka: ${t.status_hanka} | Káťa: ${t.status_kata} | priorita: ${t.priority}${age >= 3 ? " ⚠️ ESKALACE" : ""}`;
+      const escLabel = age >= 7 ? " 🔴 CRITICAL" : age >= 3 ? " ⚠️ ESKALACE" : "";
+      return `- [${age}d] ${t.task} | pro: ${t.assigned_to} | Hanka: ${t.status_hanka} | Káťa: ${t.status_kata} | priorita: ${t.priority}${escLabel}`;
     }).join("\n");
     console.log(`[daily-cycle] Pending therapist tasks: ${pendingTasks?.length || 0}`);
 
