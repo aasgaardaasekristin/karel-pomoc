@@ -2473,6 +2473,25 @@ serve(async (req) => {
       }
     };
 
+    // ═══ PRE-PIPELINE: Run daily analyzer to populate analysis_json ═══
+    try {
+      console.log("[daily-cycle] Invoking karel-did-daily-analyzer...");
+      const analyzerRes = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-daily-analyzer`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ source: "daily-cycle" }),
+        }
+      );
+      console.log(`[daily-cycle] Daily analyzer returned ${analyzerRes.status}`);
+    } catch (analyzerErr) {
+      console.warn("[daily-cycle] Daily analyzer failed (non-fatal):", analyzerErr);
+    }
+
     // 1. SBĚR DAT
     // For card updates: only unprocessed items
     const { data: unprocessedThreadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
@@ -2543,7 +2562,7 @@ serve(async (req) => {
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
       .select("id, task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note, escalation_level, escalated_at, last_escalation_email_at")
-      .neq("status", "done")
+      .in("status", ["pending", "active", "in_progress", "not_started"])
       .order("created_at", { ascending: true });
 
     // ═══ HEURISTICKÁ KONTROLA SPLNĚNÍ ÚKOLŮ ═══
@@ -4980,7 +4999,7 @@ Vrať POUZE validní JSON (bez markdown):
     try {
       const { data: allTasks } = await sb.from("did_therapist_tasks")
         .select("id, task, assigned_to, status, status_hanka, status_kata, created_at, escalation_level, category")
-        .neq("status", "done");
+        .in("status", ["pending", "active", "in_progress", "not_started"]);
 
       if (allTasks && allTasks.length > 0) {
         const now = Date.now();
@@ -5038,7 +5057,7 @@ Vrať POUZE validní JSON (bez markdown):
     try {
       const { data: staleFeedbackTasks } = await sb.from("did_therapist_tasks")
         .select("id, task, note, assigned_to, status_hanka, status_kata, created_at, priority, category, escalation_level")
-        .neq("status", "done");
+        .in("status", ["pending", "active", "in_progress", "not_started"]);
 
       if (staleFeedbackTasks && staleFeedbackTasks.length > 0) {
         const now = Date.now();
