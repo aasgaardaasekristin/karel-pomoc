@@ -334,21 +334,35 @@ Na zaklade techto informaci:
 
       if (recentSession) {
         const sessionDate = recentSession.session_date?.slice(0, 10) || "neuvedeno";
-        const therapistName = recentSession.therapist_name || "neuvedeno";
+        const therapistName = recentSession.therapist || "neuvedeno";
         sessionPrefix = `✅ Sezení proběhlo ${sessionDate} (vedl: ${therapistName}). `;
 
-        // Create follow-up task
+        // Create follow-up task — but only if not already created in last 7 days
         const dueDateStr = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         try {
-          await supabase.from("did_therapist_tasks").insert({
-            task: `Navázat na sezení s ${crisis.part_name} ze dne ${sessionDate} — naplánovat další krok`,
-            assigned_to: therapistName === "neuvedeno" ? "both" : therapistName,
-            description: `Sezení proběhlo ${sessionDate}. Naplánujte další krok v krizovém plánu.`,
-            priority: "high",
-            status: "pending",
-            category: "crisis",
-            due_date: dueDateStr,
-          });
+          const sevenDaysAgoDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          const { data: existingTask } = await supabase
+            .from("did_therapist_tasks")
+            .select("id")
+            .ilike("task", "%Navázat na sezení%")
+            .eq("crisis_alert_id", crisis.id)
+            .gte("created_at", sevenDaysAgoDate)
+            .limit(1);
+
+          if (!existingTask || existingTask.length === 0) {
+            await supabase.from("did_therapist_tasks").insert({
+              task: `Navázat na sezení s ${crisis.part_name} ze dne ${sessionDate} — co je dalším krokem v krizovém plánu?`,
+              assigned_to: therapistName === "neuvedeno" ? "both" : therapistName,
+              description: `Sezení proběhlo ${sessionDate}. Naplánujte další krok v krizovém plánu.`,
+              priority: "high",
+              status: "pending",
+              category: "crisis",
+              due_date: dueDateStr,
+              crisis_alert_id: crisis.id,
+            });
+          } else {
+            console.log(`[CRISIS-ASSESSMENT] Follow-up task already exists for crisis ${crisis.id}`);
+          }
         } catch (e) {
           console.error("[CRISIS-ASSESSMENT] Failed to create follow-up task:", e);
         }
