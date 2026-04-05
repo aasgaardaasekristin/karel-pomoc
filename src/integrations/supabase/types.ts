@@ -722,6 +722,59 @@ export type Database = {
         }
         Relationships: []
       }
+      crisis_closure_checklist: {
+        Row: {
+          created_at: string | null
+          crisis_alert_id: string | null
+          decided_at: string | null
+          emotional_stable_days: number | null
+          final_decision: string | null
+          hanka_agrees: boolean | null
+          id: string
+          karel_closure_recommendation: string | null
+          karel_diagnostic_date: string | null
+          karel_diagnostic_done: boolean | null
+          kata_agrees: boolean | null
+          no_risk_signals: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          crisis_alert_id?: string | null
+          decided_at?: string | null
+          emotional_stable_days?: number | null
+          final_decision?: string | null
+          hanka_agrees?: boolean | null
+          id?: string
+          karel_closure_recommendation?: string | null
+          karel_diagnostic_date?: string | null
+          karel_diagnostic_done?: boolean | null
+          kata_agrees?: boolean | null
+          no_risk_signals?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          crisis_alert_id?: string | null
+          decided_at?: string | null
+          emotional_stable_days?: number | null
+          final_decision?: string | null
+          hanka_agrees?: boolean | null
+          id?: string
+          karel_closure_recommendation?: string | null
+          karel_diagnostic_date?: string | null
+          karel_diagnostic_done?: boolean | null
+          kata_agrees?: boolean | null
+          no_risk_signals?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_closure_checklist_crisis_alert_id_fkey"
+            columns: ["crisis_alert_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crisis_daily_assessments: {
         Row: {
           assessment_date: string
@@ -963,6 +1016,65 @@ export type Database = {
           },
           {
             foreignKeyName: "crisis_intervention_sessions_crisis_alert_id_fkey"
+            columns: ["crisis_alert_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crisis_journal: {
+        Row: {
+          created_at: string | null
+          crisis_alert_id: string | null
+          crisis_trend: string | null
+          date: string | null
+          day_number: number | null
+          hanka_cooperation: string | null
+          id: string
+          karel_action: string | null
+          karel_notes: string | null
+          kata_cooperation: string | null
+          part_id: string | null
+          session_summary: string | null
+          what_failed: string | null
+          what_worked: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          crisis_alert_id?: string | null
+          crisis_trend?: string | null
+          date?: string | null
+          day_number?: number | null
+          hanka_cooperation?: string | null
+          id?: string
+          karel_action?: string | null
+          karel_notes?: string | null
+          kata_cooperation?: string | null
+          part_id?: string | null
+          session_summary?: string | null
+          what_failed?: string | null
+          what_worked?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          crisis_alert_id?: string | null
+          crisis_trend?: string | null
+          date?: string | null
+          day_number?: number | null
+          hanka_cooperation?: string | null
+          id?: string
+          karel_action?: string | null
+          karel_notes?: string | null
+          kata_cooperation?: string | null
+          part_id?: string | null
+          session_summary?: string | null
+          what_failed?: string | null
+          what_worked?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_journal_crisis_alert_id_fkey"
             columns: ["crisis_alert_id"]
             isOneToOne: false
             referencedRelation: "crisis_alerts"

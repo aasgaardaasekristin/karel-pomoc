@@ -6800,6 +6800,78 @@ ${p.raw_analysis || "N/A"}`;
       console.warn("[THERAPIST PROFILE] Error:", tpErr);
     }
 
+    // ═══ FÁZE 6.5: PAMET_KAREL — krizová profilace terapeutek ═══
+    try {
+      const { data: activeCrisisAlerts } = await sb
+        .from("crisis_alerts")
+        .select("id, part_name")
+        .not("status", "eq", "RESOLVED");
+
+      if (activeCrisisAlerts && activeCrisisAlerts.length > 0) {
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        for (const ac of activeCrisisAlerts) {
+          // Load today's crisis_journal entry
+          const { data: todayJournal } = await sb
+            .from("crisis_journal")
+            .select("hanka_cooperation, kata_cooperation, karel_notes")
+            .eq("crisis_alert_id", ac.id)
+            .eq("date", todayStr)
+            .maybeSingle();
+
+          if (!todayJournal) continue;
+
+          // Load meeting messages from last 24h for this part
+          const { data: recentMeeting } = await sb
+            .from("did_meetings")
+            .select("messages")
+            .ilike("topic", `%${ac.part_name}%`)
+            .gte("created_at", new Date(Date.now() - 24 * 3600000).toISOString())
+            .order("created_at", { ascending: false })
+            .limit(1);
+
+          const meetingMsgs = recentMeeting?.[0]?.messages;
+          const msgs = Array.isArray(meetingMsgs) ? meetingMsgs : [];
+          const hankaCount = msgs.filter((m: any) =>
+            (m.author || m.role || "").toLowerCase().includes("hanka") ||
+            (m.author || m.role || "").toLowerCase().includes("hanička")
+          ).length;
+          const kataCount = msgs.filter((m: any) =>
+            (m.author || m.role || "").toLowerCase().includes("kát") ||
+            (m.author || m.role || "").toLowerCase().includes("kata")
+          ).length;
+
+          const karelNote = (todayJournal.karel_notes || "").split(".")[0] || "";
+
+          // Write HANKA profile append
+          const hankaContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — HANKA:\n- Počet příspěvků dnes: ${hankaCount}\n- Spolupráce: ${todayJournal.hanka_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
+
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: "PAMET_KAREL_PROFIL_HANKA",
+            content: hankaContent,
+            write_type: "append",
+            status: "pending",
+            priority: "low",
+          });
+
+          // Write KATA profile append
+          const kataContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — KATA:\n- Počet příspěvků dnes: ${kataCount}\n- Spolupráce: ${todayJournal.kata_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
+
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: "PAMET_KAREL_PROFIL_KATA",
+            content: kataContent,
+            write_type: "append",
+            status: "pending",
+            priority: "low",
+          });
+
+          console.log(`[PAMET_KAREL CRISIS] Appended crisis cooperation data for ${ac.part_name}`);
+        }
+      }
+    } catch (pametErr) {
+      console.warn("[PAMET_KAREL CRISIS] Error:", pametErr);
+    }
+
     try {
       const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
       await sb.from("safety_alerts").delete().in("status", ["resolved", "false_positive"]).lt("created_at", alertCutoff);
