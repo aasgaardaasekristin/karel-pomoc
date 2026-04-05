@@ -26,6 +26,7 @@ import DidSwitchHistory from "./DidSwitchHistory";
 import PartQuickView from "./PartQuickView";
 import CrisisTimeline from "./CrisisTimeline";
 import DidTherapistProfiles from "./DidTherapistProfiles";
+import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
@@ -783,6 +784,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </ErrorBoundary>
         </KarelCard>
       </section>
+
+      <ErrorBoundary fallbackTitle="Otázky Karla selhaly">
+        <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
 
       <ErrorBoundary fallbackTitle="Dohody selhaly">
         <KarelCard variant="default" padding="md">

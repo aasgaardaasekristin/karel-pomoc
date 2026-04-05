@@ -487,6 +487,17 @@ ${formatAnalysisTeam(analysis)}`;
       pendingDidTasks = dtData || [];
     } catch (e) { console.warn("[daily-email] did_tasks load error:", e); }
 
+    // ═══ LOAD PENDING QUESTIONS FOR EMAIL ═══
+    let pendingQuestions: any[] = [];
+    try {
+      const { data: pqData } = await sb.from("did_pending_questions")
+        .select("*")
+        .eq("status", "pending")
+        .lt("expires_at", new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: true });
+      pendingQuestions = pqData || [];
+    } catch (e) { console.warn("[daily-email] did_pending_questions load error:", e); }
+
     const isMonday = new Date().getDay() === 1;
 
     const generateEmail = async (recipient: "hanka" | "kata"): Promise<string> => {
@@ -811,6 +822,20 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
         userContent += didTasksBlock + "\n\n";
       }
 
+      // Include pending questions for this therapist
+      const myQuestions = pendingQuestions.filter((q: any) =>
+        q.directed_to === recipient || q.directed_to === "both"
+      );
+      if (myQuestions.length > 0) {
+        userContent += `\n═══ KAREL SE PTÁ (pending questions) ═══\n`;
+        userContent += `DŮLEŽITÉ: Zahrň tyto otázky do emailu v sekci "❓ KAREL SE PTÁ".\n`;
+        userContent += myQuestions.map((q: any) => {
+          const ctx = q.subject_type ? `[${q.subject_type}]` : "";
+          return `  • ${ctx} ${q.question}`;
+        }).join("\n");
+        userContent += "\n\n";
+      }
+
       // Overdue tasks highlight
       if (overdueTasks.length > 0) {
         userContent += `⚠️ ZPOŽDĚNÉ ÚKOLY (${overdueTasks.length}):\n`;
@@ -897,6 +922,13 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
         console.log(`[daily-email] ✅ Resend ID (hanka): ${sendData?.id || "unknown"}`);
         await markSent("hanka");
         hankaResult = "sent";
+        // Mark pending questions for hanka as sent
+        const hankaQIds = pendingQuestions
+          .filter((q: any) => q.directed_to === "hanka" || q.directed_to === "both")
+          .map((q: any) => q.id);
+        if (hankaQIds.length > 0) {
+          await sb.from("did_pending_questions").update({ status: "sent" }).in("id", hankaQIds);
+        }
         console.log(`[daily-email] ✅ Sent to Hanka: ${MAMKA_EMAIL}`);
       } catch (e: any) {
         console.error("[daily-email] Hanka email error:", e);
@@ -920,6 +952,13 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
         console.log(`[daily-email] ✅ Resend ID (kata): ${sendData?.id || "unknown"}`);
         await markSent("kata");
         kataResult = "sent";
+        // Mark pending questions for kata as sent
+        const kataQIds = pendingQuestions
+          .filter((q: any) => q.directed_to === "kata" || q.directed_to === "both")
+          .map((q: any) => q.id);
+        if (kataQIds.length > 0) {
+          await sb.from("did_pending_questions").update({ status: "sent" }).in("id", kataQIds);
+        }
         console.log(`[daily-email] ✅ Sent to Káťa: ${KATA_EMAIL}`);
       } catch (e: any) {
         console.error("[daily-email] Káťa email error:", e);
