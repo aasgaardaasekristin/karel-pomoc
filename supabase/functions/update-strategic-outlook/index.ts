@@ -7,23 +7,9 @@ import {
   FOLDER_MIME, GDOC_MIME,
 } from "../_shared/driveHelpers.ts";
 
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") ?? "";
-const GEMINI_MODEL = "google/gemini-2.5-flash";
-
-async function callGemini(prompt: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 170_000);
-  try {
-    const res = await fetch("https://api.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: GEMINI_MODEL, messages: [{ role: "user", content: prompt }], temperature: 0.3, max_tokens: 16000 }),
-      signal: controller.signal,
-    });
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || "";
-  } finally { clearTimeout(timer); }
-}
+const today = () => new Date().toISOString().slice(0, 10);
+const futureDate = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
+const pastDate = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -32,6 +18,142 @@ serve(async (req) => {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
   try {
+    // === LOAD ALL DATA IN PARALLEL ===
+    const [
+      medGoalsRes, partsActiveRes, partsInactiveRes,
+      obsRes, blockedGoalsRes,
+      metricsRes, promotionRes
+    ] = await Promise.all([
+      // Sekce 1
+      sb.from("part_goals").select("*").eq("goal_type", "medium").eq("status", "active"),
+      // Sekce 2
+      sb.from("did_part_registry").select("part_name,display_name,status,last_seen_at,health_score").or("status.eq.active,status.eq.Aktivní"),
+      sb.from("did_part_registry").select("part_name,display_name,status,last_seen_at,health_score,notes").not("status", "in", "(active,Aktivní)"),
+      // Sekce 3
+      sb.from("did_observations").select("*").eq("time_horizon", "medium").eq("status", "pending").order("created_at", { ascending: false }).limit(20),
+      // Sekce 4
+      sb.from("part_goals").select("*").in("status", ["blocked", "paused"]),
+      // Sekce 5
+      sb.from("daily_metrics").select("*").gte("metric_date", new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)).order("metric_date", { ascending: true }),
+      // Sekce 6
+      sb.from("planned_sessions").select("*").eq("status", "planned").gte("session_date", futureDate(15)).lte("session_date", futureDate(60)),
+    ]);
+
+    const medGoals = medGoalsRes.data || [];
+    const partsActive = partsActiveRes.data || [];
+    const partsInactive = partsInactiveRes.data || [];
+    const observations = obsRes.data || [];
+    const blockedGoals = blockedGoalsRes.data || [];
+    const metrics = metricsRes.data || [];
+    const promotionSessions = promotionRes.data || [];
+
+    // Check overdue parts (>14 days without session)
+    const overdueThreshold = new Date(Date.now() - 14 * 86400000).toISOString();
+
+    // === BUILD 05B CONTENT ===
+    const lines: string[] = [];
+    lines.push(`═══ STRATEGICKÝ VÝHLED ═══`);
+    lines.push(`Aktualizováno: ${today()}\n`);
+
+    // --- SEKCE 1: Střednědobé linie ---
+    lines.push(`━━━ 1. HLAVNÍ STŘEDNĚDOBÉ LINIE PRÁCE ━━━\n`);
+    const goalsByPart = new Map<string, any[]>();
+    for (const g of medGoals) {
+      const key = g.part_name || "systém";
+      if (!goalsByPart.has(key)) goalsByPart.set(key, []);
+      goalsByPart.get(key)!.push(g);
+    }
+    if (goalsByPart.size) {
+      for (const [part, goals] of goalsByPart) {
+        lines.push(`▸ ${part}:`);
+        for (const g of goals) {
+          lines.push(`  • ${g.goal_text} (${g.progress_pct}%, kategorie: ${g.category || '?'})`);
+        }
+      }
+    } else {
+      lines.push(`  (žádné střednědobé cíle)`);
+    }
+
+    // --- SEKCE 2: Části doporučené k práci ---
+    lines.push(`\n━━━ 2. ČÁSTI — READINESS (15-60 dní) ━━━\n`);
+    lines.push(`AKTIVNÍ ČÁSTI:`);
+    for (const p of partsActive) {
+      const overdue = p.last_seen_at && p.last_seen_at < overdueThreshold;
+      lines.push(`  ${overdue ? '⚠️' : '▸'} ${p.display_name || p.part_name} — health: ${p.health_score ?? '?'}, last: ${p.last_seen_at?.slice(0, 10) || 'nikdy'}${overdue ? ' — PŘESČAS >14 dní' : ''}`);
+    }
+    // Sleeping parts as activation candidates
+    const candidates = partsInactive.filter((p: any) => p.health_score && p.health_score > 0);
+    if (candidates.length) {
+      lines.push(`\nSPÍCÍ ČÁSTI — KANDIDÁTI NA AKTIVIZACI:`);
+      for (const p of candidates) {
+        lines.push(`  • ${p.display_name || p.part_name} — health: ${p.health_score}, last: ${p.last_seen_at?.slice(0, 10) || 'nikdy'}`);
+      }
+    }
+
+    // --- SEKCE 3: Kandidátní intervence ---
+    lines.push(`\n━━━ 3. KANDIDÁTNÍ INTERVENCE ━━━\n`);
+    if (observations.length) {
+      for (const o of observations) {
+        lines.push(`  • [${o.subject_type}/${o.subject_id || '?'}] ${o.fact?.slice(0, 150)} (conf: ${o.confidence}, evidence: ${o.evidence_level})`);
+      }
+    } else {
+      lines.push(`  (žádné střednědobé observace)`);
+    }
+
+    // --- SEKCE 4: Blokátory ---
+    lines.push(`\n━━━ 4. BLOKÁTORY ━━━\n`);
+    if (blockedGoals.length) {
+      for (const g of blockedGoals) {
+        lines.push(`  • ${g.part_name || 'systém'}: ${g.goal_text} — status: ${g.status}${g.pause_reason ? ` — důvod: ${g.pause_reason}` : ''}`);
+      }
+    } else {
+      lines.push(`  (žádné blokované cíle)`);
+    }
+
+    // --- SEKCE 5: Trendy ---
+    lines.push(`\n━━━ 5. TRENDY V PRÁCI TÝMU (30 dní) ━━━\n`);
+    if (metrics.length) {
+      // Aggregate by week
+      const weeks = new Map<string, { msgs: number; switching: number; valence: number[]; count: number }>();
+      for (const m of metrics) {
+        const weekKey = m.metric_date.slice(0, 7); // month grouping
+        if (!weeks.has(weekKey)) weeks.set(weekKey, { msgs: 0, switching: 0, valence: [], count: 0 });
+        const w = weeks.get(weekKey)!;
+        w.msgs += m.message_count || 0;
+        w.switching += m.switching_count || 0;
+        if (m.emotional_valence != null) w.valence.push(m.emotional_valence);
+        w.count++;
+      }
+      for (const [period, w] of weeks) {
+        const avgVal = w.valence.length ? (w.valence.reduce((a, b) => a + b, 0) / w.valence.length).toFixed(1) : '?';
+        lines.push(`  ${period}: zpráv ${w.msgs}, switching ${w.switching}, avg valence ${avgVal} (${w.count} dní)`);
+      }
+    } else {
+      lines.push(`  (žádné metriky za 30 dní)`);
+    }
+
+    // --- SEKCE 6: Kritéria pro povýšení do 05A ---
+    lines.push(`\n━━━ 6. KRITÉRIA PRO POVÝŠENÍ Z 05B DO 05A ━━━\n`);
+    if (promotionSessions.length) {
+      lines.push(`Sezení plánovaná na 15-60 dní:`);
+      for (const s of promotionSessions) {
+        lines.push(`  • ${s.part_name} — ${s.method_name} — ${s.session_date || '?'} — terapeut: ${s.therapist}`);
+      }
+    } else {
+      lines.push(`  (žádná sezení v horizontu 15-60 dní)`);
+    }
+    // Goals nearing promotion
+    const nearPromotion = medGoals.filter((g: any) => g.progress_pct >= 70);
+    if (nearPromotion.length) {
+      lines.push(`\nCíle blízko dokončení (>70%):`);
+      for (const g of nearPromotion) {
+        lines.push(`  • ${g.part_name || 'systém'}: ${g.goal_text} (${g.progress_pct}%)`);
+      }
+    }
+
+    const outlookContent = lines.join("\n");
+
+    // === WRITE TO DRIVE ===
     const token = await getAccessToken();
     const root = await resolveKartotekaRoot(token);
     if (!root) throw new Error("KARTOTEKA_DID not found");
@@ -41,159 +163,44 @@ serve(async (req) => {
     const planFolderId = await findFolder(token, "05_PLAN", centrumId);
     if (!planFolderId) throw new Error("05_PLAN not found");
 
-    // Find 05B
     const planFiles = await listFiles(token, planFolderId);
     const stratFile = planFiles.find(f => f.name.includes("05B") || f.name.includes("Strategick"));
     if (!stratFile) throw new Error("05B_Strategicky_Vyhled not found");
 
     const currentOutlook = await readFileContent(token, stratFile.id, stratFile.mimeType);
-
-    // Read sections H from active cards
-    const activeDir = await findFolder(token, "01_AKTIVNI_FRAGMENTY", root);
-    let allSectionsH = "";
-    if (activeDir) {
-      const partFolders = (await listFiles(token, activeDir)).filter(f => f.mimeType === FOLDER_MIME);
-      for (const folder of partFolders) {
-        try {
-          const cardFiles = await listFiles(token, folder.id);
-          const cardFile = cardFiles.find(f =>
-            f.mimeType !== FOLDER_MIME && !f.name.startsWith("BACKUP_") && !f.name.includes("ARCHIV") &&
-            (f.mimeType === GDOC_MIME || /\.(txt|md)$/i.test(f.name))
-          );
-          if (!cardFile) continue;
-          const content = await readFileContent(token, cardFile.id, cardFile.mimeType);
-          const sectionH = content.match(/(?:SEKCE H|H\.|H –|H—)[^\n]*\n([\s\S]*?)(?=(?:SEKCE [I-M]|[I-M]\.|[I-M] –)|$)/i)?.[0] || "";
-          if (sectionH) allSectionsH += `\n═══ ${folder.name} ═══\n${sectionH}`;
-        } catch (e) { console.warn(`[strategic] Skip ${folder.name}:`, e); }
-      }
-    }
-
-    // Read DB data
-    const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const weekAgoDate = weekAgo.slice(0, 10);
-    const [goalsRes, updateLogRes, sessionsRes, weekMetricsRes] = await Promise.all([
-      sb.from("strategic_goals").select("*").eq("status", "active"),
-      sb.from("card_update_log").select("*").gte("created_at", weekAgo).order("created_at", { ascending: false }).limit(50),
-      sb.from("planned_sessions").select("*").gte("created_at", weekAgo).limit(100),
-      sb.from("daily_metrics").select("*").gte("metric_date", weekAgoDate).order("metric_date", { ascending: true }),
-    ]);
-
-    const goalsText = (goalsRes.data || []).map(g => `[${g.part_name || "systém"}] ${g.goal_text} (${g.progress_pct}%, ${g.category})`).join("\n");
-    const statsText = `Card updates: ${updateLogRes.data?.length || 0}, Sessions: ${sessionsRes.data?.length || 0} (done: ${sessionsRes.data?.filter(s => s.status === "done").length || 0})`;
-    const weekMetrics = weekMetricsRes.data || [];
-    const metricsText = weekMetrics.length ? `\nKVANTITATIVNÍ METRIKY ZA TÝDEN:\n${weekMetrics.map((m: any) =>
-      `${m.metric_date} | ${m.part_name || "systém"} | zpráv: ${m.message_count} | valence: ${m.emotional_valence ?? "?"} | spolupráce: ${m.cooperation_level ?? "?"} | switching: ${m.switching_count}`
-    ).join("\n")}` : "";
-
-    const prompt = `Jsi Karel — strategický koordinátor DID terapie.
-
-Dostáváš:
-1. Aktuální strategický výhled
-2. Dlouhodobé cíle ze všech karet (sekce H)
-3. Strategické cíle z DB
-4. Statistiky za poslední týden
-
-TVŮ ÚKOL:
-a) Zhodnoť pokrok u každého strategického cíle (0-100%)
-b) Označ cíle které byly dosaženy (evidence z karet)
-c) Navrhni nové cíle pokud z karet vyplývají
-d) Identifikuj RIZIKA a TRENDY:
-   - Která část se zhoršuje?
-   - Která část stagnuje?
-   - Kde je pozitivní trend?
-e) Navrhni DOPORUČENÍ pro příští týden
-
-Vrať:
-1. PLAIN TEXT strategického výhledu (pro Drive):
-═══ STRATEGICKÝ VÝHLED ═══
-Aktualizováno: ${new Date().toISOString().slice(0, 10)}
-[obsah]
-
-2. JSON pro DB:
----GOALS JSON---
-[
-  {
-    "part_name": "003_TUNDRUPEK",
-    "goal_text": "...",
-    "category": "stabilizace",
-    "status": "active",
-    "progress_pct": 65,
-    "evidence": ["vlákno z 2026-03-25: ..."]
-  }
-]
----END GOALS JSON---
-
-AKTUÁLNÍ VÝHLED:
-${currentOutlook.slice(0, 6000)}
-
-SEKCE H ZE VŠECH KARET:
-${allSectionsH.slice(0, 8000)}
-
-STRATEGICKÉ CÍLE:
-${goalsText || "(žádné)"}
-
-STATISTIKY ZA TÝDEN:
-${statsText}
-${metricsText}`;
-
-    const result = await callGemini(prompt);
-    console.log(`[strategic] Gemini response: ${result.length} chars`);
-
-    const jsonMatch = result.match(/---GOALS JSON---\s*([\s\S]*?)\s*---END GOALS JSON---/);
-    const outlookText = result.replace(/---GOALS JSON---[\s\S]*---END GOALS JSON---/, "").trim();
-
-    // Backup + overwrite
     await createBackup(token, planFolderId, stratFile.name, currentOutlook);
-    await overwriteDoc(token, stratFile.id, outlookText);
+    await overwriteDoc(token, stratFile.id, outlookContent);
+    console.log(`[strategic] Written ${outlookContent.length} chars to 05B`);
 
-    // Upsert goals
-    let goalsUpdated = 0;
-    if (jsonMatch?.[1]) {
-      try {
-        const goals: any[] = JSON.parse(jsonMatch[1].replace(/```json\s*|```/g, "").trim());
-        for (const g of goals) {
-          // Try update existing, else insert
-          const { data: existing } = await sb
-            .from("strategic_goals")
-            .select("id")
-            .eq("goal_text", g.goal_text)
-            .limit(1);
-
-          if (existing?.length) {
-            await sb.from("strategic_goals").update({
-              progress_pct: g.progress_pct || 0,
-              status: g.status || "active",
-              evidence: g.evidence || [],
-              achieved_date: g.status === "achieved" ? new Date().toISOString().slice(0, 10) : null,
-              updated_at: new Date().toISOString(),
-            }).eq("id", existing[0].id);
-          } else {
-            await sb.from("strategic_goals").insert({
-              part_name: g.part_name || null,
-              goal_text: g.goal_text,
-              category: g.category || null,
-              status: g.status || "active",
-              progress_pct: g.progress_pct || 0,
-              evidence: g.evidence || [],
-            });
-          }
-          goalsUpdated++;
-        }
-      } catch (e) { console.warn("[strategic] Goals parse error:", e); }
-    }
+    // === LOG ===
+    await sb.from("system_health_log").insert({
+      event_type: "strategic_outlook_update",
+      severity: "info",
+      message: `05B updated: ${medGoals.length} med goals, ${observations.length} observations, ${blockedGoals.length} blocked`,
+      details: { med_goals: medGoals.length, observations: observations.length, blocked: blockedGoals.length },
+    });
 
     await sb.from("plan_update_log").insert({
       plan_type: "strategic",
-      goals_updated: goalsUpdated,
+      goals_updated: medGoals.length,
       processing_time_ms: Date.now() - startTime,
     });
 
-    return new Response(JSON.stringify({ success: true, goalsUpdated, processingTimeMs: Date.now() - startTime }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({
+      success: true,
+      medGoals: medGoals.length,
+      observations: observations.length,
+      contentLength: outlookContent.length,
+      processingTimeMs: Date.now() - startTime,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
   } catch (error) {
     console.error("[strategic] Error:", error);
-    await sb.from("plan_update_log").insert({ plan_type: "strategic", error: error instanceof Error ? error.message : String(error), processing_time_ms: Date.now() - startTime }).catch(() => {});
+    await sb.from("plan_update_log").insert({
+      plan_type: "strategic",
+      error: error instanceof Error ? error.message : String(error),
+      processing_time_ms: Date.now() - startTime,
+    }).catch(() => {});
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
