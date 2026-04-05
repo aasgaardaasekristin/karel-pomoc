@@ -9,6 +9,7 @@ interface DidContextPrimeResult {
   activePartsLast24h: string[];
   generatedAt: string;
   stats: Record<string, any>;
+  status?: string; // "degraded" | undefined
 }
 
 const REPRIME_INTERVAL = 15;
@@ -35,24 +36,35 @@ export const useDidContextPrime = () => {
       });
 
       if (requestId !== requestIdRef.current) return null;
-      if (error) throw error;
+
+      if (error) {
+        // Function crashed (500) — log but do NOT show toast
+        console.error("[DID context-prime] Function invoke error (likely 500):", error);
+        return null;
+      }
       if (!data) return null;
 
       const result = data as DidContextPrimeResult;
+
+      // Only show toast if the function explicitly reports degraded status
+      if (result.status === "degraded") {
+        toast({
+          title: "Context Prime – omezený režim",
+          description: "Karel se připravuje bez plné cache",
+          variant: "destructive",
+        });
+      }
+
       setPrimeCache(result.contextBrief);
       setSystemState(result.systemState);
       setActiveParts(result.activePartsLast24h || []);
 
-      console.log(`[DID context-prime] Done: ${result.contextBrief.length} chars, state: ${result.systemState}, parts: ${result.activePartsLast24h?.join(", ")}`);
+      console.log(`[DID context-prime] Done: ${result.contextBrief?.length || 0} chars, state: ${result.systemState}, parts: ${result.activePartsLast24h?.join(", ")}`);
       return result;
     } catch (e: any) {
       if (requestId !== requestIdRef.current) return null;
-      console.error("[DID context-prime] Failed:", e);
-      toast({
-        title: "Context Prime selhalo",
-        description: "Karel se připravuje bez plné cache",
-        variant: "destructive",
-      });
+      // Unexpected JS-level error — log, do NOT toast
+      console.error("[DID context-prime] Unexpected client error:", e?.message || e, e);
       return null;
     } finally {
       if (requestId === requestIdRef.current) setIsPriming(false);
