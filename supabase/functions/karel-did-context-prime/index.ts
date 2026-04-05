@@ -1410,18 +1410,18 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
     };
 
     // ═══ CACHE SAVE (TTL 6 hours) ═══
-    const cacheKey = `${partName || "none"}|${subMode || "none"}`;
+    const saveCacheKey = `${partName || "none"}|${subMode || "none"}`;
     try {
       // Delete old cache for this function+key
-      await sb.from("context_cache").delete().eq("user_id", userId).eq("function_name", "did-context-prime").eq("cache_key", cacheKey);
+      await sb.from("context_cache").delete().eq("user_id", userId).eq("function_name", "did-context-prime").eq("cache_key", saveCacheKey);
       await sb.from("context_cache").insert({
         user_id: userId,
         function_name: "did-context-prime",
-        cache_key: cacheKey,
+        cache_key: saveCacheKey,
         context_data: responsePayload,
         expires_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
       });
-      console.log(`[did-context-prime] Cache saved (TTL 6h, key: ${cacheKey})`);
+      console.log(`[did-context-prime] Cache saved (TTL 6h, key: ${saveCacheKey})`);
     } catch (cacheErr) {
       console.warn("[did-context-prime] Cache save failed (non-fatal):", cacheErr);
     }
