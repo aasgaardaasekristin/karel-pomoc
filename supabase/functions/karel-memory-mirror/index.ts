@@ -1084,12 +1084,19 @@ Deno.serve(async (req) => {
         }
 
         const threadDigests: string[] = [];
+        // HANA_PERSONAL_FILTER: osobní data Hanky jdou pouze do PAMET_KAREL, nikdy do DID pipeline
+        // Hana konverzace s doménou HANA (osobní) se do threadDigests přidají POUZE s tagem
+        // [HANA_PERSONAL] — AI prompt je instruován tato data směřovat výhradně do pamet_karel
+        // a NIKDY do kartoteka_did, did_daily_context ani centrum dashboard
         let totalChars = 0;
         for (const conv of (hanaRes.data || [])) {
           if (totalChars >= MAX_TOTAL) break;
           const msgs = Array.isArray(conv.messages) ? conv.messages : [];
           if (msgs.length < 1) continue;
-          const d = `[HANA|${conv.last_activity_at?.slice(0,16)}|${conv.current_domain}|${conv.current_hana_state}]\n${buildDigest(msgs)}`;
+          const domain = (conv.current_domain || "HANA").toUpperCase();
+          const isPersonal = domain === "HANA" || domain === "OSOBNI" || domain === "PERSONAL";
+          const tag = isPersonal ? "HANA_PERSONAL" : "HANA_DID";
+          const d = `[${tag}|${conv.last_activity_at?.slice(0,16)}|${conv.current_domain}|${conv.current_hana_state}]\n${buildDigest(msgs)}`;
           threadDigests.push(d); totalChars += d.length;
         }
         for (const t of (didThreadsRes.data || [])) {
@@ -1241,6 +1248,7 @@ KRITICKÉ PRAVIDLO DOMÉN:
 - PAMET_KAREL = VÝHRADNĚ profilace TERAPEUTEK (Hanka, Káťa) — osobnostní analýza, motivace, silné/slabé stránky, spolehlivost, emoční vzorce, komunikační preference.
 - KARTOTEKA_DID = data o DID ČÁSTECH (Arthur, Tundrup atd.) — klinické záznamy, triggery, emoce, sezení.
 - NIKDY nevkládej data o DID částech do PAMET_KAREL.
+- HANA_PERSONAL DATA: Vlákna označená [HANA_PERSONAL] obsahují OSOBNÍ/INTIMNÍ informace Hanky. Tato data NESMĚJÍ jít do kartoteka_did, centrum_updates (dashboard/operativní plán) ani do part_updates. Smějí jít POUZE do pamet_karel (profilace terapeutky). Pokud [HANA_PERSONAL] vlákno zmiňuje DID část, IGNORUJ tento kontext pro kartotéku.
 - Karel tajně buduje dynamický profil každé terapeutky pro personalizaci vedení.
 
 DEDUKČNÍ ŘETĚZCE:
@@ -1318,6 +1326,7 @@ KRITICKÉ PRAVIDLO DOMÉN:
 - pamet_karel = VÝHRADNĚ profilace TERAPEUTEK (Hanka, Káťa). Vzorce chování, motivace, silné/slabé stránky, komunikační strategie.
 - kartoteka_did = DID ČÁSTI (Arthur, Tundrup atd.). Klinické záznamy, triggery, emoce.
 - NIKDY nevkládej DID části do pamet_karel.
+- HANA_PERSONAL: Data z vláken [HANA_PERSONAL] NESMĚJÍ vstoupit do kartoteka_did, centrum_updates ani part_updates. Smějí jít POUZE do pamet_karel.
 
 ANALYTICKÉ INSTRUKCE:
 - Každý zápis do Dashboard MUSÍ obsahovat: CO → PROČ → AKCE → KDO → DOKDY
