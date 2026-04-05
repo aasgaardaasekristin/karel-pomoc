@@ -1426,10 +1426,19 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
       console.warn("[did-context-prime] Cache save failed (non-fatal):", cacheErr);
     }
 
+    console.log('[CONTEXT PRIME] build ok');
     return new Response(JSON.stringify(responsePayload), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("[did-context-prime] Error:", error);
+    console.error('[CONTEXT PRIME] fatal error', error);
+    try {
+      await sb.from("system_health_log").insert({
+        event_type: "context_prime_failure",
+        severity: "critical",
+        source: "context-prime",
+        details: { message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined },
+      });
+    } catch (_) { /* best effort */ }
     return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
