@@ -2146,6 +2146,25 @@ async function sendOrQueueEmail(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
+  {
+    const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const recentCycle = await dedupSb
+      .from('did_update_cycles')
+      .select('id, completed_at')
+      .eq('cycle_type', 'daily')
+      .eq('status', 'completed')
+      .gte('completed_at', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString())
+      .limit(1);
+    if (recentCycle.data?.length) {
+      console.log('[DAILY-CYCLE] Přeskočeno — proběhl úspěšně v posledních 3h');
+      return new Response(
+        JSON.stringify({ status: 'skipped', reason: 'recent_success', lastCycleId: recentCycle.data[0].id }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+
   const authHeader = req.headers.get("Authorization") || "";
   const authHeaderTrimmed = authHeader.trim();
   const userAgent = (req.headers.get("User-Agent") || "").toLowerCase();
