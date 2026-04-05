@@ -268,7 +268,7 @@ Proved denni krizove hodnoceni.`;
           assigned_to: "hanka",
           description: ["OTAZKY:", ...(assessment.questions_for_hana || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "UKOLY:", ...(assessment.tasks_for_hana || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
           priority: "critical",
-          status: "not_started",
+          status: "pending",
           category: "crisis",
         });
       }
@@ -279,7 +279,7 @@ Proved denni krizove hodnoceni.`;
           assigned_to: "kata",
           description: ["OTAZKY:", ...(assessment.questions_for_kata || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "UKOLY:", ...(assessment.tasks_for_kata || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
           priority: "critical",
-          status: "not_started",
+          status: "pending",
           category: "crisis",
         });
       }
@@ -290,7 +290,7 @@ Proved denni krizove hodnoceni.`;
           assigned_to: "both",
           description: `TYP: ${test.test_type}\n\n${test.description}\n\nUCEL: ${test.purpose}`,
           priority: "critical",
-          status: "not_started",
+          status: "pending",
           category: "crisis",
         });
       }
