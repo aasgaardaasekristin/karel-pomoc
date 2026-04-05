@@ -695,6 +695,7 @@ serve(async (req) => {
   }
 
   try {
+    console.log('[CONTEXT PRIME] start');
     const { partName, subMode, forceRefresh } = requestBody;
     console.log(`[did-context-prime] Starting for user: ${userId}, part: ${partName || "none"}, subMode: ${subMode || "none"}`);
     const startTime = Date.now();
