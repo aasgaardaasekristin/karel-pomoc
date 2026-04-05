@@ -952,6 +952,13 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
         console.log(`[daily-email] ✅ Resend ID (kata): ${sendData?.id || "unknown"}`);
         await markSent("kata");
         kataResult = "sent";
+        // Mark pending questions for kata as sent
+        const kataQIds = pendingQuestions
+          .filter((q: any) => q.directed_to === "kata" || q.directed_to === "both")
+          .map((q: any) => q.id);
+        if (kataQIds.length > 0) {
+          await sb.from("did_pending_questions").update({ status: "sent" }).in("id", kataQIds);
+        }
         console.log(`[daily-email] ✅ Sent to Káťa: ${KATA_EMAIL}`);
       } catch (e: any) {
         console.error("[daily-email] Káťa email error:", e);
