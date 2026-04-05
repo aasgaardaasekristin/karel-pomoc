@@ -922,6 +922,13 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
         console.log(`[daily-email] ✅ Resend ID (hanka): ${sendData?.id || "unknown"}`);
         await markSent("hanka");
         hankaResult = "sent";
+        // Mark pending questions for hanka as sent
+        const hankaQIds = pendingQuestions
+          .filter((q: any) => q.directed_to === "hanka" || q.directed_to === "both")
+          .map((q: any) => q.id);
+        if (hankaQIds.length > 0) {
+          await sb.from("did_pending_questions").update({ status: "sent" }).in("id", hankaQIds);
+        }
         console.log(`[daily-email] ✅ Sent to Hanka: ${MAMKA_EMAIL}`);
       } catch (e: any) {
         console.error("[daily-email] Hanka email error:", e);
