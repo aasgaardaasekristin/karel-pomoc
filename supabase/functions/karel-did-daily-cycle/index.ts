@@ -4999,7 +4999,7 @@ Vrať POUZE validní JSON (bez markdown):
     try {
       const { data: allTasks } = await sb.from("did_therapist_tasks")
         .select("id, task, assigned_to, status, status_hanka, status_kata, created_at, escalation_level, category")
-        .neq("status", "done");
+        .in("status", ["pending", "active", "in_progress", "not_started"]);
 
       if (allTasks && allTasks.length > 0) {
         const now = Date.now();
