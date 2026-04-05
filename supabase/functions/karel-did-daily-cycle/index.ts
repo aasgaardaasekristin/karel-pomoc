@@ -2473,6 +2473,25 @@ serve(async (req) => {
       }
     };
 
+    // ═══ PRE-PIPELINE: Run daily analyzer to populate analysis_json ═══
+    try {
+      console.log("[daily-cycle] Invoking karel-did-daily-analyzer...");
+      const analyzerRes = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-did-daily-analyzer`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ source: "daily-cycle" }),
+        }
+      );
+      console.log(`[daily-cycle] Daily analyzer returned ${analyzerRes.status}`);
+    } catch (analyzerErr) {
+      console.warn("[daily-cycle] Daily analyzer failed (non-fatal):", analyzerErr);
+    }
+
     // 1. SBĚR DAT
     // For card updates: only unprocessed items
     const { data: unprocessedThreadRows } = await sb.from("did_threads").select("*").eq("is_processed", false);
