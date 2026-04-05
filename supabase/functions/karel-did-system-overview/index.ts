@@ -372,6 +372,21 @@ serve(async (req) => {
       .limit(1)
       .single();
 
+    const today = new Date().toISOString().slice(0, 10);
+    const ctxDate = dailyCtx?.context_date?.slice(0, 10) || "none";
+    const hasAnalysis = dailyCtx?.analysis_json != null && Object.keys(dailyCtx.analysis_json as any).length > 0;
+    console.log(`[OVERVIEW] source_date=${ctxDate}, today=${today}, analysis_json_present=${hasAnalysis}`);
+
+    if (ctxDate !== today || !hasAnalysis) {
+      console.log(`[OVERVIEW] used_fallback=true — stale or missing context`);
+      const fallbackMsg = "⏳ Karlův přehled čeká na dnešní validovaný kontext. Denní analýza ještě neproběhla.";
+      const ssePayload = `data: ${JSON.stringify({ choices: [{ delta: { content: fallbackMsg } }] })}\n\ndata: [DONE]\n\n`;
+      return new Response(ssePayload, {
+        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+      });
+    }
+    console.log(`[OVERVIEW] used_fallback=false`);
+
     const analysisJson = dailyCtx?.analysis_json as any;
 
     const normalizeKey = (value: string) =>
