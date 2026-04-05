@@ -308,7 +308,7 @@ Proved denni krizove hodnoceni.`;
             assigned_to: "both",
             description: `Karel potrebuje odpovedi na nasledujici otazky:\n\n${specificQuestions.map((q: string, i: number) => `${i + 1}. ${q}`).join("\n")}\n\nProsim odpovezte v poznamkach k casti ${crisis.part_name}.`,
             priority: "urgent",
-            status: "not_started",
+            status: "pending",
             category: "interview",
           });
         }
