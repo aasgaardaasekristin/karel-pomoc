@@ -6891,6 +6891,55 @@ ${p.raw_analysis || "N/A"}`;
       console.warn("[PAMET_KAREL CRISIS] Error:", pametErr);
     }
 
+    // ═══ PART STATUS AUTO-DETECTION ═══
+    // Detect parts that started communicating but are marked as sleeping
+    try {
+      const recentActivityCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: newlyActiveThreads } = await sb
+        .from("did_threads")
+        .select("part_name, last_activity_at")
+        .gte("last_activity_at", recentActivityCutoff);
+
+      const checkedParts = new Set<string>();
+      for (const part of newlyActiveThreads || []) {
+        const normalizedName = part.part_name?.trim();
+        if (!normalizedName || checkedParts.has(normalizedName.toLowerCase())) continue;
+        checkedParts.add(normalizedName.toLowerCase());
+
+        const { data: inRegistry } = await sb
+          .from("did_part_registry")
+          .select("id, status")
+          .ilike("part_name", normalizedName)
+          .single();
+
+        if (inRegistry && inRegistry.status === "sleeping") {
+          console.log(`[PART-STATUS] Detected sleeping part with recent activity: ${normalizedName}`);
+          try {
+            const syncUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-part-status-sync`;
+            const syncRes = await fetch(syncUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+              },
+              body: JSON.stringify({
+                part_id: inRegistry.id,
+                part_name: normalizedName,
+                new_status: "active",
+                reason: `Část začala komunikovat po období neaktivity (${part.last_activity_at})`,
+                triggered_by: "karel_autonomous",
+              }),
+            });
+            console.log(`[PART-STATUS] Sync result for ${normalizedName}: ${syncRes.status}`);
+          } catch (syncErr) {
+            console.warn(`[PART-STATUS] Failed to sync ${normalizedName}:`, syncErr);
+          }
+        }
+      }
+    } catch (partStatusErr) {
+      console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
+    }
+
     try {
       const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
       await sb.from("safety_alerts").delete().in("status", ["resolved", "false_positive"]).lt("created_at", alertCutoff);
