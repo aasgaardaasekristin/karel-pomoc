@@ -392,7 +392,7 @@ Proved denni krizove hodnoceni.`;
           assigned_to: "both",
           description: `Krize vyresena po ${dayNumber} dnech.\n\nDuvod: ${assessment.reasoning}\n\nSLEDUJTE:\n- Emocni stabilitu\n- Pripadne relapsy\n- Navrat rizikovych signalu\n- Monitoring do: ${monitoringUntil}`,
           priority: "high",
-          status: "not_started",
+          status: "pending",
           category: "crisis",
         });
       }
