@@ -26,6 +26,7 @@ import DidSwitchHistory from "./DidSwitchHistory";
 import PartQuickView from "./PartQuickView";
 import CrisisTimeline from "./CrisisTimeline";
 import DidTherapistProfiles from "./DidTherapistProfiles";
+import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
