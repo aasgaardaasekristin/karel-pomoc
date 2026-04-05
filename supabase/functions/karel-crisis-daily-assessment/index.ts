@@ -188,8 +188,53 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(5);
 
+      // 8b. Recent sessions (last 14 days)
+      let recentSessions: any[] = [];
+      try {
+        const { data } = await supabase
+          .from("did_part_sessions")
+          .select("*")
+          .eq("part_id", crisis.part_id || crisis.part_name)
+          .gte("session_date", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+          .order("session_date", { ascending: false });
+        recentSessions = data || [];
+      } catch { /* table may not exist */ }
+
+      // 8c. Crisis notes
+      let crisisNotes: any[] = [];
+      try {
+        const { data } = await supabase
+          .from("crisis_notes")
+          .select("*")
+          .eq("crisis_alert_id", crisis.id)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        crisisNotes = data || [];
+      } catch { /* table may not exist */ }
+
+      // 8d. Previous assessment text
+      let previousAssessmentText = "";
+      try {
+        const { data } = await supabase
+          .from("crisis_daily_assessments")
+          .select("part_interview_summary, karel_reasoning, karel_decision, created_at")
+          .eq("crisis_alert_id", crisis.id)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (data && data.length > 0) {
+          previousAssessmentText = `[${data[0].created_at}] decision=${data[0].karel_decision}: ${data[0].part_interview_summary || ""} | ${data[0].karel_reasoning || ""}`;
+        }
+      } catch { /* ok */ }
+
+      const daysActive = crisis.days_in_crisis || dayNumber;
+
       // 9. AI assessment
       const systemPrompt = `Jsi Karel, AI terapeut specializovany na DID. Provadis DENNI KRIZOVE HODNOCENI pro cast "${crisis.part_name}".
+
+Hodnotis den ${daysActive} krize. Predchozi hodnoceni bylo: ${previousAssessmentText || "zadne"}.
+Pokud probehla sezeni nebo existuji nove poznamky z krizove porady, MUSIS je reflektovat
+a popsat posun oproti predchodzimu dni. NEOPAKUJ identicky text — kazde hodnoceni musi
+zachytit aktualni stav, ne kopirovat vychozi krizovy popis.
 
 DIAGNOSTICKE NASTROJE:
 - Projektivni testy (kresba, nedokoncene vety, asociace)
@@ -238,9 +283,18 @@ Pokud posledni assessment je starsi nez 3 dny a neobsahuji zadne nove informace 
 explicitne zapis do pole 'karel_decision' hodnotu 'needs_new_data' a do 'reasoning' zapis:
 'Karel nema nove informace o stavu casti za poslednich X dni. Zadam terapeutky o aktualizaci.'`;
 
+      const sessionsContext = recentSessions.length > 0
+        ? recentSessions.map((s: any) => `[${s.session_date}] vedl: ${s.therapist_name || "neuvedeno"}, poznamky: ${(s.notes || "zadne").slice(0, 300)}`).join("\n")
+        : "Zadna sezeni za poslednich 14 dni";
+
+      const crisisNotesContext = crisisNotes.length > 0
+        ? crisisNotes.map((n: any) => `[${n.created_at}] ${(n.note_text || n.content || "").slice(0, 300)}`).join("\n")
+        : "Zadne krizove poznamky";
+
       const userMessage = `KRIZE: ${crisis.summary || "bez popisu"}
 SEVERITY: ${crisis.severity}
 DEN KRIZE: ${dayNumber}
+DNY AKTIVNI: ${daysActive}
 CAST: ${crisis.part_name}
 
 KARTOTEKA: ${kartoteka ? JSON.stringify(kartoteka, null, 2).slice(0, 2000) : "Neni k dispozici"}
@@ -249,6 +303,15 @@ REGISTRY: ${registry ? JSON.stringify({ role: registry.role_in_system, strengths
 
 PREDCHOZI HODNOCENI:
 ${prevData?.length ? prevData.map((p: any) => `Den ${p.day_number}: risk=${p.karel_risk_assessment}, decision=${p.karel_decision}, valence=${p.part_emotional_state}`).join("\n") : "Zadna"}
+
+SEZENI (poslednich 14 dni):
+${sessionsContext}
+
+KRIZOVE POZNAMKY:
+${crisisNotesContext}
+
+PREDCHOZI ASSESSMENT TEXT:
+${previousAssessmentText || "Zadny"}
 
 METRIKY: ${recentMetrics ? JSON.stringify(recentMetrics, null, 2).slice(0, 1500) : "Zadne"}
 
@@ -263,6 +326,51 @@ Proved denni krizove hodnoceni.`;
       const fullSystemPrompt = SYSTEM_RULES + "\n\n" + systemPrompt;
       const assessment = await callAI(fullSystemPrompt, userMessage, LOVABLE_API_KEY);
 
+      // 9b. OPRAVA 3 — Detect recent session and enrich assessment
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const recentSession = recentSessions.find((s: any) => s.session_date > sevenDaysAgo);
+      let sessionPrefix = "";
+
+      if (recentSession) {
+        const sessionDate = recentSession.session_date?.slice(0, 10) || "neuvedeno";
+        const therapistName = recentSession.therapist_name || "neuvedeno";
+        sessionPrefix = `✅ Sezení proběhlo ${sessionDate} (vedl: ${therapistName}). `;
+
+        // Create follow-up task
+        const dueDateStr = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        try {
+          await supabase.from("did_therapist_tasks").insert({
+            task: `Navázat na sezení s ${crisis.part_name} ze dne ${sessionDate} — naplánovat další krok`,
+            assigned_to: therapistName === "neuvedeno" ? "both" : therapistName,
+            description: `Sezení proběhlo ${sessionDate}. Naplánujte další krok v krizovém plánu.`,
+            priority: "high",
+            status: "pending",
+            category: "crisis",
+            due_date: dueDateStr,
+          });
+        } catch (e) {
+          console.error("[CRISIS-ASSESSMENT] Failed to create follow-up task:", e);
+        }
+
+        // If session has no notes, create a pending question
+        if (!recentSession.notes || recentSession.notes.trim() === "") {
+          try {
+            await supabase.from("did_pending_questions").insert({
+              directed_to: "both",
+              question: `Proběhlo sezení s ${crisis.part_name} dne ${sessionDate}. Jak dopadlo? Co je dalším krokem?`,
+              expires_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+              part_name: crisis.part_name,
+              source: "crisis_assessment",
+            });
+          } catch (e) {
+            console.error("[CRISIS-ASSESSMENT] Failed to create pending question:", e);
+          }
+        }
+      }
+
+      // Prepend session info to assessment summary
+      const finalSummary = sessionPrefix + (assessment.part_interview_summary || "");
+
       // 10. Save assessment
       const { data: savedAssessment } = await supabase
         .from("crisis_daily_assessments")
@@ -271,7 +379,7 @@ Proved denni krizove hodnoceni.`;
           assessment_date: new Date().toISOString().slice(0, 10),
           day_number: dayNumber,
           part_name: crisis.part_name,
-          part_interview_summary: assessment.part_interview_summary,
+          part_interview_summary: finalSummary,
           part_emotional_state: assessment.part_emotional_state,
           part_cooperation_level: assessment.part_cooperation_level,
           part_risk_indicators: assessment.risk_indicators || [],
