@@ -188,28 +188,31 @@ Deno.serve(async (req) => {
         .order("created_at", { ascending: false })
         .limit(5);
 
-      // 8b. Recent sessions (last 14 days)
+      // 8b. Recent sessions (last 21 days)
       let recentSessions: any[] = [];
       try {
         const { data } = await supabase
           .from("did_part_sessions")
-          .select("*")
-          .eq("part_id", crisis.part_id || crisis.part_name)
-          .gte("session_date", new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+          .select("session_date, therapist, notes, ai_analysis")
+          .eq("part_name", crisis.part_name)
+          .gte("session_date", new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString())
           .order("session_date", { ascending: false });
         recentSessions = data || [];
       } catch { /* table may not exist */ }
 
-      // 8c. Crisis notes
-      let crisisNotes: any[] = [];
+      // 8c. Crisis meeting from did_meetings
+      let crisisMeetingMessages: any[] = [];
       try {
-        const { data } = await supabase
-          .from("crisis_notes")
-          .select("*")
-          .eq("crisis_alert_id", crisis.id)
+        const { data: meetingData } = await supabase
+          .from("did_meetings")
+          .select("id, topic, messages, outcome_summary, finalized_at, status")
+          .ilike("topic", `%${crisis.part_name}%`)
           .order("created_at", { ascending: false })
-          .limit(5);
-        crisisNotes = data || [];
+          .limit(1);
+        if (meetingData && meetingData.length > 0) {
+          const msgs = Array.isArray(meetingData[0].messages) ? meetingData[0].messages : [];
+          crisisMeetingMessages = msgs.slice(-10);
+        }
       } catch { /* table may not exist */ }
 
       // 8d. Previous assessment text
@@ -228,13 +231,18 @@ Deno.serve(async (req) => {
 
       const daysActive = crisis.days_in_crisis || dayNumber;
 
-      // 9. AI assessment
-      const systemPrompt = `Jsi Karel, AI terapeut specializovany na DID. Provadis DENNI KRIZOVE HODNOCENI pro cast "${crisis.part_name}".
+      // 9. Build context strings
+      const recentSessionsContext = recentSessions.length > 0
+        ? recentSessions.map((s: any) => `[${s.session_date}] vedl: ${s.therapist || "neuvedeno"}, poznamky: ${(s.notes || "zadne").slice(0, 300)}`).join("\n")
+        : "Zadne sezeni zaznamenano";
 
-Hodnotis den ${daysActive} krize. Predchozi hodnoceni bylo: ${previousAssessmentText || "zadne"}.
-Pokud probehla sezeni nebo existuji nove poznamky z krizove porady, MUSIS je reflektovat
-a popsat posun oproti predchodzimu dni. NEOPAKUJ identicky text — kazde hodnoceni musi
-zachytit aktualni stav, ne kopirovat vychozi krizovy popis.
+      const crisisMeetingContext = crisisMeetingMessages.length > 0
+        ? crisisMeetingMessages.map((m: any) => `${m.author || m.role || "?"}: ${(m.text || m.content || "").slice(0, 300)}`).join("\n")
+        : "Zadna porada neprobehla nebo nema zpravy";
+
+      // 9b. AI assessment
+      const systemPrompt = `Jsi Karel, vedouci terapeutickeho tymu. Hodnotis krizovy stav DID casti na zaklade AKTUALNICH informaci — ze sezeni, z krizove porady, z novych zprav.
+NIKDY neopakuj text z predchoziho hodnoceni. Kazdy den musi hodnoceni reflektovat co se skutecne stalo nebo nezmenilo a PROC. Pokud nemas nove informace, explicitne napis 'Bez novych informaci od tymu za poslednich X dni.'
 
 DIAGNOSTICKE NASTROJE:
 - Projektivni testy (kresba, nedokoncene vety, asociace)
@@ -273,45 +281,33 @@ ODPOVEZ PRESNE V TOMTO JSON FORMATU:
   "interview_type": "diagnostic|projective_test|stabilization|check_in",
   "interview_reason": "proc Karel potrebuje rozhovor (1 veta)",
   "therapist_interview_needed": true/false,
-  "therapist_questions_specific": ["konkretni otazka pro terapeutku - napr. 'Hanko, vsimla sis u Arthura dnes zmeny nalady?'"],
+  "therapist_questions_specific": ["konkretni otazka pro terapeutku"],
   "next_day_plan": {"planned_session_type": "...", "planned_tests": [], "therapist_tasks": [], "focus_areas": [], "intervention_strategy": "..."},
   "conversation_starters": ["otazka pro zahajeni"]
 }
 
 DULEZITE PRAVIDLO:
-Pokud posledni assessment je starsi nez 3 dny a neobsahuji zadne nove informace z vlaken,
-explicitne zapis do pole 'karel_decision' hodnotu 'needs_new_data' a do 'reasoning' zapis:
+Pokud posledni assessment je starsi nez 3 dny a neobsahuje zadne nove informace z vlaken,
+explicitne zapis do pole 'decision' hodnotu 'needs_more_data' a do 'reasoning' zapis:
 'Karel nema nove informace o stavu casti za poslednich X dni. Zadam terapeutky o aktualizaci.'`;
 
-      const sessionsContext = recentSessions.length > 0
-        ? recentSessions.map((s: any) => `[${s.session_date}] vedl: ${s.therapist_name || "neuvedeno"}, poznamky: ${(s.notes || "zadne").slice(0, 300)}`).join("\n")
-        : "Zadna sezeni za poslednich 14 dni";
+      const userMessage = `Hodnotis den ${daysActive} krizoveho stavu casti ${crisis.part_name}.
 
-      const crisisNotesContext = crisisNotes.length > 0
-        ? crisisNotes.map((n: any) => `[${n.created_at}] ${(n.note_text || n.content || "").slice(0, 300)}`).join("\n")
-        : "Zadne krizove poznamky";
+PREDCHOZI HODNOCENI (den ${daysActive - 1}):
+${previousAssessmentText || "Neni k dispozici"}
 
-      const userMessage = `KRIZE: ${crisis.summary || "bez popisu"}
-SEVERITY: ${crisis.severity}
-DEN KRIZE: ${dayNumber}
-DNY AKTIVNI: ${daysActive}
-CAST: ${crisis.part_name}
+ZPRAVY Z KRIZOVE PORADY (poslednich 10):
+${crisisMeetingContext}
+
+SEZENI ZA POSLEDNICH 21 DNI:
+${recentSessionsContext}
 
 KARTOTEKA: ${kartoteka ? JSON.stringify(kartoteka, null, 2).slice(0, 2000) : "Neni k dispozici"}
 
 REGISTRY: ${registry ? JSON.stringify({ role: registry.role_in_system, strengths: registry.known_strengths, triggers: registry.known_triggers }, null, 2) : "Neni k dispozici"}
 
-PREDCHOZI HODNOCENI:
+PREDCHOZI HODNOCENI (trendy):
 ${prevData?.length ? prevData.map((p: any) => `Den ${p.day_number}: risk=${p.karel_risk_assessment}, decision=${p.karel_decision}, valence=${p.part_emotional_state}`).join("\n") : "Zadna"}
-
-SEZENI (poslednich 14 dni):
-${sessionsContext}
-
-KRIZOVE POZNAMKY:
-${crisisNotesContext}
-
-PREDCHOZI ASSESSMENT TEXT:
-${previousAssessmentText || "Zadny"}
 
 METRIKY: ${recentMetrics ? JSON.stringify(recentMetrics, null, 2).slice(0, 1500) : "Zadne"}
 
@@ -321,7 +317,12 @@ ${recentMessages.length > 0 ? recentMessages.map((m: any) => `[${m.role}]: ${(ty
 POZNAMKY TERAPEUTEK:
 ${therapistNotes?.length ? therapistNotes.map((n: any) => `[${n.note_type}] ${(n.note_text || "").slice(0, 200)}`).join("\n") : "Zadne"}
 
-Proved denni krizove hodnoceni.`;
+Na zaklade techto informaci:
+1. Popis AKTUALNI stav casti — co se od minuleho hodnoceni zmenilo nebo nezmenilo
+2. Pokud probehlo sezeni, vyslovne ho zmin a popis posun
+3. Pokud porada obsahuje nove informace (od Hanicky nebo Kati), zapracuj je
+4. Doporuceni na pristich 24-48 hodin — konkretni, ne obecne
+5. Navrhni zda krize pokracuje, eskaluje nebo lze uvazovat o deeskalaci`;
 
       const fullSystemPrompt = SYSTEM_RULES + "\n\n" + systemPrompt;
       const assessment = await callAI(fullSystemPrompt, userMessage, LOVABLE_API_KEY);
@@ -333,21 +334,35 @@ Proved denni krizove hodnoceni.`;
 
       if (recentSession) {
         const sessionDate = recentSession.session_date?.slice(0, 10) || "neuvedeno";
-        const therapistName = recentSession.therapist_name || "neuvedeno";
+        const therapistName = recentSession.therapist || "neuvedeno";
         sessionPrefix = `✅ Sezení proběhlo ${sessionDate} (vedl: ${therapistName}). `;
 
-        // Create follow-up task
+        // Create follow-up task — but only if not already created in last 7 days
         const dueDateStr = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         try {
-          await supabase.from("did_therapist_tasks").insert({
-            task: `Navázat na sezení s ${crisis.part_name} ze dne ${sessionDate} — naplánovat další krok`,
-            assigned_to: therapistName === "neuvedeno" ? "both" : therapistName,
-            description: `Sezení proběhlo ${sessionDate}. Naplánujte další krok v krizovém plánu.`,
-            priority: "high",
-            status: "pending",
-            category: "crisis",
-            due_date: dueDateStr,
-          });
+          const sevenDaysAgoDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+          const { data: existingTask } = await supabase
+            .from("did_therapist_tasks")
+            .select("id")
+            .ilike("task", "%Navázat na sezení%")
+            .eq("crisis_alert_id", crisis.id)
+            .gte("created_at", sevenDaysAgoDate)
+            .limit(1);
+
+          if (!existingTask || existingTask.length === 0) {
+            await supabase.from("did_therapist_tasks").insert({
+              task: `Navázat na sezení s ${crisis.part_name} ze dne ${sessionDate} — co je dalším krokem v krizovém plánu?`,
+              assigned_to: therapistName === "neuvedeno" ? "both" : therapistName,
+              description: `Sezení proběhlo ${sessionDate}. Naplánujte další krok v krizovém plánu.`,
+              priority: "high",
+              status: "pending",
+              category: "crisis",
+              due_date: dueDateStr,
+              crisis_alert_id: crisis.id,
+            });
+          } else {
+            console.log(`[CRISIS-ASSESSMENT] Follow-up task already exists for crisis ${crisis.id}`);
+          }
         } catch (e) {
           console.error("[CRISIS-ASSESSMENT] Failed to create follow-up task:", e);
         }
