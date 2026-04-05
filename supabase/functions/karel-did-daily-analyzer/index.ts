@@ -121,9 +121,14 @@ function extractJSON(text: string): any {
   const first = cleaned.indexOf("{");
   const last = cleaned.lastIndexOf("}");
   if (first >= 0 && last > first) { try { return JSON.parse(cleaned.slice(first, last + 1)); } catch {} }
-  // Log first 500 chars for debugging
-  console.error(`[daily-analyzer] Cannot parse JSON. First 500 chars: ${cleaned.slice(0, 500)}`);
-  throw new Error("Cannot extract JSON from AI response");
+  // Fallback: try to parse the first valid JSON object
+  try {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+  } catch {}
+  // All attempts failed — return empty fallback instead of crashing
+  console.error(`[DAILY-ANALYZER] JSON parse failed, using empty fallback. First 500 chars: ${cleaned.slice(0, 500)}`);
+  return {};
 }
 
 serve(async (req) => {
