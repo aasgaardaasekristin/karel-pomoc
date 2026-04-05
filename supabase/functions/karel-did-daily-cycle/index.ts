@@ -6963,6 +6963,36 @@ ${p.raw_analysis || "N/A"}`;
       console.warn("[daily-cycle] Failed to trigger karel-daily-refresh (non-fatal):", e);
     }
 
+    // Follow-through engine
+    try {
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-follow-through`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+        },
+        body: JSON.stringify({ triggered_by: "daily_cycle" }),
+      });
+      console.log("[FOLLOW-THROUGH] Called");
+    } catch (e) {
+      console.warn("[FOLLOW-THROUGH] Failed (non-fatal):", e);
+    }
+
+    // Crisis research
+    try {
+      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-research`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
+        },
+        body: JSON.stringify({ triggered_by: "daily_cycle" }),
+      });
+      console.log("[CRISIS-RESEARCH] Called");
+    } catch (e) {
+      console.warn("[CRISIS-RESEARCH] Failed (non-fatal):", e);
+    }
+
     return new Response(JSON.stringify({
       success: !hadCardUpdateErrors,
       threadsProcessed: threads.length,
