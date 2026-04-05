@@ -2880,6 +2880,104 @@ export type Database = {
           },
         ]
       }
+      karel_commitments: {
+        Row: {
+          commitment_text: string
+          committed_by: string
+          committed_to: string | null
+          created_at: string | null
+          due_date: string | null
+          follow_up_sent: boolean | null
+          follow_up_sent_at: string | null
+          fulfilled_at: string | null
+          fulfillment_note: string | null
+          id: string
+          source_id: string | null
+          source_type: string | null
+          status: string | null
+          subject_id: string | null
+          subject_type: string | null
+        }
+        Insert: {
+          commitment_text: string
+          committed_by: string
+          committed_to?: string | null
+          created_at?: string | null
+          due_date?: string | null
+          follow_up_sent?: boolean | null
+          follow_up_sent_at?: string | null
+          fulfilled_at?: string | null
+          fulfillment_note?: string | null
+          id?: string
+          source_id?: string | null
+          source_type?: string | null
+          status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Update: {
+          commitment_text?: string
+          committed_by?: string
+          committed_to?: string | null
+          created_at?: string | null
+          due_date?: string | null
+          follow_up_sent?: boolean | null
+          follow_up_sent_at?: string | null
+          fulfilled_at?: string | null
+          fulfillment_note?: string | null
+          id?: string
+          source_id?: string | null
+          source_type?: string | null
+          status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Relationships: []
+      }
+      karel_crisis_research: {
+        Row: {
+          citations: Json | null
+          created_at: string | null
+          crisis_alert_id: string | null
+          days_active_at_research: number | null
+          id: string
+          model_used: string | null
+          part_name: string | null
+          query_used: string | null
+          research_findings: string | null
+        }
+        Insert: {
+          citations?: Json | null
+          created_at?: string | null
+          crisis_alert_id?: string | null
+          days_active_at_research?: number | null
+          id?: string
+          model_used?: string | null
+          part_name?: string | null
+          query_used?: string | null
+          research_findings?: string | null
+        }
+        Update: {
+          citations?: Json | null
+          created_at?: string | null
+          crisis_alert_id?: string | null
+          days_active_at_research?: number | null
+          id?: string
+          model_used?: string | null
+          part_name?: string | null
+          query_used?: string | null
+          research_findings?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "karel_crisis_research_crisis_alert_id_fkey"
+            columns: ["crisis_alert_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       karel_episodes: {
         Row: {
           actions_taken: string[]
