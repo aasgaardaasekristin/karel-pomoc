@@ -2562,7 +2562,7 @@ serve(async (req) => {
     // Load pending therapist tasks for accountability analysis
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
       .select("id, task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note, escalation_level, escalated_at, last_escalation_email_at")
-      .neq("status", "done")
+      .in("status", ["pending", "active", "in_progress", "not_started"])
       .order("created_at", { ascending: true });
 
     // ═══ HEURISTICKÁ KONTROLA SPLNĚNÍ ÚKOLŮ ═══
