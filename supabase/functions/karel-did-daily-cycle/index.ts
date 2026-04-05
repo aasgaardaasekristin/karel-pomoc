@@ -5057,7 +5057,7 @@ Vrať POUZE validní JSON (bez markdown):
     try {
       const { data: staleFeedbackTasks } = await sb.from("did_therapist_tasks")
         .select("id, task, note, assigned_to, status_hanka, status_kata, created_at, priority, category, escalation_level")
-        .neq("status", "done");
+        .in("status", ["pending", "active", "in_progress", "not_started"]);
 
       if (staleFeedbackTasks && staleFeedbackTasks.length > 0) {
         const now = Date.now();
