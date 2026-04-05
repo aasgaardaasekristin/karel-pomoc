@@ -487,6 +487,17 @@ ${formatAnalysisTeam(analysis)}`;
       pendingDidTasks = dtData || [];
     } catch (e) { console.warn("[daily-email] did_tasks load error:", e); }
 
+    // ═══ LOAD PENDING QUESTIONS FOR EMAIL ═══
+    let pendingQuestions: any[] = [];
+    try {
+      const { data: pqData } = await sb.from("did_pending_questions")
+        .select("*")
+        .eq("status", "pending")
+        .lt("expires_at", new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString())
+        .order("created_at", { ascending: true });
+      pendingQuestions = pqData || [];
+    } catch (e) { console.warn("[daily-email] did_pending_questions load error:", e); }
+
     const isMonday = new Date().getDay() === 1;
 
     const generateEmail = async (recipient: "hanka" | "kata"): Promise<string> => {
