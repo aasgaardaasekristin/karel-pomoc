@@ -150,7 +150,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
               </p>
 
               {q.answer ? (
-                <div className="flex items-start gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 rounded p-2">
+                <div className="flex items-start gap-1.5 text-xs text-primary bg-primary/10 rounded p-2">
                   <CheckCircle2 size={12} className="mt-0.5 shrink-0" />
                   <span>{q.answer}</span>
                 </div>

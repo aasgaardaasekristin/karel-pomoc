@@ -822,6 +822,20 @@ Tón: přátelský, profesionální, konkrétní. NIKDY nezmiňuj profilaci.`);
         userContent += didTasksBlock + "\n\n";
       }
 
+      // Include pending questions for this therapist
+      const myQuestions = pendingQuestions.filter((q: any) =>
+        q.directed_to === recipient || q.directed_to === "both"
+      );
+      if (myQuestions.length > 0) {
+        userContent += `\n═══ KAREL SE PTÁ (pending questions) ═══\n`;
+        userContent += `DŮLEŽITÉ: Zahrň tyto otázky do emailu v sekci "❓ KAREL SE PTÁ".\n`;
+        userContent += myQuestions.map((q: any) => {
+          const ctx = q.subject_type ? `[${q.subject_type}]` : "";
+          return `  • ${ctx} ${q.question}`;
+        }).join("\n");
+        userContent += "\n\n";
+      }
+
       // Overdue tasks highlight
       if (overdueTasks.length > 0) {
         userContent += `⚠️ ZPOŽDĚNÉ ÚKOLY (${overdueTasks.length}):\n`;
