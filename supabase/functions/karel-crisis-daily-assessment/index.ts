@@ -407,6 +407,121 @@ Na zaklade techto informaci:
         .select()
         .single();
 
+      // 10b. Write crisis journal entry
+      try {
+        const hankaMessages = crisisMeetingMessages.filter((m: any) =>
+          (m.author || m.role || "").toLowerCase().includes("hanka") ||
+          (m.author || m.role || "").toLowerCase().includes("hanička")
+        );
+        const kataMessages = crisisMeetingMessages.filter((m: any) =>
+          (m.author || m.role || "").toLowerCase().includes("kát") ||
+          (m.author || m.role || "").toLowerCase().includes("kata")
+        );
+
+        await supabase.from("crisis_journal").insert({
+          crisis_alert_id: crisis.id,
+          part_id: crisis.part_name,
+          day_number: dayNumber,
+          date: today,
+          karel_action: assessment.interview_request
+            ? `Karel žádá ${assessment.interview_type} rozhovor: ${assessment.interview_reason}`
+            : "Karel nevedl přímý rozhovor — pouze analýza dostupných dat",
+          session_summary: recentSessions.length > 0
+            ? `Sezení: ${recentSessions[0].session_date} (${recentSessions[0].therapist || "neuvedeno"}). ${recentSessions[0].notes || ""}`.slice(0, 500)
+            : "Žádné sezení v posledních 21 dnech",
+          what_worked: (assessment.protective_factors || []).join(", ") || "",
+          what_failed: (assessment.risk_indicators || []).join(", ") || "",
+          hanka_cooperation: hankaMessages.length > 0
+            ? `${hankaMessages.length} příspěvků v poradě. Poslední: ${(hankaMessages[hankaMessages.length - 1].text || hankaMessages[hankaMessages.length - 1].content || "").slice(0, 200)}`
+            : "Žádný příspěvek v krizové poradě",
+          kata_cooperation: kataMessages.length > 0
+            ? `${kataMessages.length} příspěvků v poradě. Poslední: ${(kataMessages[kataMessages.length - 1].text || kataMessages[kataMessages.length - 1].content || "").slice(0, 200)}`
+            : "Žádný příspěvek v krizové poradě",
+          crisis_trend: (() => {
+            const d = assessment.decision;
+            if (d === "crisis_resolved") return "resolving";
+            if (d === "crisis_improving") return "improving";
+            if (d === "needs_more_data") return "stable";
+            return "stable";
+          })(),
+          karel_notes: (assessment.reasoning || "").slice(0, 500),
+        });
+        console.log(`[CRISIS-JOURNAL] Written for crisis ${crisis.id} day ${dayNumber}`);
+      } catch (journalErr) {
+        console.error("[CRISIS-JOURNAL] Failed:", journalErr);
+      }
+
+      // 10c. Crisis closure checklist
+      try {
+        const { data: existingChecklist } = await supabase
+          .from("crisis_closure_checklist")
+          .select("*")
+          .eq("crisis_alert_id", crisis.id)
+          .maybeSingle();
+
+        const { data: recentJournal } = await supabase
+          .from("crisis_journal")
+          .select("crisis_trend, date")
+          .eq("crisis_alert_id", crisis.id)
+          .order("date", { ascending: false })
+          .limit(3);
+
+        const stableDays = (recentJournal || []).filter(
+          (j: any) => j.crisis_trend === "improving" || j.crisis_trend === "resolving"
+        ).length;
+
+        const noRiskSignals = !assessment.risk_indicators?.length ||
+          assessment.risk_assessment === "low" ||
+          assessment.risk_assessment === "minimal";
+
+        const closureRec = assessment.decision === "crisis_resolved"
+          ? "Karel doporučuje uzavření — čeká na souhlas terapeutek"
+          : null;
+
+        if (!existingChecklist) {
+          await supabase.from("crisis_closure_checklist").insert({
+            crisis_alert_id: crisis.id,
+            emotional_stable_days: stableDays,
+            no_risk_signals: noRiskSignals,
+            karel_closure_recommendation: closureRec,
+          });
+        } else {
+          await supabase.from("crisis_closure_checklist")
+            .update({
+              emotional_stable_days: stableDays,
+              no_risk_signals: noRiskSignals,
+              karel_closure_recommendation: closureRec || existingChecklist.karel_closure_recommendation,
+            })
+            .eq("crisis_alert_id", crisis.id);
+        }
+
+        // If Karel recommends closure → pending question for both therapists
+        if (assessment.decision === "crisis_resolved" || assessment.decision === "crisis_improving") {
+          const { data: recentQuestion } = await supabase
+            .from("did_pending_questions")
+            .select("id")
+            .eq("subject_id", crisis.id)
+            .eq("subject_type", "crisis_closure")
+            .gte("created_at", new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString())
+            .limit(1);
+
+          if (!recentQuestion?.length) {
+            await supabase.from("did_pending_questions").insert({
+              question: `Karel hodnotí krizi ${crisis.part_name} (den ${daysActive}) jako "${assessment.decision}". Rozhodnutí: ${(assessment.reasoning || "").slice(0, 200)}. Souhlasíte s přechodem k uzavíracímu protokolu?`,
+              subject_type: "crisis_closure",
+              subject_id: crisis.id,
+              directed_to: "both",
+              status: "pending",
+              expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+            });
+          }
+        }
+
+        console.log(`[CRISIS-CLOSURE] Checklist updated for crisis ${crisis.id} (stableDays=${stableDays})`);
+      } catch (closureErr) {
+        console.error("[CRISIS-CLOSURE] Failed:", closureErr);
+      }
+
       // 11. Create therapist tasks
       const therapistTasks: any[] = [];
 
