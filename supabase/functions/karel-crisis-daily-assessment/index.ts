@@ -107,8 +107,28 @@ Deno.serve(async (req) => {
     }
 
     const results = [];
+    const today = new Date().toISOString().slice(0, 10);
 
     for (const crisis of crises) {
+      // 1b. Check if assessment already exists for today
+      const { data: existingToday } = await supabase
+        .from("crisis_daily_assessments")
+        .select("id")
+        .eq("crisis_alert_id", crisis.id)
+        .eq("assessment_date", today)
+        .limit(1);
+
+      if (existingToday && existingToday.length > 0) {
+        console.log(`[CRISIS-ASSESSMENT] already done today for ${crisis.id}`);
+        results.push({
+          crisis_id: crisis.id,
+          part_name: crisis.part_name,
+          skipped: true,
+          reason: "already_assessed_today",
+        });
+        continue;
+      }
+
       // 2. Count previous assessments
       const { count: prevCount } = await supabase
         .from("crisis_daily_assessments")
