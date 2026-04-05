@@ -141,7 +141,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                   )}
                 </div>
                 {isExpired && (
-                  <KarelBadge variant="muted" size="sm">Expirováno</KarelBadge>
+                  <KarelBadge variant="default" size="sm">Expirováno</KarelBadge>
                 )}
               </div>
 
