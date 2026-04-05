@@ -1084,12 +1084,19 @@ Deno.serve(async (req) => {
         }
 
         const threadDigests: string[] = [];
+        // HANA_PERSONAL_FILTER: osobní data Hanky jdou pouze do PAMET_KAREL, nikdy do DID pipeline
+        // Hana konverzace s doménou HANA (osobní) se do threadDigests přidají POUZE s tagem
+        // [HANA_PERSONAL] — AI prompt je instruován tato data směřovat výhradně do pamet_karel
+        // a NIKDY do kartoteka_did, did_daily_context ani centrum dashboard
         let totalChars = 0;
         for (const conv of (hanaRes.data || [])) {
           if (totalChars >= MAX_TOTAL) break;
           const msgs = Array.isArray(conv.messages) ? conv.messages : [];
           if (msgs.length < 1) continue;
-          const d = `[HANA|${conv.last_activity_at?.slice(0,16)}|${conv.current_domain}|${conv.current_hana_state}]\n${buildDigest(msgs)}`;
+          const domain = (conv.current_domain || "HANA").toUpperCase();
+          const isPersonal = domain === "HANA" || domain === "OSOBNI" || domain === "PERSONAL";
+          const tag = isPersonal ? "HANA_PERSONAL" : "HANA_DID";
+          const d = `[${tag}|${conv.last_activity_at?.slice(0,16)}|${conv.current_domain}|${conv.current_hana_state}]\n${buildDigest(msgs)}`;
           threadDigests.push(d); totalChars += d.length;
         }
         for (const t of (didThreadsRes.data || [])) {
