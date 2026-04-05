@@ -785,6 +785,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         </KarelCard>
       </section>
 
+      <ErrorBoundary fallbackTitle="Otázky Karla selhaly">
+        <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
+
       <ErrorBoundary fallbackTitle="Dohody selhaly">
         <KarelCard variant="default" padding="md">
           <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(p => p + 1)} />
