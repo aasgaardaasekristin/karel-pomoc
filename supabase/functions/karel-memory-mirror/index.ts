@@ -1326,6 +1326,7 @@ KRITICKÉ PRAVIDLO DOMÉN:
 - pamet_karel = VÝHRADNĚ profilace TERAPEUTEK (Hanka, Káťa). Vzorce chování, motivace, silné/slabé stránky, komunikační strategie.
 - kartoteka_did = DID ČÁSTI (Arthur, Tundrup atd.). Klinické záznamy, triggery, emoce.
 - NIKDY nevkládej DID části do pamet_karel.
+- HANA_PERSONAL: Data z vláken [HANA_PERSONAL] NESMĚJÍ vstoupit do kartoteka_did, centrum_updates ani part_updates. Smějí jít POUZE do pamet_karel.
 
 ANALYTICKÉ INSTRUKCE:
 - Každý zápis do Dashboard MUSÍ obsahovat: CO → PROČ → AKCE → KDO → DOKDY
