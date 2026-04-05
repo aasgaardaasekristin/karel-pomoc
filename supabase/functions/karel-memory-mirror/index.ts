@@ -1248,6 +1248,7 @@ KRITICKÉ PRAVIDLO DOMÉN:
 - PAMET_KAREL = VÝHRADNĚ profilace TERAPEUTEK (Hanka, Káťa) — osobnostní analýza, motivace, silné/slabé stránky, spolehlivost, emoční vzorce, komunikační preference.
 - KARTOTEKA_DID = data o DID ČÁSTECH (Arthur, Tundrup atd.) — klinické záznamy, triggery, emoce, sezení.
 - NIKDY nevkládej data o DID částech do PAMET_KAREL.
+- HANA_PERSONAL DATA: Vlákna označená [HANA_PERSONAL] obsahují OSOBNÍ/INTIMNÍ informace Hanky. Tato data NESMĚJÍ jít do kartoteka_did, centrum_updates (dashboard/operativní plán) ani do part_updates. Smějí jít POUZE do pamet_karel (profilace terapeutky). Pokud [HANA_PERSONAL] vlákno zmiňuje DID část, IGNORUJ tento kontext pro kartotéku.
 - Karel tajně buduje dynamický profil každé terapeutky pro personalizaci vedení.
 
 DEDUKČNÍ ŘETĚZCE:
