@@ -2532,18 +2532,14 @@ serve(async (req) => {
     const rawHanaConversations = hanaConvRows ?? [];
     // HANA_PERSONAL_FILTER: osobní data Hanky jdou pouze do PAMET_KAREL, nikdy do DID pipeline
     // Propustit pouze konverzace obsahující DID-relevantní obsah
-    const recentHanaConversations = rawHanaConversations.filter((conv: any) => {
-      const messages = Array.isArray(conv.messages) ? conv.messages : [];
-      const domain = (conv.current_domain || "").toUpperCase();
-      // Allow if domain is explicitly DID or PRACE
-      if (domain === "DID" || domain === "PRACE") return true;
-      // Allow if any message contains DID/PRACE markers
-      const hasDIDContent = messages.some((m: any) =>
-        m?.domain === "DID" || m?.domain === "PRACE" ||
-        (typeof m?.content === "string" && (m.content.includes("[DID]") || m.content.includes("[PRACE]")))
-      );
-      return hasDIDContent;
-    });
+    const recentHanaConversations = rawHanaConversations
+      .map((conv: any) => {
+        const messages = (Array.isArray(conv.messages) ? conv.messages : [])
+          .filter((m: any) => m?.domain === "DID" || m?.domain === "PRACE" ||
+            (typeof m?.content === "string" && (m.content.includes("[DID]") || m.content.includes("[PRACE]"))));
+        return messages.length > 0 ? { ...conv, messages } : null;
+      })
+      .filter(Boolean);
     console.log(`[daily-cycle] Hana conversations (24h): raw=${rawHanaConversations.length}, DID-filtered=${recentHanaConversations.length}`);
 
     // ═══ ALL-MODE SCAN: Load client sessions, crisis briefs, client tasks from last 24h ═══
