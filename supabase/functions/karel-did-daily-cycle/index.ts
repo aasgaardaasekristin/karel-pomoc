@@ -4770,7 +4770,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
           // Get existing profiles
           const { data: existingProfiles } = await sb.from("did_part_profiles")
             .select("*")
-            .eq("user_id", userId);
+            .eq("user_id", resolvedUserId);
 
           const existingMap = new Map((existingProfiles || []).map((p: any) => [p.part_name, p]));
 
