@@ -531,6 +531,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       supabase
         .from("did_therapist_tasks")
         .select("*")
+        .in("status", ["pending", "active", "in_progress"] as any)
         .order("created_at", { ascending: false }),
       supabase
         .from("did_pending_drive_writes")
@@ -618,6 +619,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       detail_instruction: `Co udělat: ${taskText}\nDalší krok: Začni prvním konkrétním krokem a pak dopiš, kde se to hýbe a kde to vázne.`,
       assigned_to: newAssignee,
       category: newCategory,
+      source: "therapist_manual",
       source_agreement: sourceReference,
       status_hanka: "not_started",
       status_kata: "not_started",
