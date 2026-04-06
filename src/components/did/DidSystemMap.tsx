@@ -75,16 +75,24 @@ const formatDate = (isoStr: string | null) => {
 const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Props) => {
   const [expanded, setExpanded] = useState(true);
 
-  const sorted = useMemo(() => {
-    const order = { active: 0, warning: 1, sleeping: 2 };
-    return [...parts].sort((a, b) => order[a.status] - order[b.status]);
+  // Deduplicate parts case-insensitive, only active
+  const dedupedParts = useMemo(() => {
+    const uniqueParts = Array.from(
+      new Map(parts.map(p => [p.name.trim().toLowerCase(), p])).values()
+    ).filter(p => p.status === "active" || p.status === "warning");
+    return uniqueParts;
   }, [parts]);
 
+  const sorted = useMemo(() => {
+    const order = { active: 0, warning: 1, sleeping: 2 };
+    return [...dedupedParts].sort((a, b) => order[a.status] - order[b.status]);
+  }, [dedupedParts]);
+
   const stats = useMemo(() => ({
-    active: parts.filter(p => p.status === "active").length,
-    sleeping: parts.filter(p => p.status === "sleeping").length,
-    warning: parts.filter(p => p.status === "warning").length,
-  }), [parts]);
+    active: dedupedParts.filter(p => p.status === "active").length,
+    sleeping: 0,
+    warning: dedupedParts.filter(p => p.status === "warning").length,
+  }), [dedupedParts]);
 
   // Map part names to their active threads for quick lookup
   const threadByPart = useMemo(() => {
