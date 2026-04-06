@@ -7016,14 +7016,14 @@ ${p.raw_analysis || "N/A"}`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Daily cycle error:", error);
+    console.error('[DAILY-CYCLE FATAL ERROR]', error?.message || error, error?.stack || '');
 
     if (sb && cycleId) {
       try {
         await sb.from("did_update_cycles").update({
           status: "failed",
           completed_at: new Date().toISOString(),
-          report_summary: `ERROR: ${error instanceof Error ? error.message.slice(0, 1800) : "Unknown error"}`,
+          report_summary: `FATAL: ${(error?.message || String(error))}`.slice(0, 500),
         }).eq("id", cycleId);
       } catch (cycleUpdateErr) {
         console.error("[daily-cycle] Failed to mark cycle as failed:", cycleUpdateErr);
