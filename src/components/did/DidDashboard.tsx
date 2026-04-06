@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
+import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
