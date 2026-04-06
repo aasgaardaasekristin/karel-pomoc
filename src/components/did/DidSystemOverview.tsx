@@ -1,15 +1,66 @@
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Loader2, RefreshCw } from "lucide-react";
+import { FileText, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { syncOverviewTasksToBoard } from "@/lib/parseOverviewTasks";
-
 
 interface Props {
   refreshTrigger: number;
   onTasksSynced?: () => void;
 }
+
+/** Build a minimal summary directly from DB tables when no daily context exists */
+const buildEmergencyFallback = async (): Promise<string | null> => {
+  try {
+    const [crisisRes, tasksRes, questionsRes, sessionsRes] = await Promise.all([
+      supabase.from("crisis_alerts").select("id", { count: "exact", head: true }).neq("status", "resolved"),
+      supabase.from("did_therapist_tasks").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      supabase.from("did_pending_questions").select("id", { count: "exact", head: true }).in("status", ["pending", "sent"]),
+      supabase.from("did_daily_session_plans").select("id", { count: "exact", head: true }).eq("status", "planned"),
+    ]);
+
+    const crisis = crisisRes.count ?? 0;
+    const tasks = tasksRes.count ?? 0;
+    const questions = questionsRes.count ?? 0;
+    const sessions = sessionsRes.count ?? 0;
+
+    return `Karlův přehled (bez denní analýzy):\n🔴 Aktivní krize: ${crisis} | 📝 Úkoly: ${tasks} | ❓ Otázky: ${questions} | 🎯 Sezení: ${sessions}`;
+  } catch (e) {
+    console.warn("Emergency fallback query failed:", e);
+    return null;
+  }
+};
+
+/** Load the latest record from did_daily_context */
+const loadLatestContext = async () => {
+  const { data } = await supabase
+    .from("did_daily_context")
+    .select("context_json, analysis_json, context_date")
+    .order("context_date", { ascending: false })
+    .limit(1);
+  return data?.[0] ?? null;
+};
+
+/** Extract display text from a context record */
+const extractOverviewText = (ctx: { analysis_json: any; context_json: any }): string | null => {
+  const analysis = ctx.analysis_json as any;
+  if (analysis?.overview) return analysis.overview;
+  if (analysis?.briefing) return analysis.briefing;
+
+  // Try to build a brief summary from context_json
+  const cj = ctx.context_json as any;
+  if (cj) {
+    const parts: string[] = [];
+    if (cj.crisis_alerts?.length) parts.push(`🔴 Krize: ${cj.crisis_alerts.length}`);
+    if (cj.active_parts?.length) parts.push(`👥 Aktivní části: ${cj.active_parts.length}`);
+    if (cj.pending_tasks?.length) parts.push(`📝 Úkoly: ${cj.pending_tasks.length}`);
+    if (parts.length) return parts.join(" | ");
+  }
+
+  return null;
+};
 
 const parseOverviewStream = async (response: Response): Promise<string> => {
   if (!response.body) {
@@ -54,101 +105,160 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
   const [overview, setOverview] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
+  const [forcingAnalysis, setForcingAnalysis] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  const loadOverview = useCallback(async (manual = false) => {
-    if (manual) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+  const today = new Date().toISOString().slice(0, 10);
 
+  /** QUICK REFRESH — loads from did_daily_context only, no edge function calls */
+  const quickRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const ctx = await loadLatestContext();
+      if (ctx) {
+        const text = extractOverviewText(ctx);
+        if (text) {
+          setOverview(text);
+          setLastUpdated(ctx.context_date !== today ? `Poslední aktualizace: ${new Date(ctx.context_date + "T12:00:00").toLocaleDateString("cs")}` : null);
+          // Sync tasks
+          try {
+            const synced = await syncOverviewTasksToBoard(text);
+            if (synced > 0) onTasksSynced?.();
+          } catch {}
+          return;
+        }
+      }
+      // No context at all — emergency fallback
+      const fallback = await buildEmergencyFallback();
+      if (fallback) {
+        setOverview(fallback);
+        setLastUpdated("Bez denní analýzy");
+      }
+    } catch (e: any) {
+      console.error("Quick refresh failed:", e);
+      toast.error("Nepodařilo se obnovit přehled");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [today, onTasksSynced]);
+
+  /** FORCE ANALYSIS — calls context-prime with 30s timeout, falls back to DB */
+  const forceAnalysis = useCallback(async () => {
+    setForcingAnalysis(true);
     try {
       const headers = await getAuthHeaders();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      // If manual refresh, force context prime first
-      if (manual) {
-        try {
-          await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-context-prime`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ forceRefresh: true }),
-          });
-        } catch (e) {
+      try {
+        await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-context-prime`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ forceRefresh: true }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        if (e.name === "AbortError") {
+          console.warn("Context prime timed out after 30s, using DB fallback");
+        } else {
           console.error("Context prime failed:", e);
         }
       }
 
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-system-overview`, {
-        method: "POST",
-        headers,
-      });
+      // After prime (or timeout), load from DB
+      await quickRefresh();
+      toast.success("Analýza dokončena");
+    } catch (e: any) {
+      console.error("Force analysis failed:", e);
+      toast.error("Analýza selhala");
+    } finally {
+      setForcingAnalysis(false);
+    }
+  }, [quickRefresh]);
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "Karlův přehled se nepodařilo načíst");
+  /** INITIAL LOAD — try system-overview with 30s timeout, fallback to DB */
+  const initialLoad = useCallback(async () => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      let nextOverview = "";
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-did-system-overview`, {
+          method: "POST",
+          headers,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (response.ok) {
+          nextOverview = await parseOverviewStream(response);
+        }
+      } catch (e: any) {
+        clearTimeout(timeoutId);
+        if (e.name === "AbortError") {
+          console.warn("System overview timed out after 30s, using DB fallback");
+        } else {
+          console.error("System overview fetch failed:", e);
+        }
       }
 
-      const nextOverview = await parseOverviewStream(response);
-
-      // If empty or contains "čeká na validovaný kontext", try yesterday's context
-      if (!nextOverview || nextOverview.includes("čeká na") || nextOverview.includes("validovaný kontext")) {
-        // Try loading from did_daily_context for yesterday
-        const { supabase } = await import("@/integrations/supabase/client");
-        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-        const today = new Date().toISOString().slice(0, 10);
-
-        const { data: contextData } = await supabase
-          .from("did_daily_context")
-          .select("context_json, analysis_json, context_date")
-          .in("context_date", [today, yesterday])
-          .order("context_date", { ascending: false })
-          .limit(1);
-
-        if (contextData?.[0]) {
-          const ctx = contextData[0];
-          const analysis = ctx.analysis_json as any;
-          const dateLabel = ctx.context_date === today ? "dnes" : ctx.context_date;
-          setLastUpdated(ctx.context_date !== today ? `Poslední aktualizace: ${new Date(ctx.context_date + "T12:00:00").toLocaleDateString("cs")}` : null);
-
-          if (analysis?.overview || analysis?.briefing) {
-            setOverview(analysis.overview || analysis.briefing || JSON.stringify(analysis).slice(0, 500));
-          } else if (nextOverview) {
-            setOverview(nextOverview);
-            setLastUpdated(null);
-          }
-        } else if (nextOverview) {
-          setOverview(nextOverview);
-        }
-      } else {
+      // Good response — use it
+      if (nextOverview && !nextOverview.includes("čeká na") && !nextOverview.includes("validovaný kontext")) {
         setOverview(nextOverview);
         setLastUpdated(null);
+        try {
+          const synced = await syncOverviewTasksToBoard(nextOverview);
+          if (synced > 0) onTasksSynced?.();
+        } catch {}
+        return;
       }
 
-      // Sync tasks from overview to task board
-      if (overview) {
-        try {
-          const synced = await syncOverviewTasksToBoard(overview);
-          if (synced > 0) {
-            onTasksSynced?.();
-          }
-        } catch (e) {
-          console.warn("Task sync from overview failed:", e);
+      // Fallback to DB
+      const ctx = await loadLatestContext();
+      if (ctx) {
+        const text = extractOverviewText(ctx);
+        if (text) {
+          setOverview(text);
+          setLastUpdated(ctx.context_date !== today ? `Poslední aktualizace: ${new Date(ctx.context_date + "T12:00:00").toLocaleDateString("cs")}` : null);
+          try {
+            const synced = await syncOverviewTasksToBoard(text);
+            if (synced > 0) onTasksSynced?.();
+          } catch {}
+          return;
         }
+      }
+
+      // Emergency — no context at all
+      const fallback = await buildEmergencyFallback();
+      if (fallback) {
+        setOverview(fallback);
+        setLastUpdated("Bez denní analýzy");
+      } else if (nextOverview) {
+        setOverview(nextOverview);
       }
     } catch (error: any) {
       console.error("Failed to load system overview:", error);
-      toast.error(error?.message || "Karlův přehled se nepodařilo načíst");
+      // Try emergency fallback even on error
+      const fallback = await buildEmergencyFallback();
+      if (fallback) {
+        setOverview(fallback);
+        setLastUpdated("Bez denní analýzy");
+      } else {
+        toast.error(error?.message || "Karlův přehled se nepodařilo načíst");
+      }
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  }, [overview]);
+  }, [today, onTasksSynced]);
 
   useEffect(() => {
-    void loadOverview(false);
-  }, [loadOverview, refreshTrigger]);
+    void initialLoad();
+  }, [initialLoad, refreshTrigger]);
 
   return (
     <section className="mb-4 rounded-lg border border-border bg-card/50 p-3 sm:p-4">
@@ -163,11 +273,11 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => void loadOverview(true)}
-            disabled={refreshing || loading}
+            onClick={quickRefresh}
+            disabled={refreshing || loading || forcingAnalysis}
             className="h-7 px-2 text-[0.625rem]"
           >
-            {refreshing || loading ? (
+            {refreshing ? (
               <>
                 <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Obnovuji...
               </>
@@ -177,10 +287,28 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
               </>
             )}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={forceAnalysis}
+            disabled={forcingAnalysis || loading || refreshing}
+            className="h-7 px-2 text-[0.5625rem] text-muted-foreground"
+            title="Může trvat 1-2 minuty"
+          >
+            {forcingAnalysis ? (
+              <>
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Analyzuji...
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="mr-1 h-3 w-3" /> Vynutit analýzu
+              </>
+            )}
+          </Button>
         </div>
       </div>
 
-      {(loading || refreshing) && (
+      {(loading || refreshing || forcingAnalysis) && (
         <div className="w-full mt-3 h-1 rounded-full bg-primary/10 overflow-hidden">
           <div className="h-full w-1/4 rounded-full bg-primary/60 animate-indeterminate-progress" />
         </div>
@@ -191,13 +319,17 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
           <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> Načítám Karlův přehled...
         </div>
       ) : overview ? (
-        <div className={`mt-2 rounded-md border border-border/60 bg-background/40 p-3 ${refreshing ? "opacity-60" : ""}`}>
+        <div className={`mt-2 rounded-md border border-border/60 bg-background/40 p-3 ${refreshing || forcingAnalysis ? "opacity-60" : ""}`}>
           {lastUpdated && (
             <p className="text-[10px] text-amber-600 dark:text-amber-400 mb-1 font-medium">⚠️ {lastUpdated}</p>
           )}
           <p className="whitespace-pre-line text-[0.6875rem] leading-5 text-foreground">{overview}</p>
         </div>
       ) : null}
+
+      {forcingAnalysis && (
+        <p className="mt-1 text-[10px] text-muted-foreground">⏱️ Kompletní analýza může trvat 1-2 minuty…</p>
+      )}
     </section>
   );
 };
