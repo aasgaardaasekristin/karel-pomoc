@@ -5786,13 +5786,22 @@ Pokud nejsou žádné nové claims, vrať: []`;
         await sb.from("crisis_events").update({ days_active: daysActive, updated_at: new Date().toISOString() }).eq("id", crisis.id);
 
         try {
-          const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/evaluate-crisis`;
+          // Find matching crisis_alert for this crisis_event to get alert ID and part_id
+          const { data: matchingAlert } = await sb
+            .from("crisis_alerts")
+            .select("id, part_name")
+            .eq("part_name", crisis.part_name)
+            .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+            .limit(1);
+          const alertId = matchingAlert?.[0]?.id || crisis.id;
+
+          const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-daily-assessment`;
           await fetch(evalUrl, {
             method: "POST",
             headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ crisisId: crisis.id }),
+            body: JSON.stringify({ crisis_alert_id: alertId, part_id: crisis.id, part_name: crisis.part_name }),
           });
-        } catch (e) { console.warn(`[daily-cycle] Crisis eval error for ${crisis.part_name}:`, e); }
+        } catch (e) { console.warn(`[daily-cycle] Crisis assessment error for ${crisis.part_name}:`, e); }
       }
 
       // Fallback escalation for long-running crises without recent action
@@ -7007,14 +7016,14 @@ ${p.raw_analysis || "N/A"}`;
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Daily cycle error:", error);
+    console.error('[DAILY-CYCLE FATAL ERROR]', error?.message || error, error?.stack || '');
 
     if (sb && cycleId) {
       try {
         await sb.from("did_update_cycles").update({
           status: "failed",
           completed_at: new Date().toISOString(),
-          report_summary: `ERROR: ${error instanceof Error ? error.message.slice(0, 1800) : "Unknown error"}`,
+          report_summary: `FATAL: ${(error?.message || String(error))}`.slice(0, 500),
         }).eq("id", cycleId);
       } catch (cycleUpdateErr) {
         console.error("[daily-cycle] Failed to mark cycle as failed:", cycleUpdateErr);
