@@ -4764,7 +4764,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
           // Get theme preferences
           const { data: themePrefs } = await sb.from("did_part_theme_preferences")
             .select("part_name, theme_preset, theme_config, chosen_at")
-            .eq("user_id", userId)
+            .eq("user_id", resolvedUserId)
             .gte("chosen_at", cutoff7d);
 
           // Get existing profiles
