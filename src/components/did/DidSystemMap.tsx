@@ -108,7 +108,7 @@ const DidSystemMap = ({ parts, activeThreads, onQuickThread, onDeletePart }: Pro
     return map;
   }, [activeThreads]);
 
-  if (parts.length === 0) return null;
+  if (dedupedParts.length === 0) return null;
 
   return (
     <div className="mt-4">

@@ -192,6 +192,9 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
         </div>
       ) : overview ? (
         <div className={`mt-2 rounded-md border border-border/60 bg-background/40 p-3 ${refreshing ? "opacity-60" : ""}`}>
+          {lastUpdated && (
+            <p className="text-[10px] text-amber-600 dark:text-amber-400 mb-1 font-medium">⚠️ {lastUpdated}</p>
+          )}
           <p className="whitespace-pre-line text-[0.6875rem] leading-5 text-foreground">{overview}</p>
         </div>
       ) : null}
