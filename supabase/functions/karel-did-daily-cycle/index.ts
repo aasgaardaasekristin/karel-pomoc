@@ -4858,7 +4858,7 @@ Vrať POUZE validní JSON (bez markdown):
                   const profile = JSON.parse(jsonStr);
                   
                   await sb.from("did_part_profiles").upsert({
-                    user_id: userId,
+                    user_id: resolvedUserId,
                     part_name: part.part_name,
                     personality_traits: profile.personality_traits || [],
                     cognitive_profile: profile.cognitive_profile || {},
