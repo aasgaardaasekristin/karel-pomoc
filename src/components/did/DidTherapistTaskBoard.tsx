@@ -531,6 +531,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
       supabase
         .from("did_therapist_tasks")
         .select("*")
+        .in("status", ["pending", "active", "in_progress"] as any)
         .order("created_at", { ascending: false }),
       supabase
         .from("did_pending_drive_writes")
