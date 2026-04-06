@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Shield, MessageSquare, Heart, Target, ShieldCheck, ArrowUpRight, ArrowDownRight, ArrowRight } from "lucide-react";
+import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Shield, MessageSquare, Heart, Target, ShieldCheck, ArrowRight } from "lucide-react";
 import { KarelCard } from "@/components/ui/KarelCard";
 import { KarelBadge } from "@/components/ui/KarelBadge";
 import { Badge } from "@/components/ui/badge";
