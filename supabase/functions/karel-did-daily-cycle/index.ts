@@ -3940,6 +3940,16 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         ],
       }),
     });
+    clearTimeout(analysisTimeout);
+    } catch (abortErr: any) {
+      clearTimeout(analysisTimeout);
+      if (abortErr?.name === "AbortError") {
+        console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
+        analysisResponse = new Response("", { status: 408 });
+      } else {
+        throw abortErr;
+      }
+    }
 
     let analysisText = "";
     if (analysisResponse.ok) {
