@@ -2532,18 +2532,14 @@ serve(async (req) => {
     const rawHanaConversations = hanaConvRows ?? [];
     // HANA_PERSONAL_FILTER: osobní data Hanky jdou pouze do PAMET_KAREL, nikdy do DID pipeline
     // Propustit pouze konverzace obsahující DID-relevantní obsah
-    const recentHanaConversations = rawHanaConversations.filter((conv: any) => {
-      const messages = Array.isArray(conv.messages) ? conv.messages : [];
-      const domain = (conv.current_domain || "").toUpperCase();
-      // Allow if domain is explicitly DID or PRACE
-      if (domain === "DID" || domain === "PRACE") return true;
-      // Allow if any message contains DID/PRACE markers
-      const hasDIDContent = messages.some((m: any) =>
-        m?.domain === "DID" || m?.domain === "PRACE" ||
-        (typeof m?.content === "string" && (m.content.includes("[DID]") || m.content.includes("[PRACE]")))
-      );
-      return hasDIDContent;
-    });
+    const recentHanaConversations = rawHanaConversations
+      .map((conv: any) => {
+        const messages = (Array.isArray(conv.messages) ? conv.messages : [])
+          .filter((m: any) => m?.domain === "DID" || m?.domain === "PRACE" ||
+            (typeof m?.content === "string" && (m.content.includes("[DID]") || m.content.includes("[PRACE]"))));
+        return messages.length > 0 ? { ...conv, messages } : null;
+      })
+      .filter(Boolean);
     console.log(`[daily-cycle] Hana conversations (24h): raw=${rawHanaConversations.length}, DID-filtered=${recentHanaConversations.length}`);
 
     // ═══ ALL-MODE SCAN: Load client sessions, crisis briefs, client tasks from last 24h ═══
@@ -3498,8 +3494,13 @@ Datum: ${dateStr}` },
       }
     }
 
-    const analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const analysisController = new AbortController();
+    const analysisTimeout = setTimeout(() => analysisController.abort(), 120000);
+    let analysisResponse: Response;
+    try {
+    analysisResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
+      signal: analysisController.signal,
       headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
@@ -3935,6 +3936,16 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         ],
       }),
     });
+    clearTimeout(analysisTimeout);
+    } catch (abortErr: any) {
+      clearTimeout(analysisTimeout);
+      if (abortErr?.name === "AbortError") {
+        console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
+        analysisResponse = new Response("", { status: 408 });
+      } else {
+        throw abortErr;
+      }
+    }
 
     let analysisText = "";
     if (analysisResponse.ok) {
@@ -4748,7 +4759,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
         // Get all active parts from registry
         const { data: activeParts } = await sb.from("did_part_registry")
           .select("part_name, display_name")
-          .eq("user_id", userId)
+          .eq("user_id", resolvedUserId)
           .in("status", ["active", "warning"]);
 
         if (activeParts && activeParts.length > 0) {
@@ -4756,7 +4767,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
           const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
           const { data: recentThreads } = await sb.from("did_threads")
             .select("part_name, messages, sub_mode")
-            .eq("user_id", userId)
+            .eq("user_id", resolvedUserId)
             .gte("last_activity_at", cutoff7d)
             .order("last_activity_at", { ascending: false })
             .limit(50);
@@ -4764,13 +4775,13 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
           // Get theme preferences
           const { data: themePrefs } = await sb.from("did_part_theme_preferences")
             .select("part_name, theme_preset, theme_config, chosen_at")
-            .eq("user_id", userId)
+            .eq("user_id", resolvedUserId)
             .gte("chosen_at", cutoff7d);
 
           // Get existing profiles
           const { data: existingProfiles } = await sb.from("did_part_profiles")
             .select("*")
-            .eq("user_id", userId);
+            .eq("user_id", resolvedUserId);
 
           const existingMap = new Map((existingProfiles || []).map((p: any) => [p.part_name, p]));
 
@@ -4858,7 +4869,7 @@ Vrať POUZE validní JSON (bez markdown):
                   const profile = JSON.parse(jsonStr);
                   
                   await sb.from("did_part_profiles").upsert({
-                    user_id: userId,
+                    user_id: resolvedUserId,
                     part_name: part.part_name,
                     personality_traits: profile.personality_traits || [],
                     cognitive_profile: profile.cognitive_profile || {},
@@ -5795,11 +5806,18 @@ Pokud nejsou žádné nové claims, vrať: []`;
             .limit(1);
           const alertId = matchingAlert?.[0]?.id || crisis.id;
 
+          const crisisMeetingMsgs = (recentMeetings || [])
+            .filter((m: any) => (m.topic || "").toLowerCase().includes(crisis.part_name.toLowerCase()))
+            .flatMap((m: any) => ((m.messages as any[]) || []).slice(-10))
+            .map((msg: any) => `[${msg.author || msg.role || '?'}]: ${(msg.text || msg.content || '').slice(0, 300)}`)
+            .join('\n')
+            .slice(0, 2000);
+
           const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-daily-assessment`;
           await fetch(evalUrl, {
             method: "POST",
             headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ crisis_alert_id: alertId, part_id: crisis.id, part_name: crisis.part_name }),
+            body: JSON.stringify({ crisis_alert_id: alertId, part_id: crisis.id, part_name: crisis.part_name, meeting_context: crisisMeetingMsgs }),
           });
         } catch (e) { console.warn(`[daily-cycle] Crisis assessment error for ${crisis.part_name}:`, e); }
       }
@@ -5828,7 +5846,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
                 content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
                 write_type: "crisis_escalation",
                 priority: "urgent",
-                user_id: userId,
+                user_id: resolvedUserId,
               });
             }
 
@@ -6431,8 +6449,7 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
     try {
       if (overdueTasks.length > 0) {
         const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
-        const MAMKA_EMAIL = Deno.env.get("KATA_EMAIL") ? undefined : undefined; // loaded below
-        const hankaEmail = Deno.env.get("MAMKA_PHONE")?.includes("@") ? Deno.env.get("MAMKA_PHONE") : null;
+        const hankaEmail = MAMKA_EMAIL || null;
         const kataEmail = Deno.env.get("KATA_EMAIL") || null;
 
         // Group by assignee
