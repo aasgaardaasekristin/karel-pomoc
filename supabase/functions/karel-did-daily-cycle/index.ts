@@ -4756,7 +4756,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
           const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
           const { data: recentThreads } = await sb.from("did_threads")
             .select("part_name, messages, sub_mode")
-            .eq("user_id", userId)
+            .eq("user_id", resolvedUserId)
             .gte("last_activity_at", cutoff7d)
             .order("last_activity_at", { ascending: false })
             .limit(50);
