@@ -5846,7 +5846,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
                 content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
                 write_type: "crisis_escalation",
                 priority: "urgent",
-                user_id: userId,
+                user_id: resolvedUserId,
               });
             }
 
