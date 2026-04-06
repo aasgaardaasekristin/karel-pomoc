@@ -4748,7 +4748,7 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
         // Get all active parts from registry
         const { data: activeParts } = await sb.from("did_part_registry")
           .select("part_name, display_name")
-          .eq("user_id", userId)
+          .eq("user_id", resolvedUserId)
           .in("status", ["active", "warning"]);
 
         if (activeParts && activeParts.length > 0) {
