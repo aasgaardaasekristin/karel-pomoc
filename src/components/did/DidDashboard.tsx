@@ -24,7 +24,7 @@ import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
-import PartQuickView from "./PartQuickView";
+// PartQuickView removed — data belongs in kartotéka
 import CrisisTimeline from "./CrisisTimeline";
 
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
