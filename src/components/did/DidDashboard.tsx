@@ -680,46 +680,26 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         </div>
       )}
 
-      {/* ═══ SEKCE 3: SOUHRNNÉ KARTY ═══ */}
+      {/* ═══ SEKCE 3: SOUHRNNÉ KARTY (only show with data) ═══ */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <SummaryCard icon={<MessageSquare className="w-3.5 h-3.5 text-primary" />} label="Zprávy dnes" value={`${metrics.todayMsgCount}`} sub={`${metrics.todayConversations} konverzací`} />
-        <SummaryCard icon={<Heart className="w-3.5 h-3.5 text-primary" />} label="Emoční valence" value={valenceEmoji(metrics.todayValence)} sub={metrics.todayValence != null ? `${metrics.todayValence.toFixed(1)} / 10` : "žádná data"} />
-        <SummaryCard icon={<Target className="w-3.5 h-3.5 text-primary" />} label="Aktivní cíle" value={`${metrics.activeGoals}`} sub={`ø progress ${metrics.avgGoalProgress}%`} />
-        <SummaryCard icon={<ShieldCheck className="w-3.5 h-3.5 text-primary" />} label="Bezpečnost" value={metrics.newAlerts > 0 ? `${metrics.newAlerts} ⚠️` : "✅ OK"} sub={metrics.newAlerts > 0 ? "vyžaduje pozornost" : "vše v pořádku"} />
+        {metrics.todayMsgCount > 0 && (
+          <SummaryCard icon={<MessageSquare className="w-3.5 h-3.5 text-primary" />} label="Zprávy dnes" value={`${metrics.todayMsgCount}`} sub={`${metrics.todayConversations} konverzací`} />
+        )}
+        {metrics.todayValence != null && (
+          <SummaryCard icon={<Heart className="w-3.5 h-3.5 text-primary" />} label="Emoční valence" value={valenceEmoji(metrics.todayValence)} sub={`${metrics.todayValence.toFixed(1)} / 10`} />
+        )}
+        {metrics.activeGoals > 0 && (
+          <SummaryCard icon={<Target className="w-3.5 h-3.5 text-primary" />} label="Aktivní cíle" value={`${metrics.activeGoals}`} sub={`ø progress ${metrics.avgGoalProgress}%`} />
+        )}
+        {metrics.newAlerts > 0 && (
+          <SummaryCard icon={<ShieldCheck className="w-3.5 h-3.5 text-primary" />} label="Bezpečnost" value={`${metrics.newAlerts} ⚠️`} sub="vyžaduje pozornost" />
+        )}
       </div>
 
-      {/* ═══ SEKCE 4: HEATMAPA ČÁSTÍ ═══ */}
-      {heatmapRows.length > 0 && (
-        <div>
-          <SectionLabel>Části systému</SectionLabel>
-          <div className="space-y-1">
-            {heatmapRows.map(row => (
-              <div key={row.partName} className={cn("rounded-lg border border-border/40 overflow-hidden cursor-pointer bg-card/30 backdrop-blur-sm transition-colors", expandedPart === row.partName && "border-primary/40")} onClick={() => setExpandedPart(expandedPart === row.partName ? null : row.partName)}>
-                <div className="flex items-center gap-2 p-2 text-xs hover:bg-primary/5 transition-colors">
-                  <span className="text-base w-6 text-center">👤</span>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[13px] font-semibold truncate">{row.partName}</span>
-                    {row.role && <span className="text-[10px] italic text-muted-foreground ml-1">({row.role})</span>}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className={cn("w-3 h-3 rounded-full", row.valence == null ? "bg-muted" : row.valence >= 7 ? "bg-green-400" : row.valence >= 4 ? "bg-amber-400" : "bg-red-400")} />
-                    {row.trendArrow && (
-                      <span className={cn("text-xs font-bold", row.trendArrow === "↗" && "text-green-600", row.trendArrow === "↘" && "text-red-600", row.trendArrow === "→" && "text-muted-foreground")}>{row.trendArrow}</span>
-                    )}
-                    <span className="text-[10px] text-muted-foreground">{row.msgCount}💬</span>
-                    {row.goalCount > 0 && <span className="text-[10px]">🎯{row.goalCount}</span>}
-                    {row.alertCount > 0 && <Badge variant="destructive" className="text-[8px] h-3.5 px-1">⚠️{row.alertCount}</Badge>}
-                    {row.switchCount > 0 && <span className="text-[10px] text-amber-500">🔄{row.switchCount}</span>}
-                  </div>
-                </div>
-                {expandedPart === row.partName && (
-                  <PartQuickView partName={row.partName} onClose={() => setExpandedPart(null)} />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ═══ KARLŮV DENNÍ PLÁN ═══ */}
+      <ErrorBoundary fallbackTitle="Denní plán selhal">
+        <KarelDailyPlan refreshTrigger={refreshTrigger} />
+      </ErrorBoundary>
 
       {/* ═══ SEKCE 5: PROGRESS AKTIVNÍCH CÍLŮ ═══ */}
       {goals.length > 0 && (
