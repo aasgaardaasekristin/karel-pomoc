@@ -6453,8 +6453,7 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
     try {
       if (overdueTasks.length > 0) {
         const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
-        const MAMKA_EMAIL = Deno.env.get("KATA_EMAIL") ? undefined : undefined; // loaded below
-        const hankaEmail = Deno.env.get("MAMKA_PHONE")?.includes("@") ? Deno.env.get("MAMKA_PHONE") : null;
+        const hankaEmail = MAMKA_EMAIL || null;
         const kataEmail = Deno.env.get("KATA_EMAIL") || null;
 
         // Group by assignee
