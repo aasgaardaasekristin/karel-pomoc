@@ -5810,11 +5810,18 @@ Pokud nejsou žádné nové claims, vrať: []`;
             .limit(1);
           const alertId = matchingAlert?.[0]?.id || crisis.id;
 
+          const crisisMeetingMsgs = (recentMeetings || [])
+            .filter((m: any) => (m.topic || "").toLowerCase().includes(crisis.part_name.toLowerCase()))
+            .flatMap((m: any) => ((m.messages as any[]) || []).slice(-10))
+            .map((msg: any) => `[${msg.author || msg.role || '?'}]: ${(msg.text || msg.content || '').slice(0, 300)}`)
+            .join('\n')
+            .slice(0, 2000);
+
           const evalUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-daily-assessment`;
           await fetch(evalUrl, {
             method: "POST",
             headers: { Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ crisis_alert_id: alertId, part_id: crisis.id, part_name: crisis.part_name }),
+            body: JSON.stringify({ crisis_alert_id: alertId, part_id: crisis.id, part_name: crisis.part_name, meeting_context: crisisMeetingMsgs }),
           });
         } catch (e) { console.warn(`[daily-cycle] Crisis assessment error for ${crisis.part_name}:`, e); }
       }
