@@ -863,11 +863,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         </KarelCard>
       )}
 
-      {/* ═══ SEKCE 7.5: PROFILY TERAPEUTEK ═══ */}
-      <ErrorBoundary>
-        <DidTherapistProfiles />
-      </ErrorBoundary>
-
       {/* ═══ SEKCE 8: SYSTÉMOVÝ STAV FOOTER ═══ */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-card/30 backdrop-blur-sm border border-border/30 text-[10px] text-muted-foreground">
         <span>Report: <strong className={lastReportStatus === "sent" ? "text-green-600" : lastReportStatus === "failed" ? "text-destructive" : "text-foreground"}>{lastReportStatus || "—"}</strong></span>
