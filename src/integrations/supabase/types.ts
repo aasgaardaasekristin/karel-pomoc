@@ -1666,6 +1666,7 @@ export type Database = {
           hanka_joined_at: string | null
           id: string
           kata_joined_at: string | null
+          last_reactive_message_count: number | null
           messages: Json
           outcome_summary: string | null
           outcome_tasks: Json | null
@@ -1684,6 +1685,7 @@ export type Database = {
           hanka_joined_at?: string | null
           id?: string
           kata_joined_at?: string | null
+          last_reactive_message_count?: number | null
           messages?: Json
           outcome_summary?: string | null
           outcome_tasks?: Json | null
@@ -1702,6 +1704,7 @@ export type Database = {
           hanka_joined_at?: string | null
           id?: string
           kata_joined_at?: string | null
+          last_reactive_message_count?: number | null
           messages?: Json
           outcome_summary?: string | null
           outcome_tasks?: Json | null
@@ -2183,6 +2186,7 @@ export type Database = {
           directed_to: string | null
           expires_at: string | null
           id: string
+          processed_by_reactive: boolean | null
           question: string
           status: string | null
           subject_id: string | null
@@ -2199,6 +2203,7 @@ export type Database = {
           directed_to?: string | null
           expires_at?: string | null
           id?: string
+          processed_by_reactive?: boolean | null
           question: string
           status?: string | null
           subject_id?: string | null
@@ -2215,6 +2220,7 @@ export type Database = {
           directed_to?: string | null
           expires_at?: string | null
           id?: string
+          processed_by_reactive?: boolean | null
           question?: string
           status?: string | null
           subject_id?: string | null
@@ -2662,6 +2668,8 @@ export type Database = {
           last_escalation_email_at: string | null
           note: string | null
           priority: string | null
+          processed_by_reactive: boolean | null
+          related_task_id: string | null
           source_agreement: string | null
           status: string
           status_hanka: string
@@ -2685,6 +2693,8 @@ export type Database = {
           last_escalation_email_at?: string | null
           note?: string | null
           priority?: string | null
+          processed_by_reactive?: boolean | null
+          related_task_id?: string | null
           source_agreement?: string | null
           status?: string
           status_hanka?: string
@@ -2708,6 +2718,8 @@ export type Database = {
           last_escalation_email_at?: string | null
           note?: string | null
           priority?: string | null
+          processed_by_reactive?: boolean | null
+          related_task_id?: string | null
           source_agreement?: string | null
           status?: string
           status_hanka?: string
@@ -2931,6 +2943,54 @@ export type Database = {
           status?: string | null
           subject_id?: string | null
           subject_type?: string | null
+        }
+        Relationships: []
+      }
+      karel_conversation_agenda: {
+        Row: {
+          condition: string | null
+          context: string | null
+          created_at: string | null
+          discussed_at: string | null
+          id: string
+          priority: string | null
+          related_crisis_id: string | null
+          related_part: string | null
+          source: string | null
+          status: string | null
+          therapist: string
+          topic: string
+          topic_type: string | null
+        }
+        Insert: {
+          condition?: string | null
+          context?: string | null
+          created_at?: string | null
+          discussed_at?: string | null
+          id?: string
+          priority?: string | null
+          related_crisis_id?: string | null
+          related_part?: string | null
+          source?: string | null
+          status?: string | null
+          therapist: string
+          topic: string
+          topic_type?: string | null
+        }
+        Update: {
+          condition?: string | null
+          context?: string | null
+          created_at?: string | null
+          discussed_at?: string | null
+          id?: string
+          priority?: string | null
+          related_crisis_id?: string | null
+          related_part?: string | null
+          source?: string | null
+          status?: string | null
+          therapist?: string
+          topic?: string
+          topic_type?: string | null
         }
         Relationships: []
       }
