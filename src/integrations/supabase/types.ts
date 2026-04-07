@@ -2670,6 +2670,7 @@ export type Database = {
           priority: string | null
           processed_by_reactive: boolean | null
           related_task_id: string | null
+          source: string | null
           source_agreement: string | null
           status: string
           status_hanka: string
@@ -2695,6 +2696,7 @@ export type Database = {
           priority?: string | null
           processed_by_reactive?: boolean | null
           related_task_id?: string | null
+          source?: string | null
           source_agreement?: string | null
           status?: string
           status_hanka?: string
@@ -2720,6 +2722,7 @@ export type Database = {
           priority?: string | null
           processed_by_reactive?: boolean | null
           related_task_id?: string | null
+          source?: string | null
           source_agreement?: string | null
           status?: string
           status_hanka?: string
