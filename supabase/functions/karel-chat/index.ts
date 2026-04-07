@@ -429,6 +429,42 @@ ${pipelineBlock ? `\n═══ PIPELINE DATA (strukturovaná mezivrstva) ══�
 ═══ KONEC DENNÍHO PROFILU ═══`;
 
             console.log(`[karel-chat] Daily context injected: date=${dailyCtx.context_date}, size=${JSON.stringify(ctx).length}ch`);
+
+            // ═══ INJEKCE KONVERZAČNÍ AGENDY ═══
+            if (didSubMode === 'mamka' || didSubMode === 'kata') {
+              try {
+                const { createClient: createSbAgenda } = await import("https://esm.sh/@supabase/supabase-js@2");
+                const sbAgenda = createSbAgenda(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                const agendaTherapist = didSubMode === 'kata' ? 'kata' : 'hanka';
+                const { data: agendaItems } = await sbAgenda
+                  .from("karel_conversation_agenda")
+                  .select("id, topic, topic_type, priority, context, related_part")
+                  .eq("therapist", agendaTherapist)
+                  .eq("status", "pending")
+                  .order("priority", { ascending: true })
+                  .order("created_at", { ascending: true })
+                  .limit(10);
+
+                if (agendaItems && agendaItems.length > 0) {
+                  const formatItem = (item: any, idx: number) => {
+                    const pLabel = item.priority === 'urgent' ? 'URGENTNÍ' :
+                                   item.priority === 'normal' ? 'normální' : 'až bude vhodné';
+                    const partSuffix = item.related_part ? ` (část: ${item.related_part})` : '';
+                    return `${idx+1}. [${pLabel}] ${item.topic}${partSuffix}`;
+                  };
+                  const formatted = agendaItems.map((item: any, i: number) => formatItem(item, i));
+
+                  systemPrompt += `\n\n═══ KARLOVA AGENDA PRO TENTO ROZHOVOR ═══
+Karel chce při této příležitosti přirozeně probrat:
+${formatted.join('\n')}
+
+INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v agendě" ani "potřebuji probrat". Prostě se PŘIROZENĚ zeptej když bude vhodný moment. Pokud terapeut spěchá nebo je ve stresu, odlož méně urgentní témata. URGENTNÍ témata probrat vždy.
+═══ KONEC AGENDY ═══`;
+                }
+              } catch (e) {
+                console.warn("[karel-chat] Agenda injection error (non-fatal):", e);
+              }
+            }
           } else {
             console.log("[karel-chat] No daily context found in did_daily_context");
           }
