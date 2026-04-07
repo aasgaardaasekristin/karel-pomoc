@@ -614,12 +614,21 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     const targetDoc = targetDocumentForCategory(newCategory);
     const sourceReference = `00_CENTRUM/${targetDoc} · sekce „Nové úkoly z nástěnky“`;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Nepřihlášen — nelze přidat úkol");
+      setAdding(false);
+      return;
+    }
+
     const { error } = await supabase.from("did_therapist_tasks").insert({
       task: taskText,
       detail_instruction: `Co udělat: ${taskText}\nDalší krok: Začni prvním konkrétním krokem a pak dopiš, kde se to hýbe a kde to vázne.`,
       assigned_to: newAssignee,
       category: newCategory,
       source: "therapist_manual",
+      status: "pending",
+      user_id: user.id,
       source_agreement: sourceReference,
       status_hanka: "not_started",
       status_kata: "not_started",
@@ -627,7 +636,8 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
     });
 
     if (error) {
-      toast.error("Nepodařilo se přidat úkol");
+      console.error("[TaskBoard] INSERT failed:", error.message, error.details, error.hint, error.code);
+      toast.error(`Nepodařilo se přidat úkol: ${error.message}`);
     } else {
       await supabase.from("did_pending_drive_writes").insert({
         content: `► ${taskText} [${assigneeLabel(newAssignee)}]`,

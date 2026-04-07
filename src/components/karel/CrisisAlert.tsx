@@ -22,6 +22,7 @@ interface CrisisAlertData {
   resolution_notes: string | null;
   crisis_thread_id: string | null;
   conversation_id: string | null;
+  days_in_crisis: number | null;
 }
 
 interface CrisisEventData {
@@ -31,6 +32,7 @@ interface CrisisEventData {
   severity: string;
   banner_dismissed: boolean;
   banner_dismissed_at: string | null;
+  days_active: number | null;
 }
 
 interface CrisisTaskData {
@@ -44,10 +46,10 @@ interface CrisisTaskData {
 }
 
 const PHASE_BANNER_COLORS: Record<string, string> = {
-  acute: "bg-red-600 animate-pulse",
-  stabilizing: "bg-amber-500",
-  diagnostic: "bg-blue-500",
-  closing: "bg-green-500",
+  acute: "bg-red-900",
+  stabilizing: "bg-amber-900",
+  diagnostic: "bg-blue-900",
+  closing: "bg-green-900",
 };
 
 const CrisisAlert: React.FC = () => {
@@ -100,7 +102,7 @@ const CrisisAlert: React.FC = () => {
   const fetchCrisisEvents = useCallback(async () => {
     const { data } = await supabase
       .from("crisis_events")
-      .select("id, part_name, phase, severity, banner_dismissed, banner_dismissed_at")
+      .select("id, part_name, phase, severity, banner_dismissed, banner_dismissed_at, days_active")
       .not("phase", "eq", "closed")
       .order("created_at", { ascending: false });
     if (data) setCrisisEvents(data as CrisisEventData[]);
@@ -203,64 +205,43 @@ const CrisisAlert: React.FC = () => {
       <div className="sticky top-0 z-50">
         {/* Crisis events (lifecycle) banners */}
         {visibleCrisisEvents.map(ce => (
-          <div key={ce.id} className={`${PHASE_BANNER_COLORS[ce.phase] || "bg-red-600"} text-white px-4 py-2.5 shadow-lg`}>
-            <div className="max-w-4xl mx-auto flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-xs">
-                  {ce.phase === "acute" ? "🔴 KRIZE" : ce.phase === "stabilizing" ? "🟠 STABILIZACE" : ce.phase === "diagnostic" ? "🔵 DIAGNOSTIKA" : "🟢 UZAVÍRÁNÍ"} — {ce.part_name}
-                </p>
-              </div>
-              <button onClick={() => navigate("/chat?sub=meeting")} className="bg-white/20 hover:bg-white/30 text-xs px-2 py-1 rounded">
-                <MessageSquare className="w-3 h-3 inline mr-1" />PORADA
+          <div key={ce.id} className={`${PHASE_BANNER_COLORS[ce.phase] || "bg-red-900"} text-white px-4 py-1.5`}>
+            <div className="max-w-4xl mx-auto flex items-center gap-2 text-xs">
+              <span className="font-bold truncate">
+                🔴 KRIZE: {ce.part_name}{ce.days_active ? ` — den ${ce.days_active}` : ""}
+              </span>
+              <span className="text-white/40">|</span>
+              <button onClick={() => setDetailAlert(alerts.find(a => a.part_name === ce.part_name) || null)} className="hover:underline whitespace-nowrap">Otevřít detail</button>
+              <span className="text-white/40">|</span>
+              <button onClick={() => navigate("/chat?sub=meeting")} className="hover:underline whitespace-nowrap flex items-center gap-1">
+                <MessageSquare className="w-3 h-3" />Krizová porada
               </button>
-              <button onClick={() => handleDismissCrisisEvent(ce.id)} className="bg-white/10 hover:bg-white/20 p-1 rounded" title="Skrýt banner (na 24h)">
-                <Trash2 className="w-3.5 h-3.5" />
+              <button onClick={() => handleDismissCrisisEvent(ce.id)} className="ml-auto hover:bg-white/10 p-0.5 rounded" title="Skrýt (24h)">
+                <X className="w-3 h-3" />
               </button>
             </div>
           </div>
         ))}
 
-        {/* Legacy crisis_alerts banners */}
-        {visibleAlerts.map((alert) => {
-          const isAcknowledged = alert.status === "ACKNOWLEDGED";
-          return (
-            <div key={alert.id} className={`${isAcknowledged ? "bg-orange-500" : "bg-red-600 animate-pulse"} text-white px-4 py-3 shadow-lg`}>
-              <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-start sm:items-center gap-2">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <AlertTriangle className="w-5 h-5 shrink-0" />
-                  <div className="min-w-0">
-                    {isAcknowledged ? (
-                      <p className="font-bold text-sm">⚠️ KRIZE POTVRZENA – řeší {alert.acknowledged_by}. Zahájeno: {alert.acknowledged_at ? formatTime(alert.acknowledged_at) : "—"}</p>
-                    ) : (
-                      <>
-                        <p className="font-bold text-sm">⚠️ KRIZOVÁ SITUACE – {alert.part_name}</p>
-                        <p className="text-xs opacity-90 truncate">{alert.summary}</p>
-                        <p className="text-xs opacity-75">Úroveň: {alert.severity} · Detekováno: {formatTime(alert.created_at)}</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2 shrink-0 flex-wrap">
-                  <button onClick={() => setDetailAlert(alert)} className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors">OTEVŘÍT DETAIL</button>
-                  <button onClick={() => { if (alert.conversation_id) navigate(`/chat?meeting=${alert.conversation_id}`); else if (alert.crisis_thread_id) navigate(`/chat?crisisThread=${alert.crisis_thread_id}`); else navigate(`/chat?sub=meeting`); }} className="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors flex items-center gap-1">
-                    <MessageSquare className="w-3 h-3" />KRIZOVÁ PORADA
-                  </button>
-                  {!isAcknowledged && (
-                    <button onClick={() => handleAcknowledge(alert)} className="bg-white text-red-700 text-xs font-bold px-3 py-1.5 rounded hover:bg-white/90 transition-colors">PŘEBÍRÁM ŘÍZENÍ</button>
-                  )}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDismissAlert(alert.id); }}
-                    className="bg-white/10 hover:bg-white/20 p-1 rounded ml-auto shrink-0"
-                    title="Skrýt banner (krizový stav trvá)"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+        {/* Legacy crisis_alerts — single-line compact banner */}
+        {visibleAlerts.map((alert) => (
+          <div key={alert.id} className="bg-red-900 text-white px-4 py-1.5">
+            <div className="max-w-4xl mx-auto flex items-center gap-2 text-xs">
+              <span className="font-bold truncate">
+                🔴 KRIZE: {alert.part_name}{alert.days_in_crisis ? ` — den ${alert.days_in_crisis}` : ""}
+              </span>
+              <span className="text-white/40">|</span>
+              <button onClick={() => setDetailAlert(alert)} className="hover:underline whitespace-nowrap">Otevřít detail</button>
+              <span className="text-white/40">|</span>
+              <button onClick={() => { if (alert.conversation_id) navigate(`/chat?meeting=${alert.conversation_id}`); else navigate(`/chat?sub=meeting`); }} className="hover:underline whitespace-nowrap flex items-center gap-1">
+                <MessageSquare className="w-3 h-3" />Krizová porada
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); handleDismissAlert(alert.id); }} className="ml-auto hover:bg-white/10 p-0.5 rounded" title="Skrýt">
+                <X className="w-3 h-3" />
+              </button>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
 
       {/* Detail modal */}
