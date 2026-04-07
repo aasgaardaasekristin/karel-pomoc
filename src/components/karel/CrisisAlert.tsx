@@ -22,6 +22,7 @@ interface CrisisAlertData {
   resolution_notes: string | null;
   crisis_thread_id: string | null;
   conversation_id: string | null;
+  days_in_crisis: number | null;
 }
 
 interface CrisisEventData {
