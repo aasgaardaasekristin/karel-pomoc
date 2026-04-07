@@ -45,10 +45,10 @@ interface CrisisTaskData {
 }
 
 const PHASE_BANNER_COLORS: Record<string, string> = {
-  acute: "bg-red-600 animate-pulse",
-  stabilizing: "bg-amber-500",
-  diagnostic: "bg-blue-500",
-  closing: "bg-green-500",
+  acute: "bg-red-900",
+  stabilizing: "bg-amber-900",
+  diagnostic: "bg-blue-900",
+  closing: "bg-green-900",
 };
 
 const CrisisAlert: React.FC = () => {
@@ -101,7 +101,7 @@ const CrisisAlert: React.FC = () => {
   const fetchCrisisEvents = useCallback(async () => {
     const { data } = await supabase
       .from("crisis_events")
-      .select("id, part_name, phase, severity, banner_dismissed, banner_dismissed_at")
+      .select("id, part_name, phase, severity, banner_dismissed, banner_dismissed_at, days_active")
       .not("phase", "eq", "closed")
       .order("created_at", { ascending: false });
     if (data) setCrisisEvents(data as CrisisEventData[]);
