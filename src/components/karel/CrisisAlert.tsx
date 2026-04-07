@@ -31,6 +31,7 @@ interface CrisisEventData {
   severity: string;
   banner_dismissed: boolean;
   banner_dismissed_at: string | null;
+  days_active: number | null;
 }
 
 interface CrisisTaskData {
