@@ -54,6 +54,9 @@ serve(async (req) => {
   const since = new Date(Date.now() - 20 * 60 * 1000).toISOString();
   let statsA = 0, statsB = 0, statsC = 0, statsD = 0, statsAgenda = 0, statsExpired = 0;
 
+  // Cron calls don't have auth — skip auth check for this function
+  console.log('[REACTIVE-LOOP] Starting run at', new Date().toISOString());
+
   try {
     // ═══ KROK 1 — Načtení nových zpráv z 5 zdrojů ═══
 
@@ -362,6 +365,8 @@ serve(async (req) => {
       message: `Reactive loop: A=${statsA} tasks, B=${statsB} meetings, C=${statsC} questions, D=${statsD} convos, agenda=${statsAgenda}, expired=${statsExpired}`,
     });
 
+    console.log('[REACTIVE-LOOP] Completed successfully', { statsA, statsB, statsC, statsD, statsAgenda, statsExpired });
+
     return new Response(JSON.stringify({
       success: true,
       stats: { manualTasks: statsA, meetings: statsB, questions: statsC, conversations: statsD, agenda: statsAgenda, expired: statsExpired },
@@ -369,7 +374,7 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("[REACTIVE-LOOP] Error:", error);
+    console.error("[REACTIVE-LOOP] FATAL ERROR:", error?.message || error);
     await sb.from("system_health_log").insert({
       event_type: "reactive_loop_error",
       severity: "error",
