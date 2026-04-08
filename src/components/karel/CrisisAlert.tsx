@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertTriangle, CheckCircle, X, Shield, MessageSquare, Trash2 } from "lucide-react";
+import { CheckCircle, X, Shield, MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { cs } from "date-fns/locale";
 
@@ -45,12 +45,24 @@ interface CrisisTaskData {
   completed_at: string | null;
 }
 
-const PHASE_BANNER_COLORS: Record<string, string> = {
-  acute: "bg-red-900",
-  stabilizing: "bg-amber-900",
-  diagnostic: "bg-blue-900",
-  closing: "bg-green-900",
-};
+interface CrisisJournalEntry {
+  crisis_trend: string | null;
+  karel_action: string | null;
+  session_summary: string | null;
+  date: string | null;
+}
+
+interface DeduplicatedCrisis {
+  partName: string;
+  days: number | null;
+  phase: string | null;
+  severity: string;
+  alertId: string | null;
+  eventId: string | null;
+  conversationId: string | null;
+  summary: string | null;
+  journal: CrisisJournalEntry | null;
+}
 
 const CrisisAlert: React.FC = () => {
   const navigate = useNavigate();
@@ -60,35 +72,22 @@ const CrisisAlert: React.FC = () => {
   const [tasks, setTasks] = useState<CrisisTaskData[]>([]);
   const [resolveNotes, setResolveNotes] = useState("");
   const [showResolveInput, setShowResolveInput] = useState(false);
+  const [journalMap, setJournalMap] = useState<Record<string, CrisisJournalEntry>>({});
 
-  const [dismissedAlertIds, setDismissedAlertIds] = useState<Set<string>>(() => {
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
-      const stored = localStorage.getItem("dismissed_crisis_alerts");
+      const stored = localStorage.getItem("dismissed_crisis_banners");
       return stored ? new Set(JSON.parse(stored)) : new Set();
     } catch { return new Set(); }
   });
 
-  const handleDismissAlert = (alertId: string) => {
-    setDismissedAlertIds(prev => {
-      const next = new Set(prev).add(alertId);
-      localStorage.setItem("dismissed_crisis_alerts", JSON.stringify([...next]));
+  const handleDismiss = (id: string) => {
+    setDismissedIds(prev => {
+      const next = new Set(prev).add(id);
+      localStorage.setItem("dismissed_crisis_banners", JSON.stringify([...next]));
       return next;
     });
   };
-
-  // Re-show dismissed alerts when status changes
-  useEffect(() => {
-    const statusMap = new Map(alerts.map(a => [a.id, a.status]));
-    setDismissedAlertIds(prev => {
-      const next = new Set(prev);
-      let changed = false;
-      for (const id of prev) {
-        if (!statusMap.has(id)) { next.delete(id); changed = true; }
-      }
-      if (changed) localStorage.setItem("dismissed_crisis_alerts", JSON.stringify([...next]));
-      return changed ? next : prev;
-    });
-  }, [alerts]);
 
   const fetchAlerts = useCallback(async () => {
     const { data } = await supabase
@@ -96,7 +95,21 @@ const CrisisAlert: React.FC = () => {
       .select("*")
       .in("status", ["ACTIVE", "ACKNOWLEDGED"])
       .order("created_at", { ascending: false });
-    if (data) setAlerts(data as CrisisAlertData[]);
+    if (data) {
+      setAlerts(data as CrisisAlertData[]);
+      // Fetch journal entries for each alert
+      const journalEntries: Record<string, CrisisJournalEntry> = {};
+      for (const alert of data) {
+        const { data: journal } = await (supabase as any)
+          .from("crisis_journal")
+          .select("crisis_trend, karel_action, session_summary, date")
+          .eq("crisis_alert_id", alert.id)
+          .order("date", { ascending: false })
+          .limit(1);
+        if (journal?.[0]) journalEntries[alert.id] = journal[0];
+      }
+      setJournalMap(journalEntries);
+    }
   }, []);
 
   const fetchCrisisEvents = useCallback(async () => {
@@ -120,13 +133,11 @@ const CrisisAlert: React.FC = () => {
   useEffect(() => {
     fetchAlerts();
     fetchCrisisEvents();
-
     const channel = supabase
       .channel("crisis-alerts-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, () => fetchAlerts())
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_events" }, () => fetchCrisisEvents())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [fetchAlerts, fetchCrisisEvents]);
 
@@ -158,15 +169,6 @@ const CrisisAlert: React.FC = () => {
     fetchAlerts();
   };
 
-  const handleDismissCrisisEvent = async (eventId: string) => {
-    await supabase.from("crisis_events").update({
-      banner_dismissed: true,
-      banner_dismissed_at: new Date().toISOString(),
-    }).eq("id", eventId);
-    localStorage.setItem(`crisis_dismissed_${eventId}`, new Date().toISOString());
-    fetchCrisisEvents();
-  };
-
   const handleToggleTask = async (task: CrisisTaskData) => {
     const newStatus = task.status === "DONE" ? "PENDING" : "DONE";
     await supabase.from("crisis_tasks").update({
@@ -185,70 +187,113 @@ const CrisisAlert: React.FC = () => {
     } catch { return iso; }
   };
 
-  // Filter dismissed crisis events (re-show after 24h or phase change)
-  const visibleCrisisEvents = crisisEvents.filter(ce => {
-    if (!ce.banner_dismissed) return true;
-    const dismissedAt = ce.banner_dismissed_at ? new Date(ce.banner_dismissed_at).getTime() : 0;
-    const localDismissed = localStorage.getItem(`crisis_dismissed_${ce.id}`);
-    const localTime = localDismissed ? new Date(localDismissed).getTime() : 0;
-    const dismissTime = Math.max(dismissedAt, localTime);
-    // Re-show after 24h
-    return Date.now() - dismissTime > 24 * 60 * 60 * 1000;
+  // ── DEDUPLICATE: merge crisis_events + crisis_alerts by part_name ──
+  const deduplicated = React.useMemo<DeduplicatedCrisis[]>(() => {
+    const map = new Map<string, DeduplicatedCrisis>();
+
+    // Events take priority
+    for (const ce of crisisEvents) {
+      const key = ce.part_name.toUpperCase();
+      if (!map.has(key)) {
+        map.set(key, {
+          partName: ce.part_name,
+          days: ce.days_active,
+          phase: ce.phase,
+          severity: ce.severity,
+          alertId: null,
+          eventId: ce.id,
+          conversationId: null,
+          summary: null,
+          journal: null,
+        });
+      }
+    }
+
+    // Alerts fill gaps or enrich
+    for (const a of alerts) {
+      const key = a.part_name.toUpperCase();
+      const existing = map.get(key);
+      if (existing) {
+        existing.alertId = a.id;
+        existing.conversationId = a.conversation_id;
+        existing.summary = a.summary;
+        existing.journal = journalMap[a.id] || null;
+        if (!existing.days && a.days_in_crisis) existing.days = a.days_in_crisis;
+      } else {
+        map.set(key, {
+          partName: a.part_name,
+          days: a.days_in_crisis,
+          phase: null,
+          severity: a.severity,
+          alertId: a.id,
+          eventId: null,
+          conversationId: a.conversation_id,
+          summary: a.summary,
+          journal: journalMap[a.id] || null,
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  }, [crisisEvents, alerts, journalMap]);
+
+  const visibleCrises = deduplicated.filter(c => {
+    const id = c.eventId || c.alertId || "";
+    return !dismissedIds.has(id);
   });
 
-  const visibleAlerts = alerts.filter(a => !dismissedAlertIds.has(a.id));
-
-  if (visibleAlerts.length === 0 && visibleCrisisEvents.length === 0) return null;
+  if (visibleCrises.length === 0) return null;
 
   return (
     <>
+      {/* Single-line deduplicated banner per part */}
       <div className="sticky top-0 z-50">
-        {/* Crisis events (lifecycle) banners */}
-        {visibleCrisisEvents.map(ce => (
-          <div key={ce.id} className={`${PHASE_BANNER_COLORS[ce.phase] || "bg-red-900"} text-white px-4 py-1.5`}>
-            <div className="max-w-4xl mx-auto flex items-center gap-2 text-xs">
-              <span className="font-bold truncate">
-                🔴 KRIZE: {ce.part_name}{ce.days_active ? ` — den ${ce.days_active}` : ""}
-              </span>
-              <span className="text-white/40">|</span>
-              <button onClick={() => setDetailAlert(alerts.find(a => a.part_name === ce.part_name) || null)} className="hover:underline whitespace-nowrap">Otevřít detail</button>
-              <span className="text-white/40">|</span>
-              <button onClick={() => navigate("/chat?sub=meeting")} className="hover:underline whitespace-nowrap flex items-center gap-1">
-                <MessageSquare className="w-3 h-3" />Krizová porada
-              </button>
-              <button onClick={() => handleDismissCrisisEvent(ce.id)} className="ml-auto hover:bg-white/10 p-0.5 rounded" title="Skrýt (24h)">
-                <X className="w-3 h-3" />
-              </button>
+        {visibleCrises.map(c => {
+          const id = c.eventId || c.alertId || c.partName;
+          return (
+            <div key={id} className="text-white px-4 py-1.5" style={{ backgroundColor: "#7C2D2D", maxHeight: 40 }}>
+              <div className="max-w-[900px] mx-auto flex items-center gap-2 text-[14px]">
+                <span className="font-bold truncate">
+                  🔴 KRIZE: {c.partName}{c.days ? ` — den ${c.days}` : ""}{c.phase ? ` | fáze: ${c.phase}` : ""}
+                </span>
+                <span className="text-white/40">|</span>
+                <button
+                  onClick={() => {
+                    const alert = alerts.find(a => a.part_name.toUpperCase() === c.partName.toUpperCase());
+                    if (alert) setDetailAlert(alert);
+                  }}
+                  className="hover:underline whitespace-nowrap"
+                >
+                  Otevřít detail
+                </button>
+                <span className="text-white/40">|</span>
+                <button
+                  onClick={() => {
+                    if (c.conversationId) navigate(`/chat?meeting=${c.conversationId}`);
+                    else navigate(`/chat?sub=meeting`);
+                  }}
+                  className="hover:underline whitespace-nowrap flex items-center gap-1"
+                >
+                  <MessageSquare className="w-3 h-3" />Krizová porada
+                </button>
+                <button
+                  onClick={() => handleDismiss(id)}
+                  className="ml-auto hover:bg-white/10 p-0.5 rounded"
+                  title="Skrýt (24h)"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-
-        {/* Legacy crisis_alerts — single-line compact banner */}
-        {visibleAlerts.map((alert) => (
-          <div key={alert.id} className="bg-red-900 text-white px-4 py-1.5">
-            <div className="max-w-4xl mx-auto flex items-center gap-2 text-xs">
-              <span className="font-bold truncate">
-                🔴 KRIZE: {alert.part_name}{alert.days_in_crisis ? ` — den ${alert.days_in_crisis}` : ""}
-              </span>
-              <span className="text-white/40">|</span>
-              <button onClick={() => setDetailAlert(alert)} className="hover:underline whitespace-nowrap">Otevřít detail</button>
-              <span className="text-white/40">|</span>
-              <button onClick={() => { if (alert.conversation_id) navigate(`/chat?meeting=${alert.conversation_id}`); else navigate(`/chat?sub=meeting`); }} className="hover:underline whitespace-nowrap flex items-center gap-1">
-                <MessageSquare className="w-3 h-3" />Krizová porada
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); handleDismissAlert(alert.id); }} className="ml-auto hover:bg-white/10 p-0.5 rounded" title="Skrýt">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Detail modal */}
       {detailAlert && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
           <div className="bg-white dark:bg-neutral-900 rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
-            <div className={`${detailAlert.status === "ACKNOWLEDGED" ? "bg-orange-500" : "bg-red-600"} text-white px-6 py-4 rounded-t-xl flex items-center justify-between`}>
+            <div className="text-white px-6 py-4 rounded-t-xl flex items-center justify-between" style={{ backgroundColor: "#7C2D2D" }}>
               <div className="flex items-center gap-2">
                 <Shield className="w-5 h-5" />
                 <span className="font-bold">Krizový detail – {detailAlert.part_name}</span>
@@ -258,17 +303,17 @@ const CrisisAlert: React.FC = () => {
             <div className="p-6 space-y-5 text-sm">
               <div><h3 className="font-bold text-foreground mb-1">Souhrn</h3><p className="text-muted-foreground">{detailAlert.summary}</p></div>
               <div className="flex gap-4 text-xs">
-                <span className={`px-2 py-1 rounded font-bold ${detailAlert.severity === "CRITICAL" ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" : "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"}`}>{detailAlert.severity}</span>
+                <span className="px-2 py-1 rounded font-bold" style={{ backgroundColor: "#7C2D2D20", color: "#7C2D2D" }}>{detailAlert.severity}</span>
                 <span className="text-muted-foreground">Detekováno: {formatTime(detailAlert.created_at)}</span>
               </div>
               {detailAlert.trigger_signals && detailAlert.trigger_signals.length > 0 && (
-                <div><h3 className="font-bold text-foreground mb-1">Signály</h3><div className="flex flex-wrap gap-1">{detailAlert.trigger_signals.map((s, i) => (<span key={i} className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs px-2 py-0.5 rounded-full">{s}</span>))}</div></div>
+                <div><h3 className="font-bold text-foreground mb-1">Signály</h3><div className="flex flex-wrap gap-1">{detailAlert.trigger_signals.map((s, i) => (<span key={i} className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: "#7C2D2D15", color: "#7C2D2D" }}>{s}</span>))}</div></div>
               )}
               {detailAlert.karel_assessment && (<div><h3 className="font-bold text-foreground mb-1">Karlovo vyhodnocení</h3><p className="text-muted-foreground whitespace-pre-wrap">{detailAlert.karel_assessment}</p></div>)}
               {detailAlert.intervention_plan && (<div><h3 className="font-bold text-foreground mb-1">Plán intervence</h3><p className="text-muted-foreground whitespace-pre-wrap">{detailAlert.intervention_plan}</p></div>)}
               {detailAlert.conversation_excerpts && (<div><h3 className="font-bold text-foreground mb-1">Úryvky z konverzace</h3><div className="bg-muted/50 rounded-lg p-3 text-xs whitespace-pre-wrap max-h-48 overflow-y-auto font-mono">{detailAlert.conversation_excerpts}</div></div>)}
               {tasks.length > 0 && (
-                <div><h3 className="font-bold text-foreground mb-2">Úkoly</h3><div className="space-y-2">{tasks.map(t => (<label key={t.id} className="flex items-start gap-2 cursor-pointer"><input type="checkbox" checked={t.status === "DONE"} onChange={() => handleToggleTask(t)} className="mt-0.5 accent-red-600" /><div><p className={`text-sm font-medium ${t.status === "DONE" ? "line-through opacity-50" : "text-foreground"}`}>{t.title}</p>{t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}<p className="text-xs text-muted-foreground">Pro: {t.assigned_to}</p></div></label>))}</div></div>
+                <div><h3 className="font-bold text-foreground mb-2">Úkoly</h3><div className="space-y-2">{tasks.map(t => (<label key={t.id} className="flex items-start gap-2 cursor-pointer"><input type="checkbox" checked={t.status === "DONE"} onChange={() => handleToggleTask(t)} className="mt-0.5" style={{ accentColor: "#7C2D2D" }} /><div><p className={`text-sm font-medium ${t.status === "DONE" ? "line-through opacity-50" : "text-foreground"}`}>{t.title}</p>{t.description && <p className="text-xs text-muted-foreground">{t.description}</p>}<p className="text-xs text-muted-foreground">Pro: {t.assigned_to}</p></div></label>))}</div></div>
               )}
               {!showResolveInput ? (
                 <button onClick={() => setShowResolveInput(true)} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"><CheckCircle className="w-4 h-4" />KRIZE VYŘEŠENA</button>

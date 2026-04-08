@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Shield, MessageSquare, Heart, Target, ShieldCheck, ArrowRight } from "lucide-react";
-import { KarelCard } from "@/components/ui/KarelCard";
-import { KarelBadge } from "@/components/ui/KarelBadge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,15 +16,12 @@ import DidSystemOverview from "./DidSystemOverview";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidMonthlyPanel from "./DidMonthlyPanel";
-import DidPulseCheck from "./DidPulseCheck";
 import DidColleagueView from "./DidColleagueView";
 import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
 import DidSwitchHistory from "./DidSwitchHistory";
-// PartQuickView removed — data belongs in kartotéka
 import CrisisTimeline from "./CrisisTimeline";
-
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -44,44 +39,6 @@ interface ActiveThreadSummary {
   messageCount: number;
 }
 
-interface DashboardMetrics {
-  todayMsgCount: number;
-  todayConversations: number;
-  todayValence: number | null;
-  activeGoals: number;
-  avgGoalProgress: number;
-  newAlerts: number;
-  criticalAlerts: number;
-  highAlerts: number;
-}
-
-interface PartHeatmapRow {
-  partName: string;
-  role: string | null;
-  valence: number | null;
-  trendArrow: "↗" | "↘" | "→" | null;
-  msgCount: number;
-  goalCount: number;
-  alertCount: number;
-  switchCount: number;
-}
-
-interface GoalRow {
-  id: string;
-  partName: string | null;
-  goalText: string;
-  progressPct: number;
-  status: string;
-}
-
-interface SwitchEvent {
-  id: string;
-  originalPart: string;
-  detectedPart: string;
-  confidence: string;
-  createdAt: string;
-}
-
 interface Props {
   onManualUpdate: () => void;
   isUpdating: boolean;
@@ -93,15 +50,9 @@ interface Props {
   isRefreshingMemory?: boolean;
 }
 
-const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mt-3 mb-2.5 pb-1 relative after:absolute after:bottom-0 after:left-0 after:w-8 after:h-px after:bg-primary/30">
-    {children}
-  </h3>
-);
-
-// ── Skeleton placeholder ──
+// Skeleton
 const SkeletonBlock = ({ className }: { className?: string }) => (
-  <div className={cn("animate-pulse rounded-md bg-muted", className)} />
+  <div className={cn("animate-pulse rounded-xl bg-gray-100", className)} />
 );
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -137,27 +88,15 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [loading, setLoading] = useState(true);
   const [activeCrises, setActiveCrises] = useState<any[]>([]);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
-
-  // New dashboard data
-  const [metrics, setMetrics] = useState<DashboardMetrics>({ todayMsgCount: 0, todayConversations: 0, todayValence: null, activeGoals: 0, avgGoalProgress: 0, newAlerts: 0, criticalAlerts: 0, highAlerts: 0 });
-  const [heatmapRows, setHeatmapRows] = useState<PartHeatmapRow[]>([]);
-  const [goals, setGoals] = useState<GoalRow[]>([]);
-  const [proposedGoals, setProposedGoals] = useState(0);
-  const [unreadNotes, setUnreadNotes] = useState(0);
-  const [weekActivity, setWeekActivity] = useState<[string, number][]>([]);
-  const [todaySwitches, setTodaySwitches] = useState<SwitchEvent[]>([]);
-  const [lastReportStatus, setLastReportStatus] = useState<string | null>(null);
-  const [todayAiErrors, setTodayAiErrors] = useState(0);
-  const [activePartsCount, setActivePartsCount] = useState(0);
-  const [expandedPart, setExpandedPart] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [assessingCrisisId, setAssessingCrisisId] = useState<string | null>(null);
-  const [escalatedTasks, setEscalatedTasks] = useState<any[]>([]);
   const [healthIssues, setHealthIssues] = useState<any[]>([]);
+  const [showCrisisDetail, setShowCrisisDetail] = useState(false);
+
   const loadDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const today = todayISO();
-      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
       const todayStart = today + "T00:00:00";
 
       const results = await Promise.all([
@@ -165,25 +104,17 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         supabase.from("did_pending_drive_writes").select("id", { count: "exact", head: true }).eq("status", "pending"),
         supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
         supabase.from("did_part_registry").select("part_name, display_name, status, role_in_system, last_seen_at, known_strengths, known_triggers").eq("status", "active"),
-        supabase.from("daily_metrics").select("part_name, message_count, emotional_valence, switching_count, risk_signals_count").eq("metric_date", today),
-        supabase.from("daily_metrics").select("part_name, metric_date, message_count, emotional_valence").gte("metric_date", weekAgo).order("metric_date", { ascending: true }),
-        supabase.from("strategic_goals").select("id, part_name, goal_text, progress_pct, status").eq("status", "active"),
-        supabase.from("strategic_goals").select("id", { count: "exact", head: true }).eq("status", "proposed"),
-        (supabase as any).from("safety_alerts").select("id, severity, part_name, status").in("status", ["new", "notified"]),
-        supabase.from("switching_events").select("id, original_part, detected_part, confidence, created_at").gte("created_at", todayStart).order("created_at", { ascending: false }),
-        (supabase as any).from("therapist_notes").select("id", { count: "exact", head: true }).eq("is_read_by_karel", false),
-        supabase.from("did_threads").select("id, part_name", { count: "exact" }).in("sub_mode", ["cast", "crisis"]).gte("last_activity_at", todayStart),
-        supabase.from("did_daily_report_dispatches").select("status").order("created_at", { ascending: false }).limit(1),
-        supabase.from("ai_error_log").select("id", { count: "exact", head: true }).gte("created_at", todayStart),
+        supabase.from("system_health_log").select("id, event_type, severity, message, created_at").eq("severity", "critical").eq("resolved", false).order("created_at", { ascending: false }).limit(10),
       ]);
-      const [threadsRes, pendingWritesRes, crisisRes, registryRes, todayMetricsRes, weekMetricsRes, activeGoalsRes, proposedGoalsRes, safetyRes, switchesRes, unreadNotesRes, todayThreadsRes, lastDispatchRes, aiErrorsRes] = results as any;
+      const [threadsRes, pendingWritesRes, crisisRes, registryRes, healthRes] = results as any;
 
       setActiveCrises(crisisRes.data || []);
+      setHealthIssues(healthRes.data || []);
 
-      // ── Process threads (original logic) ──
+      // Process threads
       const threads = (threadsRes.data || []).filter((t: any) => !isNonDidEntity(t.part_name || ""));
-      const latestByPart = new Map<string, ActiveThreadSummary>();
       const partRows: PartActivity[] = [];
+      const latestByPart = new Map<string, ActiveThreadSummary>();
       const threadsByPart = new Map<string, typeof threads>();
       for (const thread of threads) {
         const key = (thread.part_name || "").toUpperCase();
@@ -211,129 +142,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       setActiveThreads(Array.from(latestByPart.values()));
       setPendingWriteCount(pendingWritesRes.count || 0);
 
-      // ── Registry + active parts (filter out non-DID entities) ──
-      const registry = (registryRes.data || []).filter((r: any) => !isNonDidEntity(r.part_name));
-      setActivePartsCount(registry.length);
-
-      // ── Today metrics aggregation ──
-      const todayM = todayMetricsRes.data || [];
-      const totalMsgs = todayM.reduce((s, m) => s + (m.message_count || 0), 0);
-      const valences = todayM.filter(m => m.emotional_valence != null).map(m => m.emotional_valence!);
-      const avgValence = valences.length > 0 ? valences.reduce((a, b) => a + b, 0) / valences.length : null;
-
-      // ── Goals ──
-      const goalsData = (activeGoalsRes.data || []).map(g => ({ id: g.id, partName: g.part_name, goalText: g.goal_text, progressPct: g.progress_pct || 0, status: g.status || "active" }));
-      setGoals(goalsData);
-      const avgProgress = goalsData.length > 0 ? Math.round(goalsData.reduce((s, g) => s + g.progressPct, 0) / goalsData.length) : 0;
-      setProposedGoals(proposedGoalsRes.count || 0);
-
-      // ── Safety alerts ──
-      const alerts = safetyRes.data || [];
-      const critCount = alerts.filter((a: any) => a.severity === "critical").length;
-      const highCount = alerts.filter((a: any) => a.severity === "high").length;
-
-      setMetrics({
-        todayMsgCount: totalMsgs,
-        todayConversations: todayThreadsRes.count || 0,
-        todayValence: avgValence,
-        activeGoals: goalsData.length,
-        avgGoalProgress: avgProgress,
-        newAlerts: alerts.length,
-        criticalAlerts: critCount,
-        highAlerts: highCount,
-      });
-
-      // ── Unread notes ──
-      setUnreadNotes(unreadNotesRes.count || 0);
-
-      // ── Heatmap ──
-      const weekM = weekMetricsRes.data || [];
-      const todayMetricsByPart = new Map(todayM.map(m => [m.part_name?.toUpperCase(), m]));
-      const goalsByPart = new Map<string, number>();
-      for (const g of goalsData) {
-        const k = (g.partName || "").toUpperCase();
-        goalsByPart.set(k, (goalsByPart.get(k) || 0) + 1);
-      }
-      const alertsByPart = new Map<string, number>();
-      for (const a of alerts) {
-        const k = ((a as any).part_name || "").toUpperCase();
-        alertsByPart.set(k, (alertsByPart.get(k) || 0) + 1);
-      }
-      const switchesByPart = new Map<string, number>();
-      for (const s of (switchesRes.data || [])) {
-        const k = (s.detected_part || "").toUpperCase();
-        switchesByPart.set(k, (switchesByPart.get(k) || 0) + 1);
-      }
-
-      const heatmap: PartHeatmapRow[] = registry.map(r => {
-        const key = r.part_name.toUpperCase();
-        const tm = todayMetricsByPart.get(key);
-        const partWeek = weekM.filter(w => (w.part_name || "").toUpperCase() === key);
-        let trendArrow: PartHeatmapRow["trendArrow"] = null;
-        if (partWeek.length >= 2) {
-          const first = partWeek[0].emotional_valence ?? 5;
-          const last = partWeek[partWeek.length - 1].emotional_valence ?? 5;
-          const diff = last - first;
-          trendArrow = diff > 0.5 ? "↗" : diff < -0.5 ? "↘" : "→";
-        }
-        return {
-          partName: r.part_name,
-          role: r.role_in_system || null,
-          valence: (tm as any)?.emotional_valence ?? null,
-          trendArrow,
-          msgCount: (tm as any)?.message_count || 0,
-          goalCount: goalsByPart.get(key) || 0,
-          alertCount: alertsByPart.get(key) || 0,
-          switchCount: switchesByPart.get(key) || 0,
-        };
-      });
-      setHeatmapRows(heatmap);
-
-      // ── Week activity chart ──
-      const dayMap = new Map<string, number>();
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
-        dayMap.set(d, 0);
-      }
-      for (const m of weekM) {
-        const existing = dayMap.get(m.metric_date) ?? 0;
-        dayMap.set(m.metric_date, existing + (m.message_count || 0));
-      }
-      setWeekActivity(Array.from(dayMap.entries()));
-
-      // ── Today switches ──
-      setTodaySwitches((switchesRes.data || []).map(s => ({
-        id: s.id,
-        originalPart: s.original_part,
-        detectedPart: s.detected_part,
-        confidence: s.confidence,
-        createdAt: s.created_at,
-      })));
-
-      // ── System footer ──
-      setLastReportStatus(lastDispatchRes.data?.[0]?.status || null);
-      setTodayAiErrors(aiErrorsRes.count || 0);
-
-      // ── Escalated tasks ──
-      try {
-        const { data: escTasks } = await (supabase as any).from("did_therapist_tasks")
-          .select("id, task, assigned_to, created_at, escalation_level, priority, status, status_hanka, status_kata")
-          .in("escalation_level", ["warning", "critical"])
-          .neq("status", "done");
-        setEscalatedTasks((escTasks || []).filter((t: any) => t.status !== "archived" && t.status !== "needs_review"));
-      } catch { setEscalatedTasks([]); }
-
-      // ── System health issues ──
-      try {
-        const { data: healthData } = await supabase.from("system_health_log")
-          .select("id, event_type, severity, message, created_at")
-          .eq("severity", "critical")
-          .eq("resolved", false)
-          .order("created_at", { ascending: false })
-          .limit(10);
-        setHealthIssues(healthData || []);
-      } catch { setHealthIssues([]); }
-
       setLastRefreshAt(new Date());
     } catch (error) {
       console.error("Failed to load DID dashboard data:", error);
@@ -343,16 +151,13 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     }
   }, []);
 
-  // Auto-refresh every 60s
   useEffect(() => { loadDashboardData(); }, [loadDashboardData, refreshTrigger]);
   useEffect(() => {
     const interval = setInterval(() => { loadDashboardData(true); }, 60000);
     return () => clearInterval(interval);
   }, [loadDashboardData]);
 
-  // ── Realtime subscriptions ──
-  const [realtimeConnected, setRealtimeConnected] = useState(false);
-
+  // Realtime
   useEffect(() => {
     const alertChannel = supabase
       .channel("dashboard-safety-alerts")
@@ -361,22 +166,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         const partName = payload.new?.part_name;
         if (severity === "critical") {
           playAlertSound();
-          toast.error(`🚨 KRITICKÝ ALERT: ${payload.new?.alert_type} — ${partName || "neznámá část"}`, { duration: 15000 });
-        } else if (severity === "high") {
-          toast.warning(`⚠️ Vysoký alert: ${payload.new?.alert_type} — ${partName || "?"}`, { duration: 10000 });
-        }
-        loadDashboardData(true);
-      })
-      .subscribe();
-
-    const switchChannel = supabase
-      .channel("dashboard-switching")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "switching_events" }, (payload: any) => {
-        const from = payload.new?.original_part;
-        const to = payload.new?.detected_part;
-        const confidence = payload.new?.confidence;
-        if (confidence === "high" || confidence === "confirmed") {
-          toast.info(`🔄 Switching: ${from} → ${to}`, { duration: 5000 });
+          toast.error(`🚨 KRITICKÝ ALERT: ${payload.new?.alert_type} — ${partName || "?"}`, { duration: 15000 });
         }
         loadDashboardData(true);
       })
@@ -387,31 +177,21 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, (payload: any) => {
         if (payload.eventType === "INSERT") {
           playAlertSound();
-          toast.error(`🔴 NOVÁ KRIZE: ${payload.new?.part_name || "?"} — ${payload.new?.severity || "?"}`, { duration: 20000 });
+          toast.error(`🔴 NOVÁ KRIZE: ${payload.new?.part_name || "?"}`, { duration: 20000 });
         }
         loadDashboardData(true);
       })
       .subscribe();
 
-    const notesChannel = supabase
-      .channel("dashboard-notes")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "therapist_notes" }, () => {
-        loadDashboardData(true);
-      })
-      .subscribe();
-
     setRealtimeConnected(true);
-
     return () => {
       setRealtimeConnected(false);
       supabase.removeChannel(alertChannel);
-      supabase.removeChannel(switchChannel);
       supabase.removeChannel(crisisChannel);
-      supabase.removeChannel(notesChannel);
     };
   }, [loadDashboardData]);
 
-  // ── Action callbacks (kept from original) ──
+  // Action callbacks
   const runDidBootstrap = useCallback(async () => {
     setIsBootstrapping(true);
     try {
@@ -481,9 +261,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     finally { setIsCleaningTasks(false); }
   }, []);
 
-  const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
-  const maxWeekMsgs = useMemo(() => Math.max(1, ...weekActivity.map(([, c]) => c)), [weekActivity]);
-
   const runCrisisAssessment = useCallback(async (crisisId: string) => {
     setAssessingCrisisId(crisisId);
     try {
@@ -495,7 +272,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const data = await resp.json();
       const result = data.results?.[0];
       if (result) {
-        toast.success(`Hodnocení den ${result.day_number}: ${result.decision} | Risk: ${result.risk_level} | ${result.tasks_created} úkolů`);
+        toast.success(`Hodnocení den ${result.day_number}: ${result.decision}`);
       }
       setRefreshTrigger(p => p + 1);
     } catch (e: any) {
@@ -505,370 +282,257 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     }
   }, []);
 
-  const valenceEmoji = (v: number | null) => v == null ? "⚪" : v >= 7 ? "😊" : v >= 4 ? "😐" : "😟";
+  const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
 
   if (loading) {
     return (
-      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-3">
-        <SkeletonBlock className="h-8 w-full" />
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {[1,2,3,4].map(i => <SkeletonBlock key={i} className="h-16" />)}
-        </div>
-        <SkeletonBlock className="h-32" />
-        <SkeletonBlock className="h-24" />
-        <SkeletonBlock className="h-16" />
+      <div className="max-w-[900px] mx-auto px-4 py-6 space-y-6" style={{ backgroundColor: "#F5F3EF", minHeight: "100vh" }}>
+        <SkeletonBlock className="h-10 w-full" />
+        <SkeletonBlock className="h-40 w-full" />
+        <SkeletonBlock className="h-32 w-full" />
+        <SkeletonBlock className="h-24 w-full" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 space-y-3" data-no-swipe-back="true">
+    <div className="min-h-screen" style={{ backgroundColor: "#F5F3EF" }} data-no-swipe-back="true">
+      <div className="max-w-[900px] mx-auto px-4 py-6 space-y-6">
 
-      {/* ═══ SEKCE 1: REFRESH BAR ═══ */}
-      <div className="flex items-center justify-between pb-2 border-b border-border/30">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-muted-foreground">
-            Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-          <div className="flex items-center gap-1">
-            <div className={cn("w-1.5 h-1.5 rounded-full", realtimeConnected ? "bg-green-500 animate-pulse" : "bg-muted-foreground")} />
-            <span className="text-[9px] text-muted-foreground">{realtimeConnected ? "live" : "offline"}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] gap-1" onClick={() => { setRefreshTrigger(p => p + 1); }}>
-            <RefreshCw className="w-3 h-3" /> Obnovit
-          </Button>
-          <DidSprava
-            onBootstrap={runDidBootstrap} isBootstrapping={isBootstrapping}
-            onHealthAudit={runHealthAudit} isAuditing={isAuditing}
-            onReformat={runReformat} isReformatting={isReformatting}
-            onManualUpdate={onManualUpdate} isUpdating={isUpdating}
-            onCentrumSync={runCentrumSync} isCentrumSyncing={isCentrumSyncing}
-            onCleanupTasks={runCleanupTasks} isCleaningTasks={isCleaningTasks}
-            onRefreshMemory={onRefreshMemory} isRefreshingMemory={isRefreshingMemory}
-            refreshTrigger={refreshTrigger}
-            onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
-          />
-        </div>
-      </div>
-
-      {/* ═══ SYSTÉMOVÝ HEALTH BANNER ═══ */}
-      {healthIssues.length > 0 && (
-        <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-destructive" />
-            <span className="text-xs font-bold text-destructive">⚙️ SYSTÉMOVÝ PROBLÉM</span>
-          </div>
-          {healthIssues.map((h: any) => (
-            <div key={h.id} className="flex items-center justify-between gap-2">
-              <span className="text-[11px] text-destructive/90 pl-6">• {h.message}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-[10px] h-5 px-2 text-destructive hover:bg-destructive/20"
-                onClick={async () => {
-                  await supabase.from("system_health_log").update({ resolved: true }).eq("id", h.id);
-                  setHealthIssues(prev => prev.filter(x => x.id !== h.id));
-                  toast.success("Označeno jako vyřešeno");
-                }}
-              >
-                Vyřešeno
-              </Button>
+        {/* ═══ REFRESH BAR ═══ */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
+              Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+            <div className="flex items-center gap-1">
+              <div className={cn("w-1.5 h-1.5 rounded-full", realtimeConnected ? "bg-green-500" : "bg-gray-400")} />
+              <span className="text-[11px]" style={{ color: "#4A4A4A" }}>{realtimeConnected ? "live" : "offline"}</span>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* ═══ ESKALOVANÉ ÚKOLY BANNER ═══ */}
-      {escalatedTasks.length > 0 && (() => {
-        const criticalTasks = escalatedTasks.filter((t: any) => t.escalation_level === "critical");
-        const warningTasks = escalatedTasks.filter((t: any) => t.escalation_level === "warning");
-        return (
-          <div className="space-y-2">
-            {criticalTasks.length > 0 && (
-              <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <ListChecks className="w-4 h-4 text-destructive" />
-                  <span className="text-xs font-bold text-destructive">🚨 {criticalTasks.length} úkolů je KRITICKY zpožděno!</span>
-                </div>
-                {criticalTasks.map((t: any) => {
-                  const daysOld = Math.floor((Date.now() - new Date(t.created_at).getTime()) / 86400000);
-                  return (
-                    <div key={t.id} className="text-[11px] text-destructive/90 pl-6 cursor-pointer hover:underline" onClick={() => navigate("/chat?sub=sprava")}>
-                      • {t.task} — {t.assigned_to} — {daysOld} dní
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {warningTasks.length > 0 && (
-              <div className="rounded-xl border-2 border-amber-500/50 bg-amber-500/10 backdrop-blur-sm shadow-sm p-3 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <ListChecks className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <span className="text-xs font-bold text-amber-700 dark:text-amber-400">⏰ {warningTasks.length} úkolů čeká déle než 3 dny</span>
-                </div>
-                {warningTasks.map((t: any) => {
-                  const daysOld = Math.floor((Date.now() - new Date(t.created_at).getTime()) / 86400000);
-                  return (
-                    <div key={t.id} className="text-[11px] text-amber-700/90 dark:text-amber-400/90 pl-6 cursor-pointer hover:underline" onClick={() => navigate("/chat?sub=sprava")}>
-                      • {t.task} — {t.assigned_to} — {daysOld} dní
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
-        );
-      })()}
-
-      {/* ═══ SEKCE 2: URGENTNÍ BANNERY ═══ */}
-      {/* Crisis alerts */}
-      {activeCrises.length > 0 && (
-        <div className="rounded-xl border-2 border-destructive bg-destructive/10 backdrop-blur-sm shadow-sm p-3 space-y-2">
           <div className="flex items-center gap-2">
-            <Shield className="w-4 h-4 text-destructive" />
-            <span className="text-xs font-bold text-destructive">🔴 KRIZE POTVRZENA — koordinuje Karel, terapeutky Hanička a Káťa</span>
+            <Button variant="ghost" size="sm" className="h-7 px-3 text-[12px] gap-1" onClick={() => setRefreshTrigger(p => p + 1)}>
+              <RefreshCw className="w-3 h-3" /> Obnovit
+            </Button>
+            <DidSprava
+              onBootstrap={runDidBootstrap} isBootstrapping={isBootstrapping}
+              onHealthAudit={runHealthAudit} isAuditing={isAuditing}
+              onReformat={runReformat} isReformatting={isReformatting}
+              onManualUpdate={onManualUpdate} isUpdating={isUpdating}
+              onCentrumSync={runCentrumSync} isCentrumSyncing={isCentrumSyncing}
+              onCleanupTasks={runCleanupTasks} isCleaningTasks={isCleaningTasks}
+              onRefreshMemory={onRefreshMemory} isRefreshingMemory={isRefreshingMemory}
+              refreshTrigger={refreshTrigger}
+              onSelectPart={onQuickThread ? (partName) => onQuickThread("", partName) : undefined}
+            />
           </div>
-          {activeCrises.map((c: any) => (
-            <div key={c.id} className="rounded-lg bg-destructive/5 border border-destructive/30 p-2 space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-destructive">{c.part_name} ({c.severity})</span>
-                <span className="text-[10px] text-muted-foreground">{c.days_in_crisis ? `den ${c.days_in_crisis}` : c.status}</span>
-              </div>
-              <p className="text-[10px] text-foreground">{c.summary}</p>
-              <div className="flex gap-1.5 flex-wrap">
-                <button onClick={() => navigate(c.conversation_id ? `/chat?meeting=${c.conversation_id}` : `/chat?sub=meeting`)} className="text-[10px] bg-destructive text-destructive-foreground px-2 py-1 rounded font-semibold">Otevřít krizovou poradu</button>
-                <button onClick={() => navigate(`/chat?sub=cast&part=${c.part_name}`)} className="text-[10px] bg-muted text-foreground px-2 py-1 rounded font-medium border border-border">Otevřít detail</button>
-              </div>
-              <CrisisTimeline
-                crisisAlertId={c.id}
-                partName={c.part_name}
-                onRunAssessment={() => runCrisisAssessment(c.id)}
-                isAssessing={assessingCrisisId === c.id}
-              />
+        </div>
+
+        {/* ═══ SYSTEM HEALTH BANNER ═══ */}
+        {healthIssues.length > 0 && (
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4 border-l-4" style={{ borderLeftColor: "#DC2626" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="w-4 h-4" style={{ color: "#DC2626" }} />
+              <span className="text-[14px] font-semibold" style={{ color: "#DC2626" }}>Systémový problém</span>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Safety alerts banner */}
-      {metrics.newAlerts > 0 && (
-        <div className={cn("rounded-xl border p-2 flex items-center gap-2 text-xs backdrop-blur-sm shadow-sm",
-          metrics.criticalAlerts > 0 ? "border-destructive bg-destructive/10 text-destructive" : "border-amber-500 bg-amber-500/10 text-amber-700"
-        )}>
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span className="font-medium">
-            {metrics.criticalAlerts > 0 ? `🚨 ${metrics.criticalAlerts} kritických` : ""}{metrics.criticalAlerts > 0 && metrics.highAlerts > 0 ? ", " : ""}{metrics.highAlerts > 0 ? `⚠️ ${metrics.highAlerts} vysokých` : ""} bezpečnostních alertů
-          </span>
-        </div>
-      )}
-
-      {/* Proposed goals banner */}
-      {proposedGoals > 0 && (
-        <div className="rounded-xl border border-primary/30 bg-primary/5 backdrop-blur-sm shadow-sm p-2 flex items-center gap-2 text-xs text-primary">
-          <Target className="w-4 h-4 shrink-0" />
-          <span className="font-medium">🎯 {proposedGoals} navrhovaných cílů čeká na schválení</span>
-        </div>
-      )}
-
-      {/* Unread therapist notes */}
-      {unreadNotes > 0 && (
-        <div className="rounded-xl border border-amber-400/30 bg-amber-50 dark:bg-amber-950/20 backdrop-blur-sm shadow-sm p-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
-          <MessageSquare className="w-4 h-4 shrink-0" />
-          <span className="font-medium">📝 {unreadNotes} nepřečtených poznámek terapeutek</span>
-        </div>
-      )}
-
-      {/* ═══ SEKCE 3: SOUHRNNÉ KARTY (only show with data) ═══ */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {metrics.todayMsgCount > 0 && (
-          <SummaryCard icon={<MessageSquare className="w-3.5 h-3.5 text-primary" />} label="Zprávy dnes" value={`${metrics.todayMsgCount}`} sub={`${metrics.todayConversations} konverzací`} />
-        )}
-        {metrics.todayValence != null && (
-          <SummaryCard icon={<Heart className="w-3.5 h-3.5 text-primary" />} label="Emoční valence" value={valenceEmoji(metrics.todayValence)} sub={`${metrics.todayValence.toFixed(1)} / 10`} />
-        )}
-        {metrics.activeGoals > 0 && (
-          <SummaryCard icon={<Target className="w-3.5 h-3.5 text-primary" />} label="Aktivní cíle" value={`${metrics.activeGoals}`} sub={`ø progress ${metrics.avgGoalProgress}%`} />
-        )}
-        {metrics.newAlerts > 0 && (
-          <SummaryCard icon={<ShieldCheck className="w-3.5 h-3.5 text-primary" />} label="Bezpečnost" value={`${metrics.newAlerts} ⚠️`} sub="vyžaduje pozornost" />
-        )}
-      </div>
-
-      {/* ═══ KARLŮV DENNÍ PLÁN ═══ */}
-      <ErrorBoundary fallbackTitle="Denní plán selhal">
-        <KarelDailyPlan refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      {/* ═══ SEKCE 5: PROGRESS AKTIVNÍCH CÍLŮ ═══ */}
-      {goals.length > 0 && (
-        <div>
-          <SectionLabel>Aktivní cíle</SectionLabel>
-          <div className="space-y-1.5">
-            {goals.slice(0, 5).map(g => (
-              <div key={g.id} className="p-2 rounded-lg border border-border/30 bg-card/20 backdrop-blur-sm text-xs space-y-1">
-                <div className="flex items-center gap-1.5">
-                  {g.partName && <Badge variant="secondary" className="text-[9px] h-4 px-1">{g.partName}</Badge>}
-                  <span className="truncate flex-1">{g.goalText}</span>
-                  <span className="text-[10px] text-muted-foreground font-medium">{g.progressPct}%</span>
-                </div>
-                <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-                  <div className={cn("h-full rounded-full transition-all duration-500", g.progressPct >= 75 ? "bg-green-500" : g.progressPct >= 40 ? "bg-amber-500" : "bg-primary")} style={{ width: `${Math.min(100, g.progressPct)}%` }} />
-                </div>
+            {healthIssues.map((h: any) => (
+              <div key={h.id} className="flex items-center justify-between gap-2 py-1">
+                <span className="text-[14px]" style={{ color: "#4A4A4A" }}>• {h.message}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-[12px] h-6 px-2"
+                  onClick={async () => {
+                    await supabase.from("system_health_log").update({ resolved: true }).eq("id", h.id);
+                    setHealthIssues(prev => prev.filter(x => x.id !== h.id));
+                    toast.success("Vyřešeno");
+                  }}
+                >
+                  Vyřešeno
+                </Button>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ═══ SEKCE 6: TÝDENNÍ AKTIVITA ═══ */}
-      {weekActivity.length > 0 && weekActivity.some(([, c]) => c > 0) && (
-        <div>
-          <SectionLabel>Týdenní aktivita</SectionLabel>
-          <div className="flex items-end gap-1 h-16 p-2 rounded-md border bg-card/20 backdrop-blur-sm">
-            {weekActivity.map(([date, count]) => (
-              <div key={date} className="flex-1 flex flex-col items-center gap-0.5 h-full justify-end">
-                {count > 0 && <span className="text-[8px] text-muted-foreground">{count}</span>}
-                <div className="w-full bg-gradient-to-t from-primary/80 to-primary/40 rounded-sm min-h-[2px]" style={{ height: `${(count / maxWeekMsgs) * 100}%` }} />
-                <span className="text-[8px] text-muted-foreground">{new Date(date + "T12:00:00").toLocaleDateString("cs", { weekday: "narrow" })}</span>
+        {/* ═══ 2. CRISIS DETAIL (collapsible) ═══ */}
+        {activeCrises.length > 0 && (
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
+            <button
+              onClick={() => setShowCrisisDetail(!showCrisisDetail)}
+              className="w-full flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4" style={{ color: "#7C2D2D" }} />
+                <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
+                  Aktivní krize ({activeCrises.length})
+                </span>
               </div>
-            ))}
+              <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
+                {showCrisisDetail ? "Sbalit ▲" : "Rozbalit ▼"}
+              </span>
+            </button>
+
+            {showCrisisDetail && (
+              <div className="mt-3 space-y-3">
+                {activeCrises.map((c: any) => (
+                  <div key={c.id} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
+                        {c.part_name} ({c.severity})
+                      </span>
+                      <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
+                        {c.days_in_crisis ? `den ${c.days_in_crisis}` : c.status}
+                      </span>
+                    </div>
+                    <p className="text-[14px] line-clamp-2" style={{ color: "#4A4A4A" }}>{c.summary}</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => navigate(c.conversation_id ? `/chat?meeting=${c.conversation_id}` : `/chat?sub=meeting`)}
+                        className="text-[12px] text-white px-3 py-1 rounded-md font-medium"
+                        style={{ backgroundColor: "#7C2D2D" }}
+                      >
+                        Krizová porada
+                      </button>
+                      <button
+                        onClick={() => navigate(`/chat?sub=cast&part=${c.part_name}`)}
+                        className="text-[12px] px-3 py-1 rounded-md font-medium border"
+                        style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
+                      >
+                        Otevřít detail
+                      </button>
+                    </div>
+                    <details className="text-[12px]">
+                      <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
+                      <div className="mt-2">
+                        <CrisisTimeline
+                          crisisAlertId={c.id}
+                          partName={c.part_name}
+                          onRunAssessment={() => runCrisisAssessment(c.id)}
+                          isAssessing={assessingCrisisId === c.id}
+                        />
+                      </div>
+                    </details>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ═══ EXISTING SECTIONS ═══ */}
-      <ErrorBoundary fallbackTitle="Přehled systému selhal">
-        <KarelCard variant="default" padding="md" className="border-l-4 border-l-[hsl(var(--accent-primary))]">
-          <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger(p => p + 1)} />
-        </KarelCard>
-      </ErrorBoundary>
+        {/* ═══ 3. KARLŮV DENNÍ PLÁN (MAIN CONTENT) ═══ */}
+        <ErrorBoundary fallbackTitle="Denní plán selhal">
+          <KarelDailyPlan refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
 
-      <ErrorBoundary fallbackTitle="Denní plán selhal">
-        <DidDailySessionPlan refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      <section>
-        <SectionLabel>Úkoly pro terapeutky</SectionLabel>
-        <KarelCard variant="default" padding="md">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <ListChecks size={14} className="text-[hsl(var(--accent-primary))]" />
-              <span className="text-sm font-medium text-foreground">Task Board</span>
+        {/* ═══ 4. KDO MLUVÍ S KARLEM (navigation) ═══ */}
+        {activeThreads.length > 0 && (
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
+            <h3 className="text-[18px] font-semibold mb-3" style={{ color: "#2D2D2D" }}>Kdo mluví s Karlem</h3>
+            <div className="flex flex-wrap gap-2">
+              {activeThreads.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => onQuickThread?.(t.id, t.partName)}
+                  className="text-[14px] px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
+                  style={{ color: "#01696F", borderColor: "#01696F40" }}
+                >
+                  {t.partName}
+                  <span className="text-[12px] ml-1 opacity-60">({t.messageCount})</span>
+                </button>
+              ))}
             </div>
+          </div>
+        )}
+
+        {/* ═══ 5. KARLŮV PŘEHLED ═══ */}
+        <ErrorBoundary fallbackTitle="Přehled systému selhal">
+          <div className="rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4" style={{ backgroundColor: "#F0EFEB" }}>
+            <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger(p => p + 1)} />
+          </div>
+        </ErrorBoundary>
+
+        {/* ═══ 6. TASK BOARD ═══ */}
+        <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[18px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+              📋 Úkoly
+            </h3>
             {pendingWriteCount > 0 && (
-              <KarelBadge variant="warning" size="sm" dot>
-                <Upload size={10} /> {pendingWriteCount} čeká na Drive
-              </KarelBadge>
+              <span className="text-[12px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "#F59E0B20", color: "#B45309" }}>
+                <Upload className="w-3 h-3 inline mr-1" />{pendingWriteCount} čeká na Drive
+              </span>
             )}
           </div>
           <ErrorBoundary fallbackTitle="Task board selhal">
             <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
           </ErrorBoundary>
-        </KarelCard>
-      </section>
-
-      <ErrorBoundary fallbackTitle="Otázky Karla selhaly">
-        <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      <ErrorBoundary fallbackTitle="Dohody selhaly">
-        <KarelCard variant="default" padding="md">
-          <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(p => p + 1)} />
-        </KarelCard>
-      </ErrorBoundary>
-
-      <ErrorBoundary fallbackTitle="Měsíční panel selhal">
-        <KarelCard variant="default" padding="md">
-          <DidMonthlyPanel refreshTrigger={refreshTrigger} />
-        </KarelCard>
-      </ErrorBoundary>
-
-      <ErrorBoundary fallbackTitle="Pulse check selhal">
-        <DidPulseCheck refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      <ErrorBoundary fallbackTitle="Koordinační upozornění selhala">
-        <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      <ErrorBoundary fallbackTitle="Supervizní report selhal">
-        <DidSupervisionReport refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      {/* ═══ SEKCE 7: DNEŠNÍ SWITCHING ═══ */}
-      {todaySwitches.length > 0 && (
-        <div>
-          <SectionLabel>Dnešní switching</SectionLabel>
-          <div className="space-y-1">
-            {todaySwitches.map(s => (
-              <div key={s.id} className="flex items-center gap-2 p-2 rounded-md border text-xs bg-card/20 hover:bg-card/40 transition-colors">
-                <span className="text-[10px] text-muted-foreground">{new Date(s.createdAt).toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}</span>
-                <span className="font-medium">{s.originalPart}</span>
-                <ArrowRight className="w-3 h-3 text-muted-foreground" />
-                <span className="font-medium">{s.detectedPart}</span>
-                <Badge variant={s.confidence === "high" ? "destructive" : "secondary"} className="text-[8px] h-4 px-1 ml-auto">{s.confidence}</Badge>
-              </div>
-            ))}
-          </div>
         </div>
-      )}
 
-      <ErrorBoundary fallbackTitle="Switch historie selhala">
-        <DidSwitchHistory refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      <ErrorBoundary fallbackTitle="Pohled kolegyně selhal">
-        <DidColleagueView refreshTrigger={refreshTrigger} />
-      </ErrorBoundary>
-
-      {!loading && parts.length > 0 && (
-        <ErrorBoundary fallbackTitle="Mapa systému selhala">
-          <DidSystemMap parts={parts} activeThreads={activeThreads} onQuickThread={onQuickThread}
-            onDeletePart={async (partName) => {
-              const { error } = await supabase.from("did_threads").delete().eq("part_name", partName).eq("sub_mode", "cast");
-              if (error) { toast.error(`Nepodařilo se smazat vlákna pro ${partName}`); return; }
-              toast.success(`Vlákna pro „${partName}" smazána z mapy`);
-              setParts(prev => prev.filter(p => p.name !== partName));
-              setActiveThreads(prev => prev.filter(t => t.partName !== partName));
-            }}
-          />
+        {/* ═══ 7. PLÁN SEZENÍ ═══ */}
+        <ErrorBoundary fallbackTitle="Denní plán selhal">
+          <DidDailySessionPlan refreshTrigger={refreshTrigger} />
         </ErrorBoundary>
-      )}
 
-      {warningParts.length > 0 && (
-        <KarelCard variant="outlined" padding="md">
-          <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle size={16} className="text-primary" />
-            <span className="text-sm font-medium">Upozornění na neaktivní části</span>
+        {/* ═══ 8. DOHODY & TÝDENNÍ ANALÝZA ═══ */}
+        <ErrorBoundary fallbackTitle="Dohody selhaly">
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+            <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(p => p + 1)} />
           </div>
-          <p className="text-xs text-muted-foreground">{warningParts.map(p => p.name).join(", ")} – neaktivní více než 7 dní.</p>
-        </KarelCard>
-      )}
+        </ErrorBoundary>
 
-      {/* ═══ SEKCE 8: SYSTÉMOVÝ STAV FOOTER ═══ */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-xl bg-card/30 backdrop-blur-sm border border-border/30 text-[10px] text-muted-foreground">
-        <span>Report: <strong className={lastReportStatus === "sent" ? "text-green-600" : lastReportStatus === "failed" ? "text-destructive" : "text-foreground"}>{lastReportStatus || "—"}</strong></span>
-        <span>AI chyby dnes: <strong className={todayAiErrors > 0 ? "text-amber-600" : "text-foreground"}>{todayAiErrors}</strong></span>
-        <span>Aktivní části: <strong className="text-foreground">{activePartsCount}</strong></span>
+        {/* ═══ 9. MĚSÍČNÍ PŘEHLEDY ═══ */}
+        <ErrorBoundary fallbackTitle="Měsíční panel selhal">
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+            <DidMonthlyPanel refreshTrigger={refreshTrigger} />
+          </div>
+        </ErrorBoundary>
+
+        {/* ═══ 10. MAPA SYSTÉMU (active only) ═══ */}
+        {parts.filter(p => p.status === "active").length > 0 && (
+          <ErrorBoundary fallbackTitle="Mapa systému selhala">
+            <DidSystemMap
+              parts={parts.filter(p => p.status === "active")}
+              activeThreads={activeThreads}
+              onQuickThread={onQuickThread}
+              onDeletePart={async (partName) => {
+                const { error } = await supabase.from("did_threads").delete().eq("part_name", partName).eq("sub_mode", "cast");
+                if (error) { toast.error(`Nepodařilo se smazat vlákna pro ${partName}`); return; }
+                toast.success(`Vlákna pro „${partName}" smazána z mapy`);
+                setParts(prev => prev.filter(p => p.name !== partName));
+                setActiveThreads(prev => prev.filter(t => t.partName !== partName));
+              }}
+            />
+          </ErrorBoundary>
+        )}
+
+        {/* ═══ 11. SUPERVIZNÍ REPORT ═══ */}
+        <ErrorBoundary fallbackTitle="Supervizní report selhal">
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+            <DidSupervisionReport refreshTrigger={refreshTrigger} />
+          </div>
+        </ErrorBoundary>
+
+        {/* Warning parts */}
+        {warningParts.length > 0 && (
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertTriangle className="w-4 h-4" style={{ color: "#B45309" }} />
+              <span className="text-[14px] font-semibold" style={{ color: "#2D2D2D" }}>Neaktivní části</span>
+            </div>
+            <p className="text-[14px]" style={{ color: "#4A4A4A" }}>{warningParts.map(p => p.name).join(", ")} – neaktivní více než 7 dní.</p>
+          </div>
+        )}
+
+        {/* Footer status */}
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-[12px]" style={{ color: "#4A4A4A", backgroundColor: "#F0EFEB" }}>
+          <span>Části: <strong>{parts.filter(p => p.status === "active").length}</strong> aktivních</span>
+          <span>•</span>
+          <span>Vlákna: <strong>{activeThreads.length}</strong></span>
+        </div>
       </div>
     </div>
   );
 };
-
-// ── Summary card component ──
-function SummaryCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
-  return (
-    <div className="rounded-xl border border-border/50 bg-card/50 backdrop-blur-sm shadow-sm p-2.5 space-y-1">
-      <div className="flex items-center gap-1.5">
-        {icon}
-        <span className="text-[11px] text-muted-foreground">{label}</span>
-      </div>
-      <p className="text-base font-bold text-foreground leading-none">{value}</p>
-      <p className="text-[10px] text-muted-foreground">{sub}</p>
-    </div>
-  );
-}
 
 export default DidDashboard;

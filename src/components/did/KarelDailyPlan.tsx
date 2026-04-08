@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { AlertTriangle, HelpCircle, ListChecks, Calendar, Clock } from "lucide-react";
 
 interface Props {
   refreshTrigger: number;
@@ -51,9 +50,9 @@ const assigneeLabel = (a: string) => {
 };
 
 const KarelDailyPlan = ({ refreshTrigger }: Props) => {
-  const [crisisJournal, setCrisisJournal] = useState<CrisisJournalEntry | null>(null);
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [crisisDays, setCrisisDays] = useState<number | null>(null);
+  const [crisisJournal, setCrisisJournal] = useState<CrisisJournalEntry | null>(null);
   const [tasks, setTasks] = useState<PendingTask[]>([]);
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
   const [sessions, setSessions] = useState<SessionPlan[]>([]);
@@ -104,7 +103,6 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
       setSessions(sessionsRes.data || []);
       setCommitments(commitmentsRes.data || []);
 
-      // Load crisis journal for the active crisis
       const activeCrisis = crisisRes.data?.[0];
       if (activeCrisis) {
         setCrisisPartName(activeCrisis.part_name);
@@ -132,9 +130,9 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
 
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card/50 p-3 animate-pulse">
-        <div className="h-4 w-40 bg-muted rounded mb-2" />
-        <div className="h-3 w-full bg-muted rounded" />
+      <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+        <div className="h-5 w-48 bg-gray-100 rounded mb-3 animate-pulse" />
+        <div className="h-4 w-full bg-gray-100 rounded animate-pulse" />
       </div>
     );
   }
@@ -147,94 +145,95 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     return daysOverdue > 0;
   });
 
-  return (
-    <div className="rounded-xl border border-border bg-card/50 backdrop-blur-sm p-3 space-y-2.5">
-      <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-        📋 Karlův denní plán
-      </h3>
+  const todayFormatted = new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" });
 
-      {/* Crisis summary */}
+  return (
+    <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-5">
+      <h2 className="text-[20px] font-semibold" style={{ color: "#2D2D2D" }}>
+        📋 Karlův denní plán — {todayFormatted}
+      </h2>
+
+      {/* Crisis */}
       {crisisPartName && (
-        <div className="flex items-start gap-2 text-xs">
-          <span className="text-destructive font-bold shrink-0">🔴 KRIZE:</span>
-          <div className="text-foreground">
+        <div className="space-y-1">
+          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#7C2D2D" }}>
+            🔴 Krize
+          </h3>
+          <div className="text-[14px]" style={{ color: "#4A4A4A" }}>
             <span className="font-semibold">{crisisPartName}</span>
-            {crisisDays != null && <span className="text-muted-foreground"> — den {crisisDays}</span>}
-            {crisisJournal && (
-              <span className="text-muted-foreground">
-                {crisisJournal.crisis_trend && `, trend: ${crisisJournal.crisis_trend}`}
-              </span>
-            )}
-            {crisisJournal && (
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {crisisJournal.karel_action && `Karel: ${crisisJournal.karel_action}`}
-                {crisisJournal.session_summary && ` | Sezení: ${crisisJournal.session_summary}`}
-              </p>
+            {crisisDays != null && <span className="text-[12px] ml-1 opacity-70">— den {crisisDays}</span>}
+            {crisisJournal?.crisis_trend && (
+              <span className="text-[12px] ml-2 opacity-70">trend: {crisisJournal.crisis_trend}</span>
             )}
           </div>
+          {crisisJournal && (crisisJournal.karel_action || crisisJournal.session_summary) && (
+            <p className="text-[12px]" style={{ color: "#4A4A4A" }}>
+              {crisisJournal.karel_action && `Karel: ${crisisJournal.karel_action}`}
+              {crisisJournal.karel_action && crisisJournal.session_summary && " | "}
+              {crisisJournal.session_summary && `Sezení: ${crisisJournal.session_summary}`}
+            </p>
+          )}
+          <hr className="border-gray-100 mt-3" />
         </div>
       )}
 
       {/* Pending questions */}
       {questions.length > 0 && (
-        <div className="text-xs space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold text-foreground">
-            <HelpCircle className="w-3 h-3 text-amber-500" />
-            ❓ KAREL SE PTÁ ({questions.length}):
-          </div>
+        <div className="space-y-2">
+          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+            ❓ Karel se ptá ({questions.length})
+          </h3>
           {questions.slice(0, 5).map(q => (
-            <p key={q.id} className="text-[10px] text-muted-foreground pl-5 leading-relaxed">
-              • {q.question.slice(0, 150)}{q.question.length > 150 ? "…" : ""}
-              <span className="text-[9px] ml-1 opacity-60">({q.directed_to})</span>
+            <p key={q.id} className="text-[14px] pl-5 leading-relaxed" style={{ color: "#4A4A4A" }}>
+              • {q.question.slice(0, 200)}{q.question.length > 200 ? "…" : ""}
+              <span className="text-[12px] ml-1 opacity-50">({q.directed_to})</span>
             </p>
           ))}
+          <hr className="border-gray-100 mt-1" />
         </div>
       )}
 
-      {/* Today tasks */}
+      {/* Tasks */}
       {tasks.length > 0 && (
-        <div className="text-xs space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold text-foreground">
-            <ListChecks className="w-3 h-3 text-primary" />
-            📝 ÚKOLY DNES ({tasks.length}):
-          </div>
+        <div className="space-y-2">
+          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+            📝 Úkoly dnes ({tasks.length})
+          </h3>
           {tasks.slice(0, 5).map(t => (
-            <p key={t.id} className="text-[10px] text-muted-foreground pl-5">
-              • <span className="font-medium text-foreground/80">{assigneeLabel(t.assigned_to)}</span>: {t.task.slice(0, 120)}
+            <p key={t.id} className="text-[14px] pl-5" style={{ color: "#4A4A4A" }}>
+              • <span className="font-medium">{assigneeLabel(t.assigned_to)}</span>: {t.task.slice(0, 150)}
             </p>
           ))}
+          <hr className="border-gray-100 mt-1" />
         </div>
       )}
 
-      {/* Sessions today */}
-      <div className="text-xs space-y-1">
-        <div className="flex items-center gap-1.5 font-semibold text-foreground">
-          <Calendar className="w-3 h-3 text-primary" />
-          🎯 SEZENÍ DNES:
-        </div>
-        {sessions.length > 0 ? (
-          sessions.map(s => (
-            <p key={s.id} className="text-[10px] text-muted-foreground pl-5">
-              • {s.selected_part} — {s.therapist}, {s.session_format} ({s.status})
+      {/* Sessions */}
+      {sessions.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+            🎯 Sezení dnes
+          </h3>
+          {sessions.map(s => (
+            <p key={s.id} className="text-[14px] pl-5" style={{ color: "#4A4A4A" }}>
+              • {s.selected_part} — {s.therapist}, {s.session_format}
             </p>
-          ))
-        ) : (
-          <p className="text-[10px] text-muted-foreground pl-5 italic">žádné</p>
-        )}
-      </div>
+          ))}
+          <hr className="border-gray-100 mt-1" />
+        </div>
+      )}
 
       {/* Overdue commitments */}
       {overdueCommitments.length > 0 && (
-        <div className="text-xs space-y-1">
-          <div className="flex items-center gap-1.5 font-semibold text-amber-600 dark:text-amber-400">
-            <AlertTriangle className="w-3 h-3" />
-            ⚠️ NESPLNĚNÉ ZÁVAZKY ({overdueCommitments.length}):
-          </div>
+        <div className="space-y-2">
+          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#B45309" }}>
+            ⚠️ Nesplněné závazky ({overdueCommitments.length})
+          </h3>
           {overdueCommitments.map(c => {
             const daysOverdue = Math.floor((Date.now() - new Date(c.due_date).getTime()) / 86400000);
             return (
-              <p key={c.id} className="text-[10px] text-muted-foreground pl-5">
-                • {c.commitment_text.slice(0, 120)} — <span className="text-amber-600 dark:text-amber-400 font-medium">{daysOverdue} dní po termínu</span>
+              <p key={c.id} className="text-[14px] pl-5" style={{ color: "#4A4A4A" }}>
+                • {c.commitment_text.slice(0, 150)} — <span style={{ color: "#B45309" }} className="font-medium">{daysOverdue} dní po termínu</span>
               </p>
             );
           })}
