@@ -303,7 +303,7 @@ serve(async (req) => {
     const { data: activeCrises, error: crisisErr } = await sb
       .from("crisis_alerts")
       .select("id, part_name, days_in_crisis, created_at")
-      .neq("status", "resolved");
+      .neq("status", "RESOLVED");
 
     if (crisisErr) {
       console.warn("[GUARDIAN] Chyba při čtení krizí:", crisisErr.message);
