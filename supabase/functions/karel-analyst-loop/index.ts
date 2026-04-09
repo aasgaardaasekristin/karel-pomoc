@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getAccessToken, findFolder, findFileByName, readFileContent, GDOC_MIME } from "../_shared/driveHelpers.ts";
+import { getAccessToken, resolveKartotekaRoot, findFolder, findFileByName, readFileContent, GDOC_MIME } from "../_shared/driveHelpers.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 // ═══════════════════════════════════════════════════════════════
@@ -308,7 +308,12 @@ serve(async (req) => {
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
   const now = new Date();
-  const todayDate = now.toISOString().slice(0, 10);
+  const todayDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
   const pragueHour = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Prague" })).getHours();
   const cycleTime = pragueHour < 12 ? "morning" : "afternoon";
 
@@ -447,15 +452,21 @@ serve(async (req) => {
 
     try {
       const token = await getAccessToken();
-      const centrumFolderId = await findFolder(token, "00_CENTRUM");
+      const kartotekaRoot = await resolveKartotekaRoot(token);
 
-      if (centrumFolderId) {
-        [dashboardContent, operPlanContent] = await Promise.all([
-          readDriveDocSafely(token, centrumFolderId, "00_Aktualni_Dashboard"),
-          readDriveDocSafely(token, centrumFolderId, "05A_Operativni_Plan"),
-        ]);
+      if (!kartotekaRoot) {
+        console.warn("[ANALYST] KARTOTEKA_DID root folder nenalezen");
       } else {
-        console.warn("[ANALYST] 00_CENTRUM folder nenalezen");
+        const centrumFolderId = await findFolder(token, "00_CENTRUM", kartotekaRoot);
+
+        if (centrumFolderId) {
+          [dashboardContent, operPlanContent] = await Promise.all([
+            readDriveDocSafely(token, centrumFolderId, "DASHBOARD"),
+            readDriveDocSafely(token, centrumFolderId, "05A_OPERATIVNI_PLAN"),
+          ]);
+        } else {
+          console.warn("[ANALYST] 00_CENTRUM folder nenalezen v KARTOTEKA_DID");
+        }
       }
     } catch (driveErr) {
       console.warn("[ANALYST] Drive čtení selhalo (non-fatal):", driveErr);
