@@ -376,7 +376,7 @@ serve(async (req) => {
   // Create new cycle record
   const { data: cycleRow, error: cycleInsertErr } = await sb
     .from("did_update_cycles")
-    .insert({ status: "running", cycle_type: forceRun ? "manual" : "analyst_loop" })
+    .insert({ status: "running", cycle_type: forceRun ? "manual" : "analyst_loop", user_id: "00000000-0000-0000-0000-000000000000" })
     .select()
     .single();
 
