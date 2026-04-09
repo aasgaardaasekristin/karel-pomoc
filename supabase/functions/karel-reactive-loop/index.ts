@@ -115,7 +115,7 @@ serve(async (req) => {
         task: generateReactiveResponse(text, isCrisis),
         source: "karel_reactive",
         related_task_id: task.id,
-        therapist: task.therapist || "hanka",
+        therapist: task.assigned_to || "hanka",
         status: "pending",
         priority: isCrisis ? "high" : "normal",
         user_id: task.user_id,
@@ -123,7 +123,7 @@ serve(async (req) => {
 
       // Follow-up do agendy
       await sb.from("karel_conversation_agenda").insert({
-        therapist: normalizeTherapist(task.therapist || "hanka"),
+        therapist: normalizeTherapist(task.assigned_to || "hanka"),
         topic: `Follow-up k úkolu: ${text.slice(0, 150)}`,
         topic_type: "followup",
         priority: isCrisis ? "urgent" : "normal",
@@ -316,7 +316,7 @@ serve(async (req) => {
 
       if (!existingPraise || existingPraise.length === 0) {
         await sb.from("karel_conversation_agenda").insert({
-          therapist: normalizeTherapist(task.therapist || "hanka"),
+          therapist: normalizeTherapist(task.assigned_to || "hanka"),
           topic: `Pochválit za splněný úkol: ${(task.task || "").slice(0, 100)}`,
           topic_type: "praise",
           priority: "when_appropriate",
