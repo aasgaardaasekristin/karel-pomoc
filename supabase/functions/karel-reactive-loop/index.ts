@@ -84,7 +84,7 @@ serve(async (req) => {
 
     // Zdroj D — DID-relevantní info z osobních vláken
     const { data: recentConversations } = await sb
-      .from("karel_conversations")
+      .from("did_conversations")
       .select("id, messages, sub_mode, updated_at")
       .gt("updated_at", since)
       .in("sub_mode", ["general", "mamka"]);
