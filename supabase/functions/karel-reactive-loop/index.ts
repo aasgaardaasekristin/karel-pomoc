@@ -115,7 +115,7 @@ serve(async (req) => {
         task: generateReactiveResponse(text, isCrisis),
         source: "karel_reactive",
         related_task_id: task.id,
-        therapist: task.assigned_to || "hanka",
+        assigned_to: task.assigned_to || "hanka",
         status: "pending",
         priority: isCrisis ? "high" : "normal",
         user_id: task.user_id,
