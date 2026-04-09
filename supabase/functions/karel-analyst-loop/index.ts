@@ -365,7 +365,7 @@ serve(async (req) => {
   // Cleanup stale running cycles
   const { error: cleanupErr } = await sb
     .from("did_update_cycles")
-    .update({ status: "failed", error: "stale_running" })
+    .update({ status: "failed", last_error: "stale_running" })
     .eq("status", "running")
     .lt("created_at", concurrencySince);
 
@@ -376,7 +376,7 @@ serve(async (req) => {
   // Create new cycle record
   const { data: cycleRow, error: cycleInsertErr } = await sb
     .from("did_update_cycles")
-    .insert({ status: "running", trigger: forceRun ? "manual" : "cron" })
+    .insert({ status: "running", cycle_type: forceRun ? "manual" : "analyst_loop" })
     .select()
     .single();
 
@@ -643,7 +643,7 @@ serve(async (req) => {
     try {
       await sb
         .from("did_update_cycles")
-        .update({ status: "failed", error: errMsg.slice(0, 500) })
+        .update({ status: "failed", last_error: errMsg.slice(0, 500) })
         .eq("id", cycleId);
     } catch {
       console.error("[ANALYST] Cannot mark cycle as failed");
