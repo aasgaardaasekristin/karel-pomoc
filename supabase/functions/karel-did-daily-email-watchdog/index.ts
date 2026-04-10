@@ -278,7 +278,7 @@ serve(async (req) => {
         }
 
         // Send emergency emails
-        const { Resend } = await import("npm:resend@2.0.0");
+        const { Resend } = await import("https://esm.sh/resend@2.0.0");
         const resend = new Resend(RESEND_API_KEY);
 
         for (const s of emergencyRecipients) {
