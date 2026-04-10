@@ -807,7 +807,8 @@ serve(async (req) => {
         const { data: existingTask } = await sb
           .from("did_therapist_tasks")
           .select("id")
-          .eq("crisis_alert_id", crisisId)
+          .eq("category", "crisis")
+          .ilike("task", `%${partName}%`)
           .in("status", ["pending", "active", "in_progress"])
           .limit(1);
 
@@ -820,7 +821,6 @@ serve(async (req) => {
             status: "pending",
             source: "analyst_loop",
             category: "crisis",
-            crisis_alert_id: crisisId,
             due_date: todayDate,
           });
 
