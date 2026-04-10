@@ -1,29 +1,20 @@
 
 
-## F17-HOTFIX: Context Prime Boot Fix
+# Fix deploy blocker v `karel-did-daily-cycle/index.ts`
 
-### Root Cause
-`const cacheKey` is declared twice in the same `try {}` scope (line 704 and line 1412), causing a runtime crash → 500 → "bez plné cache" toast.
+## Příčina
+Soubor `supabase/functions/karel-did-daily-cycle/index.ts` obsahuje dva `npm:` importy nekompatibilní s edge function bundlerem:
+- řádek 3: `import { Resend } from "npm:resend@2.0.0";`
+- řádek 4: `import * as XLSX from "npm:xlsx@0.18.5";`
 
-### Changes (single file: `supabase/functions/karel-did-context-prime/index.ts`)
+## Plán (2 změny, 1 soubor)
 
-1. **Line 697** — Add structured start log after `try {`:
-   ```
-   console.log('[CONTEXT PRIME] start');
-   ```
+1. **Řádek 3**: `npm:resend@2.0.0` → `https://esm.sh/resend@2.0.0`
+2. **Řádek 4**: `npm:xlsx@0.18.5` → `https://esm.sh/xlsx@0.18.5`
 
-2. **Line 704** — Add cache hit/miss log (already exists at line 718 for hit; add miss log after the `if` block ~line 725).
+Nic jiného se nemění. Po opravě deploy celého edge function bundlu projde.
 
-3. **Line 1412** — Rename `const cacheKey` → `const saveCacheKey` and update its 3 usages on lines 1415, 1419, 1423.
-
-4. **Line 1428** — Add build-ok log before return:
-   ```
-   console.log('[CONTEXT PRIME] build ok');
-   ```
-
-5. **Lines 1430-1434** — Enhance catch block:
-   - Add `console.error('[CONTEXT PRIME] fatal error', error)`
-   - Insert into `system_health_log` with `severity: 'critical'`, `source: 'context-prime'`
-
-No other lines touched.
+## Ověření
+- Po změně deploy `karel-did-daily-cycle`
+- Zkontrolovat, že žádný další `npm:` import neexistuje v jiných edge functions
 
