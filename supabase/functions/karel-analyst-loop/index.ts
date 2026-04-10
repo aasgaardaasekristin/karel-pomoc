@@ -172,6 +172,34 @@ function buildRegistrySummary(parts: any[]): string {
     .join("\n");
 }
 
+// ── Helper: Extract JSON block from AI response ───────────────
+function extractAnalysisJson(text: string): Record<string, unknown> | null {
+  // Try ```json ... ``` fence first
+  const fenceMatch = text.match(/```json\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try { return JSON.parse(fenceMatch[1]); } catch { /* continue */ }
+  }
+
+  // Try first { ... } block
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try { return JSON.parse(text.slice(firstBrace, lastBrace + 1)); } catch { /* continue */ }
+  }
+
+  return null;
+}
+
+// ── Helper: Resolve user_id from DB (no JWT in cron) ──────────
+async function resolveUserId(sb: SupabaseClient): Promise<string> {
+  const { data } = await sb
+    .from("did_part_registry")
+    .select("user_id")
+    .limit(1)
+    .single();
+  return data?.user_id || "00000000-0000-0000-0000-000000000000";
+}
+
 // ── Helper: Build system prompt ────────────────────────────────
 function buildSystemPrompt(
   dashboard: string,
@@ -180,7 +208,7 @@ function buildSystemPrompt(
   return `${SYSTEM_RULES}
 
 ═══ ROLE ═══
-Ty jsi Karel, vedoucí terapeutického týmu. Tvůj úkol je analyzovat data z posledních 12–24 hodin a navrhnout KONKRÉTNÍ úkoly pro terapeutky Haničku a Káťu.
+Ty jsi Karel, vedoucí terapeutického týmu. Tvůj úkol je analyzovat data z posledních 12–24 hodin, vytvořit strukturovanou analýzu a navrhnout KONKRÉTNÍ úkoly pro terapeutky Haničku a Káťu.
 
 ═══ AKTUÁLNÍ DASHBOARD ═══
 ${dashboard || "(Dashboard není k dispozici)"}
@@ -189,17 +217,62 @@ ${dashboard || "(Dashboard není k dispozici)"}
 ${operPlan || "(Operativní plán není k dispozici)"}
 
 ═══ VÝSTUPNÍ FORMÁT — STRIKTNĚ DODRŽUJ ═══
-Generuj POUZE bloky [TASK:jméno]...[/TASK]. Žádný jiný formát.
-Každý blok obsahuje jeden konkrétní úkol pro jednu terapeutku.
+Tvůj výstup má DVĚ části. Obě jsou povinné.
 
-Pravidla:
+ČÁST 1 — ANALÝZA (JSON blok):
+Vrať přesně tento JSON uvnitř \`\`\`json ... \`\`\`:
+{
+  "date": "YYYY-MM-DD",
+  "overview": "Stručné 3–5 větné shrnutí celkového stavu DID systému dnes.",
+  "therapists": {
+    "Hanka": {
+      "long_term": { "style": "", "reliability": "" },
+      "situational": { "energy": "low|medium|high", "current_stressors": [], "notes": "" }
+    },
+    "Kata": {
+      "long_term": { "style": "", "reliability": "" },
+      "situational": { "energy": "low|medium|high", "current_stressors": [], "notes": "" }
+    }
+  },
+  "parts": [
+    {
+      "name": "JMÉNO",
+      "status": "active|sleeping",
+      "recent_emotions": "stručný popis",
+      "needs": ["potřeba1"],
+      "risk_level": "low|medium|high",
+      "session_recommendation": {
+        "needed": true,
+        "who_leads": "Hanka|Kata",
+        "priority": "today|soon|later",
+        "goals": ["cíl1"]
+      }
+    }
+  ],
+  "team_observations": {
+    "cooperation": "stručný popis spolupráce",
+    "warnings": [],
+    "praise": []
+  }
+}
+
+Pravidla pro JSON:
+- "overview" je POVINNÉ — stručné shrnutí pro dashboard
+- Pro KAŽDOU aktivní část vytvoř záznam v "parts"
+- U spících částí: session_recommendation.needed=false, priority="later"
+- Nikdy nezařazuj Locíka (pes), terapeutky ani Karla do "parts"
+
+ČÁST 2 — ÚKOLY (po JSON bloku):
+Generuj bloky [TASK:jméno]...[/TASK].
+
+Pravidla pro úkoly:
 - Maximálně 5 denních úkolů na terapeutku
-- Úkoly musí být KONKRÉTNÍ a MĚŘITELNÉ (ne "věnuj se Arthurovi", ale "30min sezení s Arthurem zaměřené na stabilizaci, metoda: kresba")
+- Úkoly musí být KONKRÉTNÍ a MĚŘITELNÉ
 - Pokud jsou aktivní krize, úkoly k nim mají prioritu
-- Nenavrhuj úkoly které už jsou v seznamu nesplněných (viz kontext)
+- Nenavrhuj úkoly které už jsou v seznamu nesplněných
 - Používej české názvy
 
-Formát jednoho bloku:
+Formát:
 [TASK:hanka]Konkrétní text úkolu[/TASK]
 [TASK:kata]Konkrétní text úkolu[/TASK]
 
@@ -539,7 +612,54 @@ serve(async (req) => {
 
     console.log("[ANALYST] AI response length:", analysisText.length);
 
-    // ── KROK 5: Parsování [TASK:...] bloků ─────────────────
+    // ── KROK 5a: Parsování analysis JSON ───────────────────
+    const analysisJson = extractAnalysisJson(analysisText);
+    console.log("[ANALYST] Analysis JSON parsed:", analysisJson ? "yes" : "no");
+
+    // ── KROK 5b: Uložit analysis JSON do did_daily_context ───
+    if (analysisJson) {
+      try {
+        const userId = await resolveUserId(sb);
+
+        // Try update first (existing row for today)
+        const { error: updateErr, count } = await sb
+          .from("did_daily_context")
+          .update({
+            analysis_json: analysisJson,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("user_id", userId)
+          .eq("context_date", todayDate);
+
+        // If no row for today exists, insert new one
+        if (updateErr || count === 0) {
+          const { error: insertErr } = await sb
+            .from("did_daily_context")
+            .insert({
+              user_id: userId,
+              context_date: todayDate,
+              context_json: {},
+              analysis_json: analysisJson,
+              source: "analyst_loop",
+              updated_at: new Date().toISOString(),
+            });
+
+          if (insertErr) {
+            console.warn("[ANALYST] did_daily_context insert error:", insertErr.message);
+          } else {
+            console.log("[ANALYST] did_daily_context inserted for", todayDate);
+          }
+        } else {
+          console.log("[ANALYST] did_daily_context updated for", todayDate);
+        }
+      } catch (ctxErr) {
+        console.warn("[ANALYST] did_daily_context write failed (non-fatal):", ctxErr);
+      }
+    } else {
+      console.warn("[ANALYST] No analysis JSON extracted — skipping did_daily_context write");
+    }
+
+    // ── KROK 5c: Parsování [TASK:...] bloků ────────────────
     const parsedTasks = parseTaskBlocks(analysisText);
     console.log("[ANALYST] Parsed tasks:", parsedTasks.length);
 
@@ -605,6 +725,7 @@ serve(async (req) => {
       `${parsedTasks.length} AI úkolů parsed`,
       `${insertedTasks} úkolů inserted`,
       `Drive: dashboard=${dashboardContent.length > 0 ? "ok" : "N/A"}, plan=${operPlanContent.length > 0 ? "ok" : "N/A"}`,
+      `analysis_json: ${analysisJson ? "saved" : "not_parsed"}`,
     ].join(" | ");
 
     const { error: logError } = await sb.from("system_health_log").insert({
