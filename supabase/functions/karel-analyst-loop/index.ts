@@ -754,6 +754,7 @@ serve(async (req) => {
     console.log("[ANALYST] Parsed tasks:", parsedTasks.length);
 
     // ── KROK 6: INSERT úkolů s deduplikací ─────────────────
+    const taskUserId = await resolveUserId(sb);
     let insertedTasks = 0;
 
     for (const task of parsedTasks) {
@@ -782,6 +783,7 @@ serve(async (req) => {
           due_date: new Date(now.getTime() + DEFAULT_TASK_DUE_DAYS * MS_PER_DAY)
             .toISOString()
             .slice(0, 10),
+          user_id: taskUserId,
         });
 
         if (insertErr) {
@@ -822,6 +824,7 @@ serve(async (req) => {
             source: "analyst_loop",
             category: "crisis",
             due_date: todayDate,
+            user_id: taskUserId,
           });
 
           if (taskErr) {
