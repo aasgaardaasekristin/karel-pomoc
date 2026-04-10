@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getAccessToken, resolveKartotekaRoot, findFolder, findFileByName, readFileContent, GDOC_MIME } from "../_shared/driveHelpers.ts";
+import { getAccessToken, resolveKartotekaRoot, findFolder, findFileByName, readFileContent, overwriteDoc, GDOC_MIME } from "../_shared/driveHelpers.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 
 // ═══════════════════════════════════════════════════════════════
@@ -335,6 +335,84 @@ function buildDeterministicFallback(
   }
 
   return blocks.join("\n");
+}
+
+// ── Helper: Build DASHBOARD content from analysis + DB ─────────
+function buildDashboardContent(
+  todayDate: string,
+  analysisJson: Record<string, unknown> | null,
+  activeCrises: any[],
+  pendingTasks: any[],
+): string {
+  const lines: string[] = [];
+  const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
+
+  lines.push(`AKTUÁLNÍ DASHBOARD – DID SYSTÉM`);
+  lines.push(`Aktualizace: ${todayDate} ${timeStr.split(" ")[1] || ""}`);
+  lines.push(`Správce: Karel (analyst-loop v2a)`);
+  lines.push("");
+
+  // 1. Overview
+  const overview = (analysisJson?.overview as string) || "";
+  if (overview) {
+    lines.push(`═══ KARLŮV PŘEHLED ═══`);
+    lines.push(overview);
+    lines.push("");
+  }
+
+  // 2. Aktivní krize
+  lines.push(`═══ KRIZE ═══`);
+  if (activeCrises.length > 0) {
+    for (const c of activeCrises) {
+      lines.push(`🔴 ${c.part_name} — status: ${c.status}, den ${c.days_in_crisis || "?"} — ${(c.summary || c.description || "").slice(0, 150)}`);
+    }
+  } else {
+    lines.push(`✅ Žádné aktivní krize.`);
+  }
+  lines.push("");
+
+  // 3. Top úkoly
+  lines.push(`═══ ÚKOLY ═══`);
+  const topTasks = (pendingTasks || []).slice(0, 8);
+  if (topTasks.length > 0) {
+    const hankaTasks = topTasks.filter((t: any) => t.assigned_to === "hanka");
+    const kataTasks = topTasks.filter((t: any) => t.assigned_to === "kata");
+    if (hankaTasks.length > 0) {
+      lines.push(`Pro HANIČKU:`);
+      for (const t of hankaTasks) {
+        lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}`);
+      }
+    }
+    if (kataTasks.length > 0) {
+      lines.push(`Pro KÁŤU:`);
+      for (const t of kataTasks) {
+        lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}`);
+      }
+    }
+  } else {
+    lines.push(`(žádné aktivní úkoly)`);
+  }
+  lines.push("");
+
+  // 4. Aktivní části
+  const parts = Array.isArray(analysisJson?.parts) ? (analysisJson.parts as any[]) : [];
+  const activeParts = parts.filter((p: any) => p.status === "active");
+  const sleepingParts = parts.filter((p: any) => p.status === "sleeping");
+
+  lines.push(`═══ ČÁSTI ═══`);
+  if (activeParts.length > 0) {
+    lines.push(`Aktivní (${activeParts.length}):`);
+    for (const p of activeParts) {
+      const rec = p.session_recommendation;
+      const recStr = rec?.needed ? ` → sezení: ${rec.who_leads}, priorita: ${rec.priority}` : "";
+      lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}${recStr}`);
+    }
+  }
+  if (sleepingParts.length > 0) {
+    lines.push(`Spící (${sleepingParts.length}): ${sleepingParts.map((p: any) => p.name).join(", ")}`);
+  }
+
+  return lines.join("\n");
 }
 
 // ── Helper: Read Drive doc safely ──────────────────────────────
@@ -716,6 +794,42 @@ serve(async (req) => {
       }
     }
 
+    // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
+    let dashboardWritten = false;
+    try {
+      const token = await getAccessToken();
+      const kartotekaRoot = await resolveKartotekaRoot(token);
+
+      if (!kartotekaRoot) {
+        console.warn("[ANALYST] KARTOTEKA_DID root nenalezen — přeskakuji dashboard zápis");
+      } else {
+        const centrumFolderId = await findFolder(token, "00_CENTRUM", kartotekaRoot);
+
+        if (!centrumFolderId) {
+          console.warn("[ANALYST] 00_CENTRUM nenalezen — přeskakuji dashboard zápis");
+        } else {
+          const dashFileId = await findFileByName(token, "DASHBOARD", centrumFolderId);
+
+          if (!dashFileId) {
+            console.warn("[ANALYST] DASHBOARD doc nenalezen v 00_CENTRUM");
+          } else {
+            const dashContent = buildDashboardContent(
+              todayDate,
+              analysisJson,
+              activeCrises || [],
+              pendingTasks || [],
+            );
+
+            await overwriteDoc(token, dashFileId, dashContent);
+            dashboardWritten = true;
+            console.log(`[ANALYST] DASHBOARD written: ${dashContent.length} chars`);
+          }
+        }
+      }
+    } catch (driveWriteErr) {
+      console.warn("[ANALYST] Dashboard Drive zápis selhal (non-fatal):", driveWriteErr);
+    }
+
     // ── KROK 7: Cycle completed ────────────────────────────
     const { error: cycleUpdateErr } = await sb
       .from("did_update_cycles")
@@ -738,6 +852,7 @@ serve(async (req) => {
       `${insertedTasks} úkolů inserted`,
       `Drive: dashboard=${dashboardContent.length > 0 ? "ok" : "N/A"}, plan=${operPlanContent.length > 0 ? "ok" : "N/A"}`,
       `analysis_json: ${analysisJson ? "saved" : "not_parsed"}`,
+      `dashboard_drive: ${dashboardWritten ? "written" : "skipped"}`,
     ].join(" | ");
 
     const { error: logError } = await sb.from("system_health_log").insert({
