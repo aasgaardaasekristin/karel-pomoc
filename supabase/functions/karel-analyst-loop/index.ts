@@ -621,18 +621,32 @@ serve(async (req) => {
       try {
         const userId = await resolveUserId(sb);
 
-        // Try update first (existing row for today)
-        const { error: updateErr, count } = await sb
+        // 1. SELECT existing row for today
+        const { data: existingCtx } = await sb
           .from("did_daily_context")
-          .update({
-            analysis_json: analysisJson,
-            updated_at: new Date().toISOString(),
-          })
+          .select("id")
           .eq("user_id", userId)
-          .eq("context_date", todayDate);
+          .eq("context_date", todayDate)
+          .limit(1)
+          .maybeSingle();
 
-        // If no row for today exists, insert new one
-        if (updateErr || count === 0) {
+        if (existingCtx) {
+          // 2. UPDATE by id
+          const { error: updateErr } = await sb
+            .from("did_daily_context")
+            .update({
+              analysis_json: analysisJson,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", existingCtx.id);
+
+          if (updateErr) {
+            console.warn("[ANALYST] did_daily_context update error:", updateErr.message);
+          } else {
+            console.log("[ANALYST] did_daily_context updated for", todayDate);
+          }
+        } else {
+          // 3. INSERT new row
           const { error: insertErr } = await sb
             .from("did_daily_context")
             .insert({
@@ -649,8 +663,6 @@ serve(async (req) => {
           } else {
             console.log("[ANALYST] did_daily_context inserted for", todayDate);
           }
-        } else {
-          console.log("[ANALYST] did_daily_context updated for", todayDate);
         }
       } catch (ctxErr) {
         console.warn("[ANALYST] did_daily_context write failed (non-fatal):", ctxErr);
