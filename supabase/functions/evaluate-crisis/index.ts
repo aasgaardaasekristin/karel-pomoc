@@ -157,7 +157,7 @@ VÝSTUP (JSON):
       await sb.from("crisis_events").update({ closure_proposed_at: new Date().toISOString() }).eq("id", crisisId);
 
       try {
-        const { Resend } = await import("npm:resend@2.0.0");
+        const { Resend } = await import("https://esm.sh/resend@2.0.0");
         const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
         const kataEmail = Deno.env.get("KATA_EMAIL") || "";
         if (kataEmail) {
