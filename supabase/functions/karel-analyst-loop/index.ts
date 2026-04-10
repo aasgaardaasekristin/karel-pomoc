@@ -794,6 +794,122 @@ serve(async (req) => {
       }
     }
 
+    // ── KROK 6c: Crisis follow-through (deterministický) ────
+    let crisisTasksCreated = 0;
+    let crisisSessionsPlanned = 0;
+
+    for (const crisis of activeCrises || []) {
+      try {
+        const partName = crisis.part_name;
+        const crisisId = crisis.id;
+
+        // 1. Existuje follow-up úkol pro tuto krizi?
+        const { data: existingTask } = await sb
+          .from("did_therapist_tasks")
+          .select("id")
+          .eq("crisis_alert_id", crisisId)
+          .in("status", ["pending", "active", "in_progress"])
+          .limit(1);
+
+        if (!existingTask || existingTask.length === 0) {
+          const dayNum = crisis.days_in_crisis || 1;
+          const { error: taskErr } = await sb.from("did_therapist_tasks").insert({
+            task: `Krizový follow-up: ${partName} (den ${dayNum}) — ověřit aktuální stav, naplánovat nebo provést stabilizační sezení`,
+            assigned_to: "both",
+            priority: "high",
+            status: "pending",
+            source: "analyst_loop",
+            category: "crisis",
+            crisis_alert_id: crisisId,
+            due_date: todayDate,
+          });
+
+          if (taskErr) {
+            console.warn(`[ANALYST] Crisis task insert error (${partName}):`, taskErr.message);
+          } else {
+            crisisTasksCreated++;
+            console.log(`[ANALYST] Crisis follow-up task created: ${partName}`);
+          }
+        }
+
+        // 2. Existuje nedávné sezení (48h) nebo plán sezení (dnes/včera)?
+        const cutoff48h = new Date(now.getTime() - 48 * MS_PER_HOUR).toISOString();
+        const yesterdayDate = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Europe/Prague",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(now.getTime() - MS_PER_DAY));
+
+        const { data: recentSession } = await sb
+          .from("did_part_sessions")
+          .select("id")
+          .eq("part_name", partName)
+          .gte("session_date", cutoff48h.slice(0, 10))
+          .limit(1);
+
+        const { data: existingPlan } = await sb
+          .from("did_daily_session_plans")
+          .select("id")
+          .eq("selected_part", partName)
+          .gte("plan_date", yesterdayDate)
+          .in("status", ["pending", "planned"])
+          .limit(1);
+
+        const hasRecentSession = recentSession && recentSession.length > 0;
+        const hasExistingPlan = existingPlan && existingPlan.length > 0;
+
+        if (!hasRecentSession && !hasExistingPlan) {
+          const userId = await resolveUserId(sb);
+          const dayNum = crisis.days_in_crisis || 1;
+          const severity = crisis.severity || "moderate";
+
+          const planMarkdown = [
+            `# Krizové sezení: ${partName} (den ${dayNum})`,
+            ``,
+            `## Cíl`,
+            `Ověřit aktuální stav, stabilizovat, zjistit trend.`,
+            ``,
+            `## Formát`,
+            severity === "critical" ? `Krizová intervence (30 min)` : `Stabilizační sezení (30–45 min)`,
+            ``,
+            `## Metoda`,
+            `Grounding + bezpečné místo. Začít kotvením, neotírat traumatický materiál.`,
+            ``,
+            `## Otevírací otázky`,
+            `- "Jak se dnes cítíš?"`,
+            `- "Co se změnilo od posledně?"`,
+            `- "Je něco, co potřebuješ hned teď?"`,
+          ].join("\n");
+
+          const { error: planErr } = await sb.from("did_daily_session_plans").insert({
+            selected_part: partName,
+            plan_date: todayDate,
+            plan_markdown: planMarkdown,
+            plan_html: `<pre>${planMarkdown}</pre>`,
+            session_format: severity === "critical" ? "crisis_intervention" : "stabilization",
+            session_lead: "karel",
+            therapist: "both",
+            urgency_score: severity === "critical" ? 100 : 80,
+            urgency_breakdown: { source: "analyst_loop", crisis_day: dayNum, severity },
+            status: "pending",
+            generated_by: "analyst_loop",
+            part_tier: "crisis",
+            user_id: userId,
+          });
+
+          if (planErr) {
+            console.warn(`[ANALYST] Crisis session plan error (${partName}):`, planErr.message);
+          } else {
+            crisisSessionsPlanned++;
+            console.log(`[ANALYST] Crisis session planned: ${partName}`);
+          }
+        }
+      } catch (crisisErr) {
+        console.warn(`[ANALYST] Crisis follow-through error (${crisis.part_name}):`, crisisErr);
+      }
+    }
+
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
     try {
@@ -853,6 +969,7 @@ serve(async (req) => {
       `Drive: dashboard=${dashboardContent.length > 0 ? "ok" : "N/A"}, plan=${operPlanContent.length > 0 ? "ok" : "N/A"}`,
       `analysis_json: ${analysisJson ? "saved" : "not_parsed"}`,
       `dashboard_drive: ${dashboardWritten ? "written" : "skipped"}`,
+      `crisis_follow: ${crisisTasksCreated}t ${crisisSessionsPlanned}s`,
     ].join(" | ");
 
     const { error: logError } = await sb.from("system_health_log").insert({
