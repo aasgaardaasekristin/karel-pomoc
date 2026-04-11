@@ -6683,10 +6683,9 @@ Vra\u0165 JSON:
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
 
-    // ═══ FÁZE 7.7: TÝDENNÍ PROFILACE TERAPEUTŮ (neděle) — F17-D5 ═══
+    // ═══ FÁZE 7.7: DENNÍ PROFILACE TERAPEUTŮ — F17-D5 ═══
     try {
-      const profilingDay = new Date().getDay(); // 0=Sunday
-      if (profilingDay === 0) {
+      {
         const therapists = ["hanka", "kata"];
         const LOVABLE_API_KEY_TP = Deno.env.get("LOVABLE_API_KEY");
 
@@ -6695,29 +6694,33 @@ Vra\u0165 JSON:
 
           for (const therapistName of therapists) {
             try {
+              // ── Gather inputs (7-day window for daily runs) ──
+              const windowMs = 7 * 86400000;
+              const since = new Date(Date.now() - windowMs).toISOString();
+
               const { data: tNotes } = await sb
                 .from("therapist_notes")
                 .select("note_text, part_name, note_type, created_at")
                 .ilike("author", `%${therapistName}%`)
-                .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString())
+                .gte("created_at", since)
                 .order("created_at", { ascending: false })
-                .limit(50);
+                .limit(40);
 
               const { data: tTasks } = await sb
                 .from("did_therapist_tasks")
                 .select("task, status, assigned_to, part_name, created_at, completed_at")
                 .ilike("assigned_to", `%${therapistName}%`)
-                .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString())
-                .limit(50);
+                .gte("created_at", since)
+                .limit(40);
 
               const { data: tFeedback } = await sb
                 .from("did_task_auto_feedback")
                 .select("feedback_text, quality_score, part_name")
-                .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString())
-                .limit(30);
+                .gte("created_at", since)
+                .limit(20);
 
               const notesText = (tNotes || [])
-                .map((n: any) => `[${n.part_name}] ${(n.note_text || "").slice(0, 200)}`)
+                .map((n: any) => `[${n.created_at?.slice(0, 10)} | ${n.part_name}] ${(n.note_text || "").slice(0, 200)}`)
                 .join("\n");
 
               const tasksText = (tTasks || [])
@@ -6728,48 +6731,58 @@ Vra\u0165 JSON:
                 ? (tFeedback || []).reduce((sum: number, f: any) => sum + (f.quality_score || 3), 0) / tFeedback!.length
                 : null;
 
+              const isHanka = therapistName === "hanka";
+              const displayName = isHanka ? "Hanička" : "Káťa";
+              const relationshipContext = isHanka
+                ? "Hanička je Karlova životní partnerka, důvěrnice i spolupracovnice. Karel ji miluje. Sleduje její emoční stav, zátěž, radosti i starosti s hlubokou osobní účastí."
+                : "Káťa je Karlova mentorovaná terapeutka. Karel ji vede profesionálně ale vřele, sleduje její růst, spolehlivost a pracovní zátěž.";
+
               const profileResult = await callAiProfile({
-                systemPrompt: `Jsi Karel — klinický psycholog a supervizor.
-Analyzuješ práci terapeutky a vytváříš její profesní profil.
+                systemPrompt: `Jsi Karel — kognitivní agent, supervizor a analytik.
+Denně analyzuješ data o terapeutce ${displayName} a vyvozuješ závěry.
+
+VZTAH: ${relationshipContext}
 
 PRAVIDLA:
-- Buď objektivní a konkrétní
-- Vycházej POUZE z dat, nedomýšlej
-- Silné stránky i limitace formuluj konstruktivně
-- preferred_part_types = typy částí kde terapeutka vykazuje nejlepší výsledky (dětské, protektory, traumatické, ANP, EP, atd.)`,
+- Piš jako Karel, v první osobě, česky
+- Vycházej POUZE z dodaných dat — nic nedomýšlej
+- Dedukuj: co prožívá, jak funguje, co ji trápí, jak se cítí
+- Identifikuj komunikační potřebu: jak má Karel příště mluvit a co dělat jinak
+- Buď konkrétní — žádné obecné fráze
+- Časový kontext: zaměř se na poslední dny, ne měsíce`,
 
-                userPrompt: `TERAPEUTKA: ${therapistName === "hanka" ? "Hanka" : "Káťa"}
+                userPrompt: `TERAPEUTKA: ${displayName}
+DATUM: ${new Date().toISOString().slice(0, 10)}
 
-POZNÁMKY ZA 30 DNÍ (${(tNotes || []).length}):
-${(notesText || "").slice(0, 2000) || "Žádné poznámky."}
+POZNÁMKY (${(tNotes || []).length} za 7 dní):
+${(notesText || "").slice(0, 2000) || "(žádné poznámky)"}
 
-ÚKOLY ZA 30 DNÍ (${(tTasks || []).length}):
-${(tasksText || "").slice(0, 1000) || "Žádné úkoly."}
+ÚKOLY (${(tTasks || []).length} za 7 dní):
+${(tasksText || "").slice(0, 1500) || "(žádné úkoly)"}
 
-PRŮMĚRNÉ HODNOCENÍ ÚKOLŮ: ${avgScore ? avgScore.toFixed(1) : "N/A"}/5
+PRŮMĚRNÉ HODNOCENÍ: ${avgScore ? avgScore.toFixed(1) : "N/A"}/5
 
 Vrať JSON:
 {
-  "strengths": ["max 5 silných stránek"],
-  "preferred_methods": ["metody které používá nejčastěji/nejlépe"],
-  "preferred_part_types": ["typy částí kde má nejlepší výsledky"],
-  "communication_style": "1-2 věty o stylu komunikace",
-  "experience_areas": ["oblasti kde má zkušenosti"],
-  "limitations": ["max 3 oblasti pro rozvoj — konstruktivně"],
-  "workload_capacity": "normal|high|low — odhad aktuální kapacity",
-  "raw_analysis": "3-5 vět celkového shrnutí"
+  "situacni_analyza": "3-6 vět: aktuální situační stav — co řeší, jak se cítí, jaká je zátěž, co se děje v jejím životě",
+  "karlovy_poznatky": "3-6 vět: Karlovy dedukce — vzorce chování, motivace, spolehlivost, komunikační potřeba, jak příště mluvit",
+  "emocni_stav": "1 věta: shrnutí aktuálního emočního stavu",
+  "zatez": "low|medium|high",
+  "komunikacni_potreba": "1 věta: co ${displayName} teď potřebuje od Karla"
 }`,
                 apiKey: LOVABLE_API_KEY_TP,
                 model: "google/gemini-2.5-flash",
-                requiredKeys: ["strengths", "communication_style"],
-                maxRetries: 0,
+                requiredKeys: ["situacni_analyza", "karlovy_poznatky"],
+                maxRetries: 1,
                 fallback: null,
-                callerName: "therapist-profiling",
+                callerName: "daily-therapist-profiling",
               });
 
               if (profileResult.success && profileResult.data) {
                 const p = profileResult.data as any;
+                const dateLabel = new Date().toLocaleDateString("cs-CZ");
 
+                // ── Update therapist_profiles DB table ──
                 const { data: existing } = await sb
                   .from("therapist_profiles")
                   .select("id")
@@ -6778,14 +6791,9 @@ Vrať JSON:
 
                 const profileData = {
                   therapist_name: therapistName,
-                  strengths: (p.strengths || []).slice(0, 5),
-                  preferred_methods: (p.preferred_methods || []).slice(0, 5),
-                  preferred_part_types: (p.preferred_part_types || []).slice(0, 5),
-                  communication_style: (p.communication_style || "").slice(0, 500),
-                  experience_areas: (p.experience_areas || []).slice(0, 5),
-                  limitations: (p.limitations || []).slice(0, 3),
-                  workload_capacity: p.workload_capacity || "normal",
-                  raw_analysis: (p.raw_analysis || "").slice(0, 2000),
+                  communication_style: p.komunikacni_potreba || "",
+                  workload_capacity: p.zatez || "normal",
+                  raw_analysis: `${p.emocni_stav || ""}\n\n${p.situacni_analyza || ""}`.slice(0, 2000),
                   last_updated: new Date().toISOString(),
                   generated_by: "karel",
                 };
@@ -6796,51 +6804,30 @@ Vrať JSON:
                   await sb.from("therapist_profiles").insert(profileData);
                 }
 
-                console.log(`[THERAPIST PROFILE] ${therapistName} updated (${(p.strengths || []).length} strengths, ${(p.limitations || []).length} limitations)`);
+                // ── Drive writes: SITUACNI_ANALYZA + KARLOVY_POZNATKY only ──
+                const driveDisplayName = isHanka ? "HANKA" : "KATA";
 
-                // ═══ DRIVE WRITE: Zápis do PAMET_KAREL ═══
-                const displayName = therapistName === "hanka" ? "HANKA" : "KATA";
-                const driveContent = `═══ PROFIL TERAPEUTKY: ${displayName} ═══
-Aktualizováno: ${new Date().toLocaleDateString("cs-CZ")}
-
-SILNÉ STRÁNKY:
-${(p.strengths || []).map((s: string) => `• ${s}`).join("\n")}
-
-PREFEROVANÉ METODY:
-${(p.preferred_methods || []).map((m: string) => `• ${m}`).join("\n")}
-
-NEJLEPŠÍ VÝSLEDKY U TYPŮ ČÁSTÍ:
-${(p.preferred_part_types || []).map((t: string) => `• ${t}`).join("\n")}
-
-STYL KOMUNIKACE:
-${p.communication_style || "N/A"}
-
-OBLASTI ZKUŠENOSTÍ:
-${(p.experience_areas || []).map((e: string) => `• ${e}`).join("\n")}
-
-OBLASTI PRO ROZVOJ:
-${(p.limitations || []).map((l: string) => `• ${l}`).join("\n")}
-
-AKTUÁLNÍ KAPACITA: ${p.workload_capacity || "normal"}
-
-CELKOVÉ SHRNUTÍ:
-${p.raw_analysis || "N/A"}`;
-
-                try {
-                  const profileTarget = therapistName === "hanka"
-                    ? "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI"
-                    : "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI";
+                if (p.situacni_analyza) {
                   await sb.from("did_pending_drive_writes").insert({
-                    target_document: profileTarget,
-                    content: driveContent,
+                    target_document: `PAMET_KAREL/DID/${driveDisplayName}/SITUACNI_ANALYZA`,
+                    content: `\n\n[${dateLabel}] ${p.situacni_analyza}${p.emocni_stav ? `\nEmoční stav: ${p.emocni_stav}` : ""}${p.zatez ? `\nZátěž: ${p.zatez}` : ""}`,
                     write_type: "append",
                     status: "pending",
-                    priority: "low",
+                    priority: "normal",
                   });
-                  console.log(`[DRIVE WRITE] Profil ${therapistName} → did_pending_drive_writes`);
-                } catch (driveErr) {
-                  console.warn(`[DRIVE WRITE] Failed for ${therapistName}:`, driveErr);
                 }
+
+                if (p.karlovy_poznatky) {
+                  await sb.from("did_pending_drive_writes").insert({
+                    target_document: `PAMET_KAREL/DID/${driveDisplayName}/KARLOVY_POZNATKY`,
+                    content: `\n\n[${dateLabel}] ${p.karlovy_poznatky}${p.komunikacni_potreba ? `\nKomunikační potřeba: ${p.komunikacni_potreba}` : ""}`,
+                    write_type: "append",
+                    status: "pending",
+                    priority: "normal",
+                  });
+                }
+
+                console.log(`[THERAPIST PROFILE] ${therapistName} daily update done (zatez=${p.zatez}, stav=${(p.emocni_stav || "").slice(0, 60)})`);
               }
             } catch (singleTPErr) {
               console.warn(`[THERAPIST PROFILE] Error for ${therapistName}:`, singleTPErr);
@@ -6849,8 +6836,6 @@ ${p.raw_analysis || "N/A"}`;
         } else {
           console.log("[THERAPIST PROFILE] No LOVABLE_API_KEY, skipping");
         }
-      } else {
-        console.log(`[THERAPIST PROFILE] Not Sunday (day=${new Date().getDay()}), skipping weekly profiling`);
       }
     } catch (tpErr) {
       console.warn("[THERAPIST PROFILE] Error:", tpErr);
