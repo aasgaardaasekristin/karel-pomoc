@@ -48,10 +48,8 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Stable owner: resolve from did_part_registry (DID system owner)
-  const { data: registryOwner } = await sb.from("did_part_registry")
-    .select("user_id").limit(1).single();
-  const ownerId = registryOwner?.user_id || null;
+  // Stable DID system owner — Hanička (primary therapist & system owner)
+  const DID_OWNER_ID = "8a7816ee-4fd1-43d4-8d83-4230d7517ae1";
 
   const today = new Date().toISOString().slice(0, 10);
   const akcniMarker = `=== AKČNÍ INTELIGENCE ${today} ===`;
@@ -223,7 +221,7 @@ ${crisisDigest}`;
               write_type: "append",
               priority: "normal",
               status: "pending",
-              user_id: ownerId,
+              user_id: DID_OWNER_ID,
             }))
           );
           console.log(`[therapist-intel] ${t.key}: inserted ${writes.length} pending writes`);
