@@ -236,11 +236,10 @@ serve(async (req) => {
       const part = detectPartMention(answer);
       if (part) {
         await sb.from("did_pending_drive_writes").insert({
-          target_file: `KARTA_${part.toUpperCase()}`,
+          target_document: `KARTA_${part.toUpperCase()}`,
           content: `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
-          source_type: "reactive_loop",
-          source_id: q.id,
-          status: "pending",
+          write_type: "append",
+          priority: "normal",
         });
       }
 
@@ -265,21 +264,19 @@ serve(async (req) => {
         if (part) {
           // Aktualizace karty části
           await sb.from("did_pending_drive_writes").insert({
-            target_file: `KARTA_${part.toUpperCase()}`,
+            target_document: `KARTA_${part.toUpperCase()}`,
             content: `[Z osobního vlákna] ${content.slice(0, 500)}`,
-            source_type: "reactive_loop",
-            source_id: conv.id,
-            status: "pending",
+            write_type: "append",
+            priority: "normal",
           });
         }
 
         // Zápis do PAMET_KAREL
         await sb.from("did_pending_drive_writes").insert({
-          target_file: "PAMET_KAREL",
+          target_document: "PAMET_KAREL/KONTEXTY/KDO_JE_KDO",
           content: `[Pozorování z osobního vlákna ${conv.sub_mode}] ${content.slice(0, 500)}`,
-          source_type: "reactive_loop",
-          source_id: conv.id,
-          status: "pending",
+          write_type: "append",
+          priority: "normal",
         });
 
         // Agenda položka
