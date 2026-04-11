@@ -26,9 +26,11 @@ const VALID_TARGETS = [
   "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
   "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY",
   "PAMET_KAREL/DID/HANKA/KAREL",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI",
   "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA",
   "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY",
   "PAMET_KAREL/DID/KATA/KAREL",
+  "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI",
   "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
 ];
 
@@ -51,21 +53,33 @@ CÍLOVÉ DOKUMENTY:
    → Karlovy postřehy o Hance (motivace, spolehlivost, vzorce chování, emoční stav)
 
 3. PAMET_KAREL/DID/HANKA/KAREL
-   → co Hanka říká přímo o Karlovi, jak ho vnímá, co od něj chce
+   → SDÍLENÁ PAMĚŤ VZTAHU Karel–Hanička. Co spolu prožili, o čem mluvili, společné vzpomínky,
+     co Hanička Karlovi řekla o jejich vztahu, jak se Karel pro ni mění, co Karel pro Haničku znamená.
+     NE profil Karla — ale živá paměť jejich společného příběhu.
 
-4. PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA
+4. PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI
+   → SHRNUTÍ PRÁVĚ UZAVŘENÉHO VLÁKNA Haničky. Krátký přehled: o čem se mluvilo, jaké emoce,
+     jaký výsledek, co zůstalo otevřené. Max 3-5 vět. Slouží k navázání příště.
+
+5. PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA
    → aktuální situace Káti (terapeutka)
 
-5. PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY
+6. PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY
    → Karlovy postřehy o Kátě (spolehlivost, přístup k terapii, silné/slabé stránky)
 
-6. PAMET_KAREL/DID/KATA/KAREL
-   → co Káťa říká o Karlovi
+7. PAMET_KAREL/DID/KATA/KAREL
+   → SDÍLENÁ PAMĚŤ VZTAHU Karel–Káťa. Co spolu řešili, jak Karel Káťu vede, jaké pokroky,
+     co Káťa o Karlovi říká, jak se jejich spolupráce vyvíjí.
 
-7. PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO
-   → nové osoby, místa, instituce zmíněné v konverzaci (kdo je kdo v životě systému)
+8. PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI
+   → SHRNUTÍ PRÁVĚ UZAVŘENÉHO VLÁKNA Káti. Krátký přehled: o čem se mluvilo, jaký výsledek,
+     co zůstalo otevřené. Max 3-5 vět.
 
-8. KARTA_{JMENO_CASTI}
+9. PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO
+   → FAKTICKÁ kontextová data: nové osoby, místa, instituce, role, okolnosti zmíněné v konverzaci.
+     Pouze fakta (kdo je kdo, kde pracuje, jaký má vztah k systému). Žádný intimní obsah.
+
+10. KARTA_{JMENO_CASTI}
    → klinické informace o konkrétní DID části (switching, emoce, symptomy, vztahy)
    → nahraď {JMENO_CASTI} skutečným jménem části VELKÝMI PÍSMENY (např. KARTA_GUSTIK)
 
@@ -76,6 +90,10 @@ PRAVIDLA:
 - Nikdy nevymýšlej informace, které v konverzaci nejsou
 - Každý blok musí mít jasný, stručný content (max 200 slov)
 - Content piš ve formátu vhodném pro append do textového souboru (datumy, odrážky)
+- KAREL soubory: piš jako vzpomínku/záznam, ne jako profil
+- VLAKNA_POSLEDNI: vždy max 3-5 vět — stručné shrnutí vlákna
+- KDO_JE_KDO: pouze fakta, žádné emoce, žádné hodnocení
+- Pro KAŽDÉ zpracované vlákno VŽDY vytvoř blok VLAKNA_POSLEDNI (shrnutí)
 
 Odpověz POUZE validním JSON:
 { "blocks": [ { "target": "...", "content": "...", "reasoning": "..." } ] }
