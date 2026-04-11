@@ -59,17 +59,22 @@ async function resolveTarget(
   // KARTA_{NAME} → lives in KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY (or 03_ARCHIV)
   if (target.startsWith("KARTA_")) {
     const partName = target.replace("KARTA_", "");
+    console.log(`[resolve] Looking for part '${partName}' in kartoteka ${kartotekaRoot}`);
 
     const activeFolder = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaRoot);
+    console.log(`[resolve] 01_AKTIVNI_FRAGMENTY: ${activeFolder || "NOT FOUND"}`);
     if (activeFolder) {
       const partFolders = await listFiles(token, activeFolder);
+      console.log(`[resolve] Found ${partFolders.length} folders in AKTIVNI, names: ${partFolders.map(f => f.name).join(", ")}`);
       const match = partFolders.find(
         (f) =>
           f.mimeType === FOLDER_MIME &&
           f.name.toUpperCase().includes(partName.toUpperCase()),
       );
+      console.log(`[resolve] Match for '${partName}': ${match?.name || "NONE"}`);
       if (match) {
         const cardFile = await findCardFileInFolder(token, match.id);
+        console.log(`[resolve] Card file in '${match.name}': ${cardFile?.name || "NONE"}`);
         if (cardFile) return cardFile.id;
       }
     }
