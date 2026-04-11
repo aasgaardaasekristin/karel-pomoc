@@ -65,7 +65,7 @@ async function resolveTarget(
     console.log(`[resolve] 01_AKTIVNI_FRAGMENTY: ${activeFolder || "NOT FOUND"}`);
     if (activeFolder) {
       const partFolders = await listFiles(token, activeFolder);
-      console.log(`[resolve] Found ${partFolders.length} folders in AKTIVNI, names: ${partFolders.map(f => f.name).join(", ")}`);
+      console.log(`[resolve] Found ${partFolders.length} items in AKTIVNI:`, partFolders.map(f => `${f.name} [${f.mimeType}]`));
       const match = partFolders.find(
         (f) =>
           f.mimeType === FOLDER_MIME &&
