@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
           .update({ status: "completed", processed_at: new Date().toISOString() })
           .eq("id", writeId);
 
-        addLog(`OK ${writeId}: appended to '${target}' (file ${fileId})`);
+        addLog(`OK ${writeId}: appended to '${target}' (file ${resolved.id})`);
         completed++;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
