@@ -1350,6 +1350,25 @@ ${didConversations.slice(0, 10).map((c: any) => `[${c.sub_mode}] ${c.label}: ${c
 ═══ NOVINKY ═══
 ${newsDigest || "(nedostupné)"}
 
+${needsOperationalMemory ? `═══ OPERAČNÍ PAMĚŤ 72h (PRIORITNÍ ZDROJ PRO NAVÁZÁNÍ) ═══
+Toto je čerstvá, vytříděná paměť Karla z posledních dnů.
+Když uživatel navazuje na předchozí konverzaci, VŽDY hledej odpověď NEJPRVE zde.
+
+--- SITUAČNÍ STAV ---
+${operationalMemory.situacniAnalyza || "(prázdný)"}
+
+--- KARLOVY POZNATKY ---
+${operationalMemory.karlovyPoznatky || "(prázdný)"}
+
+--- SDÍLENÁ PAMĚŤ KAREL ---
+${operationalMemory.karelFile || "(prázdný)"}
+
+--- POSLEDNÍ VLÁKNA ---
+${operationalMemory.vlaknaPosledni || "(prázdný)"}
+
+--- KDO JE KDO (kontext osob a míst) ---
+${operationalMemory.kdoJeKdo || "(prázdný)"}
+` : ""}
 ═══ MASTER PLAN (SYSTÉM JAKO CELEK) ═══
 ${(() => {
   const sp = dbResults.systemProfile;
