@@ -54,12 +54,14 @@ async function resolvePametKarelRoot(token: string): Promise<string | null> {
   return null;
 }
 
-// ── Resolve target to Drive file ID ──
+type ResolvedFile = { id: string; mimeType: string };
+
+// ── Resolve target to Drive file ID + mimeType ──
 async function resolveTarget(
   token: string,
   kartotekaRoot: string,
   target: string,
-): Promise<string | null> {
+): Promise<ResolvedFile | null> {
   // KARTA_{NAME} → lives in KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY (or 03_ARCHIV)
   if (target.startsWith("KARTA_")) {
     const partName = target.replace("KARTA_", "");
