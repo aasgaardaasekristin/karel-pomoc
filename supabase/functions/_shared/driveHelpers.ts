@@ -197,3 +197,22 @@ export async function appendToFile(token: string, fileId: string, text: string):
     throw new Error(`appendToFile upload failed: ${upRes.status} ${errText}`);
   }
 }
+
+/** Replace entire content of a plain-text file on Drive. */
+export async function replaceFile(token: string, fileId: string, text: string): Promise<void> {
+  const upRes = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+      body: text,
+    },
+  );
+  if (!upRes.ok) {
+    const errText = await upRes.text();
+    throw new Error(`replaceFile upload failed: ${upRes.status} ${errText}`);
+  }
+}

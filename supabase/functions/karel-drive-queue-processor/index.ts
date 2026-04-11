@@ -20,6 +20,7 @@ import {
   findCardFileInFolder,
   appendToDoc,
   appendToFile,
+  replaceFile,
   FOLDER_MIME,
   GDOC_MIME,
 } from "../_shared/driveHelpers.ts";
