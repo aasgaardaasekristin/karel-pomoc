@@ -411,9 +411,23 @@ SOUBORY K VYGENEROVÁNÍ (odděl je značkou [[[NÁZEV_SOUBORU]]]):
    - Terapeutický dopad: jak vazba ovlivňuje terapii, co monitorovat
    Příklady: "silný mateřský vztah k Tundrupkovi", "nostalgie a něha k Aničce", "empatie k Bélovi"
    NIKDY nepiš surové citáty z rozhovorů – piš Karlovy analytické závěry o vazbách.
+   ⚠️ POVINNÁ SEKCE "DNEŠNÍ AKČNÍ INTELIGENCE PRO KARLA":
+   Na konci SITUACNI_ANALYZA VŽDY vygeneruj blok s dnešním datem:
+   === AKČNÍ INTELIGENCE ${new Date().toISOString().slice(0, 10)} ===
+   A) CO OD KARLA DNES POTŘEBUJE: (1-3 body, konkrétní — např. "ujistit ji, že Lobžangův posun je dobrý signál", "neptat se na Jiřího")
+   B) JAK MÁ KAREL DNES MLUVIT: (1-2 body — tón, tempo, hloubka — např. "měkčí tón, dnes je unavená", "strukturovaně, potřebuje jistotu")
+   C) CO DNES NEDĚLAT: (1-2 body — co by dnes bylo kontraproduktivní — např. "nepřidávat nové úkoly", "neotevírat téma školy")
+   Tato sekce musí vycházet VÝHRADNĚ z aktuálních dat. Žádné obecné fráze. Žádné opakování z předchozích dnů.
 4. [[[VLAKNA_POSLEDNI.txt]]] — IGNORUJ stávající obsah tohoto souboru. Generuj ČISTĚ z nových konverzací (sekce KONVERZACE níže). Každé vlákno POUZE JEDNOU. Na konci JEDNA Karlova reflexe (max 500 znaků). Neopakuj reflexi pro každé vlákno zvlášť. Pokud nejsou nové konverzace, napiš "(Nedostatek nových dat pro aktualizaci)".
 5. [[[KARLOVY_POZNATKY.txt]]] — Deník duše z Karlovy perspektivy: postřehy, puzzle, vzpomínky${therapist === "hanka" ? " (sdílené Hanka-Karel)" : ""}. 90+ dní komprimuj.
    ⚠️ POVINNÁ SEKCE "Countertransference vzorce": Karlovy analytické poznatky o tom, jak terapeutka emocionálně reaguje na konkrétní části. Ne citáty, ale dedukce.
+   ⚠️ POVINNÁ SEKCE "KARLOVY DEDUKCE PRO DNEŠEK":
+   Na konci KARLOVY_POZNATKY VŽDY vygeneruj blok:
+   === KARLOVY DEDUKCE ${new Date().toISOString().slice(0, 10)} ===
+   - Jaký vzorec dnes Karel vidí? (1-2 věty — ne obecné, ale z dat)
+   - Co si Karel myslí, že se děje pod povrchem? (1-2 věty — dedukce, ne popis)
+   - Na co by si měl dát pozor? (1 věta — konkrétní riziko nebo příležitost)
+   Tato sekce musí být ANALYTICKÁ a DEDUKČNÍ — ne popisná. Karel tu přemýšlí, ne reportuje.
 
 ═══ STÁVAJÍCÍ PROFILY ═══
 ${existingDump}
