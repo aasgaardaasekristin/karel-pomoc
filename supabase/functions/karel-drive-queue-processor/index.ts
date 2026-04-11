@@ -233,9 +233,9 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Resolve target to Drive file ID
-        const fileId = await resolveTarget(token, kartotekaRoot, target);
-        if (!fileId) {
+        // Resolve target to Drive file ID + mimeType
+        const resolved = await resolveTarget(token, kartotekaRoot, target);
+        if (!resolved) {
           addLog(`FAIL ${writeId}: could not resolve target '${target}' on Drive`);
           await sb
             .from("did_pending_drive_writes")
@@ -245,10 +245,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Append content
+        // Append content — dispatch by file type
         const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
         const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${pw.content}`;
-        await appendToDoc(token, fileId, contentWithTimestamp);
+        
+        if (resolved.mimeType === GDOC_MIME) {
+          await appendToDoc(token, resolved.id, contentWithTimestamp);
+        } else {
+          await appendToFile(token, resolved.id, contentWithTimestamp);
+        }
+        addLog(`Appended via ${resolved.mimeType === GDOC_MIME ? "Docs API" : "Drive API"} to ${resolved.id}`);
 
         // Mark completed
         await sb
