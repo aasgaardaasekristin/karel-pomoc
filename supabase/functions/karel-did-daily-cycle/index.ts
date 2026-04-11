@@ -2869,8 +2869,11 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const auditResults: AuditResult[] = [];
     const auditAlerts: string[] = []; // ⚠️ alerts for Hanka's daily report
     if (folderId && registryContext && threads.length > 0) {
-      console.log(`[KROK-0B] Starting structural audit for ${threads.length} unprocessed thread(s)...`);
+      // Memory-safe: audit max 1 card per run to avoid memory limit crashes
+      const MAX_AUDIT_PER_RUN = 1;
+      console.log(`[KROK-0B] Starting structural audit for ${threads.length} thread(s), max ${MAX_AUDIT_PER_RUN} card(s) per run...`);
       const auditedParts = new Set<string>();
+      let auditCount = 0;
 
       for (const thread of threads) {
         if ((thread.sub_mode || "cast") !== "cast") continue; // audit only "cast" threads
