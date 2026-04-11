@@ -763,8 +763,9 @@ serve(async (req) => {
       karlovyPoznatky: string;
       karelFile: string;
       vlaknaPosledni: string;
+      vlakna3Dny: string;
       kdoJeKdo: string;
-    } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", kdoJeKdo: "" };
+    } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", vlakna3Dny: "", kdoJeKdo: "" };
     const needsOperationalMemory = ["mamka", "kata", "hana_personal", "personal"].includes(subMode || "");
 
     const drivePromise = (async () => {
@@ -864,6 +865,7 @@ serve(async (req) => {
                   { name: "KARLOVY_POZNATKY.txt", key: "karlovyPoznatky" as const },
                   { name: "KAREL", key: "karelFile" as const },
                   { name: "VLAKNA_POSLEDNI.txt", key: "vlaknaPosledni" as const },
+                  { name: "VLAKNA_3DNY.txt", key: "vlakna3Dny" as const },
                 ];
                 for (const mf of memFiles) {
                   reads.push((async () => {
@@ -1352,7 +1354,11 @@ ${newsDigest || "(nedostupné)"}
 
 ${needsOperationalMemory ? `═══ OPERAČNÍ PAMĚŤ 72h (PRIORITNÍ ZDROJ PRO NAVÁZÁNÍ) ═══
 Toto je čerstvá, vytříděná paměť Karla z posledních dnů.
-Když uživatel navazuje na předchozí konverzaci, VŽDY hledej odpověď NEJPRVE zde.
+
+PRAVIDLO NAVAZOVÁNÍ:
+1. Když uživatel navazuje na konkrétní téma — hledej NEJPRVE v "POSLEDNÍ VLÁKNO" (detail posledního rozhovoru).
+2. Když uživatel odkazuje na širší vývoj, více dní, nebo opakující se téma — využij i "OBLOUK POSLEDNÍCH 3 DNŮ" (širší krátkodobý kontext).
+3. Ostatní sekce doplňují situační a vztahový kontext.
 
 --- SITUAČNÍ STAV ---
 ${operationalMemory.situacniAnalyza || "(prázdný)"}
@@ -1363,8 +1369,11 @@ ${operationalMemory.karlovyPoznatky || "(prázdný)"}
 --- SDÍLENÁ PAMĚŤ KAREL ---
 ${operationalMemory.karelFile || "(prázdný)"}
 
---- POSLEDNÍ VLÁKNA ---
+--- POSLEDNÍ VLÁKNO (detail posledního rozhovoru) ---
 ${operationalMemory.vlaknaPosledni || "(prázdný)"}
+
+--- OBLOUK POSLEDNÍCH 3 DNŮ (širší krátkodobý kontext) ---
+${operationalMemory.vlakna3Dny || "(prázdný)"}
 
 --- KDO JE KDO (kontext osob a míst) ---
 ${operationalMemory.kdoJeKdo || "(prázdný)"}
