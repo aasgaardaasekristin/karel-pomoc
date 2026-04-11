@@ -1354,34 +1354,51 @@ ${newsDigest || "(nedostupné)"}
 
 ${needsOperationalMemory ? `═══ OPERAČNÍ PAMĚŤ 72h (PRIORITNÍ ZDROJ PRO NAVÁZÁNÍ) ═══
 Toto je čerstvá, vytříděná paměť Karla z posledních dnů.
+Sekce jsou seřazeny PODLE PRIORITY — první = nejvyšší priorita.
 
-PRAVIDLO NAVAZOVÁNÍ:
-1. Když uživatel navazuje na konkrétní téma — hledej NEJPRVE v "POSLEDNÍ VLÁKNO" (detail posledního rozhovoru).
-2. Když uživatel odkazuje na širší vývoj, více dní, nebo opakující se téma — využij i "OBLOUK POSLEDNÍCH 3 DNŮ" (širší krátkodobý kontext).
-3. Ostatní sekce doplňují situační a vztahový kontext.
+═══ PRAVIDLA PRIORITY PAMĚŤOVÝCH VRSTEV ═══
+Pořadí důležitosti (1 = nejvyšší):
+  1. VLAKNA_POSLEDNI — detail posledního rozhovoru, nejčerstvější kontext
+  2. VLAKNA_3DNY — oblouk posledních 3 dnů, širší krátkodobý kontext
+  3. SITUACNI_ANALYZA — aktuální situační stav terapie
+  4. KARLOVY_POZNATKY — Karlovy dlouhodobější postřehy a dedukce
+  5. KAREL — sdílená vztahová paměť (jen jemný kontext)
+  6. KDO_JE_KDO — identifikace osob a míst (referenční)
 
-PRAVIDLO PRO VZTAHOVOU PAMĚŤ (KAREL):
-- Vztahová paměť je JEMNÝ KONTEXT, ne dominantní zdroj odpovědi.
-- Navazuj na ni PŘIROZENĚ, pokud je to relevantní k aktuálnímu tématu.
-- NEVKLÁDEJ vztahovou paměť do odpovědi násilně — pokud uživatel řeší jiné téma, neodkazuj na sdílené vzpomínky.
-- Použij ji, když uživatel sám otevře vztahové téma, odkazuje na společný zážitek, nebo je emocionálně otevřený.
+═══ PRAVIDLA NAVAZOVÁNÍ ═══
+- Když uživatel říká "včera", "minule", "ještě k tomu", "jak jsme mluvili", "kde jsme skončili"
+  → navazuj PRIMÁRNĚ z VLAKNA_POSLEDNI. Tam je detail posledního rozhovoru.
+- Když uživatel odkazuje na širší vývoj, opakující se téma, "posledních pár dní", "v poslední době"
+  → využij VLAKNA_3DNY i VLAKNA_POSLEDNI dohromady.
+- Když uživatel řeší obecnější kontext, stav terapie, kam směřujeme
+  → využij SITUACNI_ANALYZA a KARLOVY_POZNATKY.
+- KAREL (vztahovou paměť) použij JEN když uživatel sám otevře vztahové téma,
+  odkazuje na společný zážitek, nebo je emocionálně otevřený. NIKDY ji nevkládej násilně.
+- KDO_JE_KDO je referenční — použij jen pro ověření identity osoby nebo místa.
 
---- SITUAČNÍ STAV ---
-${operationalMemory.situacniAnalyza || "(prázdný)"}
+═══ ŘEŠENÍ ROZPORŮ MEZI VRSTVAMI ═══
+- Při rozporu VŽDY preferuj KONKRÉTNĚJŠÍ a NOVĚJŠÍ vrstvu.
+- VLAKNA_POSLEDNI má přednost před VLAKNA_3DNY.
+- VLAKNA_3DNY má přednost před SITUACNI_ANALYZA a KARLOVY_POZNATKY.
+- KARLOVY_POZNATKY má přednost před KAREL (vztahovou pamětí).
+- Pokud novější vrstva přímo odporuje starší — řiď se novější, nekomentuj rozpor.
 
---- KARLOVY POZNATKY ---
-${operationalMemory.karlovyPoznatky || "(prázdný)"}
-
---- SDÍLENÁ VZTAHOVÁ PAMĚŤ KAREL (jemný kontext, ne dominantní zdroj) ---
-${operationalMemory.karelFile || "(prázdný)"}
-
---- POSLEDNÍ VLÁKNO (detail posledního rozhovoru) ---
+--- [P1] POSLEDNÍ VLÁKNO (detail posledního rozhovoru) ---
 ${operationalMemory.vlaknaPosledni || "(prázdný)"}
 
---- OBLOUK POSLEDNÍCH 3 DNŮ (širší krátkodobý kontext) ---
+--- [P2] OBLOUK POSLEDNÍCH 3 DNŮ (širší krátkodobý kontext) ---
 ${operationalMemory.vlakna3Dny || "(prázdný)"}
 
---- KDO JE KDO (kontext osob a míst) ---
+--- [P3] SITUAČNÍ STAV ---
+${operationalMemory.situacniAnalyza || "(prázdný)"}
+
+--- [P4] KARLOVY POZNATKY ---
+${operationalMemory.karlovyPoznatky || "(prázdný)"}
+
+--- [P5] SDÍLENÁ VZTAHOVÁ PAMĚŤ KAREL (jemný kontext, ne dominantní zdroj) ---
+${operationalMemory.karelFile || "(prázdný)"}
+
+--- [P6] KDO JE KDO (referenční kontext osob a míst) ---
 ${operationalMemory.kdoJeKdo || "(prázdný)"}
 ` : ""}
 ═══ MASTER PLAN (SYSTÉM JAKO CELEK) ═══
