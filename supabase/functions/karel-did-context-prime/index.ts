@@ -757,6 +757,16 @@ serve(async (req) => {
     let driveError: string | null = null;
     let driveAliasMapText = "";
 
+    // ── 72h Operational Memory (for mamka/kata/hana_personal) ──
+    const operationalMemory: {
+      situacniAnalyza: string;
+      karlovyPoznatky: string;
+      karelFile: string;
+      vlaknaPosledni: string;
+      kdoJeKdo: string;
+    } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", kdoJeKdo: "" };
+    const needsOperationalMemory = ["mamka", "kata", "hana_personal", "personal"].includes(subMode || "");
+
     const drivePromise = (async () => {
       try {
         const token = await getAccessToken();
@@ -827,7 +837,7 @@ serve(async (req) => {
           console.warn("[did-context-prime] Drive registry alias load failed:", e.message);
         }));
 
-        // PAMET_KAREL/DID/ — therapist profiles
+        // PAMET_KAREL/DID/ — therapist profiles + operational memory
         const pametId = await findFolder(token, "PAMET_KAREL");
         if (pametId) {
           const didPametId = await findFolder(token, "DID", pametId);
@@ -840,6 +850,48 @@ serve(async (req) => {
             }
             if (kataFolderId) {
               reads.push(readFolderDocs(token, kataFolderId, 5, 6000).then(d => { driveData["PROFIL_KATA"] = d; }));
+            }
+
+            // ── 72h Operational Memory: targeted reads for mamka/kata/hana_personal ──
+            if (needsOperationalMemory) {
+              const targetTherapist = (subMode === "kata") ? "kata" : "hanka";
+              const targetFolderId = targetTherapist === "hanka" ? hankaFolderId : kataFolderId;
+
+              if (targetFolderId) {
+                const MEM_MAX = 3000; // chars per file — keeps total under ~15k
+                const memFiles = [
+                  { name: "SITUACNI_ANALYZA.txt", key: "situacniAnalyza" as const },
+                  { name: "KARLOVY_POZNATKY.txt", key: "karlovyPoznatky" as const },
+                  { name: "KAREL", key: "karelFile" as const },
+                  { name: "VLAKNA_POSLEDNI.txt", key: "vlaknaPosledni" as const },
+                ];
+                for (const mf of memFiles) {
+                  reads.push((async () => {
+                    // Try exact name, then with .txt suffix
+                    let doc = await findDocByExactName(token, targetFolderId, mf.name);
+                    if (!doc && !mf.name.endsWith(".txt")) {
+                      doc = await findDocByExactName(token, targetFolderId, mf.name + ".txt");
+                    }
+                    if (doc) {
+                      operationalMemory[mf.key] = await readDoc(token, doc.id, MEM_MAX);
+                      console.log(`[op-memory] Read ${targetTherapist}/${mf.name} (${operationalMemory[mf.key].length} chars)`);
+                    }
+                  })());
+                }
+              }
+
+              // KDO_JE_KDO — always read for operational memory
+              const kontextyFolderId = await findFolder(token, "KONTEXTY", didPametId);
+              if (kontextyFolderId) {
+                reads.push((async () => {
+                  let doc = await findDocByExactName(token, kontextyFolderId, "KDO_JE_KDO");
+                  if (!doc) doc = await findDocByExactName(token, kontextyFolderId, "KDO_JE_KDO.txt");
+                  if (doc) {
+                    operationalMemory.kdoJeKdo = await readDoc(token, doc.id, 2000);
+                    console.log(`[op-memory] Read KONTEXTY/KDO_JE_KDO (${operationalMemory.kdoJeKdo.length} chars)`);
+                  }
+                })());
+              }
             }
           }
           // Also read semantic memory
@@ -1157,6 +1209,7 @@ INSTRUKCE:
 - Časový gradient: nedávné = detailní, starší = shrnuté
 - NIKDY nevymýšlej – pouze syntetizuj z dodaných dat
 - Piš česky
+- PRIORITNĚ využij sekci "OPERAČNÍ PAMĚŤ 72h" — to je čerstvá, vytříděná paměť z posledních dnů. Navazuj na ni.
 
 ═══ KRITICKÉ PRAVIDLO: AKTIVITA vs. ZMÍNKA ═══
 V DID vláknech ROZLIŠUJ:
@@ -1297,6 +1350,25 @@ ${didConversations.slice(0, 10).map((c: any) => `[${c.sub_mode}] ${c.label}: ${c
 ═══ NOVINKY ═══
 ${newsDigest || "(nedostupné)"}
 
+${needsOperationalMemory ? `═══ OPERAČNÍ PAMĚŤ 72h (PRIORITNÍ ZDROJ PRO NAVÁZÁNÍ) ═══
+Toto je čerstvá, vytříděná paměť Karla z posledních dnů.
+Když uživatel navazuje na předchozí konverzaci, VŽDY hledej odpověď NEJPRVE zde.
+
+--- SITUAČNÍ STAV ---
+${operationalMemory.situacniAnalyza || "(prázdný)"}
+
+--- KARLOVY POZNATKY ---
+${operationalMemory.karlovyPoznatky || "(prázdný)"}
+
+--- SDÍLENÁ PAMĚŤ KAREL ---
+${operationalMemory.karelFile || "(prázdný)"}
+
+--- POSLEDNÍ VLÁKNA ---
+${operationalMemory.vlaknaPosledni || "(prázdný)"}
+
+--- KDO JE KDO (kontext osob a míst) ---
+${operationalMemory.kdoJeKdo || "(prázdný)"}
+` : ""}
 ═══ MASTER PLAN (SYSTÉM JAKO CELEK) ═══
 ${(() => {
   const sp = dbResults.systemProfile;
