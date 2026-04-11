@@ -166,6 +166,11 @@ Deno.serve(async (req) => {
     // Get Drive access
     const token = await getAccessToken();
     const kartotekaRoot = await resolveKartotekaRoot(token);
+    addLog(`kartotekaRoot resolved: ${kartotekaRoot || "NULL"}`);
+    
+    const pametRoot = await resolvePametKarelRoot(token);
+    addLog(`pametKarelRoot resolved: ${pametRoot || "NULL"}`);
+    
     if (!kartotekaRoot) {
       addLog("ERROR: Cannot find kartoteka root folder on Drive");
       return new Response(
