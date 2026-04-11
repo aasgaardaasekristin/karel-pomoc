@@ -20,6 +20,7 @@ import {
   findCardFileInFolder,
   appendToDoc,
   appendToFile,
+  replaceFile,
   FOLDER_MIME,
   GDOC_MIME,
 } from "../_shared/driveHelpers.ts";
@@ -38,12 +39,26 @@ const ALLOWED_TARGETS = [
   /^PAMET_KAREL\/DID\/KONTEXTY\/KDO_JE_KDO$/,
   /^PAMET_KAREL\/DID\/HANKA\/PROFIL_OSOBNOSTI$/,
   /^PAMET_KAREL\/DID\/KATA\/PROFIL_OSOBNOSTI$/,
+  /^PAMET_KAREL\/DID\/HANKA\/KAREL$/,
+  /^PAMET_KAREL\/DID\/KATA\/KAREL$/,
+  /^PAMET_KAREL\/DID\/HANKA\/VLAKNA_POSLEDNI$/,
+  /^PAMET_KAREL\/DID\/KATA\/VLAKNA_POSLEDNI$/,
+  /^PAMET_KAREL\/DID\/HANKA\/VLAKNA_3DNY$/,
+  /^PAMET_KAREL\/DID\/KATA\/VLAKNA_3DNY$/,
+  /^PAMET_KAREL\/DID\/HANKA\/KARLOVY_POZNATKY$/,
+  /^PAMET_KAREL\/DID\/KATA\/KARLOVY_POZNATKY$/,
   /^KARTOTEKA_DID\/00_CENTRUM\/05A_OPERATIVNI_PLAN$/,
 ];
 
 function isAllowedTarget(target: string): boolean {
   return ALLOWED_TARGETS.some((rx) => rx.test(target));
 }
+
+// ── Targets where write_type "replace" is permitted ──
+const REPLACE_ALLOWED_TARGETS = new Set([
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+]);
 
 // ── Resolve PAMET_KAREL root (separate Drive root, NOT inside kartoteka) ──
 async function resolvePametKarelRoot(token: string): Promise<string | null> {
@@ -211,9 +226,22 @@ Deno.serve(async (req) => {
       const writeId = pw.id;
 
       try {
-        // V1: only append is supported
-        if (pw.write_type && pw.write_type !== "append") {
-          addLog(`SKIP ${writeId}: write_type '${pw.write_type}' not supported in v1`);
+        const writeType = pw.write_type || "append";
+
+        // Validate write_type
+        if (writeType !== "append" && writeType !== "replace") {
+          addLog(`SKIP ${writeId}: write_type '${writeType}' not supported`);
+          await sb
+            .from("did_pending_drive_writes")
+            .update({ status: "skipped", processed_at: new Date().toISOString() })
+            .eq("id", writeId);
+          skipped++;
+          continue;
+        }
+
+        // Replace is only allowed for specific targets
+        if (writeType === "replace" && !REPLACE_ALLOWED_TARGETS.has(target)) {
+          addLog(`SKIP ${writeId}: replace not allowed for target '${target}'`);
           await sb
             .from("did_pending_drive_writes")
             .update({ status: "skipped", processed_at: new Date().toISOString() })
@@ -245,16 +273,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Append content — dispatch by file type
+        // Dispatch write by type
         const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
-        const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${pw.content}`;
-        
-        if (resolved.mimeType === GDOC_MIME) {
-          await appendToDoc(token, resolved.id, contentWithTimestamp);
+
+        if (writeType === "replace") {
+          // Replace: overwrite entire file content (plain text only)
+          const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${pw.content}`;
+          await replaceFile(token, resolved.id, contentWithHeader);
+          addLog(`REPLACED file ${resolved.id} for target '${target}'`);
         } else {
-          await appendToFile(token, resolved.id, contentWithTimestamp);
+          // Append
+          const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${pw.content}`;
+          if (resolved.mimeType === GDOC_MIME) {
+            await appendToDoc(token, resolved.id, contentWithTimestamp);
+          } else {
+            await appendToFile(token, resolved.id, contentWithTimestamp);
+          }
+          addLog(`Appended via ${resolved.mimeType === GDOC_MIME ? "Docs API" : "Drive API"} to ${resolved.id}`);
         }
-        addLog(`Appended via ${resolved.mimeType === GDOC_MIME ? "Docs API" : "Drive API"} to ${resolved.id}`);
 
         // Mark completed
         await sb
