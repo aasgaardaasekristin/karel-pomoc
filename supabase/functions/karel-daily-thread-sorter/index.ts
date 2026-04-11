@@ -130,6 +130,7 @@ interface ThreadRecord {
   sourceTable: "did_threads" | "karel_hana_conversations";
   subMode: string;
   label: string;
+  userId: string;
 }
 
 interface SortedBlock {
@@ -167,7 +168,7 @@ Deno.serve(async (req) => {
     // did_threads: mamka + kata sub_modes
     const { data: didThreads, error: e1 } = await supabase
       .from("did_threads")
-      .select("id, messages, sub_mode, thread_label, entered_name, is_locked")
+      .select("id, messages, sub_mode, thread_label, entered_name, is_locked, user_id")
       .in("sub_mode", ["mamka", "kata"])
       .eq("is_locked", false)
       .gte("last_activity_at", since)
@@ -179,7 +180,7 @@ Deno.serve(async (req) => {
     // karel_hana_conversations: personal threads
     const { data: hanaThreads, error: e2 } = await supabase
       .from("karel_hana_conversations")
-      .select("id, messages, sub_mode, thread_label, is_locked")
+      .select("id, messages, sub_mode, thread_label, is_locked, user_id")
       .eq("is_locked", false)
       .gte("last_activity_at", since)
       .order("last_activity_at", { ascending: false })
@@ -199,6 +200,7 @@ Deno.serve(async (req) => {
         sourceTable: "did_threads",
         subMode: t.sub_mode ?? "unknown",
         label: t.thread_label || t.entered_name || "bez názvu",
+        userId: t.user_id || "8a7816ee-4fd1-43d4-8d83-4230d7517ae1",
       });
     }
 
@@ -211,6 +213,7 @@ Deno.serve(async (req) => {
         sourceTable: "karel_hana_conversations",
         subMode: t.sub_mode || "hana_personal",
         label: t.thread_label || "bez názvu",
+        userId: t.user_id || "8a7816ee-4fd1-43d4-8d83-4230d7517ae1",
       });
     }
 
@@ -298,7 +301,7 @@ Roztřiď obsah do bloků. Pokud vlákno neobsahuje nic nového nebo užitečné
         write_type: REPLACE_TARGETS.includes(b.target) ? "replace" : "append",
         priority: "normal",
         status: "pending",
-        user_id: "00000000-0000-0000-0000-000000000000",
+        user_id: thread.userId,
       }));
 
       const { error: writeErr } = await supabase
