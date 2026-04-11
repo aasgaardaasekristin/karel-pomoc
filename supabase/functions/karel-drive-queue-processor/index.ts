@@ -113,9 +113,9 @@ async function resolveTarget(
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
     const doc = files.find(
-      (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
+      (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
-    return doc?.id || null;
+    return doc ? doc.id : null;
   }
 
   // PAMET_KAREL/... → separate root on Drive, NOT inside kartoteka
@@ -135,9 +135,9 @@ async function resolveTarget(
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
     const doc = files.find(
-      (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
+      (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
-    return doc?.id || null;
+    return doc ? doc.id : null;
   }
 
   return null;
