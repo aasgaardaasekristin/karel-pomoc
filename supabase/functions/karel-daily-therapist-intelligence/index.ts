@@ -48,10 +48,10 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Resolve owner user_id for pending writes consistency
-  const { data: ownerRow } = await sb.from("did_pending_drive_writes")
-    .select("user_id").not("user_id", "is", null).limit(1).single();
-  const ownerId = ownerRow?.user_id || null;
+  // Stable owner: resolve from did_part_registry (DID system owner)
+  const { data: registryOwner } = await sb.from("did_part_registry")
+    .select("user_id").limit(1).single();
+  const ownerId = registryOwner?.user_id || null;
 
   const today = new Date().toISOString().slice(0, 10);
   const akcniMarker = `=== AKČNÍ INTELIGENCE ${today} ===`;
