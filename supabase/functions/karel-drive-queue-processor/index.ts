@@ -32,9 +32,9 @@ const corsHeaders = {
 // ── Allowed targets whitelist ──
 const ALLOWED_TARGETS = [
   /^KARTA_.+$/,
-  /^PAMET_KAREL\/HANKA\/SITUACNI_ANALYZA$/,
-  /^PAMET_KAREL\/KATA\/SITUACNI_ANALYZA$/,
-  /^PAMET_KAREL\/KONTEXTY\/KDO_JE_KDO$/,
+  /^PAMET_KAREL\/DID\/HANKA\/SITUACNI_ANALYZA$/,
+  /^PAMET_KAREL\/DID\/KATA\/SITUACNI_ANALYZA$/,
+  /^PAMET_KAREL\/DID\/KONTEXTY\/KDO_JE_KDO$/,
 ];
 
 function isAllowedTarget(target: string): boolean {
@@ -59,32 +59,38 @@ async function resolveTarget(
   // KARTA_{NAME} → lives in KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY (or 03_ARCHIV)
   if (target.startsWith("KARTA_")) {
     const partName = target.replace("KARTA_", "");
+    console.log(`[resolve] Looking for part '${partName}' in kartoteka ${kartotekaRoot}`);
 
     const activeFolder = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaRoot);
     if (activeFolder) {
-      const partFolders = await listFiles(token, activeFolder);
-      const match = partFolders.find(
-        (f) =>
-          f.mimeType === FOLDER_MIME &&
-          f.name.toUpperCase().includes(partName.toUpperCase()),
-      );
-      if (match) {
-        const cardFile = await findCardFileInFolder(token, match.id);
-        if (cardFile) return cardFile.id;
+      const items = await listFiles(token, activeFolder);
+      // Items can be either folders (containing card file) or direct Google Docs
+      for (const item of items) {
+        if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
+        
+        if (item.mimeType === FOLDER_MIME) {
+          // Folder → find card file inside
+          const cardFile = await findCardFileInFolder(token, item.id);
+          if (cardFile) return cardFile.id;
+        } else if (item.mimeType === GDOC_MIME) {
+          // Direct Google Doc = the card itself
+          return item.id;
+        }
       }
     }
 
     const archiveFolder = await findFolder(token, "03_ARCHIV_SPICICH", kartotekaRoot);
     if (archiveFolder) {
-      const partFolders = await listFiles(token, archiveFolder);
-      const match = partFolders.find(
-        (f) =>
-          f.mimeType === FOLDER_MIME &&
-          f.name.toUpperCase().includes(partName.toUpperCase()),
-      );
-      if (match) {
-        const cardFile = await findCardFileInFolder(token, match.id);
-        if (cardFile) return cardFile.id;
+      const items = await listFiles(token, archiveFolder);
+      for (const item of items) {
+        if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
+        
+        if (item.mimeType === FOLDER_MIME) {
+          const cardFile = await findCardFileInFolder(token, item.id);
+          if (cardFile) return cardFile.id;
+        } else if (item.mimeType === GDOC_MIME) {
+          return item.id;
+        }
       }
     }
 
@@ -166,6 +172,11 @@ Deno.serve(async (req) => {
     // Get Drive access
     const token = await getAccessToken();
     const kartotekaRoot = await resolveKartotekaRoot(token);
+    addLog(`kartotekaRoot resolved: ${kartotekaRoot || "NULL"}`);
+    
+    const pametRoot = await resolvePametKarelRoot(token);
+    addLog(`pametKarelRoot resolved: ${pametRoot || "NULL"}`);
+    
     if (!kartotekaRoot) {
       addLog("ERROR: Cannot find kartoteka root folder on Drive");
       return new Response(

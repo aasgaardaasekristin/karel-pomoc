@@ -273,7 +273,7 @@ serve(async (req) => {
 
         // Zápis do PAMET_KAREL
         await sb.from("did_pending_drive_writes").insert({
-          target_document: "PAMET_KAREL/KONTEXTY/KDO_JE_KDO",
+          target_document: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
           content: `[Pozorování z osobního vlákna ${conv.sub_mode}] ${content.slice(0, 500)}`,
           write_type: "append",
           priority: "normal",
