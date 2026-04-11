@@ -75,12 +75,10 @@ async function resolveTarget(
         if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
         
         if (item.mimeType === FOLDER_MIME) {
-          // Folder → find card file inside
           const cardFile = await findCardFileInFolder(token, item.id);
-          if (cardFile) return cardFile.id;
-        } else if (item.mimeType === GDOC_MIME) {
-          // Direct Google Doc = the card itself
-          return item.id;
+          if (cardFile) return { id: cardFile.id, mimeType: cardFile.mimeType || GDOC_MIME };
+        } else if (item.mimeType !== FOLDER_MIME) {
+          return { id: item.id, mimeType: item.mimeType || "text/plain" };
         }
       }
     }
@@ -93,9 +91,9 @@ async function resolveTarget(
         
         if (item.mimeType === FOLDER_MIME) {
           const cardFile = await findCardFileInFolder(token, item.id);
-          if (cardFile) return cardFile.id;
-        } else if (item.mimeType === GDOC_MIME) {
-          return item.id;
+          if (cardFile) return { id: cardFile.id, mimeType: cardFile.mimeType || GDOC_MIME };
+        } else if (item.mimeType !== FOLDER_MIME) {
+          return { id: item.id, mimeType: item.mimeType || "text/plain" };
         }
       }
     }
@@ -117,7 +115,7 @@ async function resolveTarget(
     const doc = files.find(
       (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
-    return doc ? doc.id : null;
+    return doc ? { id: doc.id, mimeType: doc.mimeType || "text/plain" } : null;
   }
 
   // PAMET_KAREL/... → separate root on Drive, NOT inside kartoteka
@@ -139,7 +137,7 @@ async function resolveTarget(
     const doc = files.find(
       (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
-    return doc ? doc.id : null;
+    return doc ? { id: doc.id, mimeType: doc.mimeType || "text/plain" } : null;
   }
 
   return null;
