@@ -589,7 +589,7 @@ async function scanForUncertainEntities(
     .from("did_pending_questions")
     .select("subject_id")
     .eq("subject_type", "entity_verification")
-    .in("status", ["pending", "sent"])
+    .in("status", ["open", "answered"])
     .in("subject_id", detectedEntities.map((e) => e.toUpperCase()));
 
   const alreadyAsked = new Set(
@@ -637,7 +637,7 @@ async function createEntityFollowUp(
       context: `Zdroj: ${thread.subMode}/${thread.label}\nObsah: ${contextSnippet}`,
       subject_type: "entity_verification",
       subject_id: entityName.toUpperCase(),
-      status: "pending",
+      status: "open",
       blocking: "card_creation",
     });
 
