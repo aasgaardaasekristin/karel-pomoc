@@ -194,15 +194,20 @@ C\u00cdLOV\u00c9 DOKUMENTY:
 7. PAMET_KAREL/DID/KATA/KAREL
    \u2192 SD\u00cdLEN\u00c1 PAM\u011a\u0164 VZTAHU Karel\u2013K\u00e1\u0165a.
      SEM PAT\u0158\u00cd POUZE:
-     - co spolu \u0159e\u0161ili, jak Karel K\u00e1\u0165u vede, jak\u00e9 pokroky
-     - co K\u00e1\u0165a o Karlovi \u0159\u00edk\u00e1, jak se jejich spolupr\u00e1ce vyv\u00edj\u00ed
+     - co spolu \u0159e\u0161ili jako mentor a kolegyně, jak\u00e9 pokroky K\u00e1\u0165a ud\u011blala
+     - co K\u00e1\u0165a \u0159\u00edk\u00e1 o Karlovi, jak ho vid\u00ed, co od n\u011bj o\u010dek\u00e1v\u00e1
+     - jak se jejich profesn\u00ed spolupr\u00e1ce vyv\u00edj\u00ed
      - spole\u010dn\u00e9 profesn\u00ed z\u00e1\u017eitky a p\u0159elomov\u00e9 momenty
+     - \u017eiv\u00e9 posuny ve vztahu (nov\u00e1 d\u016fv\u011bra, nov\u00fd profesn\u00ed milestone)
      SEM NEPAT\u0158\u00cd:
      - obecn\u00e9 hodnocen\u00ed K\u00e1t\u011b (to pat\u0159\u00ed do KARLOVY_POZNATKY)
-     - provozn\u00ed informace
-     - klinick\u00e9 DID pozn\u00e1mky
+     - provozn\u00ed informace (term\u00edny, \u00fakoly, logistika)
+     - klinick\u00e9 DID pozn\u00e1mky o \u010d\u00e1stech
+     - syrov\u00e9 \u00fakoly a deadliny
      FORM\u00c1T: kr\u00e1tk\u00fd z\u00e1znam, max 3 v\u011bty. V\u011bcn\u011b a st\u0159\u00edzliv\u011b.
-     Pokud vl\u00e1kno neobsahuje nic vztahov\u00e9ho, NEVYTV\u00c1\u0158EJ tento blok.
+     Pokud vl\u00e1kno neobsahuje nic vztahov\u00e9ho mezi Karlem a K\u00e1\u0165ou, NEVYTV\u00c1\u0158EJ tento blok.
+     NIKDY nevym\u00fd\u0161lej z\u00e1\u017eitky, kter\u00e9 v konverzaci nejsou.
+     NIKDY nepou\u017e\u00edvej poetick\u00fd/rom\u00e1nov\u00fd jazyk.
 
 8. PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI
    \u2192 SHRNUT\u00cd PR\u00c1V\u011a UZAV\u0158EN\u00c9HO VL\u00c1KNA K\u00e1ti. Kr\u00e1tk\u00fd p\u0159ehled: o \u010dem se mluvilo, jak\u00fd v\u00fdsledek,

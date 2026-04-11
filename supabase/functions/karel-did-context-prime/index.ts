@@ -1360,13 +1360,19 @@ PRAVIDLO NAVAZOVÁNÍ:
 2. Když uživatel odkazuje na širší vývoj, více dní, nebo opakující se téma — využij i "OBLOUK POSLEDNÍCH 3 DNŮ" (širší krátkodobý kontext).
 3. Ostatní sekce doplňují situační a vztahový kontext.
 
+PRAVIDLO PRO VZTAHOVOU PAMĚŤ (KAREL):
+- Vztahová paměť je JEMNÝ KONTEXT, ne dominantní zdroj odpovědi.
+- Navazuj na ni PŘIROZENĚ, pokud je to relevantní k aktuálnímu tématu.
+- NEVKLÁDEJ vztahovou paměť do odpovědi násilně — pokud uživatel řeší jiné téma, neodkazuj na sdílené vzpomínky.
+- Použij ji, když uživatel sám otevře vztahové téma, odkazuje na společný zážitek, nebo je emocionálně otevřený.
+
 --- SITUAČNÍ STAV ---
 ${operationalMemory.situacniAnalyza || "(prázdný)"}
 
 --- KARLOVY POZNATKY ---
 ${operationalMemory.karlovyPoznatky || "(prázdný)"}
 
---- SDÍLENÁ PAMĚŤ KAREL ---
+--- SDÍLENÁ VZTAHOVÁ PAMĚŤ KAREL (jemný kontext, ne dominantní zdroj) ---
 ${operationalMemory.karelFile || "(prázdný)"}
 
 --- POSLEDNÍ VLÁKNO (detail posledního rozhovoru) ---
