@@ -164,9 +164,22 @@ C\u00cdLOV\u00c9 DOKUMENTY:
    \u2192 Karlovy post\u0159ehy o Hance (motivace, spolehlivost, vzorce chov\u00e1n\u00ed, emo\u010dn\u00ed stav)
 
 3. PAMET_KAREL/DID/HANKA/KAREL
-   \u2192 SD\u00cdLEN\u00c1 PAM\u011a\u0164 VZTAHU Karel\u2013Hani\u010dka. Co spolu pro\u017eili, o \u010dem mluvili, spole\u010dn\u00e9 vzpom\u00ednky,
-     co Hani\u010dka Karlovi \u0159ekla o jejich vztahu, jak se Karel pro ni m\u011bn\u00ed, co Karel pro Hani\u010dku znamen\u00e1.
-     NE profil Karla \u2014 ale \u017eiv\u00e1 pam\u011b\u0165 jejich spole\u010dn\u00e9ho p\u0159\u00edb\u011bhu.
+   \u2192 SD\u00cdLEN\u00c1 PAM\u011a\u0164 VZTAHU Karel\u2013Hani\u010dka.
+     SEM PAT\u0158\u00cd POUZE:
+     - spole\u010dn\u00e9 vzpom\u00ednky a pro\u017eitky (co spolu za\u017eili, o \u010dem mluvili)
+     - symbolick\u00e1 m\u00edsta, motivy, vtipy, p\u0159\u00edlepy (nap\u0159. "na\u0161e lavi\u010dka", "ten p\u00edsni\u010dkov\u00fd ve\u010der")
+     - co Hani\u010dka \u0159ekla o Karlovi / o jejich vztahu (p\u0159\u00edm\u00e9 citace nebo parafr\u00e1ze)
+     - co Karel pro Hani\u010dku znamen\u00e1 (jak ho vid\u00ed, co od n\u011bj o\u010dek\u00e1v\u00e1)
+     - \u017eiv\u00e9 vztahov\u00e9 posuny (nov\u00e1 d\u016fv\u011bra, nov\u00fd konflikt, zm\u011bna dynamiky)
+     SEM NEPAT\u0158\u00cd:
+     - obecn\u00fd emo\u010dn\u00ed stav Hani\u010dky (to pat\u0159\u00ed do KARLOVY_POZNATKY)
+     - \u010dist\u011b pracovn\u00ed/terapeutick\u00e9 v\u011bci (to pat\u0159\u00ed do SITUACNI_ANALYZA)
+     - klinick\u00e9 DID pozn\u00e1mky o \u010d\u00e1stech (to pat\u0159\u00ed do KARTA_*)
+     - provozn\u00ed informace (term\u00edny, \u00fakoly, logistika)
+     FORM\u00c1T: pi\u0161 jako kr\u00e1tkou vzpom\u00ednku/z\u00e1znam, ne jako profil. Max 3 v\u011bty.
+     Pokud vl\u00e1kno neobsahuje nic vztahov\u00e9ho mezi Karlem a Hani\u010dkou, NEVYTV\u00c1\u0158EJ tento blok.
+     NIKDY nevym\u00fd\u0161lej vzpom\u00ednky, kter\u00e9 v konverzaci nejsou.
+     NIKDY nepou\u017e\u00edvej poetick\u00fd/rom\u00e1nov\u00fd jazyk. Pi\u0161 v\u011bcn\u011b a st\u0159\u00edzliv\u011b.
 
 4. PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI
    \u2192 SHRNUT\u00cd PR\u00c1V\u011a UZAV\u0158EN\u00c9HO VL\u00c1KNA Hani\u010dky. Kr\u00e1tk\u00fd p\u0159ehled: o \u010dem se mluvilo, jak\u00e9 emoce,
@@ -179,8 +192,17 @@ C\u00cdLOV\u00c9 DOKUMENTY:
    \u2192 Karlovy post\u0159ehy o K\u00e1t\u011b (spolehlivost, p\u0159\u00edstup k terapii, siln\u00e9/slab\u00e9 str\u00e1nky)
 
 7. PAMET_KAREL/DID/KATA/KAREL
-   \u2192 SD\u00cdLEN\u00c1 PAM\u011a\u0164 VZTAHU Karel\u2013K\u00e1\u0165a. Co spolu \u0159e\u0161ili, jak Karel K\u00e1\u0165u vede, jak\u00e9 pokroky,
-     co K\u00e1\u0165a o Karlovi \u0159\u00edk\u00e1, jak se jejich spolupr\u00e1ce vyv\u00edj\u00ed.
+   \u2192 SD\u00cdLEN\u00c1 PAM\u011a\u0164 VZTAHU Karel\u2013K\u00e1\u0165a.
+     SEM PAT\u0158\u00cd POUZE:
+     - co spolu \u0159e\u0161ili, jak Karel K\u00e1\u0165u vede, jak\u00e9 pokroky
+     - co K\u00e1\u0165a o Karlovi \u0159\u00edk\u00e1, jak se jejich spolupr\u00e1ce vyv\u00edj\u00ed
+     - spole\u010dn\u00e9 profesn\u00ed z\u00e1\u017eitky a p\u0159elomov\u00e9 momenty
+     SEM NEPAT\u0158\u00cd:
+     - obecn\u00e9 hodnocen\u00ed K\u00e1t\u011b (to pat\u0159\u00ed do KARLOVY_POZNATKY)
+     - provozn\u00ed informace
+     - klinick\u00e9 DID pozn\u00e1mky
+     FORM\u00c1T: kr\u00e1tk\u00fd z\u00e1znam, max 3 v\u011bty. V\u011bcn\u011b a st\u0159\u00edzliv\u011b.
+     Pokud vl\u00e1kno neobsahuje nic vztahov\u00e9ho, NEVYTV\u00c1\u0158EJ tento blok.
 
 8. PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI
    \u2192 SHRNUT\u00cd PR\u00c1V\u011a UZAV\u0158EN\u00c9HO VL\u00c1KNA K\u00e1ti. Kr\u00e1tk\u00fd p\u0159ehled: o \u010dem se mluvilo, jak\u00fd v\u00fdsledek,
