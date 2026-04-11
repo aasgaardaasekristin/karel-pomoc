@@ -450,6 +450,15 @@ Rozt\u0159i\u010f obsah do blok\u016f. Pokud vl\u00e1kno neobsahuje nic nov\u00e
         }
       }
 
+      // ── 3b. Content-level uncertain entity scan ──────────────────
+      // Even when AI correctly avoids KARTA_*, scan all block content
+      // for mentions of uncertain entities and create follow-ups.
+      const allContent = blocks.map((b) => b.content + " " + b.reasoning).join(" ");
+      const followUpEntities = await scanForUncertainEntities(
+        supabase, allContent, thread, dateLabel, addLog,
+      );
+      totalFollowUps += followUpEntities;
+
       if (approvedBlocks.length === 0) {
         await lockThread(supabase, thread, now);
         totalLocked++;
