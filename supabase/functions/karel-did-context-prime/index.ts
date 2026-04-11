@@ -888,6 +888,8 @@ serve(async (req) => {
 
               if (targetFolderId) {
                 const MEM_MAX = 3000; // chars per file — keeps total under ~15k
+                // Files that need head+tail reading (markers appended at end)
+                const TAIL_FILES = new Set(["situacniAnalyza", "karlovyPoznatky"]);
                 const memFiles = [
                   { name: "SITUACNI_ANALYZA.txt", key: "situacniAnalyza" as const },
                   { name: "KARLOVY_POZNATKY.txt", key: "karlovyPoznatky" as const },
@@ -903,7 +905,12 @@ serve(async (req) => {
                       doc = await findDocByExactName(token, targetFolderId, mf.name + ".txt");
                     }
                     if (doc) {
-                      operationalMemory[mf.key] = await readDoc(token, doc.id, MEM_MAX);
+                      // For SITUACNI_ANALYZA and KARLOVY_POZNATKY: read head+tail to capture markers at end
+                      if (TAIL_FILES.has(mf.key)) {
+                        operationalMemory[mf.key] = await readDocHeadTail(token, doc.id, 1500, 2000);
+                      } else {
+                        operationalMemory[mf.key] = await readDoc(token, doc.id, MEM_MAX);
+                      }
                       console.log(`[op-memory] Read ${targetTherapist}/${mf.name} (${operationalMemory[mf.key].length} chars)`);
                     }
                   })());
