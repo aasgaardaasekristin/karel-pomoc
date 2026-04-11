@@ -19,6 +19,7 @@ import {
   listFiles,
   findCardFileInFolder,
   appendToDoc,
+  appendToFile,
   FOLDER_MIME,
   GDOC_MIME,
 } from "../_shared/driveHelpers.ts";
@@ -53,12 +54,14 @@ async function resolvePametKarelRoot(token: string): Promise<string | null> {
   return null;
 }
 
-// ── Resolve target to Drive file ID ──
+type ResolvedFile = { id: string; mimeType: string };
+
+// ── Resolve target to Drive file ID + mimeType ──
 async function resolveTarget(
   token: string,
   kartotekaRoot: string,
   target: string,
-): Promise<string | null> {
+): Promise<ResolvedFile | null> {
   // KARTA_{NAME} → lives in KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY (or 03_ARCHIV)
   if (target.startsWith("KARTA_")) {
     const partName = target.replace("KARTA_", "");
@@ -72,12 +75,10 @@ async function resolveTarget(
         if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
         
         if (item.mimeType === FOLDER_MIME) {
-          // Folder → find card file inside
           const cardFile = await findCardFileInFolder(token, item.id);
-          if (cardFile) return cardFile.id;
-        } else if (item.mimeType === GDOC_MIME) {
-          // Direct Google Doc = the card itself
-          return item.id;
+          if (cardFile) return { id: cardFile.id, mimeType: cardFile.mimeType || GDOC_MIME };
+        } else if (item.mimeType !== FOLDER_MIME) {
+          return { id: item.id, mimeType: item.mimeType || "text/plain" };
         }
       }
     }
@@ -90,9 +91,9 @@ async function resolveTarget(
         
         if (item.mimeType === FOLDER_MIME) {
           const cardFile = await findCardFileInFolder(token, item.id);
-          if (cardFile) return cardFile.id;
-        } else if (item.mimeType === GDOC_MIME) {
-          return item.id;
+          if (cardFile) return { id: cardFile.id, mimeType: cardFile.mimeType || GDOC_MIME };
+        } else if (item.mimeType !== FOLDER_MIME) {
+          return { id: item.id, mimeType: item.mimeType || "text/plain" };
         }
       }
     }
@@ -112,9 +113,9 @@ async function resolveTarget(
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
     const doc = files.find(
-      (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
+      (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
-    return doc?.id || null;
+    return doc ? { id: doc.id, mimeType: doc.mimeType || "text/plain" } : null;
   }
 
   // PAMET_KAREL/... → separate root on Drive, NOT inside kartoteka
@@ -134,9 +135,9 @@ async function resolveTarget(
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
     const doc = files.find(
-      (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
+      (f) => f.mimeType !== FOLDER_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
-    return doc?.id || null;
+    return doc ? { id: doc.id, mimeType: doc.mimeType || "text/plain" } : null;
   }
 
   return null;
@@ -232,9 +233,9 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Resolve target to Drive file ID
-        const fileId = await resolveTarget(token, kartotekaRoot, target);
-        if (!fileId) {
+        // Resolve target to Drive file ID + mimeType
+        const resolved = await resolveTarget(token, kartotekaRoot, target);
+        if (!resolved) {
           addLog(`FAIL ${writeId}: could not resolve target '${target}' on Drive`);
           await sb
             .from("did_pending_drive_writes")
@@ -244,10 +245,16 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Append content
+        // Append content — dispatch by file type
         const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
         const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${pw.content}`;
-        await appendToDoc(token, fileId, contentWithTimestamp);
+        
+        if (resolved.mimeType === GDOC_MIME) {
+          await appendToDoc(token, resolved.id, contentWithTimestamp);
+        } else {
+          await appendToFile(token, resolved.id, contentWithTimestamp);
+        }
+        addLog(`Appended via ${resolved.mimeType === GDOC_MIME ? "Docs API" : "Drive API"} to ${resolved.id}`);
 
         // Mark completed
         await sb
@@ -255,7 +262,7 @@ Deno.serve(async (req) => {
           .update({ status: "completed", processed_at: new Date().toISOString() })
           .eq("id", writeId);
 
-        addLog(`OK ${writeId}: appended to '${target}' (file ${fileId})`);
+        addLog(`OK ${writeId}: appended to '${target}' (file ${resolved.id})`);
         completed++;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
