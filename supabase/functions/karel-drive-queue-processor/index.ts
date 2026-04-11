@@ -62,34 +62,35 @@ async function resolveTarget(
     console.log(`[resolve] Looking for part '${partName}' in kartoteka ${kartotekaRoot}`);
 
     const activeFolder = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaRoot);
-    console.log(`[resolve] 01_AKTIVNI_FRAGMENTY: ${activeFolder || "NOT FOUND"}`);
     if (activeFolder) {
-      const partFolders = await listFiles(token, activeFolder);
-      console.log(`[resolve] Found ${partFolders.length} items in AKTIVNI:`, partFolders.map(f => `${f.name} [${f.mimeType}]`));
-      const match = partFolders.find(
-        (f) =>
-          f.mimeType === FOLDER_MIME &&
-          f.name.toUpperCase().includes(partName.toUpperCase()),
-      );
-      console.log(`[resolve] Match for '${partName}': ${match?.name || "NONE"}`);
-      if (match) {
-        const cardFile = await findCardFileInFolder(token, match.id);
-        console.log(`[resolve] Card file in '${match.name}': ${cardFile?.name || "NONE"}`);
-        if (cardFile) return cardFile.id;
+      const items = await listFiles(token, activeFolder);
+      // Items can be either folders (containing card file) or direct Google Docs
+      for (const item of items) {
+        if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
+        
+        if (item.mimeType === FOLDER_MIME) {
+          // Folder → find card file inside
+          const cardFile = await findCardFileInFolder(token, item.id);
+          if (cardFile) return cardFile.id;
+        } else if (item.mimeType === GDOC_MIME) {
+          // Direct Google Doc = the card itself
+          return item.id;
+        }
       }
     }
 
     const archiveFolder = await findFolder(token, "03_ARCHIV_SPICICH", kartotekaRoot);
     if (archiveFolder) {
-      const partFolders = await listFiles(token, archiveFolder);
-      const match = partFolders.find(
-        (f) =>
-          f.mimeType === FOLDER_MIME &&
-          f.name.toUpperCase().includes(partName.toUpperCase()),
-      );
-      if (match) {
-        const cardFile = await findCardFileInFolder(token, match.id);
-        if (cardFile) return cardFile.id;
+      const items = await listFiles(token, archiveFolder);
+      for (const item of items) {
+        if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
+        
+        if (item.mimeType === FOLDER_MIME) {
+          const cardFile = await findCardFileInFolder(token, item.id);
+          if (cardFile) return cardFile.id;
+        } else if (item.mimeType === GDOC_MIME) {
+          return item.id;
+        }
       }
     }
 
