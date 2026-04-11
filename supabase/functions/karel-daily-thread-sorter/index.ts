@@ -243,7 +243,7 @@ OBECN\u00c1 PRAVIDLA:
 - Nikdy nevym\u00fd\u0161lej informace, kter\u00e9 v konverzaci nejsou
 - Ka\u017ed\u00fd blok mus\u00ed m\u00edt jasn\u00fd, stru\u010dn\u00fd content (max 200 slov)
 - Content pi\u0161 ve form\u00e1tu vhodn\u00e9m pro append do textov\u00e9ho souboru (datumy, odr\u00e1\u017eky)
-- KAREL soubory: pi\u0161 jako vzpom\u00ednku/z\u00e1znam, ne jako profil
+- KAREL soubory: POUZE vztahov\u00e9 z\u00e1znamy, ne profil. Pokud nen\u00ed vztahov\u00fd obsah, blok NEVYTV\u00c1\u0158EJ.
 - VLAKNA_POSLEDNI: v\u017edy max 3-5 v\u011bt \u2014 stru\u010dn\u00e9 shrnut\u00ed vl\u00e1kna
 - VLAKNA_3DNY: max 5-8 v\u011bt \u2014 rolling souhrn 3 dn\u016f, obecn\u011bj\u0161\u00ed ne\u017e POSLEDNI
 - KDO_JE_KDO: pouze fakta, \u017e\u00e1dn\u00e9 emoce, \u017e\u00e1dn\u00e9 hodnocen\u00ed
