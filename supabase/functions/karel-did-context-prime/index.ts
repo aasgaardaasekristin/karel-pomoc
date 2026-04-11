@@ -68,6 +68,19 @@ async function readDoc(token: string, fileId: string, maxChars = 4000): Promise<
   return text.slice(0, maxChars);
 }
 
+/** Read a doc keeping both head and tail so markers at end of file are preserved */
+async function readDocHeadTail(token: string, fileId: string, headChars: number, tailChars: number): Promise<string> {
+  let res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+  }
+  if (!res.ok) return "[nečitelné]";
+  const text = await res.text();
+  const total = headChars + tailChars;
+  if (text.length <= total) return text;
+  return text.slice(0, headChars) + "\n\n[...]\n\n" + text.slice(-tailChars);
+}
+
 async function readFolderDocs(token: string, folderId: string, maxDocs = 10, maxChars = 3000): Promise<Record<string, string>> {
   const docs = await listDocsInFolder(token, folderId, maxDocs);
   const result: Record<string, string> = {};
@@ -875,6 +888,8 @@ serve(async (req) => {
 
               if (targetFolderId) {
                 const MEM_MAX = 3000; // chars per file — keeps total under ~15k
+                // Files that need head+tail reading (markers appended at end)
+                const TAIL_FILES = new Set(["situacniAnalyza", "karlovyPoznatky"]);
                 const memFiles = [
                   { name: "SITUACNI_ANALYZA.txt", key: "situacniAnalyza" as const },
                   { name: "KARLOVY_POZNATKY.txt", key: "karlovyPoznatky" as const },
@@ -890,7 +905,12 @@ serve(async (req) => {
                       doc = await findDocByExactName(token, targetFolderId, mf.name + ".txt");
                     }
                     if (doc) {
-                      operationalMemory[mf.key] = await readDoc(token, doc.id, MEM_MAX);
+                      // For SITUACNI_ANALYZA and KARLOVY_POZNATKY: read head+tail to capture markers at end
+                      if (TAIL_FILES.has(mf.key)) {
+                        operationalMemory[mf.key] = await readDocHeadTail(token, doc.id, 1500, 2000);
+                      } else {
+                        operationalMemory[mf.key] = await readDoc(token, doc.id, MEM_MAX);
+                      }
                       console.log(`[op-memory] Read ${targetTherapist}/${mf.name} (${operationalMemory[mf.key].length} chars)`);
                     }
                   })());
