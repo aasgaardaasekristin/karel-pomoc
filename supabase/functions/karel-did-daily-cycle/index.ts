@@ -6819,10 +6819,13 @@ CELKOVÉ SHRNUTÍ:
 ${p.raw_analysis || "N/A"}`;
 
                 try {
+                  const profileTarget = therapistName === "hanka"
+                    ? "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI"
+                    : "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI";
                   await sb.from("did_pending_drive_writes").insert({
-                    target_document: `PAMET_KAREL_PROFIL_${displayName}`,
+                    target_document: profileTarget,
                     content: driveContent,
-                    write_type: "upsert",
+                    write_type: "append",
                     status: "pending",
                     priority: "low",
                   });
