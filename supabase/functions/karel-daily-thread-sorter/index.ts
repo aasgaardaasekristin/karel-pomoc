@@ -27,11 +27,19 @@ const VALID_TARGETS = [
   "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY",
   "PAMET_KAREL/DID/HANKA/KAREL",
   "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
   "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA",
   "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY",
   "PAMET_KAREL/DID/KATA/KAREL",
   "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
   "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+];
+
+// Targets that use "replace" instead of "append" (rolling summary)
+const REPLACE_TARGETS = [
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
 ];
 
 const SORTING_SYSTEM_PROMPT = `Jsi Karel – supervizor a analytik DID terapeutického systému.
@@ -75,11 +83,22 @@ CÍLOVÉ DOKUMENTY:
    → SHRNUTÍ PRÁVĚ UZAVŘENÉHO VLÁKNA Káti. Krátký přehled: o čem se mluvilo, jaký výsledek,
      co zůstalo otevřené. Max 3-5 vět.
 
-9. PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO
+9. PAMET_KAREL/DID/HANKA/VLAKNA_3DNY
+   → ROLLING SOUHRN posledních 3 dnů komunikace s Haničkou.
+     Hlavní témata, emoční posuny, otevřené linky, opakující se motivy.
+     STRUČNĚJŠÍ a obecnější než VLAKNA_POSLEDNI. Max 5-8 vět.
+     Slouží pro rychlou orientaci, ne jako detailní archiv.
+     Tento blok NAHRAZUJE předchozí obsah souboru (rolling update, ne append).
+
+10. PAMET_KAREL/DID/KATA/VLAKNA_3DNY
+   → ROLLING SOUHRN posledních 3 dnů komunikace s Kátou.
+     Stejná pravidla jako pro Haničku. Max 5-8 vět. Rolling update.
+
+11. PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO
    → FAKTICKÁ kontextová data: nové osoby, místa, instituce, role, okolnosti zmíněné v konverzaci.
      Pouze fakta (kdo je kdo, kde pracuje, jaký má vztah k systému). Žádný intimní obsah.
 
-10. KARTA_{JMENO_CASTI}
+12. KARTA_{JMENO_CASTI}
    → klinické informace o konkrétní DID části (switching, emoce, symptomy, vztahy)
    → nahraď {JMENO_CASTI} skutečným jménem části VELKÝMI PÍSMENY (např. KARTA_GUSTIK)
 
@@ -92,8 +111,10 @@ PRAVIDLA:
 - Content piš ve formátu vhodném pro append do textového souboru (datumy, odrážky)
 - KAREL soubory: piš jako vzpomínku/záznam, ne jako profil
 - VLAKNA_POSLEDNI: vždy max 3-5 vět — stručné shrnutí vlákna
+- VLAKNA_3DNY: max 5-8 vět — rolling souhrn 3 dnů, obecnější než POSLEDNI
 - KDO_JE_KDO: pouze fakta, žádné emoce, žádné hodnocení
 - Pro KAŽDÉ zpracované vlákno VŽDY vytvoř blok VLAKNA_POSLEDNI (shrnutí)
+- Pro KAŽDÉ zpracované vlákno VŽDY vytvoř blok VLAKNA_3DNY (rolling 3-denní souhrn)
 
 Odpověz POUZE validním JSON:
 { "blocks": [ { "target": "...", "content": "...", "reasoning": "..." } ] }
@@ -268,10 +289,13 @@ Roztřiď obsah do bloků. Pokud vlákno neobsahuje nic nového nebo užitečné
       }
 
       // Insert into did_pending_drive_writes
+      // VLAKNA_3DNY uses "replace" (rolling summary), everything else uses "append"
       const rows = validBlocks.map((b) => ({
         target_document: b.target,
-        content: `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`,
-        write_type: "append",
+        content: REPLACE_TARGETS.includes(b.target)
+          ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
+          : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`,
+        write_type: REPLACE_TARGETS.includes(b.target) ? "replace" : "append",
         priority: "normal",
         status: "pending",
         user_id: "00000000-0000-0000-0000-000000000000",
