@@ -221,7 +221,7 @@ ${crisisDigest}`;
               write_type: "append",
               priority: "normal",
               status: "pending",
-              user_id: ownerId,
+              user_id: DID_OWNER_ID,
             }))
           );
           console.log(`[therapist-intel] ${t.key}: inserted ${writes.length} pending writes`);
