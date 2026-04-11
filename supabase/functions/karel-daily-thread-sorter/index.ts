@@ -544,6 +544,74 @@ async function lockThread(
 }
 
 /**
+ * Scan block content for mentions of explicitly uncertain entities
+ * and any entity-like names tagged with "k ověření" / "nepotvrzena".
+ * Creates follow-up questions with dedup against existing pending ones.
+ */
+async function scanForUncertainEntities(
+  supabase: ReturnType<typeof createClient>,
+  allContent: string,
+  thread: ThreadRecord,
+  dateLabel: string,
+  addLog: (msg: string) => void,
+): Promise<number> {
+  const contentNorm = normalizeName(allContent);
+  const detectedEntities: string[] = [];
+
+  // 1. Check explicitly uncertain entity names in content
+  for (const unc of EXPLICITLY_UNCERTAIN) {
+    if (contentNorm.includes(unc)) {
+      detectedEntities.push(unc);
+    }
+  }
+
+  // 2. Check for AI-generated uncertainty markers in raw content
+  const uncertainMarkerRegex = /\[NEPOTVRZENA[^\]]*\]\s*([A-Z\u00c0-\u017e][a-z\u00e0-\u017e]+)/gi;
+  const kOvereniRegex = /k\s+ov\u011b\u0159en\u00ed[^.]*?([A-Z\u00c0-\u017e][a-z\u00e0-\u017e]{2,})/gi;
+  for (const regex of [uncertainMarkerRegex, kOvereniRegex]) {
+    let match;
+    while ((match = regex.exec(allContent)) !== null) {
+      const name = normalizeName(match[1]);
+      if (name.length >= 3 && !detectedEntities.includes(name)) {
+        // Skip if it's a confirmed part or non-part
+        const cls = classifyEntity(name.toUpperCase());
+        if (cls.classification === "uncertain_entity") {
+          detectedEntities.push(name);
+        }
+      }
+    }
+  }
+
+  if (detectedEntities.length === 0) return 0;
+
+  // 3. Dedup: check existing pending questions for these entities
+  const { data: existing } = await supabase
+    .from("did_pending_questions")
+    .select("subject_id")
+    .eq("subject_type", "entity_verification")
+    .in("status", ["pending", "sent"])
+    .in("subject_id", detectedEntities.map((e) => e.toUpperCase()));
+
+  const alreadyAsked = new Set(
+    (existing ?? []).map((r: { subject_id: string | null }) =>
+      normalizeName(r.subject_id ?? "")
+    ),
+  );
+
+  let created = 0;
+  for (const entity of detectedEntities) {
+    if (alreadyAsked.has(entity)) {
+      addLog(`  Skip follow-up for "${entity}": already pending`);
+      continue;
+    }
+    await createEntityFollowUp(supabase, entity, allContent, thread, dateLabel);
+    addLog(`  Created follow-up for uncertain entity: "${entity}"`);
+    created++;
+  }
+  return created;
+}
+
+/**
  * Create a follow-up question in did_pending_questions
  * for uncertain entities that need therapist confirmation.
  */
@@ -554,9 +622,10 @@ async function createEntityFollowUp(
   thread: ThreadRecord,
   dateLabel: string,
 ) {
-  const question = `Karel narazil na jm\u00e9no "${entityName}" ve vl\u00e1kn\u011b "${thread.label}" (${dateLabel}). `
+  const displayName = entityName.charAt(0).toUpperCase() + entityName.slice(1);
+  const question = `Karel narazil na jm\u00e9no "${displayName}" ve vl\u00e1kn\u011b "${thread.label}" (${dateLabel}). `
     + `Nem\u016f\u017eu ur\u010dit, zda jde o potvrzenou DID \u010d\u00e1st. `
-    + `M\u016f\u017ee\u0161 potvrdit, zda "${entityName}" je \u010d\u00e1st syst\u00e9mu, alias existuj\u00edc\u00ed \u010d\u00e1sti, nebo n\u011bco jin\u00e9ho?`;
+    + `M\u016f\u017ee\u0161 potvrdit, zda "${displayName}" je \u010d\u00e1st syst\u00e9mu, alias existuj\u00edc\u00ed \u010d\u00e1sti, nebo n\u011bco jin\u00e9ho?`;
 
   const contextSnippet = extractedContent.slice(0, 300);
 
@@ -567,7 +636,7 @@ async function createEntityFollowUp(
       directed_to: thread.subMode === "kata" ? "kata" : "hanka",
       context: `Zdroj: ${thread.subMode}/${thread.label}\nObsah: ${contextSnippet}`,
       subject_type: "entity_verification",
-      subject_id: entityName,
+      subject_id: entityName.toUpperCase(),
       status: "pending",
       blocking: "card_creation",
     });
