@@ -4,104 +4,39 @@ import { corsHeaders } from "../_shared/auth.ts";
 
 /**
  * karel-daily-therapist-intelligence
- *
- * Lehká denní funkce generující akční inteligenci a dedukce pro Haničku a Káťu.
- * Zapisuje do PAMET_KAREL/DID/{HANKA,KATA}/{SITUACNI_ANALYZA,KARLOVY_POZNATKY}
- * ve stabilním formátu se značkami, které context-prime přesně extrahuje.
- *
- * Volá se z orchestrátoru po sorteru a queue processoru.
+ * 
+ * Lehká denní funkce: generuje AKČNÍ INTELIGENCI a KARLOVY DEDUKCE
+ * pro Haničku a Káťu. Zapisuje POUZE do did_pending_drive_writes.
+ * Žádné Drive/OAuth helpery — vše jde přes queue processor.
  */
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY") || "";
 
-// ── OAuth2 ──
-async function getAccessToken(): Promise<string> {
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
-  if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
-  return data.access_token;
-}
-
-// ── Drive helpers ──
-async function findFolder(token: string, name: string, parentId?: string): Promise<string | null> {
-  let q = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-  if (parentId) q += ` and '${parentId}' in parents`;
-  const params = new URLSearchParams({ q, fields: "files(id)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files?.[0]?.id || null;
-}
-
-function escapeDriveQueryValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-}
-
-async function findDocByExactName(token: string, parentId: string, fileName: string): Promise<{ id: string; name: string } | null> {
-  const q = `name='${escapeDriveQueryValue(fileName)}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
-  const params = new URLSearchParams({ q, fields: "files(id,name)", pageSize: "5", supportsAllDrives: "true", includeItemsFromAllDrives: "true" });
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files?.[0] || null;
-}
-
-async function readDoc(token: string, fileId: string, maxChars = 6000): Promise<string> {
-  let res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
-  }
-  if (!res.ok) return "";
-  const text = await res.text();
-  return text.slice(0, maxChars);
-}
-
-async function appendToFile(token: string, fileId: string, content: string): Promise<void> {
-  // Read current content
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
-  const existing = res.ok ? await res.text() : "";
-
-  const newContent = existing + "\n\n" + content;
-
-  const boundary = "----TherapistIntelBoundary";
-  const body =
-    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name: null })}\r\n` +
-    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${newContent}\r\n` +
-    `--${boundary}--`;
-
-  await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart&supportsAllDrives=true`, {
-    method: "PATCH",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` },
-    body,
-  });
-}
-
-// ── Therapist config ──
-interface TherapistConfig {
-  key: "hanka" | "kata";
+interface TherapistDef {
+  key: string;
   name: string;
-  relationship: string;
+  role: string;
   subModes: string[];
+  sitTarget: string;
+  pozTarget: string;
 }
 
-const THERAPISTS: TherapistConfig[] = [
+const THERAPISTS: TherapistDef[] = [
   {
     key: "hanka",
     name: "Hanička",
-    relationship: "partnerka a vedoucí terapeutka. Karel k ní mluví s láskou, intimitou a respektem.",
+    role: "partnerka a vedoucí terapeutka. Karel k ní mluví s láskou, intimitou a respektem.",
     subModes: ["mamka", "hana_personal"],
+    sitTarget: "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
+    pozTarget: "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY",
   },
   {
     key: "kata",
     name: "Káťa",
-    relationship: "mentorovaná terapeutka. Karel je její vedoucí a mentor — mluví profesionálně, vřele, ale s jasnou strukturou.",
+    role: "mentorovaná terapeutka. Karel je její vedoucí a mentor — profesionálně, vřele, s jasnou strukturou.",
     subModes: ["kata"],
+    sitTarget: "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA",
+    pozTarget: "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY",
   },
 ];
 
@@ -113,30 +48,24 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  const startTime = Date.now();
   const today = new Date().toISOString().slice(0, 10);
-  const results: Record<string, { ok: boolean; error?: string }> = {};
+  const akcniMarker = `=== AKČNÍ INTELIGENCE ${today} ===`;
+  const dedukceMarker = `=== KARLOVY DEDUKCE ${today} ===`;
+  const startTime = Date.now();
+  const results: Record<string, { ok: boolean; skipped?: boolean; error?: string }> = {};
 
   try {
-    const token = await getAccessToken();
-
-    // Resolve PAMET_KAREL/DID
-    const pametId = await findFolder(token, "PAMET_KAREL");
-    if (!pametId) throw new Error("PAMET_KAREL not found");
-    const didPametId = await findFolder(token, "DID", pametId);
-    if (!didPametId) throw new Error("PAMET_KAREL/DID not found");
-
-    // ── Fetch shared context: recent threads, tasks, crises ──
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    // ── Shared data fetch (7 days) ──
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const [threadsRes, convsRes, hanaRes, tasksRes, crisisRes] = await Promise.all([
       sb.from("did_threads").select("id, part_name, messages, last_activity_at, sub_mode")
-        .gte("last_activity_at", sevenDaysAgo).order("last_activity_at", { ascending: false }).limit(30),
+        .gte("last_activity_at", cutoff).order("last_activity_at", { ascending: false }).limit(30),
       sb.from("did_conversations").select("id, label, sub_mode, messages, updated_at")
-        .gte("updated_at", sevenDaysAgo).order("updated_at", { ascending: false }).limit(20),
+        .gte("updated_at", cutoff).order("updated_at", { ascending: false }).limit(20),
       sb.from("karel_hana_conversations").select("id, messages, current_domain, last_activity_at")
-        .gte("last_activity_at", sevenDaysAgo).order("last_activity_at", { ascending: false }).limit(15),
-      sb.from("did_therapist_tasks").select("*")
+        .gte("last_activity_at", cutoff).order("last_activity_at", { ascending: false }).limit(15),
+      sb.from("did_therapist_tasks").select("id, title, status, assigned_to, created_at")
         .in("status", ["pending", "in_progress"]).order("created_at", { ascending: false }).limit(30),
       sb.from("crisis_alerts").select("part_name, severity, summary, status")
         .in("status", ["open", "monitoring"]).limit(10),
@@ -148,104 +77,78 @@ serve(async (req) => {
     const tasks = tasksRes.data || [];
     const crises = crisisRes.data || [];
 
-    // ── Process each therapist ──
-    for (const therapist of THERAPISTS) {
+    for (const t of THERAPISTS) {
       try {
-        // Find therapist folder
-        const folderName = therapist.key === "hanka" ? "HANKA" : "KATA";
-        const folderId = await findFolder(token, folderName, didPametId);
-        if (!folderId) {
-          results[therapist.key] = { ok: false, error: "Folder not found" };
+        // ── Dedup: check if today's writes already exist ──
+        const { data: existing } = await sb.from("did_pending_drive_writes")
+          .select("id, target_document")
+          .in("target_document", [t.sitTarget, t.pozTarget])
+          .gte("created_at", `${today}T00:00:00Z`)
+          .ilike("content", `%${akcniMarker}%`);
+
+        // If we find writes with today's marker for BOTH targets, skip
+        const existingSit = existing?.some(e => e.target_document === t.sitTarget);
+        const existingPoz = existing?.some(e => e.target_document === t.pozTarget);
+        if (existingSit && existingPoz) {
+          console.log(`[therapist-intel] ${t.key}: already has today's writes, skipping`);
+          results[t.key] = { ok: true, skipped: true };
           continue;
         }
 
-        // Read current files
-        const sitDoc = await findDocByExactName(token, folderId, "SITUACNI_ANALYZA.txt");
-        const pozDoc = await findDocByExactName(token, folderId, "KARLOVY_POZNATKY.txt");
-        if (!sitDoc || !pozDoc) {
-          results[therapist.key] = { ok: false, error: "Target files not found" };
-          continue;
-        }
+        // ── Build thread digest ──
+        const relevantThreads = threads.filter(th => t.subModes.includes(th.sub_mode)).slice(0, 10);
+        const relevantConvs = convs.filter(c => t.subModes.includes(c.sub_mode)).slice(0, 8);
+        const relevantHana = t.key === "hanka" ? hanaConvs.slice(0, 8) : [];
 
-        const currentSit = await readDoc(token, sitDoc.id, 4000);
-        const currentPoz = await readDoc(token, pozDoc.id, 4000);
-
-        // Filter relevant threads
-        const relevantThreads = threads
-          .filter(t => therapist.subModes.includes(t.sub_mode))
-          .slice(0, 10);
-        const relevantConvs = convs
-          .filter(c => therapist.subModes.includes(c.sub_mode))
-          .slice(0, 8);
-        const relevantHana = therapist.key === "hanka" ? hanaConvs.slice(0, 8) : [];
-        const relevantTasks = tasks
-          .filter((t: any) => t.assigned_to?.toLowerCase() === therapist.key || t.assigned_to?.toLowerCase() === therapist.name.toLowerCase());
-        const relevantCrises = crises;
-
-        // Build thread digest
-        const threadDigest = [...relevantThreads, ...relevantConvs, ...relevantHana]
-          .map((t: any) => {
-            const msgs = Array.isArray(t.messages) ? t.messages : [];
-            const lastMsgs = msgs.slice(-6).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 200)}`);
-            const label = t.part_name || t.label || t.current_domain || "?";
-            return `--- ${label} (${t.last_activity_at || t.updated_at || "?"}) ---\n${lastMsgs.join("\n")}`;
+        const digest = [...relevantThreads, ...relevantConvs, ...relevantHana]
+          .map((item: any) => {
+            const msgs = Array.isArray(item.messages) ? item.messages : [];
+            const last = msgs.slice(-6).map((m: any) => `  [${m.role}] ${String(m.content || "").slice(0, 200)}`);
+            return `--- ${item.part_name || item.label || item.current_domain || "?"} ---\n${last.join("\n")}`;
           })
           .join("\n\n")
           .slice(0, 5000);
 
-        const taskDigest = relevantTasks
-          .map((t: any) => `- [${t.status}] ${t.title} (${t.assigned_to})`)
+        const taskDigest = tasks
+          .filter((tk: any) => (tk.assigned_to || "").toLowerCase().includes(t.key))
+          .map((tk: any) => `- [${tk.status}] ${tk.title}`)
           .join("\n") || "(žádné)";
 
-        const crisisDigest = relevantCrises
+        const crisisDigest = crises
           .map((c: any) => `⚠️ ${c.part_name}: ${c.severity} — ${c.summary?.slice(0, 100)}`)
           .join("\n") || "(žádné)";
 
-        // ── AI generation ──
-        const prompt = `Jsi Karel — kognitivní agent a supervizor DID terapeutického týmu.
-Dnes: ${today}
-Terapeutka: ${therapist.name} (${therapist.relationship})
+        // ── AI call ──
+        const prompt = `Dnes: ${today}. Terapeutka: ${t.name} (${t.role}).
 
-Na základě aktuálních dat vygeneruj DVĚ sekce ve STABILNÍM formátu:
+Vygeneruj DVĚ sekce. Odděl je značkou <<<SPLIT>>>.
 
-══ SEKCE 1: AKČNÍ INTELIGENCE ══
-Začni PŘESNĚ takto (včetně data):
-=== AKČNÍ INTELIGENCE ${today} ===
+SEKCE 1 — začni PŘESNĚ:
+${akcniMarker}
 A) CO OD KARLA DNES POTŘEBUJE: (1-3 body, konkrétní)
-B) JAK MÁ KAREL DNES MLUVIT: (1-2 body — tón, tempo, hloubka)
-C) CO DNES NEDĚLAT: (1-2 body — co by dnes bylo kontraproduktivní)
-D) NA CO SI DÁT POZOR: (1 bod — konkrétní riziko nebo příležitost)
+B) JAK MÁ KAREL DNES MLUVIT: (1-2 body — tón, tempo)
+C) CO DNES NEDĚLAT: (1-2 body)
+D) NA CO SI DÁT POZOR: (1 bod)
 
-══ SEKCE 2: KARLOVY DEDUKCE ══
-Začni PŘESNĚ takto (včetně data):
-=== KARLOVY DEDUKCE ${today} ===
-- Jaký vzorec dnes Karel vidí? (1-2 věty)
-- Co se děje pod povrchem? (1-2 věty — dedukce, ne popis)
-- Na co by si měl dát pozor? (1 věta)
+<<<SPLIT>>>
 
-PRAVIDLA:
-- Piš VÝHRADNĚ z aktuálních dat — žádné obecné fráze
-- Buď stručný, analytický a dedukční
-- Nikdy nevymýšlej — pracuj jen s tím, co máš
-- Formát musí být PŘESNĚ jak je výše (=== AKČNÍ INTELIGENCE ${today} === a === KARLOVY DEDUKCE ${today} ===)
-- Odděl obě sekce prázdným řádkem a značkou <<<SPLIT>>>
+SEKCE 2 — začni PŘESNĚ:
+${dedukceMarker}
+- Vzorec: (1-2 věty)
+- Pod povrchem: (1-2 věty — dedukce, ne popis)
+- Pozor: (1 věta)
 
-═══ AKTUÁLNÍ DATA ═══
+PRAVIDLA: Piš VÝHRADNĚ z dat. Žádné fráze. Stručně, analyticky.
 
-Konverzace (posledních 7 dní):
-${threadDigest || "(žádné)"}
+═══ DATA ═══
+Konverzace (7 dní):
+${digest || "(žádné)"}
 
-Otevřené úkoly:
+Úkoly:
 ${taskDigest}
 
-Aktivní krize:
-${crisisDigest}
-
-Stávající kontext (poslední záznam SITUACNI_ANALYZA):
-${currentSit.slice(-1500)}
-
-Stávající poznatky (poslední záznam KARLOVY_POZNATKY):
-${currentPoz.slice(-1500)}`;
+Krize:
+${crisisDigest}`;
 
         const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -253,7 +156,7 @@ ${currentPoz.slice(-1500)}`;
           body: JSON.stringify({
             model: "google/gemini-2.5-flash-lite",
             messages: [
-              { role: "system", content: "Jsi Karel, kognitivní agent. Piš česky, stručně, analyticky. Nikdy nevymýšlej fakta." },
+              { role: "system", content: "Jsi Karel, kognitivní agent DID týmu. Piš česky, stručně. Nikdy nevymýšlej." },
               { role: "user", content: prompt },
             ],
             temperature: 0.2,
@@ -261,68 +164,67 @@ ${currentPoz.slice(-1500)}`;
         });
 
         if (!aiRes.ok) {
-          const errText = await aiRes.text();
-          results[therapist.key] = { ok: false, error: `AI ${aiRes.status}: ${errText.slice(0, 200)}` };
+          results[t.key] = { ok: false, error: `AI ${aiRes.status}` };
+          await aiRes.text();
           continue;
         }
 
         const aiData = await aiRes.json();
-        const fullOutput = aiData.choices?.[0]?.message?.content || "";
+        const output = aiData.choices?.[0]?.message?.content || "";
+        if (!output) { results[t.key] = { ok: false, error: "Empty AI" }; continue; }
 
-        if (!fullOutput) {
-          results[therapist.key] = { ok: false, error: "Empty AI output" };
-          continue;
-        }
-
-        // Split into two sections
+        // ── Parse output ──
         let akcniBlock: string;
         let dedukceBlock: string;
 
-        if (fullOutput.includes("<<<SPLIT>>>")) {
-          const parts = fullOutput.split("<<<SPLIT>>>");
-          akcniBlock = parts[0].trim();
-          dedukceBlock = parts[1]?.trim() || "";
+        if (output.includes("<<<SPLIT>>>")) {
+          const [a, d] = output.split("<<<SPLIT>>>");
+          akcniBlock = a.trim();
+          dedukceBlock = (d || "").trim();
         } else {
-          // Fallback: split at "=== KARLOVY DEDUKCE"
-          const dedIdx = fullOutput.indexOf("=== KARLOVY DEDUKCE");
-          if (dedIdx > 0) {
-            akcniBlock = fullOutput.slice(0, dedIdx).trim();
-            dedukceBlock = fullOutput.slice(dedIdx).trim();
+          const idx = output.indexOf("=== KARLOVY DEDUKCE");
+          if (idx > 0) {
+            akcniBlock = output.slice(0, idx).trim();
+            dedukceBlock = output.slice(idx).trim();
           } else {
-            akcniBlock = fullOutput.trim();
+            akcniBlock = output.trim();
             dedukceBlock = "";
           }
         }
 
-        // Validate markers exist
-        if (!akcniBlock.includes("AKČNÍ INTELIGENCE")) {
-          akcniBlock = `=== AKČNÍ INTELIGENCE ${today} ===\n${akcniBlock}`;
-        }
-        if (dedukceBlock && !dedukceBlock.includes("KARLOVY DEDUKCE")) {
-          dedukceBlock = `=== KARLOVY DEDUKCE ${today} ===\n${dedukceBlock}`;
+        // Ensure markers
+        if (!akcniBlock.includes("AKČNÍ INTELIGENCE")) akcniBlock = `${akcniMarker}\n${akcniBlock}`;
+        if (dedukceBlock && !dedukceBlock.includes("KARLOVY DEDUKCE")) dedukceBlock = `${dedukceMarker}\n${dedukceBlock}`;
+
+        // ── Insert pending writes (skip if already exists for that target) ──
+        const writes: Array<{ target_document: string; content: string }> = [];
+        if (!existingSit && akcniBlock) writes.push({ target_document: t.sitTarget, content: akcniBlock });
+        if (!existingPoz && dedukceBlock) writes.push({ target_document: t.pozTarget, content: dedukceBlock });
+
+        if (writes.length > 0) {
+          await sb.from("did_pending_drive_writes").insert(
+            writes.map(w => ({
+              target_document: w.target_document,
+              content: w.content,
+              write_type: "append",
+              priority: "normal",
+              status: "pending",
+            }))
+          );
+          console.log(`[therapist-intel] ${t.key}: inserted ${writes.length} pending writes`);
         }
 
-        // Append to Drive files
-        await appendToFile(token, sitDoc.id, akcniBlock);
-        console.log(`[therapist-intel] Appended AKČNÍ INTELIGENCE to ${folderName}/SITUACNI_ANALYZA.txt (${akcniBlock.length} chars)`);
-
-        if (dedukceBlock) {
-          await appendToFile(token, pozDoc.id, dedukceBlock);
-          console.log(`[therapist-intel] Appended KARLOVY DEDUKCE to ${folderName}/KARLOVY_POZNATKY.txt (${dedukceBlock.length} chars)`);
-        }
-
-        results[therapist.key] = { ok: true };
-      } catch (therapistErr) {
-        const msg = therapistErr instanceof Error ? therapistErr.message : String(therapistErr);
-        console.error(`[therapist-intel] Error for ${therapist.key}:`, msg);
-        results[therapist.key] = { ok: false, error: msg };
+        results[t.key] = { ok: true };
+      } catch (tErr) {
+        const msg = tErr instanceof Error ? tErr.message : String(tErr);
+        console.error(`[therapist-intel] ${t.key} error:`, msg);
+        results[t.key] = { ok: false, error: msg };
       }
     }
 
     const elapsed = Date.now() - startTime;
     console.log(`[therapist-intel] Done in ${elapsed}ms:`, JSON.stringify(results));
 
-    // Log to system_health_log
     await sb.from("system_health_log").insert({
       event_type: "daily_therapist_intelligence",
       severity: "info",
@@ -335,10 +237,9 @@ ${currentPoz.slice(-1500)}`;
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[therapist-intel] Fatal error:", msg);
+    console.error("[therapist-intel] Fatal:", msg);
     return new Response(JSON.stringify({ error: msg }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
