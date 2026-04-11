@@ -46,6 +46,12 @@ function isAllowedTarget(target: string): boolean {
   return ALLOWED_TARGETS.some((rx) => rx.test(target));
 }
 
+// ── Targets where write_type "replace" is permitted ──
+const REPLACE_ALLOWED_TARGETS = new Set([
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+]);
+
 // ── Resolve PAMET_KAREL root (separate Drive root, NOT inside kartoteka) ──
 async function resolvePametKarelRoot(token: string): Promise<string | null> {
   for (const name of ["PAMET_KAREL", "Pamet_Karel", "pamet_karel"]) {
