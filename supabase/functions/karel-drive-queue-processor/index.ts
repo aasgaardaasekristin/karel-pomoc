@@ -41,17 +41,25 @@ function isAllowedTarget(target: string): boolean {
   return ALLOWED_TARGETS.some((rx) => rx.test(target));
 }
 
+// ── Resolve PAMET_KAREL root (separate Drive root, NOT inside kartoteka) ──
+async function resolvePametKarelRoot(token: string): Promise<string | null> {
+  for (const name of ["PAMET_KAREL", "Pamet_Karel", "pamet_karel"]) {
+    const id = await findFolder(token, name);
+    if (id) return id;
+  }
+  return null;
+}
+
 // ── Resolve target to Drive file ID ──
 async function resolveTarget(
   token: string,
   kartotekaRoot: string,
   target: string,
 ): Promise<string | null> {
-  // KARTA_{NAME} → find folder in 01_AKTIVNI_FRAGMENTY, then card file inside
+  // KARTA_{NAME} → lives in KARTOTEKA_DID/01_AKTIVNI_FRAGMENTY (or 03_ARCHIV)
   if (target.startsWith("KARTA_")) {
     const partName = target.replace("KARTA_", "");
 
-    // Try active fragments first
     const activeFolder = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaRoot);
     if (activeFolder) {
       const partFolders = await listFiles(token, activeFolder);
@@ -66,7 +74,6 @@ async function resolveTarget(
       }
     }
 
-    // Fallback: try archive
     const archiveFolder = await findFolder(token, "03_ARCHIV_SPICICH", kartotekaRoot);
     if (archiveFolder) {
       const partFolders = await listFiles(token, archiveFolder);
@@ -84,18 +91,15 @@ async function resolveTarget(
     return null;
   }
 
-  // PAMET_KAREL paths → navigate folder tree from 00_CENTRUM
+  // PAMET_KAREL/... → separate root on Drive, NOT inside kartoteka
   if (target.startsWith("PAMET_KAREL/")) {
+    const pametRoot = await resolvePametKarelRoot(token);
+    if (!pametRoot) return null;
+
     const segments = target.replace("PAMET_KAREL/", "").split("/");
-    // Root is 00_CENTRUM → PAMET_KAREL
-    const centrumId = await findFolder(token, "00_CENTRUM", kartotekaRoot);
-    if (!centrumId) return null;
 
-    const pametId = await findFolder(token, "PAMET_KAREL", centrumId);
-    if (!pametId) return null;
-
-    // Navigate subfolders
-    let currentFolder = pametId;
+    // Navigate subfolders to reach parent of the document
+    let currentFolder = pametRoot;
     for (let i = 0; i < segments.length - 1; i++) {
       const nextFolder = await findFolder(token, segments[i], currentFolder);
       if (!nextFolder) return null;
