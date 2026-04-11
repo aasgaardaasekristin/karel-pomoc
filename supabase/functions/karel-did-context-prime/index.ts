@@ -68,6 +68,19 @@ async function readDoc(token: string, fileId: string, maxChars = 4000): Promise<
   return text.slice(0, maxChars);
 }
 
+/** Read a doc keeping both head and tail so markers at end of file are preserved */
+async function readDocHeadTail(token: string, fileId: string, headChars: number, tailChars: number): Promise<string> {
+  let res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+  }
+  if (!res.ok) return "[nečitelné]";
+  const text = await res.text();
+  const total = headChars + tailChars;
+  if (text.length <= total) return text;
+  return text.slice(0, headChars) + "\n\n[...]\n\n" + text.slice(-tailChars);
+}
+
 async function readFolderDocs(token: string, folderId: string, maxDocs = 10, maxChars = 3000): Promise<Record<string, string>> {
   const docs = await listDocsInFolder(token, folderId, maxDocs);
   const result: Record<string, string> = {};
