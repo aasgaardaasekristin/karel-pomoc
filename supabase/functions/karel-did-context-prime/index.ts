@@ -757,6 +757,16 @@ serve(async (req) => {
     let driveError: string | null = null;
     let driveAliasMapText = "";
 
+    // ── 72h Operational Memory (for mamka/kata/hana_personal) ──
+    const operationalMemory: {
+      situacniAnalyza: string;
+      karlovyPoznatky: string;
+      karelFile: string;
+      vlaknaPosledni: string;
+      kdoJeKdo: string;
+    } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", kdoJeKdo: "" };
+    const needsOperationalMemory = ["mamka", "kata", "hana_personal", "personal"].includes(subMode || "");
+
     const drivePromise = (async () => {
       try {
         const token = await getAccessToken();
