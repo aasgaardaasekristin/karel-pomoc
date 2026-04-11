@@ -2736,12 +2736,15 @@ export type Database = {
       }
       did_threads: {
         Row: {
+          archive_status: string
           created_at: string
           current_detected_part: string | null
           entered_name: string | null
           id: string
+          is_locked: boolean
           is_processed: boolean
           last_activity_at: string
+          locked_at: string | null
           messages: Json
           part_language: string | null
           part_name: string
@@ -2755,12 +2758,15 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archive_status?: string
           created_at?: string
           current_detected_part?: string | null
           entered_name?: string | null
           id?: string
+          is_locked?: boolean
           is_processed?: boolean
           last_activity_at?: string
+          locked_at?: string | null
           messages?: Json
           part_language?: string | null
           part_name: string
@@ -2774,12 +2780,15 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          archive_status?: string
           created_at?: string
           current_detected_part?: string | null
           entered_name?: string | null
           id?: string
+          is_locked?: boolean
           is_processed?: boolean
           last_activity_at?: string
+          locked_at?: string | null
           messages?: Json
           part_language?: string | null
           part_name?: string
@@ -3109,12 +3118,15 @@ export type Database = {
       }
       karel_hana_conversations: {
         Row: {
+          archive_status: string
           created_at: string
           current_domain: string
           current_hana_state: string
           id: string
           is_active: boolean
+          is_locked: boolean
           last_activity_at: string
+          locked_at: string | null
           message_count: number
           messages: Json
           preview: string
@@ -3126,12 +3138,15 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          archive_status?: string
           created_at?: string
           current_domain?: string
           current_hana_state?: string
           id?: string
           is_active?: boolean
+          is_locked?: boolean
           last_activity_at?: string
+          locked_at?: string | null
           message_count?: number
           messages?: Json
           preview?: string
@@ -3143,12 +3158,15 @@ export type Database = {
           user_id?: string
         }
         Update: {
+          archive_status?: string
           created_at?: string
           current_domain?: string
           current_hana_state?: string
           id?: string
           is_active?: boolean
+          is_locked?: boolean
           last_activity_at?: string
+          locked_at?: string | null
           message_count?: number
           messages?: Json
           preview?: string
