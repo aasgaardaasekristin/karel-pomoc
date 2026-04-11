@@ -1520,9 +1520,9 @@ ROLE: ${therapistRole}
 Tato sekce ovlivňuje TÓN a ZPŮSOB Karlovy odpovědi. Karel ji NIKDY necituje ani neparafrázuje nahlas.
 Použij ji jako vnitřní kompas — ne jako obsah odpovědi.
 
-${akcniRaw || "(žádná akční inteligence pro dnešek)"}
+${akcniFinal || "(žádná akční inteligence pro dnešek)"}
 
-${dedukceRaw || "(žádné dedukce pro dnešek)"}
+${dedukceFinal || "(žádné dedukce pro dnešek)"}
 
 PRAVIDLA DNEŠNÍHO VEDENÍ:
 - Ovlivňuje TÓN, TEMPO a HLOUBKU odpovědi — ne její obsah.
@@ -1530,7 +1530,7 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
 - Pokud akční inteligence říká "neptat se na X" — prostě se neptej, nevysvětluj proč.
 - Pokud říká "měkčí tón" — použij ho přirozeně, bez komentáře.
 - Pokud říká "strukturovaně" — dej jasnou strukturu, bez vysvětlování.`;
-          console.log(`[did-context-prime] DNEŠNÍ VEDENÍ appended (${akcniRaw.length + dedukceRaw.length} chars)`);
+          console.log(`[did-context-prime] DNEŠNÍ VEDENÍ appended (${akcniFinal.length + dedukceFinal.length} chars, markers: akcni=${!!akcniRaw} dedukce=${!!dedukceRaw})`);
         }
       } catch (vedeniErr) {
         console.warn("[did-context-prime] DNEŠNÍ VEDENÍ build error (non-fatal):", vedeniErr);
