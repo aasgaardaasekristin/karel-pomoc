@@ -100,6 +100,23 @@ async function resolveTarget(
     return null;
   }
 
+  // KARTOTEKA_DID/... → navigate inside kartoteka root
+  if (target.startsWith("KARTOTEKA_DID/")) {
+    const segments = target.replace("KARTOTEKA_DID/", "").split("/");
+    let currentFolder = kartotekaRoot;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const nextFolder = await findFolder(token, segments[i], currentFolder);
+      if (!nextFolder) return null;
+      currentFolder = nextFolder;
+    }
+    const docName = segments[segments.length - 1];
+    const files = await listFiles(token, currentFolder);
+    const doc = files.find(
+      (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
+    );
+    return doc?.id || null;
+  }
+
   // PAMET_KAREL/... → separate root on Drive, NOT inside kartoteka
   if (target.startsWith("PAMET_KAREL/")) {
     const pametRoot = await resolvePametKarelRoot(token);
@@ -107,7 +124,6 @@ async function resolveTarget(
 
     const segments = target.replace("PAMET_KAREL/", "").split("/");
 
-    // Navigate subfolders to reach parent of the document
     let currentFolder = pametRoot;
     for (let i = 0; i < segments.length - 1; i++) {
       const nextFolder = await findFolder(token, segments[i], currentFolder);
@@ -115,13 +131,10 @@ async function resolveTarget(
       currentFolder = nextFolder;
     }
 
-    // Last segment is the document name
     const docName = segments[segments.length - 1];
     const files = await listFiles(token, currentFolder);
     const doc = files.find(
-      (f) =>
-        f.mimeType === GDOC_MIME &&
-        f.name.toUpperCase().includes(docName.toUpperCase()),
+      (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
     );
     return doc?.id || null;
   }
