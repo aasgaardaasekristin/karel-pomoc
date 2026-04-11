@@ -80,15 +80,24 @@ serve(async (req) => {
     for (const t of THERAPISTS) {
       try {
         // ── Dedup: check if today's writes already exist ──
-        const { data: existing } = await sb.from("did_pending_drive_writes")
-          .select("id, target_document")
-          .in("target_document", [t.sitTarget, t.pozTarget])
-          .gte("created_at", `${today}T00:00:00Z`)
-          .ilike("content", `%${akcniMarker}%`);
+        // Dedup: check each target against its OWN marker
+        const [sitCheck, pozCheck] = await Promise.all([
+          sb.from("did_pending_drive_writes")
+            .select("id")
+            .eq("target_document", t.sitTarget)
+            .gte("created_at", `${today}T00:00:00Z`)
+            .ilike("content", `%${akcniMarker}%`)
+            .limit(1),
+          sb.from("did_pending_drive_writes")
+            .select("id")
+            .eq("target_document", t.pozTarget)
+            .gte("created_at", `${today}T00:00:00Z`)
+            .ilike("content", `%${dedukceMarker}%`)
+            .limit(1),
+        ]);
 
-        // If we find writes with today's marker for BOTH targets, skip
-        const existingSit = existing?.some(e => e.target_document === t.sitTarget);
-        const existingPoz = existing?.some(e => e.target_document === t.pozTarget);
+        const existingSit = (sitCheck.data?.length ?? 0) > 0;
+        const existingPoz = (pozCheck.data?.length ?? 0) > 0;
         if (existingSit && existingPoz) {
           console.log(`[therapist-intel] ${t.key}: already has today's writes, skipping`);
           results[t.key] = { ok: true, skipped: true };
