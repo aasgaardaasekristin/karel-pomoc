@@ -32,9 +32,9 @@ const corsHeaders = {
 // ── Allowed targets whitelist ──
 const ALLOWED_TARGETS = [
   /^KARTA_.+$/,
-  /^PAMET_KAREL\/HANKA\/SITUACNI_ANALYZA$/,
-  /^PAMET_KAREL\/KATA\/SITUACNI_ANALYZA$/,
-  /^PAMET_KAREL\/KONTEXTY\/KDO_JE_KDO$/,
+  /^PAMET_KAREL\/DID\/HANKA\/SITUACNI_ANALYZA$/,
+  /^PAMET_KAREL\/DID\/KATA\/SITUACNI_ANALYZA$/,
+  /^PAMET_KAREL\/DID\/KONTEXTY\/KDO_JE_KDO$/,
 ];
 
 function isAllowedTarget(target: string): boolean {
