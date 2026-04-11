@@ -167,3 +167,33 @@ export async function findFileByName(token: string, name: string, parentId: stri
   const data = await res.json();
   return data.files?.[0]?.id || null;
 }
+
+/** Append text to a plain-text (non-Google-Docs) file on Drive. */
+export async function appendToFile(token: string, fileId: string, text: string): Promise<void> {
+  // 1. Download current content
+  const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!dlRes.ok) throw new Error(`appendToFile download failed: ${dlRes.status}`);
+  const existing = await dlRes.text();
+
+  // 2. Append new text
+  const updated = existing + text;
+
+  // 3. Upload back via PATCH
+  const upRes = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "text/plain; charset=utf-8",
+      },
+      body: updated,
+    },
+  );
+  if (!upRes.ok) {
+    const errText = await upRes.text();
+    throw new Error(`appendToFile upload failed: ${upRes.status} ${errText}`);
+  }
+}
