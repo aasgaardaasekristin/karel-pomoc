@@ -1209,6 +1209,7 @@ INSTRUKCE:
 - Časový gradient: nedávné = detailní, starší = shrnuté
 - NIKDY nevymýšlej – pouze syntetizuj z dodaných dat
 - Piš česky
+- PRIORITNĚ využij sekci "OPERAČNÍ PAMĚŤ 72h" — to je čerstvá, vytříděná paměť z posledních dnů. Navazuj na ni.
 
 ═══ KRITICKÉ PRAVIDLO: AKTIVITA vs. ZMÍNKA ═══
 V DID vláknech ROZLIŠUJ:
