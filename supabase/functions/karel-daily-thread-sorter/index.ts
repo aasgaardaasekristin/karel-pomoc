@@ -74,10 +74,31 @@ const ALIAS_MAP: Record<string, string> = {
 };
 
 /**
- * UNCERTAIN ENTITIES: names that must NOT get KARTA_* and need follow-up
+ * EXPLICITLY UNCERTAIN: names that are known-uncertain (skip follow-up dedup)
  */
-const UNCERTAIN_ENTITIES: string[] = [
+const EXPLICITLY_UNCERTAIN: string[] = [
   "indian",
+];
+
+/**
+ * CONFIRMED PARTS ALLOWLIST: only these normalized names may get KARTA_*
+ * Derived from existing cards and registry. Everything else → uncertain.
+ */
+const CONFIRMED_PARTS: string[] = [
+  "gustik",
+  "arthur", "artik",
+  "tundrupek",
+  "dmytri", "dymi",
+  "gerhardt", "gerhard",
+  "lobzhang",
+  "anicka", "anicka",
+  "einar",
+  "bello",
+  "bendik",
+  "emily",
+  "gejbi",
+  "c.g.", "cg",
+  "bytostne ja",
 ];
 
 type EntityClass =
@@ -88,13 +109,13 @@ type EntityClass =
 
 interface EntityClassification {
   classification: EntityClass;
-  canonicalName?: string;   // for aliases
-  nonPartReason?: string;   // for non_part_context
+  canonicalName?: string;
+  nonPartReason?: string;
 }
 
 /**
  * Classify an entity name extracted from a KARTA_* target.
- * Returns classification + optional canonical name.
+ * DEFAULT IS uncertain_entity — confirmed only via allowlist.
  */
 function classifyEntity(rawName: string): EntityClassification {
   const norm = normalizeName(rawName);
@@ -106,22 +127,20 @@ function classifyEntity(rawName: string): EntityClassification {
     }
   }
 
-  // 2. Check uncertain entities
-  for (const unc of UNCERTAIN_ENTITIES) {
-    if (norm === unc || norm.includes(unc)) {
-      return { classification: "uncertain_entity" };
-    }
-  }
-
-  // 3. Check known aliases
+  // 2. Check known aliases → rewrite to canonical
   for (const [alias, canonical] of Object.entries(ALIAS_MAP)) {
     if (norm === alias || norm.includes(alias)) {
       return { classification: "known_alias_of_part", canonicalName: canonical };
     }
   }
 
-  // 4. Default: confirmed part (existing card assumed)
-  return { classification: "confirmed_part" };
+  // 3. Check confirmed parts allowlist
+  if (CONFIRMED_PARTS.some((p) => norm === p || norm.includes(p))) {
+    return { classification: "confirmed_part" };
+  }
+
+  // 4. DEFAULT: uncertain — no KARTA_* allowed
+  return { classification: "uncertain_entity" };
 }
 
 // ─── System Prompt ──────────────────────────────────────────────────
