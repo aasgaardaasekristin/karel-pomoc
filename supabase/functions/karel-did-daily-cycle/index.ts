@@ -6895,7 +6895,7 @@ ${p.raw_analysis || "N/A"}`;
           const hankaContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — HANKA:\n- Počet příspěvků dnes: ${hankaCount}\n- Spolupráce: ${todayJournal.hanka_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
 
           await sb.from("did_pending_drive_writes").insert({
-            target_document: "PAMET_KAREL_PROFIL_HANKA",
+            target_document: "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
             content: hankaContent,
             write_type: "append",
             status: "pending",
@@ -6906,7 +6906,7 @@ ${p.raw_analysis || "N/A"}`;
           const kataContent = `\n\n=== AKTUALIZACE ${todayStr} ===\nKRIZOVÁ PORADA ${ac.part_name} — KATA:\n- Počet příspěvků dnes: ${kataCount}\n- Spolupráce: ${todayJournal.kata_cooperation || "N/A"}\n- Poznámka Karla: ${karelNote}`;
 
           await sb.from("did_pending_drive_writes").insert({
-            target_document: "PAMET_KAREL_PROFIL_KATA",
+            target_document: "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
             content: kataContent,
             write_type: "append",
             status: "pending",
