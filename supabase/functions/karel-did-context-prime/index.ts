@@ -1503,9 +1503,14 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
           const endIdx = block.indexOf("\n===", marker.length);
           return (endIdx > 0 ? block.slice(0, endIdx) : block).trim();
         };
-        const akcniRaw = extractLastSection(operationalMemory.situacniAnalyza, "AKČNÍ INTELIGENCE");
-        const dedukceRaw = extractLastSection(operationalMemory.karlovyPoznatky, "KARLOVY DEDUKCE");
-        if (akcniRaw || dedukceRaw) {
+        const akcniRaw = extractLastSection(operationalMemory.situacniAnalyza, "AKČNÍ INTELIGENCE")
+          || extractLastSection(operationalMemory.situacniAnalyza, "DNEŠNÍ AKČNÍ INTELIGENCE");
+        const dedukceRaw = extractLastSection(operationalMemory.karlovyPoznatky, "KARLOVY DEDUKCE")
+          || extractLastSection(operationalMemory.karlovyPoznatky, "KARLOVY DEDUKCE PRO DNEŠEK");
+        // Fallback: use last 800 chars of each file if no markers found
+        const akcniFinal = akcniRaw || (operationalMemory.situacniAnalyza ? operationalMemory.situacniAnalyza.slice(-800).trim() : "");
+        const dedukceFinal = dedukceRaw || (operationalMemory.karlovyPoznatky ? operationalMemory.karlovyPoznatky.slice(-800).trim() : "");
+        if (akcniFinal || dedukceFinal) {
           const therapistRole = (subMode === "kata")
             ? "Káťa je mentorovaná terapeutka. Karel je její vedoucí a mentor — mluví profesionálně, vřele, ale s jasnou strukturou."
             : "Hanička je partnerka a vedoucí terapeutka. Karel k ní mluví s láskou, intimitou a respektem — jako milující partner a rádce.";
