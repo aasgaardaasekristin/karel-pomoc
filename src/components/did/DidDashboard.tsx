@@ -394,13 +394,15 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                       >
                         Krizová porada
                       </button>
-                      <button
-                        onClick={() => navigate(`/chat?sub=cast&part=${c.part_name}`)}
-                        className="text-[12px] px-3 py-1 rounded-md font-medium border"
-                        style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
-                      >
-                        Otevřít detail
-                      </button>
+                      {c.crisis_thread_id && (
+                        <button
+                          onClick={() => navigate(`/chat?sub=cast&part=${encodeURIComponent(c.part_name)}`)}
+                          className="text-[12px] px-3 py-1 rounded-md font-medium border"
+                          style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
+                        >
+                          Otevřít vlákno
+                        </button>
+                      )}
                     </div>
                     <details className="text-[12px]">
                       <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
