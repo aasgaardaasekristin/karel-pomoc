@@ -2290,6 +2290,25 @@ serve(async (req) => {
       }
     }
 
+    // ── KROK 7g: Daily crisis cycle computation (fire-and-forget) ──
+    if ((activeCrises?.length || 0) > 0) {
+      try {
+        const supabaseUrl2 = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey2 = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        fetch(`${supabaseUrl2}/functions/v1/karel-crisis-daily-cycle`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceKey2}`,
+          },
+          body: JSON.stringify({ action: "compute" }),
+        }).then(r => console.log(`[ANALYST] Daily crisis cycle triggered: ${r.status}`))
+          .catch(e => console.warn(`[ANALYST] Daily crisis cycle trigger failed:`, e));
+      } catch (e) {
+        console.warn("[ANALYST] Cannot trigger daily crisis cycle:", e);
+      }
+    }
+
     // ── KROK 8: Log ────────────────────────────────────────
     const summary = [
       `Analyst v1: ${threads?.length || 0} vláken`,
