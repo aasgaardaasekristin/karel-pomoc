@@ -726,6 +726,7 @@ export type Database = {
         Row: {
           created_at: string | null
           crisis_alert_id: string | null
+          crisis_event_id: string | null
           decided_at: string | null
           emotional_stable_days: number | null
           final_decision: string | null
@@ -745,6 +746,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           crisis_alert_id?: string | null
+          crisis_event_id?: string | null
           decided_at?: string | null
           emotional_stable_days?: number | null
           final_decision?: string | null
@@ -764,6 +766,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           crisis_alert_id?: string | null
+          crisis_event_id?: string | null
           decided_at?: string | null
           emotional_stable_days?: number | null
           final_decision?: string | null
@@ -788,6 +791,13 @@ export type Database = {
             referencedRelation: "crisis_alerts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "crisis_closure_checklist_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
         ]
       }
       crisis_daily_assessments: {
@@ -796,6 +806,7 @@ export type Database = {
           assessment_method: string | null
           created_at: string | null
           crisis_alert_id: string
+          crisis_event_id: string | null
           day_number: number
           id: string
           karel_decision: string | null
@@ -821,6 +832,7 @@ export type Database = {
           assessment_method?: string | null
           created_at?: string | null
           crisis_alert_id: string
+          crisis_event_id?: string | null
           day_number?: number
           id?: string
           karel_decision?: string | null
@@ -846,6 +858,7 @@ export type Database = {
           assessment_method?: string | null
           created_at?: string | null
           crisis_alert_id?: string
+          crisis_event_id?: string | null
           day_number?: number
           id?: string
           karel_decision?: string | null
@@ -872,6 +885,13 @@ export type Database = {
             columns: ["crisis_alert_id"]
             isOneToOne: false
             referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crisis_daily_assessments_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
             referencedColumns: ["id"]
           },
         ]
