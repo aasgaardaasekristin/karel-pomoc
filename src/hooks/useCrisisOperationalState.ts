@@ -353,11 +353,20 @@ export function useCrisisOperationalState() {
         const key = ev.part_name.toUpperCase();
         const matchingAlert = alerts.find(a => a.part_name.toUpperCase() === key);
         const alertId = matchingAlert?.id || null;
-        const assessments = allAssessments.filter((a: any) => a.crisis_alert_id === alertId);
+        
+        // Primary: match via crisis_event_id; Fallback: legacy crisis_alert_id
+        const assessments = allAssessments.filter((a: any) =>
+          (a.crisis_event_id && a.crisis_event_id === ev.id) ||
+          (!a.crisis_event_id && a.crisis_alert_id === alertId)
+        );
         const latest = assessments.length > 0 ? assessments[assessments.length - 1] : null;
-        const checklist = checklists.find((c: any) => c.crisis_alert_id === alertId);
+        const checklist = checklists.find((c: any) =>
+          (c.crisis_event_id && c.crisis_event_id === ev.id) ||
+          (!c.crisis_event_id && c.crisis_alert_id === alertId)
+        );
         const tasks = allTasks.filter((t: any) => t.crisis_alert_id === alertId);
         const questions = allQuestions.filter((q: any) => {
+          if ((q as any).crisis_event_id === ev.id) return true;
           const qText = (q.question || "").toLowerCase();
           return qText.includes(ev.part_name.toLowerCase()) || qText.includes(cleanDisplayName(ev.part_name).toLowerCase());
         });
