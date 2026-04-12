@@ -1423,6 +1423,8 @@ serve(async (req) => {
               sessionPlans || [],
               pendingQuestions || [],
               commitments || [],
+              activePartsRegistry || [],
+              recentThreadParts,
             );
 
             await overwriteDoc(token, plan05AFileId, plan05AContent);
