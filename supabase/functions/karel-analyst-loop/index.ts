@@ -415,6 +415,159 @@ function buildDashboardContent(
   return lines.join("\n");
 }
 
+// ── Helper: Build 05A_OPERATIVNI_PLAN content ─────────────────
+function build05AContent(
+  todayDate: string,
+  cycleTime: string,
+  analysisJson: Record<string, unknown> | null,
+  activeCrises: any[],
+  pendingTasks: any[],
+  sessionPlans: any[],
+  pendingQuestions: any[],
+  commitments: any[],
+): string {
+  const lines: string[] = [];
+  const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
+
+  lines.push(`═══ OPERATIVNÍ PLÁN 05A ═══`);
+  lines.push(`Datum: ${todayDate} | Cyklus: ${cycleTime === "morning" ? "ranní" : "odpolední"} | Aktualizace: ${timeStr}`);
+  lines.push(`Generováno: Karel (analyst-loop)`);
+  lines.push(``);
+
+  // --- 1. KRIZOVÝ KONTEXT ---
+  lines.push(`━━━ 1. KRIZOVÝ KONTEXT ━━━`);
+  if (activeCrises.length > 0) {
+    for (const c of activeCrises) {
+      lines.push(`🔴 ${c.part_name} — ${c.severity || "?"} — den ${c.days_in_crisis || "?"}`);
+      if (c.summary) lines.push(`   ${(c.summary as string).slice(0, 200)}`);
+      if (c.intervention_plan) lines.push(`   Plán: ${(c.intervention_plan as string).slice(0, 200)}`);
+    }
+  } else {
+    lines.push(`✅ Žádné aktivní krize.`);
+  }
+  lines.push(``);
+
+  // --- 2. PLÁNOVANÁ SEZENÍ ---
+  lines.push(`━━━ 2. PLÁNOVANÁ SEZENÍ ━━━`);
+  if (sessionPlans.length > 0) {
+    for (const s of sessionPlans) {
+      lines.push(`▸ ${s.selected_part}`);
+      lines.push(`  Vede: ${s.therapist || s.session_lead || "?"} | Formát: ${s.session_format || "?"} | Urgence: ${s.urgency_score ?? "?"}`);
+      // Extract goal from plan_markdown if available
+      const md = (s.plan_markdown || "") as string;
+      const goalMatch = md.match(/##\s*Cíl\s*\n([^\n#]+)/);
+      if (goalMatch) lines.push(`  Cíl: ${goalMatch[1].trim().slice(0, 200)}`);
+      const methodMatch = md.match(/##\s*Metoda\s*\n([^\n#]+)/);
+      if (methodMatch) lines.push(`  Metoda: ${methodMatch[1].trim().slice(0, 200)}`);
+      lines.push(`  Status: ${s.status}`);
+    }
+  } else {
+    // Fallback: use AI session recommendations from analysisJson
+    const parts = Array.isArray(analysisJson?.parts) ? (analysisJson!.parts as any[]) : [];
+    const recommended = parts.filter((p: any) => p.session_recommendation?.needed);
+    if (recommended.length > 0) {
+      lines.push(`(Z AI doporučení — žádné formální plány v DB)`);
+      for (const p of recommended) {
+        const rec = p.session_recommendation;
+        lines.push(`▸ ${p.name}`);
+        lines.push(`  Vede: ${rec.who_leads || "?"} | Priorita: ${rec.priority || "?"}`);
+        if (rec.goals?.length) lines.push(`  Cíle: ${rec.goals.join("; ")}`);
+      }
+    } else {
+      lines.push(`  (žádná plánovaná sezení)`);
+    }
+  }
+  lines.push(``);
+
+  // --- 3. ÚKOLY PRO TERAPEUTKY ---
+  lines.push(`━━━ 3. ÚKOLY ━━━`);
+  const hankaTasks = pendingTasks.filter((t: any) => t.assigned_to === "hanka");
+  const kataTasks = pendingTasks.filter((t: any) => t.assigned_to === "kata");
+  const bothTasks = pendingTasks.filter((t: any) => t.assigned_to === "both");
+
+  if (hankaTasks.length > 0) {
+    lines.push(`HANIČKA (${hankaTasks.length}):`);
+    for (const t of hankaTasks.slice(0, 8)) {
+      lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
+    }
+  }
+  if (kataTasks.length > 0) {
+    lines.push(`KÁŤA (${kataTasks.length}):`);
+    for (const t of kataTasks.slice(0, 8)) {
+      lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
+    }
+  }
+  if (bothTasks.length > 0) {
+    lines.push(`OBĚ (${bothTasks.length}):`);
+    for (const t of bothTasks.slice(0, 5)) {
+      lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
+    }
+  }
+  if (!hankaTasks.length && !kataTasks.length && !bothTasks.length) {
+    lines.push(`  (žádné aktivní úkoly)`);
+  }
+  lines.push(``);
+
+  // --- 4. OTEVŘENÉ OTÁZKY KARLA ---
+  lines.push(`━━━ 4. OTEVŘENÉ OTÁZKY ━━━`);
+  if (pendingQuestions.length > 0) {
+    for (const q of pendingQuestions.slice(0, 10)) {
+      lines.push(`  ❓ [${q.directed_to || "?"}] ${(q.question || "").slice(0, 200)} (${q.status})`);
+    }
+  } else {
+    lines.push(`  (žádné otevřené otázky)`);
+  }
+  lines.push(``);
+
+  // --- 5. URGENTNÍ FOLLOW-UP ---
+  lines.push(`━━━ 5. URGENTNÍ FOLLOW-UP ━━━`);
+  const urgentTasks = pendingTasks.filter((t: any) => t.priority === "high" || t.priority === "critical");
+  const overdueCommitments = commitments.filter((c: any) => {
+    if (!c.due_date) return false;
+    return new Date(c.due_date) < new Date(todayDate);
+  });
+
+  if (urgentTasks.length > 0) {
+    lines.push(`⚠️ Urgentní úkoly (${urgentTasks.length}):`);
+    for (const t of urgentTasks.slice(0, 5)) {
+      lines.push(`  • [${t.assigned_to}] ${(t.task || "").slice(0, 200)}`);
+    }
+  }
+  if (overdueCommitments.length > 0) {
+    lines.push(`⚠️ Nesplněné závazky (${overdueCommitments.length}):`);
+    for (const c of overdueCommitments.slice(0, 5)) {
+      const daysOver = Math.floor((Date.now() - new Date(c.due_date).getTime()) / 86400000);
+      lines.push(`  • ${(c.commitment_text || "").slice(0, 150)} — ${daysOver} dní po termínu (${c.committed_by})`);
+    }
+  }
+  if (!urgentTasks.length && !overdueCommitments.length) {
+    lines.push(`  ✅ Žádné urgentní položky.`);
+  }
+  lines.push(``);
+
+  // --- 6. KARLŮV PŘEHLED ---
+  const overview = (analysisJson?.overview as string) || "";
+  if (overview) {
+    lines.push(`━━━ 6. KARLŮV PŘEHLED ━━━`);
+    lines.push(overview);
+    lines.push(``);
+  }
+
+  // --- 7. STAV ČÁSTÍ (ze AI analýzy) ---
+  const parts = Array.isArray(analysisJson?.parts) ? (analysisJson!.parts as any[]) : [];
+  if (parts.length > 0) {
+    lines.push(`━━━ 7. PŘEHLED ČÁSTÍ ━━━`);
+    const activeParts = parts.filter((p: any) => p.status === "active");
+    for (const p of activeParts) {
+      lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}`);
+      if (p.needs?.length) lines.push(`    Potřeby: ${p.needs.join(", ")}`);
+    }
+    lines.push(``);
+  }
+
+  return lines.join("\n");
+}
+
 // ── Helper: Read Drive doc safely ──────────────────────────────
 async function readDriveDocSafely(
   token: string,
