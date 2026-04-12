@@ -750,6 +750,31 @@ serve(async (req) => {
       console.warn("[ANALYST] Chyba při čtení did_therapist_tasks:", tasksErr.message);
     }
 
+    // Session plány pro 05A
+    const { data: sessionPlans } = await sb
+      .from("did_daily_session_plans")
+      .select("id, selected_part, therapist, session_lead, session_format, urgency_score, plan_markdown, status")
+      .in("status", ["pending", "planned", "in_progress"])
+      .gte("plan_date", new Date(now.getTime() - 5 * MS_PER_DAY).toISOString().slice(0, 10))
+      .order("urgency_score", { ascending: false })
+      .limit(10);
+
+    // Pending questions pro 05A
+    const { data: pendingQuestions } = await (sb as any)
+      .from("did_pending_questions")
+      .select("id, question, directed_to, status")
+      .in("status", ["open", "pending", "sent"])
+      .order("created_at", { ascending: false })
+      .limit(15);
+
+    // Commitments pro 05A
+    const { data: commitments } = await (sb as any)
+      .from("karel_commitments")
+      .select("id, commitment_text, due_date, committed_by, status")
+      .eq("status", "open")
+      .order("due_date", { ascending: true })
+      .limit(15);
+
     // ── KROK 2: Read-only Drive kontext ────────────────────
     let dashboardContent = "";
     let operPlanContent = "";
