@@ -1261,7 +1261,24 @@ serve(async (req) => {
       .order("due_date", { ascending: true })
       .limit(15);
 
-    // ── KROK 2: Read-only Drive kontext ────────────────────
+    // Crisis assessments for trend + closure readiness
+    const { data: crisisAssessments } = await sb
+      .from("crisis_daily_assessments")
+      .select("crisis_alert_id, assessment_date, karel_decision, karel_risk_assessment, day_number")
+      .order("assessment_date", { ascending: true });
+
+    // Crisis closure checklists
+    const { data: closureChecklists } = await sb
+      .from("crisis_closure_checklist")
+      .select("crisis_alert_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days")
+      ;
+
+    // Crisis events for indicators
+    const { data: crisisEvents } = await sb
+      .from("crisis_events")
+      .select("id, part_name, phase, severity, days_active, indicator_safety, indicator_coherence, indicator_emotional_regulation, indicator_trust, indicator_time_orientation")
+      .not("phase", "eq", "closed");
+
     let dashboardContent = "";
     let operPlanContent = "";
 
@@ -1760,6 +1777,84 @@ serve(async (req) => {
     }
     console.log(`[ANALYST] Recovery mode: ${recoveryPlans.length} plans, ${recoveryTasksCreated}t ${recoveryQuestionsCreated}q ${recoverySessionsCreated}s`);
 
+    // ── KROK 6g: Crisis daily assessment check + closure readiness ──
+    let closureProposals = 0;
+    for (const crisis of activeCrises || []) {
+      try {
+        const alertId = crisis.id;
+        const partName = crisis.part_name || "";
+
+        // Get assessments for this crisis
+        const assessments = (crisisAssessments || []).filter((a: any) => a.crisis_alert_id === alertId);
+        const latest = assessments.length > 0 ? assessments[assessments.length - 1] : null;
+
+        // Check if today's assessment exists
+        if (!latest || latest.assessment_date < todayDate) {
+          // No today assessment → create recovery request
+          const taskText = `[CRISIS-ASSESSMENT] Dnešní hodnocení pro ${partName} chybí — provést assessment nebo dodat pozorování`;
+          const prefix = taskText.slice(0, TASK_DEDUP_PREFIX_LEN);
+          const { data: existing } = await sb
+            .from("did_therapist_tasks")
+            .select("id")
+            .ilike("task", `%${prefix}%`)
+            .in("status", ["pending", "active", "in_progress"])
+            .limit(1);
+
+          if (!existing || existing.length === 0) {
+            await sb.from("did_therapist_tasks").insert({
+              task: taskText,
+              assigned_to: "hanka",
+              priority: "high",
+              status: "pending",
+              source: "analyst_loop",
+              due_date: todayDate,
+              user_id: taskUserId,
+            });
+          }
+        }
+
+        // Check trend: if stagnating/worsening for 3+ assessments → escalate
+        if (assessments.length >= 3) {
+          const last3 = assessments.slice(-3);
+          const riskOrder: Record<string, number> = { minimal: 1, low: 2, moderate: 3, high: 4, critical: 5 };
+          const risks = last3.map((a: any) => riskOrder[a.karel_risk_assessment] ?? 3);
+          const isWorsening = risks[2] >= risks[1] && risks[1] >= risks[0] && risks[2] >= 4;
+
+          if (isWorsening) {
+            const escalationText = `⚠️ ESKALACE: ${partName} — riziko stagnuje/zhoršuje se 3 dny v řadě (${last3.map((a: any) => a.karel_risk_assessment).join(" → ")})`;
+            await sb.from("system_health_log").insert({
+              event_type: "crisis_escalation",
+              severity: "critical",
+              message: escalationText.slice(0, 500),
+            });
+          }
+        }
+
+        // Check closure readiness
+        const checklist = (closureChecklists || []).find((c: any) => c.crisis_alert_id === alertId);
+        const event = (crisisEvents || []).find((e: any) => e.part_name?.toUpperCase() === partName.toUpperCase());
+
+        if (checklist && event) {
+          const allIndicatorsAbove5 = [event.indicator_safety, event.indicator_coherence, event.indicator_emotional_regulation, event.indicator_trust, event.indicator_time_orientation]
+            .every((v: number | null) => v !== null && v > 5);
+          const closureItems = [checklist.karel_diagnostic_done, checklist.hanka_agrees, checklist.kata_agrees, checklist.no_risk_signals, (checklist.emotional_stable_days || 0) >= 3];
+          const readiness = closureItems.filter(Boolean).length / closureItems.length;
+
+          if (readiness >= 0.8 && allIndicatorsAbove5 && latest?.karel_decision !== "crisis_continues") {
+            // Propose READY_TO_CLOSE
+            await sb.from("system_health_log").insert({
+              event_type: "crisis_closure_ready",
+              severity: "info",
+              message: `✅ READY_TO_CLOSE: ${partName} — closure readiness ${Math.round(readiness * 100)}%, všechny indikátory > 5`,
+            });
+            closureProposals++;
+          }
+        }
+      } catch (assessErr) {
+        console.warn(`[ANALYST] Crisis assessment check error (${crisis.part_name}):`, assessErr);
+      }
+    }
+    console.log(`[ANALYST] Crisis assessment check: ${closureProposals} closure proposals`);
 
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;

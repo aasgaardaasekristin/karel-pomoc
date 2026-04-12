@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Shield, MessageSquare, Heart, Target, ShieldCheck, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +77,7 @@ const playAlertSound = () => {
 
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const navigate = useNavigate();
+  const { cards: crisisCards } = useCrisisOperationalState();
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
@@ -86,10 +88,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [isCleaningTasks, setIsCleaningTasks] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeCrises, setActiveCrises] = useState<any[]>([]);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
-  const [assessingCrisisId, setAssessingCrisisId] = useState<string | null>(null);
   const [healthIssues, setHealthIssues] = useState<any[]>([]);
   const [showCrisisDetail, setShowCrisisDetail] = useState(false);
 
@@ -102,13 +102,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const results = await Promise.all([
         supabase.from("did_threads").select("id, part_name, last_activity_at, messages, sub_mode").in("sub_mode", ["cast", "crisis"]).order("last_activity_at", { ascending: false }),
         supabase.from("did_pending_drive_writes").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
         supabase.from("did_part_registry").select("part_name, display_name, status, role_in_system, last_seen_at, known_strengths, known_triggers").eq("status", "active"),
         supabase.from("system_health_log").select("id, event_type, severity, message, created_at").eq("severity", "critical").eq("resolved", false).order("created_at", { ascending: false }).limit(10),
       ]);
-      const [threadsRes, pendingWritesRes, crisisRes, registryRes, healthRes] = results as any;
+      const [threadsRes, pendingWritesRes, registryRes, healthRes] = results as any;
 
-      setActiveCrises(crisisRes.data || []);
       setHealthIssues(healthRes.data || []);
 
       // Process threads
@@ -261,27 +259,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
     finally { setIsCleaningTasks(false); }
   }, []);
 
-  const runCrisisAssessment = useCallback(async (crisisId: string) => {
-    setAssessingCrisisId(crisisId);
-    try {
-      const headers = await getAuthHeaders();
-      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-crisis-daily-assessment`, {
-        method: "POST", headers, body: JSON.stringify({ crisis_alert_id: crisisId, manual: true }),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      const result = data.results?.[0];
-      if (result) {
-        toast.success(`Hodnocení den ${result.day_number}: ${result.decision}`);
-      }
-      setRefreshTrigger(p => p + 1);
-    } catch (e: any) {
-      toast.error(`Krizové hodnocení selhalo: ${e.message}`);
-    } finally {
-      setAssessingCrisisId(null);
-    }
-  }, []);
-
   const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
 
   if (loading) {
@@ -355,8 +332,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </div>
         )}
 
-        {/* ═══ 2. CRISIS DETAIL (collapsible) ═══ */}
-        {activeCrises.length > 0 && (
+        {/* ═══ 2. CRISIS DETAIL (collapsible) — from shared hook ═══ */}
+        {crisisCards.length > 0 && (
           <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
             <button
               onClick={() => setShowCrisisDetail(!showCrisisDetail)}
@@ -365,7 +342,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4" style={{ color: "#7C2D2D" }} />
                 <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                  Aktivní krize ({activeCrises.length})
+                  Aktivní krize ({crisisCards.length})
                 </span>
               </div>
               <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
@@ -375,46 +352,47 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
             {showCrisisDetail && (
               <div className="mt-3 space-y-3">
-                {activeCrises.map((c: any) => (
-                  <div key={c.id} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
+                {crisisCards.map((card) => (
+                  <div key={card.eventId || card.alertId || card.partName} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
                     <div className="flex items-center justify-between">
                       <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                        {cleanDisplayName(c.part_name)} ({c.severity})
+                        {card.displayName} ({card.severity})
                       </span>
                       <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-                        {c.days_in_crisis ? `den ${c.days_in_crisis}` : c.status}
+                        {card.currentSummary}
                       </span>
                     </div>
-                    <p className="text-[14px] line-clamp-2" style={{ color: "#4A4A4A" }}>{c.summary}</p>
+
+                    {/* Karel requires */}
+                    {card.karelRequires.length > 0 && (
+                      <div className="text-[12px] text-blue-700 dark:text-blue-400">
+                        <span className="font-semibold">Karel vyžaduje:</span>{" "}
+                        {card.karelRequires.slice(0, 2).join(" · ")}
+                        {card.karelRequires.length > 2 && ` (+${card.karelRequires.length - 2})`}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 flex-wrap">
                       <button
-                        onClick={() => navigate(c.conversation_id ? `/chat?meeting=${c.conversation_id}` : `/chat?sub=meeting`)}
+                        onClick={() => navigate(card.conversationId ? `/chat?meeting=${card.conversationId}` : `/chat?sub=meeting`)}
                         className="text-[12px] text-white px-3 py-1 rounded-md font-medium"
                         style={{ backgroundColor: "#7C2D2D" }}
                       >
                         Krizová porada
                       </button>
-                      {c.crisis_thread_id && (
-                        <button
-                          onClick={() => navigate(`/chat?sub=cast&part=${encodeURIComponent(c.part_name)}`)}
-                          className="text-[12px] px-3 py-1 rounded-md font-medium border"
-                          style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
-                        >
-                          Otevřít vlákno
-                        </button>
-                      )}
                     </div>
-                    <details className="text-[12px]">
-                      <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
-                      <div className="mt-2">
-                        <CrisisTimeline
-                          crisisAlertId={c.id}
-                          partName={c.part_name}
-                          onRunAssessment={() => runCrisisAssessment(c.id)}
-                          isAssessing={assessingCrisisId === c.id}
-                        />
-                      </div>
-                    </details>
+
+                    {card.alertId && (
+                      <details className="text-[12px]">
+                        <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
+                        <div className="mt-2">
+                          <CrisisTimeline
+                            crisisAlertId={card.alertId}
+                            partName={card.partName}
+                          />
+                        </div>
+                      </details>
+                    )}
                   </div>
                 ))}
               </div>
