@@ -2254,6 +2254,7 @@ export type Database = {
           blocking: string | null
           context: string | null
           created_at: string
+          crisis_event_id: string | null
           directed_to: string | null
           expires_at: string | null
           id: string
@@ -2271,6 +2272,7 @@ export type Database = {
           blocking?: string | null
           context?: string | null
           created_at?: string
+          crisis_event_id?: string | null
           directed_to?: string | null
           expires_at?: string | null
           id?: string
@@ -2288,6 +2290,7 @@ export type Database = {
           blocking?: string | null
           context?: string | null
           created_at?: string
+          crisis_event_id?: string | null
           directed_to?: string | null
           expires_at?: string | null
           id?: string
@@ -2297,7 +2300,15 @@ export type Database = {
           subject_id?: string | null
           subject_type?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "did_pending_questions_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_plan_items: {
         Row: {

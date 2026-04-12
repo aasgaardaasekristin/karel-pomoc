@@ -21,6 +21,7 @@ interface PendingQuestion {
   answer: string | null;
   answered_at: string | null;
   answered_by: string | null;
+  crisis_event_id: string | null;
 }
 
 interface Props {
@@ -137,6 +138,12 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                       <KarelBadge variant={q.subject_type === "crisis_closure" ? "warning" : "default"} size="sm">
                         {q.subject_type}
                       </KarelBadge>
+                    </>
+                  )}
+                  {q.crisis_event_id && (
+                    <>
+                      <span>•</span>
+                      <KarelBadge variant="warning" size="sm">krize</KarelBadge>
                     </>
                   )}
                 </div>

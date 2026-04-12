@@ -158,6 +158,30 @@ RIZIKA: [identifikovaná rizika]
 
     if (insertError) console.error("Insert error:", insertError);
 
+    // ── FÁZE 3b: Post-session crisis update ──
+    try {
+      const sbAdmin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      // Check if this client/part has an active crisis
+      const { data: activeCrisis } = await sbAdmin
+        .from("crisis_events")
+        .select("id, sessions_count, phase")
+        .eq("part_name", clientName || "")
+        .not("phase", "eq", "closed")
+        .limit(1);
+
+      if (activeCrisis && activeCrisis.length > 0) {
+        const crisisEvent = activeCrisis[0];
+        await sbAdmin.from("crisis_events").update({
+          last_outcome_recorded_at: new Date().toISOString(),
+          sessions_count: (crisisEvent.sessions_count || 0) + 1,
+          updated_at: new Date().toISOString(),
+        }).eq("id", crisisEvent.id);
+        console.log(`[session-finalize] Crisis event updated for ${clientName} (event: ${crisisEvent.id})`);
+      }
+    } catch (crisisErr) {
+      console.warn("[session-finalize] Crisis update error (non-fatal):", crisisErr);
+    }
+
     // ── FÁZE 4: Persist observation from completed session ──
     try {
       const { createObservation, routeObservation } = await import("../_shared/observations.ts");

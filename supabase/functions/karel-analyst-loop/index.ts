@@ -159,14 +159,14 @@ function buildMeetingsSummary(meetings: any[]): string {
     .join("\n\n");
 }
 
-// ── Helper: Build crisis summary ───────────────────────────────
+// ── Helper: Build crisis summary (from crisis_events) ──────────
 function buildCrisisSummary(crises: any[]): string {
   if (!crises.length) return "Žádné aktivní krize.";
 
   return crises
     .map(
       (c) =>
-        `- ${c.part_name}: status=${c.status}, dní v krizi=${c.days_in_crisis || "?"}, shrnutí: ${(c.summary || c.description || "").slice(0, 300)}`,
+        `- ${c.part_name}: fáze=${c.phase}, severity=${c.severity}, dní aktivních=${c.days_active || "?"}, trigger=${c.trigger_resolved ? "zvládnut" : "aktivní"}, shrnutí: ${(c.clinical_summary || c.trigger_description || "").slice(0, 300)}`,
     )
     .join("\n");
 }
@@ -765,19 +765,38 @@ function build05AContent(
     activePartsRegistry || [], recentThreadParts, todayDate,
   );
 
-  // --- 1. KRIZOVÝ KONTEXT (active management, not narrative) ---
+  // --- 1. KRIZOVÝ KONTEXT (from crisis_events — single source of truth) ---
   lines.push(`━━━ 1. KRIZOVÝ KONTEXT ━━━`);
   if (activeCrises.length > 0) {
     for (const c of activeCrises) {
       const updatedAt = c.updated_at || c.created_at || "";
       const hoursSince = updatedAt ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 3_600_000) : 0;
-      lines.push(`🔴 ${cleanDisplayName(c.part_name || "")} | ${c.severity || "?"} | den ${c.days_in_crisis || "?"} | status: ${c.status}`);
+      const triggerLabel = c.trigger_resolved ? "✅ zvládnut" : "🔴 aktivní";
+      const stabilityLabel = c.stable_since 
+        ? `stabilní ${Math.floor((Date.now() - new Date(c.stable_since).getTime()) / 3_600_000)}h`
+        : "nestabilní";
+      lines.push(`🔴 ${cleanDisplayName(c.part_name || "")} | ${c.severity || "?"} | fáze: ${c.phase || "active"} | den ${c.days_active || "?"}`);
+      lines.push(`   Trigger: ${triggerLabel} | Stabilita: ${stabilityLabel}`);
+      if (c.primary_therapist) {
+        lines.push(`   Vede: ${c.primary_therapist}${c.secondary_therapist ? ` + ${c.secondary_therapist}` : ""} (${c.ownership_source || "?"})`);
+      }
       if (hoursSince > STALE_CRISIS_HOURS) {
         lines.push(`   ⚠️ ZASTARALÉ — poslední update ${hoursSince}h zpět`);
         lines.push(`   → POŽADAVEK: Hanička dodá aktuální pozorování DNES`);
         lines.push(`   → POŽADAVEK: Výsledek posledního zásahu — co se stalo?`);
-      } else if (c.intervention_plan) {
-        lines.push(`   Dnešní plán: ${(c.intervention_plan as string).slice(0, 150)}`);
+      } else if (c.clinical_summary) {
+        lines.push(`   Klinické shrnutí: ${(c.clinical_summary as string).slice(0, 200)}`);
+      }
+      // Required outputs status
+      if (c.today_required_outputs && Array.isArray(c.today_required_outputs)) {
+        const missing = (c.today_required_outputs as any[]).filter((o: any) => !o.fulfilled);
+        if (missing.length > 0) {
+          lines.push(`   ⚠️ Nesplněno dnes: ${missing.map((o: any) => o.label).join(", ")}`);
+        }
+      }
+      // Awaiting response
+      if (c.awaiting_response_from && (c.awaiting_response_from as string[]).length > 0) {
+        lines.push(`   → Čeká se na: ${(c.awaiting_response_from as string[]).join(", ")}`);
       }
       // Check if planned session happened
       const crisisSession = sessionPlans.find((s: any) =>
@@ -1204,15 +1223,21 @@ serve(async (req) => {
       console.warn("[ANALYST] Chyba při čtení did_meetings:", meetingsErr.message);
     }
 
-    // Aktivní krize
+    // Aktivní krize — primární zdroj: crisis_events
     const { data: activeCrises, error: crisesErr } = await sb
-      .from("crisis_alerts")
+      .from("crisis_events")
       .select("*")
-      .in("status", ["ACTIVE", "ACKNOWLEDGED"]);
+      .not("phase", "eq", "closed");
 
     if (crisesErr) {
-      console.warn("[ANALYST] Chyba při čtení crisis_alerts:", crisesErr.message);
+      console.warn("[ANALYST] Chyba při čtení crisis_events:", crisesErr.message);
     }
+
+    // Crisis alerts pro notifikační metadata (sekundární)
+    const { data: crisisAlerts } = await sb
+      .from("crisis_alerts")
+      .select("id, part_name, status")
+      .in("status", ["ACTIVE", "ACKNOWLEDGED"]);
 
     // Registr aktivních částí
     const { data: activePartsRegistry, error: registryErr } = await sb
@@ -1273,11 +1298,7 @@ serve(async (req) => {
       .select("crisis_alert_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days")
       ;
 
-    // Crisis events for indicators
-    const { data: crisisEvents } = await sb
-      .from("crisis_events")
-      .select("id, part_name, phase, severity, days_active, indicator_safety, indicator_coherence, indicator_emotional_regulation, indicator_trust, indicator_time_orientation")
-      .not("phase", "eq", "closed");
+    // Note: crisis_events data is already in activeCrises (primary source of truth)
 
     let dashboardContent = "";
     let operPlanContent = "";
@@ -1781,10 +1802,14 @@ serve(async (req) => {
     let closureProposals = 0;
     for (const crisis of activeCrises || []) {
       try {
-        const alertId = crisis.id;
+        const eventId = crisis.id;
         const partName = crisis.part_name || "";
 
-        // Get assessments for this crisis
+        // Find matching alert for assessment linkage (legacy FK)
+        const matchingAlert = (crisisAlerts || []).find((a: any) => a.part_name?.toUpperCase() === partName.toUpperCase());
+        const alertId = matchingAlert?.id || eventId;
+
+        // Get assessments for this crisis (linked via crisis_alert_id)
         const assessments = (crisisAssessments || []).filter((a: any) => a.crisis_alert_id === alertId);
         const latest = assessments.length > 0 ? assessments[assessments.length - 1] : null;
 
@@ -1834,7 +1859,7 @@ serve(async (req) => {
         // Crisis state model: ACTIVE → INTERVENED → STABILIZING → READY_TO_CLOSE → RESOLVED → MONITORING_POST → CLOSED
         // Analyst-loop may only PROPOSE READY_TO_CLOSE — never directly set RESOLVED
         const checklist = (closureChecklists || []).find((c: any) => c.crisis_alert_id === alertId);
-        const event = (crisisEvents || []).find((e: any) => e.part_name?.toUpperCase() === partName.toUpperCase());
+        const event = crisis; // crisis_events IS the source of truth now
 
         if (checklist && event) {
           const allIndicatorsAbove5 = [event.indicator_safety, event.indicator_coherence, event.indicator_emotional_regulation, event.indicator_trust, event.indicator_time_orientation]
@@ -2075,6 +2100,47 @@ serve(async (req) => {
       }
     }
     console.log(`[ANALYST] Crisis assessment check: ${closureProposals} closure proposals`);
+
+    // ── KROK 6h: Auto crisis journal entries ──────────────────
+    for (const crisis of activeCrises || []) {
+      try {
+        const partName = crisis.part_name || "";
+        const matchingAlert2 = (crisisAlerts || []).find((a: any) => a.part_name?.toUpperCase() === partName.toUpperCase());
+        const journalCrisisId = matchingAlert2?.id || crisis.id;
+
+        const { data: existingJournal } = await sb
+          .from("crisis_journal")
+          .select("id")
+          .eq("crisis_alert_id", journalCrisisId)
+          .eq("date", todayDate)
+          .limit(1);
+
+        if (!existingJournal || existingJournal.length === 0) {
+          const trendLabel = crisis.stable_since ? "stabilizující" :
+            crisis.phase === "active" ? "aktivní" :
+            crisis.phase === "stabilizing" ? "stabilizující" :
+            crisis.phase === "ready_to_close" ? "připraveno k uzavření" : crisis.phase || "?";
+
+          await sb.from("crisis_journal").insert({
+            crisis_alert_id: journalCrisisId,
+            part_id: partName,
+            date: todayDate,
+            day_number: crisis.days_active || 1,
+            crisis_trend: trendLabel,
+            karel_action: `Analyst-loop ${cycleTime} — review proběhl`,
+            karel_notes: (crisis.clinical_summary || "").slice(0, 500) || null,
+            session_summary: crisis.last_outcome_recorded_at ? "Sezení proběhlo" : "Žádné sezení dnes",
+            what_worked: crisis.trigger_resolved ? "Trigger zvládnut" : null,
+            what_failed: !crisis.trigger_resolved && (crisis.days_active || 0) > 3 ? "Trigger stále aktivní" : null,
+            hanka_cooperation: crisis.primary_therapist === "hanka" ? "vede" : "podpora",
+            kata_cooperation: crisis.primary_therapist === "kata" ? "vede" : "podpora",
+          });
+          console.log(`[ANALYST] Auto crisis journal entry for ${partName} (${todayDate})`);
+        }
+      } catch (journalErr) {
+        console.warn(`[ANALYST] Crisis journal error (${crisis.part_name}):`, journalErr);
+      }
+    }
 
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
