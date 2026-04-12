@@ -372,17 +372,26 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                       </div>
                     )}
 
-                    <div className="flex gap-2 flex-wrap">
-                      <button
-                        onClick={() => navigate(card.conversationId ? `/chat?meeting=${card.conversationId}` : `/chat?sub=meeting`)}
-                        className="text-[11px] px-2.5 py-1 rounded-md font-medium border transition-colors"
-                        style={{ color: "#7C2D2D", borderColor: "#7C2D2D40", backgroundColor: "transparent" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#7C2D2D10"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
-                      >
-                        Krizová porada
-                      </button>
-                    </div>
+                     <div className="flex gap-2 flex-wrap items-center">
+                       <button
+                         onClick={() => navigate(card.meetingId ? `/chat?meeting=${card.meetingId}` : card.conversationId ? `/chat?meeting=${card.conversationId}` : `/chat?sub=meeting`)}
+                         className="text-[11px] px-2.5 py-1 rounded-md font-medium border transition-colors"
+                         style={{ color: "#7C2D2D", borderColor: "#7C2D2D40", backgroundColor: "transparent" }}
+                         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#7C2D2D10"; }}
+                         onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+                       >
+                         Krizová porada
+                       </button>
+                       <span className="text-[10px] text-muted-foreground">
+                         {card.meetingOpen
+                           ? (card.meetingStatusSummary || "otevřená")
+                           : card.crisisMeetingRequired
+                             ? "doporučená"
+                             : card.meetingLastConclusionAt
+                               ? "uzavřená"
+                               : "není potřeba"}
+                       </span>
+                     </div>
                     {/* No closure controls here — dashboard is secondary overview only */}
 
                     {card.alertId && (

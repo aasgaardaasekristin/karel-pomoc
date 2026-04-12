@@ -275,17 +275,40 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
         </div>
 
         {/* ── Crisis meeting status ── */}
-        {card.crisisMeetingRequired && (
-          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3">
-            <p className="text-xs font-bold text-destructive flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" />
-              Porada vyžadována
-            </p>
-            {card.crisisMeetingReason && (
-              <p className="text-xs text-destructive/80 mt-1">{card.crisisMeetingReason}</p>
-            )}
-          </div>
-        )}
+        <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5" />
+            Krizová porada
+          </p>
+          {card.meetingOpen ? (
+            <div className="space-y-0.5">
+              <p className="text-xs text-foreground">
+                ✅ Otevřená
+                {card.meetingWaitingFor && <span className="text-amber-600"> — čeká na {card.meetingWaitingFor}</span>}
+              </p>
+              {card.meetingLastConclusionAt && (
+                <p className="text-[10px] text-muted-foreground">
+                  Poslední závěr: {new Date(card.meetingLastConclusionAt).toLocaleString("cs-CZ")}
+                </p>
+              )}
+            </div>
+          ) : card.crisisMeetingRequired ? (
+            <div className="space-y-0.5">
+              <p className="text-xs text-destructive font-medium">⚠ Doporučená — zatím neotevřena</p>
+              {card.crisisMeetingReason && (
+                <p className="text-[10px] text-destructive/80">{card.crisisMeetingReason}</p>
+              )}
+            </div>
+          ) : card.meetingLastConclusionAt ? (
+            <div>
+              <p className="text-xs text-muted-foreground">
+                Uzavřená — závěr: {new Date(card.meetingLastConclusionAt).toLocaleString("cs-CZ")}
+              </p>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Není potřeba</p>
+          )}
+        </div>
 
         {/* ── Missing for closure ── */}
         {missingItems.length > 0 && missingItems.length < 10 && (
