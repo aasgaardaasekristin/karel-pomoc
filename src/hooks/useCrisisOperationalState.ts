@@ -49,7 +49,10 @@ export interface SessionQuestion {
   therapistName: string;
   answerText: string | null;
   answeredAt: string | null;
+  qualityScore: number | null;
   karelAnalysis: string | null;
+  karelAnalyzedAt: string | null;
+  requiredBy: string | null;
 }
 
 export interface ClosureMeetingData {
@@ -207,6 +210,35 @@ export interface CrisisOperationalCard {
   missingTodayInterview: boolean;
   missingSessionResult: boolean;
   missingTherapistFeedback: boolean;
+
+  // Therapist crisis profiles
+  therapistProfiles: TherapistCrisisProfile[];
+
+  // Audit layers
+  cardPropagationStatus: AuditEntry[];
+  planSyncStatus: AuditEntry | null;
+}
+
+export interface TherapistCrisisProfile {
+  therapistName: string;
+  displayName: string;
+  responseSpeed: string | null;
+  taskReliability: string | null;
+  observationQuality: string | null;
+  initiative: string | null;
+  meetingParticipation: string | null;
+  closureAlignment: string | null;
+  recommendedKarelMode: string | null;
+  strengths: string[];
+  risks: string[];
+  supervisionNotes: string | null;
+}
+
+export interface AuditEntry {
+  source: string;
+  timestamp: string | null;
+  status: "ok" | "failed" | "pending" | "unknown";
+  detail: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -404,7 +436,10 @@ export function useCrisisOperationalState() {
           therapistName: q.therapist_name,
           answerText: q.answer_text,
           answeredAt: q.answered_at,
+          qualityScore: q.answer_quality_score ?? null,
           karelAnalysis: q.karel_analysis,
+          karelAnalyzedAt: q.karel_analyzed_at ?? null,
+          requiredBy: q.required_by ?? null,
         }));
         const unansweredQs = crisisSessionQs.filter((q: any) => !q.answered_at);
         const sessionQAComplete = crisisSessionQs.length > 0 && unansweredQs.length === 0;
@@ -553,6 +588,9 @@ export function useCrisisOperationalState() {
           missingTodayInterview,
           missingSessionResult,
           missingTherapistFeedback,
+          therapistProfiles: [], // populated async below
+          cardPropagationStatus: [],
+          planSyncStatus: null,
           mainBlocker: computeMainBlocker(partialCard),
         });
       }
@@ -590,6 +628,7 @@ export function useCrisisOperationalState() {
             meetingOpen: false, meetingId: null, meetingLastConclusionAt: null, meetingWaitingFor: null, meetingStatusSummary: null,
             interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
             closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
+            therapistProfiles: [], cardPropagationStatus: [], planSyncStatus: null,
           });
         }
       }
@@ -605,6 +644,21 @@ export function useCrisisOperationalState() {
           setCards(prev => prev.map(pc => pc.eventId === c.eventId ? { ...pc, closureReadiness4Layer: r } : pc));
         }).catch(() => {});
       }
+
+      // Fire therapist profile + audit fetch (non-blocking)
+      fetchTherapistProfiles().then(profiles => {
+        if (!profiles || profiles.length === 0) return;
+        setCards(prev => prev.map(pc => ({ ...pc, therapistProfiles: profiles })));
+      }).catch(() => {});
+
+      fetchAuditData(builtCards).then(auditMap => {
+        if (!auditMap) return;
+        setCards(prev => prev.map(pc => {
+          const audit = auditMap.get(pc.eventId || "");
+          if (!audit) return pc;
+          return { ...pc, cardPropagationStatus: audit.cardProp, planSyncStatus: audit.planSync };
+        }));
+      }).catch(() => {});
     } catch (err) {
       console.error("[useCrisisOperationalState] Error:", err);
     } finally {
@@ -652,6 +706,103 @@ async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureRead
       overallReady: r.overall_ready,
       allBlockers: r.all_blockers || [],
     };
+  } catch {
+    return null;
+  }
+}
+
+// ── Therapist crisis profiles fetcher ──────────────────────────
+
+async function fetchTherapistProfiles(): Promise<TherapistCrisisProfile[]> {
+  try {
+    const { data, error } = await supabase
+      .from("therapist_crisis_profile" as any)
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error || !data) return [];
+    const profileMap = new Map<string, any>();
+    for (const row of data as any[]) {
+      const key = (row.therapist_name || "").toLowerCase();
+      if (!profileMap.has(key)) profileMap.set(key, row);
+    }
+    return Array.from(profileMap.values()).map((p: any) => ({
+      therapistName: p.therapist_name,
+      displayName: p.therapist_name === "hanka" ? "Hanička" : p.therapist_name === "kata" ? "Káťa" : p.therapist_name,
+      responseSpeed: p.response_speed ?? null,
+      taskReliability: p.task_reliability ?? null,
+      observationQuality: p.observation_quality ?? null,
+      initiative: p.initiative ?? null,
+      meetingParticipation: p.meeting_participation ?? null,
+      closureAlignment: p.closure_alignment ?? null,
+      recommendedKarelMode: p.recommended_karel_mode ?? null,
+      strengths: Array.isArray(p.strengths) ? p.strengths : [],
+      risks: Array.isArray(p.risks) ? p.risks : [],
+      supervisionNotes: p.supervision_notes ?? null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ── Audit data fetcher ─────────────────────────────────────────
+
+async function fetchAuditData(
+  cards: CrisisOperationalCard[],
+): Promise<Map<string, { cardProp: AuditEntry[]; planSync: AuditEntry | null }> | null> {
+  try {
+    const eventIds = cards.map(c => c.eventId).filter(Boolean) as string[];
+    if (eventIds.length === 0) return null;
+
+    // Card propagation: check did_doc_sync_log or card_update_log for recent entries
+    const { data: syncLogs } = await supabase
+      .from("card_update_log" as any)
+      .select("part_name, created_at, error, sections_updated")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    // 05A sync: check did_doc_sync_log for 05A entries
+    const { data: docSyncLogs } = await supabase
+      .from("did_doc_sync_log" as any)
+      .select("doc_type, synced_at, status, error, crisis_event_id")
+      .order("synced_at", { ascending: false })
+      .limit(20);
+
+    const result = new Map<string, { cardProp: AuditEntry[]; planSync: AuditEntry | null }>();
+
+    for (const card of cards) {
+      if (!card.eventId) continue;
+      const partNameLower = card.partName.toLowerCase();
+
+      // Card propagation entries
+      const cardPropEntries: AuditEntry[] = ((syncLogs || []) as any[])
+        .filter((l: any) => (l.part_name || "").toLowerCase().includes(partNameLower))
+        .slice(0, 3)
+        .map((l: any) => ({
+          source: (l.sections_updated || []).join(", ") || "card update",
+          timestamp: l.created_at,
+          status: l.error ? "failed" as const : "ok" as const,
+          detail: l.error || `Sekce: ${(l.sections_updated || []).join(", ")}`,
+        }));
+
+      // 05A sync
+      const planSyncEntry = ((docSyncLogs || []) as any[])
+        .find((l: any) =>
+          (l.doc_type === "05A" || (l.doc_type || "").includes("OPERATIVNI")) &&
+          (l.crisis_event_id === card.eventId || !l.crisis_event_id)
+        );
+
+      result.set(card.eventId, {
+        cardProp: cardPropEntries,
+        planSync: planSyncEntry ? {
+          source: "05A",
+          timestamp: planSyncEntry.synced_at || null,
+          status: planSyncEntry.error ? "failed" : planSyncEntry.status === "ok" ? "ok" : "unknown",
+          detail: planSyncEntry.error || planSyncEntry.status || null,
+        } : null,
+      });
+    }
+
+    return result;
   } catch {
     return null;
   }
