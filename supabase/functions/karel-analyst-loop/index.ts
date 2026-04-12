@@ -743,6 +743,7 @@ function build05AContent(
   commitments: any[],
   activePartsRegistry: any[],
   recentThreadParts: Set<string>,
+  recoveryPlans: RecoveryAction[] = [],
 ): string {
   const lines: string[] = [];
   const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
