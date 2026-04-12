@@ -570,7 +570,7 @@ export function useCrisisOperationalState() {
           missingTodayInterview,
           missingSessionResult,
           missingTherapistFeedback,
-          therapistProfiles: [], // populated async below
+          cardPropagationStatus: [],
           cardPropagationStatus: [],
           planSyncStatus: null,
           mainBlocker: computeMainBlocker(partialCard),
@@ -610,7 +610,7 @@ export function useCrisisOperationalState() {
             meetingOpen: false, meetingId: null, meetingLastConclusionAt: null, meetingWaitingFor: null, meetingStatusSummary: null,
             interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
             closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
-            therapistProfiles: [], cardPropagationStatus: [], planSyncStatus: null,
+            cardPropagationStatus: [], planSyncStatus: null,
           });
         }
       }
@@ -627,11 +627,7 @@ export function useCrisisOperationalState() {
         }).catch(() => {});
       }
 
-      // Fire therapist profile + audit fetch (non-blocking)
-      fetchTherapistProfiles().then(profiles => {
-        if (!profiles || profiles.length === 0) return;
-        setCards(prev => prev.map(pc => ({ ...pc, therapistProfiles: profiles })));
-      }).catch(() => {});
+      // Therapist profiles now live in PAMET_KAREL only — removed from UI
 
       fetchAuditData(builtCards).then(auditMap => {
         if (!auditMap) return;
