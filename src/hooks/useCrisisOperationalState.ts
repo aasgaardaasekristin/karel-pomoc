@@ -688,38 +688,7 @@ async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureRead
   }
 }
 
-// ── Therapist crisis profiles fetcher ──────────────────────────
-
-async function fetchTherapistProfiles(): Promise<TherapistCrisisProfile[]> {
-  try {
-    const { data, error } = await supabase
-      .from("therapist_crisis_profile" as any)
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (error || !data) return [];
-    const profileMap = new Map<string, any>();
-    for (const row of data as any[]) {
-      const key = (row.therapist_name || "").toLowerCase();
-      if (!profileMap.has(key)) profileMap.set(key, row);
-    }
-    return Array.from(profileMap.values()).map((p: any) => ({
-      therapistName: p.therapist_name,
-      displayName: p.therapist_name === "hanka" ? "Hanička" : p.therapist_name === "kata" ? "Káťa" : p.therapist_name,
-      responseSpeed: p.response_speed ?? null,
-      taskReliability: p.task_reliability ?? null,
-      observationQuality: p.observation_quality ?? null,
-      initiative: p.initiative ?? null,
-      meetingParticipation: p.meeting_participation ?? null,
-      closureAlignment: p.closure_alignment ?? null,
-      recommendedKarelMode: p.recommended_karel_mode ?? null,
-      strengths: Array.isArray(p.strengths) ? p.strengths : [],
-      risks: Array.isArray(p.risks) ? p.risks : [],
-      supervisionNotes: p.supervision_notes ?? null,
-    }));
-  } catch {
-    return [];
-  }
-}
+// Therapist profiles removed from UI — data lives in PAMET_KAREL only
 
 // ── Audit data fetcher ─────────────────────────────────────────
 
