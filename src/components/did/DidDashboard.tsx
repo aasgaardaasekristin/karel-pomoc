@@ -12,7 +12,7 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
-import DidSystemOverview from "./DidSystemOverview";
+// DidSystemOverview removed from main view — 05A briefing in KarelDailyPlan is the primary source
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidMonthlyPanel from "./DidMonthlyPanel";
@@ -420,39 +420,12 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </div>
         )}
 
-        {/* ═══ 3. KARLŮV DENNÍ PLÁN (MAIN CONTENT) ═══ */}
+        {/* ═══ 3. HLAVNÍ BRIEFING — Operativní plán z 05A ═══ */}
         <ErrorBoundary fallbackTitle="Denní plán selhal">
           <KarelDailyPlan refreshTrigger={refreshTrigger} />
         </ErrorBoundary>
 
-        {/* ═══ 4. KDO MLUVÍ S KARLEM (navigation) ═══ */}
-        {activeThreads.length > 0 && (
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
-            <h3 className="text-[18px] font-semibold mb-3" style={{ color: "#2D2D2D" }}>Kdo mluví s Karlem</h3>
-            <div className="flex flex-wrap gap-2">
-              {activeThreads.map(t => (
-                <button
-                  key={t.id}
-                  onClick={() => onQuickThread?.(t.id, t.partName)}
-                  className="text-[14px] px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
-                  style={{ color: "#01696F", borderColor: "#01696F40" }}
-                >
-                  {t.partName}
-                  <span className="text-[12px] ml-1 opacity-60">({t.messageCount})</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ═══ 5. KARLŮV PŘEHLED ═══ */}
-        <ErrorBoundary fallbackTitle="Přehled systému selhal">
-          <div className="rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4" style={{ backgroundColor: "#F0EFEB" }}>
-            <DidSystemOverview refreshTrigger={refreshTrigger} onTasksSynced={() => setRefreshTrigger(p => p + 1)} />
-          </div>
-        </ErrorBoundary>
-
-        {/* ═══ 6. TASK BOARD ═══ */}
+        {/* ═══ 4. ÚKOLY TÝMU ═══ */}
         <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[18px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
@@ -469,7 +442,30 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </ErrorBoundary>
         </div>
 
-        {/* ═══ 7. PLÁN SEZENÍ ═══ */}
+        {/* ═══ 5. KDO MLUVÍ S KARLEM ═══ */}
+        {activeThreads.length > 0 && (
+          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
+            <h3 className="text-[18px] font-semibold mb-3" style={{ color: "#2D2D2D" }}>Kdo mluví s Karlem</h3>
+            <div className="flex flex-wrap gap-2">
+              {activeThreads.map(t => {
+                if (isNonDidEntity(t.partName)) return null;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => onQuickThread?.(t.id, t.partName)}
+                    className="text-[14px] px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
+                    style={{ color: "#01696F", borderColor: "#01696F40" }}
+                  >
+                    {t.partName}
+                    <span className="text-[12px] ml-1 opacity-60">({t.messageCount})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ═══ 6. PLÁN SEZENÍ ═══ */}
         <ErrorBoundary fallbackTitle="Denní plán selhal">
           <DidDailySessionPlan refreshTrigger={refreshTrigger} />
         </ErrorBoundary>

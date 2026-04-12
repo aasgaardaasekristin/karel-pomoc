@@ -26,6 +26,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ── Entity filtering ───────────────────────────────────────────
+const DIACRITICS_REGEX = /[\u0300-\u036f]/g;
+const stripDiacritics = (s: string) => s.normalize("NFD").replace(DIACRITICS_REGEX, "");
+const NON_DID_ENTITIES = new Set([
+  "hanicka", "hanka", "hana", "hanička",
+  "kata", "katka", "káťa", "kaca", "káča",
+  "karel", "locik", "locek", "locíček",
+  "dokument bez nazvu", "untitled", "untitled document",
+]);
+function isNonDidEntity(name: string): boolean {
+  const norm = stripDiacritics(name).toLowerCase().trim();
+  return NON_DID_ENTITIES.has(norm) || norm.includes("dokument bez nazvu") || norm.includes("untitled");
+}
+function normalizePartKey(name: string): string {
+  return stripDiacritics(name).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 // ── Konstanty ──────────────────────────────────────────────────
 const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const AI_MODEL = "google/gemini-2.5-flash";
@@ -415,18 +432,36 @@ function buildDashboardContent(
   return lines.join("\n");
 }
 
-// ── Helper: Deduplicate session plans by part name ────────────
+// ── Helper: Deduplicate session plans by part name (case-insensitive) ──
 function deduplicateSessions(plans: any[]): any[] {
   const seen = new Map<string, any>();
   for (const s of plans) {
-    const key = (s.selected_part || "").toLowerCase().trim();
-    if (!key) continue;
+    const key = normalizePartKey(s.selected_part || "");
+    if (!key || isNonDidEntity(s.selected_part || "")) continue;
     const existing = seen.get(key);
     if (!existing || (s.urgency_score ?? 0) > (existing.urgency_score ?? 0)) {
       seen.set(key, s);
     }
   }
   return Array.from(seen.values());
+}
+
+// ── Helper: Auto-assign "both" tasks to specific therapist ────
+function resolveTaskAssignment(task: any, activeCrises: any[]): string {
+  const raw = (task.assigned_to || "").toLowerCase().trim();
+  if (raw === "hanka" || raw === "kata") return raw;
+
+  // Heuristic: if task mentions a crisis part name and that part is local → hanka
+  const taskText = (task.task || "").toLowerCase();
+  for (const c of activeCrises) {
+    if (taskText.includes((c.part_name || "").toLowerCase())) return "hanka";
+  }
+  // If task mentions remote/school keywords → kata
+  if (/škol|school|townshend|angličtin|amálk|toničk/i.test(taskText)) return "kata";
+  // If task mentions direct observation → hanka (she's local)
+  if (/pozorova|kontakt|sezení|session|grounding|stabiliz/i.test(taskText)) return "hanka";
+
+  return raw; // keep "both" only as last resort
 }
 
 // ── Helper: Resolve therapist lead — never use blind "both" ───
@@ -536,10 +571,15 @@ function detectStaleState(
     }
   }
 
-  // 5. Active/crisis parts without recent contact
+  // 5. Active/crisis parts without recent contact (skip non-DID entities)
+  const seenContactKeys = new Set<string>();
   for (const p of activePartsRegistry) {
     if (!["active", "crisis", "stabilizing"].includes(p.status)) continue;
     const partName = p.part_name || "";
+    if (isNonDidEntity(partName)) continue;
+    const key = normalizePartKey(partName);
+    if (seenContactKeys.has(key)) continue;
+    seenContactKeys.add(key);
     if (recentThreadParts.has(partName.toLowerCase())) continue;
     stale.push({
       type: "contact",
@@ -663,11 +703,16 @@ function build05AContent(
   }
   lines.push(``);
 
-  // --- 3. ÚKOLY PRO TERAPEUTKY (with status classification) ---
+  // --- 3. ÚKOLY PRO TERAPEUTKY (with auto-assignment + status) ---
   lines.push(`━━━ 3. ÚKOLY ━━━`);
-  const hankaTasks = pendingTasks.filter((t: any) => t.assigned_to === "hanka");
-  const kataTasks = pendingTasks.filter((t: any) => t.assigned_to === "kata");
-  const bothTasks = pendingTasks.filter((t: any) => t.assigned_to === "both");
+  // Auto-reassign "both" tasks where possible
+  const reassignedTasks = pendingTasks.map((t: any) => ({
+    ...t,
+    assigned_to: resolveTaskAssignment(t, activeCrises),
+  }));
+  const hankaTasks = reassignedTasks.filter((t: any) => t.assigned_to === "hanka");
+  const kataTasks = reassignedTasks.filter((t: any) => t.assigned_to === "kata");
+  const bothTasks = reassignedTasks.filter((t: any) => t.assigned_to !== "hanka" && t.assigned_to !== "kata");
 
   const renderTaskGroup = (label: string, tasks: any[]) => {
     if (tasks.length === 0) return;
@@ -681,11 +726,12 @@ function build05AContent(
   renderTaskGroup("HANIČKA", hankaTasks);
   renderTaskGroup("KÁŤA", kataTasks);
   if (bothTasks.length > 0) {
-    lines.push(`OBĚ — ⚠️ nutno přiřadit konkrétní osobě (${bothTasks.length}):`);
-    for (const t of bothTasks.slice(0, 5)) {
+    lines.push(`OBĚ — ⚠️ nutno přiřadit (${bothTasks.length}):`);
+    for (const t of bothTasks.slice(0, 3)) {
       const statusLabel = classifyTaskStatus(t, todayDate);
       lines.push(`  • ${statusLabel} [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
     }
+    if (bothTasks.length > 3) lines.push(`  … a dalších ${bothTasks.length - 3}`);
   }
   if (!hankaTasks.length && !kataTasks.length && !bothTasks.length) {
     lines.push(`  (žádné aktivní úkoly)`);
@@ -806,17 +852,17 @@ function build05AContent(
   lines.push(...briefLines);
   lines.push(``);
 
-  // --- 7. STAV ČÁSTÍ (ze AI analýzy + staleness) ---
+  // --- 7. STAV ČÁSTÍ (ze AI analýzy + staleness, deduplicated, filtered) ---
   const parts = Array.isArray(analysisJson?.parts) ? (analysisJson!.parts as any[]) : [];
   if (parts.length > 0) {
     lines.push(`━━━ 7. PŘEHLED ČÁSTÍ ━━━`);
-    const seenPartNames = new Set<string>();
-    const activeParts = parts.filter((p: any) => p.status === "active");
+    const seenPartKeys = new Set<string>();
+    const activeParts = parts.filter((p: any) => p.status === "active" && !isNonDidEntity(p.name || ""));
     for (const p of activeParts) {
-      const key = (p.name || "").toLowerCase().trim();
-      if (seenPartNames.has(key)) continue;
-      seenPartNames.add(key);
-      const hasContact = recentThreadParts.has(key);
+      const key = normalizePartKey(p.name || "");
+      if (!key || seenPartKeys.has(key)) continue;
+      seenPartKeys.add(key);
+      const hasContact = recentThreadParts.has((p.name || "").toLowerCase());
       const contactTag = hasContact ? "" : " | ⚠️ bez čerstvého kontaktu";
       lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}${contactTag}`);
       if (p.needs?.length) lines.push(`    Potřeby: ${p.needs.join(", ")}`);
