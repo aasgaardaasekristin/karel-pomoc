@@ -1558,10 +1558,21 @@ HIGH = závažný distres bez přímého ohrožení života`,
                   } else if (newAlert) {
                     console.log(`[crisis-detector] Created alert ${newAlert.id}, creating tasks + thread...`);
                     
+                    // Look up matching crisis_event for unified FK
+                    const { data: matchedCrisisEvent } = await sbCrisis.from("crisis_events")
+                      .select("id")
+                      .eq("part_name", partName)
+                      .neq("phase", "CLOSED")
+                      .order("created_at", { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    const crisisEventIdForTask = matchedCrisisEvent?.id || null;
+
                     // INSERT two crisis tasks
                     const { error: taskErr } = await sbCrisis.from("crisis_tasks").insert([
                       {
                         crisis_alert_id: newAlert.id,
+                        crisis_event_id: crisisEventIdForTask,
                         title: `KRIZOVÁ INTERVENCE – ${partName}`,
                         description: `Okamžitě kontaktovat ${partName}. ${crisisResult.summary || ""}`,
                         assigned_to: "hanicka",
@@ -1569,6 +1580,7 @@ HIGH = závažný distres bez přímého ohrožení života`,
                       },
                       {
                         crisis_alert_id: newAlert.id,
+                        crisis_event_id: crisisEventIdForTask,
                         title: `KRIZOVÁ INTERVENCE – podpora – ${partName}`,
                         description: `Podpořit Haničku v krizové intervenci. ${crisisResult.summary || ""}`,
                         assigned_to: "kata",
