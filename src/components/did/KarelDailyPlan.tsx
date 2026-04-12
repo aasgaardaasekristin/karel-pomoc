@@ -50,6 +50,7 @@ interface Parsed05A {
   urgentFollowUp: string;
   karelOverview: string;
   partsOverview: string;
+  recoveryMode: string;
   raw: string;
   cycleInfo: string;
 }
@@ -75,6 +76,7 @@ function parse05A(text: string): Parsed05A {
     urgentFollowUp: extractSection("5\\.\\s*URGENTNÍ FOLLOW-UP"),
     karelOverview: extractSection("6\\.\\s*KARLŮV PŘEHLED"),
     partsOverview: extractSection("7\\.\\s*PŘEHLED ČÁSTÍ"),
+    recoveryMode: extractSection("8\\.\\s*REŽIM OBNOVY ŘÍZENÍ"),
     raw: clean,
     cycleInfo,
   };
@@ -94,13 +96,15 @@ function Section05A({ icon, title, content, color }: { icon: string; title: stri
 
   // Detect urgency markers in content
   const hasUrgent = content.includes("🔴") || content.includes("VYŽADUJE AKCI") || content.includes("PO TERMÍNU");
-  const bgColor = hasUrgent ? "#FFF5F5" : undefined;
+  const hasRecovery = content.includes("RECOVERY") || content.includes("POŽADAVEK NA UPDATE") || content.includes("REŽIM OBNOVY") || title.includes("obnovy");
+  const bgColor = hasRecovery ? "#EBF5FB" : hasUrgent ? "#FFF5F5" : undefined;
 
   return (
     <div className="space-y-1 rounded-lg p-2" style={{ backgroundColor: bgColor }}>
       <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "hsl(var(--foreground))" }}>
         {icon} {title}
         {hasUrgent && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">vyžaduje akci</span>}
+        {hasRecovery && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: "#D4E6F1", color: "#1565C0" }}>aktivní obnova</span>}
       </h3>
       <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1" style={{ color: "hsl(var(--muted-foreground))" }}>
         {content}
@@ -275,6 +279,7 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         <Section05A icon="📝" title="Úkoly" content={plan05A.tasks} />
         <Section05A icon="❓" title="Otevřené otázky" content={plan05A.questions} />
         <Section05A icon="⚠️" title="Urgentní follow-up" content={plan05A.urgentFollowUp} color="#B45309" />
+        <Section05A icon="🔄" title="Režim obnovy řízení" content={plan05A.recoveryMode} color="#1565C0" />
         <Section05A icon="🧠" title="Karlův přehled" content={plan05A.karelOverview} />
         <Section05A icon="👥" title="Přehled částí" content={plan05A.partsOverview} />
       </div>

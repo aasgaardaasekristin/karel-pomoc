@@ -480,6 +480,125 @@ const STALE_QUESTION_DAYS = 3;
 const STALE_SESSION_DAYS = 5;
 const STALE_CONTACT_DAYS = 3;
 
+// ═══ RECOVERY MODE — concrete recovery plan per stale part ═══
+interface RecoveryAction {
+  partName: string;
+  reason: string;
+  updateRequest: { who: string; what: string; returnTo: string };
+  sessionProposal: { format: string; lead: string; goal: string; openingQuestions: string[]; expectedOutcome: string } | null;
+  karelConversation: { channel: string; goal: string; questions: string[] } | null;
+  pendingQuestion: { text: string; directedTo: string } | null;
+}
+
+function generateRecoveryPlans(
+  activeCrises: any[],
+  activePartsRegistry: any[],
+  recentThreadParts: Set<string>,
+  pendingTasks: any[],
+  sessionPlans: any[],
+): RecoveryAction[] {
+  const plans: RecoveryAction[] = [];
+  const nowMs = Date.now();
+  const seenKeys = new Set<string>();
+
+  // 1. Crisis parts without fresh data
+  for (const c of activeCrises) {
+    const partName = c.part_name || "";
+    const key = normalizePartKey(partName);
+    if (!key || seenKeys.has(key) || isNonDidEntity(partName)) continue;
+    seenKeys.add(key);
+
+    const updatedAt = c.updated_at || c.created_at || "";
+    const hoursSince = updatedAt ? (nowMs - new Date(updatedAt).getTime()) / 3_600_000 : 999;
+    if (hoursSince <= STALE_CRISIS_HOURS) continue;
+
+    const dayNum = c.days_in_crisis || 1;
+    const severity = c.severity || "moderate";
+
+    plans.push({
+      partName,
+      reason: `Krize den ${dayNum}, poslední data ${Math.floor(hoursSince)}h zpět — Karel nemůže řídit bez aktuálních informací`,
+      updateRequest: {
+        who: "Hanička",
+        what: `Zapsat do krizového deníku: (1) aktuální emoční stav ${partName}, (2) výsledek posledního zásahu, (3) co se za posledních ${Math.floor(hoursSince)}h změnilo, (4) zda jsou přítomny rizikové signály`,
+        returnTo: "Karel potřebuje tyto informace do konce dnešního dne pro úpravu krizového plánu",
+      },
+      sessionProposal: {
+        format: severity === "critical" ? "krizová intervence (30 min)" : "stabilizační sezení (30–45 min)",
+        lead: "Hanička",
+        goal: `Ověřit aktuální krizový stav ${partName}, zmapovat trend, provést grounding pokud třeba`,
+        openingQuestions: [
+          `Jak se dnes cítíš, ${partName}?`,
+          `Co se změnilo od posledně?`,
+          `Je něco, co teď potřebuješ?`,
+          `Máš pocit bezpečí?`,
+        ],
+        expectedOutcome: `Karel obdrží: (1) aktuální risk level, (2) trend krize (zlepšení/stagnace/zhoršení), (3) doporučení pro další den`,
+      },
+      karelConversation: {
+        channel: "DID/Kluci",
+        goal: `Karel provede krátký check-in s ${partName} — zjistit subjektivní vnímání situace`,
+        questions: [
+          `Jak se dnes cítíš?`,
+          `Co bys teď potřeboval?`,
+          `Jak vnímáš spolupráci s terapeutkami?`,
+        ],
+      },
+      pendingQuestion: {
+        text: `Karel potřebuje aktuální stav ${partName} (den ${dayNum} krize). Co se změnilo za posledních ${Math.floor(hoursSince)}h? Jaký je výsledek posledního zásahu?`,
+        directedTo: "both",
+      },
+    });
+  }
+
+  // 2. Active (non-crisis) parts without recent contact
+  for (const p of activePartsRegistry) {
+    const partName = p.part_name || "";
+    const key = normalizePartKey(partName);
+    if (!key || seenKeys.has(key) || isNonDidEntity(partName)) continue;
+    if (!["active", "stabilizing"].includes(p.status)) continue;
+    if (recentThreadParts.has(partName.toLowerCase())) continue;
+    seenKeys.add(key);
+
+    // Check if there's already a pending session
+    const hasPlan = sessionPlans.some((s: any) =>
+      normalizePartKey(s.selected_part || "") === key && ["pending", "planned"].includes(s.status)
+    );
+
+    plans.push({
+      partName,
+      reason: `Aktivní část bez kontaktu ${STALE_CONTACT_DAYS}+ dní — Karel nemá aktuální informace pro řízení`,
+      updateRequest: {
+        who: p.status === "stabilizing" ? "Hanička" : (Math.random() > 0.5 ? "Hanička" : "Káťa"),
+        what: `Krátký check-in s ${partName}: (1) aktuální nálada, (2) zda potřebuje sezení, (3) jakékoli nové pozorování`,
+        returnTo: "Karel zapracuje info do operativního plánu a karty části",
+      },
+      sessionProposal: hasPlan ? null : {
+        format: "check-in (15–20 min)",
+        lead: p.status === "stabilizing" ? "Hanička" : "Káťa",
+        goal: `Zjistit aktuální stav ${partName}, ověřit stabilitu, identifikovat potřeby`,
+        openingQuestions: [
+          `Jak se ti daří?`,
+          `Je něco, o čem bys chtěl(a) mluvit?`,
+          `Jak vnímáš poslední dny?`,
+        ],
+        expectedOutcome: `Karel obdrží: aktuální status, emoční ladění, případné potřeby pro plánování`,
+      },
+      karelConversation: {
+        channel: "DID/Kluci",
+        goal: `Karel naváže kontakt s ${partName} — zjistit, jestli je vše v pořádku`,
+        questions: [
+          `Ahoj, ${partName}, jak se ti daří?`,
+          `Potřebuješ něco?`,
+        ],
+      },
+      pendingQuestion: null, // don't escalate non-crisis parts
+    });
+  }
+
+  return plans;
+}
+
 interface StaleItem {
   type: "crisis" | "task" | "question" | "session" | "contact";
   entity: string;
@@ -624,6 +743,7 @@ function build05AContent(
   commitments: any[],
   activePartsRegistry: any[],
   recentThreadParts: Set<string>,
+  recoveryPlans: RecoveryAction[] = [],
 ): string {
   const lines: string[] = [];
   const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
@@ -868,6 +988,61 @@ function build05AContent(
       if (p.needs?.length) lines.push(`    Potřeby: ${p.needs.join(", ")}`);
     }
     lines.push(``);
+  }
+
+  // --- 8. REŽIM OBNOVY ŘÍZENÍ (recovery plans) ---
+  if (recoveryPlans.length > 0) {
+    lines.push(`━━━ 8. REŽIM OBNOVY ŘÍZENÍ ━━━`);
+    lines.push(`🔄 Karel aktivně řeší díry v datech pro ${recoveryPlans.length} částí:`);
+    lines.push(``);
+    for (const rp of recoveryPlans) {
+      lines.push(`── ${rp.partName} ──`);
+      lines.push(`DŮVOD: ${rp.reason}`);
+      lines.push(``);
+      lines.push(`1️⃣ POŽADAVEK NA UPDATE:`);
+      lines.push(`   KDO: ${rp.updateRequest.who}`);
+      lines.push(`   CO: ${rp.updateRequest.what}`);
+      lines.push(`   VÝSLEDEK PRO KARLA: ${rp.updateRequest.returnTo}`);
+      if (rp.sessionProposal) {
+        lines.push(``);
+        lines.push(`2️⃣ NAVRŽENÉ SEZENÍ:`);
+        lines.push(`   FORMÁT: ${rp.sessionProposal.format}`);
+        lines.push(`   VEDE: ${rp.sessionProposal.lead}`);
+        lines.push(`   CÍL: ${rp.sessionProposal.goal}`);
+        lines.push(`   OTÁZKY:`);
+        for (const q of rp.sessionProposal.openingQuestions) {
+          lines.push(`     • "${q}"`);
+        }
+        lines.push(`   OČEKÁVANÝ VÝSTUP: ${rp.sessionProposal.expectedOutcome}`);
+      }
+      if (rp.karelConversation) {
+        lines.push(``);
+        lines.push(`3️⃣ KAREL PROVEDE ROZHOVOR:`);
+        lines.push(`   KANÁL: ${rp.karelConversation.channel}`);
+        lines.push(`   CÍL: ${rp.karelConversation.goal}`);
+        lines.push(`   OTÁZKY:`);
+        for (const q of rp.karelConversation.questions) {
+          lines.push(`     • "${q}"`);
+        }
+      }
+      lines.push(``);
+    }
+  }
+
+  // Update briefing with recovery info
+  if (recoveryPlans.length > 0) {
+    // Find the briefing section and append recovery summary
+    const recoveryIdx = lines.findIndex(l => l.includes("KARLŮV PŘEHLED"));
+    if (recoveryIdx >= 0) {
+      const insertAt = lines.findIndex((l, i) => i > recoveryIdx && l.startsWith("━━━"));
+      const recoveryBrief = [
+        `🔄 RECOVERY: Karel aktivně řeší ${recoveryPlans.length} dír v datech`,
+        ...recoveryPlans.map(rp => `  → ${rp.partName}: ${rp.updateRequest.who} dodá update, ${rp.sessionProposal ? "navrženo sezení" : "check-in"}`),
+      ];
+      if (insertAt > 0) {
+        lines.splice(insertAt, 0, ...recoveryBrief, ``);
+      }
+    }
   }
 
   return lines.join("\n");
@@ -1470,6 +1645,116 @@ serve(async (req) => {
     }
     console.log(`[ANALYST] Stale follow-through: ${staleTasksCreated} tasks, ${staleQuestionsCreated} questions`);
 
+    // ── KROK 6f: Recovery mode — generate & execute recovery plans ──
+    const recoveryPlans = generateRecoveryPlans(
+      activeCrises || [], activePartsRegistry || [], recentThreadParts,
+      pendingTasks || [], sessionPlans || [],
+    );
+    let recoveryTasksCreated = 0;
+    let recoveryQuestionsCreated = 0;
+    let recoverySessionsCreated = 0;
+
+    for (const rp of recoveryPlans) {
+      try {
+        // 1. Create update-request task
+        const taskText = `[RECOVERY] ${rp.partName}: ${rp.updateRequest.what}`;
+        const prefix = taskText.slice(0, TASK_DEDUP_PREFIX_LEN);
+        const { data: existingTask } = await sb
+          .from("did_therapist_tasks")
+          .select("id")
+          .ilike("task", `%${prefix}%`)
+          .in("status", ["pending", "active", "in_progress"])
+          .limit(1);
+
+        if (!existingTask || existingTask.length === 0) {
+          await sb.from("did_therapist_tasks").insert({
+            task: taskText.slice(0, 500),
+            assigned_to: rp.updateRequest.who.toLowerCase().includes("káťa") || rp.updateRequest.who.toLowerCase().includes("kata") ? "kata" : "hanka",
+            priority: "high",
+            status: "pending",
+            source: "recovery_mode",
+            due_date: todayDate,
+            user_id: taskUserId,
+          });
+          recoveryTasksCreated++;
+        }
+
+        // 2. Create pending question if specified
+        if (rp.pendingQuestion) {
+          const qPrefix = rp.pendingQuestion.text.slice(0, 30);
+          const { data: existingQ } = await (sb as any)
+            .from("did_pending_questions")
+            .select("id")
+            .ilike("question", `%${qPrefix}%`)
+            .in("status", ["open", "pending", "sent"])
+            .limit(1);
+
+          if (!existingQ || existingQ.length === 0) {
+            await (sb as any).from("did_pending_questions").insert({
+              question: rp.pendingQuestion.text.slice(0, 500),
+              directed_to: rp.pendingQuestion.directedTo,
+              subject_type: "recovery_request",
+              status: "open",
+              expires_at: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+            });
+            recoveryQuestionsCreated++;
+          }
+        }
+
+        // 3. Create session plan if proposed and doesn't exist
+        if (rp.sessionProposal) {
+          const partKey = normalizePartKey(rp.partName);
+          const { data: existingPlan } = await sb
+            .from("did_daily_session_plans")
+            .select("id")
+            .eq("selected_part", rp.partName)
+            .gte("plan_date", new Date(Date.now() - 86_400_000).toISOString().slice(0, 10))
+            .in("status", ["pending", "planned"])
+            .limit(1);
+
+          if (!existingPlan || existingPlan.length === 0) {
+            const planMd = [
+              `# Recovery sezení: ${rp.partName}`,
+              ``,
+              `## Cíl`,
+              rp.sessionProposal.goal,
+              ``,
+              `## Formát`,
+              rp.sessionProposal.format,
+              ``,
+              `## Otevírací otázky`,
+              ...rp.sessionProposal.openingQuestions.map(q => `- "${q}"`),
+              ``,
+              `## Očekávaný výstup pro Karla`,
+              rp.sessionProposal.expectedOutcome,
+            ].join("\n");
+
+            const userId = await resolveUserId(sb);
+            await sb.from("did_daily_session_plans").insert({
+              selected_part: rp.partName,
+              plan_date: todayDate,
+              plan_markdown: planMd,
+              plan_html: `<pre>${planMd}</pre>`,
+              session_format: rp.sessionProposal.format.includes("check-in") ? "check_in" : "stabilization",
+              session_lead: "karel",
+              therapist: rp.sessionProposal.lead.toLowerCase().includes("káťa") || rp.sessionProposal.lead.toLowerCase().includes("kata") ? "kata" : "hanka",
+              urgency_score: 70,
+              urgency_breakdown: { source: "recovery_mode", reason: rp.reason },
+              status: "pending",
+              generated_by: "recovery_mode",
+              part_tier: "active",
+              user_id: userId,
+            });
+            recoverySessionsCreated++;
+          }
+        }
+      } catch (recoveryErr) {
+        console.warn(`[ANALYST] Recovery execution error (${rp.partName}):`, recoveryErr);
+      }
+    }
+    console.log(`[ANALYST] Recovery mode: ${recoveryPlans.length} plans, ${recoveryTasksCreated}t ${recoveryQuestionsCreated}q ${recoverySessionsCreated}s`);
+
+
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
     try {
@@ -1530,6 +1815,7 @@ serve(async (req) => {
               commitments || [],
               activePartsRegistry || [],
               recentThreadParts,
+              recoveryPlans,
             );
 
             await overwriteDoc(token, plan05AFileId, plan05AContent);
@@ -1570,6 +1856,7 @@ serve(async (req) => {
       `05A_drive: ${plan05AWritten ? "written" : "skipped"}`,
       `crisis_follow: ${crisisTasksCreated}t ${crisisSessionsPlanned}s`,
       `stale_follow: ${staleTasksCreated}t ${staleQuestionsCreated}q`,
+      `recovery: ${recoveryPlans.length} plans, ${recoveryTasksCreated}t ${recoveryQuestionsCreated}q ${recoverySessionsCreated}s`,
     ].join(" | ");
 
     const { error: logError } = await sb.from("system_health_log").insert({
