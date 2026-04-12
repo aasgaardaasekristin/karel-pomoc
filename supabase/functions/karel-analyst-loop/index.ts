@@ -2129,6 +2129,7 @@ serve(async (req) => {
 
           await sb.from("crisis_journal").insert({
             crisis_alert_id: journalCrisisId,
+            crisis_event_id: crisis.id,
             part_id: partName,
             date: todayDate,
             day_number: crisis.days_active || 1,
