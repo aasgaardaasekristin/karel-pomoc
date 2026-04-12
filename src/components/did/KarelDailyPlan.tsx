@@ -41,6 +41,45 @@ interface Commitment {
   committed_by: string;
 }
 
+// ── Parse structured 05A sections from plain text ──────────────
+interface Parsed05A {
+  crisisContext: string;
+  sessions: string;
+  tasks: string;
+  questions: string;
+  urgentFollowUp: string;
+  karelOverview: string;
+  partsOverview: string;
+  raw: string;
+  cycleInfo: string;
+}
+
+function parse05A(text: string): Parsed05A {
+  const clean = text.replace(/\r\n/g, "\n");
+
+  const extractSection = (label: string): string => {
+    const re = new RegExp(`━━━\\s*${label}\\s*━━━\\n([\\s\\S]*?)(?=━━━|═══|$)`, "i");
+    const m = clean.match(re);
+    return m?.[1]?.trim() || "";
+  };
+
+  // Extract cycle info from header
+  const headerMatch = clean.match(/Datum:\s*([^\n]+)/);
+  const cycleInfo = headerMatch?.[1]?.trim() || "";
+
+  return {
+    crisisContext: extractSection("1\\.\\s*KRIZOVÝ KONTEXT"),
+    sessions: extractSection("2\\.\\s*PLÁNOVANÁ SEZENÍ"),
+    tasks: extractSection("3\\.\\s*ÚKOLY"),
+    questions: extractSection("4\\.\\s*OTEVŘENÉ OTÁZKY"),
+    urgentFollowUp: extractSection("5\\.\\s*URGENTNÍ FOLLOW-UP"),
+    karelOverview: extractSection("6\\.\\s*KARLŮV PŘEHLED"),
+    partsOverview: extractSection("7\\.\\s*PŘEHLED ČÁSTÍ"),
+    raw: clean,
+    cycleInfo,
+  };
+}
+
 const assigneeLabel = (a: string) => {
   const l = (a || "").toLowerCase();
   if (l === "hanka" || l === "hanička") return "Hanka";
@@ -49,7 +88,29 @@ const assigneeLabel = (a: string) => {
   return "Obě";
 };
 
+// ── Section renderer for 05A parsed text ──────────────────────
+function Section05A({ icon, title, content, color }: { icon: string; title: string; content: string; color?: string }) {
+  if (!content || content === "(žádné aktivní úkoly)" || content === "(žádná plánovaná sezení)") return null;
+
+  return (
+    <div className="space-y-1">
+      <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "#2D2D2D" }}>
+        {icon} {title}
+      </h3>
+      <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1" style={{ color: "#4A4A4A" }}>
+        {content}
+      </div>
+      <hr className="border-gray-100 mt-2" />
+    </div>
+  );
+}
+
 const KarelDailyPlan = ({ refreshTrigger }: Props) => {
+  // 05A state
+  const [plan05A, setPlan05A] = useState<Parsed05A | null>(null);
+  const [source, setSource] = useState<"05A" | "db" | "loading">("loading");
+
+  // DB fallback state
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [crisisDays, setCrisisDays] = useState<number | null>(null);
   const [crisisJournal, setCrisisJournal] = useState<CrisisJournalEntry | null>(null);
@@ -61,6 +122,34 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
 
   const load = useCallback(async () => {
     try {
+      // ── Try 05A from Drive first ──
+      try {
+        const { data: fnData, error: fnError } = await supabase.functions.invoke(
+          "karel-did-drive-read",
+          {
+            body: {
+              documents: ["05A_OPERATIVNI_PLAN"],
+              subFolder: "00_CENTRUM",
+            },
+          }
+        );
+
+        if (!fnError && fnData?.documents?.["05A_OPERATIVNI_PLAN"]) {
+          const raw = fnData.documents["05A_OPERATIVNI_PLAN"] as string;
+          if (raw.length > 50 && !raw.startsWith("[Dokument")) {
+            const parsed = parse05A(raw);
+            setPlan05A(parsed);
+            setSource("05A");
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (driveErr) {
+        console.warn("[KarelDailyPlan] 05A Drive read failed, falling back to DB:", driveErr);
+      }
+
+      // ── DB fallback (existing logic) ──
+      setSource("db");
       const today = new Date().toISOString().slice(0, 10);
 
       const [tasksRes, questionsRes, sessionsRes, commitmentsRes, crisisRes] = await Promise.all([
@@ -137,6 +226,38 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     );
   }
 
+  const todayFormatted = new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" });
+
+  // ═══ 05A-driven view ═══
+  if (source === "05A" && plan05A) {
+    return (
+      <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[20px] font-semibold" style={{ color: "#2D2D2D" }}>
+            📋 Operativní plán — {todayFormatted}
+          </h2>
+          <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#E8F5E9", color: "#2E7D32" }}>
+            z kartotéky
+          </span>
+        </div>
+        {plan05A.cycleInfo && (
+          <p className="text-[12px] opacity-50" style={{ color: "#4A4A4A" }}>
+            {plan05A.cycleInfo}
+          </p>
+        )}
+
+        <Section05A icon="🔴" title="Krizový kontext" content={plan05A.crisisContext} color="#7C2D2D" />
+        <Section05A icon="🎯" title="Plánovaná sezení" content={plan05A.sessions} />
+        <Section05A icon="📝" title="Úkoly" content={plan05A.tasks} />
+        <Section05A icon="❓" title="Otevřené otázky" content={plan05A.questions} />
+        <Section05A icon="⚠️" title="Urgentní follow-up" content={plan05A.urgentFollowUp} color="#B45309" />
+        <Section05A icon="🧠" title="Karlův přehled" content={plan05A.karelOverview} />
+        <Section05A icon="👥" title="Přehled částí" content={plan05A.partsOverview} />
+      </div>
+    );
+  }
+
+  // ═══ DB fallback view (original) ═══
   const hasAnything = crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
   if (!hasAnything) return null;
 
@@ -145,13 +266,16 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     return daysOverdue > 0;
   });
 
-  const todayFormatted = new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" });
-
   return (
     <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-5">
-      <h2 className="text-[20px] font-semibold" style={{ color: "#2D2D2D" }}>
-        📋 Karlův denní plán — {todayFormatted}
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-[20px] font-semibold" style={{ color: "#2D2D2D" }}>
+          📋 Karlův denní plán — {todayFormatted}
+        </h2>
+        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#FFF3E0", color: "#E65100" }}>
+          z databáze
+        </span>
+      </div>
 
       {/* Crisis */}
       {crisisPartName && (
