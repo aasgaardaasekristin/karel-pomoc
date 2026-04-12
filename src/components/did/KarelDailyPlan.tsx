@@ -104,6 +104,7 @@ function Section05A({ icon, title, content, color }: { icon: string; title: stri
       <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "hsl(var(--foreground))" }}>
         {icon} {title}
         {hasUrgent && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">vyžaduje akci</span>}
+        {hasRecovery && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: "#D4E6F1", color: "#1565C0" }}>aktivní obnova</span>}
       </h3>
       <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1" style={{ color: "hsl(var(--muted-foreground))" }}>
         {content}
