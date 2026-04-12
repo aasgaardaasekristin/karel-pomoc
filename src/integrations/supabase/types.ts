@@ -1818,34 +1818,54 @@ export type Database = {
         Row: {
           content_written: string
           created_at: string
+          crisis_event_id: string | null
           error_message: string | null
           id: string
           source_id: string
           source_type: string
+          status: string | null
           success: boolean | null
+          sync_type: string | null
           target_document: string
+          user_id: string | null
         }
         Insert: {
           content_written: string
           created_at?: string
+          crisis_event_id?: string | null
           error_message?: string | null
           id?: string
           source_id: string
           source_type: string
+          status?: string | null
           success?: boolean | null
+          sync_type?: string | null
           target_document: string
+          user_id?: string | null
         }
         Update: {
           content_written?: string
           created_at?: string
+          crisis_event_id?: string | null
           error_message?: string | null
           id?: string
           source_id?: string
           source_type?: string
+          status?: string | null
           success?: boolean | null
+          sync_type?: string | null
           target_document?: string
+          user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "did_doc_sync_log_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_implications: {
         Row: {
