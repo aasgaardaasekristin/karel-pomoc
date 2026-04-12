@@ -140,6 +140,12 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                       </KarelBadge>
                     </>
                   )}
+                  {q.crisis_event_id && (
+                    <>
+                      <span>•</span>
+                      <KarelBadge variant="warning" size="sm">krize</KarelBadge>
+                    </>
+                  )}
                 </div>
                 {isExpired && (
                   <KarelBadge variant="default" size="sm">Expirováno</KarelBadge>
