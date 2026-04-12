@@ -990,6 +990,61 @@ function build05AContent(
     lines.push(``);
   }
 
+  // --- 8. REŽIM OBNOVY ŘÍZENÍ (recovery plans) ---
+  if (recoveryPlans.length > 0) {
+    lines.push(`━━━ 8. REŽIM OBNOVY ŘÍZENÍ ━━━`);
+    lines.push(`🔄 Karel aktivně řeší díry v datech pro ${recoveryPlans.length} částí:`);
+    lines.push(``);
+    for (const rp of recoveryPlans) {
+      lines.push(`── ${rp.partName} ──`);
+      lines.push(`DŮVOD: ${rp.reason}`);
+      lines.push(``);
+      lines.push(`1️⃣ POŽADAVEK NA UPDATE:`);
+      lines.push(`   KDO: ${rp.updateRequest.who}`);
+      lines.push(`   CO: ${rp.updateRequest.what}`);
+      lines.push(`   VÝSLEDEK PRO KARLA: ${rp.updateRequest.returnTo}`);
+      if (rp.sessionProposal) {
+        lines.push(``);
+        lines.push(`2️⃣ NAVRŽENÉ SEZENÍ:`);
+        lines.push(`   FORMÁT: ${rp.sessionProposal.format}`);
+        lines.push(`   VEDE: ${rp.sessionProposal.lead}`);
+        lines.push(`   CÍL: ${rp.sessionProposal.goal}`);
+        lines.push(`   OTÁZKY:`);
+        for (const q of rp.sessionProposal.openingQuestions) {
+          lines.push(`     • "${q}"`);
+        }
+        lines.push(`   OČEKÁVANÝ VÝSTUP: ${rp.sessionProposal.expectedOutcome}`);
+      }
+      if (rp.karelConversation) {
+        lines.push(``);
+        lines.push(`3️⃣ KAREL PROVEDE ROZHOVOR:`);
+        lines.push(`   KANÁL: ${rp.karelConversation.channel}`);
+        lines.push(`   CÍL: ${rp.karelConversation.goal}`);
+        lines.push(`   OTÁZKY:`);
+        for (const q of rp.karelConversation.questions) {
+          lines.push(`     • "${q}"`);
+        }
+      }
+      lines.push(``);
+    }
+  }
+
+  // Update briefing with recovery info
+  if (recoveryPlans.length > 0) {
+    // Find the briefing section and append recovery summary
+    const recoveryIdx = lines.findIndex(l => l.includes("KARLŮV PŘEHLED"));
+    if (recoveryIdx >= 0) {
+      const insertAt = lines.findIndex((l, i) => i > recoveryIdx && l.startsWith("━━━"));
+      const recoveryBrief = [
+        `🔄 RECOVERY: Karel aktivně řeší ${recoveryPlans.length} dír v datech`,
+        ...recoveryPlans.map(rp => `  → ${rp.partName}: ${rp.updateRequest.who} dodá update, ${rp.sessionProposal ? "navrženo sezení" : "check-in"}`),
+      ];
+      if (insertAt > 0) {
+        lines.splice(insertAt, 0, ...recoveryBrief, ``);
+      }
+    }
+  }
+
   return lines.join("\n");
 }
 
