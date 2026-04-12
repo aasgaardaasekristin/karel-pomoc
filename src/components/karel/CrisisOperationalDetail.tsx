@@ -1,7 +1,8 @@
-import React, { useState } from "react";
-import { Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target } from "lucide-react";
+import React from "react";
+import { Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target, Zap, ShieldAlert, ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 
 interface Props {
@@ -24,17 +25,7 @@ const TREND_LABELS: Record<string, { emoji: string; label: string }> = {
   unknown: { emoji: "❓", label: "Bez dat" },
 };
 
-const DECISION_LABELS: Record<string, string> = {
-  crisis_continues: "Krize trvá",
-  crisis_improving: "Zlepšení",
-  crisis_resolved: "Vyřešeno",
-  needs_more_data: "Potřeba dat",
-};
-
 const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
-  const [resolveNotes, setResolveNotes] = useState("");
-  const [showResolveInput, setShowResolveInput] = useState(false);
-
   const trend = TREND_LABELS[card.trend48h] || TREND_LABELS.unknown;
   const riskClass = RISK_COLORS[card.lastAssessmentRisk || ""] || "bg-muted text-foreground";
 
@@ -50,16 +41,20 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
     onRefetch();
   };
 
-  const handleResolve = async () => {
-    if (!card.alertId || !resolveNotes.trim()) return;
-    await supabase.from("crisis_alerts").update({
-      status: "RESOLVED",
-      resolved_at: new Date().toISOString(),
-      resolution_notes: resolveNotes,
-    }).eq("id", card.alertId);
-    setResolveNotes("");
-    setShowResolveInput(false);
-    onRefetch();
+  const handleProposeClosure = async () => {
+    if (!card.alertId) return;
+    try {
+      // Write both karel_recommends_closure AND recommendation text
+      await supabase.from("crisis_closure_checklist").upsert({
+        crisis_alert_id: card.alertId,
+        karel_recommends_closure: true,
+        karel_closure_recommendation: "Karel navrhuje uzavření krize — klinická kritéria splněna",
+      } as any, { onConflict: "crisis_alert_id" });
+      toast.success("Návrh na uzavření odeslán — čeká na souhlas obou terapeutek");
+      onRefetch();
+    } catch {
+      toast.error("Nepodařilo se odeslat návrh na uzavření");
+    }
   };
 
   const handleToggleTask = async (taskId: string, currentStatus: string) => {
@@ -73,6 +68,19 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
 
   const closurePercent = Math.round(card.closureReadiness * 100);
   const cl = card.closureChecklistState;
+
+  // Compute what's still missing for closure
+  const missingItems: string[] = [];
+  if (!cl.karelDiagnosticDone) missingItems.push("Diagnostické sezení");
+  if (!cl.noRiskSignals) missingItems.push("Bez rizikových signálů");
+  if (cl.emotionalStableDays < 3) missingItems.push(`Emoční stabilita (${cl.emotionalStableDays}/3 dnů)`);
+  if (!cl.groundingWorks) missingItems.push("Grounding funguje");
+  if (!cl.triggerManaged) missingItems.push("Trigger zvládnut");
+  if (!cl.noOpenQuestions) missingItems.push("Otevřené otázky");
+  if (!cl.relapsePlanExists) missingItems.push("Plán relapsu");
+  if (!cl.hankaAgrees) missingItems.push("Souhlas Haničky");
+  if (!cl.kataAgrees) missingItems.push("Souhlas Káti");
+  if (!cl.karelRecommendsClosure) missingItems.push("Karlovo doporučení");
 
   return (
     <div className="border-x border-b rounded-b-lg mx-2 mb-1 bg-background shadow-lg" style={{ borderColor: "#7C2D2D30" }}>
@@ -113,16 +121,81 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
           </div>
         )}
 
-        {/* ── Karel vyžaduje ── */}
+        {/* ── Trigger info ── */}
+        {card.triggerDescription && (
+          <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+            <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <ShieldAlert className="w-3.5 h-3.5" />
+              Trigger
+            </p>
+            <p className="text-xs text-foreground">{card.triggerDescription}</p>
+            {card.triggerActive !== null && (
+              <p className="text-[10px] text-muted-foreground">
+                {card.triggerActive ? "⚠ Trigger stále aktivní" : "✅ Trigger zvládnut"}
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── Last intervention ── */}
+        {card.lastInterventionType && (
+          <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+            <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Zap className="w-3.5 h-3.5" />
+              Poslední intervence
+            </p>
+            <p className="text-xs text-foreground">
+              Typ: {card.lastInterventionType}
+              {card.lastInterventionWorked === true && " — ✅ fungovala"}
+              {card.lastInterventionWorked === false && " — ❌ nefungovala"}
+            </p>
+          </div>
+        )}
+
+        {/* ── 24h change / last entry ── */}
+        {card.lastEntrySummary && (
+          <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+            <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5" />
+              Co se změnilo za 24h
+            </p>
+            <p className="text-xs text-foreground">{card.lastEntrySummary}</p>
+            {card.lastEntryBy && (
+              <p className="text-[10px] text-muted-foreground">Zapsala: {card.lastEntryBy}</p>
+            )}
+          </div>
+        )}
+
+        {/* ── Karel's next step ── */}
         {card.karelRequires.length > 0 && (
           <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
             <p className="text-xs font-bold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5" />
-              Karel vyžaduje ({card.karelRequires.length})
+              Karlův další krok
             </p>
-            <ul className="text-xs text-blue-700 dark:text-blue-400 mt-1.5 space-y-1 list-disc list-inside">
-              {card.karelRequires.map((r, i) => (
-                <li key={i}>{r}</li>
+            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+              {card.karelRequires[0]}
+            </p>
+            {card.karelRequires.length > 1 && (
+              <ul className="text-xs text-blue-700 dark:text-blue-400 mt-1.5 space-y-1 list-disc list-inside">
+                {card.karelRequires.slice(1).map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ── Missing for closure ── */}
+        {missingItems.length > 0 && missingItems.length < 10 && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+            <p className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+              <ArrowRight className="w-3.5 h-3.5" />
+              Co chybí k uzavření ({missingItems.length})
+            </p>
+            <ul className="text-xs text-amber-700 dark:text-amber-400 mt-1 space-y-0.5 list-disc list-inside">
+              {missingItems.map((item, i) => (
+                <li key={i}>{item}</li>
               ))}
             </ul>
           </div>
@@ -174,7 +247,7 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
           </div>
         )}
 
-        {/* ── Closure readiness ── */}
+        {/* ── Closure readiness (10 items) ── */}
         <div>
           <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
             <CheckCircle className="w-3.5 h-3.5" />
@@ -184,10 +257,15 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
           <div className="grid grid-cols-2 gap-1.5 text-[11px]">
             {[
               { label: "Diagnostické sezení", done: cl.karelDiagnosticDone },
-              { label: "Hanička souhlasí", done: cl.hankaAgrees },
-              { label: "Káťa souhlasí", done: cl.kataAgrees },
               { label: "Bez rizikových signálů", done: cl.noRiskSignals },
               { label: `Emoční stabilita ≥ 3d (${cl.emotionalStableDays}d)`, done: cl.emotionalStableDays >= 3 },
+              { label: "Grounding funguje", done: cl.groundingWorks },
+              { label: "Trigger zvládnut", done: cl.triggerManaged },
+              { label: "Bez otevřených otázek", done: cl.noOpenQuestions },
+              { label: "Plán relapsu existuje", done: cl.relapsePlanExists },
+              { label: "Hanička souhlasí", done: cl.hankaAgrees },
+              { label: "Káťa souhlasí", done: cl.kataAgrees },
+              { label: "Karel doporučuje uzavření", done: cl.karelRecommendsClosure },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 {item.done ? (
@@ -215,9 +293,9 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
               Vzít na vědomí
             </button>
           )}
-          {!showResolveInput && card.canStartClosing && (
+          {card.canProposeClosing && !cl.karelRecommendsClosure && (
             <button
-              onClick={() => setShowResolveInput(true)}
+              onClick={handleProposeClosure}
               className="text-xs px-3 py-1.5 rounded-md bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50 text-green-800 dark:text-green-300 flex items-center gap-1.5 transition-colors"
             >
               <CheckCircle className="w-3 h-3" />
@@ -225,33 +303,6 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
             </button>
           )}
         </div>
-
-        {/* ── Resolve input ── */}
-        {showResolveInput && (
-          <div className="space-y-2 pt-2 border-t">
-            <textarea
-              value={resolveNotes}
-              onChange={e => setResolveNotes(e.target.value)}
-              placeholder="Popište jak byla krize vyřešena..."
-              className="w-full border rounded-lg p-3 text-xs min-h-[60px] bg-background text-foreground"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleResolve}
-                disabled={!resolveNotes.trim()}
-                className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold py-1.5 px-3 rounded-lg text-xs transition-colors"
-              >
-                Potvrdit uzavření
-              </button>
-              <button
-                onClick={() => setShowResolveInput(false)}
-                className="px-3 py-1.5 border rounded-lg text-xs text-muted-foreground hover:bg-muted transition-colors"
-              >
-                Zrušit
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

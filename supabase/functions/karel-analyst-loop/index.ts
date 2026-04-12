@@ -1830,24 +1830,62 @@ serve(async (req) => {
           }
         }
 
-        // Check closure readiness
+        // Check closure readiness — 10-item model
+        // Crisis state model: ACTIVE → INTERVENED → STABILIZING → READY_TO_CLOSE → RESOLVED → MONITORING_POST → CLOSED
+        // Analyst-loop may only PROPOSE READY_TO_CLOSE — never directly set RESOLVED
         const checklist = (closureChecklists || []).find((c: any) => c.crisis_alert_id === alertId);
         const event = (crisisEvents || []).find((e: any) => e.part_name?.toUpperCase() === partName.toUpperCase());
 
         if (checklist && event) {
           const allIndicatorsAbove5 = [event.indicator_safety, event.indicator_coherence, event.indicator_emotional_regulation, event.indicator_trust, event.indicator_time_orientation]
             .every((v: number | null) => v !== null && v > 5);
-          const closureItems = [checklist.karel_diagnostic_done, checklist.hanka_agrees, checklist.kata_agrees, checklist.no_risk_signals, (checklist.emotional_stable_days || 0) >= 3];
+
+          // Expanded 10-item closure readiness
+          const closureItems = [
+            checklist.karel_diagnostic_done,
+            checklist.hanka_agrees,
+            checklist.kata_agrees,
+            checklist.no_risk_signals,
+            (checklist.emotional_stable_days || 0) >= 3,
+            checklist.grounding_works ?? false,
+            checklist.trigger_managed ?? false,
+            checklist.no_open_questions ?? false,
+            checklist.relapse_plan_exists ?? false,
+            checklist.karel_recommends_closure ?? false,
+          ];
           const readiness = closureItems.filter(Boolean).length / closureItems.length;
 
-          if (readiness >= 0.8 && allIndicatorsAbove5 && latest?.karel_decision !== "crisis_continues") {
-            // Propose READY_TO_CLOSE
+          // Clinical proposal conditions (without therapist approvals)
+          const clinicalReady =
+            checklist.karel_diagnostic_done &&
+            checklist.no_risk_signals &&
+            (checklist.emotional_stable_days || 0) >= 3 &&
+            (checklist.grounding_works ?? false) &&
+            (checklist.trigger_managed ?? false) &&
+            (checklist.no_open_questions ?? false) &&
+            (checklist.relapse_plan_exists ?? false);
+
+          // Full readiness includes therapist approvals + Karel recommendation
+          const fullReady = clinicalReady &&
+            checklist.hanka_agrees &&
+            checklist.kata_agrees &&
+            (checklist.karel_recommends_closure ?? false);
+
+          if (fullReady && allIndicatorsAbove5 && latest?.karel_decision !== "crisis_continues") {
+            // Propose READY_TO_CLOSE — this is a proposal, not a resolution
             await sb.from("system_health_log").insert({
               event_type: "crisis_closure_ready",
               severity: "info",
-              message: `✅ READY_TO_CLOSE: ${partName} — closure readiness ${Math.round(readiness * 100)}%, všechny indikátory > 5`,
+              message: `✅ READY_TO_CLOSE: ${partName} — closure readiness ${Math.round(readiness * 100)}%, všechny klinické + procesní podmínky splněny`,
             });
             closureProposals++;
+          } else if (clinicalReady && allIndicatorsAbove5 && !checklist.karel_recommends_closure) {
+            // Clinical conditions met but Karel hasn't recommended yet — log it
+            await sb.from("system_health_log").insert({
+              event_type: "crisis_closure_proposal_pending",
+              severity: "info",
+              message: `📋 ${partName} — klinické podmínky splněny, čeká na Karlovo doporučení a souhlas terapeutek`,
+            });
           }
         }
       } catch (assessErr) {

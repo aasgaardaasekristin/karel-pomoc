@@ -729,13 +729,18 @@ export type Database = {
           decided_at: string | null
           emotional_stable_days: number | null
           final_decision: string | null
+          grounding_works: boolean | null
           hanka_agrees: boolean | null
           id: string
           karel_closure_recommendation: string | null
           karel_diagnostic_date: string | null
           karel_diagnostic_done: boolean | null
+          karel_recommends_closure: boolean | null
           kata_agrees: boolean | null
+          no_open_questions: boolean | null
           no_risk_signals: boolean | null
+          relapse_plan_exists: boolean | null
+          trigger_managed: boolean | null
         }
         Insert: {
           created_at?: string | null
@@ -743,13 +748,18 @@ export type Database = {
           decided_at?: string | null
           emotional_stable_days?: number | null
           final_decision?: string | null
+          grounding_works?: boolean | null
           hanka_agrees?: boolean | null
           id?: string
           karel_closure_recommendation?: string | null
           karel_diagnostic_date?: string | null
           karel_diagnostic_done?: boolean | null
+          karel_recommends_closure?: boolean | null
           kata_agrees?: boolean | null
+          no_open_questions?: boolean | null
           no_risk_signals?: boolean | null
+          relapse_plan_exists?: boolean | null
+          trigger_managed?: boolean | null
         }
         Update: {
           created_at?: string | null
@@ -757,13 +767,18 @@ export type Database = {
           decided_at?: string | null
           emotional_stable_days?: number | null
           final_decision?: string | null
+          grounding_works?: boolean | null
           hanka_agrees?: boolean | null
           id?: string
           karel_closure_recommendation?: string | null
           karel_diagnostic_date?: string | null
           karel_diagnostic_done?: boolean | null
+          karel_recommends_closure?: boolean | null
           kata_agrees?: boolean | null
+          no_open_questions?: boolean | null
           no_risk_signals?: boolean | null
+          relapse_plan_exists?: boolean | null
+          trigger_managed?: boolean | null
         }
         Relationships: [
           {
