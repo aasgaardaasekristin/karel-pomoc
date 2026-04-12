@@ -332,8 +332,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </div>
         )}
 
-        {/* ═══ 2. CRISIS DETAIL (collapsible) ═══ */}
-        {activeCrises.length > 0 && (
+        {/* ═══ 2. CRISIS DETAIL (collapsible) — from shared hook ═══ */}
+        {crisisCards.length > 0 && (
           <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
             <button
               onClick={() => setShowCrisisDetail(!showCrisisDetail)}
@@ -342,7 +342,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4" style={{ color: "#7C2D2D" }} />
                 <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                  Aktivní krize ({activeCrises.length})
+                  Aktivní krize ({crisisCards.length})
                 </span>
               </div>
               <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
@@ -352,46 +352,47 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
             {showCrisisDetail && (
               <div className="mt-3 space-y-3">
-                {activeCrises.map((c: any) => (
-                  <div key={c.id} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
+                {crisisCards.map((card) => (
+                  <div key={card.eventId || card.alertId || card.partName} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
                     <div className="flex items-center justify-between">
                       <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                        {cleanDisplayName(c.part_name)} ({c.severity})
+                        {card.displayName} ({card.severity})
                       </span>
                       <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-                        {c.days_in_crisis ? `den ${c.days_in_crisis}` : c.status}
+                        {card.currentSummary}
                       </span>
                     </div>
-                    <p className="text-[14px] line-clamp-2" style={{ color: "#4A4A4A" }}>{c.summary}</p>
+
+                    {/* Karel requires */}
+                    {card.karelRequires.length > 0 && (
+                      <div className="text-[12px] text-blue-700 dark:text-blue-400">
+                        <span className="font-semibold">Karel vyžaduje:</span>{" "}
+                        {card.karelRequires.slice(0, 2).join(" · ")}
+                        {card.karelRequires.length > 2 && ` (+${card.karelRequires.length - 2})`}
+                      </div>
+                    )}
+
                     <div className="flex gap-2 flex-wrap">
                       <button
-                        onClick={() => navigate(c.conversation_id ? `/chat?meeting=${c.conversation_id}` : `/chat?sub=meeting`)}
+                        onClick={() => navigate(card.conversationId ? `/chat?meeting=${card.conversationId}` : `/chat?sub=meeting`)}
                         className="text-[12px] text-white px-3 py-1 rounded-md font-medium"
                         style={{ backgroundColor: "#7C2D2D" }}
                       >
                         Krizová porada
                       </button>
-                      {c.crisis_thread_id && (
-                        <button
-                          onClick={() => navigate(`/chat?sub=cast&part=${encodeURIComponent(c.part_name)}`)}
-                          className="text-[12px] px-3 py-1 rounded-md font-medium border"
-                          style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
-                        >
-                          Otevřít vlákno
-                        </button>
-                      )}
                     </div>
-                    <details className="text-[12px]">
-                      <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
-                      <div className="mt-2">
-                        <CrisisTimeline
-                          crisisAlertId={c.id}
-                          partName={c.part_name}
-                          onRunAssessment={() => runCrisisAssessment(c.id)}
-                          isAssessing={assessingCrisisId === c.id}
-                        />
-                      </div>
-                    </details>
+
+                    {card.alertId && (
+                      <details className="text-[12px]">
+                        <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
+                        <div className="mt-2">
+                          <CrisisTimeline
+                            crisisAlertId={card.alertId}
+                            partName={card.partName}
+                          />
+                        </div>
+                      </details>
+                    )}
                   </div>
                 ))}
               </div>
