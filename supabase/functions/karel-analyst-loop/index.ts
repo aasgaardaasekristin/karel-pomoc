@@ -438,6 +438,140 @@ function resolveSessionLead(s: any): string {
   return raw;
 }
 
+// ── Helper: Staleness thresholds ──────────────────────────────
+const STALE_CRISIS_HOURS = 24;
+const STALE_TASK_DAYS = 2;
+const STALE_QUESTION_DAYS = 3;
+const STALE_SESSION_DAYS = 5;
+const STALE_CONTACT_DAYS = 3;
+
+interface StaleItem {
+  type: "crisis" | "task" | "question" | "session" | "contact";
+  entity: string;
+  detail: string;
+  action: string;
+  who: string;
+  deadline: string;
+  why: string;
+}
+
+// ── Helper: Detect stale state across all entities ────────────
+function detectStaleState(
+  activeCrises: any[],
+  pendingTasks: any[],
+  pendingQuestions: any[],
+  sessionPlans: any[],
+  activePartsRegistry: any[],
+  recentThreadParts: Set<string>,
+  todayDate: string,
+): StaleItem[] {
+  const stale: StaleItem[] = [];
+  const nowMs = Date.now();
+
+  // 1. Crises without fresh update
+  for (const c of activeCrises) {
+    const updatedAt = c.updated_at || c.created_at || "";
+    const hoursSinceUpdate = updatedAt ? (nowMs - new Date(updatedAt).getTime()) / 3_600_000 : 999;
+    if (hoursSinceUpdate > STALE_CRISIS_HOURS) {
+      stale.push({
+        type: "crisis",
+        entity: c.part_name,
+        detail: `Krize den ${c.days_in_crisis || "?"}, poslední update ${Math.floor(hoursSinceUpdate)}h zpět`,
+        action: "Dodat čerstvé pozorování a výsledek posledního zásahu",
+        who: "hanka",
+        deadline: todayDate,
+        why: `Krizová informace starší ${Math.floor(hoursSinceUpdate)}h — nelze řídit bez aktuálních dat`,
+      });
+    }
+  }
+
+  // 2. Tasks overdue or without update
+  for (const t of pendingTasks) {
+    if (!t.due_date) continue;
+    const daysOverdue = Math.floor((nowMs - new Date(t.due_date).getTime()) / 86_400_000);
+    if (daysOverdue > STALE_TASK_DAYS) {
+      stale.push({
+        type: "task",
+        entity: (t.task || "").slice(0, 80),
+        detail: `${daysOverdue} dní po termínu, status: ${t.status}`,
+        action: "Splnit, delegovat nebo uzavřít s vysvětlením",
+        who: t.assigned_to || "hanka",
+        deadline: todayDate,
+        why: `Úkol visí ${daysOverdue} dní bez update`,
+      });
+    }
+  }
+
+  // 3. Questions without answer
+  for (const q of pendingQuestions) {
+    const createdAt = q.created_at || "";
+    const daysSinceCreated = createdAt ? Math.floor((nowMs - new Date(createdAt).getTime()) / 86_400_000) : 0;
+    if (daysSinceCreated > STALE_QUESTION_DAYS) {
+      stale.push({
+        type: "question",
+        entity: (q.question || "").slice(0, 80),
+        detail: `Bez odpovědi ${daysSinceCreated} dní`,
+        action: "Odpovědět nebo označit jako neaktuální",
+        who: q.directed_to === "kata" ? "kata" : "hanka",
+        deadline: new Date(nowMs + 86_400_000).toISOString().slice(0, 10),
+        why: `Otevřená otázka blokuje rozhodování`,
+      });
+    }
+  }
+
+  // 4. Planned sessions past date without completion
+  for (const s of sessionPlans) {
+    if (!s.plan_date) continue;
+    const daysPast = Math.floor((nowMs - new Date(s.plan_date).getTime()) / 86_400_000);
+    if (daysPast > 0 && ["pending", "planned"].includes(s.status)) {
+      stale.push({
+        type: "session",
+        entity: s.selected_part,
+        detail: `Plánované sezení ${daysPast} dní po termínu, stále "${s.status}"`,
+        action: "Provést sezení nebo přeplánovat s novým datem",
+        who: s.therapist === "kata" ? "kata" : "hanka",
+        deadline: todayDate,
+        why: `Sezení neproběhlo — část může stagnovat nebo se zhoršovat`,
+      });
+    }
+  }
+
+  // 5. Active/crisis parts without recent contact
+  for (const p of activePartsRegistry) {
+    if (!["active", "crisis", "stabilizing"].includes(p.status)) continue;
+    const partName = p.part_name || "";
+    if (recentThreadParts.has(partName.toLowerCase())) continue;
+    stale.push({
+      type: "contact",
+      entity: partName,
+      detail: `Aktivní část bez čerstvého kontaktu (${STALE_CONTACT_DAYS}+ dní)`,
+      action: `Naplánovat sezení nebo alespoň krátký check-in`,
+      who: "hanka",
+      deadline: new Date(nowMs + 2 * 86_400_000).toISOString().slice(0, 10),
+      why: `Část v ${p.status} zóně potřebuje kontinuální pozornost`,
+    });
+  }
+
+  return stale;
+}
+
+// ── Helper: Classify task status ──────────────────────────────
+function classifyTaskStatus(t: any, todayDate: string): string {
+  const nowMs = Date.now();
+  if (t.status === "pending" && t.created_at) {
+    const ageHours = (nowMs - new Date(t.created_at).getTime()) / 3_600_000;
+    if (ageHours < 24) return "🆕 nový";
+  }
+  if (t.status === "in_progress") return "🔄 rozpracovaný";
+  if (t.status === "active") return "▶️ aktivní";
+  if (t.due_date) {
+    const daysOverdue = Math.floor((nowMs - new Date(t.due_date).getTime()) / 86_400_000);
+    if (daysOverdue > 0) return `🔴 ${daysOverdue}d po termínu`;
+  }
+  if (t.priority === "blocked") return "🚫 blokovaný";
+  return "⏳ čeká";
+}
+
 // ── Helper: Build 05A_OPERATIVNI_PLAN content ─────────────────
 function build05AContent(
   todayDate: string,
@@ -448,23 +582,46 @@ function build05AContent(
   sessionPlans: any[],
   pendingQuestions: any[],
   commitments: any[],
+  activePartsRegistry: any[],
+  recentThreadParts: Set<string>,
 ): string {
   const lines: string[] = [];
   const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
 
   lines.push(`═══ OPERATIVNÍ PLÁN 05A ═══`);
   lines.push(`Datum: ${todayDate} | Cyklus: ${cycleTime === "morning" ? "ranní" : "odpolední"} | Aktualizace: ${timeStr}`);
-  lines.push(`Generováno: Karel (analyst-loop)`);
+  lines.push(`Generováno: Karel (analyst-loop v3 — active command)`);
   lines.push(``);
 
-  // --- 1. KRIZOVÝ KONTEXT (operational, not narrative) ---
+  // ── STALE STATE DETECTION ──
+  const staleItems = detectStaleState(
+    activeCrises, pendingTasks, pendingQuestions, sessionPlans,
+    activePartsRegistry || [], recentThreadParts, todayDate,
+  );
+
+  // --- 1. KRIZOVÝ KONTEXT (active management, not narrative) ---
   lines.push(`━━━ 1. KRIZOVÝ KONTEXT ━━━`);
   if (activeCrises.length > 0) {
     for (const c of activeCrises) {
+      const updatedAt = c.updated_at || c.created_at || "";
+      const hoursSince = updatedAt ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 3_600_000) : 0;
       lines.push(`🔴 ${c.part_name} | ${c.severity || "?"} | den ${c.days_in_crisis || "?"} | status: ${c.status}`);
-      // Only today-relevant action, not historical summary
-      if (c.intervention_plan) {
+      if (hoursSince > STALE_CRISIS_HOURS) {
+        lines.push(`   ⚠️ ZASTARALÉ — poslední update ${hoursSince}h zpět`);
+        lines.push(`   → POŽADAVEK: Hanička dodá aktuální pozorování DNES`);
+        lines.push(`   → POŽADAVEK: Výsledek posledního zásahu — co se stalo?`);
+      } else if (c.intervention_plan) {
         lines.push(`   Dnešní plán: ${(c.intervention_plan as string).slice(0, 150)}`);
+      }
+      // Check if planned session happened
+      const crisisSession = sessionPlans.find((s: any) =>
+        (s.selected_part || "").toLowerCase() === (c.part_name || "").toLowerCase()
+      );
+      if (crisisSession && ["pending", "planned"].includes(crisisSession.status)) {
+        const daysPast = Math.floor((Date.now() - new Date(crisisSession.plan_date || todayDate).getTime()) / 86_400_000);
+        if (daysPast > 0) {
+          lines.push(`   🔴 Plánované sezení NEPROBĚHLO (${daysPast}d po termínu) → okamžitě přeplánovat`);
+        }
       }
     }
   } else {
@@ -472,39 +629,33 @@ function build05AContent(
   }
   lines.push(``);
 
-  // --- 2. PLÁNOVANÁ SEZENÍ (deduplicated, resolved leads) ---
+  // --- 2. PLÁNOVANÁ SEZENÍ (with overdue detection) ---
   lines.push(`━━━ 2. PLÁNOVANÁ SEZENÍ ━━━`);
   const uniqueSessions = deduplicateSessions(sessionPlans);
   if (uniqueSessions.length > 0) {
     for (const s of uniqueSessions) {
       const lead = resolveSessionLead(s);
+      const daysPast = s.plan_date ? Math.floor((Date.now() - new Date(s.plan_date).getTime()) / 86_400_000) : 0;
+      const statusTag = daysPast > 0 && ["pending", "planned"].includes(s.status)
+        ? `🔴 PO TERMÍNU (${daysPast}d)` : s.status;
       lines.push(`▸ ${s.selected_part}`);
-      lines.push(`  Vede: ${lead} | Formát: ${s.session_format || "?"} | Urgence: ${s.urgency_score ?? "?"}`);
+      lines.push(`  Vede: ${lead} | Formát: ${s.session_format || "?"} | Urgence: ${s.urgency_score ?? "?"} | Status: ${statusTag}`);
       const md = (s.plan_markdown || "") as string;
       const goalMatch = md.match(/##\s*Cíl\s*\n([^\n#]+)/);
       if (goalMatch) lines.push(`  Cíl: ${goalMatch[1].trim().slice(0, 200)}`);
-      const methodMatch = md.match(/##\s*Metoda\s*\n([^\n#]+)/);
-      if (methodMatch) lines.push(`  Metoda: ${methodMatch[1].trim().slice(0, 200)}`);
-      lines.push(`  Status: ${s.status}`);
+      if (daysPast > 0 && ["pending", "planned"].includes(s.status)) {
+        lines.push(`  → AKCE: Provést DNES nebo přeplánovat s novým termínem`);
+      }
     }
   } else {
-    // Fallback: use AI session recommendations from analysisJson
-    const parts = Array.isArray(analysisJson?.parts) ? (analysisJson!.parts as any[]) : [];
-    const recommended = parts.filter((p: any) => p.session_recommendation?.needed);
-    if (recommended.length > 0) {
-      lines.push(`(Z AI doporučení — žádné formální plány v DB)`);
-      // Deduplicate AI recommendations too
-      const seenNames = new Set<string>();
-      for (const p of recommended) {
-        const key = (p.name || "").toLowerCase().trim();
-        if (seenNames.has(key)) continue;
-        seenNames.add(key);
-        const rec = p.session_recommendation;
-        const lead = rec.who_leads === "both" || rec.who_leads === "Obe" || !rec.who_leads
-          ? "⚠️ nutno rozhodnout" : rec.who_leads;
-        lines.push(`▸ ${p.name}`);
-        lines.push(`  Vede: ${lead} | Priorita: ${rec.priority || "?"}`);
-        if (rec.goals?.length) lines.push(`  Cíle: ${rec.goals.join("; ")}`);
+    // Check if active parts need sessions
+    const activeWithoutSession = (activePartsRegistry || []).filter((p: any) =>
+      ["active", "crisis"].includes(p.status) && !recentThreadParts.has((p.part_name || "").toLowerCase())
+    );
+    if (activeWithoutSession.length > 0) {
+      lines.push(`⚠️ Části bez plánovaného sezení a bez čerstvého kontaktu:`);
+      for (const p of activeWithoutSession) {
+        lines.push(`  → ${p.part_name} (${p.status}) — NAPLÁNOVAT sezení`);
       }
     } else {
       lines.push(`  (žádná plánovaná sezení)`);
@@ -512,28 +663,28 @@ function build05AContent(
   }
   lines.push(``);
 
-  // --- 3. ÚKOLY PRO TERAPEUTKY ---
+  // --- 3. ÚKOLY PRO TERAPEUTKY (with status classification) ---
   lines.push(`━━━ 3. ÚKOLY ━━━`);
   const hankaTasks = pendingTasks.filter((t: any) => t.assigned_to === "hanka");
   const kataTasks = pendingTasks.filter((t: any) => t.assigned_to === "kata");
   const bothTasks = pendingTasks.filter((t: any) => t.assigned_to === "both");
 
-  if (hankaTasks.length > 0) {
-    lines.push(`HANIČKA (${hankaTasks.length}):`);
-    for (const t of hankaTasks.slice(0, 8)) {
-      lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
+  const renderTaskGroup = (label: string, tasks: any[]) => {
+    if (tasks.length === 0) return;
+    lines.push(`${label} (${tasks.length}):`);
+    for (const t of tasks.slice(0, 8)) {
+      const statusLabel = classifyTaskStatus(t, todayDate);
+      lines.push(`  • ${statusLabel} [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
     }
-  }
-  if (kataTasks.length > 0) {
-    lines.push(`KÁŤA (${kataTasks.length}):`);
-    for (const t of kataTasks.slice(0, 8)) {
-      lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
-    }
-  }
+  };
+
+  renderTaskGroup("HANIČKA", hankaTasks);
+  renderTaskGroup("KÁŤA", kataTasks);
   if (bothTasks.length > 0) {
     lines.push(`OBĚ — ⚠️ nutno přiřadit konkrétní osobě (${bothTasks.length}):`);
     for (const t of bothTasks.slice(0, 5)) {
-      lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
+      const statusLabel = classifyTaskStatus(t, todayDate);
+      lines.push(`  • ${statusLabel} [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
     }
   }
   if (!hankaTasks.length && !kataTasks.length && !bothTasks.length) {
@@ -545,14 +696,17 @@ function build05AContent(
   lines.push(`━━━ 4. OTEVŘENÉ OTÁZKY ━━━`);
   if (pendingQuestions.length > 0) {
     for (const q of pendingQuestions.slice(0, 10)) {
-      lines.push(`  ❓ [${q.directed_to || "?"}] ${(q.question || "").slice(0, 200)} (${q.status})`);
+      const createdAt = q.created_at || "";
+      const daysSince = createdAt ? Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000) : 0;
+      const staleTag = daysSince > STALE_QUESTION_DAYS ? ` ⚠️ ${daysSince}d bez odpovědi` : "";
+      lines.push(`  ❓ [${q.directed_to || "?"}] ${(q.question || "").slice(0, 200)} (${q.status})${staleTag}`);
     }
   } else {
     lines.push(`  (žádné otevřené otázky)`);
   }
   lines.push(``);
 
-  // --- 5. URGENTNÍ FOLLOW-UP ---
+  // --- 5. URGENTNÍ FOLLOW-UP + STALE ITEMS ---
   lines.push(`━━━ 5. URGENTNÍ FOLLOW-UP ━━━`);
   const urgentTasks = pendingTasks.filter((t: any) => t.priority === "high" || t.priority === "critical");
   const overdueCommitments = commitments.filter((c: any) => {
@@ -560,24 +714,17 @@ function build05AContent(
     return new Date(c.due_date) < new Date(todayDate);
   });
 
-  // --- 5a. CRISIS FOLLOW-THROUGH: active crises without fresh action ---
-  const crisisFollowUps: string[] = [];
-  for (const c of activeCrises) {
-    const hasFreshTask = pendingTasks.some((t: any) =>
-      t.priority === "high" && (t.task || "").toLowerCase().includes((c.part_name || "").toLowerCase())
-    );
-    const hasFreshQuestion = pendingQuestions.some((q: any) =>
-      (q.question || "").toLowerCase().includes((c.part_name || "").toLowerCase())
-    );
-    if (!hasFreshTask && !hasFreshQuestion) {
-      crisisFollowUps.push(
-        `  🔴 ${c.part_name} (den ${c.days_in_crisis || "?"}): CHYBÍ čerstvý update — kdo dodá pozorování? Kdo provede follow-up?`
-      );
+  // 5a. Stale items requiring action
+  if (staleItems.length > 0) {
+    lines.push(`🔴 KAREL VYŽADUJE AKCI (${staleItems.length} položek):`);
+    for (const si of staleItems) {
+      lines.push(`  → [${si.type.toUpperCase()}] ${si.entity}`);
+      lines.push(`    ${si.detail}`);
+      lines.push(`    KDO: ${si.who === "kata" ? "Káťa" : "Hanička"} | DO KDY: ${si.deadline}`);
+      lines.push(`    CO: ${si.action}`);
+      lines.push(`    PROČ: ${si.why}`);
     }
-  }
-  if (crisisFollowUps.length > 0) {
-    lines.push(`🔴 Krize bez čerstvého follow-up:`);
-    lines.push(...crisisFollowUps);
+    lines.push(``);
   }
 
   if (urgentTasks.length > 0) {
@@ -593,20 +740,73 @@ function build05AContent(
       lines.push(`  • ${(c.commitment_text || "").slice(0, 150)} — ${daysOver} dní po termínu (${c.committed_by})`);
     }
   }
-  if (!urgentTasks.length && !overdueCommitments.length && !crisisFollowUps.length) {
+  if (!urgentTasks.length && !overdueCommitments.length && !staleItems.length) {
     lines.push(`  ✅ Žádné urgentní položky.`);
   }
   lines.push(``);
 
-  // --- 6. KARLŮV PŘEHLED ---
-  const overview = (analysisJson?.overview as string) || "";
-  if (overview) {
-    lines.push(`━━━ 6. KARLŮV PŘEHLED ━━━`);
-    lines.push(overview);
-    lines.push(``);
+  // --- 6. KARLŮV PŘEHLED (command briefing, not narrative) ---
+  lines.push(`━━━ 6. KARLŮV PŘEHLED ━━━`);
+  // Build short command briefing
+  const briefLines: string[] = [];
+
+  // What's most important today
+  const crisisCount = activeCrises.length;
+  const staleCount = staleItems.length;
+  const overdueTaskCount = pendingTasks.filter((t: any) =>
+    t.due_date && Math.floor((Date.now() - new Date(t.due_date).getTime()) / 86_400_000) > 0
+  ).length;
+
+  if (crisisCount > 0) {
+    briefLines.push(`🔴 PRIORITA: ${crisisCount} aktivní krize — řešit PRVNÍ`);
+  }
+  if (staleCount > 0) {
+    briefLines.push(`⚠️ NEOVĚŘENÉ: ${staleCount} položek bez čerstvých dat`);
+  }
+  if (overdueTaskCount > 0) {
+    briefLines.push(`📋 PO TERMÍNU: ${overdueTaskCount} úkolů čeká na uzavření`);
   }
 
-  // --- 7. STAV ČÁSTÍ (ze AI analýzy, deduplicated) ---
+  // What Hanička must do today
+  const hankaActions: string[] = [];
+  const hankaStale = staleItems.filter(s => s.who === "hanka");
+  if (hankaStale.length > 0) hankaActions.push(`Dodat update k ${hankaStale.length} položkám`);
+  const hankaUrgent = urgentTasks.filter((t: any) => t.assigned_to === "hanka");
+  if (hankaUrgent.length > 0) hankaActions.push(`${hankaUrgent.length} urgentních úkolů`);
+  if (hankaActions.length > 0) {
+    briefLines.push(`👩 HANIČKA DNES: ${hankaActions.join("; ")}`);
+  }
+
+  // What Káťa must do today
+  const kataActions: string[] = [];
+  const kataStale = staleItems.filter(s => s.who === "kata");
+  if (kataStale.length > 0) kataActions.push(`Dodat update k ${kataStale.length} položkám`);
+  const kataUrgent = urgentTasks.filter((t: any) => t.assigned_to === "kata");
+  if (kataUrgent.length > 0) kataActions.push(`${kataUrgent.length} urgentních úkolů`);
+  if (kataActions.length > 0) {
+    briefLines.push(`👩‍🦰 KÁŤA DNES: ${kataActions.join("; ")}`);
+  }
+
+  // What Karel must check
+  const karelChecks: string[] = [];
+  if (crisisCount > 0) karelChecks.push(`Zkontrolovat krizové výsledky`);
+  if (staleCount > 0) karelChecks.push(`Ověřit dodání ${staleCount} požadavků`);
+  const unansweredQ = pendingQuestions.filter((q: any) =>
+    q.created_at && Math.floor((Date.now() - new Date(q.created_at).getTime()) / 86_400_000) > STALE_QUESTION_DAYS
+  );
+  if (unansweredQ.length > 0) karelChecks.push(`${unansweredQ.length} otázek bez odpovědi`);
+  if (karelChecks.length > 0) {
+    briefLines.push(`🤖 KAREL KONTROLUJE: ${karelChecks.join("; ")}`);
+  }
+
+  if (briefLines.length === 0) {
+    briefLines.push(`✅ Systém stabilní. Žádné urgentní položky.`);
+  }
+
+  lines.push(...briefLines);
+  lines.push(``);
+
+  // --- 7. STAV ČÁSTÍ (ze AI analýzy + staleness) ---
   const parts = Array.isArray(analysisJson?.parts) ? (analysisJson!.parts as any[]) : [];
   if (parts.length > 0) {
     lines.push(`━━━ 7. PŘEHLED ČÁSTÍ ━━━`);
@@ -616,7 +816,9 @@ function build05AContent(
       const key = (p.name || "").toLowerCase().trim();
       if (seenPartNames.has(key)) continue;
       seenPartNames.add(key);
-      lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}`);
+      const hasContact = recentThreadParts.has(key);
+      const contactTag = hasContact ? "" : " | ⚠️ bez čerstvého kontaktu";
+      lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}${contactTag}`);
       if (p.needs?.length) lines.push(`    Potřeby: ${p.needs.join(", ")}`);
     }
     lines.push(``);
@@ -798,7 +1000,7 @@ serve(async (req) => {
     // Pending úkoly
     const { data: pendingTasks, error: tasksErr } = await sb
       .from("did_therapist_tasks")
-      .select("id, task, assigned_to, status, priority, due_date, source")
+      .select("id, task, assigned_to, status, priority, due_date, source, created_at")
       .in("status", ["pending", "active", "in_progress", "not_started"])
       .order("priority", { ascending: false })
       .limit(MAX_TASKS_CONTEXT);
@@ -819,7 +1021,7 @@ serve(async (req) => {
     // Pending questions pro 05A
     const { data: pendingQuestions } = await (sb as any)
       .from("did_pending_questions")
-      .select("id, question, directed_to, status")
+      .select("id, question, directed_to, status, created_at")
       .in("status", ["open", "pending", "sent"])
       .order("created_at", { ascending: false })
       .limit(15);
@@ -857,6 +1059,21 @@ serve(async (req) => {
     } catch (driveErr) {
       console.warn("[ANALYST] Drive čtení selhalo (non-fatal):", driveErr);
       // Continue without Drive context — AI still works with DB data
+    }
+
+    // ── KROK 2b: Compute recentThreadParts (72h contact) ───
+    const cutoff72h = new Date(now.getTime() - 72 * MS_PER_HOUR).toISOString();
+    const { data: recentConvs } = await sb
+      .from("did_conversations")
+      .select("sub_mode")
+      .gte("updated_at", cutoff72h);
+
+    const recentThreadParts = new Set<string>();
+    for (const t of threads || []) {
+      if (t.part_name) recentThreadParts.add(t.part_name.toLowerCase());
+    }
+    for (const c of recentConvs || []) {
+      if (c.sub_mode) recentThreadParts.add(c.sub_mode.toLowerCase());
     }
 
     // ── KROK 3: Sestavení vstupů pro AI ────────────────────
@@ -1148,6 +1365,65 @@ serve(async (req) => {
       }
     }
 
+    // ── KROK 6e: Stale-state auto follow-through ────────────
+    const staleItems = detectStaleState(
+      activeCrises || [], pendingTasks || [], pendingQuestions || [],
+      sessionPlans || [], activePartsRegistry || [], recentThreadParts, todayDate,
+    );
+    let staleTasksCreated = 0;
+    let staleQuestionsCreated = 0;
+
+    for (const si of staleItems.slice(0, 8)) {
+      try {
+        if (si.type === "crisis" || si.type === "session" || si.type === "contact") {
+          // Create follow-up task
+          const prefix = si.action.slice(0, TASK_DEDUP_PREFIX_LEN);
+          const { data: existing } = await sb
+            .from("did_therapist_tasks")
+            .select("id")
+            .eq("assigned_to", si.who)
+            .ilike("task", `%${prefix}%`)
+            .in("status", ["pending", "active", "in_progress"])
+            .limit(1);
+
+          if (!existing || existing.length === 0) {
+            await sb.from("did_therapist_tasks").insert({
+              task: `[Auto] ${si.action} — ${si.entity}. ${si.why}`,
+              assigned_to: si.who,
+              priority: si.type === "crisis" ? "high" : "medium",
+              status: "pending",
+              source: "analyst_loop",
+              due_date: si.deadline,
+              user_id: taskUserId,
+            });
+            staleTasksCreated++;
+          }
+        } else if (si.type === "question" || si.type === "task") {
+          // Create pending question for overdue tasks
+          const { data: existing } = await (sb as any)
+            .from("did_pending_questions")
+            .select("id")
+            .ilike("question", `%${si.entity.slice(0, 30)}%`)
+            .in("status", ["pending", "sent"])
+            .limit(1);
+
+          if (!existing || existing.length === 0) {
+            await (sb as any).from("did_pending_questions").insert({
+              question: `${si.action}: "${si.entity}". ${si.why}`,
+              directed_to: si.who === "kata" ? "kata" : "both",
+              subject_type: "stale_followup",
+              status: "pending",
+              expires_at: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+            });
+            staleQuestionsCreated++;
+          }
+        }
+      } catch (staleErr) {
+        console.warn(`[ANALYST] Stale follow-through error:`, staleErr);
+      }
+    }
+    console.log(`[ANALYST] Stale follow-through: ${staleTasksCreated} tasks, ${staleQuestionsCreated} questions`);
+
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
     try {
@@ -1206,6 +1482,8 @@ serve(async (req) => {
               sessionPlans || [],
               pendingQuestions || [],
               commitments || [],
+              activePartsRegistry || [],
+              recentThreadParts,
             );
 
             await overwriteDoc(token, plan05AFileId, plan05AContent);
@@ -1245,6 +1523,7 @@ serve(async (req) => {
       `dashboard_drive: ${dashboardWritten ? "written" : "skipped"}`,
       `05A_drive: ${plan05AWritten ? "written" : "skipped"}`,
       `crisis_follow: ${crisisTasksCreated}t ${crisisSessionsPlanned}s`,
+      `stale_follow: ${staleTasksCreated}t ${staleQuestionsCreated}q`,
     ].join(" | ");
 
     const { error: logError } = await sb.from("system_health_log").insert({
