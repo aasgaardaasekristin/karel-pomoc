@@ -1127,6 +1127,42 @@ serve(async (req) => {
       console.warn("[ANALYST] Dashboard Drive zápis selhal (non-fatal):", driveWriteErr);
     }
 
+    // ── KROK 6d: Zápis 05A_OPERATIVNI_PLAN na Drive ───────
+    let plan05AWritten = false;
+    try {
+      const token = await getAccessToken();
+      const kartotekaRoot = await resolveKartotekaRoot(token);
+
+      if (kartotekaRoot) {
+        const centrumFolderId = await findFolder(token, "00_CENTRUM", kartotekaRoot);
+
+        if (centrumFolderId) {
+          const plan05AFileId = await findFileByName(token, "05A_OPERATIVNI_PLAN", centrumFolderId);
+
+          if (plan05AFileId) {
+            const plan05AContent = build05AContent(
+              todayDate,
+              cycleTime,
+              analysisJson,
+              activeCrises || [],
+              pendingTasks || [],
+              sessionPlans || [],
+              pendingQuestions || [],
+              commitments || [],
+            );
+
+            await overwriteDoc(token, plan05AFileId, plan05AContent);
+            plan05AWritten = true;
+            console.log(`[ANALYST] 05A_OPERATIVNI_PLAN written: ${plan05AContent.length} chars`);
+          } else {
+            console.warn("[ANALYST] 05A_OPERATIVNI_PLAN doc nenalezen v 00_CENTRUM");
+          }
+        }
+      }
+    } catch (plan05AErr) {
+      console.warn("[ANALYST] 05A Drive zápis selhal (non-fatal):", plan05AErr);
+    }
+
     // ── KROK 7: Cycle completed ────────────────────────────
     const { error: cycleUpdateErr } = await sb
       .from("did_update_cycles")
