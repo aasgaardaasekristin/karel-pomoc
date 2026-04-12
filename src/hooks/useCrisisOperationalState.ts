@@ -18,6 +18,17 @@ export interface ClosureChecklistState {
   closureRecommendation: string | null;
 }
 
+export interface DailyChecklist {
+  statusChecked: boolean;
+  lastUpdateVerified: boolean;
+  safetyConfirmed: boolean;
+  contactCompleted: boolean;
+  interventionRecorded: boolean;
+  therapistsResponded: boolean;
+  nextStepDetermined: boolean;
+  decisionMade: boolean;
+}
+
 export interface CrisisOperationalCard {
   // Identity
   partName: string;
@@ -48,13 +59,15 @@ export interface CrisisOperationalCard {
   hoursStale: number;
   isStale: boolean;
 
-  // Therapists (derived, not hardcoded)
+  // Therapists — explicit ownership from DB, fallback to heuristic
   primaryTherapist: string;
   secondaryTherapist: string | null;
+  ownershipSource: "explicit" | "heuristic" | "unknown";
 
-  // Current state
-  currentSummary: string;
-  clinicalSummary: string | null;
+  // Summaries — two-layer model
+  currentSummary: string;        // runtime fallback
+  clinicalSummary: string | null; // authoritative from DB
+  displaySummary: string;         // clinicalSummary || currentSummary
 
   // Karel requires
   karelRequires: string[];
@@ -103,6 +116,19 @@ export interface CrisisOperationalCard {
     question: string;
     directedTo: string | null;
   }>;
+
+  // Daily cycle
+  lastMorningReviewAt: string | null;
+  lastAfternoonReviewAt: string | null;
+  lastEveningDecisionAt: string | null;
+  lastOutcomeRecordedAt: string | null;
+  awaitingResponseFrom: string[];
+  todayRequiredOutputs: Array<{ label: string; fulfilled: boolean }>;
+  dailyChecklist: DailyChecklist;
+
+  // Meeting trigger
+  crisisMeetingRequired: boolean;
+  crisisMeetingReason: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -227,21 +253,63 @@ function buildCurrentSummary(params: {
   return parts.join(", ");
 }
 
-/** Derive primary therapist from crisis tasks instead of hardcoding */
-function deriveTherapists(tasks: any[]): { primary: string; secondary: string | null } {
-  if (!tasks.length) return { primary: "neurčeno", secondary: null };
+/** Derive primary therapist — prefer explicit DB fields, fallback to task heuristic */
+function deriveTherapists(
+  ev: any,
+  tasks: any[],
+): { primary: string; secondary: string | null; source: "explicit" | "heuristic" | "unknown" } {
+  // 1. Explicit from DB
+  if (ev?.primary_therapist) {
+    const fmt = (n: string) => n === "hanka" ? "Hanička" : n === "kata" ? "Káťa" : n;
+    return {
+      primary: fmt(ev.primary_therapist),
+      secondary: ev.secondary_therapist ? fmt(ev.secondary_therapist) : null,
+      source: (ev.ownership_source as any) || "explicit",
+    };
+  }
+
+  // 2. Heuristic from tasks
+  if (!tasks.length) return { primary: "neurčeno", secondary: null, source: "unknown" };
   const counts: Record<string, number> = {};
   for (const t of tasks) {
     const who = (t.assigned_to || t.assignedTo || "").toLowerCase();
     if (who) counts[who] = (counts[who] || 0) + 1;
   }
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  if (sorted.length === 0) return { primary: "neurčeno", secondary: null };
+  if (sorted.length === 0) return { primary: "neurčeno", secondary: null, source: "unknown" };
   const primary = sorted[0][0] === "hanka" ? "Hanička" : sorted[0][0] === "kata" ? "Káťa" : sorted[0][0];
   const secondary = sorted.length > 1
     ? (sorted[1][0] === "hanka" ? "Hanička" : sorted[1][0] === "kata" ? "Káťa" : sorted[1][0])
     : null;
-  return { primary, secondary };
+  return { primary, secondary, source: "heuristic" };
+}
+
+function parseDailyChecklist(raw: any): DailyChecklist {
+  if (!raw || typeof raw !== "object") {
+    return {
+      statusChecked: false, lastUpdateVerified: false, safetyConfirmed: false,
+      contactCompleted: false, interventionRecorded: false, therapistsResponded: false,
+      nextStepDetermined: false, decisionMade: false,
+    };
+  }
+  return {
+    statusChecked: !!raw.statusChecked,
+    lastUpdateVerified: !!raw.lastUpdateVerified,
+    safetyConfirmed: !!raw.safetyConfirmed,
+    contactCompleted: !!raw.contactCompleted,
+    interventionRecorded: !!raw.interventionRecorded,
+    therapistsResponded: !!raw.therapistsResponded,
+    nextStepDetermined: !!raw.nextStepDetermined,
+    decisionMade: !!raw.decisionMade,
+  };
+}
+
+function parseRequiredOutputs(raw: any): Array<{ label: string; fulfilled: boolean }> {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((r: any) => r && typeof r.label === "string").map((r: any) => ({
+    label: r.label,
+    fulfilled: !!r.fulfilled,
+  }));
 }
 
 // ── Main Hook ──────────────────────────────────────────────────
