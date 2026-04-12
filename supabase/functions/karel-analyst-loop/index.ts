@@ -1809,8 +1809,11 @@ serve(async (req) => {
         const matchingAlert = (crisisAlerts || []).find((a: any) => a.part_name?.toUpperCase() === partName.toUpperCase());
         const alertId = matchingAlert?.id || eventId;
 
-        // Get assessments for this crisis (linked via crisis_alert_id)
-        const assessments = (crisisAssessments || []).filter((a: any) => a.crisis_alert_id === alertId);
+        // Get assessments: primary via crisis_event_id, fallback via crisis_alert_id
+        const assessments = (crisisAssessments || []).filter((a: any) =>
+          (a.crisis_event_id && a.crisis_event_id === eventId) ||
+          (!a.crisis_event_id && a.crisis_alert_id === alertId)
+        );
         const latest = assessments.length > 0 ? assessments[assessments.length - 1] : null;
 
         // Check if today's assessment exists
