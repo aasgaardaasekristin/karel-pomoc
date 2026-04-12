@@ -34,10 +34,16 @@ const NON_DID_ENTITIES = new Set([
   "kata", "katka", "káťa", "kaca", "káča",
   "karel", "locik", "locek", "locíček",
   "dokument bez nazvu", "untitled", "untitled document",
+  "indian", "indián",
 ]);
 function isNonDidEntity(name: string): boolean {
   const norm = stripDiacritics(name).toLowerCase().trim();
   return NON_DID_ENTITIES.has(norm) || norm.includes("dokument bez nazvu") || norm.includes("untitled");
+}
+function cleanDisplayName(raw: string): string {
+  let name = raw.replace(/^\d+_/, "").replace(/\.(txt|md|doc|docx)$/i, "").replace(/_/g, " ").trim();
+  if (!name) return raw;
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 function normalizePartKey(name: string): string {
   return stripDiacritics(name).toLowerCase().replace(/[^a-z0-9]+/g, "");

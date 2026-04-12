@@ -19,7 +19,23 @@ const STATUS_TOKENS = new Set([
 const NON_DID_ENTITIES = new Set([
   "hanicka", "hanka", "hana", "hanička",
   "kata", "katka", "kata", "káťa", "kaca", "káča",
+  "indian", "indián",
 ]);
+
+/**
+ * Strip numeric folder prefixes like "001_gerhardt" → "gerhardt",
+ * then capitalize the first letter for display.
+ */
+export const cleanDisplayName = (raw: string): string => {
+  let name = raw
+    .replace(/^\d+_/, "")              // strip "001_"
+    .replace(/\.(txt|md|doc|docx)$/i, "")
+    .replace(/_/g, " ")
+    .trim();
+  if (!name) return raw;
+  // Capitalize first letter
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
 
 const DMYTRI_ALIASES = new Set(["dmytri", "dymi", "dymytri", "dymitri"]);
 
