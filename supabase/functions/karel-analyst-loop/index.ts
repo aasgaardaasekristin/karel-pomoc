@@ -415,6 +415,29 @@ function buildDashboardContent(
   return lines.join("\n");
 }
 
+// ── Helper: Deduplicate session plans by part name ────────────
+function deduplicateSessions(plans: any[]): any[] {
+  const seen = new Map<string, any>();
+  for (const s of plans) {
+    const key = (s.selected_part || "").toLowerCase().trim();
+    if (!key) continue;
+    const existing = seen.get(key);
+    if (!existing || (s.urgency_score ?? 0) > (existing.urgency_score ?? 0)) {
+      seen.set(key, s);
+    }
+  }
+  return Array.from(seen.values());
+}
+
+// ── Helper: Resolve therapist lead — never use blind "both" ───
+function resolveSessionLead(s: any): string {
+  const raw = (s.therapist || s.session_lead || "").toLowerCase().trim();
+  if (["hanka", "hanička", "hana"].includes(raw)) return "Hanička";
+  if (["kata", "káťa", "katka"].includes(raw)) return "Káťa";
+  if (raw === "both" || raw === "obě" || !raw) return "⚠️ nutno rozhodnout";
+  return raw;
+}
+
 // ── Helper: Build 05A_OPERATIVNI_PLAN content ─────────────────
 function build05AContent(
   todayDate: string,
@@ -434,26 +457,29 @@ function build05AContent(
   lines.push(`Generováno: Karel (analyst-loop)`);
   lines.push(``);
 
-  // --- 1. KRIZOVÝ KONTEXT ---
+  // --- 1. KRIZOVÝ KONTEXT (operational, not narrative) ---
   lines.push(`━━━ 1. KRIZOVÝ KONTEXT ━━━`);
   if (activeCrises.length > 0) {
     for (const c of activeCrises) {
-      lines.push(`🔴 ${c.part_name} — ${c.severity || "?"} — den ${c.days_in_crisis || "?"}`);
-      if (c.summary) lines.push(`   ${(c.summary as string).slice(0, 200)}`);
-      if (c.intervention_plan) lines.push(`   Plán: ${(c.intervention_plan as string).slice(0, 200)}`);
+      lines.push(`🔴 ${c.part_name} | ${c.severity || "?"} | den ${c.days_in_crisis || "?"} | status: ${c.status}`);
+      // Only today-relevant action, not historical summary
+      if (c.intervention_plan) {
+        lines.push(`   Dnešní plán: ${(c.intervention_plan as string).slice(0, 150)}`);
+      }
     }
   } else {
     lines.push(`✅ Žádné aktivní krize.`);
   }
   lines.push(``);
 
-  // --- 2. PLÁNOVANÁ SEZENÍ ---
+  // --- 2. PLÁNOVANÁ SEZENÍ (deduplicated, resolved leads) ---
   lines.push(`━━━ 2. PLÁNOVANÁ SEZENÍ ━━━`);
-  if (sessionPlans.length > 0) {
-    for (const s of sessionPlans) {
+  const uniqueSessions = deduplicateSessions(sessionPlans);
+  if (uniqueSessions.length > 0) {
+    for (const s of uniqueSessions) {
+      const lead = resolveSessionLead(s);
       lines.push(`▸ ${s.selected_part}`);
-      lines.push(`  Vede: ${s.therapist || s.session_lead || "?"} | Formát: ${s.session_format || "?"} | Urgence: ${s.urgency_score ?? "?"}`);
-      // Extract goal from plan_markdown if available
+      lines.push(`  Vede: ${lead} | Formát: ${s.session_format || "?"} | Urgence: ${s.urgency_score ?? "?"}`);
       const md = (s.plan_markdown || "") as string;
       const goalMatch = md.match(/##\s*Cíl\s*\n([^\n#]+)/);
       if (goalMatch) lines.push(`  Cíl: ${goalMatch[1].trim().slice(0, 200)}`);
@@ -467,10 +493,17 @@ function build05AContent(
     const recommended = parts.filter((p: any) => p.session_recommendation?.needed);
     if (recommended.length > 0) {
       lines.push(`(Z AI doporučení — žádné formální plány v DB)`);
+      // Deduplicate AI recommendations too
+      const seenNames = new Set<string>();
       for (const p of recommended) {
+        const key = (p.name || "").toLowerCase().trim();
+        if (seenNames.has(key)) continue;
+        seenNames.add(key);
         const rec = p.session_recommendation;
+        const lead = rec.who_leads === "both" || rec.who_leads === "Obe" || !rec.who_leads
+          ? "⚠️ nutno rozhodnout" : rec.who_leads;
         lines.push(`▸ ${p.name}`);
-        lines.push(`  Vede: ${rec.who_leads || "?"} | Priorita: ${rec.priority || "?"}`);
+        lines.push(`  Vede: ${lead} | Priorita: ${rec.priority || "?"}`);
         if (rec.goals?.length) lines.push(`  Cíle: ${rec.goals.join("; ")}`);
       }
     } else {
@@ -498,7 +531,7 @@ function build05AContent(
     }
   }
   if (bothTasks.length > 0) {
-    lines.push(`OBĚ (${bothTasks.length}):`);
+    lines.push(`OBĚ — ⚠️ nutno přiřadit konkrétní osobě (${bothTasks.length}):`);
     for (const t of bothTasks.slice(0, 5)) {
       lines.push(`  • [${t.priority || "?"}] ${(t.task || "").slice(0, 200)}${t.due_date ? ` — do ${t.due_date}` : ""}`);
     }
@@ -527,6 +560,26 @@ function build05AContent(
     return new Date(c.due_date) < new Date(todayDate);
   });
 
+  // --- 5a. CRISIS FOLLOW-THROUGH: active crises without fresh action ---
+  const crisisFollowUps: string[] = [];
+  for (const c of activeCrises) {
+    const hasFreshTask = pendingTasks.some((t: any) =>
+      t.priority === "high" && (t.task || "").toLowerCase().includes((c.part_name || "").toLowerCase())
+    );
+    const hasFreshQuestion = pendingQuestions.some((q: any) =>
+      (q.question || "").toLowerCase().includes((c.part_name || "").toLowerCase())
+    );
+    if (!hasFreshTask && !hasFreshQuestion) {
+      crisisFollowUps.push(
+        `  🔴 ${c.part_name} (den ${c.days_in_crisis || "?"}): CHYBÍ čerstvý update — kdo dodá pozorování? Kdo provede follow-up?`
+      );
+    }
+  }
+  if (crisisFollowUps.length > 0) {
+    lines.push(`🔴 Krize bez čerstvého follow-up:`);
+    lines.push(...crisisFollowUps);
+  }
+
   if (urgentTasks.length > 0) {
     lines.push(`⚠️ Urgentní úkoly (${urgentTasks.length}):`);
     for (const t of urgentTasks.slice(0, 5)) {
@@ -540,7 +593,7 @@ function build05AContent(
       lines.push(`  • ${(c.commitment_text || "").slice(0, 150)} — ${daysOver} dní po termínu (${c.committed_by})`);
     }
   }
-  if (!urgentTasks.length && !overdueCommitments.length) {
+  if (!urgentTasks.length && !overdueCommitments.length && !crisisFollowUps.length) {
     lines.push(`  ✅ Žádné urgentní položky.`);
   }
   lines.push(``);
@@ -553,12 +606,16 @@ function build05AContent(
     lines.push(``);
   }
 
-  // --- 7. STAV ČÁSTÍ (ze AI analýzy) ---
+  // --- 7. STAV ČÁSTÍ (ze AI analýzy, deduplicated) ---
   const parts = Array.isArray(analysisJson?.parts) ? (analysisJson!.parts as any[]) : [];
   if (parts.length > 0) {
     lines.push(`━━━ 7. PŘEHLED ČÁSTÍ ━━━`);
+    const seenPartNames = new Set<string>();
     const activeParts = parts.filter((p: any) => p.status === "active");
     for (const p of activeParts) {
+      const key = (p.name || "").toLowerCase().trim();
+      if (seenPartNames.has(key)) continue;
+      seenPartNames.add(key);
       lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}`);
       if (p.needs?.length) lines.push(`    Potřeby: ${p.needs.join(", ")}`);
     }

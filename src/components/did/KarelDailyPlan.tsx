@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
@@ -110,6 +110,11 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   const [plan05A, setPlan05A] = useState<Parsed05A | null>(null);
   const [source, setSource] = useState<"05A" | "db" | "loading">("loading");
 
+  // Track previous raw text to avoid unnecessary re-renders
+  const prevRawRef = useRef<string>("");
+  // Track whether first load completed
+  const hasLoadedOnce = useRef(false);
+
   // DB fallback state
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [crisisDays, setCrisisDays] = useState<number | null>(null);
@@ -121,6 +126,11 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    // Only show loading skeleton on first load
+    if (!hasLoadedOnce.current) {
+      setLoading(true);
+    }
+
     try {
       // ── Try 05A from Drive first ──
       try {
@@ -137,10 +147,17 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         if (!fnError && fnData?.documents?.["05A_OPERATIVNI_PLAN"]) {
           const raw = fnData.documents["05A_OPERATIVNI_PLAN"] as string;
           if (raw.length > 50 && !raw.startsWith("[Dokument")) {
+            // Skip re-render if content hasn't changed
+            if (raw === prevRawRef.current && hasLoadedOnce.current) {
+              setLoading(false);
+              return;
+            }
+            prevRawRef.current = raw;
             const parsed = parse05A(raw);
             setPlan05A(parsed);
             setSource("05A");
             setLoading(false);
+            hasLoadedOnce.current = true;
             return;
           }
         }
@@ -212,12 +229,14 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
       console.error("[KarelDailyPlan] Load failed:", err);
     } finally {
       setLoading(false);
+      hasLoadedOnce.current = true;
     }
   }, []);
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
-  if (loading) {
+  // Show skeleton only on very first load
+  if (loading && !hasLoadedOnce.current) {
     return (
       <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
         <div className="h-5 w-48 bg-gray-100 rounded mb-3 animate-pulse" />
