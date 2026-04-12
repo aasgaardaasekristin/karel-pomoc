@@ -102,13 +102,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
       const results = await Promise.all([
         supabase.from("did_threads").select("id, part_name, last_activity_at, messages, sub_mode").in("sub_mode", ["cast", "crisis"]).order("last_activity_at", { ascending: false }),
         supabase.from("did_pending_drive_writes").select("id", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
         supabase.from("did_part_registry").select("part_name, display_name, status, role_in_system, last_seen_at, known_strengths, known_triggers").eq("status", "active"),
         supabase.from("system_health_log").select("id, event_type, severity, message, created_at").eq("severity", "critical").eq("resolved", false).order("created_at", { ascending: false }).limit(10),
       ]);
-      const [threadsRes, pendingWritesRes, crisisRes, registryRes, healthRes] = results as any;
+      const [threadsRes, pendingWritesRes, registryRes, healthRes] = results as any;
 
-      setActiveCrises(crisisRes.data || []);
       setHealthIssues(healthRes.data || []);
 
       // Process threads
