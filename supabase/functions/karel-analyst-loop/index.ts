@@ -1815,6 +1815,7 @@ serve(async (req) => {
               commitments || [],
               activePartsRegistry || [],
               recentThreadParts,
+              recoveryPlans,
             );
 
             await overwriteDoc(token, plan05AFileId, plan05AContent);
