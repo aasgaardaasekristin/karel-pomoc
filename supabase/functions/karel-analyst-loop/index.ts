@@ -1861,7 +1861,10 @@ serve(async (req) => {
         // Check closure readiness — 10-item model
         // Crisis state model: ACTIVE → INTERVENED → STABILIZING → READY_TO_CLOSE → RESOLVED → MONITORING_POST → CLOSED
         // Analyst-loop may only PROPOSE READY_TO_CLOSE — never directly set RESOLVED
-        const checklist = (closureChecklists || []).find((c: any) => c.crisis_alert_id === alertId);
+        const checklist = (closureChecklists || []).find((c: any) =>
+          (c.crisis_event_id && c.crisis_event_id === eventId) ||
+          (!c.crisis_event_id && c.crisis_alert_id === alertId)
+        );
         const event = crisis; // crisis_events IS the source of truth now
 
         if (checklist && event) {
