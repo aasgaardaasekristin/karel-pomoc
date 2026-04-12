@@ -1289,13 +1289,13 @@ serve(async (req) => {
     // Crisis assessments for trend + closure readiness
     const { data: crisisAssessments } = await sb
       .from("crisis_daily_assessments")
-      .select("crisis_alert_id, assessment_date, karel_decision, karel_risk_assessment, day_number")
+      .select("crisis_alert_id, crisis_event_id, assessment_date, karel_decision, karel_risk_assessment, day_number")
       .order("assessment_date", { ascending: true });
 
     // Crisis closure checklists
     const { data: closureChecklists } = await sb
       .from("crisis_closure_checklist")
-      .select("crisis_alert_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days")
+      .select("crisis_alert_id, crisis_event_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days, grounding_works, trigger_managed, no_open_questions, relapse_plan_exists, karel_recommends_closure")
       ;
 
     // Note: crisis_events data is already in activeCrises (primary source of truth)
