@@ -124,6 +124,50 @@ serve(async (req) => {
         .eq("part_name", crisis.part_name)
         .eq("priority", "urgent");
 
+      // ── Propagate closure summary to part card ──
+      try {
+        const closureSummary = [
+          `## Uzavření krize — ${new Date().toISOString().slice(0, 10)}`,
+          `- **Trvání:** ${crisis.days_active || "?"} dní, ${crisis.sessions_count || "?"} sezení`,
+          `- **Závažnost:** ${crisis.severity}`,
+          `- **Trigger:** ${crisis.trigger_description || "nespecifikován"}`,
+          crisis.closure_statement ? `- **Karlův závěr:** ${crisis.closure_statement.slice(0, 500)}` : null,
+          crisis.clinical_summary ? `- **Klinické shrnutí:** ${crisis.clinical_summary.slice(0, 500)}` : null,
+          `- **Schváleno:** ${newApproved.join(", ")}`,
+        ].filter(Boolean).join("\n");
+
+        await sb.functions.invoke("karel-did-card-update", {
+          body: {
+            partName: crisis.part_name,
+            sections: { D: closureSummary },
+            sectionModes: { D: "APPEND" },
+          },
+          headers: { Authorization: `Bearer ${srvKey}` },
+        });
+
+        // Log card propagation
+        await sb.from("did_doc_sync_log").insert({
+          source_type: "approve-crisis-closure",
+          target_document: crisis.part_name,
+          content_written: closureSummary.slice(0, 500),
+          success: true,
+          sync_type: "closure_summary_sync",
+          crisis_event_id: crisisId,
+          status: "ok",
+        });
+      } catch (cardErr) {
+        console.warn("[approve-closure] Card propagation error:", cardErr);
+        await sb.from("did_doc_sync_log").insert({
+          source_type: "approve-crisis-closure",
+          target_document: crisis.part_name,
+          success: false,
+          error_message: String(cardErr),
+          sync_type: "closure_summary_sync",
+          crisis_event_id: crisisId,
+          status: "failed",
+        });
+      }
+
       // Send closure email
       try {
         const { Resend } = await import("https://esm.sh/resend@2.0.0");

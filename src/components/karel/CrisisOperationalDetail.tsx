@@ -1,13 +1,13 @@
 import React, { useState } from "react";
 import {
   Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target,
-  Zap, ShieldAlert, CalendarCheck, MessageSquareDashed, Brain, ArrowRight, RefreshCw, Loader2,
+  CalendarCheck, MessageSquareDashed, Brain, ArrowRight, RefreshCw, Loader2,
   ChevronDown, ChevronRight, FileText, Database, Send,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import type { CrisisOperationalCard, SessionQuestion, TherapistCrisisProfile, AuditEntry } from "@/hooks/useCrisisOperationalState";
+import type { CrisisOperationalCard, SessionQuestion, AuditEntry } from "@/hooks/useCrisisOperationalState";
 import { ALLOWED_TRANSITIONS, STATE_TRANSITION_LABELS } from "@/hooks/useCrisisOperationalState";
 import CrisisHistoryTimeline from "./CrisisHistoryTimeline";
 
@@ -546,20 +546,7 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
             </div>
           </div>
 
-          {/* ══ THERAPIST CRISIS PROFILING ══ */}
-          {card.therapistProfiles.length > 0 && (
-            <div>
-              <SectionHeader sectionKey="therapist_profiles" icon={<ShieldAlert className="w-3.5 h-3.5 text-muted-foreground" />}
-                title="Profil terapeutek v krizi" badge={`${card.therapistProfiles.length} profily`} />
-              {expandedSections.therapist_profiles && (
-                <div className="mt-2 space-y-3">
-                  {card.therapistProfiles.map(tp => (
-                    <TherapistProfileCard key={tp.therapistName} profile={tp} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Therapist profiling removed — data lives in PAMET_KAREL only */}
 
           {/* ══ PART CARD PROPAGATION STATUS ══ */}
           <div>
@@ -627,39 +614,6 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
 
 // ── Sub-components ──────────────────────────────────────────────
 
-const TherapistProfileCard: React.FC<{ profile: TherapistCrisisProfile }> = ({ profile }) => {
-  const metrics = [
-    { label: "Rychlost reakce", value: profile.responseSpeed },
-    { label: "Spolehlivost úkolů", value: profile.taskReliability },
-    { label: "Kvalita pozorování", value: profile.observationQuality },
-    { label: "Iniciativa", value: profile.initiative },
-    { label: "Účast na poradách", value: profile.meetingParticipation },
-    { label: "Alignment k uzavření", value: profile.closureAlignment },
-  ].filter(m => m.value);
-
-  return (
-    <div className="bg-muted/30 rounded-lg p-2.5 text-[10px] space-y-1.5">
-      <p className="text-[11px] font-bold text-foreground">{profile.displayName}</p>
-      {profile.recommendedKarelMode && (
-        <p className="text-primary"><strong>Karel mode:</strong> {profile.recommendedKarelMode}</p>
-      )}
-      {metrics.length > 0 && (
-        <div className="grid grid-cols-2 gap-1">
-          {metrics.map((m, i) => <p key={i} className="text-muted-foreground"><strong>{m.label}:</strong> {m.value}</p>)}
-        </div>
-      )}
-      {profile.strengths.length > 0 && (
-        <p className="text-green-700 dark:text-green-400"><strong>+</strong> {profile.strengths.join(", ")}</p>
-      )}
-      {profile.risks.length > 0 && (
-        <p className="text-amber-700 dark:text-amber-400"><strong>⚠</strong> {profile.risks.join(", ")}</p>
-      )}
-      {profile.supervisionNotes && (
-        <p className="text-muted-foreground italic">{profile.supervisionNotes}</p>
-      )}
-    </div>
-  );
-};
 
 const AuditRow: React.FC<{ entry: AuditEntry }> = ({ entry }) => {
   const statusColor = entry.status === "ok" ? "text-green-600" : entry.status === "failed" ? "text-destructive" : "text-muted-foreground";
