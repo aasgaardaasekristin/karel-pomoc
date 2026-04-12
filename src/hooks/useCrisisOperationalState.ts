@@ -129,6 +129,13 @@ export interface CrisisOperationalCard {
   // Meeting trigger
   crisisMeetingRequired: boolean;
   crisisMeetingReason: string | null;
+
+  // Meeting linkage
+  meetingOpen: boolean;
+  meetingId: string | null;
+  meetingLastConclusionAt: string | null;
+  meetingWaitingFor: string | null;
+  meetingStatusSummary: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -320,7 +327,7 @@ export function useCrisisOperationalState() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [eventsRes, alertsRes, assessmentsRes, checklistRes, tasksRes, questionsRes, interventionsRes] = await Promise.all([
+      const [eventsRes, alertsRes, assessmentsRes, checklistRes, tasksRes, questionsRes, interventionsRes, meetingsRes] = await Promise.all([
         supabase.from("crisis_events").select("*").not("phase", "eq", "closed").order("created_at", { ascending: false }),
         supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
         supabase.from("crisis_daily_assessments").select("*").order("assessment_date", { ascending: true }),
@@ -328,6 +335,7 @@ export function useCrisisOperationalState() {
         supabase.from("crisis_tasks").select("*").in("status", ["PENDING", "IN_PROGRESS"]).order("created_at", { ascending: true }),
         supabase.from("did_pending_questions").select("id, question, directed_to, subject_type, status").eq("status", "pending"),
         supabase.from("crisis_intervention_sessions").select("*").order("conducted_at", { ascending: false }).limit(50),
+        supabase.from("did_meetings").select("id, topic, status, finalized_at, outcome_summary, crisis_event_id, hanka_joined_at, kata_joined_at").not("crisis_event_id", "is", null).order("created_at", { ascending: false }),
       ]);
 
       const events = eventsRes.data || [];
@@ -337,6 +345,7 @@ export function useCrisisOperationalState() {
       const allTasks = tasksRes.data || [];
       const allQuestions = questionsRes.data || [];
       const allInterventions = interventionsRes.data || [];
+      const allMeetings = meetingsRes.data || [];
 
       const cardMap = new Map<string, CrisisOperationalCard>();
 
@@ -493,6 +502,26 @@ export function useCrisisOperationalState() {
           dailyChecklist: parseDailyChecklist(ev.daily_checklist),
           crisisMeetingRequired: ev.crisis_meeting_required ?? false,
           crisisMeetingReason: ev.crisis_meeting_reason ?? null,
+          // Meeting linkage
+          ...(() => {
+            const m = allMeetings.find((mt: any) => mt.crisis_event_id === ev.id);
+            if (!m) return { meetingOpen: false, meetingId: null, meetingLastConclusionAt: null, meetingWaitingFor: null, meetingStatusSummary: null };
+            const isOpen = m.status !== "finalized" && m.status !== "closed";
+            const waitingFor = isOpen
+              ? (!m.hanka_joined_at && !m.kata_joined_at ? "obě terapeutky"
+                : !m.hanka_joined_at ? "Haničku" : !m.kata_joined_at ? "Káťu" : null)
+              : null;
+            const statusSummary = isOpen
+              ? (waitingFor ? `otevřená, čeká na ${waitingFor}` : "otevřená")
+              : (m.finalized_at ? "uzavřená" : "neaktivní");
+            return {
+              meetingOpen: isOpen,
+              meetingId: m.id,
+              meetingLastConclusionAt: m.finalized_at ?? null,
+              meetingWaitingFor: waitingFor,
+              meetingStatusSummary: statusSummary,
+            };
+          })(),
         });
       }
 
@@ -566,6 +595,11 @@ export function useCrisisOperationalState() {
             dailyChecklist: parseDailyChecklist(null),
             crisisMeetingRequired: false,
             crisisMeetingReason: null,
+            meetingOpen: false,
+            meetingId: null,
+            meetingLastConclusionAt: null,
+            meetingWaitingFor: null,
+            meetingStatusSummary: null,
           });
         }
       }
