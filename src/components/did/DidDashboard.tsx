@@ -77,6 +77,7 @@ const playAlertSound = () => {
 
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const navigate = useNavigate();
+  const { cards: crisisCards } = useCrisisOperationalState();
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [pendingWriteCount, setPendingWriteCount] = useState(0);
@@ -87,10 +88,8 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [isCleaningTasks, setIsCleaningTasks] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeCrises, setActiveCrises] = useState<any[]>([]);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
-  const [assessingCrisisId, setAssessingCrisisId] = useState<string | null>(null);
   const [healthIssues, setHealthIssues] = useState<any[]>([]);
   const [showCrisisDetail, setShowCrisisDetail] = useState(false);
 
