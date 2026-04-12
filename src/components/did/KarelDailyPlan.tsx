@@ -255,17 +255,17 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   // ═══ 05A-driven view ═══
   if (source === "05A" && plan05A) {
     return (
-      <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-4">
+      <div className="rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-[20px] font-semibold" style={{ color: "#2D2D2D" }}>
+          <h2 className="text-[20px] font-semibold text-foreground">
             📋 Operativní plán — {todayFormatted}
           </h2>
-          <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#E8F5E9", color: "#2E7D32" }}>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-800">
             z kartotéky
           </span>
         </div>
         {plan05A.cycleInfo && (
-          <p className="text-[12px] opacity-50" style={{ color: "#4A4A4A" }}>
+          <p className="text-[12px] text-muted-foreground opacity-50">
             {plan05A.cycleInfo}
           </p>
         )}
