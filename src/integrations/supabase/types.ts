@@ -898,16 +898,20 @@ export type Database = {
       }
       crisis_events: {
         Row: {
+          afternoon_review_notes: string | null
           awaiting_response_from: string[] | null
+          awaiting_response_from_therapists: Json | null
           banner_dismissed: boolean | null
           banner_dismissed_at: string | null
           clinical_summary: string | null
           closed_at: string | null
           closure_approved_at: string | null
           closure_approved_by: string[] | null
+          closure_meeting_id: string | null
           closure_proposed_at: string | null
           closure_proposed_by: string | null
           closure_reason: string | null
+          closure_statement: string | null
           created_at: string | null
           crisis_meeting_reason: string | null
           crisis_meeting_required: boolean | null
@@ -917,21 +921,28 @@ export type Database = {
           diagnostic_report: string | null
           diagnostic_score: number | null
           diagnostic_session_id: string | null
+          evening_decision_notes: string | null
           id: string
           indicator_coherence: number | null
           indicator_emotional_regulation: number | null
           indicator_safety: number | null
           indicator_time_orientation: number | null
           indicator_trust: number | null
+          intervention_result_completeness: number | null
           last_afternoon_review_at: string | null
           last_evening_decision_at: string | null
           last_morning_review_at: string | null
           last_outcome_recorded_at: string | null
+          morning_review_notes: string | null
+          next_day_plan_notes: string | null
           opened_at: string | null
+          operating_state: string | null
           ownership_source: string | null
           part_name: string
           phase: string
+          post_session_review_notes: string | null
           primary_therapist: string | null
+          required_outputs_today: Json | null
           secondary_therapist: string | null
           sessions_count: number | null
           severity: string
@@ -943,16 +954,20 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          afternoon_review_notes?: string | null
           awaiting_response_from?: string[] | null
+          awaiting_response_from_therapists?: Json | null
           banner_dismissed?: boolean | null
           banner_dismissed_at?: string | null
           clinical_summary?: string | null
           closed_at?: string | null
           closure_approved_at?: string | null
           closure_approved_by?: string[] | null
+          closure_meeting_id?: string | null
           closure_proposed_at?: string | null
           closure_proposed_by?: string | null
           closure_reason?: string | null
+          closure_statement?: string | null
           created_at?: string | null
           crisis_meeting_reason?: string | null
           crisis_meeting_required?: boolean | null
@@ -962,21 +977,28 @@ export type Database = {
           diagnostic_report?: string | null
           diagnostic_score?: number | null
           diagnostic_session_id?: string | null
+          evening_decision_notes?: string | null
           id?: string
           indicator_coherence?: number | null
           indicator_emotional_regulation?: number | null
           indicator_safety?: number | null
           indicator_time_orientation?: number | null
           indicator_trust?: number | null
+          intervention_result_completeness?: number | null
           last_afternoon_review_at?: string | null
           last_evening_decision_at?: string | null
           last_morning_review_at?: string | null
           last_outcome_recorded_at?: string | null
+          morning_review_notes?: string | null
+          next_day_plan_notes?: string | null
           opened_at?: string | null
+          operating_state?: string | null
           ownership_source?: string | null
           part_name: string
           phase?: string
+          post_session_review_notes?: string | null
           primary_therapist?: string | null
+          required_outputs_today?: Json | null
           secondary_therapist?: string | null
           sessions_count?: number | null
           severity?: string
@@ -988,16 +1010,20 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          afternoon_review_notes?: string | null
           awaiting_response_from?: string[] | null
+          awaiting_response_from_therapists?: Json | null
           banner_dismissed?: boolean | null
           banner_dismissed_at?: string | null
           clinical_summary?: string | null
           closed_at?: string | null
           closure_approved_at?: string | null
           closure_approved_by?: string[] | null
+          closure_meeting_id?: string | null
           closure_proposed_at?: string | null
           closure_proposed_by?: string | null
           closure_reason?: string | null
+          closure_statement?: string | null
           created_at?: string | null
           crisis_meeting_reason?: string | null
           crisis_meeting_required?: boolean | null
@@ -1007,21 +1033,28 @@ export type Database = {
           diagnostic_report?: string | null
           diagnostic_score?: number | null
           diagnostic_session_id?: string | null
+          evening_decision_notes?: string | null
           id?: string
           indicator_coherence?: number | null
           indicator_emotional_regulation?: number | null
           indicator_safety?: number | null
           indicator_time_orientation?: number | null
           indicator_trust?: number | null
+          intervention_result_completeness?: number | null
           last_afternoon_review_at?: string | null
           last_evening_decision_at?: string | null
           last_morning_review_at?: string | null
           last_outcome_recorded_at?: string | null
+          morning_review_notes?: string | null
+          next_day_plan_notes?: string | null
           opened_at?: string | null
+          operating_state?: string | null
           ownership_source?: string | null
           part_name?: string
           phase?: string
+          post_session_review_notes?: string | null
           primary_therapist?: string | null
+          required_outputs_today?: Json | null
           secondary_therapist?: string | null
           sessions_count?: number | null
           severity?: string
@@ -1032,7 +1065,15 @@ export type Database = {
           trigger_source?: string | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_crisis_events_closure_meeting"
+            columns: ["closure_meeting_id"]
+            isOneToOne: false
+            referencedRelation: "did_meetings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crisis_intervention_sessions: {
         Row: {
@@ -1182,6 +1223,83 @@ export type Database = {
           },
         ]
       }
+      crisis_karel_interviews: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          crisis_event_id: string
+          hidden_diagnostic_hypotheses: Json | null
+          id: string
+          interview_goal: string | null
+          interview_type: string
+          karel_decision_after_interview: string | null
+          next_required_actions: Json | null
+          observed_coherence: number | null
+          observed_regulation: number | null
+          observed_risk_signals: string[] | null
+          observed_somatic_state: string | null
+          observed_trust: number | null
+          part_name: string
+          stabilization_methods_used: string[] | null
+          started_at: string | null
+          summary_for_team: string | null
+          what_remains_unclear: string | null
+          what_shifted: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          crisis_event_id: string
+          hidden_diagnostic_hypotheses?: Json | null
+          id?: string
+          interview_goal?: string | null
+          interview_type?: string
+          karel_decision_after_interview?: string | null
+          next_required_actions?: Json | null
+          observed_coherence?: number | null
+          observed_regulation?: number | null
+          observed_risk_signals?: string[] | null
+          observed_somatic_state?: string | null
+          observed_trust?: number | null
+          part_name: string
+          stabilization_methods_used?: string[] | null
+          started_at?: string | null
+          summary_for_team?: string | null
+          what_remains_unclear?: string | null
+          what_shifted?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          crisis_event_id?: string
+          hidden_diagnostic_hypotheses?: Json | null
+          id?: string
+          interview_goal?: string | null
+          interview_type?: string
+          karel_decision_after_interview?: string | null
+          next_required_actions?: Json | null
+          observed_coherence?: number | null
+          observed_regulation?: number | null
+          observed_risk_signals?: string[] | null
+          observed_somatic_state?: string | null
+          observed_trust?: number | null
+          part_name?: string
+          stabilization_methods_used?: string[] | null
+          started_at?: string | null
+          summary_for_team?: string | null
+          what_remains_unclear?: string | null
+          what_shifted?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_karel_interviews_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crisis_session_logs: {
         Row: {
           coherence_score: number | null
@@ -1252,6 +1370,66 @@ export type Database = {
             columns: ["crisis_id"]
             isOneToOne: false
             referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crisis_session_questions: {
+        Row: {
+          answer_quality_score: number | null
+          answer_text: string | null
+          answered_at: string | null
+          created_at: string
+          crisis_event_id: string
+          id: string
+          karel_analysis: string | null
+          karel_analyzed_at: string | null
+          question_text: string
+          required_by: string | null
+          session_plan_id: string | null
+          therapist_name: string
+        }
+        Insert: {
+          answer_quality_score?: number | null
+          answer_text?: string | null
+          answered_at?: string | null
+          created_at?: string
+          crisis_event_id: string
+          id?: string
+          karel_analysis?: string | null
+          karel_analyzed_at?: string | null
+          question_text: string
+          required_by?: string | null
+          session_plan_id?: string | null
+          therapist_name: string
+        }
+        Update: {
+          answer_quality_score?: number | null
+          answer_text?: string | null
+          answered_at?: string | null
+          created_at?: string
+          crisis_event_id?: string
+          id?: string
+          karel_analysis?: string | null
+          karel_analyzed_at?: string | null
+          question_text?: string
+          required_by?: string | null
+          session_plan_id?: string | null
+          therapist_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crisis_session_questions_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crisis_session_questions_session_plan_id_fkey"
+            columns: ["session_plan_id"]
+            isOneToOne: false
+            referencedRelation: "did_daily_session_plans"
             referencedColumns: ["id"]
           },
         ]
@@ -1770,14 +1948,20 @@ export type Database = {
       did_meetings: {
         Row: {
           agenda: string
+          closure_recommendation: string | null
           created_at: string
           crisis_event_id: string | null
           deadline_at: string | null
           finalized_at: string | null
           hanka_joined_at: string | null
+          hanka_position: string | null
           id: string
+          is_closure_meeting: boolean | null
+          karel_final_statement: string | null
           kata_joined_at: string | null
+          kata_position: string | null
           last_reactive_message_count: number | null
+          meeting_conclusions: Json | null
           messages: Json
           outcome_summary: string | null
           outcome_tasks: Json | null
@@ -1790,14 +1974,20 @@ export type Database = {
         }
         Insert: {
           agenda?: string
+          closure_recommendation?: string | null
           created_at?: string
           crisis_event_id?: string | null
           deadline_at?: string | null
           finalized_at?: string | null
           hanka_joined_at?: string | null
+          hanka_position?: string | null
           id?: string
+          is_closure_meeting?: boolean | null
+          karel_final_statement?: string | null
           kata_joined_at?: string | null
+          kata_position?: string | null
           last_reactive_message_count?: number | null
+          meeting_conclusions?: Json | null
           messages?: Json
           outcome_summary?: string | null
           outcome_tasks?: Json | null
@@ -1810,14 +2000,20 @@ export type Database = {
         }
         Update: {
           agenda?: string
+          closure_recommendation?: string | null
           created_at?: string
           crisis_event_id?: string | null
           deadline_at?: string | null
           finalized_at?: string | null
           hanka_joined_at?: string | null
+          hanka_position?: string | null
           id?: string
+          is_closure_meeting?: boolean | null
+          karel_final_statement?: string | null
           kata_joined_at?: string | null
+          kata_position?: string | null
           last_reactive_message_count?: number | null
+          meeting_conclusions?: Json | null
           messages?: Json
           outcome_summary?: string | null
           outcome_tasks?: Json | null
@@ -4263,6 +4459,131 @@ export type Database = {
           message?: string
           resolved?: boolean | null
           severity?: string
+        }
+        Relationships: []
+      }
+      therapist_crisis_case_reviews: {
+        Row: {
+          closure_alignment_score: number | null
+          consistency_score: number | null
+          created_at: string
+          crisis_event_id: string
+          crisis_judgment_score: number | null
+          escalation_sensitivity_score: number | null
+          id: string
+          initiative_score: number | null
+          meeting_participation_score: number | null
+          observation_quality_score: number | null
+          recommended_karel_mode: string | null
+          response_speed_score: number | null
+          risks_observed: string[] | null
+          strengths_observed: string[] | null
+          supervision_notes: string | null
+          supervision_trust_score: number | null
+          task_reliability_score: number | null
+          therapist_name: string
+        }
+        Insert: {
+          closure_alignment_score?: number | null
+          consistency_score?: number | null
+          created_at?: string
+          crisis_event_id: string
+          crisis_judgment_score?: number | null
+          escalation_sensitivity_score?: number | null
+          id?: string
+          initiative_score?: number | null
+          meeting_participation_score?: number | null
+          observation_quality_score?: number | null
+          recommended_karel_mode?: string | null
+          response_speed_score?: number | null
+          risks_observed?: string[] | null
+          strengths_observed?: string[] | null
+          supervision_notes?: string | null
+          supervision_trust_score?: number | null
+          task_reliability_score?: number | null
+          therapist_name: string
+        }
+        Update: {
+          closure_alignment_score?: number | null
+          consistency_score?: number | null
+          created_at?: string
+          crisis_event_id?: string
+          crisis_judgment_score?: number | null
+          escalation_sensitivity_score?: number | null
+          id?: string
+          initiative_score?: number | null
+          meeting_participation_score?: number | null
+          observation_quality_score?: number | null
+          recommended_karel_mode?: string | null
+          response_speed_score?: number | null
+          risks_observed?: string[] | null
+          strengths_observed?: string[] | null
+          supervision_notes?: string | null
+          supervision_trust_score?: number | null
+          task_reliability_score?: number | null
+          therapist_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapist_crisis_case_reviews_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      therapist_crisis_profile: {
+        Row: {
+          aggregate_closure_alignment_score: number | null
+          aggregate_consistency_score: number | null
+          aggregate_crisis_judgment_score: number | null
+          aggregate_escalation_sensitivity_score: number | null
+          aggregate_initiative_score: number | null
+          aggregate_meeting_participation_score: number | null
+          aggregate_observation_quality_score: number | null
+          aggregate_response_speed_score: number | null
+          aggregate_supervision_trust_score: number | null
+          aggregate_task_reliability_score: number | null
+          created_at: string
+          id: string
+          therapist_name: string
+          total_crisis_cases: number | null
+          updated_at: string
+        }
+        Insert: {
+          aggregate_closure_alignment_score?: number | null
+          aggregate_consistency_score?: number | null
+          aggregate_crisis_judgment_score?: number | null
+          aggregate_escalation_sensitivity_score?: number | null
+          aggregate_initiative_score?: number | null
+          aggregate_meeting_participation_score?: number | null
+          aggregate_observation_quality_score?: number | null
+          aggregate_response_speed_score?: number | null
+          aggregate_supervision_trust_score?: number | null
+          aggregate_task_reliability_score?: number | null
+          created_at?: string
+          id?: string
+          therapist_name: string
+          total_crisis_cases?: number | null
+          updated_at?: string
+        }
+        Update: {
+          aggregate_closure_alignment_score?: number | null
+          aggregate_consistency_score?: number | null
+          aggregate_crisis_judgment_score?: number | null
+          aggregate_escalation_sensitivity_score?: number | null
+          aggregate_initiative_score?: number | null
+          aggregate_meeting_participation_score?: number | null
+          aggregate_observation_quality_score?: number | null
+          aggregate_response_speed_score?: number | null
+          aggregate_supervision_trust_score?: number | null
+          aggregate_task_reliability_score?: number | null
+          created_at?: string
+          id?: string
+          therapist_name?: string
+          total_crisis_cases?: number | null
+          updated_at?: string
         }
         Relationships: []
       }
