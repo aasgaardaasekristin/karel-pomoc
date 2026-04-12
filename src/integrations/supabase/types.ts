@@ -1040,6 +1040,7 @@ export type Database = {
           conducted_at: string | null
           created_at: string | null
           crisis_alert_id: string
+          crisis_event_id: string | null
           follow_up_needed: boolean | null
           follow_up_notes: string | null
           id: string
@@ -1057,6 +1058,7 @@ export type Database = {
           conducted_at?: string | null
           created_at?: string | null
           crisis_alert_id: string
+          crisis_event_id?: string | null
           follow_up_needed?: boolean | null
           follow_up_notes?: string | null
           id?: string
@@ -1074,6 +1076,7 @@ export type Database = {
           conducted_at?: string | null
           created_at?: string | null
           crisis_alert_id?: string
+          crisis_event_id?: string | null
           follow_up_needed?: boolean | null
           follow_up_notes?: string | null
           id?: string
@@ -1099,6 +1102,13 @@ export type Database = {
             columns: ["crisis_alert_id"]
             isOneToOne: false
             referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crisis_intervention_sessions_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
             referencedColumns: ["id"]
           },
         ]
