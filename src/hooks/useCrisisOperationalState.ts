@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { cleanDisplayName } from "@/lib/didPartNaming";
 
@@ -10,6 +10,11 @@ export interface ClosureChecklistState {
   kataAgrees: boolean;
   emotionalStableDays: number;
   noRiskSignals: boolean;
+  groundingWorks: boolean;
+  triggerManaged: boolean;
+  noOpenQuestions: boolean;
+  relapsePlanExists: boolean;
+  karelRecommendsClosure: boolean;
   closureRecommendation: string | null;
 }
 
@@ -43,11 +48,11 @@ export interface CrisisOperationalCard {
   hoursStale: number;
   isStale: boolean;
 
-  // Therapists
+  // Therapists (derived, not hardcoded)
   primaryTherapist: string;
-  secondaryTherapist: string;
+  secondaryTherapist: string | null;
 
-  // Current state (not old narrative)
+  // Current state
   currentSummary: string;
 
   // Karel requires
@@ -56,12 +61,22 @@ export interface CrisisOperationalCard {
   // Closure
   closureReadiness: number; // 0-1
   closureChecklistState: ClosureChecklistState;
+  canProposeClosing: boolean;
+  closureReady: boolean;
 
   // Capabilities
   canEvaluate: boolean;
-  canRequestUpdate: boolean;
-  canPlanSession: boolean;
-  canStartClosing: boolean;
+
+  // Clinical fields
+  lastEntryBy: string | null;
+  lastEntrySummary: string | null;
+  lastInterventionType: string | null;
+  lastInterventionWorked: boolean | null;
+  triggerDescription: string | null;
+  triggerActive: boolean | null;
+  riskLevel0to3: number | null;
+  stableHours: number | null;
+  consecutiveStableEntries: number | null;
 
   // Indicators
   indicators: {
@@ -102,10 +117,37 @@ function computeTrend(assessments: any[]): CrisisOperationalCard["trend48h"] {
   return "stable";
 }
 
-function computeClosureReadiness(cl: ClosureChecklistState): number {
-  const items = [cl.karelDiagnosticDone, cl.hankaAgrees, cl.kataAgrees, cl.noRiskSignals, cl.emotionalStableDays >= 3];
-  const done = items.filter(Boolean).length;
-  return done / items.length;
+function computeClosureReadiness(cl: ClosureChecklistState): { score: number; canPropose: boolean; ready: boolean } {
+  const canProposeClosing =
+    cl.karelDiagnosticDone &&
+    cl.noRiskSignals &&
+    cl.emotionalStableDays >= 3 &&
+    cl.groundingWorks &&
+    cl.triggerManaged &&
+    cl.noOpenQuestions &&
+    cl.relapsePlanExists;
+
+  const ready =
+    canProposeClosing &&
+    cl.hankaAgrees &&
+    cl.kataAgrees &&
+    cl.karelRecommendsClosure;
+
+  const items = [
+    cl.karelDiagnosticDone,
+    cl.hankaAgrees,
+    cl.kataAgrees,
+    cl.noRiskSignals,
+    cl.emotionalStableDays >= 3,
+    cl.groundingWorks,
+    cl.triggerManaged,
+    cl.noOpenQuestions,
+    cl.relapsePlanExists,
+    cl.karelRecommendsClosure,
+  ];
+  const score = items.filter(Boolean).length / items.length;
+
+  return { score, canPropose: canProposeClosing, ready };
 }
 
 function computeKarelRequires(
@@ -142,26 +184,62 @@ function computeKarelRequires(
   return requires;
 }
 
-function buildCurrentSummary(
-  phase: string | null,
-  lastDecision: string | null,
-  lastRisk: string | null,
-  daysActive: number | null,
-  trend: string,
-): string {
-  const phaseLabel: Record<string, string> = { acute: "akutní fáze", stabilizing: "stabilizace", diagnostic: "diagnostika", closing: "uzavírání" };
-  const decisionLabel: Record<string, string> = { crisis_continues: "krize trvá", crisis_improving: "zlepšení", crisis_resolved: "vyřešeno", needs_more_data: "potřeba dat" };
-  const trendLabel: Record<string, string> = { improving: "↗ zlepšuje se", stable: "→ stabilní", worsening: "↘ zhoršuje se", unknown: "? bez dat" };
+function buildCurrentSummary(params: {
+  phase: string | null;
+  trend: "improving" | "stable" | "worsening" | "unknown";
+  daysActive: number | null;
+  hoursStale: number;
+  lastDecision: string | null;
+  lastInterventionType: string | null;
+  lastInterventionWorked: boolean | null;
+}): string {
+  const parts: string[] = [];
 
-  const parts = [
-    phaseLabel[phase || ""] || "aktivní",
-    `den ${daysActive ?? "?"}`,
-    lastDecision ? decisionLabel[lastDecision] || lastDecision : null,
-    lastRisk ? `riziko: ${lastRisk}` : null,
-    trendLabel[trend],
-  ].filter(Boolean);
+  if (params.phase === "acute") parts.push("akutní krize");
+  else if (params.phase === "stabilizing") parts.push("stabilizace");
+  else if (params.phase === "diagnostic") parts.push("diagnostika");
+  else if (params.phase === "closing") parts.push("uzavírání");
+  else parts.push("aktivní krize");
+
+  if (params.daysActive != null) parts.push(`den ${params.daysActive}`);
+
+  if (params.trend === "worsening") parts.push("trend zhoršení");
+  else if (params.trend === "improving") parts.push("trend zlepšení");
+  else if (params.trend === "stable") parts.push("trend stabilní");
+  else parts.push("trend nejasný");
+
+  if (params.hoursStale > 24) parts.push(`${Math.round(params.hoursStale)}h bez kontaktu`);
+
+  if (params.lastInterventionType) {
+    parts.push(
+      params.lastInterventionWorked === true
+        ? "poslední zásah fungoval"
+        : params.lastInterventionWorked === false
+        ? "poslední zásah nefungoval"
+        : `proběhl zásah: ${params.lastInterventionType}`
+    );
+  }
+
+  if (params.lastDecision === "needs_more_data") parts.push("chybí data");
 
   return parts.join(" · ");
+}
+
+/** Derive primary therapist from crisis tasks instead of hardcoding */
+function deriveTherapists(tasks: any[]): { primary: string; secondary: string | null } {
+  if (!tasks.length) return { primary: "neurčeno", secondary: null };
+  const counts: Record<string, number> = {};
+  for (const t of tasks) {
+    const who = (t.assigned_to || t.assignedTo || "").toLowerCase();
+    if (who) counts[who] = (counts[who] || 0) + 1;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) return { primary: "neurčeno", secondary: null };
+  const primary = sorted[0][0] === "hanka" ? "Hanička" : sorted[0][0] === "kata" ? "Káťa" : sorted[0][0];
+  const secondary = sorted.length > 1
+    ? (sorted[1][0] === "hanka" ? "Hanička" : sorted[1][0] === "kata" ? "Káťa" : sorted[1][0])
+    : null;
+  return { primary, secondary };
 }
 
 // ── Main Hook ──────────────────────────────────────────────────
@@ -172,13 +250,14 @@ export function useCrisisOperationalState() {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [eventsRes, alertsRes, assessmentsRes, checklistRes, tasksRes, questionsRes] = await Promise.all([
+      const [eventsRes, alertsRes, assessmentsRes, checklistRes, tasksRes, questionsRes, interventionsRes] = await Promise.all([
         supabase.from("crisis_events").select("*").not("phase", "eq", "closed").order("created_at", { ascending: false }),
         supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
         supabase.from("crisis_daily_assessments").select("*").order("assessment_date", { ascending: true }),
         supabase.from("crisis_closure_checklist").select("*"),
         supabase.from("crisis_tasks").select("*").in("status", ["PENDING", "IN_PROGRESS"]).order("created_at", { ascending: true }),
         supabase.from("did_pending_questions").select("id, question, directed_to, subject_type, status").eq("status", "pending"),
+        supabase.from("crisis_intervention_sessions").select("*").order("conducted_at", { ascending: false }).limit(50),
       ]);
 
       const events = eventsRes.data || [];
@@ -187,8 +266,8 @@ export function useCrisisOperationalState() {
       const checklists = checklistRes.data || [];
       const allTasks = tasksRes.data || [];
       const allQuestions = questionsRes.data || [];
+      const allInterventions = interventionsRes.data || [];
 
-      // Deduplicate by part_name (events are primary)
       const cardMap = new Map<string, CrisisOperationalCard>();
 
       for (const ev of events) {
@@ -203,6 +282,9 @@ export function useCrisisOperationalState() {
           const qText = (q.question || "").toLowerCase();
           return qText.includes(ev.part_name.toLowerCase()) || qText.includes(cleanDisplayName(ev.part_name).toLowerCase());
         });
+
+        // Latest intervention for this crisis
+        const latestIntervention = allInterventions.find((i: any) => i.crisis_alert_id === alertId);
 
         const lastContactAt = latest?.assessment_date
           ? latest.assessment_date + "T12:00:00Z"
@@ -221,6 +303,11 @@ export function useCrisisOperationalState() {
           kataAgrees: checklist?.kata_agrees ?? false,
           emotionalStableDays: checklist?.emotional_stable_days ?? 0,
           noRiskSignals: checklist?.no_risk_signals ?? false,
+          groundingWorks: (checklist as any)?.grounding_works ?? false,
+          triggerManaged: (checklist as any)?.trigger_managed ?? false,
+          noOpenQuestions: (checklist as any)?.no_open_questions ?? false,
+          relapsePlanExists: (checklist as any)?.relapse_plan_exists ?? false,
+          karelRecommendsClosure: (checklist as any)?.karel_recommends_closure ?? false,
           closureRecommendation: checklist?.karel_closure_recommendation ?? null,
         };
 
@@ -238,9 +325,14 @@ export function useCrisisOperationalState() {
           closureChecklistState, openTasks, ev.phase,
         );
 
-        const closureReadiness = computeClosureReadiness(closureChecklistState);
-        const allIndicatorsAbove5 = [ev.indicator_safety, ev.indicator_coherence, ev.indicator_emotional_regulation, ev.indicator_trust, ev.indicator_time_orientation]
-          .every((v: number | null) => v !== null && v > 5);
+        const { score: closureReadiness, canPropose, ready: closureReady } = computeClosureReadiness(closureChecklistState);
+        const { primary: primaryTherapist, secondary: secondaryTherapist } = deriveTherapists(tasks);
+
+        // Derive clinical fields from latest assessment/intervention
+        const lastInterventionType = latestIntervention?.session_type ?? null;
+        const lastInterventionWorked = latestIntervention?.session_outcome === "improved" ? true
+          : latestIntervention?.session_outcome === "no_change" || latestIntervention?.session_outcome === "worsened" ? false
+          : null;
 
         cardMap.set(key, {
           partName: ev.part_name,
@@ -260,16 +352,37 @@ export function useCrisisOperationalState() {
           lastContactAt,
           hoursStale,
           isStale,
-          primaryTherapist: "Hanička",
-          secondaryTherapist: "Káťa",
-          currentSummary: buildCurrentSummary(ev.phase, latest?.karel_decision, latest?.karel_risk_assessment, ev.days_active, trend),
+          primaryTherapist,
+          secondaryTherapist,
+          currentSummary: buildCurrentSummary({
+            phase: ev.phase,
+            trend,
+            daysActive: ev.days_active,
+            hoursStale,
+            lastDecision: latest?.karel_decision || null,
+            lastInterventionType,
+            lastInterventionWorked,
+          }),
           karelRequires,
           closureReadiness,
           closureChecklistState,
+          canProposeClosing: canPropose,
+          closureReady,
           canEvaluate: !!ev.id,
-          canRequestUpdate: true,
-          canPlanSession: true,
-          canStartClosing: ev.phase === "diagnostic" && allIndicatorsAbove5 && closureReadiness >= 0.6,
+          // Clinical fields
+          lastEntryBy: latest ? (latest.therapist_hana_input ? "Hanička" : latest.therapist_kata_input ? "Káťa" : null) : null,
+          lastEntrySummary: latest?.part_interview_summary ?? null,
+          lastInterventionType,
+          lastInterventionWorked,
+          triggerDescription: ev.trigger_description ?? null,
+          triggerActive: ev.phase === "acute" || ev.phase === "stabilizing" ? true : ev.phase === "closing" ? false : null,
+          riskLevel0to3: latest?.karel_risk_assessment
+            ? ({ minimal: 0, low: 1, moderate: 2, high: 3, critical: 3 } as Record<string, number>)[latest.karel_risk_assessment] ?? null
+            : null,
+          stableHours: !isStale ? hoursStale : null,
+          consecutiveStableEntries: assessments.length >= 2
+            ? assessments.slice().reverse().findIndex((a: any) => a.karel_risk_assessment === "high" || a.karel_risk_assessment === "critical")
+            : null,
           indicators: {
             safety: ev.indicator_safety,
             coherence: ev.indicator_coherence,
@@ -292,6 +405,13 @@ export function useCrisisOperationalState() {
         if (!cardMap.has(key)) {
           const displayName = cleanDisplayName(a.part_name);
           const hoursStale = (Date.now() - new Date(a.created_at).getTime()) / 3_600_000;
+          const emptyChecklist: ClosureChecklistState = {
+            karelDiagnosticDone: false, hankaAgrees: false, kataAgrees: false,
+            emotionalStableDays: 0, noRiskSignals: false,
+            groundingWorks: false, triggerManaged: false, noOpenQuestions: false,
+            relapsePlanExists: false, karelRecommendsClosure: false,
+            closureRecommendation: null,
+          };
           cardMap.set(key, {
             partName: a.part_name,
             displayName,
@@ -310,16 +430,27 @@ export function useCrisisOperationalState() {
             lastContactAt: a.created_at,
             hoursStale,
             isStale: hoursStale > 24,
-            primaryTherapist: "Hanička",
-            secondaryTherapist: "Káťa",
-            currentSummary: `aktivní · den ${a.days_in_crisis ?? "?"}`,
+            primaryTherapist: "neurčeno",
+            secondaryTherapist: null,
+            currentSummary: buildCurrentSummary({
+              phase: null, trend: "unknown", daysActive: a.days_in_crisis,
+              hoursStale, lastDecision: null, lastInterventionType: null, lastInterventionWorked: null,
+            }),
             karelRequires: hoursStale > 24 ? [`Čerstvý update od terapeutky (${displayName})`] : [],
             closureReadiness: 0,
-            closureChecklistState: { karelDiagnosticDone: false, hankaAgrees: false, kataAgrees: false, emotionalStableDays: 0, noRiskSignals: false, closureRecommendation: null },
+            closureChecklistState: emptyChecklist,
+            canProposeClosing: false,
+            closureReady: false,
             canEvaluate: false,
-            canRequestUpdate: true,
-            canPlanSession: true,
-            canStartClosing: false,
+            lastEntryBy: null,
+            lastEntrySummary: null,
+            lastInterventionType: null,
+            lastInterventionWorked: null,
+            triggerDescription: null,
+            triggerActive: null,
+            riskLevel0to3: null,
+            stableHours: null,
+            consecutiveStableEntries: null,
             indicators: { safety: null, coherence: null, emotionalRegulation: null, trust: null, timeOrientation: null },
             openTasks: [],
             pendingQuestions: [],
