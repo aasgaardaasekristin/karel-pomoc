@@ -2029,6 +2029,46 @@ serve(async (req) => {
             // Not yet ready — still write summary + trigger_resolved for transparency
             await sb.from("crisis_events").update(eventUpdate).eq("id", event.id);
           }
+
+          // ── Auto-create crisis meeting if required and none exists ──
+          if (eventUpdate.crisis_meeting_required && event.id) {
+            try {
+              const { data: existingMeeting } = await sb
+                .from("did_meetings")
+                .select("id")
+                .eq("crisis_event_id", event.id)
+                .in("status", ["pending", "active", "in_progress"])
+                .limit(1);
+
+              if (!existingMeeting || existingMeeting.length === 0) {
+                const meetingReason = eventUpdate.crisis_meeting_reason || "Automaticky vyžádána";
+                const meetingTopic = `Krizová porada: ${partName} (den ${event.days_active || "?"})`;
+                const meetingAgenda = [
+                  `Důvod: ${meetingReason}`,
+                  `Aktuální fáze: ${eventUpdate.phase || event.phase || "active"}`,
+                  `Severity: ${event.severity || "moderate"}`,
+                  eventUpdate.clinical_summary ? `Klinické shrnutí: ${eventUpdate.clinical_summary}` : null,
+                  `\nBody k projednání:`,
+                  `1. Aktuální stav ${partName}`,
+                  `2. Ownership krize — kdo vede?`,
+                  `3. Výsledek posledního zásahu`,
+                  `4. Další kroky a rozhodnutí`,
+                ].filter(Boolean).join("\n");
+
+                await sb.from("did_meetings").insert({
+                  topic: meetingTopic,
+                  agenda: meetingAgenda,
+                  status: "pending",
+                  crisis_event_id: event.id,
+                  triggered_by: "karel_analyst_loop",
+                  messages: [],
+                });
+                console.log(`[ANALYST] Auto-created crisis meeting for ${partName}`);
+              }
+            } catch (meetingErr) {
+              console.warn(`[ANALYST] Failed to auto-create crisis meeting for ${partName}:`, meetingErr);
+            }
+          }
         }
       } catch (assessErr) {
         console.warn(`[ANALYST] Crisis assessment check error (${crisis.part_name}):`, assessErr);
