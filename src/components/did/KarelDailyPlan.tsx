@@ -92,15 +92,20 @@ const assigneeLabel = (a: string) => {
 function Section05A({ icon, title, content, color }: { icon: string; title: string; content: string; color?: string }) {
   if (!content || content === "(žádné aktivní úkoly)" || content === "(žádná plánovaná sezení)") return null;
 
+  // Detect urgency markers in content
+  const hasUrgent = content.includes("🔴") || content.includes("VYŽADUJE AKCI") || content.includes("PO TERMÍNU");
+  const bgColor = hasUrgent ? "#FFF5F5" : undefined;
+
   return (
-    <div className="space-y-1">
-      <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "#2D2D2D" }}>
+    <div className="space-y-1 rounded-lg p-2" style={{ backgroundColor: bgColor }}>
+      <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "hsl(var(--foreground))" }}>
         {icon} {title}
+        {hasUrgent && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">vyžaduje akci</span>}
       </h3>
-      <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1" style={{ color: "#4A4A4A" }}>
+      <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1" style={{ color: "hsl(var(--muted-foreground))" }}>
         {content}
       </div>
-      <hr className="border-gray-100 mt-2" />
+      <hr className="border-border mt-2" />
     </div>
   );
 }
