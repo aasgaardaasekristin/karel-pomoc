@@ -750,6 +750,9 @@ function build05AContent(
   activePartsRegistry: any[],
   recentThreadParts: Set<string>,
   recoveryPlans: RecoveryAction[] = [],
+  crisisInterviews: any[] = [],
+  crisisSessionQuestions: any[] = [],
+  crisisMeetings: any[] = [],
 ): string {
   const lines: string[] = [];
   const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
@@ -765,18 +768,18 @@ function build05AContent(
     activePartsRegistry || [], recentThreadParts, todayDate,
   );
 
-  // --- 1. KRIZOVÝ KONTEXT (from crisis_events — single source of truth) ---
+  // --- 1. KRIZOVÝ KONTEXT (structured operational block) ---
   lines.push(`━━━ 1. KRIZOVÝ KONTEXT ━━━`);
   if (activeCrises.length > 0) {
     for (const c of activeCrises) {
       const updatedAt = c.updated_at || c.created_at || "";
       const hoursSince = updatedAt ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 3_600_000) : 0;
       const triggerLabel = c.trigger_resolved ? "✅ zvládnut" : "🔴 aktivní";
-      const stabilityLabel = c.stable_since 
+      const stabilityLabel = c.stable_since
         ? `stabilní ${Math.floor((Date.now() - new Date(c.stable_since).getTime()) / 3_600_000)}h`
         : "nestabilní";
       lines.push(`🔴 ${cleanDisplayName(c.part_name || "")} | ${c.severity || "?"} | fáze: ${c.phase || "active"} | den ${c.days_active || "?"}`);
-      lines.push(`   Trigger: ${triggerLabel} | Stabilita: ${stabilityLabel}`);
+      lines.push(`   Trigger: ${triggerLabel} | Stabilita: ${stabilityLabel} | Stav: ${c.operating_state || "?"}`);
       if (c.primary_therapist) {
         lines.push(`   Vede: ${c.primary_therapist}${c.secondary_therapist ? ` + ${c.secondary_therapist}` : ""} (${c.ownership_source || "?"})`);
       }
@@ -785,29 +788,141 @@ function build05AContent(
         lines.push(`   → POŽADAVEK: Hanička dodá aktuální pozorování DNES`);
         lines.push(`   → POŽADAVEK: Výsledek posledního zásahu — co se stalo?`);
       } else if (c.clinical_summary) {
-        lines.push(`   Klinické shrnutí: ${(c.clinical_summary as string).slice(0, 200)}`);
+        lines.push(`   Klinické shrnutí: ${(c.clinical_summary as string).slice(0, 250)}`);
       }
-      // Required outputs status
-      if (c.today_required_outputs && Array.isArray(c.today_required_outputs)) {
-        const missing = (c.today_required_outputs as any[]).filter((o: any) => !o.fulfilled);
-        if (missing.length > 0) {
-          lines.push(`   ⚠️ Nesplněno dnes: ${missing.map((o: any) => o.label).join(", ")}`);
+
+      // ── KAREL DNEŠNÍ ROZHODNUTÍ (from interviews) ──
+      const todayInterviews = (crisisInterviews || []).filter((iv: any) =>
+        iv.crisis_event_id === c.id && iv.completed_at && iv.started_at?.startsWith(todayDate)
+      );
+      if (todayInterviews.length > 0) {
+        const latest = todayInterviews[0];
+        lines.push(`   ── KAREL DNEŠNÍ ROZHODNUTÍ ──`);
+        lines.push(`   Rozhodnutí: ${latest.karel_decision_after_interview || "?"}`);
+        if (latest.summary_for_team) lines.push(`   Souhrn: ${(latest.summary_for_team as string).slice(0, 200)}`);
+        if (latest.what_remains_unclear) lines.push(`   ⚠️ Nejasné: ${(latest.what_remains_unclear as string).slice(0, 150)}`);
+        if (latest.next_required_actions?.length) {
+          const actions = (latest.next_required_actions as any[]).map((a: any) => typeof a === "string" ? a : a?.text || "?");
+          lines.push(`   Další kroky: ${actions.join("; ")}`);
+        }
+        if (latest.observed_regulation != null || latest.observed_trust != null) {
+          lines.push(`   Regulace: ${latest.observed_regulation ?? "?"}/10 | Důvěra: ${latest.observed_trust ?? "?"}/10 | Koherence: ${latest.observed_coherence ?? "?"}/10`);
+        }
+      } else {
+        const anyTodayStarted = (crisisInterviews || []).find((iv: any) =>
+          iv.crisis_event_id === c.id && !iv.completed_at && iv.started_at?.startsWith(todayDate)
+        );
+        if (anyTodayStarted) {
+          lines.push(`   ⏳ Karlův rozhovor PROBÍHÁ (zatím nedokončen)`);
+        } else {
+          lines.push(`   ⚠️ Chybí dnešní Karlův krizový rozhovor`);
         }
       }
-      // Awaiting response
-      if (c.awaiting_response_from && (c.awaiting_response_from as string[]).length > 0) {
-        lines.push(`   → Čeká se na: ${(c.awaiting_response_from as string[]).join(", ")}`);
+
+      // ── CO DNES CHYBÍ (required outputs + awaiting) ──
+      const missingItems: string[] = [];
+      if (c.required_outputs_today && Array.isArray(c.required_outputs_today)) {
+        for (const o of c.required_outputs_today) {
+          const label = typeof o === "string" ? o : (o as any)?.label || JSON.stringify(o);
+          const fulfilled = typeof o === "object" && (o as any)?.fulfilled;
+          if (!fulfilled) missingItems.push(label);
+        }
       }
-      // Check if planned session happened
+      if (c.awaiting_response_from_therapists && Array.isArray(c.awaiting_response_from_therapists)) {
+        for (const t of c.awaiting_response_from_therapists) {
+          missingItems.push(`Čeká na odpověď: ${t}`);
+        }
+      }
+      if (missingItems.length > 0) {
+        lines.push(`   ── CO DNES CHYBÍ ──`);
+        for (const m of missingItems) lines.push(`   ❌ ${m}`);
+      }
+
+      // ── SEZENÍ A FOLLOW-UP ──
       const crisisSession = sessionPlans.find((s: any) =>
         (s.selected_part || "").toLowerCase() === (c.part_name || "").toLowerCase()
       );
-      if (crisisSession && ["pending", "planned"].includes(crisisSession.status)) {
-        const daysPast = Math.floor((Date.now() - new Date(crisisSession.plan_date || todayDate).getTime()) / 86_400_000);
-        if (daysPast > 0) {
-          lines.push(`   🔴 Plánované sezení NEPROBĚHLO (${daysPast}d po termínu) → okamžitě přeplánovat`);
+      const eventQuestions = (crisisSessionQuestions || []).filter((q: any) => q.crisis_event_id === c.id);
+      const answeredQ = eventQuestions.filter((q: any) => q.answered_at);
+      const unansweredQ = eventQuestions.filter((q: any) => !q.answered_at);
+
+      if (crisisSession || eventQuestions.length > 0) {
+        lines.push(`   ── SEZENÍ A FOLLOW-UP ──`);
+        if (crisisSession) {
+          const daysPast = Math.floor((Date.now() - new Date(crisisSession.plan_date || todayDate).getTime()) / 86_400_000);
+          const status = daysPast > 0 && ["pending", "planned"].includes(crisisSession.status)
+            ? `🔴 PO TERMÍNU (${daysPast}d)` : crisisSession.status;
+          lines.push(`   Sezení: ${status} | Vede: ${crisisSession.session_lead || crisisSession.therapist || "?"}`);
+        }
+        if (eventQuestions.length > 0) {
+          lines.push(`   Post-session otázky: ${answeredQ.length}/${eventQuestions.length} zodpovězeno`);
+          if (unansweredQ.length > 0) {
+            lines.push(`   ❌ Nezodpovězeno: ${unansweredQ.map((q: any) => q.therapist_name).join(", ")}`);
+          }
+          // Show Karel analysis if available
+          const analyzed = answeredQ.find((q: any) => q.karel_analysis);
+          if (analyzed) {
+            try {
+              const analysis = JSON.parse(analyzed.karel_analysis);
+              lines.push(`   Efektivita: ${analysis.intervention_effectiveness || "?"} | Trend: ${analysis.stabilization_trend || "?"}`);
+              if (analysis.main_risk) lines.push(`   Riziko: ${(analysis.main_risk as string).slice(0, 150)}`);
+            } catch { /* parse error, skip */ }
+          }
         }
       }
+
+      // ── PORADA ──
+      const eventMeetings = (crisisMeetings || []).filter((m: any) => m.crisis_event_id === c.id);
+      if (eventMeetings.length > 0) {
+        lines.push(`   ── PORADA ──`);
+        for (const m of eventMeetings.slice(0, 2)) {
+          lines.push(`   ${m.status === "scheduled" ? "📅" : m.status === "completed" ? "✅" : "⏳"} ${m.meeting_type || "porada"} | ${m.status} ${m.scheduled_for ? `| ${m.scheduled_for}` : ""}`);
+          if (m.outcome) lines.push(`   Závěr: ${(m.outcome as string).slice(0, 150)}`);
+          if (m.agenda) lines.push(`   Agenda: ${(m.agenda as string).slice(0, 150)}`);
+        }
+      } else if (c.crisis_meeting_required) {
+        lines.push(`   ⚠️ Porada DOPORUČENA — zatím nezaložena`);
+      }
+
+      // ── DENNÍ CYKLUS ──
+      if (c.daily_checklist && typeof c.daily_checklist === "object") {
+        const dc = c.daily_checklist as any;
+        const phases = ["morning_review", "midday_followthrough", "post_session_review", "evening_decision"];
+        const phaseLabels: Record<string, string> = {
+          morning_review: "Ráno", midday_followthrough: "Poledne",
+          post_session_review: "Po sezení", evening_decision: "Večer",
+        };
+        const phaseStatuses = phases.map(p => {
+          const ph = dc[p];
+          if (!ph) return `${phaseLabels[p]}: ?`;
+          const icon = ph.status === "completed" ? "✅" : ph.status === "partial" ? "⚠️" : ph.status === "missing" ? "❌" : "⏳";
+          return `${icon}${phaseLabels[p]}`;
+        });
+        lines.push(`   ── DENNÍ CYKLUS ──`);
+        lines.push(`   ${phaseStatuses.join(" | ")}`);
+        if (dc.missing_outputs_today?.length) {
+          lines.push(`   Missing: ${(dc.missing_outputs_today as string[]).slice(0, 3).join("; ")}`);
+        }
+        if (dc.next_day_ready === false) {
+          lines.push(`   ⚠️ Další den NEPŘIPRAVEN`);
+          if (dc.next_day_open_items?.length) {
+            lines.push(`   Přenáší se: ${(dc.next_day_open_items as string[]).slice(0, 3).join("; ")}`);
+          }
+        }
+      }
+
+      // ── ROZHODOVACÍ BOD DNE ──
+      const decisionPoint: string[] = [];
+      if (!todayInterviews.length) decisionPoint.push("Provést Karlův krizový rozhovor");
+      if (unansweredQ.length > 0) decisionPoint.push("Získat odpovědi od terapeutek");
+      if (missingItems.length > 0) decisionPoint.push(`Splnit ${missingItems.length} výstupů`);
+      if (c.operating_state === "ready_for_joint_review") decisionPoint.push("Rozhodnout o closure");
+      if (decisionPoint.length > 0) {
+        lines.push(`   ── ROZHODOVACÍ BOD DNE ──`);
+        for (const dp of decisionPoint) lines.push(`   ▸ ${dp}`);
+      }
+
+      lines.push(``);
     }
   } else {
     lines.push(`✅ Žádné aktivní krize.`);
@@ -1297,6 +1412,31 @@ serve(async (req) => {
       .from("crisis_closure_checklist")
       .select("crisis_alert_id, crisis_event_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days, grounding_works, trigger_managed, no_open_questions, relapse_plan_exists, karel_recommends_closure")
       ;
+
+    // Crisis interviews today (for 05A)
+    const { data: crisisInterviews } = await sb
+      .from("crisis_karel_interviews")
+      .select("crisis_event_id, part_name, interview_type, interview_goal, started_at, completed_at, karel_decision_after_interview, summary_for_team, what_remains_unclear, next_required_actions, observed_regulation, observed_trust, observed_coherence")
+      .gte("started_at", new Date(now.getTime() - 2 * MS_PER_DAY).toISOString())
+      .order("started_at", { ascending: false })
+      .limit(20);
+
+    // Crisis session questions (for 05A)
+    const { data: crisisSessionQuestions } = await sb
+      .from("crisis_session_questions")
+      .select("crisis_event_id, therapist_name, question_text, answer_text, answered_at, karel_analysis, required_by")
+      .gte("created_at", new Date(now.getTime() - 3 * MS_PER_DAY).toISOString())
+      .order("created_at", { ascending: true })
+      .limit(50);
+
+    // Did meetings with crisis link (for 05A)
+    const { data: crisisMeetings } = await sb
+      .from("did_meetings")
+      .select("id, meeting_type, status, scheduled_for, outcome, agenda, crisis_event_id")
+      .not("status", "eq", "cancelled")
+      .gte("created_at", new Date(now.getTime() - 7 * MS_PER_DAY).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(10);
 
     // Note: crisis_events data is already in activeCrises (primary source of truth)
 
@@ -2244,6 +2384,9 @@ serve(async (req) => {
               activePartsRegistry || [],
               recentThreadParts,
               recoveryPlans,
+              crisisInterviews || [],
+              crisisSessionQuestions || [],
+              crisisMeetings || [],
             );
 
             await overwriteDoc(token, plan05AFileId, plan05AContent);
