@@ -375,14 +375,25 @@ export function useCrisisOperationalState() {
           lastInterventionType,
           lastInterventionWorked,
           triggerDescription: ev.trigger_description ?? null,
-          triggerActive: ev.phase === "acute" || ev.phase === "stabilizing" ? true : ev.phase === "closing" ? false : null,
+          // triggerActive: null until we have explicit trigger_resolved field in DB
+          triggerActive: null,
           riskLevel0to3: latest?.karel_risk_assessment
             ? ({ minimal: 0, low: 1, moderate: 2, high: 3, critical: 3 } as Record<string, number>)[latest.karel_risk_assessment] ?? null
             : null,
-          stableHours: !isStale ? hoursStale : null,
-          consecutiveStableEntries: assessments.length >= 2
-            ? assessments.slice().reverse().findIndex((a: any) => a.karel_risk_assessment === "high" || a.karel_risk_assessment === "critical")
-            : null,
+          // stableHours: needs a dedicated "stable_since" timestamp in DB; hoursStale measures data freshness, not stability duration
+          stableHours: null,
+          // consecutiveStableEntries: count backwards from newest assessment until we hit high/critical
+          consecutiveStableEntries: (() => {
+            if (assessments.length < 2) return null;
+            const reversed = assessments.slice().reverse();
+            let streak = 0;
+            for (const a of reversed) {
+              const risk = (a as any).karel_risk_assessment;
+              if (risk === "high" || risk === "critical") break;
+              streak++;
+            }
+            return streak > 0 ? streak : null;
+          })(),
           indicators: {
             safety: ev.indicator_safety,
             coherence: ev.indicator_coherence,
