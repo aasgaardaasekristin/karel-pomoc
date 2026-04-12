@@ -483,6 +483,16 @@ export function useCrisisOperationalState() {
             question: q.question,
             directedTo: q.directed_to,
           })),
+          // Daily cycle
+          lastMorningReviewAt: ev.last_morning_review_at ?? null,
+          lastAfternoonReviewAt: ev.last_afternoon_review_at ?? null,
+          lastEveningDecisionAt: ev.last_evening_decision_at ?? null,
+          lastOutcomeRecordedAt: ev.last_outcome_recorded_at ?? null,
+          awaitingResponseFrom: ev.awaiting_response_from || [],
+          todayRequiredOutputs: parseRequiredOutputs(ev.today_required_outputs),
+          dailyChecklist: parseDailyChecklist(ev.daily_checklist),
+          crisisMeetingRequired: ev.crisis_meeting_required ?? false,
+          crisisMeetingReason: ev.crisis_meeting_reason ?? null,
         });
       }
 
