@@ -1645,6 +1645,116 @@ serve(async (req) => {
     }
     console.log(`[ANALYST] Stale follow-through: ${staleTasksCreated} tasks, ${staleQuestionsCreated} questions`);
 
+    // ── KROK 6f: Recovery mode — generate & execute recovery plans ──
+    const recoveryPlans = generateRecoveryPlans(
+      activeCrises || [], activePartsRegistry || [], recentThreadParts,
+      pendingTasks || [], sessionPlans || [],
+    );
+    let recoveryTasksCreated = 0;
+    let recoveryQuestionsCreated = 0;
+    let recoverySessionsCreated = 0;
+
+    for (const rp of recoveryPlans) {
+      try {
+        // 1. Create update-request task
+        const taskText = `[RECOVERY] ${rp.partName}: ${rp.updateRequest.what}`;
+        const prefix = taskText.slice(0, TASK_DEDUP_PREFIX_LEN);
+        const { data: existingTask } = await sb
+          .from("did_therapist_tasks")
+          .select("id")
+          .ilike("task", `%${prefix}%`)
+          .in("status", ["pending", "active", "in_progress"])
+          .limit(1);
+
+        if (!existingTask || existingTask.length === 0) {
+          await sb.from("did_therapist_tasks").insert({
+            task: taskText.slice(0, 500),
+            assigned_to: rp.updateRequest.who.toLowerCase().includes("káťa") || rp.updateRequest.who.toLowerCase().includes("kata") ? "kata" : "hanka",
+            priority: "high",
+            status: "pending",
+            source: "recovery_mode",
+            due_date: todayDate,
+            user_id: taskUserId,
+          });
+          recoveryTasksCreated++;
+        }
+
+        // 2. Create pending question if specified
+        if (rp.pendingQuestion) {
+          const qPrefix = rp.pendingQuestion.text.slice(0, 30);
+          const { data: existingQ } = await (sb as any)
+            .from("did_pending_questions")
+            .select("id")
+            .ilike("question", `%${qPrefix}%`)
+            .in("status", ["open", "pending", "sent"])
+            .limit(1);
+
+          if (!existingQ || existingQ.length === 0) {
+            await (sb as any).from("did_pending_questions").insert({
+              question: rp.pendingQuestion.text.slice(0, 500),
+              directed_to: rp.pendingQuestion.directedTo,
+              subject_type: "recovery_request",
+              status: "open",
+              expires_at: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+            });
+            recoveryQuestionsCreated++;
+          }
+        }
+
+        // 3. Create session plan if proposed and doesn't exist
+        if (rp.sessionProposal) {
+          const partKey = normalizePartKey(rp.partName);
+          const { data: existingPlan } = await sb
+            .from("did_daily_session_plans")
+            .select("id")
+            .eq("selected_part", rp.partName)
+            .gte("plan_date", new Date(Date.now() - 86_400_000).toISOString().slice(0, 10))
+            .in("status", ["pending", "planned"])
+            .limit(1);
+
+          if (!existingPlan || existingPlan.length === 0) {
+            const planMd = [
+              `# Recovery sezení: ${rp.partName}`,
+              ``,
+              `## Cíl`,
+              rp.sessionProposal.goal,
+              ``,
+              `## Formát`,
+              rp.sessionProposal.format,
+              ``,
+              `## Otevírací otázky`,
+              ...rp.sessionProposal.openingQuestions.map(q => `- "${q}"`),
+              ``,
+              `## Očekávaný výstup pro Karla`,
+              rp.sessionProposal.expectedOutcome,
+            ].join("\n");
+
+            const userId = await resolveUserId(sb);
+            await sb.from("did_daily_session_plans").insert({
+              selected_part: rp.partName,
+              plan_date: todayDate,
+              plan_markdown: planMd,
+              plan_html: `<pre>${planMd}</pre>`,
+              session_format: rp.sessionProposal.format.includes("check-in") ? "check_in" : "stabilization",
+              session_lead: "karel",
+              therapist: rp.sessionProposal.lead.toLowerCase().includes("káťa") || rp.sessionProposal.lead.toLowerCase().includes("kata") ? "kata" : "hanka",
+              urgency_score: 70,
+              urgency_breakdown: { source: "recovery_mode", reason: rp.reason },
+              status: "pending",
+              generated_by: "recovery_mode",
+              part_tier: "active",
+              user_id: userId,
+            });
+            recoverySessionsCreated++;
+          }
+        }
+      } catch (recoveryErr) {
+        console.warn(`[ANALYST] Recovery execution error (${rp.partName}):`, recoveryErr);
+      }
+    }
+    console.log(`[ANALYST] Recovery mode: ${recoveryPlans.length} plans, ${recoveryTasksCreated}t ${recoveryQuestionsCreated}q ${recoverySessionsCreated}s`);
+
+
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
     try {
