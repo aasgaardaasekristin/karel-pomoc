@@ -76,6 +76,7 @@ function parse05A(text: string): Parsed05A {
     urgentFollowUp: extractSection("5\\.\\s*URGENTNÍ FOLLOW-UP"),
     karelOverview: extractSection("6\\.\\s*KARLŮV PŘEHLED"),
     partsOverview: extractSection("7\\.\\s*PŘEHLED ČÁSTÍ"),
+    recoveryMode: extractSection("8\\.\\s*REŽIM OBNOVY ŘÍZENÍ"),
     raw: clean,
     cycleInfo,
   };
