@@ -375,13 +375,13 @@ export function useCrisisOperationalState() {
           lastInterventionType,
           lastInterventionWorked,
           triggerDescription: ev.trigger_description ?? null,
-          // triggerActive: null until we have explicit trigger_resolved field in DB
-          triggerActive: null,
+          // triggerActive: use DB trigger_resolved field; invert it (resolved=true → active=false)
+          triggerActive: ev.trigger_resolved != null ? !ev.trigger_resolved : null,
           riskLevel0to3: latest?.karel_risk_assessment
             ? ({ minimal: 0, low: 1, moderate: 2, high: 3, critical: 3 } as Record<string, number>)[latest.karel_risk_assessment] ?? null
             : null,
-          // stableHours: needs a dedicated "stable_since" timestamp in DB; hoursStale measures data freshness, not stability duration
-          stableHours: null,
+          // stableHours: use DB stable_since timestamp if available
+          stableHours: ev.stable_since ? Math.max(0, (Date.now() - new Date(ev.stable_since).getTime()) / 3_600_000) : null,
           // consecutiveStableEntries: count backwards from newest assessment until we hit high/critical
           consecutiveStableEntries: (() => {
             if (assessments.length < 2) return null;
