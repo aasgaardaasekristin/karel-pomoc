@@ -66,8 +66,10 @@ serve(async (req) => {
       return await handleCompute(sb, body);
     } else if (action === "update_phase") {
       return await handleUpdatePhase(sb, body);
+    } else if (action === "submit_evening_decision") {
+      return await handleSubmitEveningDecision(sb, body);
     } else {
-      return jsonRes({ error: "Invalid action. Use 'compute' or 'update_phase'." }, 400);
+      return jsonRes({ error: "Invalid action. Use 'compute', 'update_phase', or 'submit_evening_decision'." }, 400);
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
