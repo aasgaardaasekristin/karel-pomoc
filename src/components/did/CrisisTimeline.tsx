@@ -8,6 +8,7 @@ import CrisisTherapistFeedback from "./CrisisTherapistFeedback";
 
 interface CrisisTimelineProps {
   crisisAlertId: string;
+  crisisEventId?: string | null;
   partName: string;
   onRunAssessment?: () => void;
   isAssessing?: boolean;
@@ -52,7 +53,7 @@ const DECISION_LABELS: Record<string, { emoji: string; label: string }> = {
   needs_more_data: { emoji: "❓", label: "Potřeba dat" },
 };
 
-const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing }: CrisisTimelineProps) => {
+const CrisisTimeline = ({ crisisAlertId, crisisEventId, partName, onRunAssessment, isAssessing }: CrisisTimelineProps) => {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showFeedback, setShowFeedback] = useState<string | null>(null);
@@ -60,19 +61,15 @@ const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing 
   const [journalEntry, setJournalEntry] = useState<JournalEntry | null>(null);
 
   const reloadAssessments = () => {
-    Promise.all([
-      (supabase as any)
-        .from("crisis_daily_assessments")
-        .select("*")
-        .eq("crisis_alert_id", crisisAlertId)
-        .order("day_number", { ascending: true }),
-      (supabase as any)
-        .from("crisis_journal")
-        .select("crisis_trend, karel_action, session_summary")
-        .eq("crisis_alert_id", crisisAlertId)
-        .order("date", { ascending: false })
-        .limit(1),
-    ]).then(([assessRes, journalRes]: any) => {
+    // Build queries: prefer crisis_event_id, fallback to crisis_alert_id
+    const assessQuery = crisisEventId
+      ? (supabase as any).from("crisis_daily_assessments").select("*").eq("crisis_event_id", crisisEventId).order("day_number", { ascending: true })
+      : (supabase as any).from("crisis_daily_assessments").select("*").eq("crisis_alert_id", crisisAlertId).order("day_number", { ascending: true });
+    const journalQuery = crisisEventId
+      ? (supabase as any).from("crisis_journal").select("crisis_trend, karel_action, session_summary").eq("crisis_event_id", crisisEventId).order("date", { ascending: false }).limit(1)
+      : (supabase as any).from("crisis_journal").select("crisis_trend, karel_action, session_summary").eq("crisis_alert_id", crisisAlertId).order("date", { ascending: false }).limit(1);
+
+    Promise.all([assessQuery, journalQuery]).then(([assessRes, journalRes]: any) => {
       setAssessments(assessRes.data || []);
       setJournalEntry(journalRes.data?.[0] || null);
       setLoading(false);
@@ -81,7 +78,7 @@ const CrisisTimeline = ({ crisisAlertId, partName, onRunAssessment, isAssessing 
 
   useEffect(() => {
     reloadAssessments();
-  }, [crisisAlertId]);
+  }, [crisisAlertId, crisisEventId]);
 
   if (loading) {
     return <div className="p-2 text-[10px] text-muted-foreground animate-pulse">Načítám timeline...</div>;
