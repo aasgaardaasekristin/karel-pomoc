@@ -1871,21 +1871,69 @@ serve(async (req) => {
             checklist.kata_agrees &&
             (checklist.karel_recommends_closure ?? false);
 
+          // Derive trigger_resolved from checklist
+          const triggerResolved = !!(checklist.trigger_managed);
+
+          // Build clinical summary
+          const summaryParts: string[] = [];
+          summaryParts.push(`Closure readiness ${Math.round(readiness * 100)}%`);
+          if (checklist.emotional_stable_days) summaryParts.push(`${checklist.emotional_stable_days} stabilních dní`);
+          if (checklist.no_risk_signals) summaryParts.push(`bez rizikových signálů`);
+          if (triggerResolved) summaryParts.push(`trigger zvládnut`);
+          if (checklist.grounding_works) summaryParts.push(`grounding funguje`);
+          if (checklist.relapse_plan_exists) summaryParts.push(`relapse plán existuje`);
+          const clinicalSummary = summaryParts.join(". ") + ".";
+
+          // Determine stable_since: if 3+ consecutive stable assessments, use the date of the first one in the streak
+          let stableSince: string | null = null;
+          if (assessments.length >= 2) {
+            const reversed = assessments.slice().reverse();
+            let streakStart = 0;
+            for (const a of reversed) {
+              const risk = (a as any).karel_risk_assessment;
+              if (risk === "high" || risk === "critical") break;
+              streakStart++;
+            }
+            if (streakStart >= 3) {
+              const oldestStableIdx = assessments.length - streakStart;
+              stableSince = (assessments[oldestStableIdx] as any).assessment_date || null;
+            }
+          }
+
+          // Common event update payload
+          const eventUpdate: Record<string, unknown> = {
+            clinical_summary: clinicalSummary,
+            trigger_resolved: triggerResolved,
+            updated_at: new Date().toISOString(),
+          };
+          if (stableSince) eventUpdate.stable_since = stableSince;
+
           if (fullReady && allIndicatorsAbove5 && latest?.karel_decision !== "crisis_continues") {
-            // Propose READY_TO_CLOSE — this is a proposal, not a resolution
+            // Propose READY_TO_CLOSE
+            eventUpdate.phase = "ready_to_close";
+            await sb.from("crisis_events").update(eventUpdate).eq("id", event.id);
             await sb.from("system_health_log").insert({
               event_type: "crisis_closure_ready",
               severity: "info",
-              message: `✅ READY_TO_CLOSE: ${partName} — closure readiness ${Math.round(readiness * 100)}%, všechny klinické + procesní podmínky splněny`,
+              message: `✅ READY_TO_CLOSE: ${partName} — ${clinicalSummary}`,
             });
             closureProposals++;
-          } else if (clinicalReady && allIndicatorsAbove5 && !checklist.karel_recommends_closure) {
-            // Clinical conditions met but Karel hasn't recommended yet — log it
-            await sb.from("system_health_log").insert({
-              event_type: "crisis_closure_proposal_pending",
-              severity: "info",
-              message: `📋 ${partName} — klinické podmínky splněny, čeká na Karlovo doporučení a souhlas terapeutek`,
-            });
+          } else if (clinicalReady && allIndicatorsAbove5) {
+            // Clinical conditions met — move to stabilizing, write summary
+            if (event.phase === "active" || event.phase === "intervened") {
+              eventUpdate.phase = "stabilizing";
+            }
+            await sb.from("crisis_events").update(eventUpdate).eq("id", event.id);
+            if (!checklist.karel_recommends_closure) {
+              await sb.from("system_health_log").insert({
+                event_type: "crisis_closure_proposal_pending",
+                severity: "info",
+                message: `📋 ${partName} — ${clinicalSummary} Čeká na Karlovo doporučení a souhlas terapeutek.`,
+              });
+            }
+          } else {
+            // Not yet ready — still write summary + trigger_resolved for transparency
+            await sb.from("crisis_events").update(eventUpdate).eq("id", event.id);
           }
         }
       } catch (assessErr) {
