@@ -1298,11 +1298,7 @@ serve(async (req) => {
       .select("crisis_alert_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days")
       ;
 
-    // Crisis events for indicators
-    const { data: crisisEvents } = await sb
-      .from("crisis_events")
-      .select("id, part_name, phase, severity, days_active, indicator_safety, indicator_coherence, indicator_emotional_regulation, indicator_trust, indicator_time_orientation")
-      .not("phase", "eq", "closed");
+    // Note: crisis_events data is already in activeCrises (primary source of truth)
 
     let dashboardContent = "";
     let operPlanContent = "";
