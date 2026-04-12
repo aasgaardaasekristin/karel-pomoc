@@ -109,16 +109,20 @@ async function checkClosureReadiness(sb: any, crisisEventId: string): Promise<Cl
   if (!eveningDecision) processBlockers.push("Chybí evening decision");
 
   // ── TEAM ──
+  // Closure meeting is "completed" when it exists + has both positions + Karel statement + recommendation.
+  // We do NOT require status === "finalized" here — finalization is a post-closure bookkeeping step.
   const hankaPosition = closureMeeting?.hanka_position != null;
   const kataPosition = closureMeeting?.kata_position != null;
-  const closureMeetingDone = closureMeeting?.status === "finalized";
   const karelStatement = closureMeeting?.karel_final_statement != null;
+  const hasRecommendation = closureMeeting?.closure_recommendation != null;
+  const closureMeetingCompleted = closureMeeting != null && hankaPosition && kataPosition && karelStatement && hasRecommendation;
 
   const teamBlockers: string[] = [];
-  if (!hankaPosition) teamBlockers.push("Chybí stanovisko Hanky");
-  if (!kataPosition) teamBlockers.push("Chybí stanovisko Káti");
-  if (!closureMeetingDone) teamBlockers.push("Closure meeting neproběhl / nefinalizován");
-  if (!karelStatement) teamBlockers.push("Chybí Karlův finální statement");
+  if (!closureMeeting) teamBlockers.push("Closure meeting nebyl založen");
+  if (closureMeeting && !hankaPosition) teamBlockers.push("Chybí stanovisko Hanky");
+  if (closureMeeting && !kataPosition) teamBlockers.push("Chybí stanovisko Káti");
+  if (closureMeeting && !karelStatement) teamBlockers.push("Chybí Karlův finální statement");
+  if (closureMeeting && !hasRecommendation) teamBlockers.push("Chybí closure recommendation");
 
   // ── OPERATIONAL ──
   const monitoringPlan = crisis.closure_reason != null || cl?.relapse_plan_exists === true;
@@ -134,7 +138,7 @@ async function checkClosureReadiness(sb: any, crisisEventId: string): Promise<Cl
   return {
     clinical: { met: clinicalBlockers.length === 0, details: { noRisk, triggerManaged, lastContactStable, emotionalStable }, blockers: clinicalBlockers },
     process: { met: processBlockers.length === 0, details: { sessionsExist, interventionResults, noOpenQuestions, todayAssessment, eveningDecision }, blockers: processBlockers },
-    team: { met: teamBlockers.length === 0, details: { hankaPosition, kataPosition, closureMeetingDone, karelStatement }, blockers: teamBlockers },
+    team: { met: teamBlockers.length === 0, details: { hankaPosition, kataPosition, closureMeetingCompleted, karelStatement, hasRecommendation }, blockers: teamBlockers },
     operational: { met: operationalBlockers.length === 0, details: { monitoringPlan, whatToWatch }, blockers: operationalBlockers },
     overall_ready: allBlockers.length === 0,
     all_blockers: allBlockers,
