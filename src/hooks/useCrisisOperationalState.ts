@@ -502,6 +502,26 @@ export function useCrisisOperationalState() {
           dailyChecklist: parseDailyChecklist(ev.daily_checklist),
           crisisMeetingRequired: ev.crisis_meeting_required ?? false,
           crisisMeetingReason: ev.crisis_meeting_reason ?? null,
+          // Meeting linkage
+          ...(() => {
+            const m = allMeetings.find((mt: any) => mt.crisis_event_id === ev.id);
+            if (!m) return { meetingOpen: false, meetingId: null, meetingLastConclusionAt: null, meetingWaitingFor: null, meetingStatusSummary: null };
+            const isOpen = m.status !== "finalized" && m.status !== "closed";
+            const waitingFor = isOpen
+              ? (!m.hanka_joined_at && !m.kata_joined_at ? "obě terapeutky"
+                : !m.hanka_joined_at ? "Haničku" : !m.kata_joined_at ? "Káťu" : null)
+              : null;
+            const statusSummary = isOpen
+              ? (waitingFor ? `otevřená, čeká na ${waitingFor}` : "otevřená")
+              : (m.finalized_at ? "uzavřená" : "neaktivní");
+            return {
+              meetingOpen: isOpen,
+              meetingId: m.id,
+              meetingLastConclusionAt: m.finalized_at ?? null,
+              meetingWaitingFor: waitingFor,
+              meetingStatusSummary: statusSummary,
+            };
+          })(),
         });
       }
 
@@ -575,6 +595,11 @@ export function useCrisisOperationalState() {
             dailyChecklist: parseDailyChecklist(null),
             crisisMeetingRequired: false,
             crisisMeetingReason: null,
+            meetingOpen: false,
+            meetingId: null,
+            meetingLastConclusionAt: null,
+            meetingWaitingFor: null,
+            meetingStatusSummary: null,
           });
         }
       }
