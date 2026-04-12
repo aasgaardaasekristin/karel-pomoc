@@ -1298,6 +1298,31 @@ serve(async (req) => {
       .select("crisis_alert_id, crisis_event_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days, grounding_works, trigger_managed, no_open_questions, relapse_plan_exists, karel_recommends_closure")
       ;
 
+    // Crisis interviews today (for 05A)
+    const { data: crisisInterviews } = await sb
+      .from("crisis_karel_interviews")
+      .select("crisis_event_id, part_name, interview_type, interview_goal, started_at, completed_at, karel_decision_after_interview, summary_for_team, what_remains_unclear, next_required_actions, observed_regulation, observed_trust, observed_coherence")
+      .gte("started_at", new Date(now.getTime() - 2 * MS_PER_DAY).toISOString())
+      .order("started_at", { ascending: false })
+      .limit(20);
+
+    // Crisis session questions (for 05A)
+    const { data: crisisSessionQuestions } = await sb
+      .from("crisis_session_questions")
+      .select("crisis_event_id, therapist_name, question_text, answer_text, answered_at, karel_analysis, required_by")
+      .gte("created_at", new Date(now.getTime() - 3 * MS_PER_DAY).toISOString())
+      .order("created_at", { ascending: true })
+      .limit(50);
+
+    // Did meetings with crisis link (for 05A)
+    const { data: crisisMeetings } = await sb
+      .from("did_meetings")
+      .select("id, meeting_type, status, scheduled_for, outcome, agenda, crisis_event_id")
+      .not("status", "eq", "cancelled")
+      .gte("created_at", new Date(now.getTime() - 7 * MS_PER_DAY).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(10);
+
     // Note: crisis_events data is already in activeCrises (primary source of truth)
 
     let dashboardContent = "";
