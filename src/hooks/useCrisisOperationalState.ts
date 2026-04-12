@@ -514,7 +514,7 @@ export function useCrisisOperationalState() {
           closureChecklistState,
           canProposeClosing: canPropose,
           closureReady,
-          closureReadiness4Layer: null, // populated on-demand via edge function
+          closureReadiness4Layer: null, // will be populated after initial fetch
           canEvaluate: !!ev.id,
           lastEntryBy: latest ? (latest.therapist_hana_input ? "Hanička" : latest.therapist_kata_input ? "Káťa" : null) : null,
           lastEntrySummary: latest?.part_interview_summary ?? null,
