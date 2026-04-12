@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { isNonDidEntity } from "@/lib/didPartNaming";
+import { isNonDidEntity, cleanDisplayName } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import DidSystemMap from "./DidSystemMap";
 import KarelDailyPlan from "./KarelDailyPlan";
@@ -379,7 +379,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                   <div key={c.id} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
                     <div className="flex items-center justify-between">
                       <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                        {c.part_name} ({c.severity})
+                        {cleanDisplayName(c.part_name)} ({c.severity})
                       </span>
                       <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
                         {c.days_in_crisis ? `den ${c.days_in_crisis}` : c.status}
@@ -394,13 +394,15 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                       >
                         Krizová porada
                       </button>
-                      <button
-                        onClick={() => navigate(`/chat?sub=cast&part=${c.part_name}`)}
-                        className="text-[12px] px-3 py-1 rounded-md font-medium border"
-                        style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
-                      >
-                        Otevřít detail
-                      </button>
+                      {c.crisis_thread_id && (
+                        <button
+                          onClick={() => navigate(`/chat?sub=cast&part=${encodeURIComponent(c.part_name)}`)}
+                          className="text-[12px] px-3 py-1 rounded-md font-medium border"
+                          style={{ color: "#4A4A4A", borderColor: "#D1D5DB" }}
+                        >
+                          Otevřít vlákno
+                        </button>
+                      )}
                     </div>
                     <details className="text-[12px]">
                       <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
@@ -456,7 +458,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                     className="text-[14px] px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
                     style={{ color: "#01696F", borderColor: "#01696F40" }}
                   >
-                    {t.partName}
+                    {cleanDisplayName(t.partName)}
                     <span className="text-[12px] ml-1 opacity-60">({t.messageCount})</span>
                   </button>
                 );
@@ -516,7 +518,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
               <AlertTriangle className="w-4 h-4" style={{ color: "#B45309" }} />
               <span className="text-[14px] font-semibold" style={{ color: "#2D2D2D" }}>Neaktivní části</span>
             </div>
-            <p className="text-[14px]" style={{ color: "#4A4A4A" }}>{warningParts.map(p => p.name).join(", ")} – neaktivní více než 7 dní.</p>
+            <p className="text-[14px]" style={{ color: "#4A4A4A" }}>{warningParts.map(p => cleanDisplayName(p.name)).join(", ")} – neaktivní více než 7 dní.</p>
           </div>
         )}
 
