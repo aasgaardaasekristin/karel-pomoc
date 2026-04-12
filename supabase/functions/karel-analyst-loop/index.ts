@@ -1289,13 +1289,13 @@ serve(async (req) => {
     // Crisis assessments for trend + closure readiness
     const { data: crisisAssessments } = await sb
       .from("crisis_daily_assessments")
-      .select("crisis_alert_id, assessment_date, karel_decision, karel_risk_assessment, day_number")
+      .select("crisis_alert_id, crisis_event_id, assessment_date, karel_decision, karel_risk_assessment, day_number")
       .order("assessment_date", { ascending: true });
 
     // Crisis closure checklists
     const { data: closureChecklists } = await sb
       .from("crisis_closure_checklist")
-      .select("crisis_alert_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days")
+      .select("crisis_alert_id, crisis_event_id, hanka_agrees, kata_agrees, karel_diagnostic_done, no_risk_signals, emotional_stable_days, grounding_works, trigger_managed, no_open_questions, relapse_plan_exists, karel_recommends_closure")
       ;
 
     // Note: crisis_events data is already in activeCrises (primary source of truth)
@@ -1809,8 +1809,11 @@ serve(async (req) => {
         const matchingAlert = (crisisAlerts || []).find((a: any) => a.part_name?.toUpperCase() === partName.toUpperCase());
         const alertId = matchingAlert?.id || eventId;
 
-        // Get assessments for this crisis (linked via crisis_alert_id)
-        const assessments = (crisisAssessments || []).filter((a: any) => a.crisis_alert_id === alertId);
+        // Get assessments: primary via crisis_event_id, fallback via crisis_alert_id
+        const assessments = (crisisAssessments || []).filter((a: any) =>
+          (a.crisis_event_id && a.crisis_event_id === eventId) ||
+          (!a.crisis_event_id && a.crisis_alert_id === alertId)
+        );
         const latest = assessments.length > 0 ? assessments[assessments.length - 1] : null;
 
         // Check if today's assessment exists
@@ -1858,7 +1861,10 @@ serve(async (req) => {
         // Check closure readiness — 10-item model
         // Crisis state model: ACTIVE → INTERVENED → STABILIZING → READY_TO_CLOSE → RESOLVED → MONITORING_POST → CLOSED
         // Analyst-loop may only PROPOSE READY_TO_CLOSE — never directly set RESOLVED
-        const checklist = (closureChecklists || []).find((c: any) => c.crisis_alert_id === alertId);
+        const checklist = (closureChecklists || []).find((c: any) =>
+          (c.crisis_event_id && c.crisis_event_id === eventId) ||
+          (!c.crisis_event_id && c.crisis_alert_id === alertId)
+        );
         const event = crisis; // crisis_events IS the source of truth now
 
         if (checklist && event) {
