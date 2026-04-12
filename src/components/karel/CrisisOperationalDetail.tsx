@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target,
-  Zap, ShieldAlert, CalendarCheck, MessageSquareDashed, Brain, ArrowRight, RefreshCw, Loader2,
+  CalendarCheck, MessageSquareDashed, Brain, ArrowRight, RefreshCw, Loader2,
   ChevronDown, ChevronRight, FileText, Database, Send,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
