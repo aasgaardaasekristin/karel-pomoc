@@ -463,7 +463,23 @@ async function handleUpdatePhase(sb: any, body: any) {
     case "evening_decision":
       update.last_evening_decision_at = now;
       if (notes) update.evening_decision_notes = notes;
-      if (decision) update.operating_state = decision;
+      if (decision) {
+        update.operating_state = decision;
+        // Fire-and-forget: propagate state transition to part card
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        fetch(`${supabaseUrl}/functions/v1/karel-crisis-card-propagation`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            crisis_event_id,
+            part_name: crisis_event_id, // will be resolved below
+            source: "state_transition",
+            source_id: `evening_${new Date().toISOString().slice(0, 10)}`,
+            data: { from_state: "unknown", to_state: decision, reason: notes || "Evening decision" },
+          }),
+        }).catch((e: any) => console.warn("[DAILY-CYCLE] Card prop error:", e));
+      }
       break;
   }
 
