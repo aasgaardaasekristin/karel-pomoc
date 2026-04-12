@@ -282,6 +282,38 @@ async function handleComplete(sb: any, body: any) {
     message: `Interview ${interview_id}: ${interview.part_name} → decision=${decision}. ${(summary_for_team || "").slice(0, 200)}`,
   }).catch(() => {});
 
+  // ── Propagate to part card (fire-and-forget) ───────────────
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  fetch(`${supabaseUrl}/functions/v1/karel-crisis-card-propagation`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      crisis_event_id: interview.crisis_event_id,
+      part_name: interview.part_name,
+      source: "interview_completed",
+      source_id: interview_id,
+      data: {
+        interview_type: body.interview_type || "diagnostic",
+        interview_goal: body.interview_goal || null,
+        hidden_diagnostic_hypotheses: hidden_diagnostic_hypotheses || [],
+        stabilization_methods_used: stabilization_methods_used || [],
+        observed_regulation: observed_regulation ?? null,
+        observed_trust: observed_trust ?? null,
+        observed_coherence: observed_coherence ?? null,
+        observed_somatic_state: observed_somatic_state || null,
+        observed_risk_signals: observed_risk_signals || [],
+        what_shifted: what_shifted || null,
+        what_remains_unclear: what_remains_unclear || null,
+        karel_decision_after_interview: decision,
+        summary_for_team: summary_for_team || null,
+      },
+    }),
+  }).catch((e) => console.warn("[CRISIS-INTERVIEW] Card propagation fire-and-forget error:", e));
+
   console.log(`[CRISIS-INTERVIEW] Completed: ${interview_id}, decision=${decision}`);
 
   return jsonRes({
