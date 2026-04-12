@@ -628,9 +628,20 @@ Odpověz POUZE platným JSON:
       }
 
       // ── STEP 5: Insert crisis_tasks (internal tracking) ──
+      // Look up matching crisis_event for unified FK
+      const { data: matchedEvent } = await sb.from("crisis_events")
+        .select("id")
+        .eq("part_name", thread.part_name)
+        .neq("phase", "CLOSED")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const crisisEventId = matchedEvent?.id || null;
+
       await sb.from("crisis_tasks").insert([
         {
           crisis_alert_id: newAlert!.id,
+          crisis_event_id: crisisEventId,
           title: `TELEFONÁT S ${thread.part_name.toUpperCase()} – krizová intervence`,
           description: analysis.kata_call_plan.slice(0, 500),
           assigned_to: "kata",
@@ -638,6 +649,7 @@ Odpověz POUZE platným JSON:
         },
         {
           crisis_alert_id: newAlert!.id,
+          crisis_event_id: crisisEventId,
           title: `VEČERNÍ SEZENÍ S ${thread.part_name.toUpperCase()} – krizová intervence`,
           description: analysis.hanka_session_plan.slice(0, 500),
           assigned_to: "hanicka",
