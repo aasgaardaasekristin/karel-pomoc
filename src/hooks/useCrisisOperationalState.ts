@@ -571,7 +571,6 @@ export function useCrisisOperationalState() {
           missingSessionResult,
           missingTherapistFeedback,
           cardPropagationStatus: [],
-          cardPropagationStatus: [],
           planSyncStatus: null,
           mainBlocker: computeMainBlocker(partialCard),
         });
