@@ -277,6 +277,7 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         <Section05A icon="📝" title="Úkoly" content={plan05A.tasks} />
         <Section05A icon="❓" title="Otevřené otázky" content={plan05A.questions} />
         <Section05A icon="⚠️" title="Urgentní follow-up" content={plan05A.urgentFollowUp} color="#B45309" />
+        <Section05A icon="🔄" title="Režim obnovy řízení" content={plan05A.recoveryMode} color="#1565C0" />
         <Section05A icon="🧠" title="Karlův přehled" content={plan05A.karelOverview} />
         <Section05A icon="👥" title="Přehled částí" content={plan05A.partsOverview} />
       </div>
