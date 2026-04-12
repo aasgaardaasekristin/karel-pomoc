@@ -480,6 +480,125 @@ const STALE_QUESTION_DAYS = 3;
 const STALE_SESSION_DAYS = 5;
 const STALE_CONTACT_DAYS = 3;
 
+// ═══ RECOVERY MODE — concrete recovery plan per stale part ═══
+interface RecoveryAction {
+  partName: string;
+  reason: string;
+  updateRequest: { who: string; what: string; returnTo: string };
+  sessionProposal: { format: string; lead: string; goal: string; openingQuestions: string[]; expectedOutcome: string } | null;
+  karelConversation: { channel: string; goal: string; questions: string[] } | null;
+  pendingQuestion: { text: string; directedTo: string } | null;
+}
+
+function generateRecoveryPlans(
+  activeCrises: any[],
+  activePartsRegistry: any[],
+  recentThreadParts: Set<string>,
+  pendingTasks: any[],
+  sessionPlans: any[],
+): RecoveryAction[] {
+  const plans: RecoveryAction[] = [];
+  const nowMs = Date.now();
+  const seenKeys = new Set<string>();
+
+  // 1. Crisis parts without fresh data
+  for (const c of activeCrises) {
+    const partName = c.part_name || "";
+    const key = normalizePartKey(partName);
+    if (!key || seenKeys.has(key) || isNonDidEntity(partName)) continue;
+    seenKeys.add(key);
+
+    const updatedAt = c.updated_at || c.created_at || "";
+    const hoursSince = updatedAt ? (nowMs - new Date(updatedAt).getTime()) / 3_600_000 : 999;
+    if (hoursSince <= STALE_CRISIS_HOURS) continue;
+
+    const dayNum = c.days_in_crisis || 1;
+    const severity = c.severity || "moderate";
+
+    plans.push({
+      partName,
+      reason: `Krize den ${dayNum}, poslední data ${Math.floor(hoursSince)}h zpět — Karel nemůže řídit bez aktuálních informací`,
+      updateRequest: {
+        who: "Hanička",
+        what: `Zapsat do krizového deníku: (1) aktuální emoční stav ${partName}, (2) výsledek posledního zásahu, (3) co se za posledních ${Math.floor(hoursSince)}h změnilo, (4) zda jsou přítomny rizikové signály`,
+        returnTo: "Karel potřebuje tyto informace do konce dnešního dne pro úpravu krizového plánu",
+      },
+      sessionProposal: {
+        format: severity === "critical" ? "krizová intervence (30 min)" : "stabilizační sezení (30–45 min)",
+        lead: "Hanička",
+        goal: `Ověřit aktuální krizový stav ${partName}, zmapovat trend, provést grounding pokud třeba`,
+        openingQuestions: [
+          `Jak se dnes cítíš, ${partName}?`,
+          `Co se změnilo od posledně?`,
+          `Je něco, co teď potřebuješ?`,
+          `Máš pocit bezpečí?`,
+        ],
+        expectedOutcome: `Karel obdrží: (1) aktuální risk level, (2) trend krize (zlepšení/stagnace/zhoršení), (3) doporučení pro další den`,
+      },
+      karelConversation: {
+        channel: "DID/Kluci",
+        goal: `Karel provede krátký check-in s ${partName} — zjistit subjektivní vnímání situace`,
+        questions: [
+          `Jak se dnes cítíš?`,
+          `Co bys teď potřeboval?`,
+          `Jak vnímáš spolupráci s terapeutkami?`,
+        ],
+      },
+      pendingQuestion: {
+        text: `Karel potřebuje aktuální stav ${partName} (den ${dayNum} krize). Co se změnilo za posledních ${Math.floor(hoursSince)}h? Jaký je výsledek posledního zásahu?`,
+        directedTo: "both",
+      },
+    });
+  }
+
+  // 2. Active (non-crisis) parts without recent contact
+  for (const p of activePartsRegistry) {
+    const partName = p.part_name || "";
+    const key = normalizePartKey(partName);
+    if (!key || seenKeys.has(key) || isNonDidEntity(partName)) continue;
+    if (!["active", "stabilizing"].includes(p.status)) continue;
+    if (recentThreadParts.has(partName.toLowerCase())) continue;
+    seenKeys.add(key);
+
+    // Check if there's already a pending session
+    const hasPlan = sessionPlans.some((s: any) =>
+      normalizePartKey(s.selected_part || "") === key && ["pending", "planned"].includes(s.status)
+    );
+
+    plans.push({
+      partName,
+      reason: `Aktivní část bez kontaktu ${STALE_CONTACT_DAYS}+ dní — Karel nemá aktuální informace pro řízení`,
+      updateRequest: {
+        who: p.status === "stabilizing" ? "Hanička" : (Math.random() > 0.5 ? "Hanička" : "Káťa"),
+        what: `Krátký check-in s ${partName}: (1) aktuální nálada, (2) zda potřebuje sezení, (3) jakékoli nové pozorování`,
+        returnTo: "Karel zapracuje info do operativního plánu a karty části",
+      },
+      sessionProposal: hasPlan ? null : {
+        format: "check-in (15–20 min)",
+        lead: p.status === "stabilizing" ? "Hanička" : "Káťa",
+        goal: `Zjistit aktuální stav ${partName}, ověřit stabilitu, identifikovat potřeby`,
+        openingQuestions: [
+          `Jak se ti daří?`,
+          `Je něco, o čem bys chtěl(a) mluvit?`,
+          `Jak vnímáš poslední dny?`,
+        ],
+        expectedOutcome: `Karel obdrží: aktuální status, emoční ladění, případné potřeby pro plánování`,
+      },
+      karelConversation: {
+        channel: "DID/Kluci",
+        goal: `Karel naváže kontakt s ${partName} — zjistit, jestli je vše v pořádku`,
+        questions: [
+          `Ahoj, ${partName}, jak se ti daří?`,
+          `Potřebuješ něco?`,
+        ],
+      },
+      pendingQuestion: null, // don't escalate non-crisis parts
+    });
+  }
+
+  return plans;
+}
+
 interface StaleItem {
   type: "crisis" | "task" | "question" | "session" | "contact";
   entity: string;
