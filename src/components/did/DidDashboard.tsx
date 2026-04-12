@@ -359,7 +359,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                         {card.displayName} ({card.severity})
                       </span>
                       <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-                        {card.clinicalSummary || card.currentSummary}
+                        {card.displaySummary}
                       </span>
                     </div>
 
