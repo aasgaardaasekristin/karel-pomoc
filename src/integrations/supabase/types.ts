@@ -1252,6 +1252,7 @@ export type Database = {
           completed_at: string | null
           created_at: string
           crisis_alert_id: string
+          crisis_event_id: string | null
           description: string | null
           id: string
           priority: string
@@ -1263,6 +1264,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           crisis_alert_id: string
+          crisis_event_id?: string | null
           description?: string | null
           id?: string
           priority?: string
@@ -1274,6 +1276,7 @@ export type Database = {
           completed_at?: string | null
           created_at?: string
           crisis_alert_id?: string
+          crisis_event_id?: string | null
           description?: string | null
           id?: string
           priority?: string
@@ -1286,6 +1289,13 @@ export type Database = {
             columns: ["crisis_alert_id"]
             isOneToOne: false
             referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crisis_tasks_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
             referencedColumns: ["id"]
           },
         ]
