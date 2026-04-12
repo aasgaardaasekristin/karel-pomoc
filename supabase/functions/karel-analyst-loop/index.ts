@@ -1906,7 +1906,7 @@ serve(async (req) => {
             trigger_resolved: triggerResolved,
             updated_at: new Date().toISOString(),
           };
-          if (stableSince) eventUpdate.stable_since = stableSince;
+          eventUpdate.stable_since = stableSince; // null when stability lost → clears DB field
 
           if (fullReady && allIndicatorsAbove5 && latest?.karel_decision !== "crisis_continues") {
             // Propose READY_TO_CLOSE
