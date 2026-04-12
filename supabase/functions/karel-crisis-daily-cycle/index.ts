@@ -492,6 +492,23 @@ async function handleUpdatePhase(sb: any, body: any) {
       .update({ daily_checklist: cycleState })
       .eq("id", crisis_event_id);
 
+    // Propagate significant state transitions to part card
+    if (phase === "evening_decision" && decision) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      fetch(`${supabaseUrl}/functions/v1/karel-crisis-card-propagation`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crisis_event_id,
+          part_name: crisis.part_name,
+          source: "state_transition",
+          source_id: `evening_${todayDate}`,
+          data: { from_state: crisis.operating_state || "unknown", to_state: decision, reason: notes || "Evening decision" },
+        }),
+      }).catch((e: any) => console.warn("[DAILY-CYCLE] Card prop error:", e));
+    }
+
     return jsonRes({ success: true, phase, cycle_state: cycleState });
   }
 
