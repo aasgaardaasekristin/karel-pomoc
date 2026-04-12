@@ -990,7 +990,7 @@ function build05AContent(
       seenPartKeys.add(key);
       const hasContact = recentThreadParts.has((p.name || "").toLowerCase());
       const contactTag = hasContact ? "" : " | ⚠️ bez čerstvého kontaktu";
-      lines.push(`  ▸ ${p.name} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}${contactTag}`);
+      lines.push(`  ▸ ${cleanDisplayName(p.name || "")} | riziko: ${p.risk_level || "?"} | emoce: ${p.recent_emotions || "?"}${contactTag}`);
       if (p.needs?.length) lines.push(`    Potřeby: ${p.needs.join(", ")}`);
     }
     lines.push(``);
