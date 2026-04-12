@@ -529,6 +529,101 @@ async function logCycleMissing(sb: any, crisisId: string, partName: string, miss
   }).catch(() => {});
 }
 
+// ── SUBMIT EVENING DECISION (proper workflow) ───────────────
+
+const VALID_EVENING_DECISIONS = [
+  "continue_crisis",
+  "stabilize_and_monitor",
+  "escalate",
+  "prepare_joint_review",
+  "ready_for_joint_review",
+] as const;
+
+const DECISION_TO_STATE: Record<string, string> = {
+  stabilize_and_monitor: "stabilizing",
+  prepare_joint_review: "ready_for_joint_review",
+  ready_for_joint_review: "ready_for_joint_review",
+  escalate: "active",
+};
+
+async function handleSubmitEveningDecision(sb: any, body: any) {
+  const { crisis_event_id, decision, notes, next_day_plan } = body;
+
+  if (!crisis_event_id) return jsonRes({ error: "crisis_event_id required" }, 400);
+  if (!decision) return jsonRes({ error: "decision required — use: " + VALID_EVENING_DECISIONS.join(", ") }, 400);
+  if (!VALID_EVENING_DECISIONS.includes(decision)) {
+    return jsonRes({ error: `Invalid decision '${decision}'. Valid: ${VALID_EVENING_DECISIONS.join(", ")}` }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const todayDate = now.slice(0, 10);
+
+  // Fetch crisis
+  const { data: crisis, error: cErr } = await sb
+    .from("crisis_events")
+    .select("*")
+    .eq("id", crisis_event_id)
+    .single();
+  if (cErr || !crisis) return jsonRes({ error: "Crisis not found" }, 404);
+
+  // Build update
+  const update: Record<string, any> = {
+    last_evening_decision_at: now,
+    evening_decision_notes: `[${decision}] ${notes || ""}`.trim(),
+    updated_at: now,
+  };
+
+  if (next_day_plan) {
+    update.next_day_plan_notes = next_day_plan;
+  }
+
+  // State transition if decision implies it
+  const newState = DECISION_TO_STATE[decision];
+  if (newState && crisis.operating_state !== newState) {
+    update.operating_state = newState;
+  }
+
+  await sb.from("crisis_events").update(update).eq("id", crisis_event_id);
+
+  // Re-compute daily cycle
+  const pragueHour = new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Prague" })).getHours();
+  const { data: updatedCrisis } = await sb.from("crisis_events").select("*").eq("id", crisis_event_id).single();
+  if (updatedCrisis) {
+    const cycleState = await computeCrisisDailyCycle(sb, updatedCrisis, todayDate, pragueHour);
+    await sb.from("crisis_events").update({ daily_checklist: cycleState }).eq("id", crisis_event_id);
+  }
+
+  // Propagate to part card
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  fetch(`${supabaseUrl}/functions/v1/karel-crisis-card-propagation`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      crisis_event_id,
+      part_name: crisis.part_name,
+      source: "evening_decision",
+      source_id: `evening_${todayDate}`,
+      data: {
+        decision,
+        notes: notes || null,
+        next_day_plan: next_day_plan || null,
+        from_state: crisis.operating_state || "unknown",
+        to_state: newState || crisis.operating_state || "unknown",
+      },
+    }),
+  }).catch((e: any) => console.warn("[DAILY-CYCLE] Card prop error:", e));
+
+  console.log(`[DAILY-CYCLE] Evening decision: ${decision} for ${crisis.part_name}`);
+
+  return jsonRes({
+    success: true,
+    decision,
+    state_changed: newState ? newState !== crisis.operating_state : false,
+    new_state: newState || crisis.operating_state,
+  });
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 function jsonRes(body: Record<string, unknown>, status = 200) {
