@@ -381,7 +381,7 @@ export function useCrisisOperationalState() {
             ? ({ minimal: 0, low: 1, moderate: 2, high: 3, critical: 3 } as Record<string, number>)[latest.karel_risk_assessment] ?? null
             : null,
           // stableHours: use DB stable_since timestamp if available
-          stableHours: ev.stable_since ? Math.max(0, (nowMs - new Date(ev.stable_since).getTime()) / 3_600_000) : null,
+          stableHours: ev.stable_since ? Math.max(0, (Date.now() - new Date(ev.stable_since).getTime()) / 3_600_000) : null,
           // consecutiveStableEntries: count backwards from newest assessment until we hit high/critical
           consecutiveStableEntries: (() => {
             if (assessments.length < 2) return null;
