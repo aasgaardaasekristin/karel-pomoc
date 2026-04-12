@@ -21,6 +21,7 @@ interface PendingQuestion {
   answer: string | null;
   answered_at: string | null;
   answered_by: string | null;
+  crisis_event_id: string | null;
 }
 
 interface Props {
