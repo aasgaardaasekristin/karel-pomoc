@@ -226,6 +226,8 @@ async function computeCrisisDailyCycle(
   };
 
   // ── MISSING OUTPUTS ──
+  const hasKarelAnalysis = (todayQuestions || []).some((q: any) => q.karel_analyzed_at);
+  const totalQuestions = (todayQuestions || []).length;
   const missingOutputs: string[] = [];
   if (!dayEval.status_checked) missingOutputs.push(`Chybí dnešní assessment/interview pro ${partName}`);
   if (!dayEval.safety_confirmed) missingOutputs.push(`Bezpečí ${partName} neověřeno`);
@@ -234,7 +236,8 @@ async function computeCrisisDailyCycle(
   if (!hankaResponded && currentHour >= 14) missingOutputs.push(`Chybí stanovisko Hanky k ${partName}`);
   if (!kataResponded && currentHour >= 14) missingOutputs.push(`Chybí stanovisko Káti k ${partName}`);
   if (!dayEval.evening_decision_exists && currentHour >= 18) missingOutputs.push(`Chybí večerní rozhodnutí pro ${partName}`);
-  if (unansweredQuestions.length > 0) missingOutputs.push(`${unansweredQuestions.length} nezodpovězených otázek k ${partName}`);
+  if (unansweredQuestions.length > 0) missingOutputs.push(`Chybí odpověď po sezení: ${unansweredQuestions.length}/${totalQuestions} otázek k ${partName}`);
+  if (totalQuestions > 0 && answeredQuestions.length > 0 && !hasKarelAnalysis) missingOutputs.push(`Chybí Karlova analýza odpovědí po sezení s ${partName}`);
 
   // ── NEXT DAY READINESS ──
   const openItems: string[] = [];
