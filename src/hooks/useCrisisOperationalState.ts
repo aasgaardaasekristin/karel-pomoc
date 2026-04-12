@@ -594,7 +594,17 @@ export function useCrisisOperationalState() {
         }
       }
 
-      setCards(Array.from(cardMap.values()));
+      const builtCards = Array.from(cardMap.values());
+      setCards(builtCards);
+
+      // Fire backend readiness fetch for each crisis with eventId (non-blocking)
+      for (const c of builtCards) {
+        if (!c.eventId) continue;
+        fetchBackendReadiness(c.eventId).then(r => {
+          if (!r) return;
+          setCards(prev => prev.map(pc => pc.eventId === c.eventId ? { ...pc, closureReadiness4Layer: r } : pc));
+        }).catch(() => {});
+      }
     } catch (err) {
       console.error("[useCrisisOperationalState] Error:", err);
     } finally {
@@ -615,3 +625,60 @@ export function useCrisisOperationalState() {
 
   return { cards, loading, refetch: fetchAll };
 }
+
+// ── Backend readiness fetcher ──────────────────────────────────
+
+async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureReadiness4Layer | null> {
+  try {
+    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+    const session = (await supabase.auth.getSession()).data.session;
+    const res = await fetch(`https://${projectId}.supabase.co/functions/v1/karel-crisis-closure-meeting`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ action: "check_closure_readiness", crisis_event_id: crisisEventId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.readiness) return null;
+    const r = data.readiness;
+    return {
+      clinical: { met: r.clinical.met, blockers: r.clinical.blockers || [] },
+      process: { met: r.process.met, blockers: r.process.blockers || [] },
+      team: { met: r.team.met, blockers: r.team.blockers || [] },
+      operational: { met: r.operational.met, blockers: r.operational.blockers || [] },
+      overallReady: r.overall_ready,
+      allBlockers: r.all_blockers || [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ── Allowed transitions (mirrored from backend for UI) ────────
+
+export const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  active: ["intervened", "stabilizing"],
+  intervened: ["stabilizing", "active", "awaiting_session_result"],
+  stabilizing: ["awaiting_session_result", "awaiting_therapist_feedback", "ready_for_joint_review", "active"],
+  awaiting_session_result: ["stabilizing", "awaiting_therapist_feedback", "active"],
+  awaiting_therapist_feedback: ["stabilizing", "ready_for_joint_review", "active"],
+  ready_for_joint_review: ["ready_to_close", "stabilizing", "active"],
+  ready_to_close: ["closed", "ready_for_joint_review", "active"],
+  closed: ["monitoring_post"],
+  monitoring_post: ["active", "closed"],
+};
+
+export const STATE_TRANSITION_LABELS: Record<string, string> = {
+  intervened: "Označit po zásahu",
+  stabilizing: "Označit stabilizaci",
+  awaiting_session_result: "Čeká výsledek sezení",
+  awaiting_therapist_feedback: "Čeká feedback terapeutek",
+  ready_for_joint_review: "Připravit společné review",
+  ready_to_close: "Připraveno k uzavření",
+  closed: "Uzavřít krizi",
+  monitoring_post: "Přepnout do monitoringu",
+  active: "Vrátit do aktivní krize",
+};
