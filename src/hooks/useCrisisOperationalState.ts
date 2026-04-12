@@ -345,6 +345,7 @@ export function useCrisisOperationalState() {
       const allTasks = tasksRes.data || [];
       const allQuestions = questionsRes.data || [];
       const allInterventions = interventionsRes.data || [];
+      const allMeetings = meetingsRes.data || [];
 
       const cardMap = new Map<string, CrisisOperationalCard>();
 
