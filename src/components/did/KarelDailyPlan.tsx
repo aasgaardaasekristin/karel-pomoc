@@ -50,6 +50,7 @@ interface Parsed05A {
   urgentFollowUp: string;
   karelOverview: string;
   partsOverview: string;
+  recoveryMode: string;
   raw: string;
   cycleInfo: string;
 }
