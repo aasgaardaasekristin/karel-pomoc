@@ -159,14 +159,14 @@ function buildMeetingsSummary(meetings: any[]): string {
     .join("\n\n");
 }
 
-// ── Helper: Build crisis summary ───────────────────────────────
+// ── Helper: Build crisis summary (from crisis_events) ──────────
 function buildCrisisSummary(crises: any[]): string {
   if (!crises.length) return "Žádné aktivní krize.";
 
   return crises
     .map(
       (c) =>
-        `- ${c.part_name}: status=${c.status}, dní v krizi=${c.days_in_crisis || "?"}, shrnutí: ${(c.summary || c.description || "").slice(0, 300)}`,
+        `- ${c.part_name}: fáze=${c.phase}, severity=${c.severity}, dní aktivních=${c.days_active || "?"}, trigger=${c.trigger_resolved ? "zvládnut" : "aktivní"}, shrnutí: ${(c.clinical_summary || c.trigger_description || "").slice(0, 300)}`,
     )
     .join("\n");
 }
