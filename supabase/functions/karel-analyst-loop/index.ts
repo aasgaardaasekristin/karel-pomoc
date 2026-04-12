@@ -1365,6 +1365,65 @@ serve(async (req) => {
       }
     }
 
+    // ── KROK 6e: Stale-state auto follow-through ────────────
+    const staleItems = detectStaleState(
+      activeCrises || [], pendingTasks || [], pendingQuestions || [],
+      sessionPlans || [], activePartsRegistry || [], recentThreadParts, todayDate,
+    );
+    let staleTasksCreated = 0;
+    let staleQuestionsCreated = 0;
+
+    for (const si of staleItems.slice(0, 8)) {
+      try {
+        if (si.type === "crisis" || si.type === "session" || si.type === "contact") {
+          // Create follow-up task
+          const prefix = si.action.slice(0, TASK_DEDUP_PREFIX_LEN);
+          const { data: existing } = await sb
+            .from("did_therapist_tasks")
+            .select("id")
+            .eq("assigned_to", si.who)
+            .ilike("task", `%${prefix}%`)
+            .in("status", ["pending", "active", "in_progress"])
+            .limit(1);
+
+          if (!existing || existing.length === 0) {
+            await sb.from("did_therapist_tasks").insert({
+              task: `[Auto] ${si.action} — ${si.entity}. ${si.why}`,
+              assigned_to: si.who,
+              priority: si.type === "crisis" ? "high" : "medium",
+              status: "pending",
+              source: "analyst_loop",
+              due_date: si.deadline,
+              user_id: taskUserId,
+            });
+            staleTasksCreated++;
+          }
+        } else if (si.type === "question" || si.type === "task") {
+          // Create pending question for overdue tasks
+          const { data: existing } = await (sb as any)
+            .from("did_pending_questions")
+            .select("id")
+            .ilike("question", `%${si.entity.slice(0, 30)}%`)
+            .in("status", ["pending", "sent"])
+            .limit(1);
+
+          if (!existing || existing.length === 0) {
+            await (sb as any).from("did_pending_questions").insert({
+              question: `${si.action}: "${si.entity}". ${si.why}`,
+              directed_to: si.who === "kata" ? "kata" : "both",
+              subject_type: "stale_followup",
+              status: "pending",
+              expires_at: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+            });
+            staleQuestionsCreated++;
+          }
+        }
+      } catch (staleErr) {
+        console.warn(`[ANALYST] Stale follow-through error:`, staleErr);
+      }
+    }
+    console.log(`[ANALYST] Stale follow-through: ${staleTasksCreated} tasks, ${staleQuestionsCreated} questions`);
+
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
     try {
