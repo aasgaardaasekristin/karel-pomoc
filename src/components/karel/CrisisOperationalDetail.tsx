@@ -46,6 +46,7 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
     try {
       await supabase.from("crisis_closure_checklist").upsert({
         crisis_alert_id: card.alertId,
+        crisis_event_id: card.eventId,
         karel_recommends_closure: true,
         karel_closure_recommendation: "Karel navrhuje uzavření krize — klinická kritéria splněna",
       } as any, { onConflict: "crisis_alert_id" });
