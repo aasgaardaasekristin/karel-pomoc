@@ -765,19 +765,38 @@ function build05AContent(
     activePartsRegistry || [], recentThreadParts, todayDate,
   );
 
-  // --- 1. KRIZOVÝ KONTEXT (active management, not narrative) ---
+  // --- 1. KRIZOVÝ KONTEXT (from crisis_events — single source of truth) ---
   lines.push(`━━━ 1. KRIZOVÝ KONTEXT ━━━`);
   if (activeCrises.length > 0) {
     for (const c of activeCrises) {
       const updatedAt = c.updated_at || c.created_at || "";
       const hoursSince = updatedAt ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 3_600_000) : 0;
-      lines.push(`🔴 ${cleanDisplayName(c.part_name || "")} | ${c.severity || "?"} | den ${c.days_in_crisis || "?"} | status: ${c.status}`);
+      const triggerLabel = c.trigger_resolved ? "✅ zvládnut" : "🔴 aktivní";
+      const stabilityLabel = c.stable_since 
+        ? `stabilní ${Math.floor((Date.now() - new Date(c.stable_since).getTime()) / 3_600_000)}h`
+        : "nestabilní";
+      lines.push(`🔴 ${cleanDisplayName(c.part_name || "")} | ${c.severity || "?"} | fáze: ${c.phase || "active"} | den ${c.days_active || "?"}`);
+      lines.push(`   Trigger: ${triggerLabel} | Stabilita: ${stabilityLabel}`);
+      if (c.primary_therapist) {
+        lines.push(`   Vede: ${c.primary_therapist}${c.secondary_therapist ? ` + ${c.secondary_therapist}` : ""} (${c.ownership_source || "?"})`);
+      }
       if (hoursSince > STALE_CRISIS_HOURS) {
         lines.push(`   ⚠️ ZASTARALÉ — poslední update ${hoursSince}h zpět`);
         lines.push(`   → POŽADAVEK: Hanička dodá aktuální pozorování DNES`);
         lines.push(`   → POŽADAVEK: Výsledek posledního zásahu — co se stalo?`);
-      } else if (c.intervention_plan) {
-        lines.push(`   Dnešní plán: ${(c.intervention_plan as string).slice(0, 150)}`);
+      } else if (c.clinical_summary) {
+        lines.push(`   Klinické shrnutí: ${(c.clinical_summary as string).slice(0, 200)}`);
+      }
+      // Required outputs status
+      if (c.today_required_outputs && Array.isArray(c.today_required_outputs)) {
+        const missing = (c.today_required_outputs as any[]).filter((o: any) => !o.fulfilled);
+        if (missing.length > 0) {
+          lines.push(`   ⚠️ Nesplněno dnes: ${missing.map((o: any) => o.label).join(", ")}`);
+        }
+      }
+      // Awaiting response
+      if (c.awaiting_response_from && (c.awaiting_response_from as string[]).length > 0) {
+        lines.push(`   → Čeká se na: ${(c.awaiting_response_from as string[]).join(", ")}`);
       }
       // Check if planned session happened
       const crisisSession = sessionPlans.find((s: any) =>
