@@ -1186,6 +1186,7 @@ serve(async (req) => {
       `Drive: dashboard=${dashboardContent.length > 0 ? "ok" : "N/A"}, plan=${operPlanContent.length > 0 ? "ok" : "N/A"}`,
       `analysis_json: ${analysisJson ? "saved" : "not_parsed"}`,
       `dashboard_drive: ${dashboardWritten ? "written" : "skipped"}`,
+      `05A_drive: ${plan05AWritten ? "written" : "skipped"}`,
       `crisis_follow: ${crisisTasksCreated}t ${crisisSessionsPlanned}s`,
     ].join(" | ");
 
