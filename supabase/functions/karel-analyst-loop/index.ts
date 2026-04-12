@@ -1000,7 +1000,7 @@ serve(async (req) => {
     // Pending úkoly
     const { data: pendingTasks, error: tasksErr } = await sb
       .from("did_therapist_tasks")
-      .select("id, task, assigned_to, status, priority, due_date, source")
+      .select("id, task, assigned_to, status, priority, due_date, source, created_at")
       .in("status", ["pending", "active", "in_progress", "not_started"])
       .order("priority", { ascending: false })
       .limit(MAX_TASKS_CONTEXT);
@@ -1021,7 +1021,7 @@ serve(async (req) => {
     // Pending questions pro 05A
     const { data: pendingQuestions } = await (sb as any)
       .from("did_pending_questions")
-      .select("id, question, directed_to, status")
+      .select("id, question, directed_to, status, created_at")
       .in("status", ["open", "pending", "sent"])
       .order("created_at", { ascending: false })
       .limit(15);
@@ -1059,6 +1059,21 @@ serve(async (req) => {
     } catch (driveErr) {
       console.warn("[ANALYST] Drive čtení selhalo (non-fatal):", driveErr);
       // Continue without Drive context — AI still works with DB data
+    }
+
+    // ── KROK 2b: Compute recentThreadParts (72h contact) ───
+    const cutoff72h = new Date(now.getTime() - 72 * MS_PER_HOUR).toISOString();
+    const { data: recentConvs } = await sb
+      .from("did_conversations")
+      .select("sub_mode")
+      .gte("updated_at", cutoff72h);
+
+    const recentThreadParts = new Set<string>();
+    for (const t of threads || []) {
+      if (t.part_name) recentThreadParts.add(t.part_name.toLowerCase());
+    }
+    for (const c of recentConvs || []) {
+      if (c.sub_mode) recentThreadParts.add(c.sub_mode.toLowerCase());
     }
 
     // ── KROK 3: Sestavení vstupů pro AI ────────────────────
