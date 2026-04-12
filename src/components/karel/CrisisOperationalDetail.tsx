@@ -42,7 +42,7 @@ const TREND_LABELS: Record<string, { emoji: string; label: string }> = {
 };
 
 const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
-  const [showHistory, setShowHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<"detail" | "history">("detail");
   const [activeTab, setActiveTab] = useState<"detail" | "history">("detail");
   const trend = TREND_LABELS[card.trend48h] || TREND_LABELS.unknown;
   const riskClass = RISK_COLORS[card.lastAssessmentRisk || ""] || "bg-muted text-foreground";
