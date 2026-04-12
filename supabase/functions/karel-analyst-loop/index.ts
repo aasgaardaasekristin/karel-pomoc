@@ -2237,6 +2237,25 @@ serve(async (req) => {
       console.warn("[ANALYST] Chyba při update cycle:", cycleUpdateErr.message);
     }
 
+    // ── KROK 7f: Therapist crisis profiling (fire-and-forget) ──
+    if ((activeCrises?.length || 0) > 0) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        fetch(`${supabaseUrl}/functions/v1/karel-therapist-crisis-review`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${serviceKey}`,
+          },
+          body: JSON.stringify({ mode: "auto" }),
+        }).then(r => console.log(`[ANALYST] Therapist crisis review triggered: ${r.status}`))
+          .catch(e => console.warn(`[ANALYST] Therapist crisis review trigger failed:`, e));
+      } catch (e) {
+        console.warn("[ANALYST] Cannot trigger therapist crisis review:", e);
+      }
+    }
+
     // ── KROK 8: Log ────────────────────────────────────────
     const summary = [
       `Analyst v1: ${threads?.length || 0} vláken`,
