@@ -1,6 +1,5 @@
 import React from "react";
-import { Clock, Brain, FileText, ArrowRight, Users, CheckCircle } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Clock, Brain, FileText, Users, CheckCircle } from "lucide-react";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 
 /**

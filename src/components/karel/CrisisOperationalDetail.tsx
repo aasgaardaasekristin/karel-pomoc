@@ -1,8 +1,7 @@
 import React, { useState } from "react";
 import {
   Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target,
-  Zap, ShieldAlert, ArrowRight, CalendarCheck, MessageSquareDashed,
-  FileText, ChevronDown, ChevronUp, Brain,
+  Zap, ShieldAlert, CalendarCheck, MessageSquareDashed, Brain,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
