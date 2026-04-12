@@ -529,11 +529,16 @@ export function useCrisisOperationalState() {
             isStale: hoursStale > 24,
             primaryTherapist: "neurčeno",
             secondaryTherapist: null,
+            ownershipSource: "unknown" as const,
             currentSummary: buildCurrentSummary({
               phase: null, trend: "unknown", daysActive: a.days_in_crisis,
               hoursStale, lastDecision: null, lastInterventionType: null, lastInterventionWorked: null,
             }),
             clinicalSummary: null,
+            displaySummary: buildCurrentSummary({
+              phase: null, trend: "unknown", daysActive: a.days_in_crisis,
+              hoursStale, lastDecision: null, lastInterventionType: null, lastInterventionWorked: null,
+            }),
             karelRequires: hoursStale > 24 ? [`Čerstvý update od terapeutky (${displayName})`] : [],
             closureReadiness: 0,
             closureChecklistState: emptyChecklist,
@@ -552,6 +557,15 @@ export function useCrisisOperationalState() {
             indicators: { safety: null, coherence: null, emotionalRegulation: null, trust: null, timeOrientation: null },
             openTasks: [],
             pendingQuestions: [],
+            lastMorningReviewAt: null,
+            lastAfternoonReviewAt: null,
+            lastEveningDecisionAt: null,
+            lastOutcomeRecordedAt: null,
+            awaitingResponseFrom: [],
+            todayRequiredOutputs: [],
+            dailyChecklist: parseDailyChecklist(null),
+            crisisMeetingRequired: false,
+            crisisMeetingReason: null,
           });
         }
       }
