@@ -359,7 +359,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                         {card.displayName} ({card.severity})
                       </span>
                       <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-                        {card.currentSummary}
+                        {card.clinicalSummary || card.currentSummary}
                       </span>
                     </div>
 
@@ -375,8 +375,10 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                     <div className="flex gap-2 flex-wrap">
                       <button
                         onClick={() => navigate(card.conversationId ? `/chat?meeting=${card.conversationId}` : `/chat?sub=meeting`)}
-                        className="text-[12px] text-white px-3 py-1 rounded-md font-medium"
-                        style={{ backgroundColor: "#7C2D2D" }}
+                        className="text-[11px] px-2.5 py-1 rounded-md font-medium border transition-colors"
+                        style={{ color: "#7C2D2D", borderColor: "#7C2D2D40", backgroundColor: "transparent" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#7C2D2D10"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
                       >
                         Krizová porada
                       </button>

@@ -89,11 +89,12 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
         {/* ── Status grid ── */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
           {[
-            { label: "Fáze", value: card.phase === "acute" ? "akutní" : card.phase === "stabilizing" ? "stabilizace" : card.phase === "diagnostic" ? "diagnostika" : card.phase === "closing" ? "uzavírání" : "aktivní" },
+            { label: "Fáze", value: card.phase === "acute" ? "akutní" : card.phase === "stabilizing" ? "stabilizace" : card.phase === "diagnostic" ? "diagnostika" : card.phase === "closing" ? "uzavírání" : card.phase === "ready_to_close" ? "k uzavření" : "aktivní" },
             { label: "Den", value: card.daysActive ?? "—" },
             { label: "Riziko", value: card.lastAssessmentRisk || "—", className: riskClass },
             { label: "Trend 48h", value: `${trend.emoji} ${trend.label}` },
             { label: "Poslední kontakt", value: card.lastContactAt ? `${Math.round(card.hoursStale)}h` : "—", alert: card.isStale },
+            ...(card.stableHours != null ? [{ label: "Stabilní", value: `${Math.round(card.stableHours)}h` }] : []),
           ].map((item, i) => (
             <div key={i} className="bg-muted/50 rounded-lg p-2 text-center">
               <p className="text-[10px] text-muted-foreground">{item.label}</p>
@@ -163,6 +164,17 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
             {card.lastEntryBy && (
               <p className="text-[10px] text-muted-foreground">Zapsala: {card.lastEntryBy}</p>
             )}
+          </div>
+        )}
+
+        {/* ── Clinical summary ── */}
+        {card.clinicalSummary && (
+          <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+            <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              Klinické shrnutí
+            </p>
+            <p className="text-xs text-foreground">{card.clinicalSummary}</p>
           </div>
         )}
 

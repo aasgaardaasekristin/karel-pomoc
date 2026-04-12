@@ -54,6 +54,7 @@ export interface CrisisOperationalCard {
 
   // Current state
   currentSummary: string;
+  clinicalSummary: string | null;
 
   // Karel requires
   karelRequires: string[];
@@ -193,36 +194,37 @@ function buildCurrentSummary(params: {
   lastInterventionType: string | null;
   lastInterventionWorked: boolean | null;
 }): string {
-  const parts: string[] = [];
+  const { phase, trend, daysActive, hoursStale, lastDecision, lastInterventionType, lastInterventionWorked } = params;
 
-  if (params.phase === "acute") parts.push("akutní krize");
-  else if (params.phase === "stabilizing") parts.push("stabilizace");
-  else if (params.phase === "diagnostic") parts.push("diagnostika");
-  else if (params.phase === "closing") parts.push("uzavírání");
-  else parts.push("aktivní krize");
+  // Phase label
+  const phaseLabel = phase === "acute" ? "Akutní krize"
+    : phase === "stabilizing" ? "Stabilizace"
+    : phase === "diagnostic" ? "Diagnostika"
+    : phase === "closing" ? "Uzavírání"
+    : phase === "ready_to_close" ? "Připraveno k uzavření"
+    : "Aktivní krize";
 
-  if (params.daysActive != null) parts.push(`den ${params.daysActive}`);
+  // Trend
+  const trendLabel = trend === "worsening" ? "trend zhoršení"
+    : trend === "improving" ? "trend zlepšení"
+    : trend === "stable" ? "stabilní"
+    : null;
 
-  if (params.trend === "worsening") parts.push("trend zhoršení");
-  else if (params.trend === "improving") parts.push("trend zlepšení");
-  else if (params.trend === "stable") parts.push("trend stabilní");
-  else parts.push("trend nejasný");
+  // Build concise clinical string
+  const parts: string[] = [phaseLabel];
+  if (trendLabel) parts.push(trendLabel);
+  if (hoursStale > 24) parts.push(`${Math.round(hoursStale)}h bez kontaktu`);
+  else if (daysActive != null && trend === "stable") parts.push(`${daysActive}d bez zhoršení`);
 
-  if (params.hoursStale > 24) parts.push(`${Math.round(params.hoursStale)}h bez kontaktu`);
-
-  if (params.lastInterventionType) {
-    parts.push(
-      params.lastInterventionWorked === true
-        ? "poslední zásah fungoval"
-        : params.lastInterventionWorked === false
-        ? "poslední zásah nefungoval"
-        : `proběhl zásah: ${params.lastInterventionType}`
-    );
+  if (lastInterventionType) {
+    if (lastInterventionWorked === true) parts.push("zásah fungoval");
+    else if (lastInterventionWorked === false) parts.push("zásah nefungoval");
+    else parts.push("čeká se na výsledek zásahu");
   }
 
-  if (params.lastDecision === "needs_more_data") parts.push("chybí data");
+  if (lastDecision === "needs_more_data") parts.push("chybí data");
 
-  return parts.join(" · ");
+  return parts.join(", ");
 }
 
 /** Derive primary therapist from crisis tasks instead of hardcoding */
@@ -363,6 +365,7 @@ export function useCrisisOperationalState() {
             lastInterventionType,
             lastInterventionWorked,
           }),
+          clinicalSummary: ev.clinical_summary ?? null,
           karelRequires,
           closureReadiness,
           closureChecklistState,
@@ -447,6 +450,7 @@ export function useCrisisOperationalState() {
               phase: null, trend: "unknown", daysActive: a.days_in_crisis,
               hoursStale, lastDecision: null, lastInterventionType: null, lastInterventionWorked: null,
             }),
+            clinicalSummary: null,
             karelRequires: hoursStale > 24 ? [`Čerstvý update od terapeutky (${displayName})`] : [],
             closureReadiness: 0,
             closureChecklistState: emptyChecklist,
