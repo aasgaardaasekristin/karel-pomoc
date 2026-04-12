@@ -173,7 +173,7 @@ async function computeCrisisDailyCycle(
       .gte("session_date", todayDate)
       .limit(3),
     sb.from("crisis_session_questions")
-      .select("id, answer_text, answered_at, therapist_name")
+      .select("id, answer_text, answered_at, therapist_name, karel_analyzed_at")
       .eq("crisis_event_id", crisisId)
       .gte("created_at", todayDate + "T00:00:00")
       .limit(10),
