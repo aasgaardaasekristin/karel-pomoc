@@ -2101,6 +2101,47 @@ serve(async (req) => {
     }
     console.log(`[ANALYST] Crisis assessment check: ${closureProposals} closure proposals`);
 
+    // ── KROK 6h: Auto crisis journal entries ──────────────────
+    for (const crisis of activeCrises || []) {
+      try {
+        const partName = crisis.part_name || "";
+        const matchingAlert2 = (crisisAlerts || []).find((a: any) => a.part_name?.toUpperCase() === partName.toUpperCase());
+        const journalCrisisId = matchingAlert2?.id || crisis.id;
+
+        const { data: existingJournal } = await sb
+          .from("crisis_journal")
+          .select("id")
+          .eq("crisis_alert_id", journalCrisisId)
+          .eq("date", todayDate)
+          .limit(1);
+
+        if (!existingJournal || existingJournal.length === 0) {
+          const trendLabel = crisis.stable_since ? "stabilizující" :
+            crisis.phase === "active" ? "aktivní" :
+            crisis.phase === "stabilizing" ? "stabilizující" :
+            crisis.phase === "ready_to_close" ? "připraveno k uzavření" : crisis.phase || "?";
+
+          await sb.from("crisis_journal").insert({
+            crisis_alert_id: journalCrisisId,
+            part_id: partName,
+            date: todayDate,
+            day_number: crisis.days_active || 1,
+            crisis_trend: trendLabel,
+            karel_action: `Analyst-loop ${cycleTime} — review proběhl`,
+            karel_notes: (crisis.clinical_summary || "").slice(0, 500) || null,
+            session_summary: crisis.last_outcome_recorded_at ? "Sezení proběhlo" : "Žádné sezení dnes",
+            what_worked: crisis.trigger_resolved ? "Trigger zvládnut" : null,
+            what_failed: !crisis.trigger_resolved && (crisis.days_active || 0) > 3 ? "Trigger stále aktivní" : null,
+            hanka_cooperation: crisis.primary_therapist === "hanka" ? "vede" : "podpora",
+            kata_cooperation: crisis.primary_therapist === "kata" ? "vede" : "podpora",
+          });
+          console.log(`[ANALYST] Auto crisis journal entry for ${partName} (${todayDate})`);
+        }
+      } catch (journalErr) {
+        console.warn(`[ANALYST] Crisis journal error (${crisis.part_name}):`, journalErr);
+      }
+    }
+
     // ── KROK 6b: Zápis DASHBOARD na Drive ──────────────────
     let dashboardWritten = false;
     try {
