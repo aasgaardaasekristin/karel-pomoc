@@ -381,6 +381,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                         Krizová porada
                       </button>
                     </div>
+                    {/* No closure controls here — dashboard is secondary overview only */}
 
                     {card.alertId && (
                       <details className="text-[12px]">
