@@ -71,11 +71,11 @@ serve(async (req) => {
     }
 
     // ── Check if we can actually close ──
+    // Note: meeting finalization happens AFTER successful closure (not before).
+    // Readiness is checked via the state machine which uses checkClosureReadiness().
     const bothApproved = newApproved.includes("hanka") && newApproved.includes("kata");
     const hasKarelStatement = crisis.closure_statement != null;
     const hasClosureMeeting = crisis.closure_meeting_id != null;
-
-    // Hard protocol: need both therapists + Karel statement + closure meeting
     const canClose = bothApproved && hasKarelStatement && hasClosureMeeting;
 
     if (canClose) {
