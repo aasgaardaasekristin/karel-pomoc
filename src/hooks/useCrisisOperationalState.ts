@@ -211,27 +211,9 @@ export interface CrisisOperationalCard {
   missingSessionResult: boolean;
   missingTherapistFeedback: boolean;
 
-  // Therapist crisis profiles
-  therapistProfiles: TherapistCrisisProfile[];
-
   // Audit layers
   cardPropagationStatus: AuditEntry[];
   planSyncStatus: AuditEntry | null;
-}
-
-export interface TherapistCrisisProfile {
-  therapistName: string;
-  displayName: string;
-  responseSpeed: string | null;
-  taskReliability: string | null;
-  observationQuality: string | null;
-  initiative: string | null;
-  meetingParticipation: string | null;
-  closureAlignment: string | null;
-  recommendedKarelMode: string | null;
-  strengths: string[];
-  risks: string[];
-  supervisionNotes: string | null;
 }
 
 export interface AuditEntry {

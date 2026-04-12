@@ -7,7 +7,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import type { CrisisOperationalCard, SessionQuestion, TherapistCrisisProfile, AuditEntry } from "@/hooks/useCrisisOperationalState";
+import type { CrisisOperationalCard, SessionQuestion, AuditEntry } from "@/hooks/useCrisisOperationalState";
 import { ALLOWED_TRANSITIONS, STATE_TRANSITION_LABELS } from "@/hooks/useCrisisOperationalState";
 import CrisisHistoryTimeline from "./CrisisHistoryTimeline";
 
