@@ -264,7 +264,7 @@ const CrisisAlert: React.FC = () => {
                   }}
                   className="hover:underline whitespace-nowrap"
                 >
-                  Otevřít detail
+                  Otevřít vlákno
                 </button>
                 <span className="text-white/40">|</span>
                 <button
