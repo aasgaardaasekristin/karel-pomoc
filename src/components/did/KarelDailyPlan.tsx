@@ -96,7 +96,8 @@ function Section05A({ icon, title, content, color }: { icon: string; title: stri
 
   // Detect urgency markers in content
   const hasUrgent = content.includes("🔴") || content.includes("VYŽADUJE AKCI") || content.includes("PO TERMÍNU");
-  const bgColor = hasUrgent ? "#FFF5F5" : undefined;
+  const hasRecovery = content.includes("RECOVERY") || content.includes("POŽADAVEK NA UPDATE") || content.includes("REŽIM OBNOVY") || title.includes("obnovy");
+  const bgColor = hasRecovery ? "#EBF5FB" : hasUrgent ? "#FFF5F5" : undefined;
 
   return (
     <div className="space-y-1 rounded-lg p-2" style={{ backgroundColor: bgColor }}>
