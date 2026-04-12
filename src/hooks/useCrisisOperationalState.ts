@@ -396,7 +396,7 @@ export function useCrisisOperationalState() {
         );
 
         const { score: closureReadiness, canPropose, ready: closureReady } = computeClosureReadiness(closureChecklistState);
-        const { primary: primaryTherapist, secondary: secondaryTherapist } = deriveTherapists(tasks);
+        const { primary: primaryTherapist, secondary: secondaryTherapist, source: ownershipSource } = deriveTherapists(ev, tasks);
 
         // Derive clinical fields from latest assessment/intervention
         const lastInterventionType = latestIntervention?.session_type ?? null;
@@ -424,6 +424,7 @@ export function useCrisisOperationalState() {
           isStale,
           primaryTherapist,
           secondaryTherapist,
+          ownershipSource,
           currentSummary: buildCurrentSummary({
             phase: ev.phase,
             trend,
@@ -434,6 +435,10 @@ export function useCrisisOperationalState() {
             lastInterventionWorked,
           }),
           clinicalSummary: ev.clinical_summary ?? null,
+          displaySummary: (ev.clinical_summary as string) || buildCurrentSummary({
+            phase: ev.phase, trend, daysActive: ev.days_active, hoursStale,
+            lastDecision: latest?.karel_decision || null, lastInterventionType, lastInterventionWorked,
+          }),
           karelRequires,
           closureReadiness,
           closureChecklistState,
