@@ -518,7 +518,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
               <AlertTriangle className="w-4 h-4" style={{ color: "#B45309" }} />
               <span className="text-[14px] font-semibold" style={{ color: "#2D2D2D" }}>Neaktivní části</span>
             </div>
-            <p className="text-[14px]" style={{ color: "#4A4A4A" }}>{warningParts.map(p => p.name).join(", ")} – neaktivní více než 7 dní.</p>
+            <p className="text-[14px]" style={{ color: "#4A4A4A" }}>{warningParts.map(p => cleanDisplayName(p.name)).join(", ")} – neaktivní více než 7 dní.</p>
           </div>
         )}
 
