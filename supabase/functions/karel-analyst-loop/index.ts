@@ -750,6 +750,9 @@ function build05AContent(
   activePartsRegistry: any[],
   recentThreadParts: Set<string>,
   recoveryPlans: RecoveryAction[] = [],
+  crisisInterviews: any[] = [],
+  crisisSessionQuestions: any[] = [],
+  crisisMeetings: any[] = [],
 ): string {
   const lines: string[] = [];
   const timeStr = new Date().toLocaleString("cs-CZ", { timeZone: "Europe/Prague" });
