@@ -1863,7 +1863,7 @@ serve(async (req) => {
         // Crisis state model: ACTIVE → INTERVENED → STABILIZING → READY_TO_CLOSE → RESOLVED → MONITORING_POST → CLOSED
         // Analyst-loop may only PROPOSE READY_TO_CLOSE — never directly set RESOLVED
         const checklist = (closureChecklists || []).find((c: any) => c.crisis_alert_id === alertId);
-        const event = (crisisEvents || []).find((e: any) => e.part_name?.toUpperCase() === partName.toUpperCase());
+        const event = crisis; // crisis_events IS the source of truth now
 
         if (checklist && event) {
           const allIndicatorsAbove5 = [event.indicator_safety, event.indicator_coherence, event.indicator_emotional_regulation, event.indicator_trust, event.indicator_time_orientation]
