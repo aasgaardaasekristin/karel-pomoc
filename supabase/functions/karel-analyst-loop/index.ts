@@ -1908,6 +1908,100 @@ serve(async (req) => {
           };
           eventUpdate.stable_since = stableSince; // null when stability lost → clears DB field
 
+          // ── Ownership logic ──
+          // Determine primary/secondary therapist based on crisis context
+          const crisisTasksForPart = (pendingTasks || []).filter((t: any) =>
+            t.category === "crisis" && (t.task || "").toLowerCase().includes(partName.toLowerCase())
+          );
+          const hankaTasks = crisisTasksForPart.filter((t: any) => t.assigned_to === "hanka").length;
+          const kataTasks = crisisTasksForPart.filter((t: any) => t.assigned_to === "kata").length;
+          
+          // Default: Hanka leads crisis (local, direct contact), Kata supports (remote)
+          if (hankaTasks > 0 || kataTasks > 0) {
+            eventUpdate.primary_therapist = hankaTasks >= kataTasks ? "hanka" : "kata";
+            eventUpdate.secondary_therapist = hankaTasks >= kataTasks ? (kataTasks > 0 ? "kata" : null) : "hanka";
+            eventUpdate.ownership_source = "explicit";
+          } else if (!event.primary_therapist) {
+            // No tasks yet → default to hanka for crisis (local work)
+            eventUpdate.primary_therapist = "hanka";
+            eventUpdate.secondary_therapist = "kata";
+            eventUpdate.ownership_source = "explicit";
+          }
+
+          // ── Daily cycle tracking ──
+          const nowHour = new Date().getUTCHours() + 1; // rough CET offset
+          if (nowHour >= 6 && nowHour < 12) {
+            eventUpdate.last_morning_review_at = new Date().toISOString();
+          } else if (nowHour >= 12 && nowHour < 18) {
+            eventUpdate.last_afternoon_review_at = new Date().toISOString();
+          } else {
+            eventUpdate.last_evening_decision_at = new Date().toISOString();
+          }
+
+          // ── Required outputs ──
+          const requiredOutputs: Array<{ label: string; fulfilled: boolean }> = [
+            { label: "Aktuální stav", fulfilled: !!latest && latest.assessment_date >= todayDate },
+            { label: "Výsledek posledního zásahu", fulfilled: !!(event as any).last_outcome_recorded_at && (event as any).last_outcome_recorded_at >= todayDate + "T00:00:00" },
+            { label: "Potvrzení bezpečí", fulfilled: !!checklist?.no_risk_signals },
+            { label: "Kontakt dne", fulfilled: !!latest && latest.assessment_date >= todayDate },
+            { label: "Zpětná vazba terapeutek", fulfilled: !!(latest?.therapist_hana_input || latest?.therapist_kata_input) },
+            { label: "Karlovo rozhodnutí", fulfilled: !!latest?.karel_decision },
+          ];
+          eventUpdate.today_required_outputs = requiredOutputs;
+
+          // Awaiting response from
+          const awaitingFrom: string[] = [];
+          if (!latest || latest.assessment_date < todayDate) {
+            awaitingFrom.push("hanka"); // primary always owes daily update
+          }
+          if (checklist && !checklist.kata_agrees && (checklist.emotional_stable_days || 0) >= 3) {
+            awaitingFrom.push("kata");
+          }
+          eventUpdate.awaiting_response_from = awaitingFrom;
+
+          // ── Daily checklist ──
+          const dailyChecklist = {
+            statusChecked: !!latest && latest.assessment_date >= todayDate,
+            lastUpdateVerified: !!latest,
+            safetyConfirmed: !!checklist?.no_risk_signals,
+            contactCompleted: !!latest && latest.assessment_date >= todayDate,
+            interventionRecorded: !!(event as any).last_outcome_recorded_at,
+            therapistsResponded: !!(latest?.therapist_hana_input || latest?.therapist_kata_input),
+            nextStepDetermined: !!latest?.karel_decision,
+            decisionMade: !!latest?.karel_decision && latest.karel_decision !== "needs_more_data",
+          };
+          eventUpdate.daily_checklist = dailyChecklist;
+
+          // ── Crisis meeting trigger ──
+          const hoursSinceLastContact = latest?.assessment_date
+            ? (Date.now() - new Date(latest.assessment_date + "T12:00:00Z").getTime()) / 3_600_000
+            : 999;
+          
+          // Check for stagnation (3+ assessments with no improvement)
+          let isStagnating = false;
+          if (assessments.length >= 3) {
+            const last3 = assessments.slice(-3);
+            const riskOrder2: Record<string, number> = { minimal: 1, low: 2, moderate: 3, high: 4, critical: 5 };
+            const risks2 = last3.map((a: any) => riskOrder2[a.karel_risk_assessment] ?? 3);
+            isStagnating = risks2[2] >= risks2[0] && risks2.every(r => r >= 3);
+          }
+
+          const meetingNeeded = 
+            hoursSinceLastContact > 48 ||
+            isStagnating ||
+            !event.primary_therapist;
+          
+          eventUpdate.crisis_meeting_required = meetingNeeded;
+          if (meetingNeeded) {
+            const reasons: string[] = [];
+            if (hoursSinceLastContact > 48) reasons.push("48h+ bez update");
+            if (isStagnating) reasons.push("stagnace rizika");
+            if (!event.primary_therapist) reasons.push("nejasný ownership");
+            eventUpdate.crisis_meeting_reason = reasons.join(", ");
+          } else {
+            eventUpdate.crisis_meeting_reason = null;
+          }
+
           if (fullReady && allIndicatorsAbove5 && latest?.karel_decision !== "crisis_continues") {
             // Propose READY_TO_CLOSE
             eventUpdate.phase = "ready_to_close";

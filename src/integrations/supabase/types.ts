@@ -878,6 +878,7 @@ export type Database = {
       }
       crisis_events: {
         Row: {
+          awaiting_response_from: string[] | null
           banner_dismissed: boolean | null
           banner_dismissed_at: string | null
           clinical_summary: string | null
@@ -888,6 +889,9 @@ export type Database = {
           closure_proposed_by: string | null
           closure_reason: string | null
           created_at: string | null
+          crisis_meeting_reason: string | null
+          crisis_meeting_required: boolean | null
+          daily_checklist: Json | null
           days_active: number | null
           diagnostic_date: string | null
           diagnostic_report: string | null
@@ -899,18 +903,27 @@ export type Database = {
           indicator_safety: number | null
           indicator_time_orientation: number | null
           indicator_trust: number | null
+          last_afternoon_review_at: string | null
+          last_evening_decision_at: string | null
+          last_morning_review_at: string | null
+          last_outcome_recorded_at: string | null
           opened_at: string | null
+          ownership_source: string | null
           part_name: string
           phase: string
+          primary_therapist: string | null
+          secondary_therapist: string | null
           sessions_count: number | null
           severity: string
           stable_since: string | null
+          today_required_outputs: Json | null
           trigger_description: string
           trigger_resolved: boolean | null
           trigger_source: string | null
           updated_at: string | null
         }
         Insert: {
+          awaiting_response_from?: string[] | null
           banner_dismissed?: boolean | null
           banner_dismissed_at?: string | null
           clinical_summary?: string | null
@@ -921,6 +934,9 @@ export type Database = {
           closure_proposed_by?: string | null
           closure_reason?: string | null
           created_at?: string | null
+          crisis_meeting_reason?: string | null
+          crisis_meeting_required?: boolean | null
+          daily_checklist?: Json | null
           days_active?: number | null
           diagnostic_date?: string | null
           diagnostic_report?: string | null
@@ -932,18 +948,27 @@ export type Database = {
           indicator_safety?: number | null
           indicator_time_orientation?: number | null
           indicator_trust?: number | null
+          last_afternoon_review_at?: string | null
+          last_evening_decision_at?: string | null
+          last_morning_review_at?: string | null
+          last_outcome_recorded_at?: string | null
           opened_at?: string | null
+          ownership_source?: string | null
           part_name: string
           phase?: string
+          primary_therapist?: string | null
+          secondary_therapist?: string | null
           sessions_count?: number | null
           severity?: string
           stable_since?: string | null
+          today_required_outputs?: Json | null
           trigger_description: string
           trigger_resolved?: boolean | null
           trigger_source?: string | null
           updated_at?: string | null
         }
         Update: {
+          awaiting_response_from?: string[] | null
           banner_dismissed?: boolean | null
           banner_dismissed_at?: string | null
           clinical_summary?: string | null
@@ -954,6 +979,9 @@ export type Database = {
           closure_proposed_by?: string | null
           closure_reason?: string | null
           created_at?: string | null
+          crisis_meeting_reason?: string | null
+          crisis_meeting_required?: boolean | null
+          daily_checklist?: Json | null
           days_active?: number | null
           diagnostic_date?: string | null
           diagnostic_report?: string | null
@@ -965,12 +993,20 @@ export type Database = {
           indicator_safety?: number | null
           indicator_time_orientation?: number | null
           indicator_trust?: number | null
+          last_afternoon_review_at?: string | null
+          last_evening_decision_at?: string | null
+          last_morning_review_at?: string | null
+          last_outcome_recorded_at?: string | null
           opened_at?: string | null
+          ownership_source?: string | null
           part_name?: string
           phase?: string
+          primary_therapist?: string | null
+          secondary_therapist?: string | null
           sessions_count?: number | null
           severity?: string
           stable_since?: string | null
+          today_required_outputs?: Json | null
           trigger_description?: string
           trigger_resolved?: boolean | null
           trigger_source?: string | null

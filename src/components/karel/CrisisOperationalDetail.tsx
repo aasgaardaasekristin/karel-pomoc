@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target, Zap, ShieldAlert, ArrowRight } from "lucide-react";
+import { Activity, CheckCircle, AlertTriangle, Clock, Users, HelpCircle, Target, Zap, ShieldAlert, ArrowRight, CalendarCheck, MessageSquareDashed } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -44,7 +44,6 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
   const handleProposeClosure = async () => {
     if (!card.alertId) return;
     try {
-      // Write both karel_recommends_closure AND recommendation text
       await supabase.from("crisis_closure_checklist").upsert({
         crisis_alert_id: card.alertId,
         karel_recommends_closure: true,
@@ -69,7 +68,6 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
   const closurePercent = Math.round(card.closureReadiness * 100);
   const cl = card.closureChecklistState;
 
-  // Compute what's still missing for closure
   const missingItems: string[] = [];
   if (!cl.karelDiagnosticDone) missingItems.push("Diagnostické sezení");
   if (!cl.noRiskSignals) missingItems.push("Bez rizikových signálů");
@@ -81,6 +79,20 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
   if (!cl.hankaAgrees) missingItems.push("Souhlas Haničky");
   if (!cl.kataAgrees) missingItems.push("Souhlas Káti");
   if (!cl.karelRecommendsClosure) missingItems.push("Karlovo doporučení");
+
+  // Daily checklist items
+  const dc = card.dailyChecklist;
+  const dailyChecklistItems = [
+    { label: "Dnešní stav zjištěn", done: dc.statusChecked },
+    { label: "Poslední update ověřen", done: dc.lastUpdateVerified },
+    { label: "Bezpečí ověřeno", done: dc.safetyConfirmed },
+    { label: "Kontakt / sezení proběhlo", done: dc.contactCompleted },
+    { label: "Výsledek zásahu zapsán", done: dc.interventionRecorded },
+    { label: "Terapeutky reagovaly", done: dc.therapistsResponded },
+    { label: "Další krok určen", done: dc.nextStepDetermined },
+    { label: "Rozhodnutí dne", done: dc.decisionMade },
+  ];
+  const dailyCompleted = dailyChecklistItems.filter(i => i.done).length;
 
   return (
     <div className="border-x border-b rounded-b-lg mx-2 mb-1 bg-background shadow-lg" style={{ borderColor: "#7C2D2D30" }}>
@@ -103,6 +115,21 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
               </p>
             </div>
           ))}
+        </div>
+
+        {/* ── Ownership ── */}
+        <div className="flex items-center gap-3 text-[11px]">
+          <Users className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-foreground font-medium">
+            Vede: {card.primaryTherapist}
+            {card.secondaryTherapist && ` · Podpora: ${card.secondaryTherapist}`}
+          </span>
+          {card.ownershipSource === "heuristic" && (
+            <span className="text-[10px] text-muted-foreground italic">(odhad)</span>
+          )}
+          {card.ownershipSource === "unknown" && (
+            <span className="text-[10px] text-amber-600 font-medium">neurčeno</span>
+          )}
         </div>
 
         {/* ── Indicators ── */}
@@ -167,33 +194,95 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
           </div>
         )}
 
-        {/* ── Clinical summary ── */}
-        {card.clinicalSummary && (
-          <div className="bg-muted/30 rounded-lg p-3 space-y-1">
-            <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <Activity className="w-3.5 h-3.5" />
-              Klinické shrnutí
-            </p>
-            <p className="text-xs text-foreground">{card.clinicalSummary}</p>
-          </div>
-        )}
+        {/* ── Clinical / display summary ── */}
+        <div className="bg-muted/30 rounded-lg p-3 space-y-1">
+          <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5" />
+            Klinické shrnutí
+            {!card.clinicalSummary && <span className="text-[9px] text-muted-foreground font-normal">(runtime)</span>}
+          </p>
+          <p className="text-xs text-foreground">{card.displaySummary}</p>
+        </div>
 
         {/* ── Karel's next step ── */}
         {card.karelRequires.length > 0 && (
           <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
             <p className="text-xs font-bold text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
               <Activity className="w-3.5 h-3.5" />
-              Karlův další krok
+              Karel vyžaduje
             </p>
-            <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
-              {card.karelRequires[0]}
+            <ul className="text-xs text-blue-700 dark:text-blue-400 mt-1 space-y-1 list-disc list-inside">
+              {card.karelRequires.map((r, i) => (
+                <li key={i}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* ── Awaiting response ── */}
+        {card.awaitingResponseFrom.length > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+            <p className="text-xs font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+              <MessageSquareDashed className="w-3.5 h-3.5" />
+              Čeká se na odpověď
             </p>
-            {card.karelRequires.length > 1 && (
-              <ul className="text-xs text-blue-700 dark:text-blue-400 mt-1.5 space-y-1 list-disc list-inside">
-                {card.karelRequires.slice(1).map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+              {card.awaitingResponseFrom.map(n => n === "hanka" ? "Hanička" : n === "kata" ? "Káťa" : n).join(", ")}
+            </p>
+          </div>
+        )}
+
+        {/* ── Required outputs ── */}
+        {card.todayRequiredOutputs.length > 0 && (
+          <div>
+            <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5" />
+              Povinné výstupy dne
+            </h4>
+            <div className="space-y-1">
+              {card.todayRequiredOutputs.map((o, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px]">
+                  {o.fulfilled ? (
+                    <CheckCircle className="w-3 h-3 text-green-600 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                  )}
+                  <span className={o.fulfilled ? "text-muted-foreground" : "text-foreground font-medium"}>{o.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Daily checklist ── */}
+        <div>
+          <h4 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5">
+            <CalendarCheck className="w-3.5 h-3.5" />
+            Denní checklist ({dailyCompleted}/{dailyChecklistItems.length})
+          </h4>
+          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+            {dailyChecklistItems.map((item, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                {item.done ? (
+                  <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                )}
+                <span className={item.done ? "text-muted-foreground" : "text-foreground font-medium"}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Crisis meeting status ── */}
+        {card.crisisMeetingRequired && (
+          <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3">
+            <p className="text-xs font-bold text-destructive flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" />
+              Porada vyžadována
+            </p>
+            {card.crisisMeetingReason && (
+              <p className="text-xs text-destructive/80 mt-1">{card.crisisMeetingReason}</p>
             )}
           </div>
         )}
