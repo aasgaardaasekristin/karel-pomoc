@@ -371,8 +371,11 @@ export function useCrisisOperationalState() {
           return qText.includes(ev.part_name.toLowerCase()) || qText.includes(cleanDisplayName(ev.part_name).toLowerCase());
         });
 
-        // Latest intervention for this crisis
-        const latestIntervention = allInterventions.find((i: any) => i.crisis_alert_id === alertId);
+        // Latest intervention — prefer crisis_event_id, fallback to legacy alert
+        const latestIntervention = allInterventions.find((i: any) =>
+          (i.crisis_event_id && i.crisis_event_id === ev.id) ||
+          (!i.crisis_event_id && i.crisis_alert_id === alertId)
+        );
 
         const lastContactAt = latest?.assessment_date
           ? latest.assessment_date + "T12:00:00Z"
