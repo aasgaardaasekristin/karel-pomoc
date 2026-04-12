@@ -364,7 +364,10 @@ export function useCrisisOperationalState() {
           (c.crisis_event_id && c.crisis_event_id === ev.id) ||
           (!c.crisis_event_id && c.crisis_alert_id === alertId)
         );
-        const tasks = allTasks.filter((t: any) => t.crisis_alert_id === alertId);
+        const tasks = allTasks.filter((t: any) =>
+          (t.crisis_event_id && t.crisis_event_id === ev.id) ||
+          (!t.crisis_event_id && t.crisis_alert_id === alertId)
+        );
         const questions = allQuestions.filter((q: any) => {
           if ((q as any).crisis_event_id === ev.id) return true;
           const qText = (q.question || "").toLowerCase();
