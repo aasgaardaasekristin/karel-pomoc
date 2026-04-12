@@ -1523,6 +1523,7 @@ serve(async (req) => {
       `dashboard_drive: ${dashboardWritten ? "written" : "skipped"}`,
       `05A_drive: ${plan05AWritten ? "written" : "skipped"}`,
       `crisis_follow: ${crisisTasksCreated}t ${crisisSessionsPlanned}s`,
+      `stale_follow: ${staleTasksCreated}t ${staleQuestionsCreated}q`,
     ].join(" | ");
 
     const { error: logError } = await sb.from("system_health_log").insert({
