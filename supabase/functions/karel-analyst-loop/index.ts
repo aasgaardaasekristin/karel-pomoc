@@ -1630,6 +1630,40 @@ serve(async (req) => {
       }
     }
 
+    // ── KROK 6d: Missing Karel interview detection ──────────
+    for (const crisis of activeCrises || []) {
+      try {
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const { data: todayInterview } = await sb
+          .from("crisis_karel_interviews")
+          .select("id, completed_at")
+          .eq("crisis_event_id", crisis.id)
+          .gte("started_at", todayStart.toISOString())
+          .limit(1);
+
+        const hasCompletedToday = todayInterview?.some((i: any) => i.completed_at);
+
+        if (!hasCompletedToday) {
+          // Flag as missing required output
+          const existingOutputs = Array.isArray(crisis.required_outputs_today) ? crisis.required_outputs_today : [];
+          const alreadyFlagged = existingOutputs.some((o: string) =>
+            typeof o === "string" && o.includes("Karlův krizový rozhovor")
+          );
+
+          if (!alreadyFlagged) {
+            const updatedOutputs = [...existingOutputs, `⚠️ Chybí dnešní Karlův krizový rozhovor s ${crisis.part_name}`];
+            await sb.from("crisis_events")
+              .update({ required_outputs_today: updatedOutputs })
+              .eq("id", crisis.id);
+            console.log(`[ANALYST] Missing Karel interview flagged: ${crisis.part_name}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[ANALYST] Interview detection error (${crisis.part_name}):`, e);
+      }
+    }
+
     // ── KROK 6e: Stale-state auto follow-through ────────────
     const staleItems = detectStaleState(
       activeCrises || [], pendingTasks || [], pendingQuestions || [],
