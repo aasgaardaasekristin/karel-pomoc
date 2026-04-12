@@ -690,7 +690,7 @@ async function fetchBackendReadiness(crisisEventId: string): Promise<ClosureRead
 
 // Therapist profiles removed from UI — data lives in PAMET_KAREL only
 
-// ── Audit data fetcher ─────────────────────────────────────────
+// ── Audit data fetcher (unified did_doc_sync_log) ──────────────
 
 async function fetchAuditData(
   cards: CrisisOperationalCard[],
@@ -699,19 +699,19 @@ async function fetchAuditData(
     const eventIds = cards.map(c => c.eventId).filter(Boolean) as string[];
     if (eventIds.length === 0) return null;
 
-    // Card propagation: check did_doc_sync_log or card_update_log for recent entries
+    // Unified audit: did_doc_sync_log with sync_type
     const { data: syncLogs } = await supabase
+      .from("did_doc_sync_log" as any)
+      .select("source_type, source_id, target_document, content_written, success, error_message, created_at, sync_type, crisis_event_id, status")
+      .order("created_at", { ascending: false })
+      .limit(100);
+
+    // Fallback: card_update_log for older entries
+    const { data: cardUpdateLogs } = await supabase
       .from("card_update_log" as any)
       .select("part_name, created_at, error, sections_updated")
       .order("created_at", { ascending: false })
       .limit(50);
-
-    // 05A sync: check did_doc_sync_log for 05A entries
-    const { data: docSyncLogs } = await supabase
-      .from("did_doc_sync_log" as any)
-      .select("doc_type, synced_at, status, error, crisis_event_id")
-      .order("synced_at", { ascending: false })
-      .limit(20);
 
     const result = new Map<string, { cardProp: AuditEntry[]; planSync: AuditEntry | null }>();
 
@@ -719,8 +719,22 @@ async function fetchAuditData(
       if (!card.eventId) continue;
       const partNameLower = card.partName.toLowerCase();
 
-      // Card propagation entries
-      const cardPropEntries: AuditEntry[] = ((syncLogs || []) as any[])
+      // Card propagation from unified log
+      const cardPropFromSync: AuditEntry[] = ((syncLogs || []) as any[])
+        .filter((l: any) =>
+          l.sync_type === "card_propagation" &&
+          (l.crisis_event_id === card.eventId || (l.target_document || "").toLowerCase().includes(partNameLower))
+        )
+        .slice(0, 3)
+        .map((l: any) => ({
+          source: l.source_type || "card_propagation",
+          timestamp: l.created_at,
+          status: l.success === false ? "failed" as const : (l.status === "ok" || l.success === true) ? "ok" as const : "unknown" as const,
+          detail: l.error_message || l.target_document || null,
+        }));
+
+      // Fallback from card_update_log
+      const cardPropFromLegacy: AuditEntry[] = cardPropFromSync.length > 0 ? [] : ((cardUpdateLogs || []) as any[])
         .filter((l: any) => (l.part_name || "").toLowerCase().includes(partNameLower))
         .slice(0, 3)
         .map((l: any) => ({
@@ -730,20 +744,20 @@ async function fetchAuditData(
           detail: l.error || `Sekce: ${(l.sections_updated || []).join(", ")}`,
         }));
 
-      // 05A sync
-      const planSyncEntry = ((docSyncLogs || []) as any[])
+      // 05A sync from unified log
+      const planSyncEntry = ((syncLogs || []) as any[])
         .find((l: any) =>
-          (l.doc_type === "05A" || (l.doc_type || "").includes("OPERATIVNI")) &&
+          l.sync_type === "plan_05a_sync" &&
           (l.crisis_event_id === card.eventId || !l.crisis_event_id)
         );
 
       result.set(card.eventId, {
-        cardProp: cardPropEntries,
+        cardProp: cardPropFromSync.length > 0 ? cardPropFromSync : cardPropFromLegacy,
         planSync: planSyncEntry ? {
           source: "05A",
-          timestamp: planSyncEntry.synced_at || null,
-          status: planSyncEntry.error ? "failed" : planSyncEntry.status === "ok" ? "ok" : "unknown",
-          detail: planSyncEntry.error || planSyncEntry.status || null,
+          timestamp: planSyncEntry.created_at || null,
+          status: planSyncEntry.success === false ? "failed" : (planSyncEntry.status === "ok" || planSyncEntry.success === true) ? "ok" : "unknown",
+          detail: planSyncEntry.error_message || planSyncEntry.target_document || null,
         } : null,
       });
     }
