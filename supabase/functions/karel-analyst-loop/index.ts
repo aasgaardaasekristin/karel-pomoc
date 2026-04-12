@@ -1806,10 +1806,14 @@ serve(async (req) => {
     let closureProposals = 0;
     for (const crisis of activeCrises || []) {
       try {
-        const alertId = crisis.id;
+        const eventId = crisis.id;
         const partName = crisis.part_name || "";
 
-        // Get assessments for this crisis
+        // Find matching alert for assessment linkage (legacy FK)
+        const matchingAlert = (crisisAlerts || []).find((a: any) => a.part_name?.toUpperCase() === partName.toUpperCase());
+        const alertId = matchingAlert?.id || eventId;
+
+        // Get assessments for this crisis (linked via crisis_alert_id)
         const assessments = (crisisAssessments || []).filter((a: any) => a.crisis_alert_id === alertId);
         const latest = assessments.length > 0 ? assessments[assessments.length - 1] : null;
 
