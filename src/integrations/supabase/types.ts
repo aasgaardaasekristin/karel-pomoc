@@ -1721,6 +1721,7 @@ export type Database = {
         Row: {
           agenda: string
           created_at: string
+          crisis_event_id: string | null
           deadline_at: string | null
           finalized_at: string | null
           hanka_joined_at: string | null
@@ -1740,6 +1741,7 @@ export type Database = {
         Insert: {
           agenda?: string
           created_at?: string
+          crisis_event_id?: string | null
           deadline_at?: string | null
           finalized_at?: string | null
           hanka_joined_at?: string | null
@@ -1759,6 +1761,7 @@ export type Database = {
         Update: {
           agenda?: string
           created_at?: string
+          crisis_event_id?: string | null
           deadline_at?: string | null
           finalized_at?: string | null
           hanka_joined_at?: string | null
@@ -1775,7 +1778,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "did_meetings_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_motivation_profiles: {
         Row: {
