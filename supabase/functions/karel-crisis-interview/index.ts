@@ -282,6 +282,47 @@ async function handleComplete(sb: any, body: any) {
     message: `Interview ${interview_id}: ${interview.part_name} → decision=${decision}. ${(summary_for_team || "").slice(0, 200)}`,
   }).catch(() => {});
 
+  // ── Auto-trigger session planning + Q/A if decision requires it ──
+  const sessionDecisions = ["needs_hana_session", "needs_kata_support", "needs_joint_crisis_meeting", "escalate", "continue_crisis"];
+  if (sessionDecisions.includes(decision)) {
+    try {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+      // 1. Plan session
+      const planRes = await fetch(`${supabaseUrl}/functions/v1/karel-crisis-session-loop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+        body: JSON.stringify({
+          action: "plan_session",
+          crisis_event_id: interview.crisis_event_id,
+          interview_id,
+          decision,
+          part_name: interview.part_name,
+        }),
+      });
+      const planData = await planRes.json().catch(() => ({}));
+
+      // 2. Generate post-session questions
+      const therapist = decision === "needs_kata_support" ? "kata" : "hanka";
+      fetch(`${supabaseUrl}/functions/v1/karel-crisis-session-loop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${serviceKey}` },
+        body: JSON.stringify({
+          action: "generate_questions",
+          crisis_event_id: interview.crisis_event_id,
+          session_plan_id: planData.session_plan_id || null,
+          therapist_name: therapist,
+        }),
+      }).then(r => console.log(`[CRISIS-INTERVIEW] Q/A generation triggered: ${r.status}`))
+        .catch(e => console.warn(`[CRISIS-INTERVIEW] Q/A generation failed:`, e));
+
+      console.log(`[CRISIS-INTERVIEW] Session loop triggered: plan=${planData.session_plan_id}`);
+    } catch (e) {
+      console.warn("[CRISIS-INTERVIEW] Session loop trigger error:", e);
+    }
+  }
+
   console.log(`[CRISIS-INTERVIEW] Completed: ${interview_id}, decision=${decision}`);
 
   return jsonRes({
