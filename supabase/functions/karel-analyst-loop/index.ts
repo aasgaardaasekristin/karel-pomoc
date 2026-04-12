@@ -1204,15 +1204,21 @@ serve(async (req) => {
       console.warn("[ANALYST] Chyba při čtení did_meetings:", meetingsErr.message);
     }
 
-    // Aktivní krize
+    // Aktivní krize — primární zdroj: crisis_events
     const { data: activeCrises, error: crisesErr } = await sb
-      .from("crisis_alerts")
+      .from("crisis_events")
       .select("*")
-      .in("status", ["ACTIVE", "ACKNOWLEDGED"]);
+      .not("phase", "eq", "closed");
 
     if (crisesErr) {
-      console.warn("[ANALYST] Chyba při čtení crisis_alerts:", crisesErr.message);
+      console.warn("[ANALYST] Chyba při čtení crisis_events:", crisesErr.message);
     }
+
+    // Crisis alerts pro notifikační metadata (sekundární)
+    const { data: crisisAlerts } = await sb
+      .from("crisis_alerts")
+      .select("id, part_name, status")
+      .in("status", ["ACTIVE", "ACKNOWLEDGED"]);
 
     // Registr aktivních částí
     const { data: activePartsRegistry, error: registryErr } = await sb
