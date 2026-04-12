@@ -771,7 +771,7 @@ function build05AContent(
     for (const c of activeCrises) {
       const updatedAt = c.updated_at || c.created_at || "";
       const hoursSince = updatedAt ? Math.floor((Date.now() - new Date(updatedAt).getTime()) / 3_600_000) : 0;
-      lines.push(`🔴 ${c.part_name} | ${c.severity || "?"} | den ${c.days_in_crisis || "?"} | status: ${c.status}`);
+      lines.push(`🔴 ${cleanDisplayName(c.part_name || "")} | ${c.severity || "?"} | den ${c.days_in_crisis || "?"} | status: ${c.status}`);
       if (hoursSince > STALE_CRISIS_HOURS) {
         lines.push(`   ⚠️ ZASTARALÉ — poslední update ${hoursSince}h zpět`);
         lines.push(`   → POŽADAVEK: Hanička dodá aktuální pozorování DNES`);
@@ -804,7 +804,7 @@ function build05AContent(
       const daysPast = s.plan_date ? Math.floor((Date.now() - new Date(s.plan_date).getTime()) / 86_400_000) : 0;
       const statusTag = daysPast > 0 && ["pending", "planned"].includes(s.status)
         ? `🔴 PO TERMÍNU (${daysPast}d)` : s.status;
-      lines.push(`▸ ${s.selected_part}`);
+      lines.push(`▸ ${cleanDisplayName(s.selected_part || "")}`);
       lines.push(`  Vede: ${lead} | Formát: ${s.session_format || "?"} | Urgence: ${s.urgency_score ?? "?"} | Status: ${statusTag}`);
       const md = (s.plan_markdown || "") as string;
       const goalMatch = md.match(/##\s*Cíl\s*\n([^\n#]+)/);
@@ -821,7 +821,7 @@ function build05AContent(
     if (activeWithoutSession.length > 0) {
       lines.push(`⚠️ Části bez plánovaného sezení a bez čerstvého kontaktu:`);
       for (const p of activeWithoutSession) {
-        lines.push(`  → ${p.part_name} (${p.status}) — NAPLÁNOVAT sezení`);
+        lines.push(`  → ${cleanDisplayName(p.part_name || "")} (${p.status}) — NAPLÁNOVAT sezení`);
       }
     } else {
       lines.push(`  (žádná plánovaná sezení)`);
@@ -1002,7 +1002,7 @@ function build05AContent(
     lines.push(`🔄 Karel aktivně řeší díry v datech pro ${recoveryPlans.length} částí:`);
     lines.push(``);
     for (const rp of recoveryPlans) {
-      lines.push(`── ${rp.partName} ──`);
+      lines.push(`── ${cleanDisplayName(rp.partName)} ──`);
       lines.push(`DŮVOD: ${rp.reason}`);
       lines.push(``);
       lines.push(`1️⃣ POŽADAVEK NA UPDATE:`);
@@ -1043,7 +1043,7 @@ function build05AContent(
       const insertAt = lines.findIndex((l, i) => i > recoveryIdx && l.startsWith("━━━"));
       const recoveryBrief = [
         `🔄 RECOVERY: Karel aktivně řeší ${recoveryPlans.length} dír v datech`,
-        ...recoveryPlans.map(rp => `  → ${rp.partName}: ${rp.updateRequest.who} dodá update, ${rp.sessionProposal ? "navrženo sezení" : "check-in"}`),
+        ...recoveryPlans.map(rp => `  → ${cleanDisplayName(rp.partName)}: ${rp.updateRequest.who} dodá update, ${rp.sessionProposal ? "navrženo sezení" : "check-in"}`),
       ];
       if (insertAt > 0) {
         lines.splice(insertAt, 0, ...recoveryBrief, ``);
