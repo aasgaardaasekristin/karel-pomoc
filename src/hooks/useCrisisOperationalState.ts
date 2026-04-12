@@ -415,14 +415,14 @@ export function useCrisisOperationalState() {
           meetingId: closureMeetingRow.id,
           isClosureMeeting: true,
           status: closureMeetingRow.status,
-          hankaPosition: closureMeetingRow.hanka_position,
-          kataPosition: closureMeetingRow.kata_position,
-          karelFinalStatement: closureMeetingRow.karel_final_statement,
-          closureRecommendation: closureMeetingRow.closure_recommendation,
-          meetingConclusions: closureMeetingRow.meeting_conclusions,
-          topic: closureMeetingRow.topic,
-          createdAt: closureMeetingRow.created_at,
-          finalizedAt: closureMeetingRow.finalized_at,
+          hankaPosition: closureMeetingRow.hanka_position ?? null,
+          kataPosition: closureMeetingRow.kata_position ?? null,
+          karelFinalStatement: closureMeetingRow.karel_final_statement ?? null,
+          closureRecommendation: closureMeetingRow.closure_recommendation ?? null,
+          meetingConclusions: typeof closureMeetingRow.meeting_conclusions === "string" ? closureMeetingRow.meeting_conclusions : (closureMeetingRow.meeting_conclusions ? JSON.stringify(closureMeetingRow.meeting_conclusions) : null),
+          topic: closureMeetingRow.topic ?? null,
+          createdAt: closureMeetingRow.created_at ?? null,
+          finalizedAt: closureMeetingRow.finalized_at ?? null,
         } : null;
 
         const lastContactAt = latest?.assessment_date ? latest.assessment_date + "T12:00:00Z" : ev.updated_at || null;
