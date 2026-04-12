@@ -100,6 +100,13 @@ Deno.serve(async (req) => {
       crises = data || [];
     }
 
+    // Pre-load crisis_events for event_id resolution
+    const { data: allCrisisEvents } = await supabase
+      .from("crisis_events")
+      .select("id, part_name")
+      .neq("phase", "CLOSED");
+    const eventsByPart = new Map((allCrisisEvents || []).map((e: any) => [e.part_name.toUpperCase(), e.id]));
+
     if (crises.length === 0) {
       return new Response(JSON.stringify({ message: "Zadne aktivni krize" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -387,10 +394,12 @@ Na zaklade techto informaci:
       const finalSummary = sessionPrefix + (assessment.part_interview_summary || "");
 
       // 10. Save assessment
+      const crisisEventId = eventsByPart.get(crisis.part_name.toUpperCase()) || null;
       const { data: savedAssessment } = await supabase
         .from("crisis_daily_assessments")
         .insert({
           crisis_alert_id: crisis.id,
+          crisis_event_id: crisisEventId,
           assessment_date: new Date().toISOString().slice(0, 10),
           day_number: dayNumber,
           part_name: crisis.part_name,
@@ -420,6 +429,7 @@ Na zaklade techto informaci:
 
         await supabase.from("crisis_journal").insert({
           crisis_alert_id: crisis.id,
+          crisis_event_id: crisisEventId,
           part_id: crisis.part_name,
           day_number: dayNumber,
           date: today,
@@ -481,6 +491,7 @@ Na zaklade techto informaci:
         if (!existingChecklist) {
           await supabase.from("crisis_closure_checklist").insert({
             crisis_alert_id: crisis.id,
+            crisis_event_id: crisisEventId,
             emotional_stable_days: stableDays,
             no_risk_signals: noRiskSignals,
             karel_closure_recommendation: closureRec,

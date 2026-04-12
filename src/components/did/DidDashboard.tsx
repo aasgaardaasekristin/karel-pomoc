@@ -400,6 +400,7 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                         <div className="mt-2">
                           <CrisisTimeline
                             crisisAlertId={card.alertId}
+                            crisisEventId={card.eventId}
                             partName={card.partName}
                           />
                         </div>

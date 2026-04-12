@@ -206,9 +206,9 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
           .order("due_date", { ascending: true })
           .limit(10),
         supabase
-          .from("crisis_alerts")
-          .select("id, part_name, days_in_crisis")
-          .neq("status", "resolved")
+          .from("crisis_events")
+          .select("id, part_name, days_active")
+          .neq("phase", "CLOSED")
           .order("created_at", { ascending: false })
           .limit(1),
       ]);
@@ -221,11 +221,11 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
       const activeCrisis = crisisRes.data?.[0];
       if (activeCrisis) {
         setCrisisPartName(activeCrisis.part_name);
-        setCrisisDays(activeCrisis.days_in_crisis);
+        setCrisisDays(activeCrisis.days_active);
         const { data: journal } = await (supabase as any)
           .from("crisis_journal")
           .select("crisis_trend, karel_action, session_summary, part_id, date")
-          .eq("crisis_alert_id", activeCrisis.id)
+          .eq("crisis_event_id", activeCrisis.id)
           .order("date", { ascending: false })
           .limit(1);
         setCrisisJournal(journal?.[0] || null);

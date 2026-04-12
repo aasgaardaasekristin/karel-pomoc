@@ -81,8 +81,18 @@ serve(async (req) => {
       const researchText = perplexityData.choices?.[0]?.message?.content || "";
       const citations = perplexityData.citations || [];
 
+      // Look up crisis_event for unified FK
+      const { data: matchedEvent } = await sb.from("crisis_events")
+        .select("id")
+        .eq("part_name", crisis.part_name)
+        .neq("phase", "CLOSED")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       await sb.from("karel_crisis_research").insert({
         crisis_alert_id: crisis.id,
+        crisis_event_id: matchedEvent?.id || null,
         part_name: crisis.part_name,
         query_used: query.slice(0, 500),
         research_findings: researchText,

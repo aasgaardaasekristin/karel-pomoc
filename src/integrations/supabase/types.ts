@@ -1117,6 +1117,7 @@ export type Database = {
         Row: {
           created_at: string | null
           crisis_alert_id: string | null
+          crisis_event_id: string | null
           crisis_trend: string | null
           date: string | null
           day_number: number | null
@@ -1133,6 +1134,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           crisis_alert_id?: string | null
+          crisis_event_id?: string | null
           crisis_trend?: string | null
           date?: string | null
           day_number?: number | null
@@ -1149,6 +1151,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           crisis_alert_id?: string | null
+          crisis_event_id?: string | null
           crisis_trend?: string | null
           date?: string | null
           day_number?: number | null
@@ -1168,6 +1171,13 @@ export type Database = {
             columns: ["crisis_alert_id"]
             isOneToOne: false
             referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crisis_journal_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
             referencedColumns: ["id"]
           },
         ]
@@ -3133,6 +3143,7 @@ export type Database = {
           citations: Json | null
           created_at: string | null
           crisis_alert_id: string | null
+          crisis_event_id: string | null
           days_active_at_research: number | null
           id: string
           model_used: string | null
@@ -3144,6 +3155,7 @@ export type Database = {
           citations?: Json | null
           created_at?: string | null
           crisis_alert_id?: string | null
+          crisis_event_id?: string | null
           days_active_at_research?: number | null
           id?: string
           model_used?: string | null
@@ -3155,6 +3167,7 @@ export type Database = {
           citations?: Json | null
           created_at?: string | null
           crisis_alert_id?: string | null
+          crisis_event_id?: string | null
           days_active_at_research?: number | null
           id?: string
           model_used?: string | null
@@ -3168,6 +3181,13 @@ export type Database = {
             columns: ["crisis_alert_id"]
             isOneToOne: false
             referencedRelation: "crisis_alerts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "karel_crisis_research_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
             referencedColumns: ["id"]
           },
         ]
