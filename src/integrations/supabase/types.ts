@@ -880,6 +880,7 @@ export type Database = {
         Row: {
           banner_dismissed: boolean | null
           banner_dismissed_at: string | null
+          clinical_summary: string | null
           closed_at: string | null
           closure_approved_at: string | null
           closure_approved_by: string[] | null
@@ -903,13 +904,16 @@ export type Database = {
           phase: string
           sessions_count: number | null
           severity: string
+          stable_since: string | null
           trigger_description: string
+          trigger_resolved: boolean | null
           trigger_source: string | null
           updated_at: string | null
         }
         Insert: {
           banner_dismissed?: boolean | null
           banner_dismissed_at?: string | null
+          clinical_summary?: string | null
           closed_at?: string | null
           closure_approved_at?: string | null
           closure_approved_by?: string[] | null
@@ -933,13 +937,16 @@ export type Database = {
           phase?: string
           sessions_count?: number | null
           severity?: string
+          stable_since?: string | null
           trigger_description: string
+          trigger_resolved?: boolean | null
           trigger_source?: string | null
           updated_at?: string | null
         }
         Update: {
           banner_dismissed?: boolean | null
           banner_dismissed_at?: string | null
+          clinical_summary?: string | null
           closed_at?: string | null
           closure_approved_at?: string | null
           closure_approved_by?: string[] | null
@@ -963,7 +970,9 @@ export type Database = {
           phase?: string
           sessions_count?: number | null
           severity?: string
+          stable_since?: string | null
           trigger_description?: string
+          trigger_resolved?: boolean | null
           trigger_source?: string | null
           updated_at?: string | null
         }
