@@ -1,14 +1,16 @@
 /**
- * karel-drive-queue-processor v1
+ * karel-drive-queue-processor v2
  *
  * Zpracovává frontu `did_pending_drive_writes`.
- * V1 podporuje pouze bezpečné cíle a append zápisy.
+ * Používá centrální Document Governance vrstvu pro whitelist a audit.
  *
- * Bezpečné cíle:
+ * Řízené dokumentové cíle:
  *   - KARTA_{JMENO}         → append do karty části v kartotece
- *   - PAMET_KAREL/HANKA/SITUACNI_ANALYZA
- *   - PAMET_KAREL/KATA/SITUACNI_ANALYZA
- *   - PAMET_KAREL/KONTEXTY/KDO_JE_KDO
+ *   - KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN
+ *   - KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED
+ *   - KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE
+ *   - KARTOTEKA_DID/00_CENTRUM/DASHBOARD
+ *   - PAMET_KAREL/DID/{HANKA,KATA,KONTEXTY}/...
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -21,44 +23,20 @@ import {
   appendToDoc,
   appendToFile,
   replaceFile,
+  overwriteDoc,
   FOLDER_MIME,
   GDOC_MIME,
 } from "../_shared/driveHelpers.ts";
+import {
+  isGovernedTarget,
+  REPLACE_ALLOWED_TARGETS,
+} from "../_shared/documentGovernance.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
 };
-
-// ── Allowed targets whitelist ──
-const ALLOWED_TARGETS = [
-  /^KARTA_.+$/,
-  /^PAMET_KAREL\/DID\/HANKA\/SITUACNI_ANALYZA$/,
-  /^PAMET_KAREL\/DID\/KATA\/SITUACNI_ANALYZA$/,
-  /^PAMET_KAREL\/DID\/KONTEXTY\/KDO_JE_KDO$/,
-  /^PAMET_KAREL\/DID\/HANKA\/PROFIL_OSOBNOSTI$/,
-  /^PAMET_KAREL\/DID\/KATA\/PROFIL_OSOBNOSTI$/,
-  /^PAMET_KAREL\/DID\/HANKA\/KAREL$/,
-  /^PAMET_KAREL\/DID\/KATA\/KAREL$/,
-  /^PAMET_KAREL\/DID\/HANKA\/VLAKNA_POSLEDNI$/,
-  /^PAMET_KAREL\/DID\/KATA\/VLAKNA_POSLEDNI$/,
-  /^PAMET_KAREL\/DID\/HANKA\/VLAKNA_3DNY$/,
-  /^PAMET_KAREL\/DID\/KATA\/VLAKNA_3DNY$/,
-  /^PAMET_KAREL\/DID\/HANKA\/KARLOVY_POZNATKY$/,
-  /^PAMET_KAREL\/DID\/KATA\/KARLOVY_POZNATKY$/,
-  /^KARTOTEKA_DID\/00_CENTRUM\/05A_OPERATIVNI_PLAN$/,
-];
-
-function isAllowedTarget(target: string): boolean {
-  return ALLOWED_TARGETS.some((rx) => rx.test(target));
-}
-
-// ── Targets where write_type "replace" is permitted ──
-const REPLACE_ALLOWED_TARGETS = new Set([
-  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
-  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
-]);
 
 // ── Resolve PAMET_KAREL root (separate Drive root, NOT inside kartoteka) ──
 async function resolvePametKarelRoot(token: string): Promise<string | null> {
@@ -85,7 +63,6 @@ async function resolveTarget(
     const activeFolder = await findFolder(token, "01_AKTIVNI_FRAGMENTY", kartotekaRoot);
     if (activeFolder) {
       const items = await listFiles(token, activeFolder);
-      // Items can be either folders (containing card file) or direct Google Docs
       for (const item of items) {
         if (!item.name.toUpperCase().includes(partName.toUpperCase())) continue;
         
@@ -239,7 +216,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Replace is only allowed for specific targets
+        // Replace is only allowed for specific targets (from governance)
         if (writeType === "replace" && !REPLACE_ALLOWED_TARGETS.has(target)) {
           addLog(`SKIP ${writeId}: replace not allowed for target '${target}'`);
           await sb
@@ -250,9 +227,9 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Check whitelist
-        if (!isAllowedTarget(target)) {
-          addLog(`SKIP ${writeId}: target '${target}' not in whitelist`);
+        // Check governance whitelist (replaces old hardcoded ALLOWED_TARGETS)
+        if (!isGovernedTarget(target)) {
+          addLog(`SKIP ${writeId}: target '${target}' not in governance whitelist`);
           await sb
             .from("did_pending_drive_writes")
             .update({ status: "skipped", processed_at: new Date().toISOString() })
@@ -277,10 +254,17 @@ Deno.serve(async (req) => {
         const timestamp = new Date().toISOString().slice(0, 16).replace("T", " ");
 
         if (writeType === "replace") {
-          // Replace: overwrite entire file content (plain text only)
-          const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${pw.content}`;
-          await replaceFile(token, resolved.id, contentWithHeader);
-          addLog(`REPLACED file ${resolved.id} for target '${target}'`);
+          if (resolved.mimeType === GDOC_MIME) {
+            // Google Docs: use overwriteDoc (delete + insert)
+            const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${pw.content}`;
+            await overwriteDoc(token, resolved.id, contentWithHeader);
+            addLog(`REPLACED (GDoc) file ${resolved.id} for target '${target}'`);
+          } else {
+            // Plain text: use replaceFile
+            const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${pw.content}`;
+            await replaceFile(token, resolved.id, contentWithHeader);
+            addLog(`REPLACED (plain) file ${resolved.id} for target '${target}'`);
+          }
         } else {
           // Append
           const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${pw.content}`;
@@ -298,7 +282,25 @@ Deno.serve(async (req) => {
           .update({ status: "completed", processed_at: new Date().toISOString() })
           .eq("id", writeId);
 
-        addLog(`OK ${writeId}: appended to '${target}' (file ${resolved.id})`);
+        // Audit log
+        try {
+          await sb.from("did_doc_sync_log").insert({
+            source_type: pw.source_type || "drive-queue-processor",
+            source_id: pw.source_id || writeId,
+            target_document: target,
+            content_type: pw.content_type || "card_section_update",
+            subject_type: pw.subject_type || "system",
+            subject_id: pw.subject_id || "",
+            sync_type: `${writeType}_via_queue`,
+            content_written: (pw.content || "").slice(0, 500),
+            success: true,
+            status: "ok",
+          });
+        } catch (auditErr) {
+          console.warn(`[drive-queue] Audit log failed for ${writeId}:`, auditErr);
+        }
+
+        addLog(`OK ${writeId}: ${writeType} to '${target}' (file ${resolved.id})`);
         completed++;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -307,6 +309,24 @@ Deno.serve(async (req) => {
           .from("did_pending_drive_writes")
           .update({ status: "failed", processed_at: new Date().toISOString() })
           .eq("id", writeId);
+
+        // Audit failure
+        try {
+          await sb.from("did_doc_sync_log").insert({
+            source_type: pw.source_type || "drive-queue-processor",
+            source_id: pw.source_id || writeId,
+            target_document: target,
+            content_type: pw.content_type || "card_section_update",
+            subject_type: pw.subject_type || "system",
+            subject_id: pw.subject_id || "",
+            sync_type: `${pw.write_type || "append"}_via_queue`,
+            content_written: "",
+            success: false,
+            status: "failed",
+            error_message: errMsg.slice(0, 500),
+          });
+        } catch (_) { /* ignore audit errors */ }
+
         failed++;
       }
     }

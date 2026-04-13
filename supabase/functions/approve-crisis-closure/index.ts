@@ -1,14 +1,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
+import { routeWrite, buildAuditEntry, type GovernanceRequest } from "../_shared/documentGovernance.ts";
 
 /**
- * approve-crisis-closure — v2
+ * approve-crisis-closure — v3
  *
  * Tvrdý closure protocol:
  * 1. Ověří 4-vrstvou closure readiness přes karel-crisis-closure-meeting
  * 2. Vyžaduje closure meeting + Karel statement
  * 3. Teprve pak uzavře krizi
+ * 4. Closure summary se rozdělí do správných sekcí karty (E, M, D)
  */
 
 serve(async (req) => {
@@ -71,8 +73,6 @@ serve(async (req) => {
     }
 
     // ── Check if we can actually close ──
-    // Note: meeting finalization happens AFTER successful closure (not before).
-    // Readiness is checked via the state machine which uses checkClosureReadiness().
     const bothApproved = newApproved.includes("hanka") && newApproved.includes("kata");
     const hasKarelStatement = crisis.closure_statement != null;
     const hasClosureMeeting = crisis.closure_meeting_id != null;
@@ -91,7 +91,6 @@ serve(async (req) => {
       });
 
       if (transErr) {
-        // State machine blocked it — report why
         console.warn("[approve-closure] State transition blocked:", transErr);
         return jsonRes({
           success: true,
@@ -124,45 +123,85 @@ serve(async (req) => {
         .eq("part_name", crisis.part_name)
         .eq("priority", "urgent");
 
-      // ── Propagate closure summary to part card ──
+      // ── Propagate closure summary to part card — SPLIT INTO E, M, D ──
       try {
-        const closureSummary = [
-          `## Uzavření krize — ${new Date().toISOString().slice(0, 10)}`,
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const partName = crisis.part_name;
+
+        // SECTION E — Chronologický log: co se stalo, průběh
+        const closureChronology = [
+          `## Uzavření krize — ${dateStr}`,
           `- **Trvání:** ${crisis.days_active || "?"} dní, ${crisis.sessions_count || "?"} sezení`,
           `- **Závažnost:** ${crisis.severity}`,
           `- **Trigger:** ${crisis.trigger_description || "nespecifikován"}`,
-          crisis.closure_statement ? `- **Karlův závěr:** ${crisis.closure_statement.slice(0, 500)}` : null,
-          crisis.clinical_summary ? `- **Klinické shrnutí:** ${crisis.clinical_summary.slice(0, 500)}` : null,
           `- **Schváleno:** ${newApproved.join(", ")}`,
+          crisis.clinical_summary ? `- **Průběh:** ${crisis.clinical_summary.slice(0, 800)}` : null,
         ].filter(Boolean).join("\n");
 
+        // SECTION M — Karlova analytická poznámka: závěr, co fungovalo/nefungovalo
+        const closureAnalysis = crisis.closure_statement
+          ? [
+              `## Karlův závěr krize — ${dateStr}`,
+              crisis.closure_statement.slice(0, 1000),
+              `- **Diagnostické skóre:** ${crisis.diagnostic_score || "N/A"}/100`,
+            ].join("\n")
+          : "";
+
+        // SECTION D — Terapeutická doporučení: jen doporučení pro další práci
+        const closureRecommendations = [
+          `## Doporučení po krizi — ${dateStr}`,
+          `- Přechod do monitorovacího režimu`,
+          crisis.trigger_description
+            ? `- Sledovat trigger: ${crisis.trigger_description.slice(0, 200)}`
+            : null,
+        ].filter(Boolean).join("\n");
+
+        // Build sections object for card-update
+        const sections: Record<string, string> = { E: closureChronology };
+        if (closureAnalysis) sections["M"] = closureAnalysis;
+        sections["D"] = closureRecommendations;
+
         await sb.functions.invoke("karel-did-card-update", {
-          body: {
-            partName: crisis.part_name,
-            sections: { D: closureSummary },
-            sectionModes: { D: "APPEND" },
-          },
+          body: { partName, sections },
           headers: { Authorization: `Bearer ${srvKey}` },
         });
 
-        // Log card propagation
-        await sb.from("did_doc_sync_log").insert({
-          source_type: "approve-crisis-closure",
-          target_document: crisis.part_name,
-          content_written: closureSummary.slice(0, 500),
-          success: true,
-          sync_type: "closure_summary_sync",
-          crisis_event_id: crisisId,
-          status: "ok",
-        });
+        // Audit each content type via governance
+        const auditEntries = [
+          { content_type: "closure_chronology" as const, payload: closureChronology, section: "E" },
+          ...(closureAnalysis ? [{ content_type: "closure_analysis" as const, payload: closureAnalysis, section: "M" }] : []),
+          { content_type: "closure_recommendations" as const, payload: closureRecommendations, section: "D" },
+        ];
+
+        for (const entry of auditEntries) {
+          const govReq: GovernanceRequest = {
+            source_type: "approve-crisis-closure",
+            source_id: crisisId,
+            content_type: entry.content_type,
+            subject_type: "crisis",
+            subject_id: partName,
+            payload: entry.payload,
+          };
+          const govResult = routeWrite(govReq);
+          const audit = buildAuditEntry(govReq, govResult, true);
+          await sb.from("did_doc_sync_log").insert({
+            ...audit,
+            crisis_event_id: crisisId,
+          });
+        }
       } catch (cardErr) {
         console.warn("[approve-closure] Card propagation error:", cardErr);
         await sb.from("did_doc_sync_log").insert({
           source_type: "approve-crisis-closure",
+          source_id: crisisId,
           target_document: crisis.part_name,
+          content_written: "",
           success: false,
           error_message: String(cardErr),
           sync_type: "closure_summary_sync",
+          content_type: "closure_summary",
+          subject_type: "crisis",
+          subject_id: crisis.part_name,
           crisis_event_id: crisisId,
           status: "failed",
         });
@@ -193,7 +232,7 @@ serve(async (req) => {
       return jsonRes({ success: true, closed: true, approvedBy: newApproved });
     }
 
-    // ── Not ready to close yet — report what's missing ──
+    // ── Not ready to close yet ──
     const missing: string[] = [];
     if (!newApproved.includes("hanka")) missing.push("Chybí souhlas Hanky");
     if (!newApproved.includes("kata")) missing.push("Chybí souhlas Káti");
