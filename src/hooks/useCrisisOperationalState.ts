@@ -78,6 +78,14 @@ export interface ClosureReadiness4Layer {
   allBlockers: string[];
 }
 
+export interface CrisisCTA {
+  key: string;
+  label: string;
+  action: string;
+  priority: "critical" | "high" | "normal";
+  params?: Record<string, any>;
+}
+
 export interface CrisisOperationalCard {
   // Identity
   partName: string;
@@ -211,9 +219,18 @@ export interface CrisisOperationalCard {
   missingSessionResult: boolean;
   missingTherapistFeedback: boolean;
 
+  // Computed CTA actions (centralized, deduped, priority-sorted)
+  computedCTAs: CrisisCTA[];
+
+  // Closure blocker summary derived from 4-layer readiness
+  closureBlockerSummary: string | null;
+
   // Audit layers
   cardPropagationStatus: AuditEntry[];
   planSyncStatus: AuditEntry | null;
+
+  // Unread crisis briefs count (fed from parent / hook aggregate)
+  unreadBriefCount: number;
 }
 
 export interface AuditEntry {
@@ -351,6 +368,63 @@ function computeMainBlocker(card: Partial<CrisisOperationalCard>): string | null
   const unfulfilled = (card.todayRequiredOutputs || []).filter(o => !o.fulfilled);
   if (unfulfilled.length > 0) return `Chybí: ${unfulfilled[0].label}`;
   return null;
+}
+
+/**
+ * Centralized CTA computation.
+ * Returns deduplicated, priority-sorted CTAs derived from CrisisOperationalCard state.
+ * Deterministic order: critical first, then high, then normal. Within same priority, stable insertion order.
+ */
+function computeCTAs(card: Partial<CrisisOperationalCard>): CrisisCTA[] {
+  const ctas: CrisisCTA[] = [];
+  const seen = new Set<string>();
+  const add = (cta: CrisisCTA) => { if (!seen.has(cta.key)) { seen.add(cta.key); ctas.push(cta); } };
+
+  // Critical
+  if (card.isStale && (card.hoursStale ?? 0) > 24) {
+    add({ key: "stale_update", label: "Vyžádat update", action: "request_update", priority: "critical" });
+  }
+  if (card.missingTodayInterview) {
+    add({ key: "missing_interview", label: "Spustit dnešní hodnocení", action: "start_interview", priority: "critical", params: { eventId: card.eventId } });
+  }
+
+  // High
+  if (card.missingSessionResult) {
+    add({ key: "missing_session_result", label: "Zapsat výsledek zásahu", action: "record_session_result", priority: "high" });
+  }
+  if (card.missingTherapistFeedback) {
+    add({ key: "missing_feedback", label: "Získat feedback terapeutek", action: "request_feedback", priority: "high" });
+  }
+  if ((card.unansweredQuestionCount ?? 0) > 0) {
+    add({ key: "unanswered_qa", label: "Zodpovědět otázky po sezení", action: "answer_questions", priority: "high", params: { count: card.unansweredQuestionCount } });
+  }
+
+  // Normal
+  if (card.crisisMeetingRequired && !card.meetingOpen) {
+    add({ key: "open_meeting", label: "Otevřít krizovou poradu", action: "open_meeting", priority: "normal" });
+  }
+  if (card.closureReadiness4Layer?.overallReady) {
+    add({ key: "prepare_closure", label: "Připravit uzavření", action: "prepare_closure", priority: "normal" });
+  }
+
+  // Sort: critical → high → normal, stable within same priority
+  const ORDER: Record<string, number> = { critical: 0, high: 1, normal: 2 };
+  ctas.sort((a, b) => (ORDER[a.priority] ?? 9) - (ORDER[b.priority] ?? 9));
+  return ctas;
+}
+
+/**
+ * Derives closure blocker summary from 4-layer readiness.
+ * Returns the first unmet layer's first blocker, or null if all met.
+ */
+function computeClosureBlockerSummary(r4: CrisisOperationalCard["closureReadiness4Layer"]): string | null {
+  if (!r4) return null;
+  if (r4.overallReady) return null;
+  // Return first blocker from first unmet layer
+  for (const layer of [r4.clinical, r4.process, r4.team, r4.operational]) {
+    if (!layer.met && layer.blockers.length > 0) return layer.blockers[0];
+  }
+  return r4.allBlockers[0] || null;
 }
 
 // ── Main Hook ──────────────────────────────────────────────────
@@ -595,7 +669,14 @@ export function useCrisisOperationalState() {
           cardPropagationStatus: [],
           planSyncStatus: null,
           mainBlocker: computeMainBlocker(partialCard),
+          computedCTAs: [], // populated after card is built
+          closureBlockerSummary: null, // populated after backend readiness fetch
+          unreadBriefCount: 0, // populated after brief count fetch
         });
+
+        // Compute CTAs now that the card is in the map
+        const builtCard = cardMap.get(key)!;
+        builtCard.computedCTAs = computeCTAs(builtCard);
       }
 
       // Add alerts without events (legacy)
@@ -632,7 +713,11 @@ export function useCrisisOperationalState() {
             interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
             closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
             cardPropagationStatus: [], planSyncStatus: null,
+            computedCTAs: [], closureBlockerSummary: null, unreadBriefCount: 0,
           });
+          // Compute CTAs for legacy alert-only cards
+          const legacyCard = cardMap.get(key)!;
+          legacyCard.computedCTAs = computeCTAs(legacyCard);
         }
       }
 
@@ -644,7 +729,12 @@ export function useCrisisOperationalState() {
         if (!c.eventId) continue;
         fetchBackendReadiness(c.eventId).then(r => {
           if (!r) return;
-          setCards(prev => prev.map(pc => pc.eventId === c.eventId ? { ...pc, closureReadiness4Layer: r } : pc));
+          setCards(prev => prev.map(pc => {
+            if (pc.eventId !== c.eventId) return pc;
+            const updated = { ...pc, closureReadiness4Layer: r, closureBlockerSummary: computeClosureBlockerSummary(r) };
+            updated.computedCTAs = computeCTAs(updated);
+            return updated;
+          }));
         }).catch(() => {});
       }
 
@@ -658,6 +748,13 @@ export function useCrisisOperationalState() {
           return { ...pc, cardPropagationStatus: audit.cardProp, planSyncStatus: audit.planSync };
         }));
       }).catch(() => {});
+
+      // Fetch unread crisis brief count (lightweight aggregate, no separate polling)
+      supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
+        if (count != null && count > 0) {
+          setCards(prev => prev.map(pc => ({ ...pc, unreadBriefCount: count })));
+        }
+      });
     } catch (err) {
       console.error("[useCrisisOperationalState] Error:", err);
     } finally {

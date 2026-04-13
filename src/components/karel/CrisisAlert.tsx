@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Shield, ChevronDown, ChevronUp, AlertTriangle, MessageSquare, CalendarCheck, Users } from "lucide-react";
-import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
+import { Shield, ChevronDown, ChevronUp, AlertTriangle, Users, Bell } from "lucide-react";
+import { useCrisisOperationalState, type CrisisOperationalCard, type CrisisCTA } from "@/hooks/useCrisisOperationalState";
 import CrisisOperationalDetail from "./CrisisOperationalDetail";
 
 const STATE_LABELS: Record<string, string> = {
@@ -15,13 +15,6 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
-const PHASE_LABELS: Record<string, string> = {
-  acute: "akutní",
-  stabilizing: "stabilizace",
-  diagnostic: "diagnostika",
-  closing: "uzavírání",
-};
-
 const CrisisAlert: React.FC = () => {
   const { cards, loading, refetch } = useCrisisOperationalState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -33,15 +26,17 @@ const CrisisAlert: React.FC = () => {
       {cards.map(card => {
         const id = card.eventId || card.alertId || card.partName;
         const isExpanded = expandedId === id;
+        const stateLabel = card.operatingState ? STATE_LABELS[card.operatingState] || card.operatingState : "aktivní";
 
-        // Missing indicators
+        // Max 2 CTAs with highest priority for banner
+        const bannerCTAs = card.computedCTAs.slice(0, 2);
+
+        // Missing indicators (compact)
         const missingFlags: string[] = [];
         if (card.missingTodayInterview) missingFlags.push("interview");
         if (card.missingSessionResult) missingFlags.push("sezení");
         if (card.missingTherapistFeedback) missingFlags.push("feedback");
         if (card.unansweredQuestionCount > 0) missingFlags.push(`${card.unansweredQuestionCount} Q`);
-
-        const stateLabel = card.operatingState ? STATE_LABELS[card.operatingState] || card.operatingState : (card.phase ? PHASE_LABELS[card.phase] || card.phase : "aktivní");
 
         const hasMeeting = card.meetingOpen || (card.closureMeeting && card.closureMeeting.status !== "finalized");
         const meetingLabel = card.closureMeeting ? "closure meeting" : card.meetingOpen ? "porada" : card.crisisMeetingRequired ? "⚠ porada doporučena" : null;
@@ -60,7 +55,6 @@ const CrisisAlert: React.FC = () => {
                   {card.daysActive && <span className="text-white/60 text-[11px]">den {card.daysActive}</span>}
                   <span className="text-white/40 text-[10px]">{card.primaryTherapist}</span>
 
-                  {/* Missing flags */}
                   {missingFlags.length > 0 && (
                     <span className="text-[10px] bg-yellow-500/30 text-yellow-100 px-1.5 py-0.5 rounded flex items-center gap-1">
                       <AlertTriangle className="w-3 h-3" />
@@ -68,7 +62,6 @@ const CrisisAlert: React.FC = () => {
                     </span>
                   )}
 
-                  {/* Meeting indicator */}
                   {meetingLabel && (
                     <span className="text-[10px] bg-blue-500/30 text-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1">
                       <Users className="w-3 h-3" />
@@ -82,7 +75,14 @@ const CrisisAlert: React.FC = () => {
                     </span>
                   )}
 
-                  {/* Expand */}
+                  {/* Unread brief indicator */}
+                  {card.unreadBriefCount > 0 && (
+                    <span className="text-[10px] bg-red-500/30 text-red-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                      <Bell className="w-3 h-3" />
+                      {card.unreadBriefCount} brief{card.unreadBriefCount > 1 ? "y" : ""}
+                    </span>
+                  )}
+
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : id)}
                     className="hover:bg-white/10 px-1.5 py-1 rounded transition-colors shrink-0 ml-auto"
@@ -91,11 +91,35 @@ const CrisisAlert: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Row 2: Main blocker + CTA */}
-                {card.mainBlocker && !isExpanded && (
-                  <div className="flex items-center gap-2 mt-1 text-[11px] text-white/80">
-                    <AlertTriangle className="w-3 h-3 text-yellow-300 shrink-0" />
-                    <span>{card.mainBlocker}</span>
+                {/* Row 2: Main blocker + closure blocker + CTA */}
+                {!isExpanded && (
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-white/80 flex-wrap">
+                    {card.mainBlocker && (
+                      <span className="flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3 text-yellow-300 shrink-0" />
+                        {card.mainBlocker}
+                      </span>
+                    )}
+                    {card.closureBlockerSummary && card.closureBlockerSummary !== card.mainBlocker && (
+                      <span className="text-[10px] text-white/60">· uzavření: {card.closureBlockerSummary}</span>
+                    )}
+                    {bannerCTAs.length > 0 && (
+                      <div className="flex gap-1.5 ml-auto">
+                        {bannerCTAs.map(cta => (
+                          <button
+                            key={cta.key}
+                            onClick={() => setExpandedId(id)}
+                            className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                              cta.priority === "critical" ? "bg-red-500/40 hover:bg-red-500/60 text-white font-bold"
+                              : cta.priority === "high" ? "bg-amber-500/30 hover:bg-amber-500/50 text-yellow-100"
+                              : "bg-white/15 hover:bg-white/25 text-white/90"
+                            }`}
+                          >
+                            {cta.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
