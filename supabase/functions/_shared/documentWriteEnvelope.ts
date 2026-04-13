@@ -1,6 +1,7 @@
 export interface GovernedWriteMetadata {
   source_type?: string;
   source_id?: string;
+  segment_id?: string;
   content_type?: string;
   subject_type?: string;
   subject_id?: string;

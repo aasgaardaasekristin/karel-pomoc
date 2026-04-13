@@ -399,6 +399,7 @@ Deno.serve(async (req) => {
       );
     }
 
+
     // ── 2. Process each thread ───────────────────────────────────────
 
     let totalWrites = 0;
@@ -407,85 +408,60 @@ Deno.serve(async (req) => {
     let totalFollowUps = 0;
     const dateLabel = now.toISOString().slice(0, 10);
 
+    // ── Collectors for per-segment accumulation ──
+    const approvedBlocksCollector = {
+      items: [] as SortedBlock[],
+      flush() { const r = [...this.items]; this.items = []; return r; },
+    };
+    const classifiedCollector = {
+      items: [] as any[],
+      flush() { const r = [...this.items]; this.items = []; return r; },
+    };
+
     for (const thread of threads) {
       const trimmed = thread.messages.slice(-60);
 
-      // ── MEZIFÁZE: Authoritative per-segment AI processing ──
-      // Step 1: Build message clusters (1-3 consecutive user msgs, max 5min gap)
+      // ── MEZIFÁZE: Per-segment AI processing ──
+      // 1. Build message clusters (1–3 consecutive user messages, max 5min gap)
       const clusters = buildMessageClusters(
         trimmed.map(m => ({ role: m.role, content: m.content || "" })),
         3,
         5 * 60 * 1000,
       );
 
-      // Step 2: Segment each cluster into topic segments
-      const segmentGroups: Array<{ segmentType: SegmentType; segments: TopicSegment[]; clusterText: string }> = [];
+      // 2. Segment each cluster into individual topic segments
+      const allSegments: TopicSegment[] = [];
       for (const cluster of clusters) {
         const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
-        // Group segments by type for batched AI calls
-        const byType = new Map<SegmentType, TopicSegment[]>();
-        for (const seg of segs) {
-          if (seg.segment_type === "background_noise") continue;
-          const existing = byType.get(seg.segment_type) || [];
-          existing.push(seg);
-          byType.set(seg.segment_type, existing);
-        }
-        for (const [segType, groupedSegs] of byType) {
-          segmentGroups.push({
-            segmentType: segType,
-            segments: groupedSegs,
-            clusterText: groupedSegs.map(s => s.raw_segment).join("\n\n"),
-          });
-        }
+        allSegments.push(...segs);
       }
 
-      if (segmentGroups.length === 0) {
-        // Fallback: if no segments were created (very short thread), skip
-        const totalText = trimmed.map(m => m.content || "").join(" ");
-        if (totalText.trim().length < 50) {
-          addLog(`Skip thread ${thread.id} (too short / no segments)`);
+      // Filter out background noise
+      const worthySegments = allSegments.filter(s => s.segment_type !== "background_noise");
+
+      if (worthySegments.length === 0) {
+        // Fallback: segmentation found nothing useful → try whole transcript
+        const transcript = trimmed
+          .map((m) => `[${m.role}]: ${(m.content || "").slice(0, 800)}`)
+          .join("\n");
+
+        if (transcript.length < 50) {
+          addLog(`Skip thread ${thread.id} (too short)`);
           continue;
         }
-        // If segmentation produced nothing but thread has content,
-        // treat entire thread as one background segment
-        segmentGroups.push({
-          segmentType: "background_noise" as SegmentType,
-          segments: [],
-          clusterText: totalText.slice(0, 3000),
-        });
-      }
 
-      // Step 3: Call AI per segment group (not per whole transcript)
-      // Each segment group = one coherent topic from the thread
-      let threadBlocks: SortedBlock[] = [];
-      let threadClassified: any[] = [];
-
-      for (const group of segmentGroups) {
-        if (group.segmentType === "background_noise") continue;
-        if (group.clusterText.trim().length < 30) continue;
-
-        // Include minimal conversation context (assistant responses near the segment)
-        const contextSnippet = buildContextAroundSegment(trimmed, group.clusterText);
-
-        const segmentPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
+        const userPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
 Datum: ${dateLabel}
-Segment typ: ${group.segmentType}
-${group.segments[0]?.part_name ? `Detekovaná část: ${group.segments[0].part_name}` : ""}
 
---- SEGMENTOVANÝ OBSAH ---
-${group.clusterText.slice(0, 2000)}
---- KONTEXT ---
-${contextSnippet.slice(0, 1000)}
+--- KONVERZACE ---
+${transcript}
 --- KONEC ---
 
-Roztřiď POUZE obsah tohoto segmentu. Segment je typu "${group.segmentType}".
-${group.segmentType === "personal_relational" ? "POZOR: Osobní vztahový obsah NIKDY do KARTA_*. Pouze do PAMET_KAREL." : ""}
-${group.segmentType === "part_clinical" ? "Klinický obsah o DID části. Může jít do KARTA_* pokud je entita potvrzena." : ""}
-Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": [] }.`;
+Roztřiď obsah do bloků A klasifikuj každou informaci. Pokud vlákno neobsahuje nic nového, vrať { "blocks": [], "classified_items": [] }.`;
 
-        const segResult = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
+        const result = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
           systemPrompt: SORTING_SYSTEM_PROMPT,
-          userPrompt: segmentPrompt,
+          userPrompt,
           model: "google/gemini-2.5-flash",
           apiKey,
           requiredKeys: ["blocks"],
@@ -494,109 +470,71 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
           callerName: "thread-sorter",
         });
 
-        const segBlocks = segResult.data?.blocks ?? [];
-        const segClassified = segResult.data?.classified_items ?? [];
+        const blocks = result.data?.blocks ?? [];
+        const rawClassified = result.data?.classified_items ?? [];
+        addLog(`Thread ${thread.id} ("${thread.label}"): fallback whole-transcript → ${blocks.length} blocks, ${rawClassified.length} classified`);
 
-        // Tag each block/item with its segment type for downstream traceability
-        for (const b of segBlocks) {
-          (b as any)._segment_type = group.segmentType;
-        }
-        for (const ci of segClassified) {
-          ci._segment_type = group.segmentType;
-        }
-
-        threadBlocks.push(...segBlocks);
-        threadClassified.push(...segClassified);
-      }
-
-      addLog(`Thread ${thread.id} ("${thread.label}"): ${segmentGroups.length} segment groups → ${threadBlocks.length} blocks, ${threadClassified.length} classified items`);
-
-      const blocks = threadBlocks;
-      const rawClassified = threadClassified;
-
-      if (blocks.length === 0) {
-        await lockThread(supabase, thread, now);
-        totalLocked++;
-        continue;
-      }
-
-      // ── 3. Validate blocks + entity guardrails ───────────────────
-
-      const approvedBlocks: SortedBlock[] = [];
-
-      for (const b of blocks) {
-        if (!b.target || !b.content || b.content.length < 10) continue;
-
-        // Non-KARTA targets: standard validation
-        if (VALID_TARGETS.includes(b.target)) {
-          approvedBlocks.push(b);
+        if (blocks.length === 0) {
+          await lockThread(supabase, thread, now);
+          totalLocked++;
           continue;
         }
 
-        // KARTA_* targets: entity guardrail check
-        const kartaMatch = b.target.match(/^KARTA_([A-Z_]+)$/);
-        if (!kartaMatch) {
-          addLog(`  Rejected block with invalid target: ${b.target}`);
-          continue;
-        }
+        // Accumulate blocks + classified into collectors
+        await processBlocksEntityGuardrails(blocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel);
+        accumulateClassified(rawClassified, classifiedCollector, thread, null);
+      } else {
+        // ── 3. Per-segment AI calls ──
+        // Each individual segment gets its own AI call — NO grouping by segment_type.
+        addLog(`Thread ${thread.id} ("${thread.label}"): ${worthySegments.length} segments to process individually`);
 
-        const entityName = kartaMatch[1];
-        const classification = classifyEntity(entityName);
+        for (const segment of worthySegments) {
+          const segmentContext = buildSegmentContext(trimmed, segment);
 
-        switch (classification.classification) {
-          case "confirmed_part":
-            approvedBlocks.push(b);
-            break;
+          const segmentPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
+Datum: ${dateLabel}
+Typ segmentu: ${segment.segment_type} (${segment.safe_label})
+${segment.part_name ? `Detekovaná část: ${segment.part_name}` : ""}
+${segment.therapist ? `Terapeut: ${segment.therapist}` : ""}
 
-          case "known_alias_of_part":
-            // Rewrite target to canonical name
-            approvedBlocks.push({
-              ...b,
-              target: `KARTA_${classification.canonicalName}`,
-              reasoning: `${b.reasoning} [alias ${entityName} \u2192 ${classification.canonicalName}]`,
-            });
-            addLog(`  Alias resolved: ${entityName} \u2192 ${classification.canonicalName}`);
-            break;
+--- SEGMENT ---
+${segment.raw_segment.slice(0, 1500)}
+--- KONEC SEGMENTU ---
 
-          case "uncertain_entity":
-            // BLOCK the KARTA_* write, create follow-up question
-            totalEntityBlocked++;
-            addLog(`  BLOCKED KARTA_${entityName}: uncertain entity, creating follow-up`);
-            await createEntityFollowUp(supabase, entityName, b.content, thread, dateLabel);
-            totalFollowUps++;
-            // Redirect useful content to KDO_JE_KDO instead
-            approvedBlocks.push({
-              ...b,
-              target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-              content: `[NEPOTVRZENA CAST - k ov\u011b\u0159en\u00ed] ${entityName}: ${b.content}`,
-              reasoning: `${b.reasoning} [entita nepotvrzena, p\u0159esm\u011brov\u00e1no do KDO_JE_KDO]`,
-            });
-            break;
+${segmentContext ? `--- KONTEXT (okolní odpovědi) ---\n${segmentContext}\n--- KONEC KONTEXTU ---\n` : ""}
+DŮLEŽITÉ: Klasifikuj POUZE obsah tohoto segmentu. Nemíchej s jinými tématy.
+Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": [] }.`;
 
-          case "non_part_context":
-            // BLOCK the KARTA_* write, redirect to KDO_JE_KDO
-            totalEntityBlocked++;
-            addLog(`  BLOCKED KARTA_${entityName}: non-part (${classification.nonPartReason})`);
-            approvedBlocks.push({
-              ...b,
-              target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-              content: `${entityName} (${classification.nonPartReason}): ${b.content}`,
-              reasoning: `${b.reasoning} [nen\u00ed DID \u010d\u00e1st, p\u0159esm\u011brov\u00e1no do KDO_JE_KDO]`,
-            });
-            break;
+          const segResult = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
+            systemPrompt: SORTING_SYSTEM_PROMPT,
+            userPrompt: segmentPrompt,
+            model: "google/gemini-2.5-flash",
+            apiKey,
+            requiredKeys: ["blocks"],
+            maxRetries: 1,
+            fallback: { blocks: [], classified_items: [] },
+            callerName: "thread-sorter",
+          });
+
+          const segBlocks = segResult.data?.blocks ?? [];
+          const segClassified = segResult.data?.classified_items ?? [];
+
+          if (segBlocks.length > 0 || segClassified.length > 0) {
+            addLog(`  Segment [${segment.segment_type}] (id=${segment.id}): ${segBlocks.length} blocks, ${segClassified.length} classified`);
+          }
+
+          await processBlocksEntityGuardrails(segBlocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel);
+          accumulateClassified(segClassified, classifiedCollector, thread, segment);
         }
       }
 
-      // ── 3b. Content-level uncertain entity scan ──────────────────
-      // Even when AI correctly avoids KARTA_*, scan all block content
-      // for mentions of uncertain entities and create follow-ups.
-      const allContent = blocks.map((b) => b.content + " " + b.reasoning).join(" ");
-      const followUpEntities = await scanForUncertainEntities(
-        supabase, allContent, thread, dateLabel, addLog,
-      );
-      totalFollowUps += followUpEntities;
+      // ── Flush accumulated results for this thread ──
+      const approvedBlocks = approvedBlocksCollector.flush();
+      const allClassifiedItems = classifiedCollector.flush();
 
-      if (approvedBlocks.length === 0) {
+      addLog(`Thread ${thread.id}: total ${approvedBlocks.length} approved blocks, ${allClassifiedItems.length} classified items`);
+
+      if (approvedBlocks.length === 0 && allClassifiedItems.length === 0) {
         await lockThread(supabase, thread, now);
         totalLocked++;
         continue;
@@ -610,7 +548,6 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
           ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
           : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`;
 
-        // Derive subject_type from target — consistent with provenance model
         const subjectType = b.target.startsWith("KARTA_") ? "part"
           : b.target.includes("/KONTEXTY/") ? "family_context"
           : (b.target.includes("/HANKA/") || b.target.includes("/KATA/")) ? "therapist"
@@ -621,7 +558,6 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
           : b.target.includes("/KATA/") ? "kata"
           : (thread.subMode || "general");
 
-        // Derive content_type from block type / target
         const contentType = b.target.startsWith("KARTA_") ? "session_result"
           : b.target.includes("SITUACNI_ANALYZA") ? "daily_plan"
           : b.target.includes("KARLOVY_POZNATKY") ? "therapist_memory_note"
@@ -644,20 +580,21 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
         };
       });
 
-      const { error: writeErr } = await supabase
-        .from("did_pending_drive_writes")
-        .insert(rows);
+      if (rows.length > 0) {
+        const { error: writeErr } = await supabase
+          .from("did_pending_drive_writes")
+          .insert(rows);
 
-      if (writeErr) {
-        addLog(`  Write error for thread ${thread.id}: ${writeErr.message}`);
-        continue;
+        if (writeErr) {
+          addLog(`  Write error for thread ${thread.id}: ${writeErr.message}`);
+        } else {
+          totalWrites += rows.length;
+          addLog(`  → ${rows.length} pending writes created`);
+        }
       }
 
-      totalWrites += approvedBlocks.length;
-      addLog(`  \u2192 ${approvedBlocks.length} pending writes created`);
-
       // ── 5. Execute classified items (FÁZE 2 + 2.5 normalization) ──
-      if (rawClassified.length > 0) {
+      if (allClassifiedItems.length > 0) {
         const sourceMap: Record<string, InformationSource> = {
           mamka: "did_therapist_hanka",
           kata: "did_therapist_kata",
@@ -669,10 +606,9 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
           hana_personal: "hana_personal",
         };
 
-        const classifiedItems: ClassifiedItem[] = rawClassified
+        const normalizedItems: ClassifiedItem[] = allClassifiedItems
           .filter((ci: any) => ci.info_class && ci.raw_content)
           .map((ci: any, idx: number) => {
-            // FÁZE 2.5: Normalize each classified item through provenance layer
             const signal = normalizeSignal({
               raw_content: ci.raw_content,
               source_domain: domainMap[thread.subMode] || "part_conversation",
@@ -681,18 +617,17 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
               part_name: ci.part_name || undefined,
             });
 
-            // Apply normalization gates:
-            // - If AI classified as part_clinical_truth but normalization says no → downgrade
             let finalInfoClass = ci.info_class as InfoClass;
             if (finalInfoClass === "part_clinical_truth" && !canWriteToPartCard(signal)) {
               console.warn(`[thread-sorter] Normalization blocked part_clinical_truth for ${ci.part_name} (confidence=${signal.confidence}, evidence=${signal.evidence_strength})`);
-              finalInfoClass = "memory_private"; // Downgrade to private memory
+              finalInfoClass = "memory_private";
             }
 
             return {
-              id: `${thread.id}-ci-${idx}`,
+              id: ci._id || `${thread.id}-ci-${idx}`,
               source: sourceMap[thread.subMode] || "did_part_conversation" as InformationSource,
               source_id: thread.id,
+              segment_id: ci._segment_id || undefined,
               info_class: finalInfoClass,
               privacy_level: ci.privacy_level || "team_only",
               raw_content: ci.raw_content,
@@ -705,9 +640,9 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
             };
           });
 
-        if (classifiedItems.length > 0) {
+        if (normalizedItems.length > 0) {
           const execResult = await executeClassifiedItems(
-            supabase, classifiedItems, dateLabel, "thread-sorter",
+            supabase, normalizedItems, dateLabel, "thread-sorter",
           );
           addLog(`  FÁZE2.5: ${execResult.tasks_created} tasks, ${execResult.session_plans_created} sessions, ${execResult.questions_created} questions, ${execResult.meeting_triggers} meetings, ${execResult.privacy_blocked} blocked, dedup=${execResult.dedup_skipped}`);
         }
@@ -743,6 +678,121 @@ Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": 
   }
 });
 
+// ─── Helper: process blocks through entity guardrails ────────────────
+
+async function processBlocksEntityGuardrails(
+  blocks: SortedBlock[],
+  collector: { items: SortedBlock[] },
+  addLog: (msg: string) => void,
+  supabase: ReturnType<typeof createClient>,
+  thread: ThreadRecord,
+  dateLabel: string,
+) {
+  for (const b of blocks) {
+    if (!b.target || !b.content || b.content.length < 10) continue;
+
+    if (VALID_TARGETS.includes(b.target)) {
+      collector.items.push(b);
+      continue;
+    }
+
+    const kartaMatch = b.target.match(/^KARTA_([A-Z_]+)$/);
+    if (!kartaMatch) {
+      addLog(`  Rejected block with invalid target: ${b.target}`);
+      continue;
+    }
+
+    const entityName = kartaMatch[1];
+    const classification = classifyEntity(entityName);
+
+    switch (classification.classification) {
+      case "confirmed_part":
+        collector.items.push(b);
+        break;
+
+      case "known_alias_of_part":
+        collector.items.push({
+          ...b,
+          target: `KARTA_${classification.canonicalName}`,
+          reasoning: `${b.reasoning} [alias ${entityName} → ${classification.canonicalName}]`,
+        });
+        addLog(`  Alias resolved: ${entityName} → ${classification.canonicalName}`);
+        break;
+
+      case "uncertain_entity":
+        addLog(`  BLOCKED KARTA_${entityName}: uncertain entity, creating follow-up`);
+        await createEntityFollowUp(supabase, entityName, b.content, thread, dateLabel);
+        collector.items.push({
+          ...b,
+          target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+          content: `[NEPOTVRZENA CAST - k ověření] ${entityName}: ${b.content}`,
+          reasoning: `${b.reasoning} [entita nepotvrzena, přesměrováno do KDO_JE_KDO]`,
+        });
+        break;
+
+      case "non_part_context":
+        addLog(`  BLOCKED KARTA_${entityName}: non-part (${classification.nonPartReason})`);
+        collector.items.push({
+          ...b,
+          target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+          content: `${entityName} (${classification.nonPartReason}): ${b.content}`,
+          reasoning: `${b.reasoning} [není DID část, přesměrováno do KDO_JE_KDO]`,
+        });
+        break;
+    }
+  }
+
+  // Content-level uncertain entity scan
+  const allContent = blocks.map((b) => b.content + " " + b.reasoning).join(" ");
+  await scanForUncertainEntities(supabase, allContent, thread, dateLabel, addLog);
+}
+
+// ─── Helper: accumulate classified items with segment provenance ─────
+
+function accumulateClassified(
+  rawClassified: any[],
+  collector: { items: any[] },
+  thread: ThreadRecord,
+  segment: TopicSegment | null,
+) {
+  for (let idx = 0; idx < rawClassified.length; idx++) {
+    const ci = rawClassified[idx];
+    // source_id = thread ID (stays), segment_id = individual segment identity
+    collector.items.push({
+      ...ci,
+      _id: segment
+        ? `${thread.id}-seg-${segment.id}-ci-${idx}`
+        : `${thread.id}-ci-${idx}`,
+      _segment_id: segment?.id || undefined,
+    });
+  }
+}
+
+// ─── Helper: build minimal context around a segment ──────────────────
+
+function buildSegmentContext(
+  messages: { role: string; content: string }[],
+  segment: TopicSegment,
+): string {
+  const segLower = segment.raw_segment.toLowerCase().slice(0, 100);
+  const contextParts: string[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "user" && msg.content.toLowerCase().includes(segLower.slice(0, 40))) {
+      if (i > 0 && messages[i - 1].role === "assistant") {
+        contextParts.push(`[assistant]: ${messages[i - 1].content.slice(0, 300)}`);
+      }
+      if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
+        contextParts.push(`[assistant]: ${messages[i + 1].content.slice(0, 300)}`);
+      }
+      break;
+    }
+  }
+
+  return contextParts.join("\n");
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 async function lockThread(
@@ -766,11 +816,6 @@ async function lockThread(
   }
 }
 
-/**
- * Scan block content for mentions of explicitly uncertain entities
- * and any entity-like names tagged with "k ověření" / "nepotvrzena".
- * Creates follow-up questions with dedup against existing pending ones.
- */
 async function scanForUncertainEntities(
   supabase: ReturnType<typeof createClient>,
   allContent: string,
@@ -781,22 +826,19 @@ async function scanForUncertainEntities(
   const contentNorm = normalizeName(allContent);
   const detectedEntities: string[] = [];
 
-  // 1. Check explicitly uncertain entity names in content
   for (const unc of EXPLICITLY_UNCERTAIN) {
     if (contentNorm.includes(unc)) {
       detectedEntities.push(unc);
     }
   }
 
-  // 2. Check for AI-generated uncertainty markers in raw content
-  const uncertainMarkerRegex = /\[NEPOTVRZENA[^\]]*\]\s*([A-Z\u00c0-\u017e][a-z\u00e0-\u017e]+)/gi;
-  const kOvereniRegex = /k\s+ov\u011b\u0159en\u00ed[^.]*?([A-Z\u00c0-\u017e][a-z\u00e0-\u017e]{2,})/gi;
+  const uncertainMarkerRegex = /\[NEPOTVRZENA[^\]]*\]\s*([A-ZÀ-Ž][a-zà-ž]+)/gi;
+  const kOvereniRegex = /k\s+ověření[^.]*?([A-ZÀ-Ž][a-zà-ž]{2,})/gi;
   for (const regex of [uncertainMarkerRegex, kOvereniRegex]) {
     let match;
     while ((match = regex.exec(allContent)) !== null) {
       const name = normalizeName(match[1]);
       if (name.length >= 3 && !detectedEntities.includes(name)) {
-        // Skip if it's a confirmed part or non-part
         const cls = classifyEntity(name.toUpperCase());
         if (cls.classification === "uncertain_entity") {
           detectedEntities.push(name);
@@ -807,7 +849,6 @@ async function scanForUncertainEntities(
 
   if (detectedEntities.length === 0) return 0;
 
-  // 3. Dedup: check existing pending questions for these entities
   const { data: existing } = await supabase
     .from("did_pending_questions")
     .select("subject_id")
@@ -834,10 +875,6 @@ async function scanForUncertainEntities(
   return created;
 }
 
-/**
- * Create a follow-up question in did_pending_questions
- * for uncertain entities that need therapist confirmation.
- */
 async function createEntityFollowUp(
   supabase: ReturnType<typeof createClient>,
   entityName: string,
@@ -846,9 +883,9 @@ async function createEntityFollowUp(
   dateLabel: string,
 ) {
   const displayName = entityName.charAt(0).toUpperCase() + entityName.slice(1);
-  const question = `Karel narazil na jm\u00e9no "${displayName}" ve vl\u00e1kn\u011b "${thread.label}" (${dateLabel}). `
-    + `Nem\u016f\u017eu ur\u010dit, zda jde o potvrzenou DID \u010d\u00e1st. `
-    + `M\u016f\u017ee\u0161 potvrdit, zda "${displayName}" je \u010d\u00e1st syst\u00e9mu, alias existuj\u00edc\u00ed \u010d\u00e1sti, nebo n\u011bco jin\u00e9ho?`;
+  const question = `Karel narazil na jméno "${displayName}" ve vlákně "${thread.label}" (${dateLabel}). `
+    + `Nemůžu určit, zda jde o potvrzenou DID část. `
+    + `Můžeš potvrdit, zda "${displayName}" je část systému, alias existující části, nebo něco jiného?`;
 
   const contextSnippet = extractedContent.slice(0, 300);
 
@@ -867,33 +904,4 @@ async function createEntityFollowUp(
   if (error) {
     console.warn(`[thread-sorter] Follow-up question insert failed: ${error.message}`);
   }
-}
-
-/**
- * Build minimal conversation context around a segment's content.
- * Finds assistant responses near the segment text to give AI context
- * without sending the entire transcript.
- */
-function buildContextAroundSegment(
-  messages: Array<{ role: string; content: string }>,
-  segmentText: string,
-): string {
-  const segLower = segmentText.toLowerCase().slice(0, 100);
-  const contextMsgs: string[] = [];
-
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    if (msg.role === "user" && (msg.content || "").toLowerCase().includes(segLower.slice(0, 40))) {
-      // Include this message and surrounding assistant responses
-      if (i > 0 && messages[i - 1].role === "assistant") {
-        contextMsgs.push(`[assistant]: ${messages[i - 1].content.slice(0, 300)}`);
-      }
-      if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
-        contextMsgs.push(`[assistant]: ${messages[i + 1].content.slice(0, 300)}`);
-      }
-      break;
-    }
-  }
-
-  return contextMsgs.join("\n") || "(žádný kontext)";
 }
