@@ -183,10 +183,8 @@ export async function loadEntityRegistry(
       };
 
       entries.push(entry);
-      byNormalizedCanonical.set(entry.normalizedCanonical, entry);
-      for (const aliasNorm of entry.normalizedAliases) {
-        byNormalizedAlias.set(aliasNorm, entry);
-      }
+      // Dedup: index entries are strongest, always win
+      insertWithDedup(entry, byNormalizedCanonical, byNormalizedAlias);
     }
 
     // Stamp index_confirmed_at on matching DB rows (audit trail for future mirror use)
