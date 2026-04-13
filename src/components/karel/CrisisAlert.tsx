@@ -41,15 +41,21 @@ const CrisisAlert: React.FC = () => {
 
   return (
     <div className="sticky top-0 z-50">
+      {/* Global brief indicator – rendered once, outside per-card loop */}
+      {globalUnreadBriefCount > 0 && (
+        <div className="text-white px-4 py-1 flex items-center justify-center gap-1 text-[11px]" style={{ backgroundColor: "#5C1A1A" }}>
+          <Bell className="w-3 h-3" />
+          {globalUnreadBriefCount} nepřečtený brief{globalUnreadBriefCount > 1 ? "y" : ""} (celkem)
+        </div>
+      )}
+
       {cards.map(card => {
         const id = card.eventId || card.alertId || card.partName;
         const isExpanded = expandedId === id;
         const stateLabel = card.operatingState ? STATE_LABELS[card.operatingState] || card.operatingState : "aktivní";
 
-        // Max 2 CTAs with highest priority for banner
         const bannerCTAs = card.computedCTAs.slice(0, 2);
 
-        // Missing indicators (compact)
         const missingFlags: string[] = [];
         if (card.missingTodayInterview) missingFlags.push("interview");
         if (card.missingSessionResult) missingFlags.push("sezení");
@@ -61,10 +67,8 @@ const CrisisAlert: React.FC = () => {
 
         return (
           <div key={id}>
-            {/* ── Banner ── */}
             <div className="text-white px-4 py-2" style={{ backgroundColor: "#7C2D2D" }}>
               <div className="max-w-[900px] mx-auto">
-                {/* Row 1: Identity + status */}
                 <div className="flex items-center gap-2 text-[13px] flex-wrap">
                   <Shield className="w-4 h-4 shrink-0" />
                   <span className="font-bold">{card.displayName}</span>
@@ -93,14 +97,6 @@ const CrisisAlert: React.FC = () => {
                     </span>
                   )}
 
-                  {/* Global unread brief indicator (crisis_briefs has no per-event FK) */}
-                  {globalUnreadBriefCount > 0 && (
-                    <span className="text-[10px] bg-red-500/30 text-red-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                      <Bell className="w-3 h-3" />
-                      {globalUnreadBriefCount} brief{globalUnreadBriefCount > 1 ? "y" : ""} (celkem)
-                    </span>
-                  )}
-
                   <button
                     onClick={() => { setInitialTab(undefined); setExpandedId(isExpanded ? null : id); }}
                     className="hover:bg-white/10 px-1.5 py-1 rounded transition-colors shrink-0 ml-auto"
@@ -109,7 +105,6 @@ const CrisisAlert: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Row 2: Main blocker + closure blocker + CTA */}
                 {!isExpanded && (
                   <div className="flex items-center gap-2 mt-1 text-[11px] text-white/80 flex-wrap">
                     {card.mainBlocker && (
@@ -143,7 +138,6 @@ const CrisisAlert: React.FC = () => {
               </div>
             </div>
 
-            {/* ── Detail ── */}
             {isExpanded && (
               <CrisisOperationalDetail card={card} onRefetch={refetch} initialTab={initialTab} />
             )}
