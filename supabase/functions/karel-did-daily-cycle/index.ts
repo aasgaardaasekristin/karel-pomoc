@@ -5009,42 +5009,23 @@ Vrať POUZE validní JSON (bez markdown):
 
     // ═══ FLUSH PENDING DRIVE WRITES ═══
     try {
-      const { data: pendingWrites } = await sb.from("did_pending_drive_writes")
-        .select("*")
+      // Delegated to karel-drive-queue-processor (single authoritative write pipeline)
+      const { data: pendingCount } = await sb.from("did_pending_drive_writes")
+        .select("id", { count: "exact", head: true })
         .eq("status", "pending")
-        .order("created_at", { ascending: true })
-        .limit(50);
 
-      if (pendingWrites && pendingWrites.length > 0 && folderId) {
-        console.log(`[daily-cycle] Flushing ${pendingWrites.length} pending Drive writes`);
-        const centrumId = await findFolder(token, "00_CENTRUM");
-        if (centrumId) {
-          const centerFiles = await listFilesInFolder(token, centrumId);
-          for (const pw of pendingWrites) {
-            try {
-              const targetFile = centerFiles.find(f =>
-                f.mimeType !== DRIVE_FOLDER_MIME &&
-                canonicalText(f.name).includes(canonicalText(pw.target_document))
-              );
-              if (targetFile) {
-                const existing = await readFileContent(token, targetFile.id);
-                if (!existing.includes(pw.content.slice(0, 60))) {
-                  const dateStr = new Date().toISOString().slice(0, 10);
-                  const updated = existing.trimEnd() + `\n\n[${dateStr}] Nový úkol z nástěnky:\n${pw.content}`;
-                  await updateFileById(token, targetFile.id, updated, targetFile.mimeType);
-                  console.log(`[pending-write] ✅ Flushed to ${pw.target_document}`);
-                }
-              }
-              await sb.from("did_pending_drive_writes").update({ status: "done", processed_at: new Date().toISOString() }).eq("id", pw.id);
-            } catch (pwErr) {
-              console.warn(`[pending-write] Failed for ${pw.id}:`, pwErr);
-              await sb.from("did_pending_drive_writes").update({ status: "failed" }).eq("id", pw.id);
-            }
-          }
-        }
+      if ((pendingCount as any)?.length !== 0) {
+        console.log(`[daily-cycle] Delegating pending Drive writes to queue processor`);
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        fetch(`${supabaseUrl}/functions/v1/karel-drive-queue-processor`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${srvKey}` },
+          body: JSON.stringify({ triggered_by: "daily-cycle" }),
+        }).catch(e => console.warn("[daily-cycle] Queue processor delegation error:", e));
       }
     } catch (flushErr) {
-      console.warn("[daily-cycle] Pending writes flush error (non-fatal):", flushErr);
+      console.warn("[daily-cycle] Queue processor delegation error (non-fatal):", flushErr);
     }
 
     // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks (4/5/7 days) ═══
