@@ -748,6 +748,13 @@ export function useCrisisOperationalState() {
           return { ...pc, cardPropagationStatus: audit.cardProp, planSyncStatus: audit.planSync };
         }));
       }).catch(() => {});
+
+      // Fetch unread crisis brief count (lightweight aggregate, no separate polling)
+      supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
+        if (count != null && count > 0) {
+          setCards(prev => prev.map(pc => ({ ...pc, unreadBriefCount: count })));
+        }
+      }).catch(() => {});
     } catch (err) {
       console.error("[useCrisisOperationalState] Error:", err);
     } finally {
