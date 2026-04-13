@@ -145,7 +145,7 @@ export function segmentMessageIntoTopics(
   return merged
     .filter(seg => isSegmentWorthProcessing(seg.text))
     .map((seg, idx) => ({
-      id: `seg-${sourceId}-${idx}-${Date.now().toString(36)}`,
+      id: buildSegmentId(sourceId, messageId || null, idx, seg.text),
       source_id: sourceId,
       source_message_id: messageId || null,
       raw_segment: seg.text,
@@ -173,6 +173,18 @@ export function buildMessageClusters(
 
   const clusters: Array<{ text: string; messageIds: string[] }> = [];
   let currentCluster: typeof userMsgs = [];
+  let clusterCounter = 0;
+
+  const flushCluster = () => {
+    if (currentCluster.length === 0) return;
+
+    const clusterId = `cluster-${clusterCounter++}`;
+    clusters.push({
+      text: currentCluster.map(m => m.content).join("\n\n"),
+      messageIds: currentCluster.map((m, idx) => sanitizeIdPart(m.id || `${clusterId}-msg-${idx}`)),
+    });
+    currentCluster = [];
+  };
 
   for (let i = 0; i < userMsgs.length; i++) {
     const msg = userMsgs[i];
@@ -181,23 +193,12 @@ export function buildMessageClusters(
     const shouldSplit = currentCluster.length >= maxClusterSize
       || (prev?.timestamp && msg.timestamp && isTimegapTooLarge(prev.timestamp, msg.timestamp, maxGapMs));
 
-    if (shouldSplit && currentCluster.length > 0) {
-      clusters.push({
-        text: currentCluster.map(m => m.content).join("\n\n"),
-        messageIds: currentCluster.map(m => m.id || ""),
-      });
-      currentCluster = [];
-    }
+    if (shouldSplit && currentCluster.length > 0) flushCluster();
 
     currentCluster.push(msg);
   }
 
-  if (currentCluster.length > 0) {
-    clusters.push({
-      text: currentCluster.map(m => m.content).join("\n\n"),
-      messageIds: currentCluster.map(m => m.id || ""),
-    });
-  }
+  flushCluster();
 
   return clusters;
 }
@@ -451,6 +452,29 @@ function buildSafeLabel(type: SegmentType, text: string): string {
     background_noise: "nerelevantní",
   };
   return labelMap[type] || "nespecifikováno";
+}
+
+function buildSegmentId(
+  sourceId: string,
+  messageId: string | null,
+  segmentIndex: number,
+  text: string,
+): string {
+  const messagePart = sanitizeIdPart(messageId || "cluster");
+  const textFingerprint = stableHash(text).slice(0, 10);
+  return `seg-${sanitizeIdPart(sourceId)}-${messagePart}-${segmentIndex}-${textFingerprint}`;
+}
+
+function sanitizeIdPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "segment";
+}
+
+function stableHash(value: string): string {
+  let hash = 5381;
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) + hash + value.charCodeAt(i)) & 0xffffffff;
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 function isTimegapTooLarge(ts1: string, ts2: string, maxGapMs: number): boolean {
