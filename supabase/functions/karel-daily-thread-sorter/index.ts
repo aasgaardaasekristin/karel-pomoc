@@ -665,7 +665,7 @@ async function processBlocksEntityGuardrails(
         if (!resolved.can_create_new_card) {
           // Mirror tier: can only write if card already exists
           const targetName = resolved.matched_canonical_name || entityName;
-          const exists = await partCardExists(supabase, targetName);
+          const exists = await partCardExists(targetName, driveToken);
           if (!exists) {
             // Card doesn't exist and mirror tier cannot create — redirect to KDO_JE_KDO
             addLog(`  BLOCKED KARTA_${entityName}: mirror tier, card not found — redirecting to KDO_JE_KDO`);
@@ -691,7 +691,7 @@ async function processBlocksEntityGuardrails(
           break;
         }
         if (!resolved.can_create_new_card) {
-          const exists = await partCardExists(supabase, targetName);
+          const exists = await partCardExists(targetName, driveToken);
           if (!exists) {
             addLog(`  BLOCKED KARTA_${entityName} (→${targetName}): mirror tier, card not found — redirecting to KDO_JE_KDO`);
             collector.items.push({
