@@ -78,6 +78,14 @@ export interface ClosureReadiness4Layer {
   allBlockers: string[];
 }
 
+export interface CrisisCTA {
+  key: string;
+  label: string;
+  action: string;
+  priority: "critical" | "high" | "normal";
+  params?: Record<string, any>;
+}
+
 export interface CrisisOperationalCard {
   // Identity
   partName: string;
