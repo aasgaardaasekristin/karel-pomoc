@@ -202,16 +202,16 @@ Deno.serve(async (req) => {
     for (const pw of pendingWrites) {
       const target = pw.target_document;
       const writeId = pw.id;
+      const { payload, metadata } = decodeGovernedWrite(pw.content || "");
+      const sourceType = metadata?.source_type || null;
+      const sourceId = metadata?.source_id || writeId;
+      const contentType = metadata?.content_type || "card_section_update";
+      const subjectType = metadata?.subject_type || "system";
+      const subjectId = metadata?.subject_id || "";
+      const crisisEventId = metadata?.crisis_event_id || null;
 
       try {
         const writeType = pw.write_type || "append";
-        const { payload, metadata } = decodeGovernedWrite(pw.content || "");
-        const sourceType = metadata?.source_type || null;
-        const sourceId = metadata?.source_id || writeId;
-        const contentType = metadata?.content_type || "card_section_update";
-        const subjectType = metadata?.subject_type || "system";
-        const subjectId = metadata?.subject_id || "";
-        const crisisEventId = metadata?.crisis_event_id || null;
 
         // Validate write_type
         if (writeType !== "append" && writeType !== "replace") {
