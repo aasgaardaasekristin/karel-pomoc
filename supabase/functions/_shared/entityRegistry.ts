@@ -33,6 +33,13 @@ export type ConfirmationTier =
   | "confirmed_by_index_mirror"
   | "unconfirmed_cache_only";
 
+/** Numeric tier strength for deterministic precedence (higher = stronger). */
+const TIER_STRENGTH: Record<ConfirmationTier, number> = {
+  confirmed_by_index: 3,
+  confirmed_by_index_mirror: 2,
+  unconfirmed_cache_only: 1,
+};
+
 export interface RegistryEntry {
   id: string;
   canonicalName: string;
@@ -65,6 +72,58 @@ export interface EntityRegistry {
    * EXCLUDES unconfirmed_cache_only entries — dirty cache never leaks.
    */
   getAllKnownNames(): string[];
+}
+
+// ── Dedup helpers ──
+
+/**
+ * Compare two registry entries by strength. Returns >0 if `a` is stronger.
+ * Precedence: tier strength → non-empty id → alias count → non-empty status.
+ */
+function compareRegistryEntryStrength(a: RegistryEntry, b: RegistryEntry): number {
+  const tierDiff = TIER_STRENGTH[a.confirmationTier] - TIER_STRENGTH[b.confirmationTier];
+  if (tierDiff !== 0) return tierDiff;
+  // Same tier — prefer entry with non-empty id
+  const aHasId = a.id ? 1 : 0;
+  const bHasId = b.id ? 1 : 0;
+  if (aHasId !== bHasId) return aHasId - bHasId;
+  // Prefer more aliases
+  const aliasDiff = a.normalizedAliases.length - b.normalizedAliases.length;
+  if (aliasDiff !== 0) return aliasDiff;
+  // Prefer non-empty status
+  const aStatus = a.status ? 1 : 0;
+  const bStatus = b.status ? 1 : 0;
+  return aStatus - bStatus;
+}
+
+/**
+ * Should `candidate` replace `existing` in the lookup map?
+ * Never downgrades a stronger entry to a weaker one.
+ */
+function shouldReplaceExistingEntry(existing: RegistryEntry, candidate: RegistryEntry): boolean {
+  return compareRegistryEntryStrength(candidate, existing) > 0;
+}
+
+/**
+ * Insert entry into maps with dedup — stronger entry always wins.
+ */
+function insertWithDedup(
+  entry: RegistryEntry,
+  byNormalizedCanonical: Map<string, RegistryEntry>,
+  byNormalizedAlias: Map<string, RegistryEntry>,
+): void {
+  // Canonical name dedup
+  const existingCanonical = byNormalizedCanonical.get(entry.normalizedCanonical);
+  if (!existingCanonical || shouldReplaceExistingEntry(existingCanonical, entry)) {
+    byNormalizedCanonical.set(entry.normalizedCanonical, entry);
+  }
+  // Alias dedup — each alias checked individually
+  for (const aliasNorm of entry.normalizedAliases) {
+    const existingAlias = byNormalizedAlias.get(aliasNorm);
+    if (!existingAlias || shouldReplaceExistingEntry(existingAlias, entry)) {
+      byNormalizedAlias.set(aliasNorm, entry);
+    }
+  }
 }
 
 // ── Loader ──
