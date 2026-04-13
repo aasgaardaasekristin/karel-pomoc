@@ -399,27 +399,141 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 2. Process each thread ───────────────────────────────────────
-
-    let totalWrites = 0;
-    let totalLocked = 0;
-    let totalEntityBlocked = 0;
-    let totalFollowUps = 0;
-    const dateLabel = now.toISOString().slice(0, 10);
+    // ── Collectors for per-segment accumulation ──
+    interface BlockCollector { items: SortedBlock[]; flush: () => SortedBlock[] }
+    interface ClassifiedCollector { items: any[]; flush: () => any[] }
+    const approvedBlocksCollector: BlockCollector = {
+      items: [],
+      flush() { const r = [...this.items]; this.items = []; return r; },
+    };
+    const classifiedCollector: ClassifiedCollector = {
+      items: [],
+      flush() { const r = [...this.items]; this.items = []; return r; },
+    };
 
     for (const thread of threads) {
       const trimmed = thread.messages.slice(-60);
 
-      // ── MEZIFÁZE: Per-message topic segmentation ──
-      // Build message clusters (1-3 consecutive user messages, max 5min gap)
-      // then segment each cluster into topic segments BEFORE AI classification.
-      // This prevents the AI from cross-contaminating unrelated topics.
+      // ── MEZIFÁZE: Per-segment AI processing ──
+      // 1. Build message clusters (1–3 consecutive user messages, max 5min gap)
       const clusters = buildMessageClusters(
         trimmed.map(m => ({ role: m.role, content: m.content || "" })),
         3,
         5 * 60 * 1000,
       );
 
+      // 2. Segment each cluster into individual topic segments
+      const allSegments: TopicSegment[] = [];
+      for (const cluster of clusters) {
+        const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
+        allSegments.push(...segs);
+      }
+
+      // Filter out background noise
+      const worthySegments = allSegments.filter(s => s.segment_type !== "background_noise");
+
+      if (worthySegments.length === 0) {
+        // Fallback: segmentation found nothing useful → try whole transcript
+        const transcript = trimmed
+          .map((m) => `[${m.role}]: ${(m.content || "").slice(0, 800)}`)
+          .join("\n");
+
+        if (transcript.length < 50) {
+          addLog(`Skip thread ${thread.id} (too short)`);
+          continue;
+        }
+
+        const userPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
+Datum: ${dateLabel}
+
+--- KONVERZACE ---
+${transcript}
+--- KONEC ---
+
+Roztřiď obsah do bloků A klasifikuj každou informaci. Pokud vlákno neobsahuje nic nového, vrať { "blocks": [], "classified_items": [] }.`;
+
+        const result = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
+          systemPrompt: SORTING_SYSTEM_PROMPT,
+          userPrompt,
+          model: "google/gemini-2.5-flash",
+          apiKey,
+          requiredKeys: ["blocks"],
+          maxRetries: 1,
+          fallback: { blocks: [], classified_items: [] },
+          callerName: "thread-sorter",
+        });
+
+        const blocks = result.data?.blocks ?? [];
+        const rawClassified = result.data?.classified_items ?? [];
+        addLog(`Thread ${thread.id} ("${thread.label}"): fallback whole-transcript → ${blocks.length} blocks, ${rawClassified.length} classified`);
+
+        if (blocks.length === 0) {
+          await lockThread(supabase, thread, now);
+          totalLocked++;
+          continue;
+        }
+
+        // Accumulate blocks + classified into collectors
+        processBlocksEntityGuardrails(blocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel, totalEntityBlocked, totalFollowUps);
+        accumulateClassified(rawClassified, classifiedCollector, thread, null);
+      } else {
+        // ── 3. Per-segment AI calls ──
+        // Each individual segment gets its own AI call — NO grouping by segment_type.
+        addLog(`Thread ${thread.id} ("${thread.label}"): ${worthySegments.length} segments to process individually`);
+
+        for (const segment of worthySegments) {
+          // Build minimal surrounding context (nearby assistant responses)
+          const segmentContext = buildSegmentContext(trimmed, segment);
+
+          const segmentPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
+Datum: ${dateLabel}
+Typ segmentu: ${segment.segment_type} (${segment.safe_label})
+${segment.part_name ? `Detekovaná část: ${segment.part_name}` : ""}
+${segment.therapist ? `Terapeut: ${segment.therapist}` : ""}
+
+--- SEGMENT ---
+${segment.raw_segment.slice(0, 1500)}
+--- KONEC SEGMENTU ---
+
+${segmentContext ? `--- KONTEXT (okolní odpovědi) ---\n${segmentContext}\n--- KONEC KONTEXTU ---\n` : ""}
+DŮLEŽITÉ: Klasifikuj POUZE obsah tohoto segmentu. Nemíchej s jinými tématy.
+Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": [] }.`;
+
+          const segResult = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
+            systemPrompt: SORTING_SYSTEM_PROMPT,
+            userPrompt: segmentPrompt,
+            model: "google/gemini-2.5-flash",
+            apiKey,
+            requiredKeys: ["blocks"],
+            maxRetries: 1,
+            fallback: { blocks: [], classified_items: [] },
+            callerName: "thread-sorter",
+          });
+
+          const segBlocks = segResult.data?.blocks ?? [];
+          const segClassified = segResult.data?.classified_items ?? [];
+
+          if (segBlocks.length > 0 || segClassified.length > 0) {
+            addLog(`  Segment [${segment.segment_type}] (id=${segment.id}): ${segBlocks.length} blocks, ${segClassified.length} classified`);
+          }
+
+          // Accumulate with segment provenance
+          processBlocksEntityGuardrails(segBlocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel, totalEntityBlocked, totalFollowUps);
+          accumulateClassified(segClassified, classifiedCollector, thread, segment);
+        }
+      }
+
+      // ── Flush accumulated results for this thread ──
+      const approvedBlocks = approvedBlocksCollector.flush();
+      const classifiedItems = classifiedCollector.flush();
+
+      addLog(`Thread ${thread.id}: total ${approvedBlocks.length} approved blocks, ${classifiedItems.length} classified items`);
+
+      if (approvedBlocks.length === 0 && classifiedItems.length === 0) {
+        await lockThread(supabase, thread, now);
+        totalLocked++;
+        continue;
+      }
       // Pre-segment user messages for metadata annotation
       const allSegments: TopicSegment[] = [];
       for (const cluster of clusters) {
