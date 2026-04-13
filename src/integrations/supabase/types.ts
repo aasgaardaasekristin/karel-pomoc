@@ -1816,6 +1816,7 @@ export type Database = {
       }
       did_doc_sync_log: {
         Row: {
+          content_type: string | null
           content_written: string
           created_at: string
           crisis_event_id: string | null
@@ -1824,12 +1825,15 @@ export type Database = {
           source_id: string
           source_type: string
           status: string | null
+          subject_id: string | null
+          subject_type: string | null
           success: boolean | null
           sync_type: string | null
           target_document: string
           user_id: string | null
         }
         Insert: {
+          content_type?: string | null
           content_written: string
           created_at?: string
           crisis_event_id?: string | null
@@ -1838,12 +1842,15 @@ export type Database = {
           source_id: string
           source_type: string
           status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
           success?: boolean | null
           sync_type?: string | null
           target_document: string
           user_id?: string | null
         }
         Update: {
+          content_type?: string | null
           content_written?: string
           created_at?: string
           crisis_event_id?: string | null
@@ -1852,6 +1859,8 @@ export type Database = {
           source_id?: string
           source_type?: string
           status?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
           success?: boolean | null
           sync_type?: string | null
           target_document?: string
