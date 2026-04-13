@@ -448,14 +448,38 @@ serve(async (req) => {
     let selectedTier: string;
 
     if (forcePart) {
-      // THERAPIST OVERRIDE — allows any part including sleeping
-      const forceCanon = canonicalText(forcePart);
-      const partExists = registry.find(p =>
-        p.part_name.toLowerCase() === forcePart!.toLowerCase() ||
-        canonicalText(p.part_name) === forceCanon
+      // THERAPIST OVERRIDE — bypasses communicability + sleeping filters
+      // but MUST pass identity gate (confirmed DID part from registry)
+
+      // Load entity registry with Drive token for authoritative resolution
+      let entityRegistryForForce;
+      try {
+        const driveToken = await getAccessToken();
+        entityRegistryForForce = await loadEntityRegistry(sb, driveToken);
+      } catch {
+        entityRegistryForForce = await loadEntityRegistry(sb);
+      }
+
+      // Identity gate: override can bypass can_be_session_target, but NOT identity confirmation
+      const forceResolved = resolveEntity(forcePart, entityRegistryForForce, true);
+      if (forceResolved.entity_kind !== "confirmed_did_part" && forceResolved.entity_kind !== "confirmed_part_alias") {
+        // Not a confirmed DID part — reject override
+        console.log(`[auto-session-plan] forcePart "${forcePart}" failed identity gate: ${forceResolved.entity_kind} (${forceResolved.reasons.join("; ")})`);
+        return new Response(JSON.stringify({
+          success: false,
+          reason: "invalid_force_part",
+          message: `Override lze použít jen pro potvrzenou DID část z registru. "${forcePart}" je ${forceResolved.entity_kind}.`,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Use canonical name from resolver
+      const resolvedName = forceResolved.matched_canonical_name || forcePart;
+      const partReg = registry.find(p =>
+        p.part_name.toLowerCase() === resolvedName.toLowerCase() ||
+        canonicalText(p.part_name) === canonicalText(resolvedName)
       );
-      const resolvedName = partExists ? partExists.part_name : forcePart;
-      const partReg = partExists;
       selectedTier = partReg?.status === "active" || partReg?.status === "aktivní" ? "active" : "sleeping";
       selectedPart = {
         partName: resolvedName,
@@ -463,7 +487,7 @@ serve(async (req) => {
         breakdown: { therapist_override: 99 },
         tier: "override",
       };
-      console.log(`[auto-session-plan] Therapist override: ${resolvedName}`);
+      console.log(`[auto-session-plan] Therapist override: ${resolvedName} (identity confirmed: ${forceResolved.entity_kind})`);
     } else {
       // ═══ STRICT TIER FILTERING — EXCLUDE sleeping/dormant from auto-selection ═══
       const activeParts = scores.filter(s => s.tier !== "sleeping");

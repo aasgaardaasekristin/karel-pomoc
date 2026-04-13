@@ -516,25 +516,31 @@ serve(async (req) => {
 
           // 5. Agenda item
           if (seg.segment_type !== "background_noise") {
-            // FÁZE 2.6 session-target gate: if this agenda item targets a specific part
-            // for direct work, verify part is a valid session target
+            // FÁZE 2.6 session-target gate: non-communicable parts become
+            // observation-only items — no related_part, no direct-work appearance
             let agendaPriority = signal.signal_type === "risk" ? "urgent" : "when_appropriate";
-            let agendaRelatedPart = signal.part_name || null;
+            let agendaRelatedPart: string | null = signal.part_name || null;
+            let agendaTopicType = "followup";
+            let agendaTopicPrefix = `[${seg.segment_type}]`;
 
             if (agendaRelatedPart && seg.segment_type === "part_clinical") {
               const partResolved = resolveEntity(agendaRelatedPart, registry);
               if (!partResolved.can_be_session_target) {
-                // Part is confirmed but not communicable — downgrade from direct-work proposal
-                // to observation-only agenda item
+                // Part is confirmed but not communicable — make truly observation-only:
+                // - null related_part so no consumer treats this as direct-work proposal
+                // - explicit observation topic_type + prefix
                 agendaPriority = "when_appropriate";
-                console.log(`[REACTIVE-LOOP] Part "${agendaRelatedPart}" not session-targetable, agenda downgraded to observation`);
+                agendaTopicType = "observation";
+                agendaTopicPrefix = `[monitoring-only: ${agendaRelatedPart}]`;
+                agendaRelatedPart = null;
+                console.log(`[REACTIVE-LOOP] Part "${signal.part_name}" not session-targetable → observation-only (related_part=null)`);
               }
             }
 
             await sb.from("karel_conversation_agenda").insert({
               therapist: seg.therapist || therapist,
-              topic: `[${seg.segment_type}] ${signal.safe_summary.slice(0, 100)}`,
-              topic_type: "followup",
+              topic: `${agendaTopicPrefix} ${signal.safe_summary.slice(0, 100)}`,
+              topic_type: agendaTopicType,
               priority: agendaPriority,
               context: `[Segmentováno] ${signal.normalized_summary}. ${signal.part_name ? `Část: ${signal.part_name}. ` : ""}Typ: ${seg.segment_type}, Confidence: ${signal.confidence.toFixed(2)}`,
               related_part: agendaRelatedPart,

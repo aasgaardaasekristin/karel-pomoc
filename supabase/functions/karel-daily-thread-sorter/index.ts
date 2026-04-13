@@ -584,6 +584,30 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
   }
 });
 
+// ─── Helper: check if a part card file exists in Drive pending writes or registry ──
+
+async function partCardExists(
+  supabase: SupabaseClient,
+  canonicalName: string,
+): Promise<boolean> {
+  // Check if there are any existing writes to this card (implies card exists)
+  const target = `KARTA_${canonicalName.toUpperCase()}`;
+  const { data } = await supabase
+    .from("did_pending_drive_writes")
+    .select("id")
+    .eq("target_document", target)
+    .limit(1);
+  if (data && data.length > 0) return true;
+
+  // Check did_part_registry for a matching entry (card assumed to exist if registered)
+  const { data: regData } = await supabase
+    .from("did_part_registry")
+    .select("part_id")
+    .ilike("part_name", canonicalName)
+    .limit(1);
+  return !!(regData && regData.length > 0);
+}
+
 // ─── Helper: process blocks through entity guardrails ────────────────
 
 async function processBlocksEntityGuardrails(
@@ -616,19 +640,64 @@ async function processBlocksEntityGuardrails(
     const legacy = toLegacyClassification(resolved);
 
     switch (legacy.classification) {
-      case "confirmed_part":
+      case "confirmed_part": {
+        // Gate: distinguish create-new-card vs write-existing-card
+        if (!resolved.can_write_existing_card) {
+          // Should not happen for confirmed_part, but fail-closed
+          addLog(`  BLOCKED KARTA_${entityName}: confirmed but can_write_existing_card=false`);
+          break;
+        }
+        if (!resolved.can_create_new_card) {
+          // Mirror tier: can only write if card already exists
+          const targetName = resolved.matched_canonical_name || entityName;
+          const exists = await partCardExists(supabase, targetName);
+          if (!exists) {
+            // Card doesn't exist and mirror tier cannot create — redirect to KDO_JE_KDO
+            addLog(`  BLOCKED KARTA_${entityName}: mirror tier, card not found — redirecting to KDO_JE_KDO`);
+            collector.items.push({
+              ...b,
+              segmentId: segment?.id,
+              target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+              content: `[MIRROR-TIER: karta neexistuje, vytvoření vyžaduje 01_INDEX] ${entityName}: ${b.content}`,
+              reasoning: `${b.reasoning} [mirror tier nemůže založit novou kartu bez živého potvrzení z 01_INDEX]`,
+            });
+            break;
+          }
+        }
         collector.items.push({ ...b, segmentId: segment?.id });
         break;
+      }
 
-      case "known_alias_of_part":
+      case "known_alias_of_part": {
+        const targetName = legacy.canonicalName || entityName;
+        // Same create-vs-write gate for aliases
+        if (!resolved.can_write_existing_card) {
+          addLog(`  BLOCKED KARTA_${entityName}: alias but can_write_existing_card=false`);
+          break;
+        }
+        if (!resolved.can_create_new_card) {
+          const exists = await partCardExists(supabase, targetName);
+          if (!exists) {
+            addLog(`  BLOCKED KARTA_${entityName} (→${targetName}): mirror tier, card not found — redirecting to KDO_JE_KDO`);
+            collector.items.push({
+              ...b,
+              segmentId: segment?.id,
+              target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+              content: `[MIRROR-TIER: karta neexistuje] ${entityName} (→${targetName}): ${b.content}`,
+              reasoning: `${b.reasoning} [mirror tier nemůže založit novou kartu]`,
+            });
+            break;
+          }
+        }
         collector.items.push({
           ...b,
           segmentId: segment?.id,
-          target: `KARTA_${legacy.canonicalName}`,
-          reasoning: `${b.reasoning} [alias ${entityName} → ${legacy.canonicalName}]`,
+          target: `KARTA_${targetName}`,
+          reasoning: `${b.reasoning} [alias ${entityName} → ${targetName}]`,
         });
-        addLog(`  Alias resolved: ${entityName} → ${legacy.canonicalName}`);
+        addLog(`  Alias resolved: ${entityName} → ${targetName}`);
         break;
+      }
 
       case "uncertain_entity": {
         addLog(`  BLOCKED KARTA_${entityName}: uncertain entity (${resolved.reasons.join("; ")})`);
