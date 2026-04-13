@@ -17,6 +17,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { callAiForJson } from "../_shared/aiCallWrapper.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import {
+  segmentMessageIntoTopics,
+  buildMessageClusters,
+  type TopicSegment,
+  type SegmentType,
+} from "../_shared/topicSegmentation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
