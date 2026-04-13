@@ -418,3 +418,21 @@ export function materializeActions(
 
   return result;
 }
+
+// ── InfoClass → Governance ContentType mapping ──
+
+export function mapInfoClassToContentType(infoClass: InfoClass): string {
+  const mapping: Record<InfoClass, string> = {
+    memory_private: "therapist_memory_note",
+    daily_operational: "daily_plan",
+    strategic_outlook: "strategic_outlook",
+    long_term_trajectory: "long_term_trajectory",
+    part_clinical_truth: "session_result",
+    dashboard_signal: "dashboard_status",
+    task_generation: "general_classification",
+    session_plan_generation: "general_classification",
+    pending_question_generation: "general_classification",
+    meeting_trigger: "general_classification",
+  };
+  return mapping[infoClass] || "general_classification";
+}
