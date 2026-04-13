@@ -268,27 +268,37 @@ export async function loadEntityRegistry(
     },
 
     /**
-     * Get confirmed part names — EXCLUDES unconfirmed_cache_only.
-     * Safe for use in segmentation candidate detection.
+     * Get confirmed part names — deduplicated via lookup map winners.
+     * EXCLUDES unconfirmed_cache_only.
      */
     getPartNames(): string[] {
-      return entries
-        .filter(e => e.confirmationTier !== "unconfirmed_cache_only")
-        .map(e => e.canonicalName);
+      // Use deduplicated canonical map winners, not raw entries
+      const seen = new Set<string>();
+      const names: string[] = [];
+      for (const entry of byNormalizedCanonical.values()) {
+        if (entry.confirmationTier === "unconfirmed_cache_only") continue;
+        if (seen.has(entry.normalizedCanonical)) continue;
+        seen.add(entry.normalizedCanonical);
+        names.push(entry.canonicalName);
+      }
+      return names;
     },
 
     /**
-     * Get all names + aliases — EXCLUDES unconfirmed_cache_only.
-     * Dirty cache never leaks into candidate detection.
+     * Get all names + aliases — deduplicated via lookup map winners.
+     * EXCLUDES unconfirmed_cache_only. Dirty cache never leaks.
      */
     getAllKnownNames(): string[] {
-      const names: string[] = [];
-      for (const e of entries) {
-        if (e.confirmationTier === "unconfirmed_cache_only") continue;
-        names.push(e.canonicalName);
-        names.push(...e.aliases);
+      const nameSet = new Set<string>();
+      // Canonical names from deduplicated map
+      for (const entry of byNormalizedCanonical.values()) {
+        if (entry.confirmationTier === "unconfirmed_cache_only") continue;
+        nameSet.add(entry.canonicalName);
+        for (const alias of entry.aliases) {
+          nameSet.add(alias);
+        }
       }
-      return names;
+      return Array.from(nameSet);
     },
   };
 
