@@ -1,39 +1,50 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, ChevronRight, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { DbCrisisBrief } from "./crisis/types";
 import CrisisSupervisionPanel from "./crisis/CrisisSupervisionPanel";
 
-const CrisisBriefPanel = () => {
+interface CrisisBriefPanelProps {
+  /** Optional external refresh signal — when changed, forces re-fetch */
+  refreshSignal?: number;
+}
+
+const CrisisBriefPanel: React.FC<CrisisBriefPanelProps> = ({ refreshSignal }) => {
   const [briefs, setBriefs] = useState<DbCrisisBrief[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const lastIdsRef = useRef<string>("");
 
-  useEffect(() => {
-    const loadBriefs = async () => {
-      const { data, error } = await supabase
-        .from("crisis_briefs")
-        .select("*")
-        .eq("is_read", false)
-        .order("created_at", { ascending: false })
-        .limit(10);
+  const loadBriefs = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("crisis_briefs")
+      .select("*")
+      .eq("is_read", false)
+      .order("created_at", { ascending: false })
+      .limit(10);
 
-      if (!error && data) {
-        const ids = data.map((d: any) => d.id).join(",");
-        if (ids !== lastIdsRef.current) {
-          lastIdsRef.current = ids;
-          setBriefs(data as unknown as DbCrisisBrief[]);
-        }
+    if (!error && data) {
+      const ids = data.map((d: any) => d.id).join(",");
+      if (ids !== lastIdsRef.current) {
+        lastIdsRef.current = ids;
+        setBriefs(data as unknown as DbCrisisBrief[]);
       }
-      if (loading) setLoading(false);
-    };
+    }
+    setLoading(false);
+  }, []);
 
+  // Initial load + react to external refresh signal
+  useEffect(() => {
     loadBriefs();
+  }, [loadBriefs, refreshSignal]);
+
+  // Single polling interval — aligned with main crisis layer's ~30s cadence
+  // This is the ONLY polling source for brief notifications.
+  useEffect(() => {
     const interval = setInterval(loadBriefs, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [loadBriefs]);
 
   const markAsRead = async (id: string) => {
     await supabase.from("crisis_briefs").update({ is_read: true }).eq("id", id);

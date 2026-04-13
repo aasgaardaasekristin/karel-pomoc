@@ -1,19 +1,37 @@
 import React from "react";
-import { Clock, Brain, FileText, Users, CheckCircle } from "lucide-react";
+import { Clock, Brain, FileText, Users, CheckCircle, ArrowRight } from "lucide-react";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 
 /**
- * CrisisHistoryTimeline — Documentary layer, separated from operational detail.
- * Shows: interviews, post-session analyses, state transitions, meeting milestones, closure summary.
+ * CrisisHistoryTimeline — Documentary layer for crisis event history.
+ * Shows: interviews, post-session analyses, daily journal entries, meeting milestones, closure summary.
+ *
+ * NOTE: State transitions (operating_state changes) are not currently tracked
+ * in a dedicated log table. The crisis_journal entries serve as the closest
+ * proxy for daily operational history. When a state transition log is added,
+ * this component should consume it.
  */
 
 interface Props {
   card: CrisisOperationalCard;
+  /** Optional journal entries loaded from crisis_journal table */
+  journalEntries?: JournalEntry[];
+}
+
+export interface JournalEntry {
+  id: string;
+  date: string;
+  dayNumber: number | null;
+  karelAction: string | null;
+  sessionSummary: string | null;
+  whatWorked: string | null;
+  whatFailed: string | null;
+  crisisTrend: string | null;
 }
 
 interface TimelineEvent {
   date: string;
-  type: "interview" | "session_qa" | "state" | "meeting" | "closure";
+  type: "interview" | "session_qa" | "journal" | "meeting" | "closure";
   title: string;
   detail: string | null;
   icon: React.ReactNode;
@@ -22,12 +40,12 @@ interface TimelineEvent {
 const TYPE_COLORS: Record<string, string> = {
   interview: "border-blue-300 dark:border-blue-700",
   session_qa: "border-purple-300 dark:border-purple-700",
-  state: "border-amber-300 dark:border-amber-700",
+  journal: "border-amber-300 dark:border-amber-700",
   meeting: "border-green-300 dark:border-green-700",
   closure: "border-green-500 dark:border-green-500",
 };
 
-const CrisisHistoryTimeline: React.FC<Props> = ({ card }) => {
+const CrisisHistoryTimeline: React.FC<Props> = ({ card, journalEntries = [] }) => {
   const events: TimelineEvent[] = [];
 
   // Interviews
@@ -44,7 +62,6 @@ const CrisisHistoryTimeline: React.FC<Props> = ({ card }) => {
   // Session Q/A entries (answered ones)
   const answeredQs = card.sessionQuestions.filter(q => q.answeredAt);
   if (answeredQs.length > 0) {
-    // Group by date
     const byDate = new Map<string, typeof answeredQs>();
     for (const q of answeredQs) {
       const d = (q.answeredAt || "").slice(0, 10);
@@ -61,6 +78,22 @@ const CrisisHistoryTimeline: React.FC<Props> = ({ card }) => {
         icon: <FileText className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />,
       });
     }
+  }
+
+  // Journal entries (daily operational log — proxy for state transitions)
+  for (const je of journalEntries) {
+    const parts: string[] = [];
+    if (je.karelAction) parts.push(je.karelAction);
+    if (je.crisisTrend) parts.push(`trend: ${je.crisisTrend}`);
+    if (je.whatWorked) parts.push(`✓ ${je.whatWorked}`);
+    if (je.whatFailed) parts.push(`✗ ${je.whatFailed}`);
+    events.push({
+      date: je.date ? je.date + "T12:00:00Z" : "",
+      type: "journal",
+      title: `Den ${je.dayNumber ?? "?"} — ${je.sessionSummary?.slice(0, 60) || "denní záznam"}`,
+      detail: parts.join(" · ") || null,
+      icon: <ArrowRight className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
+    });
   }
 
   // Closure meeting

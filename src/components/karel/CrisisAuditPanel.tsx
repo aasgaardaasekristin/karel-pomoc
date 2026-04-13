@@ -1,11 +1,28 @@
 import React, { useState } from "react";
 import { Database, FileText, CheckCircle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import type { CrisisOperationalCard, AuditEntry } from "@/hooks/useCrisisOperationalState";
 
 interface Props {
   card: CrisisOperationalCard;
   onRefetch: () => void;
+}
+
+/**
+ * callFn — same controlled action layer used by CrisisDailyManagement
+ * and CrisisSessionQA. All crisis actions go through edge functions,
+ * not direct DB writes.
+ */
+async function callFn(fnName: string, body: Record<string, any>) {
+  const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+  const session = (await supabase.auth.getSession()).data.session;
+  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/${fnName}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  return res.json();
 }
 
 const AuditRow: React.FC<{ entry: AuditEntry }> = ({ entry }) => {
@@ -37,6 +54,33 @@ const CrisisAuditPanel: React.FC<Props> = ({ card, onRefetch }) => {
     </button>
   );
 
+  /**
+   * Acknowledge uses the same edge function layer (karel-crisis-closure-meeting)
+   * with action "acknowledge" instead of a direct DB update.
+   * This ensures:
+   * - Server-side validation of user identity
+   * - Audit trail consistency
+   * - Same pattern as state transitions and other crisis actions
+   */
+  const handleAcknowledge = async () => {
+    if (!card.alertId) return;
+    setActionLoading("acknowledge");
+    try {
+      const data = await callFn("karel-crisis-closure-meeting", {
+        action: "acknowledge_alert",
+        alert_id: card.alertId,
+      });
+      if (data.success) {
+        toast.success("Alert vzat na vědomí");
+        onRefetch();
+      } else {
+        toast.error(data.error || "Chyba při potvrzení");
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Card propagation */}
@@ -67,15 +111,7 @@ const CrisisAuditPanel: React.FC<Props> = ({ card, onRefetch }) => {
       {card.alertId && (
         <div className="flex flex-wrap gap-2 pt-2 border-t">
           <button
-            onClick={async () => {
-              setActionLoading("acknowledge");
-              try {
-                const { data: { user } } = await supabase.auth.getUser();
-                const userName = user?.email?.includes("kata") ? "kata" : "hanicka";
-                await supabase.from("crisis_alerts").update({ status: "ACKNOWLEDGED", acknowledged_by: userName, acknowledged_at: new Date().toISOString() }).eq("id", card.alertId);
-                onRefetch();
-              } finally { setActionLoading(null); }
-            }}
+            onClick={handleAcknowledge}
             disabled={actionLoading != null}
             className="text-[11px] px-2.5 py-1.5 rounded-md flex items-center gap-1.5 transition-colors disabled:opacity-50 bg-primary/10 text-primary hover:bg-primary/20"
           >
