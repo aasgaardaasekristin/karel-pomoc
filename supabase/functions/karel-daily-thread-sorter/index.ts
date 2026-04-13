@@ -534,9 +534,374 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
         totalLocked++;
         continue;
       }
-      // Pre-segment user messages for metadata annotation
-      const allSegments: TopicSegment[] = [];
-      for (const cluster of clusters) {
+
+      // ── 4. Write approved blocks (governed envelope) ─────────────
+
+      const rows = approvedBlocks.map((b) => {
+        const isReplace = REPLACE_TARGETS.includes(b.target);
+        const rawContent = isReplace
+          ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
+          : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`;
+
+        const subjectType = b.target.startsWith("KARTA_") ? "part"
+          : b.target.includes("/KONTEXTY/") ? "family_context"
+          : (b.target.includes("/HANKA/") || b.target.includes("/KATA/")) ? "therapist"
+          : "system";
+        const subjectId = b.target.startsWith("KARTA_")
+          ? b.target.replace("KARTA_", "").toLowerCase()
+          : b.target.includes("/HANKA/") ? "hanka"
+          : b.target.includes("/KATA/") ? "kata"
+          : (thread.subMode || "general");
+
+        const contentType = b.target.startsWith("KARTA_") ? "session_result"
+          : b.target.includes("SITUACNI_ANALYZA") ? "daily_plan"
+          : b.target.includes("KARLOVY_POZNATKY") ? "therapist_memory_note"
+          : b.target.includes("KDO_JE_KDO") ? "general_classification"
+          : "general_classification";
+
+        return {
+          target_document: b.target,
+          content: encodeGovernedWrite(rawContent, {
+            source_type: "thread-sorter",
+            source_id: thread.id,
+            content_type: contentType,
+            subject_type: subjectType,
+            subject_id: subjectId,
+          }),
+          write_type: isReplace ? "replace" : "append",
+          priority: "normal",
+          status: "pending",
+          user_id: thread.userId,
+        };
+      });
+
+      if (rows.length > 0) {
+        const { error: writeErr } = await supabase
+          .from("did_pending_drive_writes")
+          .insert(rows);
+
+        if (writeErr) {
+          addLog(`  Write error for thread ${thread.id}: ${writeErr.message}`);
+        } else {
+          totalWrites += rows.length;
+          addLog(`  → ${rows.length} pending writes created`);
+        }
+      }
+
+      // ── 5. Execute classified items (FÁZE 2 + 2.5 normalization) ──
+      if (classifiedItems.length > 0) {
+        const sourceMap: Record<string, InformationSource> = {
+          mamka: "did_therapist_hanka",
+          kata: "did_therapist_kata",
+          hana_personal: "hana_personal",
+        };
+        const domainMap: Record<string, SourceDomain> = {
+          mamka: "therapist_hanka",
+          kata: "therapist_kata",
+          hana_personal: "hana_personal",
+        };
+
+        const normalizedItems: ClassifiedItem[] = classifiedItems
+          .filter((ci: any) => ci.info_class && ci.raw_content)
+          .map((ci: any, idx: number) => {
+            const signal = normalizeSignal({
+              raw_content: ci.raw_content,
+              source_domain: domainMap[thread.subMode] || "part_conversation",
+              source_id: thread.id,
+              therapist: ci.therapist || undefined,
+              part_name: ci.part_name || undefined,
+            });
+
+            let finalInfoClass = ci.info_class as InfoClass;
+            if (finalInfoClass === "part_clinical_truth" && !canWriteToPartCard(signal)) {
+              console.warn(`[thread-sorter] Normalization blocked part_clinical_truth for ${ci.part_name} (confidence=${signal.confidence}, evidence=${signal.evidence_strength})`);
+              finalInfoClass = "memory_private";
+            }
+
+            return {
+              id: ci._id || `${thread.id}-ci-${idx}`,
+              source: sourceMap[thread.subMode] || "did_part_conversation" as InformationSource,
+              source_id: thread.id,
+              segment_id: ci._segment_id || undefined,
+              info_class: finalInfoClass,
+              privacy_level: ci.privacy_level || "team_only",
+              raw_content: ci.raw_content,
+              reasoning: ci.reasoning || "",
+              operational_implication: ci.operational_implication || signal.derived_operational_implication || undefined,
+              part_name: ci.part_name || signal.part_name || undefined,
+              therapist: ci.therapist || signal.therapist || undefined,
+              evidence_level: ci.evidence_level || "I1",
+              generated_actions: Array.isArray(ci.generated_actions) ? ci.generated_actions : [],
+            };
+          });
+
+        if (normalizedItems.length > 0) {
+          const execResult = await executeClassifiedItems(
+            supabase, normalizedItems, dateLabel, "thread-sorter",
+          );
+          addLog(`  FÁZE2.5: ${execResult.tasks_created} tasks, ${execResult.session_plans_created} sessions, ${execResult.questions_created} questions, ${execResult.meeting_triggers} meetings, ${execResult.privacy_blocked} blocked, dedup=${execResult.dedup_skipped}`);
+        }
+      }
+
+      await lockThread(supabase, thread, now);
+      totalLocked++;
+    }
+
+    const elapsed = Date.now() - startMs;
+    addLog(`Done in ${elapsed}ms: ${totalWrites} writes, ${totalLocked} locked, ${totalEntityBlocked} entity-blocked, ${totalFollowUps} follow-ups`);
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        threads: threads.length,
+        writes: totalWrites,
+        locked: totalLocked,
+        entity_blocked: totalEntityBlocked,
+        follow_ups_created: totalFollowUps,
+        elapsed_ms: elapsed,
+        log,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    addLog(`Fatal error: ${msg}`);
+    return new Response(
+      JSON.stringify({ ok: false, error: msg, log }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});
+
+// ─── Helper: process blocks through entity guardrails ────────────────
+
+async function processBlocksEntityGuardrails(
+  blocks: SortedBlock[],
+  collector: { items: SortedBlock[] },
+  addLog: (msg: string) => void,
+  supabase: ReturnType<typeof createClient>,
+  thread: ThreadRecord,
+  dateLabel: string,
+  _totalEntityBlocked: number,
+  _totalFollowUps: number,
+) {
+  for (const b of blocks) {
+    if (!b.target || !b.content || b.content.length < 10) continue;
+
+    if (VALID_TARGETS.includes(b.target)) {
+      collector.items.push(b);
+      continue;
+    }
+
+    const kartaMatch = b.target.match(/^KARTA_([A-Z_]+)$/);
+    if (!kartaMatch) {
+      addLog(`  Rejected block with invalid target: ${b.target}`);
+      continue;
+    }
+
+    const entityName = kartaMatch[1];
+    const classification = classifyEntity(entityName);
+
+    switch (classification.classification) {
+      case "confirmed_part":
+        collector.items.push(b);
+        break;
+
+      case "known_alias_of_part":
+        collector.items.push({
+          ...b,
+          target: `KARTA_${classification.canonicalName}`,
+          reasoning: `${b.reasoning} [alias ${entityName} → ${classification.canonicalName}]`,
+        });
+        addLog(`  Alias resolved: ${entityName} → ${classification.canonicalName}`);
+        break;
+
+      case "uncertain_entity":
+        addLog(`  BLOCKED KARTA_${entityName}: uncertain entity, creating follow-up`);
+        await createEntityFollowUp(supabase, entityName, b.content, thread, dateLabel);
+        collector.items.push({
+          ...b,
+          target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+          content: `[NEPOTVRZENA CAST - k ověření] ${entityName}: ${b.content}`,
+          reasoning: `${b.reasoning} [entita nepotvrzena, přesměrováno do KDO_JE_KDO]`,
+        });
+        break;
+
+      case "non_part_context":
+        addLog(`  BLOCKED KARTA_${entityName}: non-part (${classification.nonPartReason})`);
+        collector.items.push({
+          ...b,
+          target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+          content: `${entityName} (${classification.nonPartReason}): ${b.content}`,
+          reasoning: `${b.reasoning} [není DID část, přesměrováno do KDO_JE_KDO]`,
+        });
+        break;
+    }
+  }
+
+  // Content-level uncertain entity scan
+  const allContent = blocks.map((b) => b.content + " " + b.reasoning).join(" ");
+  await scanForUncertainEntities(supabase, allContent, thread, dateLabel, addLog);
+}
+
+// ─── Helper: accumulate classified items with segment provenance ─────
+
+function accumulateClassified(
+  rawClassified: any[],
+  collector: { items: any[] },
+  thread: ThreadRecord,
+  segment: TopicSegment | null,
+) {
+  for (let idx = 0; idx < rawClassified.length; idx++) {
+    const ci = rawClassified[idx];
+    // source_id = thread ID (stays), segment_id = individual segment identity
+    collector.items.push({
+      ...ci,
+      _id: segment
+        ? `${thread.id}-seg-${segment.id}-ci-${idx}`
+        : `${thread.id}-ci-${idx}`,
+      _segment_id: segment?.id || undefined,
+    });
+  }
+}
+
+// ─── Helper: build minimal context around a segment ──────────────────
+
+function buildSegmentContext(
+  messages: { role: string; content: string }[],
+  segment: TopicSegment,
+): string {
+  const segLower = segment.raw_segment.toLowerCase().slice(0, 100);
+  const contextParts: string[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "user" && msg.content.toLowerCase().includes(segLower.slice(0, 40))) {
+      if (i > 0 && messages[i - 1].role === "assistant") {
+        contextParts.push(`[assistant]: ${messages[i - 1].content.slice(0, 300)}`);
+      }
+      if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
+        contextParts.push(`[assistant]: ${messages[i + 1].content.slice(0, 300)}`);
+      }
+      break;
+    }
+  }
+
+  return contextParts.join("\n");
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────
+
+async function lockThread(
+  supabase: ReturnType<typeof createClient>,
+  thread: ThreadRecord,
+  now: Date,
+) {
+  const lockData = {
+    is_locked: true,
+    locked_at: now.toISOString(),
+    archive_status: "locked",
+  };
+
+  const { error } = await supabase
+    .from(thread.sourceTable)
+    .update(lockData)
+    .eq("id", thread.id);
+
+  if (error) {
+    console.warn(`[thread-sorter] Lock failed for ${thread.id}: ${error.message}`);
+  }
+}
+
+async function scanForUncertainEntities(
+  supabase: ReturnType<typeof createClient>,
+  allContent: string,
+  thread: ThreadRecord,
+  dateLabel: string,
+  addLog: (msg: string) => void,
+): Promise<number> {
+  const contentNorm = normalizeName(allContent);
+  const detectedEntities: string[] = [];
+
+  for (const unc of EXPLICITLY_UNCERTAIN) {
+    if (contentNorm.includes(unc)) {
+      detectedEntities.push(unc);
+    }
+  }
+
+  const uncertainMarkerRegex = /\[NEPOTVRZENA[^\]]*\]\s*([A-ZÀ-Ž][a-zà-ž]+)/gi;
+  const kOvereniRegex = /k\s+ověření[^.]*?([A-ZÀ-Ž][a-zà-ž]{2,})/gi;
+  for (const regex of [uncertainMarkerRegex, kOvereniRegex]) {
+    let match;
+    while ((match = regex.exec(allContent)) !== null) {
+      const name = normalizeName(match[1]);
+      if (name.length >= 3 && !detectedEntities.includes(name)) {
+        const cls = classifyEntity(name.toUpperCase());
+        if (cls.classification === "uncertain_entity") {
+          detectedEntities.push(name);
+        }
+      }
+    }
+  }
+
+  if (detectedEntities.length === 0) return 0;
+
+  const { data: existing } = await supabase
+    .from("did_pending_questions")
+    .select("subject_id")
+    .eq("subject_type", "entity_verification")
+    .in("status", ["open", "answered"])
+    .in("subject_id", detectedEntities.map((e) => e.toUpperCase()));
+
+  const alreadyAsked = new Set(
+    (existing ?? []).map((r: { subject_id: string | null }) =>
+      normalizeName(r.subject_id ?? "")
+    ),
+  );
+
+  let created = 0;
+  for (const entity of detectedEntities) {
+    if (alreadyAsked.has(entity)) {
+      addLog(`  Skip follow-up for "${entity}": already pending`);
+      continue;
+    }
+    await createEntityFollowUp(supabase, entity, allContent, thread, dateLabel);
+    addLog(`  Created follow-up for uncertain entity: "${entity}"`);
+    created++;
+  }
+  return created;
+}
+
+async function createEntityFollowUp(
+  supabase: ReturnType<typeof createClient>,
+  entityName: string,
+  extractedContent: string,
+  thread: ThreadRecord,
+  dateLabel: string,
+) {
+  const displayName = entityName.charAt(0).toUpperCase() + entityName.slice(1);
+  const question = `Karel narazil na jméno "${displayName}" ve vlákně "${thread.label}" (${dateLabel}). `
+    + `Nemůžu určit, zda jde o potvrzenou DID část. `
+    + `Můžeš potvrdit, zda "${displayName}" je část systému, alias existující části, nebo něco jiného?`;
+
+  const contextSnippet = extractedContent.slice(0, 300);
+
+  const { error } = await supabase
+    .from("did_pending_questions")
+    .insert({
+      question,
+      directed_to: thread.subMode === "kata" ? "kata" : "hanka",
+      context: `Zdroj: ${thread.subMode}/${thread.label}\nObsah: ${contextSnippet}`,
+      subject_type: "entity_verification",
+      subject_id: entityName.toUpperCase(),
+      status: "open",
+      blocking: "card_creation",
+    });
+
+  if (error) {
+    console.warn(`[thread-sorter] Follow-up question insert failed: ${error.message}`);
+  }
+}
         const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
         allSegments.push(...segs);
       }
