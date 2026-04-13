@@ -134,12 +134,12 @@ serve(async (req) => {
       .gt("answered_at", since)
       .eq("processed_by_reactive", false);
 
-    // Zdroj D — DID-relevantní info z osobních vláken
+    // Zdroj D — DID-relevantní info z osobních vláken, Káti i Hany
     const { data: recentConversations } = await sb
       .from("did_conversations")
       .select("id, messages, sub_mode, updated_at")
       .gt("updated_at", since)
-      .in("sub_mode", ["general", "mamka"]);
+      .in("sub_mode", ["general", "mamka", "kata", "hana_personal"]);
 
     // Zdroj E — krizový deník (pouze čtení pro kontext)
     const { data: recentCrisisJournal } = await sb
