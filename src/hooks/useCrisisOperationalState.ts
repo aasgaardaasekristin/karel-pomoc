@@ -560,6 +560,9 @@ export function useCrisisOperationalState() {
           triggerActive: ev.trigger_resolved != null ? !ev.trigger_resolved : null,
           riskLevel0to3: latest?.karel_risk_assessment ? ({ minimal: 0, low: 1, moderate: 2, high: 3, critical: 3 } as Record<string, number>)[latest.karel_risk_assessment] ?? null : null,
           stableHours: ev.stable_since ? Math.max(0, (Date.now() - new Date(ev.stable_since).getTime()) / 3_600_000) : null,
+          // consecutiveStableEntries is a DERIVED VALUE computed at render time
+          // from crisis_daily_assessments — NOT a physical DB column.
+          // Counts consecutive non-high/non-critical assessments from newest backwards.
           consecutiveStableEntries: (() => {
             if (assessments.length < 2) return null;
             let streak = 0;
