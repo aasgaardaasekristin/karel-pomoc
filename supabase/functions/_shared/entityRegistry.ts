@@ -310,12 +310,18 @@ export async function loadEntityRegistry(
 /**
  * Stamp index_confirmed_at on DB rows that unambiguously match 01_INDEX entries.
  *
- * CONSERVATIVE FAIL-CLOSED: Only stamps on exact canonical name match.
- * This is intentionally conservative — if a legitimate entity has a different
- * canonical form in the DB vs 01_INDEX (e.g. historical name change), it will
- * NOT receive a stamp and will remain unconfirmed_cache_only in safe mode.
- * This is a conscious design decision: better to under-confirm than over-confirm.
+ * CONSCIOUS FAIL-CLOSED DECISION:
+ * Only stamps on exact canonical name match. This is intentionally conservative.
+ * If a legitimate entity has a different canonical form in the DB vs 01_INDEX
+ * (e.g. historical name change, typo), it will NOT receive a stamp and will
+ * remain unconfirmed_cache_only in safe mode.
  *
+ * This is NOT complete coverage of all legitimate historical identities.
+ * It is a deliberate tradeoff: under-confirmation is safer than over-confirmation.
+ * Any entity that needs mirror-tier access must have its exact canonical name
+ * present in both 01_INDEX and did_part_registry.
+ *
+ * No fuzzy matching, no alias-based promotion, no heuristics.
  * index_confirmed_at is stamped ONLY on unambiguous, non-conflicting match.
  */
 async function stampIndexConfirmation(
