@@ -1,17 +1,16 @@
 /**
- * karel-daily-thread-sorter
+ * karel-daily-thread-sorter — FÁZE 2.6
  *
  * Denní třídicí pass: načte vlákna za 24h z did_threads (mamka/kata)
  * a karel_hana_conversations (hana_personal), AI je roztřídí do bloků
  * a výsledky zapíše přímo do did_pending_drive_writes.
  * Po zpracování vlákno zamkne (is_locked + archive_status).
  *
- * ENTITY GUARDRAILS (fáze 7):
- *   Před zápisem KARTA_* se každá entita klasifikuje jako:
- *   - confirmed_part → KARTA_* povolena
- *   - known_alias_of_part → přeložena na kanonické jméno → KARTA_*
- *   - uncertain_entity → KARTA_* ZAKÁZÁNA, follow-up otázka
- *   - non_part_context → max KDO_JE_KDO nebo ignorováno
+ * FÁZE 2.6 CHANGES:
+ * - Removed hardcoded CONFIRMED_PARTS, ALIAS_MAP, NON_PART_ENTITIES, EXPLICITLY_UNCERTAIN
+ * - Entity classification now uses entityRegistry + entityResolution
+ * - Uncertain entities handled by entityWatchdog
+ * - 01_INDEX is the sole authority for DID part confirmation
  */
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -23,6 +22,9 @@ import {
   type TopicSegment,
   type SegmentType,
 } from "../_shared/topicSegmentation.ts";
+import { loadEntityRegistry, type EntityRegistry } from "../_shared/entityRegistry.ts";
+import { resolveEntity, toLegacyClassification } from "../_shared/entityResolution.ts";
+import { handleUncertainEntity, type EntitySourceContext } from "../_shared/entityWatchdog.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,107 +51,6 @@ const REPLACE_TARGETS = [
   "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
 ];
 
-// ─── Entity Guardrails ──────────────────────────────────────────────
-
-/** Normalize: lowercase, strip diacritics, trim */
-function normalizeName(name: string): string {
-  return name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[_\s]+/g, " ")
-    .trim();
-}
-
-/**
- * KNOWN NON-PARTS: entities that must NEVER get a KARTA_*
- * Maps normalized name → description for KDO_JE_KDO routing
- */
-const NON_PART_ENTITIES: Record<string, string> = {
-  "locik": "pes",
-  "locek": "pes",
-  "zelena vesta": "popis/atribut, ne DID \u010d\u00e1st",
-};
-
-/**
- * KNOWN ALIASES: maps normalized alias → canonical part name (uppercase)
- * so AI output KARTA_LOBCANG gets rewritten to KARTA_LOBZHANG
- */
-const ALIAS_MAP: Record<string, string> = {
-  "lobcang": "LOBZHANG",
-  "lobchang": "LOBZHANG",
-};
-
-/**
- * EXPLICITLY UNCERTAIN: names that are known-uncertain (skip follow-up dedup)
- */
-const EXPLICITLY_UNCERTAIN: string[] = [
-  "indian",
-];
-
-/**
- * CONFIRMED PARTS ALLOWLIST: only these normalized names may get KARTA_*
- * Derived from existing cards and registry. Everything else → uncertain.
- */
-const CONFIRMED_PARTS: string[] = [
-  "gustik",
-  "arthur", "artik",
-  "tundrupek",
-  "dmytri", "dymi",
-  "gerhardt", "gerhard",
-  "lobzhang",
-  "anicka", "anicka",
-  "einar",
-  "bello",
-  "bendik",
-  "emily",
-  "gejbi",
-  "c.g.", "cg",
-  "bytostne ja",
-];
-
-type EntityClass =
-  | "confirmed_part"
-  | "known_alias_of_part"
-  | "uncertain_entity"
-  | "non_part_context";
-
-interface EntityClassification {
-  classification: EntityClass;
-  canonicalName?: string;
-  nonPartReason?: string;
-}
-
-/**
- * Classify an entity name extracted from a KARTA_* target.
- * DEFAULT IS uncertain_entity — confirmed only via allowlist.
- */
-function classifyEntity(rawName: string): EntityClassification {
-  const norm = normalizeName(rawName);
-
-  // 1. Check non-part entities
-  for (const [key, reason] of Object.entries(NON_PART_ENTITIES)) {
-    if (norm === key || norm.includes(key)) {
-      return { classification: "non_part_context", nonPartReason: reason };
-    }
-  }
-
-  // 2. Check known aliases → rewrite to canonical
-  for (const [alias, canonical] of Object.entries(ALIAS_MAP)) {
-    if (norm === alias || norm.includes(alias)) {
-      return { classification: "known_alias_of_part", canonicalName: canonical };
-    }
-  }
-
-  // 3. Check confirmed parts allowlist
-  if (CONFIRMED_PARTS.some((p) => norm === p || norm.includes(p))) {
-    return { classification: "confirmed_part" };
-  }
-
-  // 4. DEFAULT: uncertain — no KARTA_* allowed
-  return { classification: "uncertain_entity" };
-}
-
 // ─── System Prompt ──────────────────────────────────────────────────
 
 import {
@@ -168,13 +69,6 @@ import {
   type SourceDomain,
 } from "../_shared/signalNormalization.ts";
 
-/**
- * Extended system prompt: combines legacy document-target sorting
- * WITH the new FÁZE 2 classification model.
- * 
- * The AI returns BOTH legacy "blocks" (for backward compat with entity guardrails)
- * AND new "classified_items" for action generation.
- */
 const SORTING_SYSTEM_PROMPT = `Jsi Karel \u2013 supervizor a analytik DID terapeutick\u00e9ho syst\u00e9mu.
 
 Dostane\u0161 konverza\u010dn\u00ed vl\u00e1kno (zpr\u00e1vy mezi u\u017eivatelem a Karlem).
@@ -235,10 +129,8 @@ C\u00cdLOV\u00c9 DOKUMENTY:
    \u2192 Klinick\u00e9 informace o DID \u010d\u00e1sti. Velk\u00e1 p\u00edsmena.
 
 ENTITY PRAVIDLA:
-- Loc\u00edk = PES, ne \u010d\u00e1st.
-- Lobcang/Lobchang = alias pro Lobzhang.
-- Indi\u00e1n = nepotvrzena \u010d\u00e1st \u2192 KDO_JE_KDO.
-- Pokud si nejsi jist\u00fd \u2192 KDO_JE_KDO s pozn\u00e1mkou "k ov\u011b\u0159en\u00ed".
+- Pokud si nejsi jist\u00fd, zda jm\u00e9no je DID \u010d\u00e1st \u2192 KDO_JE_KDO s pozn\u00e1mkou "k ov\u011b\u0159en\u00ed".
+- Nikdy nevytv\u00e1\u0159ej KARTA_* pro jm\u00e9na, kter\u00e1 neznaj\u00ed terapeuti.
 
 ==== \u010c\u00c1ST B: KLASIFIKACE (nov\u00e9) ====
 
@@ -343,6 +235,36 @@ Deno.serve(async (req) => {
   };
 
   try {
+    // ── 0. Load entity registry (01_INDEX = sole authority) ──────────
+    // Try to get Drive token for authoritative registry load
+    let driveToken: string | null = null;
+    try {
+      const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+      const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+      const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
+      if (clientId && clientSecret && refreshToken) {
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: refreshToken,
+            grant_type: "refresh_token",
+          }),
+        });
+        if (tokenRes.ok) {
+          const tokenData = await tokenRes.json();
+          driveToken = tokenData.access_token || null;
+        }
+      }
+    } catch (e) {
+      addLog(`Drive token refresh failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    const registry = await loadEntityRegistry(supabase, driveToken);
+    addLog(`Entity registry loaded: indexAvailable=${registry.indexAvailable}, entries=${registry.entries.length}`);
+
     // ── 1. Fetch recent threads ──────────────────────────────────────
 
     const { data: didThreads, error: e1 } = await supabase
@@ -433,7 +355,6 @@ Deno.serve(async (req) => {
       const trimmed = thread.messages.slice(-60);
 
       // ── MEZIFÁZE: Per-segment AI processing ──
-      // 1. Build message clusters (1–3 consecutive user messages, max 5min gap)
       const clusters = buildMessageClusters(
         trimmed.map((m) => ({
           role: m.role,
@@ -445,14 +366,12 @@ Deno.serve(async (req) => {
         5 * 60 * 1000,
       );
 
-      // 2. Segment each cluster into individual topic segments
       const allSegments: TopicSegment[] = [];
       for (const cluster of clusters) {
-        const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
+        const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null, registry);
         allSegments.push(...segs);
       }
 
-      // Filter out background noise
       const worthySegments = allSegments.filter(s => s.segment_type !== "background_noise");
 
       if (worthySegments.length === 0) {
@@ -463,7 +382,6 @@ Deno.serve(async (req) => {
       }
 
       // ── 3. Per-segment AI calls ──
-      // Each individual segment gets its own AI call — NO grouping by segment_type.
       addLog(`Thread ${thread.id} ("${thread.label}"): ${worthySegments.length} segments to process individually`);
 
       for (const segment of worthySegments) {
@@ -472,7 +390,7 @@ Deno.serve(async (req) => {
         const segmentPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
 Datum: ${dateLabel}
 Typ segmentu: ${segment.segment_type} (${segment.safe_label})
-${segment.part_name ? `Detekovaná část: ${segment.part_name}` : ""}
+${segment.part_name ? `Detekovaná část (kandidát): ${segment.part_name}` : ""}
 ${segment.therapist ? `Terapeut: ${segment.therapist}` : ""}
 
 --- SEGMENT ---
@@ -509,6 +427,7 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
           thread,
           dateLabel,
           segment,
+          registry,
         );
         accumulateClassified(segClassified, classifiedCollector, thread, segment);
       }
@@ -601,6 +520,7 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
               source_id: thread.id,
               therapist: ci.therapist || undefined,
               part_name: ci.part_name || undefined,
+              registry,
             });
 
             let finalInfoClass = ci.info_class as InfoClass;
@@ -674,6 +594,7 @@ async function processBlocksEntityGuardrails(
   thread: ThreadRecord,
   dateLabel: string,
   segment: TopicSegment | null,
+  registry: EntityRegistry,
 ) {
   for (const b of blocks) {
     if (!b.target || !b.content || b.content.length < 10) continue;
@@ -690,9 +611,11 @@ async function processBlocksEntityGuardrails(
     }
 
     const entityName = kartaMatch[1];
-    const classification = classifyEntity(entityName);
+    // FÁZE 2.6: Use entityResolution instead of hardcoded classifyEntity()
+    const resolved = resolveEntity(entityName, registry);
+    const legacy = toLegacyClassification(resolved);
 
-    switch (classification.classification) {
+    switch (legacy.classification) {
       case "confirmed_part":
         collector.items.push({ ...b, segmentId: segment?.id });
         break;
@@ -701,15 +624,25 @@ async function processBlocksEntityGuardrails(
         collector.items.push({
           ...b,
           segmentId: segment?.id,
-          target: `KARTA_${classification.canonicalName}`,
-          reasoning: `${b.reasoning} [alias ${entityName} → ${classification.canonicalName}]`,
+          target: `KARTA_${legacy.canonicalName}`,
+          reasoning: `${b.reasoning} [alias ${entityName} → ${legacy.canonicalName}]`,
         });
-        addLog(`  Alias resolved: ${entityName} → ${classification.canonicalName}`);
+        addLog(`  Alias resolved: ${entityName} → ${legacy.canonicalName}`);
         break;
 
-      case "uncertain_entity":
-        addLog(`  BLOCKED KARTA_${entityName}: uncertain entity, creating follow-up`);
-        await createEntityFollowUp(supabase, entityName, b.content, thread, dateLabel);
+      case "uncertain_entity": {
+        addLog(`  BLOCKED KARTA_${entityName}: uncertain entity (${resolved.reasons.join("; ")})`);
+        // FÁZE 2.6: Use entityWatchdog instead of local createEntityFollowUp
+        const watchdogCtx: EntitySourceContext = {
+          thread_id: thread.id,
+          thread_label: thread.label,
+          sub_mode: thread.subMode,
+          date_label: dateLabel,
+          content_excerpt: b.content,
+          user_id: thread.userId,
+        };
+        await handleUncertainEntity(supabase, resolved, watchdogCtx);
+        // Redirect to KDO_JE_KDO
         collector.items.push({
           ...b,
           segmentId: segment?.id,
@@ -718,23 +651,20 @@ async function processBlocksEntityGuardrails(
           reasoning: `${b.reasoning} [entita nepotvrzena, přesměrováno do KDO_JE_KDO]`,
         });
         break;
+      }
 
       case "non_part_context":
-        addLog(`  BLOCKED KARTA_${entityName}: non-part (${classification.nonPartReason})`);
+        addLog(`  BLOCKED KARTA_${entityName}: non-part (${legacy.nonPartReason})`);
         collector.items.push({
           ...b,
           segmentId: segment?.id,
           target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-          content: `${entityName} (${classification.nonPartReason}): ${b.content}`,
+          content: `${entityName} (${legacy.nonPartReason}): ${b.content}`,
           reasoning: `${b.reasoning} [není DID část, přesměrováno do KDO_JE_KDO]`,
         });
         break;
     }
   }
-
-  // Content-level uncertain entity scan
-  const allContent = blocks.map((b) => b.content + " " + b.reasoning).join(" ");
-  await scanForUncertainEntities(supabase, allContent, thread, dateLabel, addLog);
 }
 
 // ─── Helper: accumulate classified items with segment provenance ─────
@@ -747,7 +677,6 @@ function accumulateClassified(
 ) {
   for (let idx = 0; idx < rawClassified.length; idx++) {
     const ci = rawClassified[idx];
-    // source_id = thread ID (stays), segment_id = individual segment identity
     collector.items.push({
       ...ci,
       _id: segment
@@ -803,95 +732,5 @@ async function lockThread(
 
   if (error) {
     console.warn(`[thread-sorter] Lock failed for ${thread.id}: ${error.message}`);
-  }
-}
-
-async function scanForUncertainEntities(
-  supabase: SupabaseClient,
-  allContent: string,
-  thread: ThreadRecord,
-  dateLabel: string,
-  addLog: (msg: string) => void,
-): Promise<number> {
-  const contentNorm = normalizeName(allContent);
-  const detectedEntities: string[] = [];
-
-  for (const unc of EXPLICITLY_UNCERTAIN) {
-    if (contentNorm.includes(unc)) {
-      detectedEntities.push(unc);
-    }
-  }
-
-  const uncertainMarkerRegex = /\[NEPOTVRZENA[^\]]*\]\s*([A-ZÀ-Ž][a-zà-ž]+)/gi;
-  const kOvereniRegex = /k\s+ověření[^.]*?([A-ZÀ-Ž][a-zà-ž]{2,})/gi;
-  for (const regex of [uncertainMarkerRegex, kOvereniRegex]) {
-    let match;
-    while ((match = regex.exec(allContent)) !== null) {
-      const name = normalizeName(match[1]);
-      if (name.length >= 3 && !detectedEntities.includes(name)) {
-        const cls = classifyEntity(name.toUpperCase());
-        if (cls.classification === "uncertain_entity") {
-          detectedEntities.push(name);
-        }
-      }
-    }
-  }
-
-  if (detectedEntities.length === 0) return 0;
-
-  const { data: existing } = await supabase
-    .from("did_pending_questions")
-    .select("subject_id")
-    .eq("subject_type", "entity_verification")
-    .in("status", ["open", "answered"])
-    .in("subject_id", detectedEntities.map((e) => e.toUpperCase()));
-
-  const alreadyAsked = new Set(
-    ((existing ?? []) as Array<{ subject_id?: string | null }>).map((r) =>
-      normalizeName(r.subject_id ?? "")
-    ),
-  );
-
-  let created = 0;
-  for (const entity of detectedEntities) {
-    if (alreadyAsked.has(entity)) {
-      addLog(`  Skip follow-up for "${entity}": already pending`);
-      continue;
-    }
-    await createEntityFollowUp(supabase, entity, allContent, thread, dateLabel);
-    addLog(`  Created follow-up for uncertain entity: "${entity}"`);
-    created++;
-  }
-  return created;
-}
-
-async function createEntityFollowUp(
-  supabase: SupabaseClient,
-  entityName: string,
-  extractedContent: string,
-  thread: ThreadRecord,
-  dateLabel: string,
-) {
-  const displayName = entityName.charAt(0).toUpperCase() + entityName.slice(1);
-  const question = `Karel narazil na jméno "${displayName}" ve vlákně "${thread.label}" (${dateLabel}). `
-    + `Nemůžu určit, zda jde o potvrzenou DID část. `
-    + `Můžeš potvrdit, zda "${displayName}" je část systému, alias existující části, nebo něco jiného?`;
-
-  const contextSnippet = extractedContent.slice(0, 300);
-
-  const { error } = await supabase
-    .from("did_pending_questions")
-    .insert({
-      question,
-      directed_to: thread.subMode === "kata" ? "kata" : "hanka",
-      context: `Zdroj: ${thread.subMode}/${thread.label}\nObsah: ${contextSnippet}`,
-      subject_type: "entity_verification",
-      subject_id: entityName.toUpperCase(),
-      status: "open",
-      blocking: "card_creation",
-    });
-
-  if (error) {
-    console.warn(`[thread-sorter] Follow-up question insert failed: ${error.message}`);
   }
 }
