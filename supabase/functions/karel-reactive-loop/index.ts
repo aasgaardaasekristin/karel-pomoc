@@ -250,9 +250,19 @@ serve(async (req) => {
       if (part) {
         await sb.from("did_pending_drive_writes").insert({
           target_document: `KARTA_${part.toUpperCase()}`,
-          content: `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
+          content: encodeGovernedWrite(
+            `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
+            {
+              source_type: "reactive-loop",
+              source_id: q.id,
+              content_type: "session_result",
+              subject_type: "part",
+              subject_id: part,
+            },
+          ),
           write_type: "append",
           priority: "normal",
+          user_id: DID_OWNER_ID,
         });
       }
 
@@ -264,22 +274,96 @@ serve(async (req) => {
     }
 
     // --- Zdroj D: DID-relevantní info z osobních vláken ---
-    // Privacy firewall: osobní vlákna nesmí přímo zapisovat surový obsah.
-    // Classifier by měl běžet přes thread-sorter. Reactive loop jen detekuje
-    // a vytváří agendu, nikoli přímé KARTA/PAMET zápisy z osobních vláken.
+    // Privacy decomposition: osobní vlákna se rozpadají na:
+    //   1. PAMET_KAREL (raw private signal) — governed envelope
+    //   2. Operativní implikace (abstrahovaný závěr) → 05A — governed envelope
+    //   3. Klinický dopad na část → KARTA_{PART} — governed envelope
+    //   4. Agenda item — zachováno
     for (const conv of recentConversations || []) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       const recentUserMsgs = msgs.filter((m: any) =>
         m?.role === "user" && DID_KEYWORDS.some(kw => (m?.content || "").includes(kw))
       );
 
+      const therapist = conv.sub_mode === "kata" ? "kata" : "hanka";
+
       for (const msg of recentUserMsgs) {
         const content = (msg as any)?.content || "";
         const part = detectPartMention(content);
+        const hasStressSignal = STRESS_KEYWORDS.some(kw => content.toLowerCase().includes(kw));
 
-        // Only create agenda items — actual classification happens in thread-sorter
+        // 1. PAMET_KAREL — raw private signal (always)
+        const pametTarget = therapist === "kata"
+          ? "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY"
+          : "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY";
+
+        await sb.from("did_pending_drive_writes").insert({
+          target_document: pametTarget,
+          content: encodeGovernedWrite(
+            `[Osobní vlákno ${new Date().toISOString().split("T")[0]}] ${content.slice(0, 500)}`,
+            {
+              source_type: "reactive-loop",
+              source_id: conv.id,
+              content_type: "therapist_memory_note",
+              subject_type: "therapist",
+              subject_id: therapist,
+            },
+          ),
+          write_type: "append",
+          priority: "normal",
+          status: "pending",
+          user_id: DID_OWNER_ID,
+        });
+
+        // 2. Operativní implikace — jen pokud je stress/kapacitní signál
+        if (hasStressSignal) {
+          const abstracted = therapist === "kata"
+            ? "Signál snížené kapacity Káti — zvážit redukci úkolování."
+            : "Signál zvýšené zátěže Hanky — zvážit úpravu plánu dne.";
+
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+            content: encodeGovernedWrite(
+              `\n\n--- ${new Date().toISOString().split("T")[0]} | reactive-loop ---\n${abstracted}`,
+              {
+                source_type: "reactive-loop",
+                source_id: conv.id,
+                content_type: "situational_analysis",
+                subject_type: "therapist",
+                subject_id: therapist,
+              },
+            ),
+            write_type: "append",
+            priority: "normal",
+            status: "pending",
+            user_id: DID_OWNER_ID,
+          });
+        }
+
+        // 3. Klinický dopad na část — pokud zmíněna část
+        if (part) {
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: `KARTA_${part.toUpperCase()}`,
+            content: encodeGovernedWrite(
+              `[Osobní vlákno — klinický dopad] ${content.slice(0, 400)}`,
+              {
+                source_type: "reactive-loop",
+                source_id: conv.id,
+                content_type: "session_result",
+                subject_type: "part",
+                subject_id: part,
+              },
+            ),
+            write_type: "append",
+            priority: "normal",
+            status: "pending",
+            user_id: DID_OWNER_ID,
+          });
+        }
+
+        // 4. Agenda item — zachováno
         await sb.from("karel_conversation_agenda").insert({
-          therapist: conv.sub_mode === "kata" ? "kata" : "hanka",
+          therapist,
           topic: `DID zmínka v osobním vlákně: ${content.slice(0, 100)}`,
           topic_type: "followup",
           priority: "when_appropriate",
