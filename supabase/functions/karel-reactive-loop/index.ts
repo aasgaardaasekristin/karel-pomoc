@@ -503,6 +503,18 @@ serve(async (req) => {
                 status: "pending",
                 user_id: DID_OWNER_ID,
               });
+            } else if (partResolved.entity_kind === "uncertain_entity") {
+              // FÁZE 2.6: Uncertain entity in conversation segment → trigger watchdog, no silent skip
+              console.log(`[REACTIVE-LOOP] Uncertain entity "${signal.part_name}" in conv segment → triggering watchdog`);
+              const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
+              await handleUncertainEntity(sb, partResolved, {
+                thread_id: conv.id,
+                thread_label: `conv-segment-${seg.segment_type}`,
+                sub_mode: conv.sub_mode || "hanka",
+                date_label: new Date().toISOString().split("T")[0],
+                content_excerpt: (signal.derived_clinical_implication || "").slice(0, 300),
+                user_id: DID_OWNER_ID,
+              });
             } else {
               console.log(`[REACTIVE-LOOP] Blocked part card write for "${signal.part_name}": ${partResolved.entity_kind} (can_write_existing_card=false)`);
             }
