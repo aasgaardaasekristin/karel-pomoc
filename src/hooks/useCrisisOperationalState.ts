@@ -272,11 +272,30 @@ function buildCurrentSummary(params: {
   phase: string | null; trend: string; daysActive: number | null;
   hoursStale: number; lastDecision: string | null;
   lastInterventionType: string | null; lastInterventionWorked: boolean | null;
+  operatingState?: string | null;
 }): string {
-  const { phase, trend, daysActive, hoursStale, lastInterventionType, lastInterventionWorked, lastDecision } = params;
-  const phaseLabel = phase === "acute" ? "Akutní krize" : phase === "stabilizing" ? "Stabilizace"
-    : phase === "diagnostic" ? "Diagnostika" : phase === "closing" ? "Uzavírání"
-    : phase === "ready_to_close" ? "Připraveno k uzavření" : "Aktivní krize";
+  const { phase, trend, daysActive, hoursStale, lastInterventionType, lastInterventionWorked, lastDecision, operatingState } = params;
+
+  // Operating state labels take priority over phase labels when available
+  // — provides clinically meaningful context for ALL states, not just closing flow
+  const OPERATING_STATE_LABELS: Record<string, string> = {
+    active: "Aktivní krize",
+    intervened: "Po zásahu",
+    stabilizing: "Stabilizace",
+    awaiting_session_result: "Čeká se na výsledek sezení",
+    awaiting_therapist_feedback: "Čeká se na feedback terapeutek",
+    ready_for_joint_review: "Připraveno ke společnému přezkumu",
+    ready_to_close: "Připraveno k uzavření",
+    closed: "Uzavřeno",
+    monitoring_post: "Post-krizový monitoring",
+  };
+
+  const phaseLabel = (operatingState && OPERATING_STATE_LABELS[operatingState])
+    ? OPERATING_STATE_LABELS[operatingState]
+    : phase === "acute" ? "Akutní krize" : phase === "stabilizing" ? "Stabilizace"
+      : phase === "diagnostic" ? "Diagnostika" : phase === "closing" ? "Uzavírání"
+      : phase === "ready_to_close" ? "Připraveno k uzavření" : "Aktivní krize";
+
   const trendLabel = trend === "worsening" ? "trend zhoršení" : trend === "improving" ? "trend zlepšení"
     : trend === "stable" ? "stabilní" : null;
   const parts: string[] = [phaseLabel];
