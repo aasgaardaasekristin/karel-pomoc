@@ -222,6 +222,9 @@ ${crisisDigest}`;
               priority: "normal",
               status: "pending",
               user_id: DID_OWNER_ID,
+              // FÁZE 2: classification metadata
+              source_type: "therapist-intelligence",
+              content_type: w.target_document.includes("SITUACNI") ? "situational_analysis" : "therapist_memory_note",
             }))
           );
           console.log(`[therapist-intel] ${t.key}: inserted ${writes.length} pending writes`);
