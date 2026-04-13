@@ -16,6 +16,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { callAiForJson } from "../_shared/aiCallWrapper.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -515,18 +516,44 @@ Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud 
         continue;
       }
 
-      // ── 4. Write approved blocks ─────────────────────────────────
+      // ── 4. Write approved blocks (governed envelope) ─────────────
 
-      const rows = approvedBlocks.map((b) => ({
-        target_document: b.target,
-        content: REPLACE_TARGETS.includes(b.target)
+      const rows = approvedBlocks.map((b) => {
+        const isReplace = REPLACE_TARGETS.includes(b.target);
+        const rawContent = isReplace
           ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
-          : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`,
-        write_type: REPLACE_TARGETS.includes(b.target) ? "replace" : "append",
-        priority: "normal",
-        status: "pending",
-        user_id: thread.userId,
-      }));
+          : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`;
+
+        // Derive subject_type from target
+        const subjectType = b.target.startsWith("KARTA_") ? "part"
+          : b.target.startsWith("PAMET_KAREL") ? "memory"
+          : "system";
+        const subjectId = b.target.startsWith("KARTA_")
+          ? b.target.replace("KARTA_", "").toLowerCase()
+          : (thread.subMode || "general");
+
+        // Derive content_type from block type / target
+        const contentType = b.target.startsWith("KARTA_") ? "session_result"
+          : b.target.includes("SITUACNI_ANALYZA") ? "daily_plan"
+          : b.target.includes("KARLOVY_POZNATKY") ? "therapist_memory_note"
+          : b.target.includes("KDO_JE_KDO") ? "general_classification"
+          : "general_classification";
+
+        return {
+          target_document: b.target,
+          content: encodeGovernedWrite(rawContent, {
+            source_type: "thread-sorter",
+            source_id: thread.id,
+            content_type: contentType,
+            subject_type: subjectType,
+            subject_id: subjectId,
+          }),
+          write_type: isReplace ? "replace" : "append",
+          priority: "normal",
+          status: "pending",
+          user_id: thread.userId,
+        };
+      });
 
       const { error: writeErr } = await supabase
         .from("did_pending_drive_writes")

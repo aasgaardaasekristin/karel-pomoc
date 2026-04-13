@@ -82,11 +82,14 @@ async function isDuplicateWrite(
  * Build governed metadata from a classified item.
  */
 function buildMetadata(item: ClassifiedItem, callerName: string) {
+  const subjectType = item.part_name ? "part"
+    : item.therapist ? "therapist"
+    : "system";
   return {
     source_type: callerName,
     source_id: item.source_id,
     content_type: mapInfoClassToContentType(item.info_class),
-    subject_type: item.part_name ? "part" : "system",
+    subject_type: subjectType,
     subject_id: item.part_name || item.therapist || "system",
   };
 }
