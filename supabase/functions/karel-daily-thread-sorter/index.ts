@@ -284,6 +284,14 @@ Odpov\u011bz POUZE validn\u00edm JSON:
 Pokud nen\u00ed co vyt\u011b\u017eit:
 { "blocks": [], "classified_items": [] }`;
 
+// ─── Hana alias normalization ────────────────────────────────────────
+const HANA_PERSONAL_ALIASES = ["personal", "hana_personal", "osobní", "hana", "osobni"];
+function canonicalizeHanaSubMode(raw: string | null | undefined): string {
+  const lower = (raw || "").toLowerCase().trim();
+  if (HANA_PERSONAL_ALIASES.includes(lower)) return "hana_personal";
+  return lower || "hana_personal";
+}
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 interface ThreadRecord {
@@ -370,7 +378,7 @@ Deno.serve(async (req) => {
         id: t.id,
         messages: msgs,
         sourceTable: "karel_hana_conversations",
-        subMode: t.sub_mode || "hana_personal",
+        subMode: canonicalizeHanaSubMode(t.sub_mode),
         label: t.thread_label || "bez n\u00e1zvu",
         userId: t.user_id || "8a7816ee-4fd1-43d4-8d83-4230d7517ae1",
       });
@@ -524,12 +532,15 @@ Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud 
           ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
           : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`;
 
-        // Derive subject_type from target
+        // Derive subject_type from target — consistent with provenance model
         const subjectType = b.target.startsWith("KARTA_") ? "part"
-          : b.target.startsWith("PAMET_KAREL") ? "memory"
+          : b.target.includes("/KONTEXTY/") ? "family_context"
+          : (b.target.includes("/HANKA/") || b.target.includes("/KATA/")) ? "therapist"
           : "system";
         const subjectId = b.target.startsWith("KARTA_")
           ? b.target.replace("KARTA_", "").toLowerCase()
+          : b.target.includes("/HANKA/") ? "hanka"
+          : b.target.includes("/KATA/") ? "kata"
           : (thread.subMode || "general");
 
         // Derive content_type from block type / target
