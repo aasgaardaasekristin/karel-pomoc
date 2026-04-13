@@ -265,6 +265,19 @@ Deno.serve(async (req) => {
     const registry = await loadEntityRegistry(supabase, driveToken);
     addLog(`Entity registry loaded: indexAvailable=${registry.indexAvailable}, entries=${registry.entries.length}`);
 
+    // Resolve kartotéka root once for scoped card existence checks
+    let kartotekaRootId: string | null = null;
+    if (driveToken) {
+      try {
+        kartotekaRootId = await resolveKartotekaRoot(driveToken);
+        if (!kartotekaRootId) {
+          addLog(`WARNING: kartoteka_DID root not found — mirror-tier card checks will fail-closed`);
+        }
+      } catch (err) {
+        addLog(`WARNING: kartoteka root resolution failed — mirror-tier card checks will fail-closed`);
+      }
+    }
+
     // ── 1. Fetch recent threads ──────────────────────────────────────
 
     const { data: didThreads, error: e1 } = await supabase
@@ -429,6 +442,7 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
           segment,
           registry,
           driveToken,
+          kartotekaRootId,
         );
         accumulateClassified(segClassified, classifiedCollector, thread, segment);
       }
@@ -696,7 +710,7 @@ async function processBlocksEntityGuardrails(
         if (!resolved.can_create_new_card) {
           // Mirror tier: can only write if card already exists
           const targetName = resolved.matched_canonical_name || entityName;
-          const exists = await partCardExists(targetName, driveToken);
+          const exists = await partCardExists(targetName, driveToken, kartotekaRootId);
           if (!exists) {
             // Card doesn't exist and mirror tier cannot create — redirect to KDO_JE_KDO
             addLog(`  BLOCKED KARTA_${entityName}: mirror tier, card not found — redirecting to KDO_JE_KDO`);
@@ -722,7 +736,7 @@ async function processBlocksEntityGuardrails(
           break;
         }
         if (!resolved.can_create_new_card) {
-          const exists = await partCardExists(targetName, driveToken);
+          const exists = await partCardExists(targetName, driveToken, kartotekaRootId);
           if (!exists) {
             addLog(`  BLOCKED KARTA_${entityName} (→${targetName}): mirror tier, card not found — redirecting to KDO_JE_KDO`);
             collector.items.push({
