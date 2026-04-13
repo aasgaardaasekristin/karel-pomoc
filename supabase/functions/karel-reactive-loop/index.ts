@@ -1,5 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  isWriteAllowed,
+  applySafetyFilter,
+  type ClassifiedItem,
+} from "../_shared/informationClassifier.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -251,6 +256,9 @@ serve(async (req) => {
     }
 
     // --- Zdroj D: DID-relevantní info z osobních vláken ---
+    // Privacy firewall: osobní vlákna nesmí přímo zapisovat surový obsah.
+    // Classifier by měl běžet přes thread-sorter. Reactive loop jen detekuje
+    // a vytváří agendu, nikoli přímé KARTA/PAMET zápisy z osobních vláken.
     for (const conv of recentConversations || []) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       const recentUserMsgs = msgs.filter((m: any) =>
@@ -261,31 +269,13 @@ serve(async (req) => {
         const content = (msg as any)?.content || "";
         const part = detectPartMention(content);
 
-        if (part) {
-          // Aktualizace karty části
-          await sb.from("did_pending_drive_writes").insert({
-            target_document: `KARTA_${part.toUpperCase()}`,
-            content: `[Z osobního vlákna] ${content.slice(0, 500)}`,
-            write_type: "append",
-            priority: "normal",
-          });
-        }
-
-        // Zápis do PAMET_KAREL
-        await sb.from("did_pending_drive_writes").insert({
-          target_document: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-          content: `[Pozorování z osobního vlákna ${conv.sub_mode}] ${content.slice(0, 500)}`,
-          write_type: "append",
-          priority: "normal",
-        });
-
-        // Agenda položka
+        // Only create agenda items — actual classification happens in thread-sorter
         await sb.from("karel_conversation_agenda").insert({
           therapist: conv.sub_mode === "kata" ? "kata" : "hanka",
-          topic: `Zmínka o DID tématu v osobním vlákně: ${content.slice(0, 100)}`,
+          topic: `DID zmínka v osobním vlákně: ${content.slice(0, 100)}`,
           topic_type: "followup",
           priority: "when_appropriate",
-          context: content.slice(0, 500),
+          context: `[Abstrahováno z osobního vlákna] ${part ? `Část: ${part}. ` : ""}${content.slice(0, 300)}`,
           related_part: part || null,
           status: "pending",
         });
