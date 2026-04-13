@@ -27,7 +27,7 @@ const CTA_ACTION_TO_TAB: Record<string, "management" | "closure" | "audit"> = {
 };
 
 const CrisisAlert: React.FC = () => {
-  const { cards, loading, refetch } = useCrisisOperationalState();
+  const { cards, loading, refetch, globalUnreadBriefCount } = useCrisisOperationalState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [initialTab, setInitialTab] = useState<"management" | "closure" | "history" | "audit" | undefined>(undefined);
 
@@ -94,10 +94,10 @@ const CrisisAlert: React.FC = () => {
                   )}
 
                   {/* Global unread brief indicator (crisis_briefs has no per-event FK) */}
-                  {card.globalUnreadBriefCount > 0 && (
+                  {globalUnreadBriefCount > 0 && (
                     <span className="text-[10px] bg-red-500/30 text-red-100 px-1.5 py-0.5 rounded flex items-center gap-1">
                       <Bell className="w-3 h-3" />
-                      {card.globalUnreadBriefCount} brief{card.globalUnreadBriefCount > 1 ? "y" : ""} (celkem)
+                      {globalUnreadBriefCount} brief{globalUnreadBriefCount > 1 ? "y" : ""} (celkem)
                     </span>
                   )}
 

@@ -430,6 +430,7 @@ function computeClosureBlockerSummary(r4: CrisisOperationalCard["closureReadines
 export function useCrisisOperationalState() {
   const [cards, setCards] = useState<CrisisOperationalCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [globalUnreadBriefCount, setGlobalUnreadBriefCount] = useState(0);
 
   const fetchAll = useCallback(async () => {
     try {
