@@ -3,6 +3,7 @@
  *
  * Executes materialized actions from the information classifier.
  * Writes to DB tables and enqueues Drive writes via governance.
+ * All Drive writes use governed envelope for full audit trail.
  */
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -12,9 +13,20 @@ import {
   resolveTarget,
   applySafetyFilter,
   isWriteAllowed,
+  mapInfoClassToContentType,
 } from "./informationClassifier.ts";
+import { encodeGovernedWrite } from "./documentWriteEnvelope.ts";
+import { decodeGovernedWrite } from "./documentWriteEnvelope.ts";
 
 const DID_OWNER_ID = "8a7816ee-4fd1-43d4-8d83-4230d7517ae1";
+
+/** Operational document targets that require anti-dup protection */
+const DEDUP_PROTECTED_TARGETS = [
+  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+  "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
+  "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+];
 
 export interface ExecutionResult {
   drive_writes: number;
@@ -24,6 +36,59 @@ export interface ExecutionResult {
   meeting_triggers: number;
   crisis_escalations: number;
   privacy_blocked: number;
+  dedup_skipped: number;
+}
+
+/**
+ * Anti-dup guard: check if a write with matching source_id + content_type + subject_id
+ * already exists for this target in the last 24h.
+ * Only applied to operational docs (05A/05B/05C/DASHBOARD).
+ */
+async function isDuplicateWrite(
+  sb: SupabaseClient,
+  target: string,
+  sourceId: string,
+  contentType: string,
+  subjectId: string,
+): Promise<boolean> {
+  if (!DEDUP_PROTECTED_TARGETS.includes(target)) return false;
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await sb
+    .from("did_pending_drive_writes")
+    .select("id, content")
+    .eq("target_document", target)
+    .eq("user_id", DID_OWNER_ID)
+    .gte("created_at", since)
+    .limit(100);
+
+  if (!data || data.length === 0) return false;
+
+  for (const row of data) {
+    const { metadata } = decodeGovernedWrite(row.content || "");
+    if (
+      metadata &&
+      metadata.source_id === sourceId &&
+      metadata.content_type === contentType &&
+      metadata.subject_id === subjectId
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Build governed metadata from a classified item.
+ */
+function buildMetadata(item: ClassifiedItem, callerName: string) {
+  return {
+    source_type: callerName,
+    source_id: item.source_id,
+    content_type: mapInfoClassToContentType(item.info_class),
+    subject_type: item.part_name ? "part" : "system",
+    subject_id: item.part_name || item.therapist || "system",
+  };
 }
 
 /**
@@ -43,9 +108,12 @@ export async function executeClassifiedItems(
     meeting_triggers: 0,
     crisis_escalations: 0,
     privacy_blocked: 0,
+    dedup_skipped: 0,
   };
 
   for (const item of items) {
+    const meta = buildMetadata(item, callerName);
+
     // ── 1. Drive write (if applicable) ──
     const route = resolveTarget(item);
     if (route) {
@@ -53,20 +121,30 @@ export async function executeClassifiedItems(
         console.warn(`[${callerName}] Privacy blocked: ${item.info_class} → ${route.target_document}`);
         result.privacy_blocked++;
       } else {
-        const safeContent = applySafetyFilter(item);
-        const datePrefix = `\n\n--- ${sourceDateLabel} | ${item.source} ---\n`;
-
-        await sb.from("did_pending_drive_writes").insert({
-          target_document: route.target_document,
-          content: route.write_type === "replace"
+        // Anti-dup check for operational docs
+        const isDup = await isDuplicateWrite(
+          sb, route.target_document, item.source_id, meta.content_type, meta.subject_id,
+        );
+        if (isDup) {
+          console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (source_id=${item.source_id})`);
+          result.dedup_skipped++;
+        } else {
+          const safeContent = applySafetyFilter(item);
+          const datePrefix = `\n\n--- ${sourceDateLabel} | ${item.source} ---\n`;
+          const rawPayload = route.write_type === "replace"
             ? safeContent
-            : `${datePrefix}${safeContent}`,
-          write_type: route.write_type,
-          priority: "normal",
-          status: "pending",
-          user_id: DID_OWNER_ID,
-        });
-        result.drive_writes++;
+            : `${datePrefix}${safeContent}`;
+
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: route.target_document,
+            content: encodeGovernedWrite(rawPayload, meta),
+            write_type: route.write_type,
+            priority: "normal",
+            status: "pending",
+            user_id: DID_OWNER_ID,
+          });
+          result.drive_writes++;
+        }
       }
     }
 
@@ -144,9 +222,21 @@ export async function executeClassifiedItems(
 
     // Card updates (additional KARTA writes from actions)
     for (const cu of actions.cardUpdates) {
+      const cardTarget = `KARTA_${cu.part_name.toUpperCase()}`;
+      const cardMeta = {
+        source_type: callerName,
+        source_id: item.source_id,
+        content_type: "session_result",
+        subject_type: "part",
+        subject_id: cu.part_name,
+      };
+
       await sb.from("did_pending_drive_writes").insert({
-        target_document: `KARTA_${cu.part_name.toUpperCase()}`,
-        content: `\n\n--- ${sourceDateLabel} | ${callerName} ---\n${cu.content}`,
+        target_document: cardTarget,
+        content: encodeGovernedWrite(
+          `\n\n--- ${sourceDateLabel} | ${callerName} ---\n${cu.content}`,
+          cardMeta,
+        ),
         write_type: "append",
         priority: "normal",
         status: "pending",
