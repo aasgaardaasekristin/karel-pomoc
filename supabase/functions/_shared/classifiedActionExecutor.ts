@@ -40,9 +40,33 @@ export interface ExecutionResult {
 }
 
 /**
- * Anti-dup guard: check if a write with matching source_id + content_type + subject_id
+ * Simple deterministic fingerprint for payload dedup.
+ * Normalizes whitespace, lowercases, and takes first 200 chars as fingerprint base.
+ */
+function payloadFingerprint(content: string): string {
+  const normalized = content
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/---\s*\d{4}-\d{2}-\d{2}[^-]*---/g, "") // strip date headers
+    .trim()
+    .slice(0, 200);
+
+  // Simple hash: sum of char codes mod large prime
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = ((hash << 5) - hash + normalized.charCodeAt(i)) | 0;
+  }
+  return `fp-${(hash >>> 0).toString(36)}`;
+}
+
+/**
+ * Anti-dup guard: check if a write with matching source_id + content_type + subject_id + payload_fingerprint
  * already exists for this target in the last 24h.
  * Only applied to operational docs (05A/05B/05C/DASHBOARD).
+ *
+ * Uses payload fingerprint so that:
+ * - Same signal from same source → blocked (true duplicate)
+ * - Different signals from same source for same subject → allowed (different content)
  */
 async function isDuplicateWrite(
   sb: SupabaseClient,
@@ -50,9 +74,11 @@ async function isDuplicateWrite(
   sourceId: string,
   contentType: string,
   subjectId: string,
+  payloadContent: string,
 ): Promise<boolean> {
   if (!DEDUP_PROTECTED_TARGETS.includes(target)) return false;
 
+  const fingerprint = payloadFingerprint(payloadContent);
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data } = await sb
     .from("did_pending_drive_writes")
@@ -65,12 +91,13 @@ async function isDuplicateWrite(
   if (!data || data.length === 0) return false;
 
   for (const row of data) {
-    const { metadata } = decodeGovernedWrite(row.content || "");
+    const { payload, metadata } = decodeGovernedWrite(row.content || "");
     if (
       metadata &&
       metadata.source_id === sourceId &&
       metadata.content_type === contentType &&
-      metadata.subject_id === subjectId
+      metadata.subject_id === subjectId &&
+      payloadFingerprint(payload) === fingerprint
     ) {
       return true;
     }
