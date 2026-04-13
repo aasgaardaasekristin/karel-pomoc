@@ -1,3 +1,16 @@
+/**
+ * karel-reactive-loop — FÁZE 2.6
+ *
+ * Reactive processing loop: scans recent messages, tasks, meetings,
+ * questions, and conversations every 20 minutes.
+ *
+ * FÁZE 2.6 CHANGES:
+ * - Removed hardcoded DID_KEYWORDS part name list
+ * - Removed hardcoded detectPartMention() list
+ * - Uses entityRegistry + resolveEntity for part detection
+ * - Part card writes gated by resolveEntity().can_create_card
+ */
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -10,6 +23,7 @@ import {
   normalizeSignal,
   canWriteToOperationalLayer,
   canWriteToPartCard,
+  detectPartInText,
   type SourceDomain,
 } from "../_shared/signalNormalization.ts";
 import {
@@ -17,6 +31,8 @@ import {
   buildMessageClusters,
   type TopicSegment,
 } from "../_shared/topicSegmentation.ts";
+import { loadEntityRegistry, type EntityRegistry } from "../_shared/entityRegistry.ts";
+import { resolveEntity } from "../_shared/entityResolution.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,9 +44,14 @@ const COMMITMENT_KEYWORDS = [
   "slibuju", "domluvím", "naplánuji", "zorganizuji",
 ];
 
-const DID_KEYWORDS = [
-  "část", "alter", "Arthur", "Tundrupek", "Gustík", "Petřík", "Anička",
-  "sezení", "terapie", "disociace", "trauma", "přepnutí", "symptom", "ochránce",
+/**
+ * Clinical/DID keywords for filtering relevant messages.
+ * Part names are NO LONGER hardcoded here — detection uses registry.
+ */
+const CLINICAL_KEYWORDS = [
+  "část", "alter", "sezení", "terapie", "disociace", "trauma",
+  "přepnutí", "symptom", "ochránce", "flashback", "regulace",
+  "grounding", "stabilizace", "krize", "trigger",
 ];
 
 const STRESS_KEYWORDS = [
@@ -42,7 +63,7 @@ const DID_OWNER_ID = "8a7816ee-4fd1-43d4-8d83-4230d7517ae1";
 
 function detectCrisis(text: string): boolean {
   const keywords = ["krize","krizový","sebevražda","sebepoškozování","disociace",
-    "útěk","nebezpečí","akutní","Arthur","Tundrupek"];
+    "útěk","nebezpečí","akutní"];
   return keywords.some(kw => text.toLowerCase().includes(kw.toLowerCase()));
 }
 
@@ -52,24 +73,38 @@ function normalizeTherapist(raw: string): "hanka" | "kata" {
   return "hanka";
 }
 
-function detectPartMention(text: string): string | null {
-  const parts = ["Arthur","Tundrupek","Gustík","Gustik","Petřík","Anička","Anicka",
-    "Dmytri","Dymi","Bendik","Einar","Adam","Bélo","Clark","Gabriel","Gerhardt",
-    "Baltazar","Sebastián","Matyáš","Kvído","Alvar"];
-  for (const p of parts) { if (text.includes(p)) return p; }
-  return null;
+/**
+ * Detect DID part mention in text using EntityRegistry.
+ * Falls back to candidate signal detection if no registry.
+ *
+ * IMPORTANT: Returns a candidate name. Caller MUST use resolveEntity()
+ * for identity confirmation before card operations.
+ */
+function detectPartMention(text: string, registry?: EntityRegistry | null): string | null {
+  return detectPartInText(text, registry);
+}
+
+/**
+ * Check if a message is DID-relevant using clinical keywords + registry names.
+ */
+function isDIDRelevant(content: string, registry?: EntityRegistry | null): boolean {
+  const lower = content.toLowerCase();
+  // Check clinical keywords
+  if (CLINICAL_KEYWORDS.some(kw => lower.includes(kw.toLowerCase()))) return true;
+  // Check if any registry part name is mentioned
+  if (registry) {
+    const allNames = registry.getAllKnownNames();
+    if (allNames.some(name => content.includes(name))) return true;
+  }
+  return false;
 }
 
 /**
  * Derive a safe clinical implication from a private signal mentioning a part.
- * NEVER passes raw personal content — only an abstracted professional conclusion.
  */
 function deriveClinicalImplicationFromPrivateSignal(partName: string, rawContent: string): string {
   const lower = rawContent.toLowerCase();
-
-  // Detect clinical themes heuristically — output is always abstracted
   const themes: string[] = [];
-
   if (["strach", "bojí", "úzkost", "panika", "děs"].some(w => lower.includes(w)))
     themes.push("zvýšená úzkostná reaktivita");
   if (["vztek", "agrese", "naštvaný", "zuří", "zuřivost"].some(w => lower.includes(w)))
@@ -84,11 +119,9 @@ function deriveClinicalImplicationFromPrivateSignal(partName: string, rawContent
     themes.push("signál ve vztahové důvěře");
   if (["spánek", "nespí", "noční", "budí se", "děsivý sen"].some(w => lower.includes(w)))
     themes.push("narušení spánkového vzorce");
-
   if (themes.length === 0) {
     themes.push("nespecifikovaný signál vyžadující ověření v přímém kontaktu");
   }
-
   const today = new Date().toISOString().split("T")[0];
   return `[${today}] Odvozená klinická implikace pro ${partName}: ${themes.join("; ")}. Doporučeno ověřit v dalším sezení.`;
 }
@@ -111,13 +144,16 @@ serve(async (req) => {
   const since = new Date(Date.now() - 20 * 60 * 1000).toISOString();
   let statsA = 0, statsB = 0, statsC = 0, statsD = 0, statsAgenda = 0, statsExpired = 0;
 
-  // Cron calls don't have auth — skip auth check for this function
   console.log('[REACTIVE-LOOP] Starting run at', new Date().toISOString());
 
   try {
+    // ── 0. Load entity registry (01_INDEX = sole authority) ──
+    // Reactive loop runs frequently — use DB cache as fallback (no Drive token refresh here)
+    const registry = await loadEntityRegistry(sb);
+    console.log(`[REACTIVE-LOOP] Registry: indexAvailable=${registry.indexAvailable}, entries=${registry.entries.length}`);
+
     // ═══ KROK 1 — Načtení nových zpráv z 5 zdrojů ═══
 
-    // Zdroj A — manuální úkoly od terapeutů
     const { data: manualTasks } = await sb
       .from("did_therapist_tasks")
       .select("*")
@@ -125,13 +161,11 @@ serve(async (req) => {
       .gt("created_at", since)
       .eq("processed_by_reactive", false);
 
-    // Zdroj B — porady s novými zprávami
     const { data: recentMeetings } = await sb
       .from("did_meetings")
       .select("id, topic, messages, last_reactive_message_count, updated_at")
       .gt("updated_at", since);
 
-    // Zdroj C — zodpovězené otázky
     const { data: answeredQuestions } = await sb
       .from("did_pending_questions")
       .select("*")
@@ -139,8 +173,6 @@ serve(async (req) => {
       .gt("answered_at", since)
       .eq("processed_by_reactive", false);
 
-    // Zdroj D — DID-relevantní info z terapeutických vláken (did_conversations)
-    //           + osobních vláken Hany (karel_hana_conversations)
     const { data: didConvs } = await sb
       .from("did_conversations")
       .select("id, messages, sub_mode, updated_at")
@@ -153,7 +185,6 @@ serve(async (req) => {
       .gt("updated_at", since)
       .eq("is_locked", false);
 
-    // Normalize into unified shape with canonical sourceDomain
     const HANA_PERSONAL_ALIASES = ["personal", "hana_personal", "osobní", "hana"];
     function canonicalizeHanaMode(raw: string | null): string {
       const lower = (raw || "").toLowerCase().trim();
@@ -174,7 +205,6 @@ serve(async (req) => {
       })),
     ];
 
-    // Zdroj E — krizový deník (pouze čtení pro kontext)
     const { data: recentCrisisJournal } = await sb
       .from("crisis_journal")
       .select("*")
@@ -195,7 +225,6 @@ serve(async (req) => {
         });
       }
 
-      // Karlova odpověď jako nový úkol
       await sb.from("did_therapist_tasks").insert({
         task: generateReactiveResponse(text, isCrisis),
         source: "karel_reactive",
@@ -206,7 +235,6 @@ serve(async (req) => {
         user_id: task.user_id,
       });
 
-      // Follow-up do agendy
       await sb.from("karel_conversation_agenda").insert({
         therapist: normalizeTherapist(task.assigned_to || "hanka"),
         topic: `Follow-up k úkolu: ${text.slice(0, 150)}`,
@@ -234,7 +262,6 @@ serve(async (req) => {
       const lastMsg = newMsgs[newMsgs.length - 1] as any;
       const lastAuthor = (lastMsg?.author || lastMsg?.role || "").toLowerCase();
 
-      // Pokud poslední zpráva je od terapeuta (ne od Karla)
       if (lastAuthor && lastAuthor !== "karel") {
         const karelResponse = {
           role: "assistant",
@@ -255,7 +282,6 @@ serve(async (req) => {
           .eq("id", meeting.id);
       }
 
-      // Detekce krizového obsahu v nových zprávách
       for (const msg of newMsgs) {
         const content = (msg as any)?.text || (msg as any)?.content || "";
         if (detectCrisis(content)) {
@@ -266,7 +292,6 @@ serve(async (req) => {
           });
         }
 
-        // Extrakce závazků
         const hasCommitment = COMMITMENT_KEYWORDS.some(kw => content.toLowerCase().includes(kw));
         if (hasCommitment && content.trim()) {
           const author = (msg as any)?.author || (msg as any)?.role || "";
@@ -307,7 +332,6 @@ serve(async (req) => {
         });
       }
 
-      // Follow-up do agendy
       await sb.from("karel_conversation_agenda").insert({
         therapist: normalizeTherapist(q.directed_to || "hanka"),
         topic: `Follow-up k zodpovězené otázce: ${(q.question || "").slice(0, 150)}`,
@@ -317,25 +341,31 @@ serve(async (req) => {
         status: "pending",
       });
 
-      // Pokud odpověď zmiňuje DID část
-      const part = detectPartMention(answer);
-      if (part) {
-        await sb.from("did_pending_drive_writes").insert({
-          target_document: `KARTA_${part.toUpperCase()}`,
-          content: encodeGovernedWrite(
-            `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
-            {
-              source_type: "reactive-loop",
-              source_id: q.id,
-              content_type: "session_result",
-              subject_type: "part",
-              subject_id: part,
-            },
-          ),
-          write_type: "append",
-          priority: "normal",
-          user_id: DID_OWNER_ID,
-        });
+      // FÁZE 2.6: Use registry-aware part detection + resolveEntity gate
+      const candidatePart = detectPartMention(answer, registry);
+      if (candidatePart) {
+        const resolved = resolveEntity(candidatePart, registry);
+        if (resolved.can_create_card) {
+          const targetName = resolved.matched_canonical_name || candidatePart;
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: `KARTA_${targetName.toUpperCase()}`,
+            content: encodeGovernedWrite(
+              `[Reaktivní zpracování] Odpověď terapeuta: ${answer.slice(0, 500)}`,
+              {
+                source_type: "reactive-loop",
+                source_id: q.id,
+                content_type: "session_result",
+                subject_type: "part",
+                subject_id: targetName,
+              },
+            ),
+            write_type: "append",
+            priority: "normal",
+            user_id: DID_OWNER_ID,
+          });
+        } else {
+          console.log(`[REACTIVE-LOOP] Blocked KARTA write for "${candidatePart}": ${resolved.entity_kind} (can_create_card=false)`);
+        }
       }
 
       await sb.from("did_pending_questions")
@@ -346,9 +376,6 @@ serve(async (req) => {
     }
 
     // --- Zdroj D: DID-relevantní info z osobních vláken ---
-    // MEZIFÁZE: Topic segmentation → per-segment normalizeSignal()
-    // Raw message → segmentMessageIntoTopics() → per-segment normalizeSignal() → routing
-    // Message clusters = 1-3 consecutive user messages from same author in short time window
     for (const conv of recentConversations || []) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       const therapist: "hanka" | "kata" = conv.sub_mode === "kata" ? "kata" : "hanka";
@@ -356,24 +383,22 @@ serve(async (req) => {
         ? "therapist_kata"
         : (conv.sub_mode === "hana_personal" ? "hana_personal" : "therapist_hanka");
 
-      // Build message clusters (1-3 consecutive user messages, max 5min gap)
+      // FÁZE 2.6: Use registry-aware relevance check instead of hardcoded DID_KEYWORDS
       const userMsgs = msgs
-        .filter((m: any) => m?.role === "user" && DID_KEYWORDS.some(kw => (m?.content || "").includes(kw)))
+        .filter((m: any) => m?.role === "user" && isDIDRelevant(m?.content || "", registry))
         .map((m: any) => ({ role: "user", content: m?.content || "", id: m?.id || "", timestamp: m?.timestamp || "" }));
 
       const clusters = buildMessageClusters(userMsgs, 3, 5 * 60 * 1000);
 
       for (const cluster of clusters) {
-        // Segment each cluster into topic segments
         const segments = segmentMessageIntoTopics(
           cluster.text,
           conv.id,
           cluster.messageIds[0] || null,
+          registry,
         );
 
-        // Process each segment independently through normalize → route
         for (const seg of segments) {
-          // Skip background noise
           if (seg.segment_type === "background_noise") continue;
 
           const signal = normalizeSignal({
@@ -383,9 +408,10 @@ serve(async (req) => {
             source_message_id: seg.source_message_id,
             therapist: seg.therapist || therapist,
             part_name: seg.part_name,
+            registry,
           });
 
-          // 1. PAMET_KAREL — raw private signal (always for private/personal sources)
+          // 1. PAMET_KAREL
           if (signal.recommended_actions.includes("write_pamet")) {
             const pametTarget = (seg.therapist || therapist) === "kata"
               ? "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY"
@@ -410,8 +436,7 @@ serve(async (req) => {
             });
           }
 
-          // 2. Operativní implikace — jen pokud normalizace povolí
-          //    personal_relational segments NEVER go to operational layer
+          // 2. Operativní implikace
           if (seg.segment_type !== "personal_relational"
             && canWriteToOperationalLayer(signal)
             && signal.derived_operational_implication) {
@@ -434,32 +459,38 @@ serve(async (req) => {
             });
           }
 
-          // 3. Klinický dopad na část — jen pokud normalizace povolí
-          //    ONLY from part_clinical segments + normalization gate
+          // 3. Klinický dopad na část — FÁZE 2.6: gate through resolveEntity
           if (seg.segment_type === "part_clinical"
             && canWriteToPartCard(signal)
             && signal.derived_clinical_implication
             && signal.part_name) {
-            await sb.from("did_pending_drive_writes").insert({
-              target_document: `KARTA_${signal.part_name.toUpperCase()}`,
-              content: encodeGovernedWrite(
-                signal.derived_clinical_implication,
-                {
-                  source_type: "reactive-loop",
-                  source_id: conv.id,
-                  content_type: "session_result",
-                  subject_type: "part",
-                  subject_id: signal.part_name,
-                },
-              ),
-              write_type: "append",
-              priority: "normal",
-              status: "pending",
-              user_id: DID_OWNER_ID,
-            });
+            // Verify entity can have a card before writing
+            const partResolved = resolveEntity(signal.part_name, registry);
+            if (partResolved.can_create_card) {
+              const targetName = partResolved.matched_canonical_name || signal.part_name;
+              await sb.from("did_pending_drive_writes").insert({
+                target_document: `KARTA_${targetName.toUpperCase()}`,
+                content: encodeGovernedWrite(
+                  signal.derived_clinical_implication,
+                  {
+                    source_type: "reactive-loop",
+                    source_id: conv.id,
+                    content_type: "session_result",
+                    subject_type: "part",
+                    subject_id: targetName,
+                  },
+                ),
+                write_type: "append",
+                priority: "normal",
+                status: "pending",
+                user_id: DID_OWNER_ID,
+              });
+            } else {
+              console.log(`[REACTIVE-LOOP] Blocked part card write for "${signal.part_name}": ${partResolved.entity_kind}`);
+            }
           }
 
-          // 4. Family context → PAMET_KAREL (may also feed 05B/05C based on relevance)
+          // 4. Family context
           if (seg.segment_type === "family_context" && signal.recommended_actions.includes("write_pamet")) {
             const familyTarget = "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO";
             await sb.from("did_pending_drive_writes").insert({
@@ -481,7 +512,7 @@ serve(async (req) => {
             });
           }
 
-          // 5. Agenda item — safe_summary, tagged with segment type
+          // 5. Agenda item
           if (seg.segment_type !== "background_noise") {
             await sb.from("karel_conversation_agenda").insert({
               therapist: seg.therapist || therapist,
@@ -499,9 +530,7 @@ serve(async (req) => {
       }
     }
 
-    // ═══ KROK 3 — Generuj agenda položky ═══
-    // (agenda items are already created inline in step 2)
-    // Additional: praise for completed tasks from last 20 min
+    // ═══ KROK 3 — Agenda + praise ═══
     const { data: completedTasks } = await sb
       .from("did_therapist_tasks")
       .select("id, task, therapist")
@@ -540,7 +569,6 @@ serve(async (req) => {
 
     for (const item of overdueAgenda || []) {
       if (item.priority === "urgent") {
-        // Eskalace do pending questions
         await sb.from("did_pending_questions").insert({
           question: item.topic,
           directed_to: item.therapist === "kata" ? "kata" : "both",
@@ -556,7 +584,6 @@ serve(async (req) => {
           .update({ status: "expired" })
           .eq("id", item.id);
       }
-      // priority='normal' — ponechat
       statsExpired++;
     }
 
