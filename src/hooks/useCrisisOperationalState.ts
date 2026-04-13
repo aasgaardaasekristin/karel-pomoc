@@ -219,9 +219,18 @@ export interface CrisisOperationalCard {
   missingSessionResult: boolean;
   missingTherapistFeedback: boolean;
 
+  // Computed CTA actions (centralized, deduped, priority-sorted)
+  computedCTAs: CrisisCTA[];
+
+  // Closure blocker summary derived from 4-layer readiness
+  closureBlockerSummary: string | null;
+
   // Audit layers
   cardPropagationStatus: AuditEntry[];
   planSyncStatus: AuditEntry | null;
+
+  // Unread crisis briefs count (fed from parent / hook aggregate)
+  unreadBriefCount: number;
 }
 
 export interface AuditEntry {
