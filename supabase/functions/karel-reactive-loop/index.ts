@@ -12,6 +12,11 @@ import {
   canWriteToPartCard,
   type SourceDomain,
 } from "../_shared/signalNormalization.ts";
+import {
+  segmentMessageIntoTopics,
+  buildMessageClusters,
+  type TopicSegment,
+} from "../_shared/topicSegmentation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
