@@ -5,6 +5,7 @@ import {
   applySafetyFilter,
   type ClassifiedItem,
 } from "../_shared/informationClassifier.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
