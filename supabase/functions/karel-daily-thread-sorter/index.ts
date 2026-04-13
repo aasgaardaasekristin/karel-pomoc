@@ -399,15 +399,22 @@ Deno.serve(async (req) => {
       );
     }
 
+
+    // ── 2. Process each thread ───────────────────────────────────────
+
+    let totalWrites = 0;
+    let totalLocked = 0;
+    let totalEntityBlocked = 0;
+    let totalFollowUps = 0;
+    const dateLabel = now.toISOString().slice(0, 10);
+
     // ── Collectors for per-segment accumulation ──
-    interface BlockCollector { items: SortedBlock[]; flush: () => SortedBlock[] }
-    interface ClassifiedCollector { items: any[]; flush: () => any[] }
-    const approvedBlocksCollector: BlockCollector = {
-      items: [],
+    const approvedBlocksCollector = {
+      items: [] as SortedBlock[],
       flush() { const r = [...this.items]; this.items = []; return r; },
     };
-    const classifiedCollector: ClassifiedCollector = {
-      items: [],
+    const classifiedCollector = {
+      items: [] as any[],
       flush() { const r = [...this.items]; this.items = []; return r; },
     };
 
@@ -474,7 +481,7 @@ Roztřiď obsah do bloků A klasifikuj každou informaci. Pokud vlákno neobsahu
         }
 
         // Accumulate blocks + classified into collectors
-        processBlocksEntityGuardrails(blocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel, totalEntityBlocked, totalFollowUps);
+        await processBlocksEntityGuardrails(blocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel);
         accumulateClassified(rawClassified, classifiedCollector, thread, null);
       } else {
         // ── 3. Per-segment AI calls ──
@@ -482,7 +489,6 @@ Roztřiď obsah do bloků A klasifikuj každou informaci. Pokud vlákno neobsahu
         addLog(`Thread ${thread.id} ("${thread.label}"): ${worthySegments.length} segments to process individually`);
 
         for (const segment of worthySegments) {
-          // Build minimal surrounding context (nearby assistant responses)
           const segmentContext = buildSegmentContext(trimmed, segment);
 
           const segmentPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
@@ -517,19 +523,18 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
             addLog(`  Segment [${segment.segment_type}] (id=${segment.id}): ${segBlocks.length} blocks, ${segClassified.length} classified`);
           }
 
-          // Accumulate with segment provenance
-          processBlocksEntityGuardrails(segBlocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel, totalEntityBlocked, totalFollowUps);
+          await processBlocksEntityGuardrails(segBlocks, approvedBlocksCollector, addLog, supabase, thread, dateLabel);
           accumulateClassified(segClassified, classifiedCollector, thread, segment);
         }
       }
 
       // ── Flush accumulated results for this thread ──
       const approvedBlocks = approvedBlocksCollector.flush();
-      const classifiedItems = classifiedCollector.flush();
+      const allClassifiedItems = classifiedCollector.flush();
 
-      addLog(`Thread ${thread.id}: total ${approvedBlocks.length} approved blocks, ${classifiedItems.length} classified items`);
+      addLog(`Thread ${thread.id}: total ${approvedBlocks.length} approved blocks, ${allClassifiedItems.length} classified items`);
 
-      if (approvedBlocks.length === 0 && classifiedItems.length === 0) {
+      if (approvedBlocks.length === 0 && allClassifiedItems.length === 0) {
         await lockThread(supabase, thread, now);
         totalLocked++;
         continue;
@@ -589,7 +594,7 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
       }
 
       // ── 5. Execute classified items (FÁZE 2 + 2.5 normalization) ──
-      if (classifiedItems.length > 0) {
+      if (allClassifiedItems.length > 0) {
         const sourceMap: Record<string, InformationSource> = {
           mamka: "did_therapist_hanka",
           kata: "did_therapist_kata",
@@ -601,7 +606,7 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
           hana_personal: "hana_personal",
         };
 
-        const normalizedItems: ClassifiedItem[] = classifiedItems
+        const normalizedItems: ClassifiedItem[] = allClassifiedItems
           .filter((ci: any) => ci.info_class && ci.raw_content)
           .map((ci: any, idx: number) => {
             const signal = normalizeSignal({
@@ -682,8 +687,6 @@ async function processBlocksEntityGuardrails(
   supabase: ReturnType<typeof createClient>,
   thread: ThreadRecord,
   dateLabel: string,
-  _totalEntityBlocked: number,
-  _totalFollowUps: number,
 ) {
   for (const b of blocks) {
     if (!b.target || !b.content || b.content.length < 10) continue;
@@ -883,405 +886,6 @@ async function createEntityFollowUp(
   const question = `Karel narazil na jméno "${displayName}" ve vlákně "${thread.label}" (${dateLabel}). `
     + `Nemůžu určit, zda jde o potvrzenou DID část. `
     + `Můžeš potvrdit, zda "${displayName}" je část systému, alias existující části, nebo něco jiného?`;
-
-  const contextSnippet = extractedContent.slice(0, 300);
-
-  const { error } = await supabase
-    .from("did_pending_questions")
-    .insert({
-      question,
-      directed_to: thread.subMode === "kata" ? "kata" : "hanka",
-      context: `Zdroj: ${thread.subMode}/${thread.label}\nObsah: ${contextSnippet}`,
-      subject_type: "entity_verification",
-      subject_id: entityName.toUpperCase(),
-      status: "open",
-      blocking: "card_creation",
-    });
-
-  if (error) {
-    console.warn(`[thread-sorter] Follow-up question insert failed: ${error.message}`);
-  }
-}
-        const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
-        allSegments.push(...segs);
-      }
-
-      // Build transcript with segment annotations for AI context
-      const transcript = trimmed
-        .map((m) => `[${m.role}]: ${(m.content || "").slice(0, 800)}`)
-        .join("\n");
-
-      if (transcript.length < 50) {
-        addLog(`Skip thread ${thread.id} (too short)`);
-        continue;
-      }
-
-      // Add segment summary to help AI understand topic boundaries
-      const segmentHint = allSegments.length > 0
-        ? `\n\nPŘED-SEGMENTACE (topic decomposition):\n` +
-          allSegments.map((s, i) => `  [${i+1}] ${s.segment_type} (conf=${s.confidence.toFixed(2)}${s.part_name ? `, část=${s.part_name}` : ""}): "${s.raw_segment.slice(0, 80)}..."`).join("\n") +
-          `\n\nPOUŽIJ tuto před-segmentaci jako vodítko. Nemíchej osobní obsah s klinickým. Každý segment zpracuj zvlášť.\n`
-        : "";
-
-      const userPrompt = `Zdrojov\u00e9 vl\u00e1kno: "${thread.label}" (typ: ${thread.subMode})
-Datum: ${dateLabel}
-${segmentHint}
---- KONVERZACE ---
-${transcript}
---- KONEC ---
-
-Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud vl\u00e1kno neobsahuje nic nov\u00e9ho, vra\u0165 { "blocks": [], "classified_items": [] }.`;
-
-      const result = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
-        systemPrompt: SORTING_SYSTEM_PROMPT,
-        userPrompt,
-        model: "google/gemini-2.5-flash",
-        apiKey,
-        requiredKeys: ["blocks"],
-        maxRetries: 1,
-        fallback: { blocks: [], classified_items: [] },
-        callerName: "thread-sorter",
-      });
-
-      const blocks = result.data?.blocks ?? [];
-      const rawClassified = result.data?.classified_items ?? [];
-      addLog(`Thread ${thread.id} ("${thread.label}"): ${blocks.length} blocks, ${rawClassified.length} classified items`);
-
-      if (blocks.length === 0) {
-        await lockThread(supabase, thread, now);
-        totalLocked++;
-        continue;
-      }
-
-      // ── 3. Validate blocks + entity guardrails ───────────────────
-
-      const approvedBlocks: SortedBlock[] = [];
-
-      for (const b of blocks) {
-        if (!b.target || !b.content || b.content.length < 10) continue;
-
-        // Non-KARTA targets: standard validation
-        if (VALID_TARGETS.includes(b.target)) {
-          approvedBlocks.push(b);
-          continue;
-        }
-
-        // KARTA_* targets: entity guardrail check
-        const kartaMatch = b.target.match(/^KARTA_([A-Z_]+)$/);
-        if (!kartaMatch) {
-          addLog(`  Rejected block with invalid target: ${b.target}`);
-          continue;
-        }
-
-        const entityName = kartaMatch[1];
-        const classification = classifyEntity(entityName);
-
-        switch (classification.classification) {
-          case "confirmed_part":
-            approvedBlocks.push(b);
-            break;
-
-          case "known_alias_of_part":
-            // Rewrite target to canonical name
-            approvedBlocks.push({
-              ...b,
-              target: `KARTA_${classification.canonicalName}`,
-              reasoning: `${b.reasoning} [alias ${entityName} \u2192 ${classification.canonicalName}]`,
-            });
-            addLog(`  Alias resolved: ${entityName} \u2192 ${classification.canonicalName}`);
-            break;
-
-          case "uncertain_entity":
-            // BLOCK the KARTA_* write, create follow-up question
-            totalEntityBlocked++;
-            addLog(`  BLOCKED KARTA_${entityName}: uncertain entity, creating follow-up`);
-            await createEntityFollowUp(supabase, entityName, b.content, thread, dateLabel);
-            totalFollowUps++;
-            // Redirect useful content to KDO_JE_KDO instead
-            approvedBlocks.push({
-              ...b,
-              target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-              content: `[NEPOTVRZENA CAST - k ov\u011b\u0159en\u00ed] ${entityName}: ${b.content}`,
-              reasoning: `${b.reasoning} [entita nepotvrzena, p\u0159esm\u011brov\u00e1no do KDO_JE_KDO]`,
-            });
-            break;
-
-          case "non_part_context":
-            // BLOCK the KARTA_* write, redirect to KDO_JE_KDO
-            totalEntityBlocked++;
-            addLog(`  BLOCKED KARTA_${entityName}: non-part (${classification.nonPartReason})`);
-            approvedBlocks.push({
-              ...b,
-              target: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-              content: `${entityName} (${classification.nonPartReason}): ${b.content}`,
-              reasoning: `${b.reasoning} [nen\u00ed DID \u010d\u00e1st, p\u0159esm\u011brov\u00e1no do KDO_JE_KDO]`,
-            });
-            break;
-        }
-      }
-
-      // ── 3b. Content-level uncertain entity scan ──────────────────
-      // Even when AI correctly avoids KARTA_*, scan all block content
-      // for mentions of uncertain entities and create follow-ups.
-      const allContent = blocks.map((b) => b.content + " " + b.reasoning).join(" ");
-      const followUpEntities = await scanForUncertainEntities(
-        supabase, allContent, thread, dateLabel, addLog,
-      );
-      totalFollowUps += followUpEntities;
-
-      if (approvedBlocks.length === 0) {
-        await lockThread(supabase, thread, now);
-        totalLocked++;
-        continue;
-      }
-
-      // ── 4. Write approved blocks (governed envelope) ─────────────
-
-      const rows = approvedBlocks.map((b) => {
-        const isReplace = REPLACE_TARGETS.includes(b.target);
-        const rawContent = isReplace
-          ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
-          : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`;
-
-        // Derive subject_type from target — consistent with provenance model
-        const subjectType = b.target.startsWith("KARTA_") ? "part"
-          : b.target.includes("/KONTEXTY/") ? "family_context"
-          : (b.target.includes("/HANKA/") || b.target.includes("/KATA/")) ? "therapist"
-          : "system";
-        const subjectId = b.target.startsWith("KARTA_")
-          ? b.target.replace("KARTA_", "").toLowerCase()
-          : b.target.includes("/HANKA/") ? "hanka"
-          : b.target.includes("/KATA/") ? "kata"
-          : (thread.subMode || "general");
-
-        // Derive content_type from block type / target
-        const contentType = b.target.startsWith("KARTA_") ? "session_result"
-          : b.target.includes("SITUACNI_ANALYZA") ? "daily_plan"
-          : b.target.includes("KARLOVY_POZNATKY") ? "therapist_memory_note"
-          : b.target.includes("KDO_JE_KDO") ? "general_classification"
-          : "general_classification";
-
-        return {
-          target_document: b.target,
-          content: encodeGovernedWrite(rawContent, {
-            source_type: "thread-sorter",
-            source_id: thread.id,
-            content_type: contentType,
-            subject_type: subjectType,
-            subject_id: subjectId,
-          }),
-          write_type: isReplace ? "replace" : "append",
-          priority: "normal",
-          status: "pending",
-          user_id: thread.userId,
-        };
-      });
-
-      const { error: writeErr } = await supabase
-        .from("did_pending_drive_writes")
-        .insert(rows);
-
-      if (writeErr) {
-        addLog(`  Write error for thread ${thread.id}: ${writeErr.message}`);
-        continue;
-      }
-
-      totalWrites += approvedBlocks.length;
-      addLog(`  \u2192 ${approvedBlocks.length} pending writes created`);
-
-      // ── 5. Execute classified items (FÁZE 2 + 2.5 normalization) ──
-      if (rawClassified.length > 0) {
-        const sourceMap: Record<string, InformationSource> = {
-          mamka: "did_therapist_hanka",
-          kata: "did_therapist_kata",
-          hana_personal: "hana_personal",
-        };
-        const domainMap: Record<string, SourceDomain> = {
-          mamka: "therapist_hanka",
-          kata: "therapist_kata",
-          hana_personal: "hana_personal",
-        };
-
-        const classifiedItems: ClassifiedItem[] = rawClassified
-          .filter((ci: any) => ci.info_class && ci.raw_content)
-          .map((ci: any, idx: number) => {
-            // FÁZE 2.5: Normalize each classified item through provenance layer
-            const signal = normalizeSignal({
-              raw_content: ci.raw_content,
-              source_domain: domainMap[thread.subMode] || "part_conversation",
-              source_id: thread.id,
-              therapist: ci.therapist || undefined,
-              part_name: ci.part_name || undefined,
-            });
-
-            // Apply normalization gates:
-            // - If AI classified as part_clinical_truth but normalization says no → downgrade
-            let finalInfoClass = ci.info_class as InfoClass;
-            if (finalInfoClass === "part_clinical_truth" && !canWriteToPartCard(signal)) {
-              console.warn(`[thread-sorter] Normalization blocked part_clinical_truth for ${ci.part_name} (confidence=${signal.confidence}, evidence=${signal.evidence_strength})`);
-              finalInfoClass = "memory_private"; // Downgrade to private memory
-            }
-
-            return {
-              id: `${thread.id}-ci-${idx}`,
-              source: sourceMap[thread.subMode] || "did_part_conversation" as InformationSource,
-              source_id: thread.id,
-              info_class: finalInfoClass,
-              privacy_level: ci.privacy_level || "team_only",
-              raw_content: ci.raw_content,
-              reasoning: ci.reasoning || "",
-              operational_implication: ci.operational_implication || signal.derived_operational_implication || undefined,
-              part_name: ci.part_name || signal.part_name || undefined,
-              therapist: ci.therapist || signal.therapist || undefined,
-              evidence_level: ci.evidence_level || "I1",
-              generated_actions: Array.isArray(ci.generated_actions) ? ci.generated_actions : [],
-            };
-          });
-
-        if (classifiedItems.length > 0) {
-          const execResult = await executeClassifiedItems(
-            supabase, classifiedItems, dateLabel, "thread-sorter",
-          );
-          addLog(`  FÁZE2.5: ${execResult.tasks_created} tasks, ${execResult.session_plans_created} sessions, ${execResult.questions_created} questions, ${execResult.meeting_triggers} meetings, ${execResult.privacy_blocked} blocked, dedup=${execResult.dedup_skipped}`);
-        }
-      }
-
-      await lockThread(supabase, thread, now);
-      totalLocked++;
-    }
-
-    const elapsed = Date.now() - startMs;
-    addLog(`Done in ${elapsed}ms: ${totalWrites} writes, ${totalLocked} locked, ${totalEntityBlocked} entity-blocked, ${totalFollowUps} follow-ups`);
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        threads: threads.length,
-        writes: totalWrites,
-        locked: totalLocked,
-        entity_blocked: totalEntityBlocked,
-        follow_ups_created: totalFollowUps,
-        elapsed_ms: elapsed,
-        log,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    addLog(`Fatal error: ${msg}`);
-    return new Response(
-      JSON.stringify({ ok: false, error: msg, log }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  }
-});
-
-// ─── Helpers ─────────────────────────────────────────────────────────
-
-async function lockThread(
-  supabase: ReturnType<typeof createClient>,
-  thread: ThreadRecord,
-  now: Date,
-) {
-  const lockData = {
-    is_locked: true,
-    locked_at: now.toISOString(),
-    archive_status: "locked",
-  };
-
-  const { error } = await supabase
-    .from(thread.sourceTable)
-    .update(lockData)
-    .eq("id", thread.id);
-
-  if (error) {
-    console.warn(`[thread-sorter] Lock failed for ${thread.id}: ${error.message}`);
-  }
-}
-
-/**
- * Scan block content for mentions of explicitly uncertain entities
- * and any entity-like names tagged with "k ověření" / "nepotvrzena".
- * Creates follow-up questions with dedup against existing pending ones.
- */
-async function scanForUncertainEntities(
-  supabase: ReturnType<typeof createClient>,
-  allContent: string,
-  thread: ThreadRecord,
-  dateLabel: string,
-  addLog: (msg: string) => void,
-): Promise<number> {
-  const contentNorm = normalizeName(allContent);
-  const detectedEntities: string[] = [];
-
-  // 1. Check explicitly uncertain entity names in content
-  for (const unc of EXPLICITLY_UNCERTAIN) {
-    if (contentNorm.includes(unc)) {
-      detectedEntities.push(unc);
-    }
-  }
-
-  // 2. Check for AI-generated uncertainty markers in raw content
-  const uncertainMarkerRegex = /\[NEPOTVRZENA[^\]]*\]\s*([A-Z\u00c0-\u017e][a-z\u00e0-\u017e]+)/gi;
-  const kOvereniRegex = /k\s+ov\u011b\u0159en\u00ed[^.]*?([A-Z\u00c0-\u017e][a-z\u00e0-\u017e]{2,})/gi;
-  for (const regex of [uncertainMarkerRegex, kOvereniRegex]) {
-    let match;
-    while ((match = regex.exec(allContent)) !== null) {
-      const name = normalizeName(match[1]);
-      if (name.length >= 3 && !detectedEntities.includes(name)) {
-        // Skip if it's a confirmed part or non-part
-        const cls = classifyEntity(name.toUpperCase());
-        if (cls.classification === "uncertain_entity") {
-          detectedEntities.push(name);
-        }
-      }
-    }
-  }
-
-  if (detectedEntities.length === 0) return 0;
-
-  // 3. Dedup: check existing pending questions for these entities
-  const { data: existing } = await supabase
-    .from("did_pending_questions")
-    .select("subject_id")
-    .eq("subject_type", "entity_verification")
-    .in("status", ["open", "answered"])
-    .in("subject_id", detectedEntities.map((e) => e.toUpperCase()));
-
-  const alreadyAsked = new Set(
-    (existing ?? []).map((r: { subject_id: string | null }) =>
-      normalizeName(r.subject_id ?? "")
-    ),
-  );
-
-  let created = 0;
-  for (const entity of detectedEntities) {
-    if (alreadyAsked.has(entity)) {
-      addLog(`  Skip follow-up for "${entity}": already pending`);
-      continue;
-    }
-    await createEntityFollowUp(supabase, entity, allContent, thread, dateLabel);
-    addLog(`  Created follow-up for uncertain entity: "${entity}"`);
-    created++;
-  }
-  return created;
-}
-
-/**
- * Create a follow-up question in did_pending_questions
- * for uncertain entities that need therapist confirmation.
- */
-async function createEntityFollowUp(
-  supabase: ReturnType<typeof createClient>,
-  entityName: string,
-  extractedContent: string,
-  thread: ThreadRecord,
-  dateLabel: string,
-) {
-  const displayName = entityName.charAt(0).toUpperCase() + entityName.slice(1);
-  const question = `Karel narazil na jm\u00e9no "${displayName}" ve vl\u00e1kn\u011b "${thread.label}" (${dateLabel}). `
-    + `Nem\u016f\u017eu ur\u010dit, zda jde o potvrzenou DID \u010d\u00e1st. `
-    + `M\u016f\u017ee\u0161 potvrdit, zda "${displayName}" je \u010d\u00e1st syst\u00e9mu, alias existuj\u00edc\u00ed \u010d\u00e1sti, nebo n\u011bco jin\u00e9ho?`;
 
   const contextSnippet = extractedContent.slice(0, 300);
 
