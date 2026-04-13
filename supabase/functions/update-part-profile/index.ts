@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import {
+  buildAuditEntry,
+  routeWrite,
+  type GovernanceRequest,
+} from "../_shared/documentGovernance.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -382,88 +388,6 @@ async function handleContradiction(
   };
 }
 
-// ═══════════════════════════════════════════════════════
-// DRIVE SYNC — Build card from claims & write to Drive
-// ═══════════════════════════════════════════════════════
-
-async function getAccessToken(): Promise<string> {
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
-  const refreshToken = Deno.env.get("GOOGLE_REFRESH_TOKEN");
-  if (!clientId || !clientSecret || !refreshToken) throw new Error("Missing Google OAuth credentials");
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: "refresh_token" }),
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`Token error: ${JSON.stringify(data)}`);
-  return data.access_token;
-}
-
-const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
-
-const stripDiacritics = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-const canonicalText = (v: string) => stripDiacritics(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
-async function findDriveFolder(token: string, name: string): Promise<string | null> {
-  const q = `name='${name}' and mimeType='${DRIVE_FOLDER_MIME}' and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
-    q, fields: "files(id)", pageSize: "10", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
-  })}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files?.[0]?.id || null;
-}
-
-async function listFilesInFolder(token: string, folderId: string): Promise<Array<{ id: string; name: string; mimeType?: string }>> {
-  const q = `'${folderId}' in parents and trashed=false`;
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({
-    q, fields: "files(id,name,mimeType)", pageSize: "200", supportsAllDrives: "true", includeItemsFromAllDrives: "true",
-  })}`, { headers: { Authorization: `Bearer ${token}` } });
-  const data = await res.json();
-  return data.files || [];
-}
-
-async function resolveKartotekaRoot(token: string): Promise<string | null> {
-  return await findDriveFolder(token, "kartoteka_DID")
-    || await findDriveFolder(token, "Kartoteka_DID")
-    || await findDriveFolder(token, "Kartotéka_DID");
-}
-
-async function findPartCardFile(token: string, rootId: string, partName: string): Promise<string | null> {
-  const rootFiles = await listFilesInFolder(token, rootId);
-  const canon = canonicalText(partName);
-
-  // Search in active and archive folders first
-  const folders = rootFiles.filter(f => f.mimeType === DRIVE_FOLDER_MIME);
-  const activeFolder = folders.find(f => /^01/.test(f.name.trim()) || canonicalText(f.name).includes("aktiv"));
-  const archiveFolder = folders.find(f => /^03/.test(f.name.trim()) || canonicalText(f.name).includes("archiv"));
-
-  for (const folder of [activeFolder, archiveFolder].filter(Boolean)) {
-    const files = await listFilesInFolder(token, folder!.id);
-    // Look for subfolder matching part name
-    const partFolder = files.find(f =>
-      f.mimeType === DRIVE_FOLDER_MIME && canonicalText(f.name).includes(canon)
-    );
-    if (partFolder) {
-      const partFiles = await listFilesInFolder(token, partFolder.id);
-      const cardFile = partFiles.find(f =>
-        canonicalText(f.name).includes("karta")
-      ) || partFiles.find(f =>
-        f.mimeType === "application/vnd.google-apps.document"
-      );
-      if (cardFile) return cardFile.id;
-    }
-    // Direct file match
-    const directMatch = files.find(f =>
-      f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes(canon)
-    );
-    if (directMatch) return directMatch.id;
-  }
-
-  return null;
-}
-
 function buildPartCardDocument(partName: string, claims: ProfileClaim[]): string {
   const sections = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"];
   let doc = `# KARTA ČÁSTI: ${partName}\n`;
@@ -489,39 +413,17 @@ function buildPartCardDocument(partName: string, claims: ProfileClaim[]): string
   return doc;
 }
 
-async function writeToGoogleDoc(token: string, fileId: string, content: string): Promise<void> {
-  // Get endIndex
-  const metaRes = await fetch(
-    `https://docs.googleapis.com/v1/documents/${fileId}?fields=body.content(endIndex)`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!metaRes.ok) throw new Error(`Docs meta failed: ${metaRes.status}`);
-  const metaData = await metaRes.json();
-  const bodyContent = metaData?.body?.content || [];
-  const lastEnd = bodyContent.length > 0
-    ? Number(bodyContent[bodyContent.length - 1]?.endIndex || 1)
-    : 1;
-
-  // Clear existing content (if any beyond initial newline)
-  const requests: any[] = [];
-  if (lastEnd > 2) {
-    requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: lastEnd - 1 } } });
-  }
-  requests.push({ insertText: { location: { index: 1 }, text: content } });
-
-  const updateRes = await fetch(`https://docs.googleapis.com/v1/documents/${fileId}:batchUpdate`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ requests }),
-  });
-  if (!updateRes.ok) {
-    const errText = await updateRes.text();
-    throw new Error(`Docs batchUpdate failed: ${updateRes.status} ${errText}`);
-  }
-  await updateRes.text(); // consume body
-}
-
-async function syncPartCardToDrive(sb: SupabaseClient, partName: string): Promise<{ drive_written: boolean; error?: string }> {
+async function enqueuePartCardSync(
+  sb: SupabaseClient,
+  partName: string,
+  sourceId: string,
+): Promise<{
+  enqueued: boolean;
+  target_document?: string;
+  write_type?: string;
+  audit_status?: string;
+  error?: string;
+}> {
   try {
     const { data: claims } = await sb
       .from("did_profile_claims")
@@ -532,39 +434,62 @@ async function syncPartCardToDrive(sb: SupabaseClient, partName: string): Promis
       .order("claim_type", { ascending: true });
 
     if (!claims || claims.length === 0) {
-      console.log(`[update-part-profile] No active claims for ${partName}, skipping Drive sync`);
-      return { drive_written: false };
+      console.log(`[update-part-profile] No active claims for ${partName}, skipping queue sync`);
+      return { enqueued: false };
     }
 
     const doc = buildPartCardDocument(partName, claims);
-    const token = await getAccessToken();
-    const rootId = await resolveKartotekaRoot(token);
-    if (!rootId) {
-      console.warn(`[update-part-profile] Drive root not found`);
-      return { drive_written: false, error: "kartoteka_DID not found" };
-    }
+    const governanceRequest: GovernanceRequest = {
+      source_type: "update-part-profile",
+      source_id: sourceId,
+      content_type: "profile_claim",
+      subject_type: "part",
+      subject_id: partName,
+      payload: doc,
+    };
+    const governanceResult = routeWrite(governanceRequest);
 
-    const fileId = await findPartCardFile(token, rootId, partName);
-    if (!fileId) {
-      console.warn(`[update-part-profile] Card file not found for ${partName}`);
-      return { drive_written: false, error: `Card file not found for ${partName}` };
-    }
-
-    await writeToGoogleDoc(token, fileId, doc);
-
-    await sb.from("did_doc_sync_log").insert({
-      source_type: "profile_claims_sync",
-      source_id: claims[0].id,
-      target_document: `part_card_${partName}`,
-      content_written: doc.slice(0, 500),
-      success: true,
+    const queuedContent = encodeGovernedWrite(governanceResult.payload, {
+      source_type: governanceRequest.source_type,
+      source_id: governanceRequest.source_id,
+      content_type: governanceRequest.content_type,
+      subject_type: governanceRequest.subject_type,
+      subject_id: governanceRequest.subject_id,
     });
 
-    console.log(`[update-part-profile] ✅ Synced ${claims.length} claims to Drive for ${partName}`);
-    return { drive_written: true };
+    const { error: queueError } = await sb.from("did_pending_drive_writes").insert({
+      target_document: governanceResult.driveTarget,
+      content: queuedContent,
+      write_type: governanceResult.writeType,
+      status: "pending",
+      priority: "high",
+    });
+
+    if (queueError) throw queueError;
+
+    try {
+      const pendingAudit = buildAuditEntry(
+        governanceRequest,
+        governanceResult,
+        null,
+        undefined,
+        "pending",
+      );
+      await sb.from("did_doc_sync_log").insert(pendingAudit);
+    } catch (auditErr) {
+      console.warn("[update-part-profile] Pending audit insert failed:", auditErr);
+    }
+
+    console.log(`[update-part-profile] ✅ Enqueued ${claims.length} claims for governed sync of ${partName}`);
+    return {
+      enqueued: true,
+      target_document: governanceResult.driveTarget,
+      write_type: governanceResult.writeType,
+      audit_status: "pending",
+    };
   } catch (err) {
-    console.error(`[update-part-profile] Drive sync error:`, err);
-    return { drive_written: false, error: String(err) };
+    console.error(`[update-part-profile] Queue sync error:`, err);
+    return { enqueued: false, error: String(err) };
   }
 }
 
@@ -633,10 +558,10 @@ serve(async (req) => {
       results.push(result);
     }
 
-    // Sync card to Drive
-    const driveResult = await syncPartCardToDrive(sb, part_name);
+    const syncSourceId = crypto.randomUUID();
+    const driveResult = await enqueuePartCardSync(sb, part_name, syncSourceId);
 
-    console.log(`[update-part-profile] ✅ Done: ${results.length} claims processed, drive_written=${driveResult.drive_written}`);
+    console.log(`[update-part-profile] ✅ Done: ${results.length} claims processed, enqueued=${driveResult.enqueued}`);
 
     return new Response(JSON.stringify({
       part_name,

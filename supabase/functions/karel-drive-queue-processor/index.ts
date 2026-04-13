@@ -29,8 +29,9 @@ import {
 } from "../_shared/driveHelpers.ts";
 import {
   isGovernedTarget,
-  REPLACE_ALLOWED_TARGETS,
+  isReplaceAllowed,
 } from "../_shared/documentGovernance.ts";
+import { decodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -204,6 +205,13 @@ Deno.serve(async (req) => {
 
       try {
         const writeType = pw.write_type || "append";
+        const { payload, metadata } = decodeGovernedWrite(pw.content || "");
+        const sourceType = metadata?.source_type || null;
+        const sourceId = metadata?.source_id || writeId;
+        const contentType = metadata?.content_type || "card_section_update";
+        const subjectType = metadata?.subject_type || "system";
+        const subjectId = metadata?.subject_id || "";
+        const crisisEventId = metadata?.crisis_event_id || null;
 
         // Validate write_type
         if (writeType !== "append" && writeType !== "replace") {
@@ -217,12 +225,28 @@ Deno.serve(async (req) => {
         }
 
         // Replace is only allowed for specific targets (from governance)
-        if (writeType === "replace" && !REPLACE_ALLOWED_TARGETS.has(target)) {
+        if (writeType === "replace" && !isReplaceAllowed(target, sourceType, contentType)) {
           addLog(`SKIP ${writeId}: replace not allowed for target '${target}'`);
           await sb
             .from("did_pending_drive_writes")
             .update({ status: "skipped", processed_at: new Date().toISOString() })
             .eq("id", writeId);
+          try {
+            await sb.from("did_doc_sync_log").insert({
+              source_type: sourceType || "drive-queue-processor",
+              source_id: sourceId,
+              target_document: target,
+              content_type: contentType,
+              subject_type: subjectType,
+              subject_id: subjectId,
+              sync_type: `${writeType}_via_queue`,
+              content_written: payload.slice(0, 500),
+              success: false,
+              status: "skipped",
+              error_message: "replace not allowed for target/source/content combination",
+              crisis_event_id: crisisEventId,
+            });
+          } catch (_) { /* ignore audit errors */ }
           skipped++;
           continue;
         }
@@ -234,6 +258,22 @@ Deno.serve(async (req) => {
             .from("did_pending_drive_writes")
             .update({ status: "skipped", processed_at: new Date().toISOString() })
             .eq("id", writeId);
+          try {
+            await sb.from("did_doc_sync_log").insert({
+              source_type: sourceType || "drive-queue-processor",
+              source_id: sourceId,
+              target_document: target,
+              content_type: contentType,
+              subject_type: subjectType,
+              subject_id: subjectId,
+              sync_type: `${writeType}_via_queue`,
+              content_written: payload.slice(0, 500),
+              success: false,
+              status: "skipped",
+              error_message: "target not in governance whitelist",
+              crisis_event_id: crisisEventId,
+            });
+          } catch (_) { /* ignore audit errors */ }
           skipped++;
           continue;
         }
@@ -246,6 +286,22 @@ Deno.serve(async (req) => {
             .from("did_pending_drive_writes")
             .update({ status: "failed", processed_at: new Date().toISOString() })
             .eq("id", writeId);
+          try {
+            await sb.from("did_doc_sync_log").insert({
+              source_type: sourceType || "drive-queue-processor",
+              source_id: sourceId,
+              target_document: target,
+              content_type: contentType,
+              subject_type: subjectType,
+              subject_id: subjectId,
+              sync_type: `${writeType}_via_queue`,
+              content_written: payload.slice(0, 500),
+              success: false,
+              status: "failed",
+              error_message: "target could not be resolved on Drive",
+              crisis_event_id: crisisEventId,
+            });
+          } catch (_) { /* ignore audit errors */ }
           failed++;
           continue;
         }
@@ -256,18 +312,18 @@ Deno.serve(async (req) => {
         if (writeType === "replace") {
           if (resolved.mimeType === GDOC_MIME) {
             // Google Docs: use overwriteDoc (delete + insert)
-            const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${pw.content}`;
+            const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${payload}`;
             await overwriteDoc(token, resolved.id, contentWithHeader);
             addLog(`REPLACED (GDoc) file ${resolved.id} for target '${target}'`);
           } else {
             // Plain text: use replaceFile
-            const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${pw.content}`;
+            const contentWithHeader = `--- Poslední aktualizace: ${timestamp} ---\n\n${payload}`;
             await replaceFile(token, resolved.id, contentWithHeader);
             addLog(`REPLACED (plain) file ${resolved.id} for target '${target}'`);
           }
         } else {
           // Append
-          const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${pw.content}`;
+          const contentWithTimestamp = `\n\n--- [${timestamp}] ---\n${payload}`;
           if (resolved.mimeType === GDOC_MIME) {
             await appendToDoc(token, resolved.id, contentWithTimestamp);
           } else {
@@ -285,16 +341,17 @@ Deno.serve(async (req) => {
         // Audit log
         try {
           await sb.from("did_doc_sync_log").insert({
-            source_type: pw.source_type || "drive-queue-processor",
-            source_id: pw.source_id || writeId,
+            source_type: sourceType || "drive-queue-processor",
+            source_id: sourceId,
             target_document: target,
-            content_type: pw.content_type || "card_section_update",
-            subject_type: pw.subject_type || "system",
-            subject_id: pw.subject_id || "",
+            content_type: contentType,
+            subject_type: subjectType,
+            subject_id: subjectId,
             sync_type: `${writeType}_via_queue`,
-            content_written: (pw.content || "").slice(0, 500),
+            content_written: payload.slice(0, 500),
             success: true,
             status: "ok",
+            crisis_event_id: crisisEventId,
           });
         } catch (auditErr) {
           console.warn(`[drive-queue] Audit log failed for ${writeId}:`, auditErr);
@@ -313,17 +370,18 @@ Deno.serve(async (req) => {
         // Audit failure
         try {
           await sb.from("did_doc_sync_log").insert({
-            source_type: pw.source_type || "drive-queue-processor",
-            source_id: pw.source_id || writeId,
+            source_type: sourceType || "drive-queue-processor",
+            source_id: sourceId,
             target_document: target,
-            content_type: pw.content_type || "card_section_update",
-            subject_type: pw.subject_type || "system",
-            subject_id: pw.subject_id || "",
+            content_type: contentType,
+            subject_type: subjectType,
+            subject_id: subjectId,
             sync_type: `${pw.write_type || "append"}_via_queue`,
-            content_written: "",
+            content_written: payload.slice(0, 500),
             success: false,
             status: "failed",
             error_message: errMsg.slice(0, 500),
+            crisis_event_id: crisisEventId,
           });
         } catch (_) { /* ignore audit errors */ }
 

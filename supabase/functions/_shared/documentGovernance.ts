@@ -184,6 +184,32 @@ const ROUTING_TABLE: Record<ContentType, (subjectId?: string) => RouteResult> = 
   }),
 };
 
+const PAMET_KAREL_ALLOWED_TARGETS = new Set([
+  "PAMET_KAREL/DID/HANKA/SITUACNI_ANALYZA",
+  "PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI",
+  "PAMET_KAREL/DID/HANKA/KAREL",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY",
+  "PAMET_KAREL/DID/KATA/SITUACNI_ANALYZA",
+  "PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI",
+  "PAMET_KAREL/DID/KATA/KAREL",
+  "PAMET_KAREL/DID/KATA/VLAKNA_POSLEDNI",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY",
+  "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+  "PAMET_KAREL/DID/KONTEXTY/SUPERVIZNI_POZNATKY",
+]);
+
+const STATIC_REPLACE_ALLOWED_TARGETS = new Set([
+  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
+  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
+  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+  "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+  "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
+  "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+]);
+
 // ── Public API ──
 
 export interface GovernanceRequest {
@@ -216,6 +242,16 @@ export function routeWrite(req: GovernanceRequest): GovernanceResult {
   }
 
   const subjectOrHint = req.target_hint || req.subject_id;
+
+  if (req.source_type === "update-part-profile" && req.content_type === "profile_claim") {
+    return {
+      layer: "KARTA_CASTI",
+      driveTarget: `KARTA_${(subjectOrHint || "UNKNOWN").toUpperCase()}`,
+      writeType: "replace",
+      payload: req.payload,
+    };
+  }
+
   const route = routeFn(subjectOrHint);
 
   return {
@@ -230,8 +266,9 @@ export function routeWrite(req: GovernanceRequest): GovernanceResult {
 export function buildAuditEntry(
   req: GovernanceRequest,
   result: GovernanceResult,
-  success: boolean,
+  success: boolean | null,
   errorMessage?: string,
+  status?: string,
 ) {
   return {
     source_type: req.source_type,
@@ -243,7 +280,7 @@ export function buildAuditEntry(
     sync_type: `${result.layer}_${result.writeType}`,
     content_written: req.payload.slice(0, 500),
     success,
-    status: success ? "ok" : "failed",
+    status: status || (success === true ? "ok" : success === false ? "failed" : "pending"),
     error_message: errorMessage || null,
   };
 }
@@ -265,13 +302,7 @@ export function isGovernedTarget(target: string): boolean {
   ];
   if (centrumDocs.includes(target)) return true;
 
-  // PAMET_KAREL whitelisted paths
-  const pametAllowed = [
-    /^PAMET_KAREL\/DID\/HANKA\//,
-    /^PAMET_KAREL\/DID\/KATA\//,
-    /^PAMET_KAREL\/DID\/KONTEXTY\//,
-  ];
-  if (pametAllowed.some((rx) => rx.test(target))) return true;
+  if (PAMET_KAREL_ALLOWED_TARGETS.has(target)) return true;
 
   return false;
 }
@@ -280,11 +311,16 @@ export function isGovernedTarget(target: string): boolean {
  * Targets where full replace (overwrite) is permitted.
  * All others are append-only for safety.
  */
-export const REPLACE_ALLOWED_TARGETS = new Set([
-  "PAMET_KAREL/DID/HANKA/VLAKNA_3DNY",
-  "PAMET_KAREL/DID/KATA/VLAKNA_3DNY",
-  "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
-  "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
-  "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
-  "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
-]);
+export function isReplaceAllowed(
+  target: string,
+  sourceType?: string | null,
+  contentType?: string | null,
+): boolean {
+  if (STATIC_REPLACE_ALLOWED_TARGETS.has(target)) return true;
+
+  if (/^KARTA_.+$/.test(target)) {
+    return sourceType === "update-part-profile" && contentType === "profile_claim";
+  }
+
+  return false;
+}
