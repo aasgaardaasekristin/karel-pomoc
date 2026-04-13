@@ -106,7 +106,7 @@ async function isDuplicateWrite(
       metadata.subject_id === subjectId
     ) {
       // Compare payload fingerprint — recompute from stored payload
-      const existingFingerprint = payloadFingerprint(payload);
+      const existingFingerprint = metadata.payload_fingerprint || payloadFingerprint(payload);
       if (existingFingerprint === candidateFingerprint) {
         return true;
       }
@@ -183,7 +183,10 @@ export async function executeClassifiedItems(
         } else {
           await sb.from("did_pending_drive_writes").insert({
             target_document: route.target_document,
-            content: encodeGovernedWrite(rawPayload, meta),
+            content: encodeGovernedWrite(rawPayload, {
+              ...meta,
+              payload_fingerprint: fingerprint,
+            }),
             write_type: route.write_type,
             priority: "normal",
             status: "pending",
@@ -269,10 +272,13 @@ export async function executeClassifiedItems(
     // Card updates (additional KARTA writes from actions)
     for (const cu of actions.cardUpdates) {
       const cardTarget = `KARTA_${cu.part_name.toUpperCase()}`;
+      const cardPayload = `\n\n--- ${sourceDateLabel} | ${callerName} ---\n${cu.content}`;
+      const cardFingerprint = payloadFingerprint(cardPayload);
       const cardMeta = {
         source_type: callerName,
         source_id: item.source_id,
         segment_id: (item as any).segment_id || undefined,
+        payload_fingerprint: cardFingerprint,
         content_type: "session_result",
         subject_type: "part",
         subject_id: cu.part_name,
@@ -280,10 +286,7 @@ export async function executeClassifiedItems(
 
       await sb.from("did_pending_drive_writes").insert({
         target_document: cardTarget,
-        content: encodeGovernedWrite(
-          `\n\n--- ${sourceDateLabel} | ${callerName} ---\n${cu.content}`,
-          cardMeta,
-        ),
+        content: encodeGovernedWrite(cardPayload, cardMeta),
         write_type: "append",
         priority: "normal",
         status: "pending",
