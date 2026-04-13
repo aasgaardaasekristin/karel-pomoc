@@ -374,11 +374,14 @@ serve(async (req) => {
         }
 
         // 3. Klinický dopad na část — pokud zmíněna část
+        //    NIKDY raw obsah — jen odvozená klinická implikace
         if (part) {
+          const clinicalImplication = deriveClinicalImplicationFromPrivateSignal(part, content);
+
           await sb.from("did_pending_drive_writes").insert({
             target_document: `KARTA_${part.toUpperCase()}`,
             content: encodeGovernedWrite(
-              `[Osobní vlákno — klinický dopad] ${content.slice(0, 400)}`,
+              clinicalImplication,
               {
                 source_type: "reactive-loop",
                 source_id: conv.id,
