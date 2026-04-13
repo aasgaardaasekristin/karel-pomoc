@@ -15,11 +15,29 @@ const STATE_LABELS: Record<string, string> = {
   monitoring_post: "monitoring",
 };
 
+/** Map CTA action → target tab in CrisisOperationalDetail */
+const CTA_ACTION_TO_TAB: Record<string, "management" | "closure" | "audit"> = {
+  request_update: "management",
+  start_interview: "management",
+  record_session_result: "management",
+  request_feedback: "management",
+  answer_questions: "management",
+  open_meeting: "closure",
+  prepare_closure: "closure",
+};
+
 const CrisisAlert: React.FC = () => {
   const { cards, loading, refetch } = useCrisisOperationalState();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [initialTab, setInitialTab] = useState<"management" | "closure" | "history" | "audit" | undefined>(undefined);
 
   if (loading || cards.length === 0) return null;
+
+  const handleCTAClick = (cardId: string, cta: CrisisCTA) => {
+    const targetTab = CTA_ACTION_TO_TAB[cta.action] || "management";
+    setInitialTab(targetTab);
+    setExpandedId(cardId);
+  };
 
   return (
     <div className="sticky top-0 z-50">
@@ -75,16 +93,16 @@ const CrisisAlert: React.FC = () => {
                     </span>
                   )}
 
-                  {/* Unread brief indicator */}
+                  {/* Global unread brief indicator (crisis_briefs has no per-event FK) */}
                   {card.unreadBriefCount > 0 && (
                     <span className="text-[10px] bg-red-500/30 text-red-100 px-1.5 py-0.5 rounded flex items-center gap-1">
                       <Bell className="w-3 h-3" />
-                      {card.unreadBriefCount} brief{card.unreadBriefCount > 1 ? "y" : ""}
+                      {card.unreadBriefCount} brief{card.unreadBriefCount > 1 ? "y" : ""} (celkem)
                     </span>
                   )}
 
                   <button
-                    onClick={() => setExpandedId(isExpanded ? null : id)}
+                    onClick={() => { setInitialTab(undefined); setExpandedId(isExpanded ? null : id); }}
                     className="hover:bg-white/10 px-1.5 py-1 rounded transition-colors shrink-0 ml-auto"
                   >
                     {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -108,7 +126,7 @@ const CrisisAlert: React.FC = () => {
                         {bannerCTAs.map(cta => (
                           <button
                             key={cta.key}
-                            onClick={() => setExpandedId(id)}
+                            onClick={() => handleCTAClick(id, cta)}
                             className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
                               cta.priority === "critical" ? "bg-red-500/40 hover:bg-red-500/60 text-white font-bold"
                               : cta.priority === "high" ? "bg-amber-500/30 hover:bg-amber-500/50 text-yellow-100"
@@ -127,7 +145,7 @@ const CrisisAlert: React.FC = () => {
 
             {/* ── Detail ── */}
             {isExpanded && (
-              <CrisisOperationalDetail card={card} onRefetch={refetch} />
+              <CrisisOperationalDetail card={card} onRefetch={refetch} initialTab={initialTab} />
             )}
           </div>
         );
