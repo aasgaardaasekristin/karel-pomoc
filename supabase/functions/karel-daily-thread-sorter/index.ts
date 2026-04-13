@@ -428,6 +428,7 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
           dateLabel,
           segment,
           registry,
+          driveToken,
         );
         accumulateClassified(segClassified, classifiedCollector, thread, segment);
       }
@@ -632,6 +633,7 @@ async function processBlocksEntityGuardrails(
   dateLabel: string,
   segment: TopicSegment | null,
   registry: EntityRegistry,
+  driveToken: string | null,
 ) {
   for (const b of blocks) {
     if (!b.target || !b.content || b.content.length < 10) continue;
