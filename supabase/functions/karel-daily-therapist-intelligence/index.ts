@@ -216,20 +216,37 @@ ${crisisDigest}`;
         if (!existingPoz && dedukceBlock) writes.push({ target_document: t.pozTarget, content: dedukceBlock });
 
         if (writes.length > 0) {
-          await sb.from("did_pending_drive_writes").insert(
-            writes.map(w => ({
+          // FÁZE 2.5: Normalize each therapist intelligence write
+          const normalizedWrites = writes.map(w => {
+            const signal = normalizeSignal({
+              raw_content: w.content,
+              source_domain: t.key === "kata" ? "therapist_kata" : "therapist_hanka",
+              source_id: `therapist-intel-${t.key}-${today}`,
+              therapist: t.key as "hanka" | "kata",
+            });
+
+            const contentType = w.target_document.includes("SITUACNI")
+              ? "situational_analysis"
+              : "therapist_memory_note";
+
+            return {
               target_document: w.target_document,
-              content: w.content,
+              content: encodeGovernedWrite(w.content, {
+                source_type: "therapist-intelligence",
+                source_id: `therapist-intel-${t.key}-${today}`,
+                content_type: contentType,
+                subject_type: "therapist" as const,
+                subject_id: t.key,
+              }),
               write_type: "append",
               priority: "normal",
               status: "pending",
               user_id: DID_OWNER_ID,
-              // FÁZE 2: classification metadata
-              source_type: "therapist-intelligence",
-              content_type: w.target_document.includes("SITUACNI") ? "situational_analysis" : "therapist_memory_note",
-            }))
-          );
-          console.log(`[therapist-intel] ${t.key}: inserted ${writes.length} pending writes`);
+            };
+          });
+
+          await sb.from("did_pending_drive_writes").insert(normalizedWrites);
+          console.log(`[therapist-intel] ${t.key}: inserted ${normalizedWrites.length} pending writes (governed + normalized)`);
         }
 
         results[t.key] = { ok: true };
