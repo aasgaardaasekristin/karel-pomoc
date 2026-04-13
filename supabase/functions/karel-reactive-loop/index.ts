@@ -22,6 +22,13 @@ const DID_KEYWORDS = [
   "sezení", "terapie", "disociace", "trauma", "přepnutí", "symptom", "ochránce",
 ];
 
+const STRESS_KEYWORDS = [
+  "vyčerpaná", "unavená", "nestíhám", "kapacita", "přetížená", "stres",
+  "nemůžu", "zátěž", "potřebuju pauzu", "nespala", "bolest", "úzkost",
+];
+
+const DID_OWNER_ID = "8a7816ee-4fd1-43d4-8d83-4230d7517ae1";
+
 function detectCrisis(text: string): boolean {
   const keywords = ["krize","krizový","sebevražda","sebepoškozování","disociace",
     "útěk","nebezpečí","akutní","Arthur","Tundrupek"];
