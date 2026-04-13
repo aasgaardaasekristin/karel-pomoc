@@ -516,13 +516,28 @@ serve(async (req) => {
 
           // 5. Agenda item
           if (seg.segment_type !== "background_noise") {
+            // FÁZE 2.6 session-target gate: if this agenda item targets a specific part
+            // for direct work, verify part is a valid session target
+            let agendaPriority = signal.signal_type === "risk" ? "urgent" : "when_appropriate";
+            let agendaRelatedPart = signal.part_name || null;
+
+            if (agendaRelatedPart && seg.segment_type === "part_clinical") {
+              const partResolved = resolveEntity(agendaRelatedPart, registry);
+              if (!partResolved.can_be_session_target) {
+                // Part is confirmed but not communicable — downgrade from direct-work proposal
+                // to observation-only agenda item
+                agendaPriority = "when_appropriate";
+                console.log(`[REACTIVE-LOOP] Part "${agendaRelatedPart}" not session-targetable, agenda downgraded to observation`);
+              }
+            }
+
             await sb.from("karel_conversation_agenda").insert({
               therapist: seg.therapist || therapist,
               topic: `[${seg.segment_type}] ${signal.safe_summary.slice(0, 100)}`,
               topic_type: "followup",
-              priority: signal.signal_type === "risk" ? "urgent" : "when_appropriate",
+              priority: agendaPriority,
               context: `[Segmentováno] ${signal.normalized_summary}. ${signal.part_name ? `Část: ${signal.part_name}. ` : ""}Typ: ${seg.segment_type}, Confidence: ${signal.confidence.toFixed(2)}`,
-              related_part: signal.part_name || null,
+              related_part: agendaRelatedPart,
               status: "pending",
             });
           }
