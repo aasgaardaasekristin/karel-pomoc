@@ -229,12 +229,6 @@ export interface CrisisOperationalCard {
   cardPropagationStatus: AuditEntry[];
   planSyncStatus: AuditEntry | null;
 
-  /**
-   * Global unread crisis briefs count (system-wide).
-   * crisis_briefs has no per-event FK — this count covers the entire crisis subsystem,
-   * NOT a specific crisis event. UI must label it accordingly (e.g. "briefy (celkem)").
-   */
-  globalUnreadBriefCount: number;
 }
 
 export interface AuditEntry {
@@ -436,6 +430,7 @@ function computeClosureBlockerSummary(r4: CrisisOperationalCard["closureReadines
 export function useCrisisOperationalState() {
   const [cards, setCards] = useState<CrisisOperationalCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [globalUnreadBriefCount, setGlobalUnreadBriefCount] = useState(0);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -675,7 +670,7 @@ export function useCrisisOperationalState() {
           mainBlocker: computeMainBlocker(partialCard),
           computedCTAs: [], // populated after card is built
           closureBlockerSummary: null, // populated after backend readiness fetch
-          globalUnreadBriefCount: 0, // populated after brief count fetch
+          
         });
 
         // Compute CTAs now that the card is in the map
@@ -717,7 +712,7 @@ export function useCrisisOperationalState() {
             interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
             closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
             cardPropagationStatus: [], planSyncStatus: null,
-            computedCTAs: [], closureBlockerSummary: null, globalUnreadBriefCount: 0,
+            computedCTAs: [], closureBlockerSummary: null,
           });
           // Compute CTAs for legacy alert-only cards
           const legacyCard = cardMap.get(key)!;
@@ -754,11 +749,8 @@ export function useCrisisOperationalState() {
       }).catch(() => {});
 
       // Fetch global unread crisis brief count (crisis_briefs has no per-event FK — count is system-wide).
-      // This is intentionally global: briefs cover the entire crisis subsystem, not individual events.
       supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
-        if (count != null && count > 0) {
-          setCards(prev => prev.map(pc => ({ ...pc, globalUnreadBriefCount: count })));
-        }
+        setGlobalUnreadBriefCount(count ?? 0);
       });
     } catch (err) {
       console.error("[useCrisisOperationalState] Error:", err);
@@ -778,7 +770,7 @@ export function useCrisisOperationalState() {
     return () => { supabase.removeChannel(channel); };
   }, [fetchAll]);
 
-  return { cards, loading, refetch: fetchAll };
+  return { cards, loading, refetch: fetchAll, globalUnreadBriefCount };
 }
 
 // ── Backend readiness fetcher ──────────────────────────────────

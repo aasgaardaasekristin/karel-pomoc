@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import CrisisDailyManagement from "./CrisisDailyManagement";
 import CrisisSessionQA from "./CrisisSessionQA";
@@ -23,6 +23,10 @@ const TABS: { key: TabKey; label: string }[] = [
 
 const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "management");
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
 
   return (
     <div className="border-x border-b rounded-b-lg mx-2 mb-1 bg-background shadow-lg" style={{ borderColor: "#7C2D2D30" }}>
