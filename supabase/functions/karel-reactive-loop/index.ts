@@ -344,6 +344,8 @@ serve(async (req) => {
       });
 
       // FÁZE 2.6: Use registry-aware part detection + resolveEntity gate
+      // CRITICAL: uncertain entities must NOT be silently skipped or just logged.
+      // They must either trigger watchdog workflow or fail-closed (no part routing).
       const candidatePart = detectPartMention(answer, registry);
       if (candidatePart) {
         const resolved = resolveEntity(candidatePart, registry);
@@ -365,7 +367,21 @@ serve(async (req) => {
             priority: "normal",
             user_id: DID_OWNER_ID,
           });
+        } else if (resolved.entity_kind === "uncertain_entity") {
+          // FÁZE 2.6: Uncertain entity MUST trigger watchdog — never silent skip
+          console.log(`[REACTIVE-LOOP] Uncertain entity "${candidatePart}" in answered question → triggering watchdog`);
+          // Import watchdog inline to avoid circular deps at module level
+          const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
+          await handleUncertainEntity(sb, resolved, {
+            thread_id: q.id,
+            thread_label: `answered-question`,
+            sub_mode: q.directed_to || "hanka",
+            date_label: new Date().toISOString().split("T")[0],
+            content_excerpt: answer.slice(0, 300),
+            user_id: DID_OWNER_ID,
+          });
         } else {
+          // Confirmed non-part (therapist, family, animal, etc.) — no card write, no watchdog needed
           console.log(`[REACTIVE-LOOP] Blocked KARTA write for "${candidatePart}": ${resolved.entity_kind} (can_write_existing_card=false)`);
         }
       }
@@ -485,6 +501,18 @@ serve(async (req) => {
                 write_type: "append",
                 priority: "normal",
                 status: "pending",
+                user_id: DID_OWNER_ID,
+              });
+            } else if (partResolved.entity_kind === "uncertain_entity") {
+              // FÁZE 2.6: Uncertain entity in conversation segment → trigger watchdog, no silent skip
+              console.log(`[REACTIVE-LOOP] Uncertain entity "${signal.part_name}" in conv segment → triggering watchdog`);
+              const { handleUncertainEntity } = await import("../_shared/entityWatchdog.ts");
+              await handleUncertainEntity(sb, partResolved, {
+                thread_id: conv.id,
+                thread_label: `conv-segment-${seg.segment_type}`,
+                sub_mode: conv.sub_mode || "hanka",
+                date_label: new Date().toISOString().split("T")[0],
+                content_excerpt: (signal.derived_clinical_implication || "").slice(0, 300),
                 user_id: DID_OWNER_ID,
               });
             } else {

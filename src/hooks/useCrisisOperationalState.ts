@@ -272,11 +272,30 @@ function buildCurrentSummary(params: {
   phase: string | null; trend: string; daysActive: number | null;
   hoursStale: number; lastDecision: string | null;
   lastInterventionType: string | null; lastInterventionWorked: boolean | null;
+  operatingState?: string | null;
 }): string {
-  const { phase, trend, daysActive, hoursStale, lastInterventionType, lastInterventionWorked, lastDecision } = params;
-  const phaseLabel = phase === "acute" ? "Akutní krize" : phase === "stabilizing" ? "Stabilizace"
-    : phase === "diagnostic" ? "Diagnostika" : phase === "closing" ? "Uzavírání"
-    : phase === "ready_to_close" ? "Připraveno k uzavření" : "Aktivní krize";
+  const { phase, trend, daysActive, hoursStale, lastInterventionType, lastInterventionWorked, lastDecision, operatingState } = params;
+
+  // Operating state labels take priority over phase labels when available
+  // — provides clinically meaningful context for ALL states, not just closing flow
+  const OPERATING_STATE_LABELS: Record<string, string> = {
+    active: "Aktivní krize",
+    intervened: "Po zásahu",
+    stabilizing: "Stabilizace",
+    awaiting_session_result: "Čeká se na výsledek sezení",
+    awaiting_therapist_feedback: "Čeká se na feedback terapeutek",
+    ready_for_joint_review: "Připraveno ke společnému přezkumu",
+    ready_to_close: "Připraveno k uzavření",
+    closed: "Uzavřeno",
+    monitoring_post: "Post-krizový monitoring",
+  };
+
+  const phaseLabel = (operatingState && OPERATING_STATE_LABELS[operatingState])
+    ? OPERATING_STATE_LABELS[operatingState]
+    : phase === "acute" ? "Akutní krize" : phase === "stabilizing" ? "Stabilizace"
+      : phase === "diagnostic" ? "Diagnostika" : phase === "closing" ? "Uzavírání"
+      : phase === "ready_to_close" ? "Připraveno k uzavření" : "Aktivní krize";
+
   const trendLabel = trend === "worsening" ? "trend zhoršení" : trend === "improving" ? "trend zlepšení"
     : trend === "stable" ? "stabilní" : null;
   const parts: string[] = [phaseLabel];
@@ -523,9 +542,9 @@ export function useCrisisOperationalState() {
           primaryTherapist,
           secondaryTherapist,
           ownershipSource,
-          currentSummary: buildCurrentSummary({ phase: ev.phase, trend, daysActive: ev.days_active, hoursStale, lastDecision: latest?.karel_decision || null, lastInterventionType, lastInterventionWorked }),
+          currentSummary: buildCurrentSummary({ phase: ev.phase, trend, daysActive: ev.days_active, hoursStale, lastDecision: latest?.karel_decision || null, lastInterventionType, lastInterventionWorked, operatingState: ev.operating_state }),
           clinicalSummary: ev.clinical_summary ?? null,
-          displaySummary: (ev.clinical_summary as string) || buildCurrentSummary({ phase: ev.phase, trend, daysActive: ev.days_active, hoursStale, lastDecision: latest?.karel_decision || null, lastInterventionType, lastInterventionWorked }),
+          displaySummary: (ev.clinical_summary as string) || buildCurrentSummary({ phase: ev.phase, trend, daysActive: ev.days_active, hoursStale, lastDecision: latest?.karel_decision || null, lastInterventionType, lastInterventionWorked, operatingState: ev.operating_state }),
           karelRequires,
           closureReadiness: closureReadinessScore,
           closureChecklistState,
@@ -541,6 +560,9 @@ export function useCrisisOperationalState() {
           triggerActive: ev.trigger_resolved != null ? !ev.trigger_resolved : null,
           riskLevel0to3: latest?.karel_risk_assessment ? ({ minimal: 0, low: 1, moderate: 2, high: 3, critical: 3 } as Record<string, number>)[latest.karel_risk_assessment] ?? null : null,
           stableHours: ev.stable_since ? Math.max(0, (Date.now() - new Date(ev.stable_since).getTime()) / 3_600_000) : null,
+          // consecutiveStableEntries is a DERIVED VALUE computed at render time
+          // from crisis_daily_assessments — NOT a physical DB column.
+          // Counts consecutive non-high/non-critical assessments from newest backwards.
           consecutiveStableEntries: (() => {
             if (assessments.length < 2) return null;
             let streak = 0;

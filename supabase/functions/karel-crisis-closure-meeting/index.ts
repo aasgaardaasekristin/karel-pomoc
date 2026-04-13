@@ -109,8 +109,13 @@ async function checkClosureReadiness(sb: any, crisisEventId: string): Promise<Cl
   if (!eveningDecision) processBlockers.push("Chybí evening decision");
 
   // ── TEAM ──
-  // Closure meeting is "completed" when it exists + has both positions + Karel statement + recommendation.
-  // We do NOT require status === "finalized" here — finalization is a post-closure bookkeeping step.
+  // NON-CIRCULAR CLOSURE LOGIC (documented):
+  // Closure readiness depends on the CONTENT of the closure meeting
+  // (both therapist positions + Karel statement + recommendation),
+  // NOT on the technical status === "finalized".
+  // The meeting is finalized as a post-closure bookkeeping step AFTER
+  // the crisis transitions to "closed". This prevents a deadlock where
+  // closure requires finalization which requires closure.
   const hankaPosition = closureMeeting?.hanka_position != null;
   const kataPosition = closureMeeting?.kata_position != null;
   const karelStatement = closureMeeting?.karel_final_statement != null;
