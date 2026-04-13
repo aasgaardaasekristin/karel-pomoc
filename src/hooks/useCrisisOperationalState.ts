@@ -229,8 +229,12 @@ export interface CrisisOperationalCard {
   cardPropagationStatus: AuditEntry[];
   planSyncStatus: AuditEntry | null;
 
-  // Unread crisis briefs count (fed from parent / hook aggregate)
-  unreadBriefCount: number;
+  /**
+   * Global unread crisis briefs count (system-wide).
+   * crisis_briefs has no per-event FK — this count covers the entire crisis subsystem,
+   * NOT a specific crisis event. UI must label it accordingly (e.g. "briefy (celkem)").
+   */
+  globalUnreadBriefCount: number;
 }
 
 export interface AuditEntry {
@@ -713,7 +717,7 @@ export function useCrisisOperationalState() {
             interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
             closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
             cardPropagationStatus: [], planSyncStatus: null,
-            computedCTAs: [], closureBlockerSummary: null, unreadBriefCount: 0,
+            computedCTAs: [], closureBlockerSummary: null, globalUnreadBriefCount: 0,
           });
           // Compute CTAs for legacy alert-only cards
           const legacyCard = cardMap.get(key)!;
@@ -749,11 +753,11 @@ export function useCrisisOperationalState() {
         }));
       }).catch(() => {});
 
-      // Fetch global unread crisis brief count (crisis_briefs has no per-event FK — count is system-wide)
+      // Fetch global unread crisis brief count (crisis_briefs has no per-event FK — count is system-wide).
       // This is intentionally global: briefs cover the entire crisis subsystem, not individual events.
       supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
         if (count != null && count > 0) {
-          setCards(prev => prev.map(pc => ({ ...pc, unreadBriefCount: count })));
+          setCards(prev => prev.map(pc => ({ ...pc, globalUnreadBriefCount: count })));
         }
       });
     } catch (err) {
