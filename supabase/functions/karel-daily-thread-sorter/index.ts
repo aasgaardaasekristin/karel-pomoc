@@ -409,6 +409,25 @@ Deno.serve(async (req) => {
 
     for (const thread of threads) {
       const trimmed = thread.messages.slice(-60);
+
+      // ── MEZIFÁZE: Per-message topic segmentation ──
+      // Build message clusters (1-3 consecutive user messages, max 5min gap)
+      // then segment each cluster into topic segments BEFORE AI classification.
+      // This prevents the AI from cross-contaminating unrelated topics.
+      const clusters = buildMessageClusters(
+        trimmed.map(m => ({ role: m.role, content: m.content || "" })),
+        3,
+        5 * 60 * 1000,
+      );
+
+      // Pre-segment user messages for metadata annotation
+      const allSegments: TopicSegment[] = [];
+      for (const cluster of clusters) {
+        const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
+        allSegments.push(...segs);
+      }
+
+      // Build transcript with segment annotations for AI context
       const transcript = trimmed
         .map((m) => `[${m.role}]: ${(m.content || "").slice(0, 800)}`)
         .join("\n");
@@ -418,9 +437,16 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Add segment summary to help AI understand topic boundaries
+      const segmentHint = allSegments.length > 0
+        ? `\n\nPŘED-SEGMENTACE (topic decomposition):\n` +
+          allSegments.map((s, i) => `  [${i+1}] ${s.segment_type} (conf=${s.confidence.toFixed(2)}${s.part_name ? `, část=${s.part_name}` : ""}): "${s.raw_segment.slice(0, 80)}..."`).join("\n") +
+          `\n\nPOUŽIJ tuto před-segmentaci jako vodítko. Nemíchej osobní obsah s klinickým. Každý segment zpracuj zvlášť.\n`
+        : "";
+
       const userPrompt = `Zdrojov\u00e9 vl\u00e1kno: "${thread.label}" (typ: ${thread.subMode})
 Datum: ${dateLabel}
-
+${segmentHint}
 --- KONVERZACE ---
 ${transcript}
 --- KONEC ---
