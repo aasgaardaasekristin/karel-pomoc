@@ -2243,6 +2243,7 @@ export type Database = {
           drive_folder_label: string | null
           health_score: number | null
           id: string
+          index_confirmed_at: string | null
           known_strengths: string[] | null
           known_triggers: string[] | null
           language: string | null
@@ -2268,6 +2269,7 @@ export type Database = {
           drive_folder_label?: string | null
           health_score?: number | null
           id?: string
+          index_confirmed_at?: string | null
           known_strengths?: string[] | null
           known_triggers?: string[] | null
           language?: string | null
@@ -2293,6 +2295,7 @@ export type Database = {
           drive_folder_label?: string | null
           health_score?: number | null
           id?: string
+          index_confirmed_at?: string | null
           known_strengths?: string[] | null
           known_triggers?: string[] | null
           language?: string | null

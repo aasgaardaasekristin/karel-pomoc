@@ -82,7 +82,7 @@ const PART_CLINICAL_KW = [
   "Arthur", "Tundrupek", "Gustík", "Petřík", "Anička",
   "Dmytri", "Dymi", "Bendik", "Einar", "Adam", "Bélo",
   "Clark", "Gabriel", "Gerhardt", "Baltazar", "Sebastián",
-  "Matyáš", "Kvído", "Alvar", "Lobzhang", "Emily", "Gejbi",
+  "Matyáš", "Kvído", "Alvar", "Lobzhang", "Gejbi",
 ];
 
 const FAMILY_CONTEXT_KW = [
@@ -118,7 +118,7 @@ const DEFAULT_CANDIDATE_PART_NAMES = [
   "Arthur", "Tundrupek", "Gustík", "Gustik", "Petřík", "Anička", "Anicka",
   "Dmytri", "Dymi", "Bendik", "Einar", "Adam", "Bélo", "Clark", "Gabriel",
   "Gerhardt", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Lobzhang",
-  "Emily", "Gejbi", "C.G.", "Bytostne Ja",
+  "Gejbi",
 ];
 
 /** Sensitive segment types that must NEVER be merged even if adjacent and same type */

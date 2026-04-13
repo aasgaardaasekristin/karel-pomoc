@@ -91,7 +91,8 @@ function isDIDRelevant(content: string, registry?: EntityRegistry | null): boole
   const lower = content.toLowerCase();
   // Check clinical keywords
   if (CLINICAL_KEYWORDS.some(kw => lower.includes(kw.toLowerCase()))) return true;
-  // Check if any registry part name is mentioned
+  // Check if any confirmed registry part name is mentioned
+  // getAllKnownNames() already excludes unconfirmed_cache_only entries
   if (registry) {
     const allNames = registry.getAllKnownNames();
     if (allNames.some(name => content.includes(name))) return true;

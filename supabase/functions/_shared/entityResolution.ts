@@ -146,34 +146,41 @@ export function resolveEntity(
   const entry = registry.lookupByName(name);
 
   if (entry) {
-    // Check if confirmed by 01_INDEX
-    if (entry.confirmedByIndex) {
+    if (entry.confirmationTier === "confirmed_by_index" || entry.confirmationTier === "confirmed_by_index_mirror") {
+      // Confirmed part (either live index or audit-stamped mirror)
       const isAlias = entry.normalizedCanonical !== norm;
       const kind: EntityKind = isAlias ? "confirmed_part_alias" : "confirmed_did_part";
 
+      // can_create_card: only from live index (new cards need live authority)
+      const canCreateCard = entry.confirmationTier === "confirmed_by_index";
+      // Mirror tier can work with existing cards but not create new ones
+
       return buildResult(name, norm, kind, entry, {
         alias_match: isAlias,
-        confidence: 1.0,
-        can_create_card: true,
+        confidence: entry.confirmationTier === "confirmed_by_index" ? 1.0 : 0.9,
+        can_create_card: canCreateCard,
         can_be_session_target: !!communicabilityEvidence,
         reasons: [
           isAlias
-            ? `Alias match in 01_INDEX: ${name} → ${entry.canonicalName}`
-            : `Canonical match in 01_INDEX: ${entry.canonicalName}`,
+            ? `Alias match (${entry.confirmationTier}): ${name} → ${entry.canonicalName}`
+            : `Canonical match (${entry.confirmationTier}): ${entry.canonicalName}`,
           ...(communicabilityEvidence
             ? ["Communicability evidence present → can_be_session_target"]
             : ["No communicability evidence → can_be_session_target=false"]),
+          ...(entry.confirmationTier === "confirmed_by_index_mirror"
+            ? ["Mirror tier: can work with existing cards, cannot create new ones"]
+            : []),
         ],
       });
     } else {
-      // Found in DB cache but NOT in 01_INDEX → uncertain (fail-closed)
+      // unconfirmed_cache_only → uncertain (fail-closed)
       reasons.push(
-        `Found in DB cache as "${entry.canonicalName}" but NOT confirmed by 01_INDEX — fail-closed`,
+        `Found in DB cache as "${entry.canonicalName}" but NO index_confirmed_at stamp — unconfirmed_cache_only, fail-closed`,
       );
       return buildResult(name, norm, "uncertain_entity", null, {
         reasons,
         must_consult_therapists: true,
-        confidence: 0.3,
+        confidence: 0.2,
       });
     }
   }

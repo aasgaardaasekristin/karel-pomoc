@@ -6,10 +6,17 @@
  * SOLE AUTHORITY: 01_INDEX (loaded from Drive via driveRegistry.ts)
  * did_part_registry (DB) = cache/mirror ONLY — never confirms new entities.
  *
- * SAFE MODE: when 01_INDEX is unavailable, system cannot confirm new entities.
- * Cache is used only for previously confirmed identities (prior_confirmed_by_index=true).
+ * 3-TIER CONFIRMATION MODEL:
+ *   - confirmed_by_index: entry loaded directly from 01_INDEX in this run
+ *   - confirmed_by_index_mirror: entry from DB cache with index_confirmed_at stamp
+ *     (previously confirmed by 01_INDEX, audit-trailed via timestamp)
+ *   - unconfirmed_cache_only: DB entry without proof of prior index confirmation
  *
- * On conflict between DB and 01_INDEX → uncertain_entity (fail-closed).
+ * RULES:
+ *   - New identity/alias confirmation: ONLY confirmed_by_index
+ *   - Routine work with known parts: confirmed_by_index OR confirmed_by_index_mirror
+ *   - unconfirmed_cache_only: NEVER used for confirmation, NEVER in candidate lists
+ *   - On conflict between DB and 01_INDEX → uncertain_entity (fail-closed)
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -21,6 +28,11 @@ import {
 
 // ── Types ──
 
+export type ConfirmationTier =
+  | "confirmed_by_index"
+  | "confirmed_by_index_mirror"
+  | "unconfirmed_cache_only";
+
 export interface RegistryEntry {
   id: string;
   canonicalName: string;
@@ -28,24 +40,30 @@ export interface RegistryEntry {
   aliases: string[];
   normalizedAliases: string[];
   status: string;
-  /** Whether this entry was confirmed by 01_INDEX (not just DB cache) */
-  confirmedByIndex: boolean;
+  /** How this entry's identity was confirmed */
+  confirmationTier: ConfirmationTier;
 }
 
 export interface EntityRegistry {
   /** Whether 01_INDEX was successfully loaded */
   indexAvailable: boolean;
-  /** All confirmed entries */
+  /** All entries (all tiers) */
   entries: RegistryEntry[];
-  /** Lookup by normalized canonical name */
+  /** Lookup by normalized canonical name or alias */
   lookupByName(name: string): RegistryEntry | null;
-  /** Check if a name (canonical or alias) is a confirmed part in 01_INDEX */
+  /** Check if a name is a confirmed part (index or mirror tier) */
   isConfirmedPart(name: string): boolean;
-  /** Get canonical name for an alias (only from 01_INDEX aliases) */
+  /** Get canonical name for an alias (only from index or mirror tier) */
   getCanonical(alias: string): string | null;
-  /** Get all confirmed part names (for segmentation candidate signals) */
+  /**
+   * Get confirmed part names for segmentation candidate signals.
+   * EXCLUDES unconfirmed_cache_only entries.
+   */
   getPartNames(): string[];
-  /** Get all names + aliases (for candidate detection in segmentation) */
+  /**
+   * Get all names + aliases for candidate detection.
+   * EXCLUDES unconfirmed_cache_only entries — dirty cache never leaks.
+   */
   getAllKnownNames(): string[];
 }
 
@@ -58,11 +76,12 @@ export interface EntityRegistry {
  * @param driveToken - Google Drive OAuth token (optional). When provided, loads 01_INDEX.
  *
  * BEHAVIOR:
- * - With driveToken: loads 01_INDEX → builds authoritative registry
- * - Without driveToken: loads did_part_registry as cache ONLY
- *   - Cache entries are marked confirmedByIndex=false
- *   - These entries can be used for candidate detection but NEVER confirm new entities
- * - On conflict between DB and 01_INDEX: entry is excluded (fail-closed)
+ * - With driveToken: loads 01_INDEX → builds authoritative registry (confirmed_by_index)
+ *   Also stamps index_confirmed_at on matching DB rows for future mirror use.
+ * - Without driveToken: loads did_part_registry as cache
+ *   - Entries with index_confirmed_at IS NOT NULL → confirmed_by_index_mirror
+ *   - Entries without index_confirmed_at → unconfirmed_cache_only (excluded from candidates)
+ * - index_confirmed_at is stamped ONLY on unambiguous, non-conflicting match to 01_INDEX
  */
 export async function loadEntityRegistry(
   supabase: ReturnType<typeof createClient>,
@@ -86,12 +105,13 @@ export async function loadEntityRegistry(
     }
   }
 
-  // 2. Build registry from 01_INDEX entries
+  // 2. Build registry
   const entries: RegistryEntry[] = [];
   const byNormalizedCanonical = new Map<string, RegistryEntry>();
   const byNormalizedAlias = new Map<string, RegistryEntry>();
 
   if (indexAvailable) {
+    // ── INDEX MODE: authoritative ──
     for (const driveEntry of indexEntries) {
       const entry: RegistryEntry = {
         id: driveEntry.id,
@@ -100,7 +120,7 @@ export async function loadEntityRegistry(
         aliases: driveEntry.aliases,
         normalizedAliases: driveEntry.normalizedAliases,
         status: driveEntry.status,
-        confirmedByIndex: true,
+        confirmationTier: "confirmed_by_index",
       };
 
       entries.push(entry);
@@ -109,13 +129,17 @@ export async function loadEntityRegistry(
         byNormalizedAlias.set(aliasNorm, entry);
       }
     }
+
+    // Stamp index_confirmed_at on matching DB rows (audit trail for future mirror use)
+    // Only stamp on unambiguous match — skip conflicts
+    await stampIndexConfirmation(supabase, indexEntries);
   } else {
-    // SAFE MODE: load from DB cache, but mark as NOT confirmed by index
-    console.warn("[entityRegistry] SAFE MODE: 01_INDEX unavailable, using DB cache (no new confirmations)");
+    // ── SAFE MODE: DB cache only ──
+    console.warn("[entityRegistry] SAFE MODE: 01_INDEX unavailable, using DB cache with audit stamps");
     try {
       const { data: dbParts } = await supabase
         .from("did_part_registry")
-        .select("part_id, part_name, aliases, status")
+        .select("part_id, part_name, aliases, status, index_confirmed_at")
         .limit(200);
 
       if (dbParts && dbParts.length > 0) {
@@ -127,6 +151,11 @@ export async function loadEntityRegistry(
             ? (row.aliases as string[]).map(a => String(a).trim()).filter(Boolean)
             : [];
 
+          // 3-TIER: mirror only if explicit audit stamp exists
+          const tier: ConfirmationTier = row.index_confirmed_at
+            ? "confirmed_by_index_mirror"
+            : "unconfirmed_cache_only";
+
           const entry: RegistryEntry = {
             id: String(row.part_id || ""),
             canonicalName: rawName,
@@ -134,7 +163,7 @@ export async function loadEntityRegistry(
             aliases: rawAliases,
             normalizedAliases: rawAliases.map(normalize),
             status: String(row.status || ""),
-            confirmedByIndex: false, // CRITICAL: cache entries are NOT authority
+            confirmationTier: tier,
           };
 
           entries.push(entry);
@@ -143,7 +172,10 @@ export async function loadEntityRegistry(
             byNormalizedAlias.set(aliasNorm, entry);
           }
         }
-        console.log(`[entityRegistry] DB cache loaded: ${entries.length} entries (non-authoritative)`);
+
+        const mirrorCount = entries.filter(e => e.confirmationTier === "confirmed_by_index_mirror").length;
+        const cacheCount = entries.filter(e => e.confirmationTier === "unconfirmed_cache_only").length;
+        console.log(`[entityRegistry] DB cache: ${mirrorCount} mirror, ${cacheCount} unconfirmed (total ${entries.length})`);
       }
     } catch (err) {
       console.error("[entityRegistry] DB cache load failed:", err);
@@ -163,28 +195,41 @@ export async function loadEntityRegistry(
     isConfirmedPart(name: string): boolean {
       const entry = this.lookupByName(name);
       if (!entry) return false;
-      // CRITICAL: only entries confirmed by 01_INDEX can confirm parts
-      return entry.confirmedByIndex;
+      // confirmed_by_index and confirmed_by_index_mirror are both valid
+      return entry.confirmationTier !== "unconfirmed_cache_only";
     },
 
     getCanonical(alias: string): string | null {
       const norm = normalize(alias);
-      // Check alias map first
       const aliasEntry = byNormalizedAlias.get(norm);
-      if (aliasEntry && aliasEntry.confirmedByIndex) return aliasEntry.canonicalName;
-      // Check canonical map
+      if (aliasEntry && aliasEntry.confirmationTier !== "unconfirmed_cache_only") {
+        return aliasEntry.canonicalName;
+      }
       const canonicalEntry = byNormalizedCanonical.get(norm);
-      if (canonicalEntry && canonicalEntry.confirmedByIndex) return canonicalEntry.canonicalName;
+      if (canonicalEntry && canonicalEntry.confirmationTier !== "unconfirmed_cache_only") {
+        return canonicalEntry.canonicalName;
+      }
       return null;
     },
 
+    /**
+     * Get confirmed part names — EXCLUDES unconfirmed_cache_only.
+     * Safe for use in segmentation candidate detection.
+     */
     getPartNames(): string[] {
-      return entries.map(e => e.canonicalName);
+      return entries
+        .filter(e => e.confirmationTier !== "unconfirmed_cache_only")
+        .map(e => e.canonicalName);
     },
 
+    /**
+     * Get all names + aliases — EXCLUDES unconfirmed_cache_only.
+     * Dirty cache never leaks into candidate detection.
+     */
     getAllKnownNames(): string[] {
       const names: string[] = [];
       for (const e of entries) {
+        if (e.confirmationTier === "unconfirmed_cache_only") continue;
         names.push(e.canonicalName);
         names.push(...e.aliases);
       }
@@ -193,4 +238,42 @@ export async function loadEntityRegistry(
   };
 
   return registry;
+}
+
+// ── Index Sync Stamp ──
+
+/**
+ * Stamp index_confirmed_at on DB rows that unambiguously match 01_INDEX entries.
+ * Only stamps on clear, non-conflicting match. Never stamps on ambiguous merge.
+ */
+async function stampIndexConfirmation(
+  supabase: ReturnType<typeof createClient>,
+  indexEntries: DriveRegistryEntry[],
+): Promise<void> {
+  try {
+    const { data: dbParts } = await supabase
+      .from("did_part_registry")
+      .select("part_id, part_name")
+      .limit(200);
+
+    if (!dbParts || dbParts.length === 0) return;
+
+    const now = new Date().toISOString();
+    const indexNameSet = new Set(indexEntries.map(e => normalize(e.primaryName)));
+
+    for (const row of dbParts) {
+      const normName = normalize(String(row.part_name || ""));
+      // Only stamp on unambiguous match — exact canonical name match
+      if (indexNameSet.has(normName)) {
+        await supabase
+          .from("did_part_registry")
+          .update({ index_confirmed_at: now })
+          .eq("part_id", row.part_id);
+      }
+    }
+
+    console.log(`[entityRegistry] Index confirmation stamps updated`);
+  } catch (err) {
+    console.warn("[entityRegistry] Failed to stamp index confirmations:", err);
+  }
 }
