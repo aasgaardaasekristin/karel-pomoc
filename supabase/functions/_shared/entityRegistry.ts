@@ -224,10 +224,8 @@ export async function loadEntityRegistry(
           };
 
           entries.push(entry);
-          byNormalizedCanonical.set(entry.normalizedCanonical, entry);
-          for (const aliasNorm of entry.normalizedAliases) {
-            byNormalizedAlias.set(aliasNorm, entry);
-          }
+          // Dedup: stronger tier always wins, never downgrade mirror to unconfirmed
+          insertWithDedup(entry, byNormalizedCanonical, byNormalizedAlias);
         }
 
         const mirrorCount = entries.filter(e => e.confirmationTier === "confirmed_by_index_mirror").length;
