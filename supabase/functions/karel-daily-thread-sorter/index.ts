@@ -14,7 +14,7 @@
  *   - non_part_context → max KDO_JE_KDO nebo ignorováno
  */
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { callAiForJson } from "../_shared/aiCallWrapper.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import {
@@ -670,7 +670,7 @@ async function processBlocksEntityGuardrails(
   blocks: SortedBlock[],
   collector: { items: GovernedSortedBlock[] },
   addLog: (msg: string) => void,
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   thread: ThreadRecord,
   dateLabel: string,
   segment: TopicSegment | null,
@@ -786,7 +786,7 @@ function buildSegmentContext(
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 async function lockThread(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   thread: ThreadRecord,
   now: Date,
 ) {
@@ -807,7 +807,7 @@ async function lockThread(
 }
 
 async function scanForUncertainEntities(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   allContent: string,
   thread: ThreadRecord,
   dateLabel: string,
@@ -847,7 +847,7 @@ async function scanForUncertainEntities(
     .in("subject_id", detectedEntities.map((e) => e.toUpperCase()));
 
   const alreadyAsked = new Set(
-    (existing ?? []).map((r: { subject_id: string | null }) =>
+    ((existing ?? []) as Array<{ subject_id?: string | null }>).map((r) =>
       normalizeName(r.subject_id ?? "")
     ),
   );
@@ -866,7 +866,7 @@ async function scanForUncertainEntities(
 }
 
 async function createEntityFollowUp(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   entityName: string,
   extractedContent: string,
   thread: ThreadRecord,
