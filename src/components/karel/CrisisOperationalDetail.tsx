@@ -9,6 +9,7 @@ import CrisisHistoryTimeline from "./CrisisHistoryTimeline";
 interface Props {
   card: CrisisOperationalCard;
   onRefetch: () => void;
+  initialTab?: TabKey;
 }
 
 type TabKey = "management" | "closure" | "history" | "audit";
@@ -20,8 +21,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "audit", label: "Audit" },
 ];
 
-const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch }) => {
-  const [activeTab, setActiveTab] = useState<TabKey>("management");
+const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab }) => {
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "management");
 
   return (
     <div className="border-x border-b rounded-b-lg mx-2 mb-1 bg-background shadow-lg" style={{ borderColor: "#7C2D2D30" }}>
