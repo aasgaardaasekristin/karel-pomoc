@@ -410,63 +410,109 @@ Deno.serve(async (req) => {
     for (const thread of threads) {
       const trimmed = thread.messages.slice(-60);
 
-      // ── MEZIFÁZE: Per-message topic segmentation ──
-      // Build message clusters (1-3 consecutive user messages, max 5min gap)
-      // then segment each cluster into topic segments BEFORE AI classification.
-      // This prevents the AI from cross-contaminating unrelated topics.
+      // ── MEZIFÁZE: Authoritative per-segment AI processing ──
+      // Step 1: Build message clusters (1-3 consecutive user msgs, max 5min gap)
       const clusters = buildMessageClusters(
         trimmed.map(m => ({ role: m.role, content: m.content || "" })),
         3,
         5 * 60 * 1000,
       );
 
-      // Pre-segment user messages for metadata annotation
-      const allSegments: TopicSegment[] = [];
+      // Step 2: Segment each cluster into topic segments
+      const segmentGroups: Array<{ segmentType: SegmentType; segments: TopicSegment[]; clusterText: string }> = [];
       for (const cluster of clusters) {
         const segs = segmentMessageIntoTopics(cluster.text, thread.id, cluster.messageIds[0] || null);
-        allSegments.push(...segs);
+        // Group segments by type for batched AI calls
+        const byType = new Map<SegmentType, TopicSegment[]>();
+        for (const seg of segs) {
+          if (seg.segment_type === "background_noise") continue;
+          const existing = byType.get(seg.segment_type) || [];
+          existing.push(seg);
+          byType.set(seg.segment_type, existing);
+        }
+        for (const [segType, groupedSegs] of byType) {
+          segmentGroups.push({
+            segmentType: segType,
+            segments: groupedSegs,
+            clusterText: groupedSegs.map(s => s.raw_segment).join("\n\n"),
+          });
+        }
       }
 
-      // Build transcript with segment annotations for AI context
-      const transcript = trimmed
-        .map((m) => `[${m.role}]: ${(m.content || "").slice(0, 800)}`)
-        .join("\n");
-
-      if (transcript.length < 50) {
-        addLog(`Skip thread ${thread.id} (too short)`);
-        continue;
+      if (segmentGroups.length === 0) {
+        // Fallback: if no segments were created (very short thread), skip
+        const totalText = trimmed.map(m => m.content || "").join(" ");
+        if (totalText.trim().length < 50) {
+          addLog(`Skip thread ${thread.id} (too short / no segments)`);
+          continue;
+        }
+        // If segmentation produced nothing but thread has content,
+        // treat entire thread as one background segment
+        segmentGroups.push({
+          segmentType: "background_noise" as SegmentType,
+          segments: [],
+          clusterText: totalText.slice(0, 3000),
+        });
       }
 
-      // Add segment summary to help AI understand topic boundaries
-      const segmentHint = allSegments.length > 0
-        ? `\n\nPŘED-SEGMENTACE (topic decomposition):\n` +
-          allSegments.map((s, i) => `  [${i+1}] ${s.segment_type} (conf=${s.confidence.toFixed(2)}${s.part_name ? `, část=${s.part_name}` : ""}): "${s.raw_segment.slice(0, 80)}..."`).join("\n") +
-          `\n\nPOUŽIJ tuto před-segmentaci jako vodítko. Nemíchej osobní obsah s klinickým. Každý segment zpracuj zvlášť.\n`
-        : "";
+      // Step 3: Call AI per segment group (not per whole transcript)
+      // Each segment group = one coherent topic from the thread
+      let threadBlocks: SortedBlock[] = [];
+      let threadClassified: any[] = [];
 
-      const userPrompt = `Zdrojov\u00e9 vl\u00e1kno: "${thread.label}" (typ: ${thread.subMode})
+      for (const group of segmentGroups) {
+        if (group.segmentType === "background_noise") continue;
+        if (group.clusterText.trim().length < 30) continue;
+
+        // Include minimal conversation context (assistant responses near the segment)
+        const contextSnippet = buildContextAroundSegment(trimmed, group.clusterText);
+
+        const segmentPrompt = `Zdrojové vlákno: "${thread.label}" (typ: ${thread.subMode})
 Datum: ${dateLabel}
-${segmentHint}
---- KONVERZACE ---
-${transcript}
+Segment typ: ${group.segmentType}
+${group.segments[0]?.part_name ? `Detekovaná část: ${group.segments[0].part_name}` : ""}
+
+--- SEGMENTOVANÝ OBSAH ---
+${group.clusterText.slice(0, 2000)}
+--- KONTEXT ---
+${contextSnippet.slice(0, 1000)}
 --- KONEC ---
 
-Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud vl\u00e1kno neobsahuje nic nov\u00e9ho, vra\u0165 { "blocks": [], "classified_items": [] }.`;
+Roztřiď POUZE obsah tohoto segmentu. Segment je typu "${group.segmentType}".
+${group.segmentType === "personal_relational" ? "POZOR: Osobní vztahový obsah NIKDY do KARTA_*. Pouze do PAMET_KAREL." : ""}
+${group.segmentType === "part_clinical" ? "Klinický obsah o DID části. Může jít do KARTA_* pokud je entita potvrzena." : ""}
+Pokud segment neobsahuje nic nového, vrať { "blocks": [], "classified_items": [] }.`;
 
-      const result = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
-        systemPrompt: SORTING_SYSTEM_PROMPT,
-        userPrompt,
-        model: "google/gemini-2.5-flash",
-        apiKey,
-        requiredKeys: ["blocks"],
-        maxRetries: 1,
-        fallback: { blocks: [], classified_items: [] },
-        callerName: "thread-sorter",
-      });
+        const segResult = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
+          systemPrompt: SORTING_SYSTEM_PROMPT,
+          userPrompt: segmentPrompt,
+          model: "google/gemini-2.5-flash",
+          apiKey,
+          requiredKeys: ["blocks"],
+          maxRetries: 1,
+          fallback: { blocks: [], classified_items: [] },
+          callerName: "thread-sorter",
+        });
 
-      const blocks = result.data?.blocks ?? [];
-      const rawClassified = result.data?.classified_items ?? [];
-      addLog(`Thread ${thread.id} ("${thread.label}"): ${blocks.length} blocks, ${rawClassified.length} classified items`);
+        const segBlocks = segResult.data?.blocks ?? [];
+        const segClassified = segResult.data?.classified_items ?? [];
+
+        // Tag each block/item with its segment type for downstream traceability
+        for (const b of segBlocks) {
+          (b as any)._segment_type = group.segmentType;
+        }
+        for (const ci of segClassified) {
+          ci._segment_type = group.segmentType;
+        }
+
+        threadBlocks.push(...segBlocks);
+        threadClassified.push(...segClassified);
+      }
+
+      addLog(`Thread ${thread.id} ("${thread.label}"): ${segmentGroups.length} segment groups → ${threadBlocks.length} blocks, ${threadClassified.length} classified items`);
+
+      const blocks = threadBlocks;
+      const rawClassified = threadClassified;
 
       if (blocks.length === 0) {
         await lockThread(supabase, thread, now);
@@ -821,4 +867,33 @@ async function createEntityFollowUp(
   if (error) {
     console.warn(`[thread-sorter] Follow-up question insert failed: ${error.message}`);
   }
+}
+
+/**
+ * Build minimal conversation context around a segment's content.
+ * Finds assistant responses near the segment text to give AI context
+ * without sending the entire transcript.
+ */
+function buildContextAroundSegment(
+  messages: Array<{ role: string; content: string }>,
+  segmentText: string,
+): string {
+  const segLower = segmentText.toLowerCase().slice(0, 100);
+  const contextMsgs: string[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "user" && (msg.content || "").toLowerCase().includes(segLower.slice(0, 40))) {
+      // Include this message and surrounding assistant responses
+      if (i > 0 && messages[i - 1].role === "assistant") {
+        contextMsgs.push(`[assistant]: ${messages[i - 1].content.slice(0, 300)}`);
+      }
+      if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
+        contextMsgs.push(`[assistant]: ${messages[i + 1].content.slice(0, 300)}`);
+      }
+      break;
+    }
+  }
+
+  return contextMsgs.join("\n") || "(žádný kontext)";
 }
