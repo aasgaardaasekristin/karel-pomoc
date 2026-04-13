@@ -94,10 +94,10 @@ const CrisisAlert: React.FC = () => {
                   )}
 
                   {/* Global unread brief indicator (crisis_briefs has no per-event FK) */}
-                  {card.unreadBriefCount > 0 && (
+                  {card.globalUnreadBriefCount > 0 && (
                     <span className="text-[10px] bg-red-500/30 text-red-100 px-1.5 py-0.5 rounded flex items-center gap-1">
                       <Bell className="w-3 h-3" />
-                      {card.unreadBriefCount} brief{card.unreadBriefCount > 1 ? "y" : ""} (celkem)
+                      {card.globalUnreadBriefCount} brief{card.globalUnreadBriefCount > 1 ? "y" : ""} (celkem)
                     </span>
                   )}
 
