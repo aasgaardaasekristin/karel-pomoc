@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import { normalizeSignal } from "../_shared/signalNormalization.ts";
 
 /**
  * karel-daily-therapist-intelligence
