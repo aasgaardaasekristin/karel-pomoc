@@ -313,57 +313,65 @@ serve(async (req) => {
     }
 
     // --- Zdroj D: DID-relevantní info z osobních vláken ---
-    // Privacy decomposition: osobní vlákna se rozpadají na:
-    //   1. PAMET_KAREL (raw private signal) — governed envelope
-    //   2. Operativní implikace (abstrahovaný závěr) → 05A — governed envelope
-    //   3. Klinický dopad na část → KARTA_{PART} — governed envelope
-    //   4. Agenda item — zachováno
+    // FÁZE 2.5: Všechny signály procházejí přes normalizeSignal()
+    // Raw obsah → PAMET_KAREL only
+    // Operativní implikace → 05A (jen pokud canWriteToOperationalLayer)
+    // Klinické implikace → KARTA_{PART} (jen pokud canWriteToPartCard)
+    // Agenda item → zachováno
     for (const conv of recentConversations || []) {
       const msgs = Array.isArray(conv.messages) ? conv.messages : [];
       const recentUserMsgs = msgs.filter((m: any) =>
         m?.role === "user" && DID_KEYWORDS.some(kw => (m?.content || "").includes(kw))
       );
 
-      const therapist = conv.sub_mode === "kata" ? "kata" : "hanka";
+      const therapist: "hanka" | "kata" = conv.sub_mode === "kata" ? "kata" : "hanka";
+      const sourceDomain: SourceDomain = conv.sub_mode === "kata"
+        ? "therapist_kata"
+        : (conv.sub_mode === "hana_personal" ? "hana_personal" : "therapist_hanka");
 
       for (const msg of recentUserMsgs) {
         const content = (msg as any)?.content || "";
-        const part = detectPartMention(content);
-        const hasStressSignal = STRESS_KEYWORDS.some(kw => content.toLowerCase().includes(kw));
 
-        // 1. PAMET_KAREL — raw private signal (always)
-        const pametTarget = therapist === "kata"
-          ? "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY"
-          : "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY";
-
-        await sb.from("did_pending_drive_writes").insert({
-          target_document: pametTarget,
-          content: encodeGovernedWrite(
-            `[Osobní vlákno ${new Date().toISOString().split("T")[0]}] ${content.slice(0, 500)}`,
-            {
-              source_type: "reactive-loop",
-              source_id: conv.id,
-              content_type: "therapist_memory_note",
-              subject_type: "therapist",
-              subject_id: therapist,
-            },
-          ),
-          write_type: "append",
-          priority: "normal",
-          status: "pending",
-          user_id: DID_OWNER_ID,
+        // ── FÁZE 2.5: Normalize the signal ──
+        const signal = normalizeSignal({
+          raw_content: content,
+          source_domain: sourceDomain,
+          source_id: conv.id,
+          source_message_id: (msg as any)?.id || null,
+          therapist,
         });
 
-        // 2. Operativní implikace — jen pokud je stress/kapacitní signál
-        if (hasStressSignal) {
-          const abstracted = therapist === "kata"
-            ? "Signál snížené kapacity Káti — zvážit redukci úkolování."
-            : "Signál zvýšené zátěže Hanky — zvážit úpravu plánu dne.";
+        // 1. PAMET_KAREL — raw private signal (always for private/personal sources)
+        if (signal.recommended_actions.includes("write_pamet")) {
+          const pametTarget = therapist === "kata"
+            ? "PAMET_KAREL/DID/KATA/KARLOVY_POZNATKY"
+            : "PAMET_KAREL/DID/HANKA/KARLOVY_POZNATKY";
 
+          await sb.from("did_pending_drive_writes").insert({
+            target_document: pametTarget,
+            content: encodeGovernedWrite(
+              `[Osobní vlákno ${new Date().toISOString().split("T")[0]}] ${content.slice(0, 500)}`,
+              {
+                source_type: "reactive-loop",
+                source_id: conv.id,
+                content_type: "therapist_memory_note",
+                subject_type: "therapist",
+                subject_id: therapist,
+              },
+            ),
+            write_type: "append",
+            priority: "normal",
+            status: "pending",
+            user_id: DID_OWNER_ID,
+          });
+        }
+
+        // 2. Operativní implikace — jen pokud normalizace povolí
+        if (canWriteToOperationalLayer(signal) && signal.derived_operational_implication) {
           await sb.from("did_pending_drive_writes").insert({
             target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
             content: encodeGovernedWrite(
-              `\n\n--- ${new Date().toISOString().split("T")[0]} | reactive-loop ---\n${abstracted}`,
+              `\n\n--- ${new Date().toISOString().split("T")[0]} | reactive-loop ---\n${signal.derived_operational_implication}`,
               {
                 source_type: "reactive-loop",
                 source_id: conv.id,
@@ -379,21 +387,19 @@ serve(async (req) => {
           });
         }
 
-        // 3. Klinický dopad na část — pokud zmíněna část
+        // 3. Klinický dopad na část — jen pokud normalizace povolí
         //    NIKDY raw obsah — jen odvozená klinická implikace
-        if (part) {
-          const clinicalImplication = deriveClinicalImplicationFromPrivateSignal(part, content);
-
+        if (canWriteToPartCard(signal) && signal.derived_clinical_implication && signal.part_name) {
           await sb.from("did_pending_drive_writes").insert({
-            target_document: `KARTA_${part.toUpperCase()}`,
+            target_document: `KARTA_${signal.part_name.toUpperCase()}`,
             content: encodeGovernedWrite(
-              clinicalImplication,
+              signal.derived_clinical_implication,
               {
                 source_type: "reactive-loop",
                 source_id: conv.id,
                 content_type: "session_result",
                 subject_type: "part",
-                subject_id: part,
+                subject_id: signal.part_name,
               },
             ),
             write_type: "append",
@@ -403,14 +409,14 @@ serve(async (req) => {
           });
         }
 
-        // 4. Agenda item — zachováno
+        // 4. Agenda item — zachováno (safe_summary místo raw content)
         await sb.from("karel_conversation_agenda").insert({
           therapist,
-          topic: `DID zmínka v osobním vlákně: ${content.slice(0, 100)}`,
+          topic: `DID zmínka v osobním vlákně: ${signal.safe_summary.slice(0, 100)}`,
           topic_type: "followup",
-          priority: "when_appropriate",
-          context: `[Abstrahováno z osobního vlákna] ${part ? `Část: ${part}. ` : ""}${content.slice(0, 300)}`,
-          related_part: part || null,
+          priority: signal.signal_type === "risk" ? "urgent" : "when_appropriate",
+          context: `[Normalizováno] ${signal.normalized_summary}. ${signal.part_name ? `Část: ${signal.part_name}. ` : ""}Confidence: ${signal.confidence.toFixed(2)}, Evidence: ${signal.evidence_strength}`,
+          related_part: signal.part_name || null,
           status: "pending",
         });
 
