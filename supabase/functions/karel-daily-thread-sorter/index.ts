@@ -405,21 +405,22 @@ Datum: ${dateLabel}
 ${transcript}
 --- KONEC ---
 
-Rozt\u0159i\u010f obsah do blok\u016f. Pokud vl\u00e1kno neobsahuje nic nov\u00e9ho nebo u\u017eite\u010dn\u00e9ho, vra\u0165 { "blocks": [] }.`;
+Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud vl\u00e1kno neobsahuje nic nov\u00e9ho, vra\u0165 { "blocks": [], "classified_items": [] }.`;
 
-      const result = await callAiForJson<{ blocks: SortedBlock[] }>({
+      const result = await callAiForJson<{ blocks: SortedBlock[]; classified_items: any[] }>({
         systemPrompt: SORTING_SYSTEM_PROMPT,
         userPrompt,
         model: "google/gemini-2.5-flash",
         apiKey,
         requiredKeys: ["blocks"],
         maxRetries: 1,
-        fallback: { blocks: [] },
+        fallback: { blocks: [], classified_items: [] },
         callerName: "thread-sorter",
       });
 
       const blocks = result.data?.blocks ?? [];
-      addLog(`Thread ${thread.id} ("${thread.label}"): ${blocks.length} blocks extracted`);
+      const rawClassified = result.data?.classified_items ?? [];
+      addLog(`Thread ${thread.id} ("${thread.label}"): ${blocks.length} blocks, ${rawClassified.length} classified items`);
 
       if (blocks.length === 0) {
         await lockThread(supabase, thread, now);
