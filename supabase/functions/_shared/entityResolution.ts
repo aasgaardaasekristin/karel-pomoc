@@ -4,12 +4,14 @@
  * Entity classification and permission resolution.
  *
  * Classifies entity names into 11 EntityKind types and derives
- * permission flags (can_create_card, can_be_session_target, etc.).
+ * permission flags (can_create_new_card, can_write_existing_card,
+ * can_be_session_target, etc.).
  *
  * RULES:
  * - Alias match is valid ONLY if alias exists in 01_INDEX
  * - No string similarity, no AI heuristics, no fuzzy matching
- * - can_create_card = true ONLY for confirmed_did_part / confirmed_part_alias
+ * - can_create_new_card = true ONLY for confirmed_by_index
+ * - can_write_existing_card = true for confirmed_by_index OR confirmed_by_index_mirror
  * - can_be_session_target requires additional communicability evidence
  * - Without 01_INDEX → no new confirmations (fail-closed)
  */
@@ -40,7 +42,10 @@ export interface ResolvedEntity {
   matched_part_id?: string | null;
   matched_canonical_name?: string | null;
   alias_match?: boolean;
-  can_create_card: boolean;
+  /** Can a NEW card (KARTA_*) be created for this entity? Only confirmed_by_index. */
+  can_create_new_card: boolean;
+  /** Can data be written to an EXISTING card? confirmed_by_index OR confirmed_by_index_mirror. */
+  can_write_existing_card: boolean;
   can_be_session_target: boolean;
   must_consult_therapists: boolean;
   must_write_context: boolean;
@@ -151,14 +156,17 @@ export function resolveEntity(
       const isAlias = entry.normalizedCanonical !== norm;
       const kind: EntityKind = isAlias ? "confirmed_part_alias" : "confirmed_did_part";
 
-      // can_create_card: only from live index (new cards need live authority)
-      const canCreateCard = entry.confirmationTier === "confirmed_by_index";
-      // Mirror tier can work with existing cards but not create new ones
+      // Permission split:
+      // - can_create_new_card: ONLY live index (creating a brand new KARTA_* requires live authority)
+      // - can_write_existing_card: index OR mirror (writing to an already existing card is safe)
+      const canCreateNew = entry.confirmationTier === "confirmed_by_index";
+      const canWriteExisting = true; // both index and mirror tiers can write to existing cards
 
       return buildResult(name, norm, kind, entry, {
         alias_match: isAlias,
         confidence: entry.confirmationTier === "confirmed_by_index" ? 1.0 : 0.9,
-        can_create_card: canCreateCard,
+        can_create_new_card: canCreateNew,
+        can_write_existing_card: canWriteExisting,
         can_be_session_target: !!communicabilityEvidence,
         reasons: [
           isAlias
@@ -168,7 +176,7 @@ export function resolveEntity(
             ? ["Communicability evidence present → can_be_session_target"]
             : ["No communicability evidence → can_be_session_target=false"]),
           ...(entry.confirmationTier === "confirmed_by_index_mirror"
-            ? ["Mirror tier: can work with existing cards, cannot create new ones"]
+            ? ["Mirror tier: can write to existing cards, cannot create new ones"]
             : []),
         ],
       });
@@ -204,7 +212,8 @@ export function resolveEntity(
 interface ResultOverrides {
   confidence?: number;
   alias_match?: boolean;
-  can_create_card?: boolean;
+  can_create_new_card?: boolean;
+  can_write_existing_card?: boolean;
   can_be_session_target?: boolean;
   must_consult_therapists?: boolean;
   must_write_context?: boolean;
@@ -228,7 +237,8 @@ function buildResult(
     matched_part_id: entry?.id ?? null,
     matched_canonical_name: entry?.canonicalName ?? null,
     alias_match: overrides.alias_match ?? false,
-    can_create_card: overrides.can_create_card ?? defaults.can_create_card,
+    can_create_new_card: overrides.can_create_new_card ?? defaults.can_create_new_card,
+    can_write_existing_card: overrides.can_write_existing_card ?? defaults.can_write_existing_card,
     can_be_session_target: overrides.can_be_session_target ?? defaults.can_be_session_target,
     must_consult_therapists: overrides.must_consult_therapists ?? defaults.must_consult_therapists,
     must_write_context: overrides.must_write_context ?? defaults.must_write_context,
@@ -239,7 +249,8 @@ function buildResult(
 
 interface KindDefaults {
   confidence: number;
-  can_create_card: boolean;
+  can_create_new_card: boolean;
+  can_write_existing_card: boolean;
   can_be_session_target: boolean;
   must_consult_therapists: boolean;
   must_write_context: boolean;
@@ -249,29 +260,29 @@ interface KindDefaults {
 function getKindDefaults(kind: EntityKind): KindDefaults {
   switch (kind) {
     case "confirmed_did_part":
-      return { confidence: 1.0, can_create_card: true, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
+      return { confidence: 1.0, can_create_new_card: true, can_write_existing_card: true, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
     case "confirmed_part_alias":
-      return { confidence: 1.0, can_create_card: true, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
+      return { confidence: 1.0, can_create_new_card: true, can_write_existing_card: true, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
     case "therapist":
-      return { confidence: 1.0, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
+      return { confidence: 1.0, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
     case "forbidden_as_part":
-      return { confidence: 1.0, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
+      return { confidence: 1.0, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: false, must_write_trigger: false };
     case "external_person":
-      return { confidence: 0.9, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.9, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
     case "animal":
-      return { confidence: 0.9, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.9, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
     case "family_member":
-      return { confidence: 0.9, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.9, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
     case "symbolic_inner_figure":
-      return { confidence: 0.7, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.7, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
     case "inner_world_nonembodied":
-      return { confidence: 0.7, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.7, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
     case "context_object":
-      return { confidence: 0.5, can_create_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.5, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: false, must_write_context: true, must_write_trigger: false };
     case "uncertain_entity":
-      return { confidence: 0.3, can_create_card: false, can_be_session_target: false, must_consult_therapists: true, must_write_context: true, must_write_trigger: false };
+      return { confidence: 0.3, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: true, must_write_context: true, must_write_trigger: false };
     default:
-      return { confidence: 0.1, can_create_card: false, can_be_session_target: false, must_consult_therapists: true, must_write_context: false, must_write_trigger: false };
+      return { confidence: 0.1, can_create_new_card: false, can_write_existing_card: false, can_be_session_target: false, must_consult_therapists: true, must_write_context: false, must_write_trigger: false };
   }
 }
 
