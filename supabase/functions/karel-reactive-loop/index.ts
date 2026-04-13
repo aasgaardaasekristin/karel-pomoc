@@ -49,6 +49,39 @@ function detectPartMention(text: string): string | null {
   return null;
 }
 
+/**
+ * Derive a safe clinical implication from a private signal mentioning a part.
+ * NEVER passes raw personal content — only an abstracted professional conclusion.
+ */
+function deriveClinicalImplicationFromPrivateSignal(partName: string, rawContent: string): string {
+  const lower = rawContent.toLowerCase();
+
+  // Detect clinical themes heuristically — output is always abstracted
+  const themes: string[] = [];
+
+  if (["strach", "bojí", "úzkost", "panika", "děs"].some(w => lower.includes(w)))
+    themes.push("zvýšená úzkostná reaktivita");
+  if (["vztek", "agrese", "naštvaný", "zuří", "zuřivost"].some(w => lower.includes(w)))
+    themes.push("signály zvýšené afektivní tenze");
+  if (["smutek", "pláče", "brečí", "stýská", "ztráta"].some(w => lower.includes(w)))
+    themes.push("emocionální zranitelnost — smutek/ztráta");
+  if (["odmítnutí", "nechce", "odmítá", "zavírá", "stáhl"].some(w => lower.includes(w)))
+    themes.push("signál stažení / odmítání kontaktu");
+  if (["přepnutí", "switch", "disociace", "ztratil", "zmizel"].some(w => lower.includes(w)))
+    themes.push("možný switching / disociativní signál");
+  if (["důvěra", "věří", "nevěří", "podezřívá"].some(w => lower.includes(w)))
+    themes.push("signál ve vztahové důvěře");
+  if (["spánek", "nespí", "noční", "budí se", "děsivý sen"].some(w => lower.includes(w)))
+    themes.push("narušení spánkového vzorce");
+
+  if (themes.length === 0) {
+    themes.push("nespecifikovaný signál vyžadující ověření v přímém kontaktu");
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+  return `[${today}] Odvozená klinická implikace pro ${partName}: ${themes.join("; ")}. Doporučeno ověřit v dalším sezení.`;
+}
+
 function generateReactiveResponse(taskText: string, isCrisis: boolean): string {
   if (isCrisis) return `Karel zaznamenal krizovou informaci a aktualizuje plán. ${taskText.slice(0,150)}`;
   return `Karel přijal informaci a zapracovává ji do plánu. ${taskText.slice(0,150)}`;
@@ -341,11 +374,14 @@ serve(async (req) => {
         }
 
         // 3. Klinický dopad na část — pokud zmíněna část
+        //    NIKDY raw obsah — jen odvozená klinická implikace
         if (part) {
+          const clinicalImplication = deriveClinicalImplicationFromPrivateSignal(part, content);
+
           await sb.from("did_pending_drive_writes").insert({
             target_document: `KARTA_${part.toUpperCase()}`,
             content: encodeGovernedWrite(
-              `[Osobní vlákno — klinický dopad] ${content.slice(0, 400)}`,
+              clinicalImplication,
               {
                 source_type: "reactive-loop",
                 source_id: conv.id,
