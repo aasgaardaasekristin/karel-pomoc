@@ -637,12 +637,14 @@ async function partCardExists(
       const parentId = await findFolder(driveToken, parentName, kartotekaRootId);
       if (!parentId) continue;
 
-      // Look for part subfolder (e.g. "ANNA" or folder containing part name)
+      // Look for part subfolder — EXACT canonical match only (no substring/includes)
+      // Prevents false positives like "MARIANNA" matching "ANNA"
       const subfolders = await listFiles(driveToken, parentId);
+      const targetUpper = canonicalName.toUpperCase().replace(/[^A-ZÀ-Ž0-9]/g, "_");
       for (const sub of subfolders) {
         if (sub.mimeType !== "application/vnd.google-apps.folder") continue;
-        // Part subfolder name should match canonical name (case-insensitive)
-        if (!sub.name.toUpperCase().includes(canonicalName.toUpperCase())) continue;
+        const subUpper = sub.name.toUpperCase().replace(/[^A-ZÀ-Ž0-9]/g, "_");
+        if (subUpper !== targetUpper && !subUpper.startsWith(targetUpper + "_")) continue;
 
         // Search for KARTA_* file inside this specific subfolder
         const files = await listFiles(driveToken, sub.id);
