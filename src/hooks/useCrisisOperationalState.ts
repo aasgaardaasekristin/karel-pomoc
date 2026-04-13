@@ -669,7 +669,14 @@ export function useCrisisOperationalState() {
           cardPropagationStatus: [],
           planSyncStatus: null,
           mainBlocker: computeMainBlocker(partialCard),
+          computedCTAs: [], // populated after card is built
+          closureBlockerSummary: null, // populated after backend readiness fetch
+          unreadBriefCount: 0, // populated after brief count fetch
         });
+
+        // Compute CTAs now that the card is in the map
+        const builtCard = cardMap.get(key)!;
+        builtCard.computedCTAs = computeCTAs(builtCard);
       }
 
       // Add alerts without events (legacy)
@@ -706,7 +713,11 @@ export function useCrisisOperationalState() {
             interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
             closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
             cardPropagationStatus: [], planSyncStatus: null,
+            computedCTAs: [], closureBlockerSummary: null, unreadBriefCount: 0,
           });
+          // Compute CTAs for legacy alert-only cards
+          const legacyCard = cardMap.get(key)!;
+          legacyCard.computedCTAs = computeCTAs(legacyCard);
         }
       }
 
