@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { CheckCircle, AlertTriangle, HelpCircle, Send, Loader2 } from "lucide-react";
+import React, { useState, useMemo } from "react";
+import { CheckCircle, AlertTriangle, HelpCircle, Send, Loader2, Brain, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
@@ -20,9 +20,43 @@ async function callFn(fnName: string, body: Record<string, any>) {
   return res.json();
 }
 
+interface ParsedAnalysis {
+  date: string;
+  intervention_effectiveness?: string;
+  stabilization_trend?: string;
+  main_risk?: string;
+  next_action?: string;
+  karel_recommendation?: string;
+  needs_follow_up_session?: boolean;
+  needs_crisis_meeting?: boolean;
+  prepare_closure?: boolean;
+}
+
 const CrisisSessionQA: React.FC<Props> = ({ card, onRefetch }) => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
+  const [expandedAnalyses, setExpandedAnalyses] = useState<Record<string, boolean>>({});
+
+  // Collect ALL analyses, grouped by date
+  const allAnalyses = useMemo<ParsedAnalysis[]>(() => {
+    const results: ParsedAnalysis[] = [];
+    for (const q of card.sessionQuestions) {
+      if (!q.karelAnalysis) continue;
+      try {
+        const parsed = JSON.parse(q.karelAnalysis);
+        const date = q.karelAnalyzedAt?.slice(0, 10) || q.answeredAt?.slice(0, 10) || "unknown";
+        results.push({ date, ...parsed });
+      } catch {
+        // skip unparseable
+      }
+    }
+    // Deduplicate by date (keep latest per date)
+    const byDate = new Map<string, ParsedAnalysis>();
+    for (const a of results) {
+      byDate.set(a.date, a); // later entry overwrites earlier
+    }
+    return Array.from(byDate.values()).sort((a, b) => b.date.localeCompare(a.date));
+  }, [card.sessionQuestions]);
 
   if (card.sessionQuestions.length === 0) return null;
 
@@ -43,12 +77,6 @@ const CrisisSessionQA: React.FC<Props> = ({ card, onRefetch }) => {
       } else toast.error(data.error || "Chyba");
     });
   };
-
-  const parsedAnalysis = (() => {
-    const analyzedQ = card.sessionQuestions.find(q => q.karelAnalysis);
-    if (!analyzedQ?.karelAnalysis) return null;
-    try { return JSON.parse(analyzedQ.karelAnalysis); } catch { return null; }
-  })();
 
   return (
     <div className="bg-muted/30 rounded-lg p-3 space-y-2">
@@ -87,21 +115,46 @@ const CrisisSessionQA: React.FC<Props> = ({ card, onRefetch }) => {
         ))}
       </div>
 
-      {parsedAnalysis && (
-        <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded p-2 space-y-1 text-[10px]">
-          <p className="font-bold text-blue-800 dark:text-blue-300 text-[11px]">Karlova analýza</p>
-          <div className="grid grid-cols-2 gap-1">
-            {parsedAnalysis.intervention_effectiveness && <p><strong>Efektivita:</strong> {parsedAnalysis.intervention_effectiveness}</p>}
-            {parsedAnalysis.stabilization_trend && <p><strong>Trend:</strong> {parsedAnalysis.stabilization_trend}</p>}
-            {parsedAnalysis.main_risk && <p className="col-span-2"><strong>Hlavní riziko:</strong> {parsedAnalysis.main_risk}</p>}
-            {parsedAnalysis.next_action && <p className="col-span-2"><strong>Další krok:</strong> {parsedAnalysis.next_action}</p>}
-            {parsedAnalysis.karel_recommendation && <p className="col-span-2"><strong>Doporučení:</strong> {parsedAnalysis.karel_recommendation}</p>}
-          </div>
-          <div className="flex gap-2 text-[9px] text-muted-foreground mt-1">
-            {parsedAnalysis.needs_follow_up_session && <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 px-1 rounded">Potřeba follow-up</span>}
-            {parsedAnalysis.needs_crisis_meeting && <span className="bg-destructive/10 text-destructive px-1 rounded">Potřeba porady</span>}
-            {parsedAnalysis.prepare_closure && <span className="bg-green-100 dark:bg-green-900/30 text-green-700 px-1 rounded">Připravit uzavření</span>}
-          </div>
+      {/* All analyses – grouped by date, all shown */}
+      {allAnalyses.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
+            <Brain className="w-3.5 h-3.5" />
+            Karlovy analýzy ({allAnalyses.length})
+          </p>
+          {allAnalyses.map((analysis, idx) => {
+            const key = `analysis_${analysis.date}_${idx}`;
+            const isExpanded = expandedAnalyses[key] ?? (idx === 0); // first expanded by default
+            return (
+              <div key={key} className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded p-2 space-y-1 text-[10px]">
+                <button
+                  onClick={() => setExpandedAnalyses(prev => ({ ...prev, [key]: !isExpanded }))}
+                  className="flex items-center gap-1.5 w-full text-left"
+                >
+                  {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+                  <span className="font-bold text-blue-800 dark:text-blue-300 text-[11px]">
+                    Analýza {new Date(analysis.date).toLocaleDateString("cs-CZ")}
+                  </span>
+                </button>
+                {isExpanded && (
+                  <>
+                    <div className="grid grid-cols-2 gap-1 mt-1">
+                      {analysis.intervention_effectiveness && <p><strong>Efektivita:</strong> {analysis.intervention_effectiveness}</p>}
+                      {analysis.stabilization_trend && <p><strong>Trend:</strong> {analysis.stabilization_trend}</p>}
+                      {analysis.main_risk && <p className="col-span-2"><strong>Hlavní riziko:</strong> {analysis.main_risk}</p>}
+                      {analysis.next_action && <p className="col-span-2"><strong>Další krok:</strong> {analysis.next_action}</p>}
+                      {analysis.karel_recommendation && <p className="col-span-2"><strong>Doporučení:</strong> {analysis.karel_recommendation}</p>}
+                    </div>
+                    <div className="flex gap-2 text-[9px] text-muted-foreground mt-1">
+                      {analysis.needs_follow_up_session && <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 px-1 rounded">Potřeba follow-up</span>}
+                      {analysis.needs_crisis_meeting && <span className="bg-destructive/10 text-destructive px-1 rounded">Potřeba porady</span>}
+                      {analysis.prepare_closure && <span className="bg-green-100 dark:bg-green-900/30 text-green-700 px-1 rounded">Připravit uzavření</span>}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
