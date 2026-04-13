@@ -46,7 +46,7 @@ const CrisisClosureWorkflow: React.FC<Props> = ({ card, onRefetch }) => {
   const r4 = card.closureReadiness4Layer;
   const cl = card.closureChecklistState;
   const localLayers = [
-    { label: "Klinická", blockers: [!cl.noRiskSignals && "Rizikové signály", !cl.triggerManaged && "Trigger nezvládnut", cl.emotionalStableDays < 2 && `Stabilita ${cl.emotionalStableDays}/2 dní`].filter(Boolean) as string[] },
+    { label: "Klinická", blockers: [!cl.noRiskSignals && "Rizikové signály", !cl.triggerManaged && "Trigger nezvládnut", cl.emotionalStableDays < 3 && `Stabilita ${cl.emotionalStableDays}/3 dní`].filter(Boolean) as string[] },
     { label: "Procesní", blockers: [!cl.karelDiagnosticDone && "Diagnostické sezení", !cl.noOpenQuestions && "Otevřené otázky", card.unansweredQuestionCount > 0 && `${card.unansweredQuestionCount} nezodpovězených Q`].filter(Boolean) as string[] },
     { label: "Týmová", blockers: [!card.closureMeeting && "Closure meeting nezaložen", card.closureMeeting && !card.closureMeeting.hankaPosition && "Stanovisko Hanky", card.closureMeeting && !card.closureMeeting.kataPosition && "Stanovisko Káti", card.closureMeeting && !card.closureMeeting.karelFinalStatement && "Karlův statement"].filter(Boolean) as string[] },
     { label: "Operační", blockers: [!cl.relapsePlanExists && "Relapse plán", !cl.groundingWorks && "Grounding nefunguje"].filter(Boolean) as string[] },
