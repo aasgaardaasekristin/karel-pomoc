@@ -729,7 +729,12 @@ export function useCrisisOperationalState() {
         if (!c.eventId) continue;
         fetchBackendReadiness(c.eventId).then(r => {
           if (!r) return;
-          setCards(prev => prev.map(pc => pc.eventId === c.eventId ? { ...pc, closureReadiness4Layer: r } : pc));
+          setCards(prev => prev.map(pc => {
+            if (pc.eventId !== c.eventId) return pc;
+            const updated = { ...pc, closureReadiness4Layer: r, closureBlockerSummary: computeClosureBlockerSummary(r) };
+            updated.computedCTAs = computeCTAs(updated);
+            return updated;
+          }));
         }).catch(() => {});
       }
 
