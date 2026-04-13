@@ -133,7 +133,7 @@ const DEFAULT_CANDIDATE_PART_NAMES = [
   "Arthur", "Tundrupek", "Gustík", "Gustik", "Petřík", "Anička", "Anicka",
   "Dmytri", "Dymi", "Bendik", "Einar", "Adam", "Bélo", "Clark", "Gabriel",
   "Gerhardt", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Lobzhang",
-  "Emily", "Gejbi", "C.G.", "Bytostne Ja",
+  "Gejbi",
 ];
 
 /**
