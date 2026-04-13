@@ -151,19 +151,20 @@ export async function executeClassifiedItems(
         console.warn(`[${callerName}] Privacy blocked: ${item.info_class} → ${route.target_document}`);
         result.privacy_blocked++;
       } else {
-        // Anti-dup check for operational docs
-        const isDup = await isDuplicateWrite(
-          sb, route.target_document, item.source_id, meta.content_type, meta.subject_id,
-        );
-        if (isDup) {
-          console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (source_id=${item.source_id})`);
-          result.dedup_skipped++;
-        } else {
           const safeContent = applySafetyFilter(item);
           const datePrefix = `\n\n--- ${sourceDateLabel} | ${item.source} ---\n`;
           const rawPayload = route.write_type === "replace"
             ? safeContent
             : `${datePrefix}${safeContent}`;
+
+          // Anti-dup check for operational docs — now includes payload fingerprint
+          const isDup = await isDuplicateWrite(
+            sb, route.target_document, item.source_id, meta.content_type, meta.subject_id, rawPayload,
+          );
+          if (isDup) {
+            console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (source_id=${item.source_id}, fingerprint match)`);
+            result.dedup_skipped++;
+          } else {
 
           await sb.from("did_pending_drive_writes").insert({
             target_document: route.target_document,
