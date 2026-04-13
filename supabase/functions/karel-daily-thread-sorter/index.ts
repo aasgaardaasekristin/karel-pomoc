@@ -584,28 +584,41 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
   }
 });
 
-// ─── Helper: check if a part card file exists in Drive pending writes or registry ──
+// ─── Helper: check if a part card file actually exists in Drive ──
+// FÁZE 2.6: Must verify real Drive file existence, not indirect DB indicators.
+// did_pending_drive_writes or did_part_registry do NOT prove a card document exists.
 
 async function partCardExists(
-  supabase: SupabaseClient,
   canonicalName: string,
+  driveToken: string | null,
 ): Promise<boolean> {
-  // Check if there are any existing writes to this card (implies card exists)
-  const target = `KARTA_${canonicalName.toUpperCase()}`;
-  const { data } = await supabase
-    .from("did_pending_drive_writes")
-    .select("id")
-    .eq("target_document", target)
-    .limit(1);
-  if (data && data.length > 0) return true;
+  if (!driveToken) {
+    // No Drive access → fail-closed: cannot confirm existence
+    console.warn(`[thread-sorter] partCardExists: no Drive token, fail-closed for ${canonicalName}`);
+    return false;
+  }
 
-  // Check did_part_registry for a matching entry (card assumed to exist if registered)
-  const { data: regData } = await supabase
-    .from("did_part_registry")
-    .select("part_id")
-    .ilike("part_name", canonicalName)
-    .limit(1);
-  return !!(regData && regData.length > 0);
+  const fileName = `KARTA_${canonicalName.toUpperCase()}`;
+  try {
+    const query = `name contains '${fileName}' and mimeType = 'application/vnd.google-apps.document' and trashed = false`;
+    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+    const res = await fetch(searchUrl, {
+      headers: { Authorization: `Bearer ${driveToken}` },
+    });
+    if (!res.ok) {
+      console.warn(`[thread-sorter] Drive search failed (${res.status}), fail-closed for ${fileName}`);
+      return false;
+    }
+    const data = await res.json();
+    const files = data.files || [];
+    // Exact or prefix match (KARTA_JMENO or KARTA_JMENO_...)
+    return files.some((f: { name: string }) =>
+      f.name === fileName || f.name.startsWith(fileName + "_")
+    );
+  } catch (err) {
+    console.warn(`[thread-sorter] Drive lookup error for ${fileName}:`, err);
+    return false; // fail-closed
+  }
 }
 
 // ─── Helper: process blocks through entity guardrails ────────────────
