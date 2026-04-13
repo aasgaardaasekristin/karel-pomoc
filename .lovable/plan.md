@@ -1,43 +1,55 @@
 
+## FÁZE 1 — DOCUMENT GOVERNANCE (HOTOVO)
 
-## Diagnóza problému
+### Co bylo uděláno
 
-V resolveru jsou **dva bugy**:
+#### 1. Nový soubor: `supabase/functions/_shared/documentGovernance.ts`
+Centrální routing vrstva se:
+- **18 content types** (profile_claim, session_result, closure_summary, closure_chronology, closure_analysis, closure_recommendations, daily_plan, next_day_plan, therapist_memory_note, situational_analysis, strategic_outlook, long_term_trajectory, dashboard_status, crisis_context, session_log, card_section_update, pattern_observation, test_result)
+- **6 dokumentových vrstev** (KARTA_CASTI, 05A, 05B, 05C, DASHBOARD, PAMET_KAREL)
+- Funkce `routeWrite()` — single source of truth pro routing
+- Funkce `buildAuditEntry()` — generuje audit záznamy
+- Funkce `isGovernedTarget()` — whitelist pro drive-queue-processor
+- `REPLACE_ALLOWED_TARGETS` — rozšířeno o 05A, 05B, 05C, DASHBOARD
 
-### Bug 1: Filtr na GDOC_MIME při hledání dokumentu
-Řádky 136-138 v `karel-drive-queue-processor/index.ts`:
-```typescript
-const doc = files.find(
-  (f) => f.mimeType === GDOC_MIME && f.name.toUpperCase().includes(docName.toUpperCase()),
-);
-```
-Soubory na Drive jsou `PROFIL_OSOBNOSTI.txt` a `SITUACNI_ANALYZA.txt` — to jsou **plain text soubory**, ne Google Docs. Filtr `mimeType === GDOC_MIME` je vyřadí. Stejný bug je i v KARTOTEKA_DID větvi (řádek 114-116).
+#### 2. Opraven: `approve-crisis-closure/index.ts` (v3)
+Closure summary se nyní rozděluje:
+- **Sekce E** (Chronologický log): co se stalo, průběh, trvání, trigger
+- **Sekce M** (Karlova analytická poznámka): Karlův závěr, diagnostické skóre
+- **Sekce D** (Terapeutická doporučení): jen doporučení pro další práci
+- Každý zápis auditován přes governance vrstvu
 
-### Bug 2: appendToDoc používá Google Docs API
-`appendToDoc()` volá `docs.googleapis.com/v1/documents/{id}:batchUpdate` — to funguje **pouze** pro Google Docs. Pro `.txt` soubory musí použít Drive API upload (PATCH s media body).
+#### 3. Opraven: `karel-drive-queue-processor/index.ts` (v2)
+- Whitelist nahrazen governance `isGovernedTarget()`
+- Přidány cíle: DASHBOARD, 05B, 05C
+- Replace povoleno pro 05A, 05B, 05C, DASHBOARD (+ existující VLAKNA_3DNY)
+- Google Docs replace používá `overwriteDoc()` místo `replaceFile()`
+- Každý zápis (úspěch i chyba) auditován do `did_doc_sync_log`
 
-### Bug 3: Shoda názvu zahrnuje příponu
-Target je `PROFIL_OSOBNOSTI`, ale soubor na Drive je `PROFIL_OSOBNOSTI.txt`. `includes()` to zvládne, ale jen jedním směrem — toto je OK, není bug.
+#### 4. DB migrace: `did_doc_sync_log`
+Přidány sloupce: `content_type`, `subject_type`, `subject_id`
 
----
+#### 5. `karel-did-card-update` — beze změn
+Funkce je čistý append-only writer. Žádný caller nepředává `sectionModes` (starý případ v approve-crisis-closure odstraněn). Funkce zůstává tak jak je.
 
-## Plán opravy
+#### 6. `update-part-profile` — beze změn v této fázi
+Role jasně definována: autoritativní strukturální sync profilové pravdy z claims. Nespadá do denní operativy ani dashboard/paměti.
 
-### 1. Opravit resolver — odstranit GDOC_MIME filtr
-V obou větvích (KARTOTEKA_DID i PAMET_KAREL) nahradit striktní `mimeType === GDOC_MIME` za filtr, který akceptuje Google Docs i textové soubory (vyloučí pouze složky).
+### Přesné role po Fázi 1
 
-### 2. Přidat `appendToFile()` helper do `driveHelpers.ts`
-Nová funkce pro append do ne-Google-Docs souborů:
-- Stáhne aktuální obsah přes Drive API (`alt=media`)
-- Připojí nový text
-- Uploadne zpět přes `PATCH` s `uploadType=media`
+| Funkce | Role | Co dělá | Co NEDĚLÁ |
+|--------|------|---------|-----------|
+| `karel-did-card-update` | Low-level append writer | Appenduje text bloky do karty části na Drive | Nerozhoduje kam co patří, nepodporuje replace |
+| `update-part-profile` | Strukturální sync | Rebuild karty z profile claims (DB → Drive) | Neřeší denní operativu, dashboard, paměť |
+| `karel-drive-queue-processor` | Queue-based Drive writer | Zpracovává frontu zápisů s governance whitelistem | Nerozhoduje content type — to dělá producent |
+| `approve-crisis-closure` | Closure orchestrátor | Uzavírá krize, propaguje do E/M/D | Nepíše do 05A/dashboard/paměti |
+| `documentGovernance.ts` | Routing layer | Mapuje content_type → document layer | Nepíše na Drive — jen routuje a audituje |
 
-### 3. Upravit processor aby rozlišil GDOC vs. plain file
-Před appendem zjistit mimeType souboru. Pokud je GDOC → použít `appendToDoc()`. Pokud je plain text → použít nový `appendToFile()`.
+### Co je mimo scope a patří do FÁZE 2
 
-### Soubory k úpravě
-- `supabase/functions/_shared/driveHelpers.ts` — přidat `appendToFile()`
-- `supabase/functions/karel-drive-queue-processor/index.ts` — opravit MIME filtr v resolveru + přidat dispatch podle mimeType
-
-Nic dalšího se nemění. Nic se nedeployuje.
-
+- Integrace governance do `karel-daily-therapist-intelligence` (writer do PAMET_KAREL)
+- Integrace governance do `karel-analyst-loop` (writer do 05A, DASHBOARD)
+- Integrace governance do `karel-did-daily-cycle` (writer do karet, 05A)
+- Integrace governance do `karel-memory-mirror` (writer do karet)
+- Denní třídění informací z vláken (co kam patří)
+- Automatické routování nových content types z analýzy vláken
