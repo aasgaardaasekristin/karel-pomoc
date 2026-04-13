@@ -244,7 +244,14 @@ export async function loadEntityRegistry(
 
 /**
  * Stamp index_confirmed_at on DB rows that unambiguously match 01_INDEX entries.
- * Only stamps on clear, non-conflicting match. Never stamps on ambiguous merge.
+ *
+ * CONSERVATIVE FAIL-CLOSED: Only stamps on exact canonical name match.
+ * This is intentionally conservative — if a legitimate entity has a different
+ * canonical form in the DB vs 01_INDEX (e.g. historical name change), it will
+ * NOT receive a stamp and will remain unconfirmed_cache_only in safe mode.
+ * This is a conscious design decision: better to under-confirm than over-confirm.
+ *
+ * index_confirmed_at is stamped ONLY on unambiguous, non-conflicting match.
  */
 async function stampIndexConfirmation(
   supabase: ReturnType<typeof createClient>,
