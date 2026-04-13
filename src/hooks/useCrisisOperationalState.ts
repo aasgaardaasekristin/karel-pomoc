@@ -229,12 +229,6 @@ export interface CrisisOperationalCard {
   cardPropagationStatus: AuditEntry[];
   planSyncStatus: AuditEntry | null;
 
-  /**
-   * Global unread crisis briefs count (system-wide).
-   * crisis_briefs has no per-event FK — this count covers the entire crisis subsystem,
-   * NOT a specific crisis event. UI must label it accordingly (e.g. "briefy (celkem)").
-   */
-  globalUnreadBriefCount: number;
 }
 
 export interface AuditEntry {
