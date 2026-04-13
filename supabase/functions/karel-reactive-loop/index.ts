@@ -134,12 +134,40 @@ serve(async (req) => {
       .gt("answered_at", since)
       .eq("processed_by_reactive", false);
 
-    // Zdroj D — DID-relevantní info z osobních vláken, Káti i Hany
-    const { data: recentConversations } = await sb
+    // Zdroj D — DID-relevantní info z terapeutických vláken (did_conversations)
+    //           + osobních vláken Hany (karel_hana_conversations)
+    const { data: didConvs } = await sb
       .from("did_conversations")
       .select("id, messages, sub_mode, updated_at")
       .gt("updated_at", since)
-      .in("sub_mode", ["general", "mamka", "kata", "hana_personal"]);
+      .in("sub_mode", ["general", "mamka", "kata"]);
+
+    const { data: hanaConvs } = await sb
+      .from("karel_hana_conversations")
+      .select("id, messages, sub_mode, updated_at")
+      .gt("updated_at", since)
+      .eq("is_locked", false);
+
+    // Normalize into unified shape with canonical sourceDomain
+    const HANA_PERSONAL_ALIASES = ["personal", "hana_personal", "osobní", "hana"];
+    function canonicalizeHanaMode(raw: string | null): string {
+      const lower = (raw || "").toLowerCase().trim();
+      if (HANA_PERSONAL_ALIASES.includes(lower)) return "hana_personal";
+      return lower || "hana_personal";
+    }
+
+    const recentConversations = [
+      ...(didConvs || []).map(c => ({
+        ...c,
+        _sourceTable: "did_conversations" as const,
+        sub_mode: c.sub_mode,
+      })),
+      ...(hanaConvs || []).map(c => ({
+        ...c,
+        _sourceTable: "karel_hana_conversations" as const,
+        sub_mode: canonicalizeHanaMode(c.sub_mode),
+      })),
+    ];
 
     // Zdroj E — krizový deník (pouze čtení pro kontext)
     const { data: recentCrisisJournal } = await sb

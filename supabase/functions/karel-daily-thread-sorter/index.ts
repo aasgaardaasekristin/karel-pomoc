@@ -524,12 +524,15 @@ Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud 
           ? `--- Rolling souhrn 3 dny (${dateLabel}) ---\n${b.content}`
           : `\n\n--- ${dateLabel} | zdroj: ${thread.subMode}/${thread.label} ---\n${b.content}`;
 
-        // Derive subject_type from target
+        // Derive subject_type from target — consistent with provenance model
         const subjectType = b.target.startsWith("KARTA_") ? "part"
-          : b.target.startsWith("PAMET_KAREL") ? "memory"
+          : b.target.includes("/KONTEXTY/") ? "family_context"
+          : (b.target.includes("/HANKA/") || b.target.includes("/KATA/")) ? "therapist"
           : "system";
         const subjectId = b.target.startsWith("KARTA_")
           ? b.target.replace("KARTA_", "").toLowerCase()
+          : b.target.includes("/HANKA/") ? "hanka"
+          : b.target.includes("/KATA/") ? "kata"
           : (thread.subMode || "general");
 
         // Derive content_type from block type / target
