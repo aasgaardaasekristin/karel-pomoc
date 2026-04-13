@@ -284,6 +284,14 @@ Odpov\u011bz POUZE validn\u00edm JSON:
 Pokud nen\u00ed co vyt\u011b\u017eit:
 { "blocks": [], "classified_items": [] }`;
 
+// ─── Hana alias normalization ────────────────────────────────────────
+const HANA_PERSONAL_ALIASES = ["personal", "hana_personal", "osobní", "hana", "osobni"];
+function canonicalizeHanaSubMode(raw: string | null | undefined): string {
+  const lower = (raw || "").toLowerCase().trim();
+  if (HANA_PERSONAL_ALIASES.includes(lower)) return "hana_personal";
+  return lower || "hana_personal";
+}
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 interface ThreadRecord {
