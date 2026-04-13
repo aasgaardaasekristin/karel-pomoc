@@ -675,7 +675,7 @@ export function useCrisisOperationalState() {
           mainBlocker: computeMainBlocker(partialCard),
           computedCTAs: [], // populated after card is built
           closureBlockerSummary: null, // populated after backend readiness fetch
-          unreadBriefCount: 0, // populated after brief count fetch
+          globalUnreadBriefCount: 0, // populated after brief count fetch
         });
 
         // Compute CTAs now that the card is in the map
