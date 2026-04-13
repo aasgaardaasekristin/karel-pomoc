@@ -6,6 +6,12 @@ import {
   type ClassifiedItem,
 } from "../_shared/informationClassifier.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import {
+  normalizeSignal,
+  canWriteToOperationalLayer,
+  canWriteToPartCard,
+  type SourceDomain,
+} from "../_shared/signalNormalization.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
