@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import CrisisDailyManagement from "./CrisisDailyManagement";
 import CrisisSessionQA from "./CrisisSessionQA";
 import CrisisClosureWorkflow from "./CrisisClosureWorkflow";
 import CrisisAuditPanel from "./CrisisAuditPanel";
-import CrisisHistoryTimeline from "./CrisisHistoryTimeline";
+import CrisisHistoryTimeline, { type JournalEntry } from "./CrisisHistoryTimeline";
 
 interface Props {
   card: CrisisOperationalCard;
@@ -23,10 +24,46 @@ const TABS: { key: TabKey; label: string }[] = [
 
 const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab }) => {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab || "management");
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
 
   useEffect(() => {
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
+
+  // Lazy-load journal entries when history tab is activated
+  useEffect(() => {
+    if (activeTab !== "history") return;
+    if (!card.eventId && !card.alertId) return;
+
+    const load = async () => {
+      const query = supabase
+        .from("crisis_journal")
+        .select("id, date, day_number, karel_action, session_summary, what_worked, what_failed, crisis_trend")
+        .order("date", { ascending: false })
+        .limit(50);
+
+      if (card.eventId) {
+        query.eq("crisis_event_id", card.eventId);
+      } else if (card.alertId) {
+        query.eq("crisis_alert_id", card.alertId);
+      }
+
+      const { data } = await query;
+      if (data) {
+        setJournalEntries(data.map((j: any) => ({
+          id: j.id,
+          date: j.date,
+          dayNumber: j.day_number,
+          karelAction: j.karel_action,
+          sessionSummary: j.session_summary,
+          whatWorked: j.what_worked,
+          whatFailed: j.what_failed,
+          crisisTrend: j.crisis_trend,
+        })));
+      }
+    };
+    load();
+  }, [activeTab, card.eventId, card.alertId]);
 
   return (
     <div className="border-x border-b rounded-b-lg mx-2 mb-1 bg-background shadow-lg" style={{ borderColor: "#7C2D2D30" }}>
@@ -51,7 +88,7 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab 
           </div>
         )}
         {activeTab === "closure" && <CrisisClosureWorkflow card={card} onRefetch={onRefetch} />}
-        {activeTab === "history" && <CrisisHistoryTimeline card={card} />}
+        {activeTab === "history" && <CrisisHistoryTimeline card={card} journalEntries={journalEntries} />}
         {activeTab === "audit" && <CrisisAuditPanel card={card} onRefetch={onRefetch} />}
       </div>
     </div>
