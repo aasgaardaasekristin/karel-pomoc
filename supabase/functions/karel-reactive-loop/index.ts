@@ -334,6 +334,9 @@ serve(async (req) => {
         });
       }
 
+      // NOTE: This agenda insert does NOT require can_be_session_target gate because
+      // topic_type "followup" with priority "when_appropriate" is NOT a direct-work proposal —
+      // it's a follow-up on a therapist-answered question for informational continuity.
       await sb.from("karel_conversation_agenda").insert({
         therapist: normalizeTherapist(q.directed_to || "hanka"),
         topic: `Follow-up k zodpovězené otázce: ${(q.question || "").slice(0, 150)}`,
@@ -350,6 +353,9 @@ serve(async (req) => {
       if (candidatePart) {
         const resolved = resolveEntity(candidatePart, registry);
         if (resolved.can_write_existing_card) {
+          // NOTE: answer.slice(0,500) here is THERAPIST input (from did_pending_questions),
+          // NOT private Hana content. Therapist clinical observations are safe for KARTA write.
+          // Personal thread raw text is NEVER written here — that path uses derived_clinical_implication only.
           const targetName = resolved.matched_canonical_name || candidatePart;
           await sb.from("did_pending_drive_writes").insert({
             target_document: `KARTA_${targetName.toUpperCase()}`,
