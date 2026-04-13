@@ -4,6 +4,9 @@
  * Executes materialized actions from the information classifier.
  * Writes to DB tables and enqueues Drive writes via governance.
  * All Drive writes use governed envelope for full audit trail.
+ *
+ * DEDUP: Uses composite key source_id + content_type + subject_id + payload_fingerprint
+ * where fingerprint is computed from the ENTIRE normalized payload (not a prefix).
  */
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
@@ -39,8 +42,37 @@ export interface ExecutionResult {
   dedup_skipped: number;
 }
 
+// ── Payload Fingerprint ──
+
 /**
- * Anti-dup guard: check if a write with matching source_id + content_type + subject_id
+ * Compute a deterministic fingerprint from the ENTIRE normalized payload.
+ * Steps: strip date/provenance headers → lowercase → collapse whitespace → trim → hash.
+ * Uses a simple but stable hash (djb2) — sufficient for same-session dedup.
+ */
+function payloadFingerprint(rawPayload: string): string {
+  // Strip date/provenance headers like "--- 2025-01-15 | thread-sorter ---"
+  const stripped = rawPayload
+    .replace(/---\s*\d{4}-\d{2}-\d{2}[^-]*---/g, "")
+    .replace(/---\s*Rolling souhrn[^-]*---/g, "");
+
+  // Normalize: lowercase, collapse whitespace, trim
+  const normalized = stripped
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // djb2 hash over entire normalized string
+  let hash = 5381;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = ((hash << 5) + hash + normalized.charCodeAt(i)) & 0xffffffff;
+  }
+  // Convert to hex string for readability
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Anti-dup guard: check if a write with matching
+ * source_id + content_type + subject_id + payload_fingerprint
  * already exists for this target in the last 24h.
  * Only applied to operational docs (05A/05B/05C/DASHBOARD).
  */
@@ -50,6 +82,7 @@ async function isDuplicateWrite(
   sourceId: string,
   contentType: string,
   subjectId: string,
+  candidateFingerprint: string,
 ): Promise<boolean> {
   if (!DEDUP_PROTECTED_TARGETS.includes(target)) return false;
 
@@ -65,14 +98,19 @@ async function isDuplicateWrite(
   if (!data || data.length === 0) return false;
 
   for (const row of data) {
-    const { metadata } = decodeGovernedWrite(row.content || "");
+    const { payload, metadata } = decodeGovernedWrite(row.content || "");
     if (
       metadata &&
       metadata.source_id === sourceId &&
       metadata.content_type === contentType &&
       metadata.subject_id === subjectId
     ) {
-      return true;
+      // Compare payload fingerprint — recompute from stored payload
+      const existingFingerprint = payloadFingerprint(payload);
+      if (existingFingerprint === candidateFingerprint) {
+        return true;
+      }
+      // Same source+content_type+subject but DIFFERENT payload → NOT a duplicate
     }
   }
   return false;
@@ -80,6 +118,7 @@ async function isDuplicateWrite(
 
 /**
  * Build governed metadata from a classified item.
+ * Carries segment_id when available for fine-grained provenance.
  */
 function buildMetadata(item: ClassifiedItem, callerName: string) {
   const subjectType = item.part_name ? "part"
@@ -88,6 +127,7 @@ function buildMetadata(item: ClassifiedItem, callerName: string) {
   return {
     source_type: callerName,
     source_id: item.source_id,
+    segment_id: (item as any).segment_id || undefined,
     content_type: mapInfoClassToContentType(item.info_class),
     subject_type: subjectType,
     subject_id: item.part_name || item.therapist || "system",
@@ -124,20 +164,23 @@ export async function executeClassifiedItems(
         console.warn(`[${callerName}] Privacy blocked: ${item.info_class} → ${route.target_document}`);
         result.privacy_blocked++;
       } else {
-        // Anti-dup check for operational docs
+        const safeContent = applySafetyFilter(item);
+        const datePrefix = `\n\n--- ${sourceDateLabel} | ${item.source} ---\n`;
+        const rawPayload = route.write_type === "replace"
+          ? safeContent
+          : `${datePrefix}${safeContent}`;
+
+        // Compute fingerprint from actual payload for dedup
+        const fingerprint = payloadFingerprint(rawPayload);
+
+        // Anti-dup check with full composite key
         const isDup = await isDuplicateWrite(
-          sb, route.target_document, item.source_id, meta.content_type, meta.subject_id,
+          sb, route.target_document, item.source_id, meta.content_type, meta.subject_id, fingerprint,
         );
         if (isDup) {
-          console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (source_id=${item.source_id})`);
+          console.warn(`[${callerName}] Dedup skipped: ${item.info_class} → ${route.target_document} (fp=${fingerprint})`);
           result.dedup_skipped++;
         } else {
-          const safeContent = applySafetyFilter(item);
-          const datePrefix = `\n\n--- ${sourceDateLabel} | ${item.source} ---\n`;
-          const rawPayload = route.write_type === "replace"
-            ? safeContent
-            : `${datePrefix}${safeContent}`;
-
           await sb.from("did_pending_drive_writes").insert({
             target_document: route.target_document,
             content: encodeGovernedWrite(rawPayload, meta),
@@ -229,6 +272,7 @@ export async function executeClassifiedItems(
       const cardMeta = {
         source_type: callerName,
         source_id: item.source_id,
+        segment_id: (item as any).segment_id || undefined,
         content_type: "session_result",
         subject_type: "part",
         subject_id: cu.part_name,

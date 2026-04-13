@@ -11,6 +11,7 @@
  * RULE: One segment = one dominant information function.
  * RULE: Never mix personal_relational and part_clinical in the same segment.
  * RULE: When uncertain, choose higher privacy + less aggressive routing.
+ * RULE: Never merge segments with different dominant subjects (part_name or therapist).
  */
 
 // ── Types ──
@@ -102,6 +103,13 @@ const KNOWN_PARTS = [
   "Emily", "Gejbi", "C.G.", "Bytostne Ja",
 ];
 
+/** Sensitive segment types that must NEVER be merged even if adjacent and same type */
+const SENSITIVE_SEGMENT_TYPES: SegmentType[] = [
+  "part_clinical",
+  "personal_relational",
+  "crisis_signal",
+];
+
 // ── Core Functions ──
 
 /**
@@ -130,8 +138,8 @@ export function segmentMessageIntoTopics(
     index: idx,
   }));
 
-  // Merge adjacent segments of the same type
-  const merged = mergeAdjacentClassified(classified);
+  // Merge adjacent segments ONLY when safe (same type + same dominant subject)
+  const merged = mergeAdjacentClassifiedStrict(classified);
 
   // Build TopicSegment objects
   return merged
@@ -153,13 +161,11 @@ export function segmentMessageIntoTopics(
  * Build message clusters from an array of messages.
  * A cluster = 1-3 consecutive user messages from the same author
  * within a short time window (or simply consecutive by position).
- *
- * Returns arrays of { text, messageId } for segmentation.
  */
 export function buildMessageClusters(
   messages: Array<{ role: string; content: string; id?: string; timestamp?: string }>,
   maxClusterSize = 3,
-  maxGapMs = 5 * 60 * 1000, // 5 minutes
+  maxGapMs = 5 * 60 * 1000,
 ): Array<{ text: string; messageIds: string[] }> {
   const userMsgs = messages.filter(m => m.role === "user" && m.content?.trim());
 
@@ -172,9 +178,6 @@ export function buildMessageClusters(
     const msg = userMsgs[i];
     const prev = i > 0 ? userMsgs[i - 1] : null;
 
-    // Start new cluster if:
-    // - current cluster is at max size
-    // - time gap between messages is too large (if timestamps available)
     const shouldSplit = currentCluster.length >= maxClusterSize
       || (prev?.timestamp && msg.timestamp && isTimegapTooLarge(prev.timestamp, msg.timestamp, maxGapMs));
 
@@ -189,7 +192,6 @@ export function buildMessageClusters(
     currentCluster.push(msg);
   }
 
-  // Flush remaining
   if (currentCluster.length > 0) {
     clusters.push({
       text: currentCluster.map(m => m.content).join("\n\n"),
@@ -207,7 +209,6 @@ export function buildMessageClusters(
 export function classifySegmentType(text: string): SegmentType {
   const lower = text.toLowerCase();
 
-  // Priority order: crisis first, then clinical, then personal, etc.
   const scores: Record<SegmentType, number> = {
     crisis_signal: countMatches(lower, CRISIS_KW) * 3,
     part_clinical: countMatches(lower, PART_CLINICAL_KW) * 2,
@@ -220,7 +221,6 @@ export function classifySegmentType(text: string): SegmentType {
     background_noise: 0,
   };
 
-  // Find the winner
   let best: SegmentType = "background_noise";
   let bestScore = 0;
   for (const [type, score] of Object.entries(scores)) {
@@ -230,12 +230,68 @@ export function classifySegmentType(text: string): SegmentType {
     }
   }
 
-  // If no keywords matched at all → background_noise
   return best;
 }
 
 /**
- * Merge adjacent classified chunks of the same type.
+ * Merge adjacent classified chunks ONLY when:
+ * 1. Same segment_type
+ * 2. NOT a sensitive type (part_clinical, personal_relational, crisis_signal)
+ * 3. Same dominant subject (part_name AND therapist)
+ *
+ * This prevents two different part_clinical passages about different parts
+ * from being incorrectly merged.
+ */
+function mergeAdjacentClassifiedStrict(
+  chunks: Array<{ text: string; type: SegmentType; index: number }>,
+): Array<{ text: string; type: SegmentType; confidence: number }> {
+  if (chunks.length === 0) return [];
+
+  const result: Array<{ text: string; type: SegmentType; confidence: number; partName: string | null; therapist: string | null }> = [
+    {
+      text: chunks[0].text,
+      type: chunks[0].type,
+      confidence: computeSegmentConfidence(chunks[0].text, chunks[0].type),
+      partName: detectSegmentPart(chunks[0].text),
+      therapist: detectSegmentTherapist(chunks[0].text),
+    },
+  ];
+
+  for (let i = 1; i < chunks.length; i++) {
+    const prev = result[result.length - 1];
+    const curr = chunks[i];
+    const currPartName = detectSegmentPart(curr.text);
+    const currTherapist = detectSegmentTherapist(curr.text);
+
+    const sameType = prev.type === curr.type;
+    const isSensitive = SENSITIVE_SEGMENT_TYPES.includes(curr.type);
+    const sameDominantSubject = prev.partName === currPartName && prev.therapist === currTherapist;
+
+    // Merge only if: same type AND (not sensitive OR same dominant subject)
+    if (sameType && (!isSensitive || sameDominantSubject)) {
+      prev.text = prev.text + "\n" + curr.text;
+      prev.confidence = Math.max(
+        prev.confidence,
+        computeSegmentConfidence(curr.text, curr.type),
+      );
+      prev.partName = prev.partName || currPartName;
+      prev.therapist = prev.therapist || currTherapist;
+    } else {
+      result.push({
+        text: curr.text,
+        type: curr.type,
+        confidence: computeSegmentConfidence(curr.text, curr.type),
+        partName: currPartName,
+        therapist: currTherapist,
+      });
+    }
+  }
+
+  return result.map(r => ({ text: r.text, type: r.type, confidence: r.confidence }));
+}
+
+/**
+ * Legacy export — kept for backward compat but now delegates to strict merge.
  */
 export function mergeAdjacentSegments(
   segments: TopicSegment[],
@@ -246,8 +302,12 @@ export function mergeAdjacentSegments(
   for (let i = 1; i < segments.length; i++) {
     const prev = result[result.length - 1];
     const curr = segments[i];
-    if (prev.segment_type === curr.segment_type) {
-      // Merge into prev
+
+    const sameType = prev.segment_type === curr.segment_type;
+    const isSensitive = SENSITIVE_SEGMENT_TYPES.includes(curr.segment_type);
+    const sameDominantSubject = prev.part_name === curr.part_name && prev.therapist === curr.therapist;
+
+    if (sameType && (!isSensitive || sameDominantSubject)) {
       result[result.length - 1] = {
         ...prev,
         raw_segment: prev.raw_segment + "\n" + curr.raw_segment,
@@ -290,7 +350,6 @@ export function isSegmentWorthProcessing(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length < 10) return false;
 
-  // Filter pure greetings / one-word responses
   const trivialPatterns = [
     /^(ok|ano|ne|jo|díky|děkuji|ahoj|čau|dobře|jasně|hmm|hm|no)\s*[.!?]*$/i,
   ];
@@ -300,23 +359,18 @@ export function isSegmentWorthProcessing(text: string): boolean {
 // ── Internal Helpers ──
 
 function splitIntoParagraphs(text: string): string[] {
-  // Split on double newlines, or single newlines followed by topic change
   const chunks = text.split(/\n{2,}/);
 
-  // Further split long paragraphs on sentence boundaries
-  // if they contain markers of topic transitions
   const result: string[] = [];
   for (const chunk of chunks) {
     if (chunk.trim().length === 0) continue;
 
-    // Check if this paragraph contains multiple topics
     const sentences = splitSentences(chunk);
     if (sentences.length <= 2) {
       result.push(chunk.trim());
       continue;
     }
 
-    // Try to find topic boundaries within the paragraph
     const subSegments = findTopicBoundaries(sentences);
     for (const sub of subSegments) {
       if (sub.trim().length > 0) {
@@ -329,16 +383,11 @@ function splitIntoParagraphs(text: string): string[] {
 }
 
 function splitSentences(text: string): string[] {
-  // Split on sentence boundaries (. ! ? followed by space or end)
   return text
     .split(/(?<=[.!?])\s+/)
     .filter(s => s.trim().length > 0);
 }
 
-/**
- * Within a list of sentences, detect where the topic changes
- * and group sentences into coherent sub-segments.
- */
 function findTopicBoundaries(sentences: string[]): string[] {
   if (sentences.length <= 1) return [sentences.join(" ")];
 
@@ -348,7 +397,6 @@ function findTopicBoundaries(sentences: string[]): string[] {
     const prevType = classifySegmentType(groups[groups.length - 1].join(" "));
     const currType = classifySegmentType(sentences[i]);
 
-    // If type changed and neither is background_noise → new group
     if (prevType !== currType && currType !== "background_noise" && prevType !== "background_noise") {
       groups.push([sentences[i]]);
     } else {
@@ -357,47 +405,6 @@ function findTopicBoundaries(sentences: string[]): string[] {
   }
 
   return groups.map(g => g.join(" "));
-}
-
-interface ClassifiedChunk {
-  text: string;
-  type: SegmentType;
-  index: number;
-}
-
-function mergeAdjacentClassified(
-  chunks: ClassifiedChunk[],
-): Array<{ text: string; type: SegmentType; confidence: number }> {
-  if (chunks.length === 0) return [];
-
-  const result: Array<{ text: string; type: SegmentType; confidence: number }> = [
-    {
-      text: chunks[0].text,
-      type: chunks[0].type,
-      confidence: computeSegmentConfidence(chunks[0].text, chunks[0].type),
-    },
-  ];
-
-  for (let i = 1; i < chunks.length; i++) {
-    const prev = result[result.length - 1];
-    const curr = chunks[i];
-
-    if (prev.type === curr.type) {
-      prev.text = prev.text + "\n" + curr.text;
-      prev.confidence = Math.max(
-        prev.confidence,
-        computeSegmentConfidence(curr.text, curr.type),
-      );
-    } else {
-      result.push({
-        text: curr.text,
-        type: curr.type,
-        confidence: computeSegmentConfidence(curr.text, curr.type),
-      });
-    }
-  }
-
-  return result;
 }
 
 function countMatches(lower: string, keywords: string[]): number {
