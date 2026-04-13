@@ -1,18 +1,22 @@
 /**
- * topicSegmentation.ts — MEZIFÁZE (pre-FÁZE 3)
+ * topicSegmentation.ts — FÁZE 2.6
  *
  * Pre-normalization split layer.
- * Decomposes mixed messages (especially from Hana/osobní, therapist threads)
- * into single-topic segments BEFORE normalizeSignal() processes them.
- *
- * Pipeline: RAW MESSAGE → segmentMessageIntoTopics() → TopicSegment[]
- *           → per-segment normalizeSignal() → routing
+ * Decomposes mixed messages into single-topic segments BEFORE normalizeSignal().
  *
  * RULE: One segment = one dominant information function.
  * RULE: Never mix personal_relational and part_clinical in the same segment.
  * RULE: When uncertain, choose higher privacy + less aggressive routing.
- * RULE: Never merge segments with different dominant subjects (part_name or therapist).
+ * RULE: Never merge segments with different dominant subjects.
+ *
+ * FÁZE 2.6 CHANGES:
+ * - KNOWN_PARTS removed as hardcoded authority
+ * - Part names in PART_CLINICAL_KW remain as CANDIDATE SIGNALS only
+ * - detectSegmentPart() accepts optional EntityRegistry for registry-aware detection
+ * - Identity confirmation requires resolveEntity() by the caller — NOT done here
  */
+
+import type { EntityRegistry } from "./entityRegistry.ts";
 
 // ── Types ──
 
@@ -34,6 +38,10 @@ export interface TopicSegment {
   raw_segment: string;
   segment_type: SegmentType;
   confidence: number;
+  /**
+   * CANDIDATE part name detected by keyword heuristics.
+   * This is NOT an identity confirmation — caller must verify via resolveEntity().
+   */
   part_name?: string | null;
   therapist?: "hanka" | "kata" | null;
   safe_label: string;
@@ -60,10 +68,17 @@ const THERAPIST_CONTEXT_KW = [
   "výcvik", "kolegové", "tým", "přístup", "metoda",
 ];
 
+/**
+ * Part-clinical keywords.
+ * Part names here are CANDIDATE SIGNALS for segment classification only.
+ * They help detect clinical segments but do NOT confirm identity.
+ * Identity confirmation requires resolveEntity() by the caller.
+ */
 const PART_CLINICAL_KW = [
   "disociace", "přepnutí", "switch", "flashback", "trauma",
   "regulace", "grounding", "stabilizace", "sebepoškozování",
   "symptom", "spouštěč", "trigger", "část", "alter",
+  // Candidate part name signals (NOT identity authority):
   "Arthur", "Tundrupek", "Gustík", "Petřík", "Anička",
   "Dmytri", "Dymi", "Bendik", "Einar", "Adam", "Bélo",
   "Clark", "Gabriel", "Gerhardt", "Baltazar", "Sebastián",
@@ -94,9 +109,12 @@ const CRISIS_KW = [
   "dekompenzace", "hospitalizace",
 ];
 
-// ── Known DID parts for segment-level detection ──
-
-const KNOWN_PARTS = [
+/**
+ * Default candidate part names for segment-level detection.
+ * Used when no EntityRegistry is available.
+ * These are CANDIDATE SIGNALS ONLY — they never confirm identity.
+ */
+const DEFAULT_CANDIDATE_PART_NAMES = [
   "Arthur", "Tundrupek", "Gustík", "Gustik", "Petřík", "Anička", "Anicka",
   "Dmytri", "Dymi", "Bendik", "Einar", "Adam", "Bélo", "Clark", "Gabriel",
   "Gerhardt", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Lobzhang",
@@ -116,32 +134,30 @@ const SENSITIVE_SEGMENT_TYPES: SegmentType[] = [
  * Main entry: split a single message (or small message cluster) into
  * topical segments. Each segment carries one dominant information function.
  *
- * For short, single-topic messages → returns 1 segment (no overhead).
- * For mixed messages → splits by thematic transitions.
+ * @param registry - Optional EntityRegistry for registry-aware part detection.
+ *   When provided, uses registry.getAllKnownNames() for candidate signals.
+ *   When unavailable, uses DEFAULT_CANDIDATE_PART_NAMES as fallback candidates.
  */
 export function segmentMessageIntoTopics(
   text: string,
   sourceId: string,
   messageId?: string | null,
+  registry?: EntityRegistry | null,
 ): TopicSegment[] {
   if (!text || text.trim().length < 15) {
     return [];
   }
 
-  // Split into paragraphs / sentence groups
   const rawChunks = splitIntoParagraphs(text);
 
-  // Classify each chunk
   const classified = rawChunks.map((chunk, idx) => ({
     text: chunk,
     type: classifySegmentType(chunk),
     index: idx,
   }));
 
-  // Merge adjacent segments ONLY when safe (same type + same dominant subject)
-  const merged = mergeAdjacentClassifiedStrict(classified);
+  const merged = mergeAdjacentClassifiedStrict(classified, registry);
 
-  // Build TopicSegment objects
   return merged
     .filter(seg => isSegmentWorthProcessing(seg.text))
     .map((seg, idx) => ({
@@ -151,7 +167,7 @@ export function segmentMessageIntoTopics(
       raw_segment: seg.text,
       segment_type: seg.type,
       confidence: seg.confidence,
-      part_name: detectSegmentPart(seg.text),
+      part_name: detectSegmentPart(seg.text, registry),
       therapist: detectSegmentTherapist(seg.text),
       safe_label: buildSafeLabel(seg.type, seg.text),
     }));
@@ -159,8 +175,6 @@ export function segmentMessageIntoTopics(
 
 /**
  * Build message clusters from an array of messages.
- * A cluster = 1-3 consecutive user messages from the same author
- * within a short time window (or simply consecutive by position).
  */
 export function buildMessageClusters(
   messages: Array<{ role: string; content: string; id?: string; timestamp?: string }>,
@@ -168,7 +182,6 @@ export function buildMessageClusters(
   maxGapMs = 5 * 60 * 1000,
 ): Array<{ text: string; messageIds: string[] }> {
   const userMsgs = messages.filter(m => m.role === "user" && m.content?.trim());
-
   if (userMsgs.length === 0) return [];
 
   const clusters: Array<{ text: string; messageIds: string[] }> = [];
@@ -177,7 +190,6 @@ export function buildMessageClusters(
 
   const flushCluster = () => {
     if (currentCluster.length === 0) return;
-
     const clusterId = `cluster-${clusterCounter++}`;
     clusters.push({
       text: currentCluster.map(m => m.content).join("\n\n"),
@@ -189,15 +201,11 @@ export function buildMessageClusters(
   for (let i = 0; i < userMsgs.length; i++) {
     const msg = userMsgs[i];
     const prev = i > 0 ? userMsgs[i - 1] : null;
-
     const shouldSplit = currentCluster.length >= maxClusterSize
       || (prev?.timestamp && msg.timestamp && isTimegapTooLarge(prev.timestamp, msg.timestamp, maxGapMs));
-
     if (shouldSplit && currentCluster.length > 0) flushCluster();
-
     currentCluster.push(msg);
   }
-
   flushCluster();
 
   return clusters;
@@ -230,21 +238,15 @@ export function classifySegmentType(text: string): SegmentType {
       best = type as SegmentType;
     }
   }
-
   return best;
 }
 
 /**
- * Merge adjacent classified chunks ONLY when:
- * 1. Same segment_type
- * 2. NOT a sensitive type (part_clinical, personal_relational, crisis_signal)
- * 3. Same dominant subject (part_name AND therapist)
- *
- * This prevents two different part_clinical passages about different parts
- * from being incorrectly merged.
+ * Merge adjacent classified chunks ONLY when safe.
  */
 function mergeAdjacentClassifiedStrict(
   chunks: Array<{ text: string; type: SegmentType; index: number }>,
+  registry?: EntityRegistry | null,
 ): Array<{ text: string; type: SegmentType; confidence: number }> {
   if (chunks.length === 0) return [];
 
@@ -253,7 +255,7 @@ function mergeAdjacentClassifiedStrict(
       text: chunks[0].text,
       type: chunks[0].type,
       confidence: computeSegmentConfidence(chunks[0].text, chunks[0].type),
-      partName: detectSegmentPart(chunks[0].text),
+      partName: detectSegmentPart(chunks[0].text, registry),
       therapist: detectSegmentTherapist(chunks[0].text),
     },
   ];
@@ -261,20 +263,16 @@ function mergeAdjacentClassifiedStrict(
   for (let i = 1; i < chunks.length; i++) {
     const prev = result[result.length - 1];
     const curr = chunks[i];
-    const currPartName = detectSegmentPart(curr.text);
+    const currPartName = detectSegmentPart(curr.text, registry);
     const currTherapist = detectSegmentTherapist(curr.text);
 
     const sameType = prev.type === curr.type;
     const isSensitive = SENSITIVE_SEGMENT_TYPES.includes(curr.type);
     const sameDominantSubject = prev.partName === currPartName && prev.therapist === currTherapist;
 
-    // Merge only if: same type AND (not sensitive OR same dominant subject)
     if (sameType && (!isSensitive || sameDominantSubject)) {
       prev.text = prev.text + "\n" + curr.text;
-      prev.confidence = Math.max(
-        prev.confidence,
-        computeSegmentConfidence(curr.text, curr.type),
-      );
+      prev.confidence = Math.max(prev.confidence, computeSegmentConfidence(curr.text, curr.type));
       prev.partName = prev.partName || currPartName;
       prev.therapist = prev.therapist || currTherapist;
     } else {
@@ -292,7 +290,7 @@ function mergeAdjacentClassifiedStrict(
 }
 
 /**
- * Legacy export — kept for backward compat but now delegates to strict merge.
+ * Legacy export — kept for backward compat.
  */
 export function mergeAdjacentSegments(
   segments: TopicSegment[],
@@ -325,10 +323,25 @@ export function mergeAdjacentSegments(
 }
 
 /**
- * Detect DID part name in a text segment.
+ * Detect a CANDIDATE DID part name mention in text.
+ *
+ * IMPORTANT: This is a CANDIDATE SIGNAL ONLY.
+ * The returned name has NOT been verified as a confirmed DID part.
+ * Callers MUST use resolveEntity() for identity confirmation before
+ * creating cards, planning sessions, or making identity decisions.
+ *
+ * @param registry - Optional EntityRegistry for registry-aware candidate detection.
+ *   When available, uses registry.getAllKnownNames() instead of hardcoded defaults.
  */
-export function detectSegmentPart(text: string): string | null {
-  for (const p of KNOWN_PARTS) {
+export function detectSegmentPart(
+  text: string,
+  registry?: EntityRegistry | null,
+): string | null {
+  const candidates = registry
+    ? registry.getAllKnownNames()
+    : DEFAULT_CANDIDATE_PART_NAMES;
+
+  for (const p of candidates) {
     if (text.includes(p)) return p;
   }
   return null;
@@ -350,7 +363,6 @@ export function detectSegmentTherapist(text: string): "hanka" | "kata" | null {
 export function isSegmentWorthProcessing(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length < 10) return false;
-
   const trivialPatterns = [
     /^(ok|ano|ne|jo|díky|děkuji|ahoj|čau|dobře|jasně|hmm|hm|no)\s*[.!?]*$/i,
   ];
@@ -361,50 +373,38 @@ export function isSegmentWorthProcessing(text: string): boolean {
 
 function splitIntoParagraphs(text: string): string[] {
   const chunks = text.split(/\n{2,}/);
-
   const result: string[] = [];
   for (const chunk of chunks) {
     if (chunk.trim().length === 0) continue;
-
     const sentences = splitSentences(chunk);
     if (sentences.length <= 2) {
       result.push(chunk.trim());
       continue;
     }
-
     const subSegments = findTopicBoundaries(sentences);
     for (const sub of subSegments) {
-      if (sub.trim().length > 0) {
-        result.push(sub.trim());
-      }
+      if (sub.trim().length > 0) result.push(sub.trim());
     }
   }
-
   return result.filter(c => c.length > 0);
 }
 
 function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .filter(s => s.trim().length > 0);
+  return text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
 }
 
 function findTopicBoundaries(sentences: string[]): string[] {
   if (sentences.length <= 1) return [sentences.join(" ")];
-
   const groups: string[][] = [[sentences[0]]];
-
   for (let i = 1; i < sentences.length; i++) {
     const prevType = classifySegmentType(groups[groups.length - 1].join(" "));
     const currType = classifySegmentType(sentences[i]);
-
     if (prevType !== currType && currType !== "background_noise" && prevType !== "background_noise") {
       groups.push([sentences[i]]);
     } else {
       groups[groups.length - 1].push(sentences[i]);
     }
   }
-
   return groups.map(g => g.join(" "));
 }
 
@@ -418,7 +418,6 @@ function countMatches(lower: string, keywords: string[]): number {
 
 function computeSegmentConfidence(text: string, type: SegmentType): number {
   if (type === "background_noise") return 0.2;
-
   const lower = text.toLowerCase();
   const kwMap: Record<SegmentType, string[]> = {
     crisis_signal: CRISIS_KW,
@@ -431,7 +430,6 @@ function computeSegmentConfidence(text: string, type: SegmentType): number {
     meeting_relevant: MEETING_KW,
     background_noise: [],
   };
-
   const matches = countMatches(lower, kwMap[type] || []);
   if (matches >= 3) return 0.9;
   if (matches >= 2) return 0.75;
@@ -439,7 +437,7 @@ function computeSegmentConfidence(text: string, type: SegmentType): number {
   return 0.3;
 }
 
-function buildSafeLabel(type: SegmentType, text: string): string {
+function buildSafeLabel(type: SegmentType, _text: string): string {
   const labelMap: Record<SegmentType, string> = {
     personal_relational: "osobní/vztahový obsah",
     therapist_capacity: "kapacita terapeuta",

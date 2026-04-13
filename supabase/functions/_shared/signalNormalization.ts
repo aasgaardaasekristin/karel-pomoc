@@ -1,14 +1,19 @@
 /**
- * signalNormalization.ts — FÁZE 2.5
+ * signalNormalization.ts — FÁZE 2.6
  *
  * Normalization & Provenance Layer.
  *
- * Sits between raw input and final routing/write decisions.
  * Every sensitive or indirect signal MUST pass through normalizeSignal()
  * before any operational or clinical write is permitted.
  *
- * Pipeline: RAW INPUT → normalizeSignal() → canWriteTo*() → routing
+ * FÁZE 2.6 CHANGES:
+ * - Hardcoded KNOWN_PARTS removed
+ * - detectPartInText() accepts optional EntityRegistry for registry-aware detection
+ * - Part name matches here are CANDIDATE SIGNALS ONLY
+ * - Identity confirmation requires resolveEntity() by the caller
  */
+
+import type { EntityRegistry } from "./entityRegistry.ts";
 
 // ── Types ──
 
@@ -117,17 +122,38 @@ const SUPERVISION_KEYWORDS = [
   "etika", "zpětná vazba", "mentoring",
 ];
 
-// ── Part detection (canonical list) ──
+// ── Part detection ──
 
-const KNOWN_PARTS = [
+/**
+ * Default candidate part names for text-level detection.
+ * Used when no EntityRegistry is available.
+ * These are CANDIDATE SIGNALS ONLY — they never confirm identity.
+ */
+const DEFAULT_CANDIDATE_PART_NAMES = [
   "Arthur", "Tundrupek", "Gustík", "Gustik", "Petřík", "Anička", "Anicka",
   "Dmytri", "Dymi", "Bendik", "Einar", "Adam", "Bélo", "Clark", "Gabriel",
   "Gerhardt", "Baltazar", "Sebastián", "Matyáš", "Kvído", "Alvar", "Lobzhang",
   "Emily", "Gejbi", "C.G.", "Bytostne Ja",
 ];
 
-function detectPartInText(text: string): string | null {
-  for (const p of KNOWN_PARTS) {
+/**
+ * Detect a CANDIDATE part name in text.
+ *
+ * IMPORTANT: This is a CANDIDATE SIGNAL ONLY.
+ * The returned name has NOT been verified as a confirmed DID part.
+ * Callers MUST use resolveEntity() for identity confirmation.
+ *
+ * @param registry - Optional EntityRegistry for registry-aware detection.
+ */
+export function detectPartInText(
+  text: string,
+  registry?: EntityRegistry | null,
+): string | null {
+  const candidates = registry
+    ? registry.getAllKnownNames()
+    : DEFAULT_CANDIDATE_PART_NAMES;
+
+  for (const p of candidates) {
     if (text.includes(p)) return p;
   }
   return null;
@@ -142,10 +168,12 @@ interface NormalizeInput {
   source_message_id?: string | null;
   source_timestamp?: string;
   therapist?: "hanka" | "kata" | null;
-  /** Optional: pre-detected part name */
+  /** Optional: pre-detected part name (candidate signal) */
   part_name?: string | null;
   /** Optional: how many times this signal has been seen before */
   prior_occurrences?: number;
+  /** Optional: EntityRegistry for registry-aware part detection */
+  registry?: EntityRegistry | null;
 }
 
 /**
@@ -154,7 +182,7 @@ interface NormalizeInput {
 export function normalizeSignal(input: NormalizeInput): NormalizedSignal {
   const lower = input.raw_content.toLowerCase();
   const signalType = detectSignalType(lower);
-  const partName = input.part_name || detectPartInText(input.raw_content);
+  const partName = input.part_name || detectPartInText(input.raw_content, input.registry);
   const subjectType = partName ? "part" as const
     : (input.therapist ? "therapist" as const : "system" as const);
   const subjectId = partName || input.therapist || "system";
@@ -217,7 +245,6 @@ export function normalizeSignal(input: NormalizeInput): NormalizedSignal {
 // ── Signal Type Detection ──
 
 function detectSignalType(lower: string): SignalType {
-  // Order matters: risk first (most urgent), then clinical, then capacity, etc.
   if (RISK_KEYWORDS.some(kw => lower.includes(kw))) return "risk";
   if (CLINICAL_KEYWORDS.some(kw => lower.includes(kw))) return "clinical";
   if (CAPACITY_KEYWORDS.some(kw => lower.includes(kw))) return "capacity";
@@ -232,13 +259,11 @@ function detectSignalType(lower: string): SignalType {
 // ── Evidence Strength ──
 
 export function assessEvidenceStrength(input: NormalizeInput): EvidenceStrength {
-  // Direct therapist statement or part self-report = strong
   if (["therapist_hanka", "therapist_kata"].includes(input.source_domain)) return "moderate";
   if (input.source_domain === "part_conversation") return "moderate";
   if (input.source_domain === "post_session") return "strong";
   if (input.source_domain === "crisis_thread") return "strong";
   if (input.source_domain === "meeting") return "moderate";
-  // Personal/indirect channels = weak by default
   if (input.source_domain === "hana_personal") return "weak";
   return "weak";
 }
@@ -251,19 +276,12 @@ function computeConfidence(
   priorOccurrences: number,
 ): number {
   let base = 0.3;
-
-  // Evidence strength bonus
   if (evidence === "strong") base += 0.3;
   else if (evidence === "moderate") base += 0.15;
-
-  // Signal type bonus (clinical/risk are taken more seriously)
   if (signalType === "risk") base += 0.15;
   if (signalType === "clinical") base += 0.1;
   if (signalType === "capacity" || signalType === "stress") base += 0.05;
-
-  // Repeat bonus (capped)
   base += Math.min(priorOccurrences * 0.1, 0.2);
-
   return Math.min(base, 1.0);
 }
 
@@ -288,7 +306,6 @@ function resolveProvenanceKind(domain: SourceDomain): ProvenanceKind {
 
 function isOperationallyRelevant(signalType: SignalType, privacyLevel: PrivacyLevel): boolean {
   if (privacyLevel === "private") {
-    // Private signals are operationally relevant only for capacity/stress/risk
     return ["capacity", "stress", "risk", "scheduling"].includes(signalType);
   }
   return ["capacity", "stress", "risk", "scheduling", "supervision", "clinical"].includes(signalType);
@@ -299,7 +316,7 @@ function isClinicallyRelevant(signalType: SignalType, partName: string | null): 
   return ["clinical", "risk", "trust", "trigger", "attachment", "relational"].includes(signalType);
 }
 
-// ── Summary Builders (never leak raw content) ──
+// ── Summary Builders ──
 
 function buildNormalizedSummary(
   signalType: SignalType,
@@ -356,7 +373,6 @@ export function deriveOperationalImplication(
   partName?: string | null,
 ): string {
   const who = therapist === "kata" ? "Káti" : (therapist === "hanka" ? "Hanky" : null);
-
   switch (signalType) {
     case "capacity":
       return who
@@ -390,8 +406,6 @@ export function deriveClinicalImplication(
 ): string {
   const today = new Date().toISOString().split("T")[0];
   const themes: string[] = [];
-
-  // Heuristic theme detection — NEVER passes raw content
   if (["strach", "bojí", "úzkost", "panika", "děs"].some(w => lowerContent.includes(w)))
     themes.push("zvýšená úzkostná reaktivita");
   if (["vztek", "agrese", "naštvaný", "zuří"].some(w => lowerContent.includes(w)))
@@ -421,7 +435,6 @@ export function deriveClinicalImplication(
 export function decideRecommendedActions(signal: NormalizedSignal): RecommendedAction[] {
   const actions: RecommendedAction[] = [];
 
-  // 1. PAMET_KAREL — almost always for private/personal sources
   if (
     signal.privacy_level === "private" ||
     signal.signal_type === "supervision" ||
@@ -431,7 +444,6 @@ export function decideRecommendedActions(signal: NormalizedSignal): RecommendedA
     actions.push("write_pamet");
   }
 
-  // 2. Operational writes — only if gate passes
   if (canWriteToOperationalLayer(signal)) {
     if (signal.signal_type === "risk" || signal.signal_type === "capacity" || signal.signal_type === "stress") {
       actions.push("write_05a");
@@ -444,12 +456,10 @@ export function decideRecommendedActions(signal: NormalizedSignal): RecommendedA
     }
   }
 
-  // 3. Part card — only if gate passes
   if (canWriteToPartCard(signal)) {
     actions.push("write_part_card");
   }
 
-  // 4. Task/session/question/meeting triggers
   if (signal.signal_type === "risk" && signal.confidence >= 0.6) {
     actions.push("create_task");
   }
@@ -463,7 +473,6 @@ export function decideRecommendedActions(signal: NormalizedSignal): RecommendedA
     actions.push("trigger_meeting");
   }
 
-  // Fallback: if nothing applies, at least log to pamet for future reference
   if (actions.length === 0) {
     actions.push(signal.privacy_level === "private" ? "write_pamet" : "no_action");
   }
@@ -475,7 +484,6 @@ export function decideRecommendedActions(signal: NormalizedSignal): RecommendedA
 
 /**
  * Can the signal be written to operational layer (05A/05B/05C/DASHBOARD)?
- * HARD RULES — all must be true.
  */
 export function canWriteToOperationalLayer(signal: NormalizedSignal): boolean {
   if (!signal.derived_operational_implication) return false;
@@ -487,13 +495,11 @@ export function canWriteToOperationalLayer(signal: NormalizedSignal): boolean {
 
 /**
  * Can the signal be written to a part card (KARTA_{PART})?
- * HARD RULES — never raw text, must have derived clinical implication.
  */
 export function canWriteToPartCard(signal: NormalizedSignal): boolean {
   if (!signal.derived_clinical_implication) return false;
   if (!signal.clinical_relevance) return false;
   if (signal.confidence < 0.55) return false;
-  // Must have either non-weak evidence OR repeated signal
   if (signal.evidence_strength === "weak" && signal.repeat_count < 2) return false;
   return true;
 }
