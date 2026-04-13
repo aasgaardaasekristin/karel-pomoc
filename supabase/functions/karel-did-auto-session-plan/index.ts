@@ -480,7 +480,42 @@ serve(async (req) => {
         });
       }
 
-      selectedPart = activeParts[0];
+      // ═══ SESSION TARGET GATE — verify part is confirmed AND communicable ═══
+      // Load entity registry with Drive token for authoritative resolution
+      let entityRegistry;
+      try {
+        const driveToken = await getAccessToken();
+        entityRegistry = await loadEntityRegistry(sb, driveToken);
+      } catch {
+        entityRegistry = await loadEntityRegistry(sb);
+      }
+
+      // Try candidates in urgency order until one passes session-target gate
+      let selectedCandidate: typeof activeParts[0] | null = null;
+      for (const candidate of activeParts) {
+        // Communicability evidence: part has recent thread activity (not just last_seen_at)
+        const hasRecentThreads = threads24h.some(t => t.part_name === candidate.partName);
+        const resolved = resolveEntity(candidate.partName, entityRegistry, hasRecentThreads);
+
+        if (resolved.can_be_session_target) {
+          selectedCandidate = candidate;
+          break;
+        }
+        console.log(`[auto-session-plan] ${candidate.partName}: can_be_session_target=false (${resolved.reasons.join("; ")}), trying next`);
+      }
+
+      if (!selectedCandidate) {
+        console.log("[auto-session-plan] No part passed session-target gate.");
+        return new Response(JSON.stringify({
+          success: false,
+          reason: "no_session_target",
+          message: "Žádná část neprošla session-target gate (potvrzená + komunikovatelná).",
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      selectedPart = selectedCandidate;
       selectedTier = selectedPart.tier;
     }
 
