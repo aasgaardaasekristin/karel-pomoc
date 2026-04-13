@@ -754,7 +754,7 @@ export function useCrisisOperationalState() {
         if (count != null && count > 0) {
           setCards(prev => prev.map(pc => ({ ...pc, unreadBriefCount: count })));
         }
-      }).catch(() => {});
+      });
     } catch (err) {
       console.error("[useCrisisOperationalState] Error:", err);
     } finally {
