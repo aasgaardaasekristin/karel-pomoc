@@ -8,7 +8,8 @@
  * - Removed hardcoded DID_KEYWORDS part name list
  * - Removed hardcoded detectPartMention() list
  * - Uses entityRegistry + resolveEntity for part detection
- * - Part card writes gated by resolveEntity().can_create_card
+ * - Part card writes gated by resolveEntity().can_write_existing_card
+ * - Session-oriented tasks/questions gated by can_be_session_target
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -346,7 +347,7 @@ serve(async (req) => {
       const candidatePart = detectPartMention(answer, registry);
       if (candidatePart) {
         const resolved = resolveEntity(candidatePart, registry);
-        if (resolved.can_create_card) {
+        if (resolved.can_write_existing_card) {
           const targetName = resolved.matched_canonical_name || candidatePart;
           await sb.from("did_pending_drive_writes").insert({
             target_document: `KARTA_${targetName.toUpperCase()}`,
@@ -365,7 +366,7 @@ serve(async (req) => {
             user_id: DID_OWNER_ID,
           });
         } else {
-          console.log(`[REACTIVE-LOOP] Blocked KARTA write for "${candidatePart}": ${resolved.entity_kind} (can_create_card=false)`);
+          console.log(`[REACTIVE-LOOP] Blocked KARTA write for "${candidatePart}": ${resolved.entity_kind} (can_write_existing_card=false)`);
         }
       }
 
@@ -467,7 +468,7 @@ serve(async (req) => {
             && signal.part_name) {
             // Verify entity can have a card before writing
             const partResolved = resolveEntity(signal.part_name, registry);
-            if (partResolved.can_create_card) {
+            if (partResolved.can_write_existing_card) {
               const targetName = partResolved.matched_canonical_name || signal.part_name;
               await sb.from("did_pending_drive_writes").insert({
                 target_document: `KARTA_${targetName.toUpperCase()}`,
@@ -487,7 +488,7 @@ serve(async (req) => {
                 user_id: DID_OWNER_ID,
               });
             } else {
-              console.log(`[REACTIVE-LOOP] Blocked part card write for "${signal.part_name}": ${partResolved.entity_kind}`);
+              console.log(`[REACTIVE-LOOP] Blocked part card write for "${signal.part_name}": ${partResolved.entity_kind} (can_write_existing_card=false)`);
             }
           }
 
