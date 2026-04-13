@@ -868,3 +868,32 @@ async function createEntityFollowUp(
     console.warn(`[thread-sorter] Follow-up question insert failed: ${error.message}`);
   }
 }
+
+/**
+ * Build minimal conversation context around a segment's content.
+ * Finds assistant responses near the segment text to give AI context
+ * without sending the entire transcript.
+ */
+function buildContextAroundSegment(
+  messages: Array<{ role: string; content: string }>,
+  segmentText: string,
+): string {
+  const segLower = segmentText.toLowerCase().slice(0, 100);
+  const contextMsgs: string[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "user" && (msg.content || "").toLowerCase().includes(segLower.slice(0, 40))) {
+      // Include this message and surrounding assistant responses
+      if (i > 0 && messages[i - 1].role === "assistant") {
+        contextMsgs.push(`[assistant]: ${messages[i - 1].content.slice(0, 300)}`);
+      }
+      if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
+        contextMsgs.push(`[assistant]: ${messages[i + 1].content.slice(0, 300)}`);
+      }
+      break;
+    }
+  }
+
+  return contextMsgs.join("\n") || "(žádný kontext)";
+}
