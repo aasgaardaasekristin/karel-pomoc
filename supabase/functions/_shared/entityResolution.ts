@@ -91,8 +91,8 @@ const KNOWN_FAMILY_MEMBERS_NORM = new Set([
  *   3. Known animals → animal
  *   4. Known external persons → external_person
  *   5. Known family members → family_member
- *   6. Registry canonical match → confirmed_did_part (only if confirmedByIndex)
- *   7. Registry alias match → confirmed_part_alias (only if confirmedByIndex)
+ *   6. Registry canonical match → confirmed_did_part (only if confirmed tier)
+ *   7. Registry alias match → confirmed_part_alias (only if confirmed tier)
  *   8. No match → uncertain_entity
  *
  * @param name - Raw entity name to resolve
