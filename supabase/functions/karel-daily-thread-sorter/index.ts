@@ -155,6 +155,11 @@ import {
   isWriteAllowed,
 } from "../_shared/informationClassifier.ts";
 import { executeClassifiedItems } from "../_shared/classifiedActionExecutor.ts";
+import {
+  normalizeSignal,
+  canWriteToPartCard,
+  type SourceDomain,
+} from "../_shared/signalNormalization.ts";
 
 /**
  * Extended system prompt: combines legacy document-target sorting
