@@ -535,6 +535,38 @@ Rozt\u0159i\u010f obsah do blok\u016f A klasifikuj ka\u017edou informaci. Pokud 
       totalWrites += approvedBlocks.length;
       addLog(`  \u2192 ${approvedBlocks.length} pending writes created`);
 
+      // ── 5. Execute classified items (FÁZE 2) ─────────────────────
+      if (rawClassified.length > 0) {
+        const sourceMap: Record<string, InformationSource> = {
+          mamka: "did_therapist_hanka",
+          kata: "did_therapist_kata",
+          hana_personal: "hana_personal",
+        };
+        const classifiedItems: ClassifiedItem[] = rawClassified
+          .filter((ci: any) => ci.info_class && ci.raw_content)
+          .map((ci: any, idx: number) => ({
+            id: `${thread.id}-ci-${idx}`,
+            source: sourceMap[thread.subMode] || "did_part_conversation" as InformationSource,
+            source_id: thread.id,
+            info_class: ci.info_class as InfoClass,
+            privacy_level: ci.privacy_level || "team_only",
+            raw_content: ci.raw_content,
+            reasoning: ci.reasoning || "",
+            operational_implication: ci.operational_implication || undefined,
+            part_name: ci.part_name || undefined,
+            therapist: ci.therapist || undefined,
+            evidence_level: ci.evidence_level || "I1",
+            generated_actions: Array.isArray(ci.generated_actions) ? ci.generated_actions : [],
+          }));
+
+        if (classifiedItems.length > 0) {
+          const execResult = await executeClassifiedItems(
+            supabase, classifiedItems, dateLabel, "thread-sorter",
+          );
+          addLog(`  FÁZE2: ${execResult.tasks_created} tasks, ${execResult.session_plans_created} sessions, ${execResult.questions_created} questions, ${execResult.meeting_triggers} meetings, ${execResult.privacy_blocked} blocked`);
+        }
+      }
+
       await lockThread(supabase, thread, now);
       totalLocked++;
     }
