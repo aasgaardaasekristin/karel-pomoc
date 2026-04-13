@@ -586,36 +586,66 @@ Roztřiď do bloků A klasifikuj. Pokud segment neobsahuje nic nového, vrať { 
 });
 
 // ─── Helper: check if a part card file actually exists in Drive ──
-// FÁZE 2.6: Must verify real Drive file existence, not indirect DB indicators.
+// FÁZE 2.6: Must verify real Drive file existence in the AUTHORITATIVE kartotéka,
+// not via indirect DB indicators and not via global Drive search.
 // did_pending_drive_writes or did_part_registry do NOT prove a card document exists.
+// A global search could match same-named docs outside kartotéka — UNSAFE.
+//
+// SCOPED LOOKUP: Only checks 01_AKTIVNI_FRAGMENTY and 03_ARCHIV_SPICICH
+// under the kartoteka_DID root folder. Any match outside these folders
+// is ignored (fail-closed).
+
+import { resolveKartotekaRoot, findFolder, listFiles } from "../_shared/driveHelpers.ts";
+
+/** Folders within kartoteka_DID that contain part card subfolders */
+const CARD_PARENT_FOLDERS = ["01_AKTIVNI_FRAGMENTY", "03_ARCHIV_SPICICH"];
 
 async function partCardExists(
   canonicalName: string,
   driveToken: string | null,
+  kartotekaRootId: string | null,
 ): Promise<boolean> {
+  // Fail-closed: no Drive access or no kartotéka root → cannot confirm
   if (!driveToken) {
-    // No Drive access → fail-closed: cannot confirm existence
     console.warn(`[thread-sorter] partCardExists: no Drive token, fail-closed for ${canonicalName}`);
+    return false;
+  }
+  if (!kartotekaRootId) {
+    console.warn(`[thread-sorter] partCardExists: no kartotekaRootId, fail-closed for ${canonicalName}`);
     return false;
   }
 
   const fileName = `KARTA_${canonicalName.toUpperCase()}`;
+
   try {
-    const query = `name contains '${fileName}' and mimeType = 'application/vnd.google-apps.document' and trashed = false`;
-    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&pageSize=5&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-    const res = await fetch(searchUrl, {
-      headers: { Authorization: `Bearer ${driveToken}` },
-    });
-    if (!res.ok) {
-      console.warn(`[thread-sorter] Drive search failed (${res.status}), fail-closed for ${fileName}`);
-      return false;
+    // Search only within authoritative card parent folders
+    for (const parentName of CARD_PARENT_FOLDERS) {
+      const parentId = await findFolder(driveToken, parentName, kartotekaRootId);
+      if (!parentId) continue;
+
+      // Look for part subfolder (e.g. "ANNA" or folder containing part name)
+      const subfolders = await listFiles(driveToken, parentId);
+      for (const sub of subfolders) {
+        if (sub.mimeType !== "application/vnd.google-apps.folder") continue;
+        // Part subfolder name should match canonical name (case-insensitive)
+        if (!sub.name.toUpperCase().includes(canonicalName.toUpperCase())) continue;
+
+        // Search for KARTA_* file inside this specific subfolder
+        const files = await listFiles(driveToken, sub.id);
+        const found = files.some(f =>
+          (f.name === fileName || f.name.startsWith(fileName + "_"))
+          && f.mimeType === "application/vnd.google-apps.document"
+        );
+        if (found) {
+          console.log(`[thread-sorter] partCardExists: ${fileName} found in ${parentName}/${sub.name}`);
+          return true;
+        }
+      }
     }
-    const data = await res.json();
-    const files = data.files || [];
-    // Exact or prefix match (KARTA_JMENO or KARTA_JMENO_...)
-    return files.some((f: { name: string }) =>
-      f.name === fileName || f.name.startsWith(fileName + "_")
-    );
+
+    // Not found in any authoritative folder
+    console.log(`[thread-sorter] partCardExists: ${fileName} NOT found in kartotéka (checked ${CARD_PARENT_FOLDERS.join(", ")})`);
+    return false;
   } catch (err) {
     console.warn(`[thread-sorter] Drive lookup error for ${fileName}:`, err);
     return false; // fail-closed
@@ -634,6 +664,7 @@ async function processBlocksEntityGuardrails(
   segment: TopicSegment | null,
   registry: EntityRegistry,
   driveToken: string | null,
+  kartotekaRootId: string | null,
 ) {
   for (const b of blocks) {
     if (!b.target || !b.content || b.content.length < 10) continue;
