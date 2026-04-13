@@ -749,7 +749,8 @@ export function useCrisisOperationalState() {
         }));
       }).catch(() => {});
 
-      // Fetch unread crisis brief count (lightweight aggregate, no separate polling)
+      // Fetch global unread crisis brief count (crisis_briefs has no per-event FK — count is system-wide)
+      // This is intentionally global: briefs cover the entire crisis subsystem, not individual events.
       supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
         if (count != null && count > 0) {
           setCards(prev => prev.map(pc => ({ ...pc, unreadBriefCount: count })));
