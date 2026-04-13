@@ -370,6 +370,63 @@ function computeMainBlocker(card: Partial<CrisisOperationalCard>): string | null
   return null;
 }
 
+/**
+ * Centralized CTA computation.
+ * Returns deduplicated, priority-sorted CTAs derived from CrisisOperationalCard state.
+ * Deterministic order: critical first, then high, then normal. Within same priority, stable insertion order.
+ */
+function computeCTAs(card: Partial<CrisisOperationalCard>): CrisisCTA[] {
+  const ctas: CrisisCTA[] = [];
+  const seen = new Set<string>();
+  const add = (cta: CrisisCTA) => { if (!seen.has(cta.key)) { seen.add(cta.key); ctas.push(cta); } };
+
+  // Critical
+  if (card.isStale && (card.hoursStale ?? 0) > 24) {
+    add({ key: "stale_update", label: "Vyžádat update", action: "request_update", priority: "critical" });
+  }
+  if (card.missingTodayInterview) {
+    add({ key: "missing_interview", label: "Spustit dnešní hodnocení", action: "start_interview", priority: "critical", params: { eventId: card.eventId } });
+  }
+
+  // High
+  if (card.missingSessionResult) {
+    add({ key: "missing_session_result", label: "Zapsat výsledek zásahu", action: "record_session_result", priority: "high" });
+  }
+  if (card.missingTherapistFeedback) {
+    add({ key: "missing_feedback", label: "Získat feedback terapeutek", action: "request_feedback", priority: "high" });
+  }
+  if ((card.unansweredQuestionCount ?? 0) > 0) {
+    add({ key: "unanswered_qa", label: "Zodpovědět otázky po sezení", action: "answer_questions", priority: "high", params: { count: card.unansweredQuestionCount } });
+  }
+
+  // Normal
+  if (card.crisisMeetingRequired && !card.meetingOpen) {
+    add({ key: "open_meeting", label: "Otevřít krizovou poradu", action: "open_meeting", priority: "normal" });
+  }
+  if (card.closureReadiness4Layer?.overallReady) {
+    add({ key: "prepare_closure", label: "Připravit uzavření", action: "prepare_closure", priority: "normal" });
+  }
+
+  // Sort: critical → high → normal, stable within same priority
+  const ORDER: Record<string, number> = { critical: 0, high: 1, normal: 2 };
+  ctas.sort((a, b) => (ORDER[a.priority] ?? 9) - (ORDER[b.priority] ?? 9));
+  return ctas;
+}
+
+/**
+ * Derives closure blocker summary from 4-layer readiness.
+ * Returns the first unmet layer's first blocker, or null if all met.
+ */
+function computeClosureBlockerSummary(r4: CrisisOperationalCard["closureReadiness4Layer"]): string | null {
+  if (!r4) return null;
+  if (r4.overallReady) return null;
+  // Return first blocker from first unmet layer
+  for (const layer of [r4.clinical, r4.process, r4.team, r4.operational]) {
+    if (!layer.met && layer.blockers.length > 0) return layer.blockers[0];
+  }
+  return r4.allBlockers[0] || null;
+}
+
 // ── Main Hook ──────────────────────────────────────────────────
 
 export function useCrisisOperationalState() {
