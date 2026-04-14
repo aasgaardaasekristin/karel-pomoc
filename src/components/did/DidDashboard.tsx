@@ -448,7 +448,7 @@ const DidDashboard = ({
 
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
-            <KarelDailyPlan refreshTrigger={refreshTrigger} />
+            <KarelDailyPlan refreshTrigger={refreshTrigger} hasCrisisBanner={hasCrisisBanner} />
           </ErrorBoundary>
         </div>
 
