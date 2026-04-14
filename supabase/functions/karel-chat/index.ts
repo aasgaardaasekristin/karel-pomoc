@@ -1309,6 +1309,177 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
           }
         }
 
+        // ═══ POST-CHAT MEMORY EXTRACTION (fire-and-forget) ═══
+        // For hana_personal, mamka, kata: extract structured memory outputs
+        // and enqueue them as governed writes to PAMET_KAREL destinations
+        const memoryModes = ["mamka", "kata", "general"]; // general = hana_personal
+        const isHanaPersonal = mode === "hana_personal" || (mode === "childcare" && didSubMode === "general");
+        const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata";
+
+        if (isMemoryMode && fullResponse.length > 30) {
+          try {
+            const lastUserMsgMem = (messages as any[]).filter((m: any) => m.role === "user").pop();
+            const userTextMem = typeof lastUserMsgMem?.content === "string" ? lastUserMsgMem.content : "";
+
+            if (userTextMem.length > 15) {
+              // Determine therapist key for destination routing
+              const therapistKey = didSubMode === "kata" ? "KATA" : "HANKA";
+              const modeLabel = isHanaPersonal ? "Hana/osobní" : didSubMode === "mamka" ? "DID/Terapeut mamka" : "DID/Terapeut kata";
+
+              // Destination type enum for AI classification
+              const DEST_TYPES = {
+                PAMET_SITUACNI: `PAMET_KAREL/DID/${therapistKey}/SITUACNI_ANALYZA`,
+                PAMET_POZNATKY: `PAMET_KAREL/DID/${therapistKey}/KARLOVY_POZNATKY`,
+                PAMET_KAREL: `PAMET_KAREL/DID/${therapistKey}/KAREL`,
+                KONTEXTY_KDO: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
+              };
+
+              const extractionPrompt = `Jsi analytický modul Karla. Analyzuj tuto výměnu z režimu "${modeLabel}" a rozhodni, které paměťové výstupy mají vzniknout.
+
+VSTUP UŽIVATELE:
+"${userTextMem.slice(0, 1500)}"
+
+ODPOVĚĎ KARLA:
+"${fullResponse.slice(0, 1500)}"
+
+PRO KAŽDÝ relevantní výstup vrať objekt v poli "outputs". Pokud konverzace neobsahuje nic relevantního, vrať prázdné pole.
+
+CÍLOVÉ TYPY:
+- "SITUACNI" = aktuální psychický stav, nálada, zatížení, co terapeutku/Hanku právě trápí nebo těší
+- "POZNATKY" = Karlovy dedukce o kapacitě terapeutky, jejích potřebách, co si Karel všímá
+- "KAREL" = vztahový obsah (jen pro Hanku osobní), intimní/partnerské výměny, pocity mezi Karlem a Hankou
+- "KDO_JE_KDO" = nová informace o osobě v okolí systému (ne o částech DID)
+- "PART_CARD" = důležitá DID informace o konkrétní části (jméno části MUSÍ být uvedeno)
+
+PRAVIDLA:
+- Jedno vlákno může vytvořit 0-5 výstupů
+- Každý výstup max 3 věty
+- Piš STRUČNĚ, fakticky, bez interpretací
+- "KAREL" typ POUZE pro Hana/osobní režim
+- "PART_CARD" pouze pokud padla konkrétní klinicky relevantní informace o části
+
+Vrať POUZE validní JSON:
+{
+  "outputs": [
+    {
+      "dest": "SITUACNI",
+      "content": "stručný zápis",
+      "part_name": null
+    }
+  ]
+}`;
+
+              const memExtractRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${LOVABLE_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: "google/gemini-2.5-flash-lite",
+                  messages: [
+                    { role: "system", content: "Jsi analytický modul. Odpovídej POUZE validním JSON." },
+                    { role: "user", content: extractionPrompt },
+                  ],
+                  temperature: 0.1,
+                }),
+              });
+
+              if (memExtractRes.ok) {
+                const memData = await memExtractRes.json();
+                const rawMem = (memData.choices?.[0]?.message?.content || "").trim();
+                const cleanMem = rawMem.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+                let memResult: { outputs: Array<{ dest: string; content: string; part_name?: string | null }> };
+                try {
+                  memResult = JSON.parse(cleanMem);
+                } catch {
+                  console.warn("[post-chat-memory] JSON parse failed, skipping. Raw:", cleanMem.slice(0, 200));
+                  memResult = { outputs: [] };
+                }
+
+                if (memResult.outputs && Array.isArray(memResult.outputs) && memResult.outputs.length > 0) {
+                  const { createClient: createSbMem } = await import("https://esm.sh/@supabase/supabase-js@2");
+                  const sbMem = createSbMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+                  const todayMarker = new Date().toISOString().slice(0, 10);
+                  let insertedCount = 0;
+
+                  for (const output of memResult.outputs.slice(0, 5)) {
+                    if (!output.dest || !output.content || output.content.length < 5) continue;
+
+                    let targetDoc: string;
+                    let contentPrefix: string;
+
+                    switch (output.dest) {
+                      case "SITUACNI":
+                        targetDoc = DEST_TYPES.PAMET_SITUACNI;
+                        contentPrefix = `\n=== CHAT ${todayMarker} ===\n`;
+                        break;
+                      case "POZNATKY":
+                        targetDoc = DEST_TYPES.PAMET_POZNATKY;
+                        contentPrefix = `\n=== KARLŮV POZNATEK ${todayMarker} ===\n`;
+                        break;
+                      case "KAREL":
+                        if (!isHanaPersonal) continue; // KAREL type only for hana_personal
+                        targetDoc = DEST_TYPES.PAMET_KAREL;
+                        contentPrefix = `\n=== VZTAHOVÝ ZÁZNAM ${todayMarker} ===\n`;
+                        break;
+                      case "KDO_JE_KDO":
+                        targetDoc = DEST_TYPES.KONTEXTY_KDO;
+                        contentPrefix = `\n=== NOVÁ OSOBA/AKTUALIZACE ${todayMarker} ===\n`;
+                        break;
+                      case "PART_CARD":
+                        if (!output.part_name) continue;
+                        targetDoc = `KARTA_${output.part_name}`;
+                        contentPrefix = `\n=== CHAT ZÁZNAM ${todayMarker} ===\n`;
+                        break;
+                      default:
+                        continue;
+                    }
+
+                    const governedContent = encodeGovernedWrite(
+                      contentPrefix + output.content,
+                      {
+                        source_type: "chat_memory_extraction",
+                        source_id: `chat_${todayMarker}_${didSubMode || "general"}`,
+                        content_type: output.dest.toLowerCase(),
+                        subject_type: output.part_name ? "part" : "therapist",
+                        subject_id: output.part_name || therapistKey.toLowerCase(),
+                      }
+                    );
+
+                    const { error: writeErr } = await sbMem.from("did_pending_drive_writes").insert({
+                      target_document: targetDoc,
+                      content: governedContent,
+                      priority: "normal",
+                      status: "pending",
+                      write_type: "append",
+                    });
+
+                    if (writeErr) {
+                      console.warn(`[post-chat-memory] Write error for ${output.dest}:`, writeErr.message);
+                    } else {
+                      insertedCount++;
+                    }
+                  }
+
+                  if (insertedCount > 0) {
+                    console.log(`[post-chat-memory] ${insertedCount} governed writes enqueued for ${modeLabel}`);
+                  }
+                } else {
+                  console.log(`[post-chat-memory] No relevant outputs for ${modeLabel}`);
+                }
+              } else {
+                console.warn(`[post-chat-memory] AI extraction failed: ${memExtractRes.status}`);
+              }
+            }
+          } catch (memExtractErr) {
+            // Fail-closed: log but never affect chat response
+            console.error("[post-chat-memory] Extraction error (non-fatal):", memExtractErr);
+          }
+        }
+
         // ═══ SAFETY CHECK (fire-and-forget via separate edge function) ═══
         if (didSubMode === "cast" && didPartName) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
