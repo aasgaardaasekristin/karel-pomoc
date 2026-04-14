@@ -1312,8 +1312,9 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         // ═══ POST-CHAT MEMORY EXTRACTION (fire-and-forget) ═══
         // For hana_personal, mamka, kata: extract structured memory outputs
         // and enqueue them as governed writes to PAMET_KAREL destinations
-        const memoryModes = ["mamka", "kata", "general"]; // general = hana_personal
-        const isHanaPersonal = mode === "hana_personal" || (mode === "childcare" && didSubMode === "general");
+        // Detect memory-eligible modes using the same convention as the rest of the file
+        // didSubMode "general" within mode "childcare" = Hana/osobní (see line ~351)
+        const isHanaPersonal = mode === "childcare" && didSubMode === "general";
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata";
 
         if (isMemoryMode && fullResponse.length > 30) {
@@ -1325,6 +1326,9 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
               // Determine therapist key for destination routing
               const therapistKey = didSubMode === "kata" ? "KATA" : "HANKA";
               const modeLabel = isHanaPersonal ? "Hana/osobní" : didSubMode === "mamka" ? "DID/Terapeut mamka" : "DID/Terapeut kata";
+
+              // Stable source_id from available chat identifiers
+              const chatSourceId = `chat_${didThreadLabel || didSubMode || "unknown"}_${lastUserMsgMem?.created_at || Date.now()}`;
 
               // Destination type enum for AI classification
               const DEST_TYPES = {
@@ -1349,7 +1353,7 @@ CÍLOVÉ TYPY:
 - "POZNATKY" = Karlovy dedukce o kapacitě terapeutky, jejích potřebách, co si Karel všímá
 - "KAREL" = vztahový obsah (jen pro Hanku osobní), intimní/partnerské výměny, pocity mezi Karlem a Hankou
 - "KDO_JE_KDO" = nová informace o osobě v okolí systému (ne o částech DID)
-- "PART_CARD" = důležitá DID informace o konkrétní části (jméno části MUSÍ být uvedeno)
+- "PART_CARD" = důležitá DID informace o konkrétní části. MUSÍ obsahovat part_name (jméno části) a section (jedna z A-M podle struktury karty: A=identita, B=profil, C=switching, D=terapie, E=vztahy, F=triggery, G=bezpečí, H=vývoj, I=psychoanalýza, J=diagnostika, K=emoční regulace, L=somatika, M=poznámky)
 
 PRAVIDLA:
 - Jedno vlákno může vytvořit 0-5 výstupů
@@ -1364,10 +1368,15 @@ Vrať POUZE validní JSON:
     {
       "dest": "SITUACNI",
       "content": "stručný zápis",
-      "part_name": null
+      "part_name": null,
+      "section": null
     }
   ]
 }`;
+
+              // AI call with AbortController timeout (15s)
+              const memController = new AbortController();
+              const memTimeout = setTimeout(() => memController.abort(), 15000);
 
               const memExtractRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
                 method: "POST",
@@ -1383,14 +1392,17 @@ Vrať POUZE validní JSON:
                   ],
                   temperature: 0.1,
                 }),
+                signal: memController.signal,
               });
+
+              clearTimeout(memTimeout);
 
               if (memExtractRes.ok) {
                 const memData = await memExtractRes.json();
                 const rawMem = (memData.choices?.[0]?.message?.content || "").trim();
                 const cleanMem = rawMem.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
 
-                let memResult: { outputs: Array<{ dest: string; content: string; part_name?: string | null }> };
+                let memResult: { outputs: Array<{ dest: string; content: string; part_name?: string | null; section?: string | null }> };
                 try {
                   memResult = JSON.parse(cleanMem);
                 } catch {
@@ -1399,10 +1411,12 @@ Vrať POUZE validní JSON:
                 }
 
                 if (memResult.outputs && Array.isArray(memResult.outputs) && memResult.outputs.length > 0) {
-                  const { createClient: createSbMem } = await import("https://esm.sh/@supabase/supabase-js@2");
-                  const sbMem = createSbMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+                  // Reuse existing service-role client pattern from this file
+                  const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
+                  const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
                   const todayMarker = new Date().toISOString().slice(0, 10);
+                  const VALID_SECTIONS = ["A","B","C","D","E","F","G","H","I","J","K","L","M"];
                   let insertedCount = 0;
 
                   for (const output of memResult.outputs.slice(0, 5)) {
@@ -1430,9 +1444,12 @@ Vrať POUZE validní JSON:
                         contentPrefix = `\n=== NOVÁ OSOBA/AKTUALIZACE ${todayMarker} ===\n`;
                         break;
                       case "PART_CARD":
-                        if (!output.part_name) continue;
+                        if (!output.part_name || !output.section || !VALID_SECTIONS.includes(output.section.toUpperCase())) {
+                          console.warn(`[post-chat-memory] PART_CARD skipped: missing part_name or invalid section (${output.part_name}, ${output.section})`);
+                          continue;
+                        }
                         targetDoc = `KARTA_${output.part_name}`;
-                        contentPrefix = `\n=== CHAT ZÁZNAM ${todayMarker} ===\n`;
+                        contentPrefix = `\n=== SEKCE ${output.section.toUpperCase()} — CHAT ZÁZNAM ${todayMarker} ===\n`;
                         break;
                       default:
                         continue;
@@ -1442,10 +1459,11 @@ Vrať POUZE validní JSON:
                       contentPrefix + output.content,
                       {
                         source_type: "chat_memory_extraction",
-                        source_id: `chat_${todayMarker}_${didSubMode || "general"}`,
-                        content_type: output.dest.toLowerCase(),
+                        source_id: `${chatSourceId}_${output.dest}`,
+                        content_type: output.dest === "PART_CARD" ? `card_section_${(output.section || "M").toUpperCase()}` : output.dest.toLowerCase(),
                         subject_type: output.part_name ? "part" : "therapist",
                         subject_id: output.part_name || therapistKey.toLowerCase(),
+                        segment_id: output.dest === "PART_CARD" ? (output.section || "M").toUpperCase() : undefined,
                       }
                     );
 
