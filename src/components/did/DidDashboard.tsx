@@ -556,64 +556,6 @@ const DidDashboard = ({
           </div>
         </div>
 
-        {/* Crisis card REMOVED — the top sticky CrisisAlert banner already shows all crisis info.
-             No duplicate crisis block in the dashboard body. */}
-
-        {karelRequirements.length > 0 && (
-          <StudyCard accent="gold">
-            <SectionTitle icon={<Zap className="h-4 w-4 text-primary" />}>
-              Karel vyžaduje ({karelRequirements.length})
-            </SectionTitle>
-            <div className="space-y-3">
-              {karelRequirements.map((req, index) => (
-                <div key={`${req.source}-${req.category}-${index}`} className="flex items-start gap-3 text-[13px]">
-                  <div
-                    className={cn(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
-                      req.severity === "high" || req.severity === "critical"
-                        ? "bg-destructive/15"
-                        : "bg-primary/15",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "text-[10px] font-bold",
-                        req.severity === "high" || req.severity === "critical"
-                          ? "text-destructive"
-                          : "text-primary",
-                      )}
-                    >
-                      {index + 1}
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="leading-relaxed text-foreground">{req.text}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] text-muted-foreground">{req.source}</span>
-                      <span
-                        className={cn(
-                          "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                          req.category === "krize"
-                            ? "bg-destructive/15 text-destructive"
-                            : req.category === "chybí výstup"
-                              ? "bg-primary/12 text-primary"
-                              : req.category === "závazek"
-                                ? "bg-accent/20 text-accent-foreground"
-                                : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {req.category}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </StudyCard>
-        )}
-
-        <div className="jung-divider" />
-
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
             <KarelDailyPlan refreshTrigger={refreshTrigger} />

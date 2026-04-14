@@ -54,12 +54,6 @@ interface Parsed05A {
   cycleInfo: string;
 }
 
-interface OverviewCallout {
-  label: string;
-  text: string;
-  tone: "default" | "crisis" | "warning";
-}
-
 function parse05A(text: string): Parsed05A {
   const clean = text.replace(/\r\n/g, "\n");
 
@@ -86,57 +80,17 @@ function parse05A(text: string): Parsed05A {
   };
 }
 
-const normalizeLine = (line: string) =>
-  line
-    .replace(/^[\s•\-–—*0-9.()]+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const uniqueMeaningfulLines = (text: string, limit = 4): string[] => {
-  const seen = new Set<string>();
-
+/** Turn raw section text into clean prose sentences. */
+const extractProse = (text: string): string => {
+  if (!text) return "";
   return text
     .split("\n")
-    .map(normalizeLine)
+    .map((l) => l.replace(/^[\s•\-–—*0-9.()]+/, "").trim())
     .filter(Boolean)
-    .filter((line) => !/^\(?žádné|n\/a|bez změny\)?$/i.test(line))
-    .filter((line) => {
-      const key = line.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, limit);
-};
-
-const buildPlanCallouts = (plan: Parsed05A): OverviewCallout[] => {
-  const rawCallouts: OverviewCallout[] = [
-    {
-      label: "Krizový kontext",
-      text: uniqueMeaningfulLines(plan.crisisContext, 1)[0] || "",
-      tone: "crisis",
-    },
-    {
-      label: "Urgentní follow-up",
-      text: uniqueMeaningfulLines(plan.urgentFollowUp, 1)[0] || "",
-      tone: "warning",
-    },
-    {
-      label: "Obnova řízení",
-      text: uniqueMeaningfulLines(plan.recoveryMode, 1)[0] || "",
-      tone: "default",
-    },
-  ];
-
-  const seen = new Set<string>();
-  return rawCallouts
-    .filter((item) => Boolean(item.text))
-    .filter((item) => {
-      const key = `${item.label}|${item.text.toLowerCase()}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    .filter((l) => !/^\(?žádné|n\/a|bez změny\)?$/i.test(l))
+    .join(" ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 };
 
 const KarelDailyPlan = ({ refreshTrigger }: Props) => {
@@ -276,66 +230,37 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   });
 
   if (source === "05A" && plan05A) {
-    const overviewLines = uniqueMeaningfulLines(plan05A.karelOverview, 4);
-    const overviewLead = overviewLines[0] || "Karel čeká na krátké dnešní operativní doplnění.";
-    const overviewDetails = overviewLines.slice(1);
-    const callouts = buildPlanCallouts(plan05A);
+    const overviewProse = extractProse(plan05A.karelOverview);
+    const crisisProse = extractProse(plan05A.crisisContext);
+    const followUpProse = extractProse(plan05A.urgentFollowUp);
+    const recoveryProse = extractProse(plan05A.recoveryMode);
+
+    // Build a coherent narrative from available sections
+    const narrativeParts: string[] = [];
+    if (overviewProse) narrativeParts.push(overviewProse);
+    if (crisisProse && !overviewProse.toLowerCase().includes(crisisProse.slice(0, 20).toLowerCase())) {
+      narrativeParts.push(crisisProse);
+    }
+    if (followUpProse) narrativeParts.push(followUpProse);
+    if (recoveryProse) narrativeParts.push(recoveryProse);
+
+    const fullNarrative = narrativeParts.join(" ").slice(0, 800) || "Karel čeká na dnešní operativní doplnění.";
 
     return (
-      <div className="jung-card space-y-5 p-6">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
-            {plan05A.cycleInfo ? (
-              <p className="mt-1 text-[12px] text-muted-foreground">{plan05A.cycleInfo}</p>
-            ) : null}
-          </div>
-          <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-medium text-primary">
-            z 05A
-          </span>
-        </div>
+      <div className="jung-card space-y-4 p-6">
+        <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
 
-        <div className="rounded-2xl border border-border/70 bg-background/20 p-4 sm:p-5">
-          <p className="text-[16px] font-medium leading-8 text-foreground sm:text-[18px]">{overviewLead}</p>
-          {overviewDetails.length > 0 ? (
-            <div className="mt-4 space-y-2">
-              {overviewDetails.map((line) => (
-                <div key={line} className="flex items-start gap-2 text-[13px] leading-6 text-muted-foreground">
-                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
-                  <span>{line}</span>
-                </div>
-              ))}
-            </div>
-          ) : null}
+        <div className="rounded-2xl border border-border/70 bg-background/30 p-5">
+          <p className="text-[14px] leading-7 text-foreground">{fullNarrative}</p>
         </div>
-
-        {callouts.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-3">
-            {callouts.map((callout) => (
-              <div
-                key={`${callout.label}-${callout.text}`}
-                className={
-                  callout.tone === "crisis"
-                    ? "rounded-2xl border border-destructive/25 bg-destructive/10 p-3"
-                    : callout.tone === "warning"
-                      ? "rounded-2xl border border-primary/25 bg-primary/10 p-3"
-                      : "rounded-2xl border border-border/70 bg-muted/25 p-3"
-                }
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  {callout.label}
-                </p>
-                <p className="mt-1 text-[13px] leading-6 text-foreground">{callout.text}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
       </div>
     );
   }
 
+  // DB fallback
   const hasAnything =
     crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
+
   if (!hasAnything) {
     return (
       <div className="jung-card p-6">
@@ -347,65 +272,31 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     );
   }
 
-  const overdueCommitments = commitments.filter((commitment) => {
-    const daysOverdue = Math.floor((Date.now() - new Date(commitment.due_date).getTime()) / 86400000);
-    return daysOverdue > 0;
-  });
+  // Build narrative from DB data
+  const parts: string[] = [];
+  if (crisisPartName) {
+    let s = `Nejvyšší priorita dne je ${crisisPartName}`;
+    if (crisisDays != null) s += ` (den ${crisisDays})`;
+    if (crisisJournal?.crisis_trend) s += `, trend: ${crisisJournal.crisis_trend}`;
+    s += ".";
+    parts.push(s);
+    if (crisisJournal?.karel_action) parts.push(`Karel: ${crisisJournal.karel_action}.`);
+  }
+  if (sessions.length > 0) parts.push(`Dnes ${sessions.length === 1 ? "je plánované 1 sezení" : `je plánováno ${sessions.length} sezení`}.`);
+  if (tasks.length > 0) parts.push(`${tasks.length} otevřených úkolů čeká na zpracování.`);
+  if (questions.length > 0) parts.push(`${questions.length} otázek čeká na odpověď od terapeutek.`);
 
-  const fallbackCards = [
-    crisisPartName
-      ? {
-          label: "Krize",
-          value: `${crisisPartName}${crisisDays != null ? ` — den ${crisisDays}` : ""}`,
-        }
-      : null,
-    sessions.length > 0 ? { label: "Sezení dnes", value: `${sessions.length} aktivních položek` } : null,
-    tasks.length > 0 ? { label: "Aktivní úkoly", value: `${tasks.length} otevřených bodů` } : null,
-    questions.length > 0 ? { label: "Čeká na odpověď", value: `${questions.length} otázek` } : null,
-    overdueCommitments.length > 0
-      ? { label: "Po termínu", value: `${overdueCommitments.length} závazků` }
-      : null,
-  ].filter(Boolean) as { label: string; value: string }[];
+  const overdueCount = commitments.filter((c) => Date.now() > new Date(c.due_date).getTime()).length;
+  if (overdueCount > 0) parts.push(`${overdueCount} závazků je po termínu.`);
 
-  const fallbackLead = crisisPartName
-    ? `Nejvyšší priorita dne je ${crisisPartName}${crisisJournal?.crisis_trend ? ` — trend: ${crisisJournal.crisis_trend}` : ""}.`
-    : "Karel drží denní orientaci z otevřených úkolů, sezení a čekajících odpovědí.";
+  const fallbackNarrative = parts.join(" ") || "Karel drží denní orientaci z otevřených úkolů a sezení.";
 
   return (
-    <div className="jung-card space-y-5 p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
-          <p className="mt-1 text-[12px] text-muted-foreground">Pracovní fallback bez 05A dokumentu</p>
-        </div>
-        <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-foreground">
-          z provozu
-        </span>
+    <div className="jung-card space-y-4 p-6">
+      <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
+      <div className="rounded-2xl border border-border/70 bg-background/30 p-5">
+        <p className="text-[14px] leading-7 text-foreground">{fallbackNarrative}</p>
       </div>
-
-      <div className="rounded-2xl border border-border/70 bg-background/20 p-4 sm:p-5">
-        <p className="text-[16px] font-medium leading-8 text-foreground sm:text-[18px]">{fallbackLead}</p>
-        {crisisJournal && (crisisJournal.karel_action || crisisJournal.session_summary) ? (
-          <p className="mt-3 text-[13px] leading-6 text-muted-foreground">
-            {crisisJournal.karel_action ? `Karel: ${crisisJournal.karel_action}` : ""}
-            {crisisJournal.karel_action && crisisJournal.session_summary ? " • " : ""}
-            {crisisJournal.session_summary ? `Sezení: ${crisisJournal.session_summary}` : ""}
-          </p>
-        ) : null}
-      </div>
-
-      {fallbackCards.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {fallbackCards.map((card) => (
-            <div key={`${card.label}-${card.value}`} className="rounded-2xl border border-border/70 bg-muted/25 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                {card.label}
-              </p>
-              <p className="mt-1 text-[14px] text-foreground">{card.value}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 };
