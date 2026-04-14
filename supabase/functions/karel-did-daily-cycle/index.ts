@@ -6813,6 +6813,39 @@ Vra\u0165 JSON:
       console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
     }
 
+    // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
+    // Moved here so ALL write-producing phases (therapist intelligence, PAMET_KAREL, crisis escalation)
+    // have already inserted their did_pending_drive_writes before we flush.
+    try {
+      const { count: pendingWriteCount } = await sb.from("did_pending_drive_writes")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending");
+
+      if ((pendingWriteCount || 0) > 0) {
+        console.log(`[PHASE_9] ${pendingWriteCount} pending Drive writes, triggering queue processor`);
+        const qpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-drive-queue-processor`;
+        const qpRes = await fetch(qpUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({ triggered_by: "daily-cycle" }),
+        });
+        if (qpRes.ok) {
+          criticalPhaseStatus.queueFlushTriggeredOk = true;
+          console.log(`[PHASE_9] Queue processor triggered: ${qpRes.status}`);
+        } else {
+          console.error(`[PHASE_9] Queue processor FAILED: HTTP ${qpRes.status}`);
+        }
+      } else {
+        criticalPhaseStatus.queueFlushTriggeredOk = true;
+        console.log("[PHASE_9] No pending Drive writes, skipping flush");
+      }
+    } catch (flushErr) {
+      console.error("[PHASE_9] Queue flush FAILED:", flushErr);
+    }
+
     // ═══ PHASE_10_CLEANUP_AND_LOGGING ═══
 
     try {
@@ -6840,10 +6873,10 @@ Vra\u0165 JSON:
     // Only mark threads/conversations as processed when ALL critical phases succeeded.
     // If any critical phase failed, threads remain unprocessed → will be retried next cycle.
     const allCriticalOk = criticalPhaseStatus.therapistIntelligenceOk
-      && criticalPhaseStatus.dashboardOk
-      && criticalPhaseStatus.operativePlanOk
       && criticalPhaseStatus.queueFlushTriggeredOk
       && criticalPhaseStatus.cardPipelineOk;
+    // NOTE: dashboardOk and operativePlanOk are logged but do NOT block is_processed.
+    // They are presentation/coordination outputs, not primary ingest success indicators.
 
     console.log(`[PHASE_10] criticalPhaseStatus: ${JSON.stringify(criticalPhaseStatus)}, allCriticalOk=${allCriticalOk}`);
 
