@@ -5020,39 +5020,8 @@ Vrať POUZE validní JSON (bez markdown):
       console.warn("[daily-cycle] Meeting detection error (non-fatal):", meetingErr);
     }
 
-    // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
-    // NOTE: is_processed marking moved to PHASE_10 — gated by criticalPhaseStatus
-
-    try {
-      const { count: pendingWriteCount } = await sb.from("did_pending_drive_writes")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "pending");
-
-      if ((pendingWriteCount || 0) > 0) {
-        console.log(`[PHASE_9] ${pendingWriteCount} pending Drive writes, triggering queue processor`);
-        const qpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-drive-queue-processor`;
-        const qpRes = await fetch(qpUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-          },
-          body: JSON.stringify({ triggered_by: "daily-cycle" }),
-        });
-        if (qpRes.ok) {
-          criticalPhaseStatus.queueFlushTriggeredOk = true;
-          console.log(`[PHASE_9] Queue processor triggered: ${qpRes.status}`);
-        } else {
-          console.error(`[PHASE_9] Queue processor FAILED: HTTP ${qpRes.status}`);
-        }
-      } else {
-        // No pending writes = nothing to flush = OK
-        criticalPhaseStatus.queueFlushTriggeredOk = true;
-        console.log("[PHASE_9] No pending Drive writes, skipping flush");
-      }
-    } catch (flushErr) {
-      console.error("[PHASE_9] Queue flush FAILED:", flushErr);
-    }
+    // ═══ PHASE_9 PLACEHOLDER — queue flush moved after all write-producing phases ═══
+    // See actual PHASE_9 below, just before PHASE_10
 
     // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks (4/5/7 days) ═══
     try {
