@@ -126,15 +126,17 @@ const buildPlanCallouts = (plan: Parsed05A): OverviewCallout[] => {
       text: uniqueMeaningfulLines(plan.recoveryMode, 1)[0] || "",
       tone: "default",
     },
-  ].filter((item) => item.text);
+  ];
 
   const seen = new Set<string>();
-  return rawCallouts.filter((item) => {
-    const key = `${item.label}|${item.text.toLowerCase()}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  return rawCallouts
+    .filter((item) => Boolean(item.text))
+    .filter((item) => {
+      const key = `${item.label}|${item.text.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 };
 
 const KarelDailyPlan = ({ refreshTrigger }: Props) => {
