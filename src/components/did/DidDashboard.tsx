@@ -39,27 +39,7 @@ interface Props {
   isRefreshingMemory?: boolean;
 }
 
-const STATE_LABELS: Record<string, string> = {
-  active: "aktivní",
-  intervened: "po zásahu",
-  stabilizing: "stabilizace",
-  awaiting_session_result: "čeká výsledek",
-  awaiting_therapist_feedback: "čeká feedback",
-  ready_for_joint_review: "k poradě",
-  ready_to_close: "k uzavření",
-  closed: "uzavřeno",
-  monitoring_post: "monitoring",
-};
-
-const SEVERITY_RANK: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
-
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const normalizeKey = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
 
 const playAlertSound = () => {
   try {
