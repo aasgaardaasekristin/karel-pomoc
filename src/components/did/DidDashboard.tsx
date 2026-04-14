@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Loader2, Upload, RefreshCw, Shield, Zap, MessageSquare, Clock, Users } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, Shield, Zap, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
