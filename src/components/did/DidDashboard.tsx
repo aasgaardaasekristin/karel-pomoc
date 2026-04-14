@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Loader2, Upload, RefreshCw, Shield, Zap, MessageSquare, Clock, Users } from "lucide-react";
+import { AlertTriangle, Loader2, RefreshCw, Shield, Zap, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,13 +13,7 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
-import DidAgreementsPanel from "./DidAgreementsPanel";
-import DidMonthlyPanel from "./DidMonthlyPanel";
-import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
-import DidSupervisionReport from "./DidSupervisionReport";
-import DidSystemMap from "./DidSystemMap";
-import CrisisTimeline from "./CrisisTimeline";
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -509,117 +503,31 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </ErrorBoundary>
         </div>
 
-        {/* ═══ 6. OTÁZKY ČEKAJÍCÍ NA ODPOVĚĎ ═══ */}
-        <ErrorBoundary fallbackTitle="Otázky selhaly">
-          <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
-        <div className="jung-divider" />
-
-        {/* ═══ 7. ÚKOLY TÝMU ═══ */}
+        {/* ═══ 6. DNES — combined operational block ═══ */}
         <StudyCard>
-          <div className="flex items-center justify-between mb-4">
-            <SectionTitle icon={<span className="text-[16px]">📋</span>}>
-              Úkoly týmu
-            </SectionTitle>
-            {pendingWriteCount > 0 && (
-              <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/15 text-primary flex items-center gap-1">
-                <Upload className="w-3 h-3" />{pendingWriteCount} čeká na Drive
-              </span>
-            )}
+          <SectionTitle icon={<Clock className="w-4 h-4 text-primary" />}>
+            Dnes
+          </SectionTitle>
+
+          {/* 6a. Dnešní sezení */}
+          <div className="mb-4">
+            <ErrorBoundary fallbackTitle="Plán sezení selhal">
+              <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+            </ErrorBoundary>
           </div>
-          <ErrorBoundary fallbackTitle="Task board selhal">
-            <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
+
+          {/* 6b. Úkoly */}
+          <div className="mb-4">
+            <ErrorBoundary fallbackTitle="Task board selhal">
+              <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
+            </ErrorBoundary>
+          </div>
+
+          {/* 6c. Čeká na odpověď */}
+          <ErrorBoundary fallbackTitle="Otázky selhaly">
+            <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
           </ErrorBoundary>
         </StudyCard>
-
-        {/* ═══ 8. PLÁNOVANÁ SEZENÍ ═══ */}
-        <ErrorBoundary fallbackTitle="Plán sezení selhal">
-          <DidDailySessionPlan refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
-        {/* ═══ 9. KOORDINAČNÍ UPOZORNĚNÍ ═══ */}
-        <ErrorBoundary fallbackTitle="Koordinace selhala">
-          <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
-        {/* ═══ 10. AKTIVNÍ KONVERZACE ═══ */}
-        {activeThreads.length > 0 && (
-          <StudyCard>
-            <SectionTitle icon={<MessageSquare className="w-4 h-4 text-primary" />}>
-              Kdo mluví s Karlem
-            </SectionTitle>
-            <div className="flex flex-wrap gap-2">
-              {activeThreads.map(t => {
-                if (isNonDidEntity(t.partName)) return null;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => onQuickThread?.(t.id, t.partName)}
-                    className="text-[13px] px-3 py-1.5 rounded-lg border border-border text-foreground transition-colors hover:bg-muted hover:border-primary/40"
-                  >
-                    {cleanDisplayName(t.partName)}
-                    <span className="text-[11px] ml-1 text-muted-foreground">({t.messageCount})</span>
-                  </button>
-                );
-              })}
-            </div>
-          </StudyCard>
-        )}
-
-        <div className="jung-divider" />
-
-        {/* ═══ 11. DOHODY ═══ */}
-        <ErrorBoundary fallbackTitle="Dohody selhaly">
-          <StudyCard>
-            <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(p => p + 1)} />
-          </StudyCard>
-        </ErrorBoundary>
-
-        {/* ═══ 12. MĚSÍČNÍ PŘEHLEDY ═══ */}
-        <ErrorBoundary fallbackTitle="Měsíční panel selhal">
-          <StudyCard>
-            <DidMonthlyPanel refreshTrigger={refreshTrigger} />
-          </StudyCard>
-        </ErrorBoundary>
-
-        {/* ═══ 13. MAPA SYSTÉMU ═══ */}
-        {parts.filter(p => p.status === "active").length > 0 && (
-          <ErrorBoundary fallbackTitle="Mapa systému selhala">
-            <DidSystemMap
-              parts={parts.filter(p => p.status === "active")}
-              activeThreads={activeThreads}
-              onQuickThread={onQuickThread}
-              onDeletePart={async (partName) => {
-                const { error } = await supabase.from("did_threads").delete().eq("part_name", partName).eq("sub_mode", "cast");
-                if (error) { toast.error(`Nepodařilo se smazat vlákna pro ${partName}`); return; }
-                toast.success(`Vlákna pro „${partName}" smazána z mapy`);
-                setParts(prev => prev.filter(p => p.name !== partName));
-                setActiveThreads(prev => prev.filter(t => t.partName !== partName));
-              }}
-            />
-          </ErrorBoundary>
-        )}
-
-        {/* ═══ 14. SUPERVIZNÍ REPORT ═══ */}
-        <ErrorBoundary fallbackTitle="Supervizní report selhal">
-          <StudyCard>
-            <DidSupervisionReport refreshTrigger={refreshTrigger} />
-          </StudyCard>
-        </ErrorBoundary>
-
-        {/* ═══ 15. NEAKTIVNÍ ČÁSTI ═══ */}
-        {warningParts.length > 0 && (
-          <StudyCard accent="warning">
-            <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-4 h-4 text-primary" />
-              <span className="text-[14px] font-semibold text-foreground">Neaktivní části</span>
-            </div>
-            <p className="text-[13px] text-muted-foreground">
-              {warningParts.map(p => cleanDisplayName(p.name)).join(", ")} – neaktivní více než 7 dní.
-            </p>
-          </StudyCard>
-        )}
 
         {/* ═══ FOOTER ═══ */}
         <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-[12px] text-muted-foreground bg-muted/30">
