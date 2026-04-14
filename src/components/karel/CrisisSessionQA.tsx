@@ -21,7 +21,6 @@ async function callFn(fnName: string, body: Record<string, any>) {
 }
 
 interface ParsedAnalysis {
-  date: string;
   intervention_effectiveness?: string;
   stabilization_trend?: string;
   main_risk?: string;
@@ -32,30 +31,79 @@ interface ParsedAnalysis {
   prepare_closure?: boolean;
 }
 
+interface AnalysisEntry {
+  id: string;
+  groupDate: string;
+  timestamp: string | null;
+  questionText: string;
+  therapistName: string;
+  answerText: string | null;
+  parsed: ParsedAnalysis | null;
+  rawAnalysis: string;
+}
+
+interface AnalysisGroup {
+  dateKey: string;
+  latestTimestamp: string | null;
+  entries: AnalysisEntry[];
+}
+
 const CrisisSessionQA: React.FC<Props> = ({ card, onRefetch }) => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [answerInputs, setAnswerInputs] = useState<Record<string, string>>({});
-  const [expandedAnalyses, setExpandedAnalyses] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
-  // Collect ALL analyses, grouped by date
-  const allAnalyses = useMemo<ParsedAnalysis[]>(() => {
-    const results: ParsedAnalysis[] = [];
-    for (const q of card.sessionQuestions) {
-      if (!q.karelAnalysis) continue;
-      try {
-        const parsed = JSON.parse(q.karelAnalysis);
-        const date = q.karelAnalyzedAt?.slice(0, 10) || q.answeredAt?.slice(0, 10) || "unknown";
-        results.push({ date, ...parsed });
-      } catch {
-        // skip unparseable
+  const analysisGroups = useMemo<AnalysisGroup[]>(() => {
+    const entries: AnalysisEntry[] = card.sessionQuestions
+      .filter((q) => !!q.karelAnalysis)
+      .map((q) => {
+        let parsed: ParsedAnalysis | null = null;
+
+        try {
+          parsed = JSON.parse(q.karelAnalysis || "") as ParsedAnalysis;
+        } catch {
+          parsed = null;
+        }
+
+        const timestamp = q.karelAnalyzedAt || q.answeredAt || null;
+
+        return {
+          id: q.id,
+          groupDate: timestamp?.slice(0, 10) || "unknown",
+          timestamp,
+          questionText: q.questionText,
+          therapistName: q.therapistName,
+          answerText: q.answerText,
+          parsed,
+          rawAnalysis: q.karelAnalysis || "",
+        };
+      })
+      .sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+
+    const grouped = new Map<string, AnalysisGroup>();
+
+    for (const entry of entries) {
+      const existing = grouped.get(entry.groupDate);
+
+      if (existing) {
+        existing.entries.push(entry);
+        if ((entry.timestamp || "") > (existing.latestTimestamp || "")) {
+          existing.latestTimestamp = entry.timestamp;
+        }
+      } else {
+        grouped.set(entry.groupDate, {
+          dateKey: entry.groupDate,
+          latestTimestamp: entry.timestamp,
+          entries: [entry],
+        });
       }
     }
-    // Deduplicate by date (keep latest per date)
-    const byDate = new Map<string, ParsedAnalysis>();
-    for (const a of results) {
-      byDate.set(a.date, a); // later entry overwrites earlier
-    }
-    return Array.from(byDate.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+    return Array.from(grouped.values()).sort((a, b) => {
+      const left = a.latestTimestamp || a.dateKey;
+      const right = b.latestTimestamp || b.dateKey;
+      return right.localeCompare(left);
+    });
   }, [card.sessionQuestions]);
 
   if (card.sessionQuestions.length === 0) return null;
@@ -115,42 +163,82 @@ const CrisisSessionQA: React.FC<Props> = ({ card, onRefetch }) => {
         ))}
       </div>
 
-      {/* All analyses – grouped by date, all shown */}
-      {allAnalyses.length > 0 && (
+      {/* All analyses – grouped by date, preserving every analysis entry */}
+      {analysisGroups.length > 0 && (
         <div className="space-y-2">
           <p className="text-[11px] font-bold text-foreground flex items-center gap-1.5">
             <Brain className="w-3.5 h-3.5" />
-            Karlovy analýzy ({allAnalyses.length})
+            Karlovy analýzy ({analysisGroups.reduce((sum, group) => sum + group.entries.length, 0)})
           </p>
-          {allAnalyses.map((analysis, idx) => {
-            const key = `analysis_${analysis.date}_${idx}`;
-            const isExpanded = expandedAnalyses[key] ?? (idx === 0); // first expanded by default
+
+          {analysisGroups.map((group, idx) => {
+            const key = `analysis_group_${group.dateKey}_${idx}`;
+            const isExpanded = expandedGroups[key] ?? idx === 0;
+
             return (
-              <div key={key} className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded p-2 space-y-1 text-[10px]">
+              <div key={key} className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded p-2 space-y-2 text-[10px]">
                 <button
-                  onClick={() => setExpandedAnalyses(prev => ({ ...prev, [key]: !isExpanded }))}
+                  onClick={() => setExpandedGroups(prev => ({ ...prev, [key]: !isExpanded }))}
                   className="flex items-center gap-1.5 w-full text-left"
                 >
                   {isExpanded ? <ChevronDown className="w-3 h-3 text-muted-foreground" /> : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
                   <span className="font-bold text-blue-800 dark:text-blue-300 text-[11px]">
-                    Analýza {new Date(analysis.date).toLocaleDateString("cs-CZ")}
+                    Analýzy {group.dateKey !== "unknown" ? new Date(group.dateKey).toLocaleDateString("cs-CZ") : "bez data"}
                   </span>
+                  <span className="text-[9px] text-muted-foreground ml-auto">{group.entries.length}×</span>
                 </button>
+
                 {isExpanded && (
-                  <>
-                    <div className="grid grid-cols-2 gap-1 mt-1">
-                      {analysis.intervention_effectiveness && <p><strong>Efektivita:</strong> {analysis.intervention_effectiveness}</p>}
-                      {analysis.stabilization_trend && <p><strong>Trend:</strong> {analysis.stabilization_trend}</p>}
-                      {analysis.main_risk && <p className="col-span-2"><strong>Hlavní riziko:</strong> {analysis.main_risk}</p>}
-                      {analysis.next_action && <p className="col-span-2"><strong>Další krok:</strong> {analysis.next_action}</p>}
-                      {analysis.karel_recommendation && <p className="col-span-2"><strong>Doporučení:</strong> {analysis.karel_recommendation}</p>}
-                    </div>
-                    <div className="flex gap-2 text-[9px] text-muted-foreground mt-1">
-                      {analysis.needs_follow_up_session && <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 px-1 rounded">Potřeba follow-up</span>}
-                      {analysis.needs_crisis_meeting && <span className="bg-destructive/10 text-destructive px-1 rounded">Potřeba porady</span>}
-                      {analysis.prepare_closure && <span className="bg-green-100 dark:bg-green-900/30 text-green-700 px-1 rounded">Připravit uzavření</span>}
-                    </div>
-                  </>
+                  <div className="space-y-2">
+                    {group.entries.map((entry, entryIdx) => (
+                      <div
+                        key={entry.id}
+                        className={entryIdx > 0 ? "border-t border-blue-200/70 dark:border-blue-800/70 pt-2 space-y-1" : "space-y-1"}
+                      >
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] text-muted-foreground">
+                          <span className="font-medium text-foreground">{entry.questionText}</span>
+                          <span>{entry.therapistName === "hanka" ? "Hanička" : "Káťa"}</span>
+                          {entry.timestamp && (
+                            <span>
+                              {new Date(entry.timestamp).toLocaleString("cs-CZ", {
+                                day: "numeric",
+                                month: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          )}
+                        </div>
+
+                        {entry.answerText && (
+                          <p className="text-muted-foreground bg-background/60 rounded p-1.5">
+                            <strong>Odpověď:</strong> {entry.answerText}
+                          </p>
+                        )}
+
+                        {entry.parsed ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-1">
+                              {entry.parsed.intervention_effectiveness && <p><strong>Efektivita:</strong> {entry.parsed.intervention_effectiveness}</p>}
+                              {entry.parsed.stabilization_trend && <p><strong>Trend:</strong> {entry.parsed.stabilization_trend}</p>}
+                              {entry.parsed.main_risk && <p className="col-span-2"><strong>Hlavní riziko:</strong> {entry.parsed.main_risk}</p>}
+                              {entry.parsed.next_action && <p className="col-span-2"><strong>Další krok:</strong> {entry.parsed.next_action}</p>}
+                              {entry.parsed.karel_recommendation && <p className="col-span-2"><strong>Doporučení:</strong> {entry.parsed.karel_recommendation}</p>}
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-[9px] text-muted-foreground mt-1">
+                              {entry.parsed.needs_follow_up_session && <span className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 px-1 rounded">Potřeba follow-up</span>}
+                              {entry.parsed.needs_crisis_meeting && <span className="bg-destructive/10 text-destructive px-1 rounded">Potřeba porady</span>}
+                              {entry.parsed.prepare_closure && <span className="bg-green-100 dark:bg-green-900/30 text-green-700 px-1 rounded">Připravit uzavření</span>}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-foreground whitespace-pre-wrap bg-background/60 rounded p-1.5">
+                            <strong>Analýza:</strong> {entry.rawAnalysis}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             );

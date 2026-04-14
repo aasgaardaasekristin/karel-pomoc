@@ -22,7 +22,15 @@ async function callFn(fnName: string, body: Record<string, any>) {
     headers: { "Content-Type": "application/json", ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
     body: JSON.stringify(body),
   });
-  return res.json();
+
+  const text = await res.text();
+  const payload = text ? JSON.parse(text) : {};
+
+  if (!res.ok) {
+    throw new Error(payload?.error || `HTTP ${res.status}`);
+  }
+
+  return payload;
 }
 
 const AuditRow: React.FC<{ entry: AuditEntry }> = ({ entry }) => {
@@ -76,6 +84,8 @@ const CrisisAuditPanel: React.FC<Props> = ({ card, onRefetch }) => {
       } else {
         toast.error(data.error || "Chyba při potvrzení");
       }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Chyba při potvrzení");
     } finally {
       setActionLoading(null);
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, ChevronRight, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,9 +14,8 @@ const CrisisBriefPanel: React.FC<CrisisBriefPanelProps> = ({ refreshSignal }) =>
   const [briefs, setBriefs] = useState<DbCrisisBrief[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const lastIdsRef = useRef<string>("");
 
-  const loadBriefs = useCallback(async () => {
+  const refreshBriefs = useCallback(async () => {
     const { data, error } = await supabase
       .from("crisis_briefs")
       .select("*")
@@ -24,40 +23,53 @@ const CrisisBriefPanel: React.FC<CrisisBriefPanelProps> = ({ refreshSignal }) =>
       .order("created_at", { ascending: false })
       .limit(10);
 
-    if (!error && data) {
-      const ids = data.map((d: any) => d.id).join(",");
-      if (ids !== lastIdsRef.current) {
-        lastIdsRef.current = ids;
-        setBriefs(data as unknown as DbCrisisBrief[]);
-      }
+    if (!error) {
+      setBriefs((data ?? []) as unknown as DbCrisisBrief[]);
     }
+
     setLoading(false);
   }, []);
 
-  // Initial load + react to external refresh signal
+  // Single refresh contract: initial load + optional external refresh from the main crisis layer.
   useEffect(() => {
-    loadBriefs();
-  }, [loadBriefs, refreshSignal]);
+    void refreshBriefs();
+  }, [refreshBriefs, refreshSignal]);
 
-  // Single polling interval — aligned with main crisis layer's ~30s cadence
-  // This is the ONLY polling source for brief notifications.
+  // Separate notification layer is preserved, but polling is removed to avoid drift.
+  // Briefs now refresh only from the shared refresh callback: external signal + realtime DB changes.
   useEffect(() => {
-    const interval = setInterval(loadBriefs, 30000);
-    return () => clearInterval(interval);
-  }, [loadBriefs]);
+    const channel = supabase
+      .channel("crisis-brief-panel")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "crisis_briefs" },
+        () => {
+          void refreshBriefs();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshBriefs]);
 
   const markAsRead = async (id: string) => {
     await supabase.from("crisis_briefs").update({ is_read: true }).eq("id", id);
-    setBriefs(prev => prev.filter(b => b.id !== id));
     setExpandedId(null);
+    void refreshBriefs();
   };
 
   const dismissAll = async () => {
-    for (const b of briefs) {
-      await supabase.from("crisis_briefs").update({ is_read: true }).eq("id", b.id);
+    if (briefs.length > 0) {
+      await supabase
+        .from("crisis_briefs")
+        .update({ is_read: true })
+        .in("id", briefs.map((brief) => brief.id));
     }
-    setBriefs([]);
+
     setExpandedId(null);
+    void refreshBriefs();
   };
 
   if (loading || briefs.length === 0) return null;
