@@ -2858,6 +2858,16 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const successfulCardUpdates: SuccessfulCardUpdate[] = [];
     const blockedCardUpdates: BlockedCardUpdate[] = [];
     let hadCardUpdateErrors = false;
+    let cardFatalErrors = 0;
+
+    // ═══ CRITICAL PHASE STATUS — fail-closed tracking for is_processed guard ═══
+    const criticalPhaseStatus = {
+      therapistIntelligenceOk: false,
+      dashboardOk: false,
+      operativePlanOk: false,
+      queueFlushTriggeredOk: false,
+      cardPipelineOk: false,
+    };
     let finalReportText = "";
     let aiReportText = "";
     let hankaHtml = "";
@@ -4161,10 +4171,15 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             }
           } catch (e) {
             hadCardUpdateErrors = true;
+            cardFatalErrors++;
             console.error(`Failed to update card for ${rawPartName}:`, e);
           }
         }
       }
+
+      // ═══ PHASE_8_CARDS_AND_PART_STATUS: card pipeline result ═══
+      criticalPhaseStatus.cardPipelineOk = cardFatalErrors === 0;
+      console.log(`[PHASE_8] Card pipeline: fatalErrors=${cardFatalErrors}, blocked=${blockedCardUpdates.length}, successful=${successfulCardUpdates.length}, pipelineOk=${criticalPhaseStatus.cardPipelineOk}`);
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
       // Build valid sources set for evidence validation
@@ -4238,9 +4253,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
                 "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6",
                 "Aktualizace", "PROČ", "AKCE", "DOKDY",
               ]);
+              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated && planVerify.verified;
               if (!planVerify.verified) {
                 console.warn(`[VERIFY] ⚠️ 05_Operativni_Plan verification FAILED: missing=[${planVerify.missingKeywords.join(",")}], length=${planVerify.length}`);
               }
+              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (AI write)`);
               continue;
             }
 
@@ -4263,9 +4280,11 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
                 "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7",
                 "DASHBOARD", "Aktualizace", "DEDUKCE",
               ]);
+              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated && dashVerify.verified;
               if (!dashVerify.verified) {
                 console.warn(`[VERIFY] ⚠️ 00_Dashboard verification FAILED: missing=[${dashVerify.missingKeywords.join(",")}], length=${dashVerify.length}`);
               }
+              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (AI write)`);
               continue;
             }
 
@@ -4429,9 +4448,11 @@ Všechna data pocházejí z databáze (did_part_registry, did_threads, did_thera
               const fallbackDashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", [
                 "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7", "DASHBOARD",
               ]);
+              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated && fallbackDashVerify.verified;
               if (!fallbackDashVerify.verified) {
                 console.warn(`[VERIFY] ⚠️ Dashboard fallback verification FAILED: missing=[${fallbackDashVerify.missingKeywords.join(",")}]`);
               }
+              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (fallback)`);
             } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
           }
         }
@@ -4505,7 +4526,9 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
               console.log(`[CENTRUM-FALLBACK] ✅ Operative plan: full deterministic content written`);
 
               // Post-write verification
-              await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan (fallback)", ["SEKCE 1", "SEKCE 3", "OPERATIVNÍ"]);
+              const fallbackPlanVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan (fallback)", ["SEKCE 1", "SEKCE 3", "OPERATIVNÍ"]);
+              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated && fallbackPlanVerify.verified;
+              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (fallback)`);
             } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan update failed:`, e); }
           }
         }
@@ -4997,35 +5020,38 @@ Vrať POUZE validní JSON (bez markdown):
       console.warn("[daily-cycle] Meeting detection error (non-fatal):", meetingErr);
     }
 
-    // Card update failures are tracked separately in did_update_cycles
-    const threadIds = threads.map(t => t.id);
-    if (threadIds.length > 0) {
-      await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
-    }
-    const convIds = conversations.map(c => c.id);
-    if (convIds.length > 0) {
-      await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
-    }
+    // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
+    // NOTE: is_processed marking moved to PHASE_10 — gated by criticalPhaseStatus
 
-    // ═══ FLUSH PENDING DRIVE WRITES ═══
     try {
-      // Delegated to karel-drive-queue-processor (single authoritative write pipeline)
-      const { data: pendingCount } = await sb.from("did_pending_drive_writes")
+      const { count: pendingWriteCount } = await sb.from("did_pending_drive_writes")
         .select("id", { count: "exact", head: true })
-        .eq("status", "pending")
+        .eq("status", "pending");
 
-      if ((pendingCount as any)?.length !== 0) {
-        console.log(`[daily-cycle] Delegating pending Drive writes to queue processor`);
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const srvKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        fetch(`${supabaseUrl}/functions/v1/karel-drive-queue-processor`, {
+      if ((pendingWriteCount || 0) > 0) {
+        console.log(`[PHASE_9] ${pendingWriteCount} pending Drive writes, triggering queue processor`);
+        const qpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-drive-queue-processor`;
+        const qpRes = await fetch(qpUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${srvKey}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
           body: JSON.stringify({ triggered_by: "daily-cycle" }),
-        }).catch(e => console.warn("[daily-cycle] Queue processor delegation error:", e));
+        });
+        if (qpRes.ok) {
+          criticalPhaseStatus.queueFlushTriggeredOk = true;
+          console.log(`[PHASE_9] Queue processor triggered: ${qpRes.status}`);
+        } else {
+          console.error(`[PHASE_9] Queue processor FAILED: HTTP ${qpRes.status}`);
+        }
+      } else {
+        // No pending writes = nothing to flush = OK
+        criticalPhaseStatus.queueFlushTriggeredOk = true;
+        console.log("[PHASE_9] No pending Drive writes, skipping flush");
       }
     } catch (flushErr) {
-      console.warn("[daily-cycle] Queue processor delegation error (non-fatal):", flushErr);
+      console.error("[PHASE_9] Queue flush FAILED:", flushErr);
     }
 
     // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks (4/5/7 days) ═══
@@ -6664,162 +6690,37 @@ Vra\u0165 JSON:
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
 
-    // ═══ FÁZE 7.7: DENNÍ PROFILACE TERAPEUTŮ — F17-D5 ═══
+    // ═══ PHASE_3_THERAPIST_INTELLIGENCE — delegated to standalone function ═══
+    // Replaced inline profiling (was ~150 lines of raw AI + ungoverned writes)
+    // with delegation to karel-daily-therapist-intelligence which uses
+    // encodeGovernedWrite + normalizeSignal + proper dedup markers
     try {
-      {
-        const therapists = ["hanka", "kata"];
-        const LOVABLE_API_KEY_TP = Deno.env.get("LOVABLE_API_KEY");
+      const tpUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-therapist-intelligence`;
+      const tpController = new AbortController();
+      const tpTimeout = setTimeout(() => tpController.abort(), 30000);
+      const tpRes = await fetch(tpUrl, {
+        method: "POST",
+        signal: tpController.signal,
+        headers: {
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ source: "daily-cycle" }),
+      });
+      clearTimeout(tpTimeout);
 
-        if (LOVABLE_API_KEY_TP) {
-          const { callAiForJson: callAiProfile } = await import("../_shared/aiCallWrapper.ts");
-
-          for (const therapistName of therapists) {
-            try {
-              // ── Gather inputs (7-day window for daily runs) ──
-              const windowMs = 7 * 86400000;
-              const since = new Date(Date.now() - windowMs).toISOString();
-
-              const { data: tNotes } = await sb
-                .from("therapist_notes")
-                .select("note_text, part_name, note_type, created_at")
-                .ilike("author", `%${therapistName}%`)
-                .gte("created_at", since)
-                .order("created_at", { ascending: false })
-                .limit(40);
-
-              const { data: tTasks } = await sb
-                .from("did_therapist_tasks")
-                .select("task, status, assigned_to, part_name, created_at, completed_at")
-                .ilike("assigned_to", `%${therapistName}%`)
-                .gte("created_at", since)
-                .limit(40);
-
-              const { data: tFeedback } = await sb
-                .from("did_task_auto_feedback")
-                .select("feedback_text, quality_score, part_name")
-                .gte("created_at", since)
-                .limit(20);
-
-              const notesText = (tNotes || [])
-                .map((n: any) => `[${n.created_at?.slice(0, 10)} | ${n.part_name}] ${(n.note_text || "").slice(0, 200)}`)
-                .join("\n");
-
-              const tasksText = (tTasks || [])
-                .map((t: any) => `[${t.status}] ${t.task} (${t.part_name || "obecný"})`)
-                .join("\n");
-
-              const avgScore = (tFeedback || []).length > 0
-                ? (tFeedback || []).reduce((sum: number, f: any) => sum + (f.quality_score || 3), 0) / tFeedback!.length
-                : null;
-
-              const isHanka = therapistName === "hanka";
-              const displayName = isHanka ? "Hanička" : "Káťa";
-              const relationshipContext = isHanka
-                ? "Hanička je Karlova životní partnerka, důvěrnice i spolupracovnice. Karel ji miluje. Sleduje její emoční stav, zátěž, radosti i starosti s hlubokou osobní účastí."
-                : "Káťa je Karlova mentorovaná terapeutka. Karel ji vede profesionálně ale vřele, sleduje její růst, spolehlivost a pracovní zátěž.";
-
-              const profileResult = await callAiProfile({
-                systemPrompt: `Jsi Karel — kognitivní agent, supervizor a analytik.
-Denně analyzuješ data o terapeutce ${displayName} a vyvozuješ závěry.
-
-VZTAH: ${relationshipContext}
-
-PRAVIDLA:
-- Piš jako Karel, v první osobě, česky
-- Vycházej POUZE z dodaných dat — nic nedomýšlej
-- Dedukuj: co prožívá, jak funguje, co ji trápí, jak se cítí
-- Identifikuj komunikační potřebu: jak má Karel příště mluvit a co dělat jinak
-- Buď konkrétní — žádné obecné fráze
-- Časový kontext: zaměř se na poslední dny, ne měsíce`,
-
-                userPrompt: `TERAPEUTKA: ${displayName}
-DATUM: ${new Date().toISOString().slice(0, 10)}
-
-POZNÁMKY (${(tNotes || []).length} za 7 dní):
-${(notesText || "").slice(0, 2000) || "(žádné poznámky)"}
-
-ÚKOLY (${(tTasks || []).length} za 7 dní):
-${(tasksText || "").slice(0, 1500) || "(žádné úkoly)"}
-
-PRŮMĚRNÉ HODNOCENÍ: ${avgScore ? avgScore.toFixed(1) : "N/A"}/5
-
-Vrať JSON:
-{
-  "situacni_analyza": "3-6 vět: aktuální situační stav — co řeší, jak se cítí, jaká je zátěž, co se děje v jejím životě",
-  "karlovy_poznatky": "3-6 vět: Karlovy dedukce — vzorce chování, motivace, spolehlivost, komunikační potřeba, jak příště mluvit",
-  "emocni_stav": "1 věta: shrnutí aktuálního emočního stavu",
-  "zatez": "low|medium|high",
-  "komunikacni_potreba": "1 věta: co ${displayName} teď potřebuje od Karla"
-}`,
-                apiKey: LOVABLE_API_KEY_TP,
-                model: "google/gemini-2.5-flash",
-                requiredKeys: ["situacni_analyza", "karlovy_poznatky"],
-                maxRetries: 1,
-                fallback: null,
-                callerName: "daily-therapist-profiling",
-              });
-
-              if (profileResult.success && profileResult.data) {
-                const p = profileResult.data as any;
-                const dateLabel = new Date().toLocaleDateString("cs-CZ");
-
-                // ── Update therapist_profiles DB table ──
-                const { data: existing } = await sb
-                  .from("therapist_profiles")
-                  .select("id")
-                  .eq("therapist_name", therapistName)
-                  .maybeSingle();
-
-                const profileData = {
-                  therapist_name: therapistName,
-                  communication_style: p.komunikacni_potreba || "",
-                  workload_capacity: p.zatez || "normal",
-                  raw_analysis: `${p.emocni_stav || ""}\n\n${p.situacni_analyza || ""}`.slice(0, 2000),
-                  last_updated: new Date().toISOString(),
-                  generated_by: "karel",
-                };
-
-                if (existing) {
-                  await sb.from("therapist_profiles").update(profileData).eq("id", existing.id);
-                } else {
-                  await sb.from("therapist_profiles").insert(profileData);
-                }
-
-                // ── Drive writes: SITUACNI_ANALYZA + KARLOVY_POZNATKY only ──
-                const driveDisplayName = isHanka ? "HANKA" : "KATA";
-
-                if (p.situacni_analyza) {
-                  await sb.from("did_pending_drive_writes").insert({
-                    target_document: `PAMET_KAREL/DID/${driveDisplayName}/SITUACNI_ANALYZA`,
-                    content: `\n\n[${dateLabel}] ${p.situacni_analyza}${p.emocni_stav ? `\nEmoční stav: ${p.emocni_stav}` : ""}${p.zatez ? `\nZátěž: ${p.zatez}` : ""}`,
-                    write_type: "append",
-                    status: "pending",
-                    priority: "normal",
-                  });
-                }
-
-                if (p.karlovy_poznatky) {
-                  await sb.from("did_pending_drive_writes").insert({
-                    target_document: `PAMET_KAREL/DID/${driveDisplayName}/KARLOVY_POZNATKY`,
-                    content: `\n\n[${dateLabel}] ${p.karlovy_poznatky}${p.komunikacni_potreba ? `\nKomunikační potřeba: ${p.komunikacni_potreba}` : ""}`,
-                    write_type: "append",
-                    status: "pending",
-                    priority: "normal",
-                  });
-                }
-
-                console.log(`[THERAPIST PROFILE] ${therapistName} daily update done (zatez=${p.zatez}, stav=${(p.emocni_stav || "").slice(0, 60)})`);
-              }
-            } catch (singleTPErr) {
-              console.warn(`[THERAPIST PROFILE] Error for ${therapistName}:`, singleTPErr);
-            }
-          }
-        } else {
-          console.log("[THERAPIST PROFILE] No LOVABLE_API_KEY, skipping");
-        }
+      if (tpRes.ok) {
+        const tpBody = await tpRes.json();
+        criticalPhaseStatus.therapistIntelligenceOk = tpBody.ok !== false;
+        console.log(`[PHASE_3] Therapist intelligence: HTTP ${tpRes.status}, ok=${tpBody.ok}, results=${JSON.stringify(tpBody.results || {})}`);
+      } else {
+        const errText = await tpRes.text().catch(() => "");
+        console.error(`[PHASE_3] Therapist intelligence FAILED: HTTP ${tpRes.status} — ${errText.slice(0, 200)}`);
+        // criticalPhaseStatus.therapistIntelligenceOk remains false
       }
     } catch (tpErr) {
-      console.warn("[THERAPIST PROFILE] Error:", tpErr);
+      console.error("[PHASE_3] Therapist intelligence FAILED (timeout or network):", tpErr);
+      // criticalPhaseStatus.therapistIntelligenceOk remains false
     }
 
     // ═══ FÁZE 6.5: PAMET_KAREL — krizová profilace terapeutek ═══
@@ -6943,57 +6844,52 @@ Vrať JSON:
       console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
     }
 
+    // ═══ PHASE_10_CLEANUP_AND_LOGGING ═══
+
     try {
       const alertCutoff = new Date(Date.now() - 90 * 86400000).toISOString();
       await sb.from("safety_alerts").delete().in("status", ["resolved", "false_positive"]).lt("created_at", alertCutoff);
-      console.log("[daily-cycle] Old safety alerts cleanup done");
+      console.log("[PHASE_10] Old safety alerts cleanup done");
     } catch (e) {
-      console.warn("[daily-cycle] Safety alerts cleanup failed:", e);
+      console.warn("[PHASE_10] Safety alerts cleanup failed:", e);
     }
 
-    try {
-      const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;
-      const refreshRes = await fetch(refreshUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-        },
-        body: JSON.stringify({ source: "daily-cycle-post" }),
-      });
-      console.log(`[daily-cycle] karel-daily-refresh triggered: ${refreshRes.status}`);
-    } catch (e) {
-      console.warn("[daily-cycle] Failed to trigger karel-daily-refresh (non-fatal):", e);
-    }
+    // ── DISABLED: karel-daily-refresh — context-prime (Job 30) runs independently as its own cron ──
+    // try {
+    //   const refreshUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-daily-refresh`;
+    //   const refreshRes = await fetch(refreshUrl, { ... });
+    // } catch (e) { ... }
 
-    // Follow-through engine
-    try {
-      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-follow-through`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-        },
-        body: JSON.stringify({ triggered_by: "daily_cycle" }),
-      });
-      console.log("[FOLLOW-THROUGH] Called");
-    } catch (e) {
-      console.warn("[FOLLOW-THROUGH] Failed (non-fatal):", e);
-    }
+    // ── REMOVED: karel-follow-through — deprecated dead code (replaced by Guardian + Reactive loop) ──
 
-    // Crisis research
-    try {
-      await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-research`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-        },
-        body: JSON.stringify({ triggered_by: "daily_cycle" }),
-      });
-      console.log("[CRISIS-RESEARCH] Called");
-    } catch (e) {
-      console.warn("[CRISIS-RESEARCH] Failed (non-fatal):", e);
+    // ── DISABLED: karel-crisis-research — guardian loop covers crisis escalations independently ──
+    // try {
+    //   await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/karel-crisis-research`, { ... });
+    // } catch (e) { ... }
+
+    // ═══ is_processed — MOVED HERE from earlier position ═══
+    // Only mark threads/conversations as processed when ALL critical phases succeeded.
+    // If any critical phase failed, threads remain unprocessed → will be retried next cycle.
+    const allCriticalOk = criticalPhaseStatus.therapistIntelligenceOk
+      && criticalPhaseStatus.dashboardOk
+      && criticalPhaseStatus.operativePlanOk
+      && criticalPhaseStatus.queueFlushTriggeredOk
+      && criticalPhaseStatus.cardPipelineOk;
+
+    console.log(`[PHASE_10] criticalPhaseStatus: ${JSON.stringify(criticalPhaseStatus)}, allCriticalOk=${allCriticalOk}`);
+
+    const threadIds = threads.map(t => t.id);
+    const convIds = conversations.map(c => c.id);
+    if (allCriticalOk) {
+      if (threadIds.length > 0) {
+        await sb.from("did_threads").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", threadIds);
+      }
+      if (convIds.length > 0) {
+        await sb.from("did_conversations").update({ is_processed: true, processed_at: new Date().toISOString() }).in("id", convIds);
+      }
+      console.log(`[PHASE_10] ✅ Marked ${threadIds.length} threads + ${convIds.length} conversations as processed`);
+    } else {
+      console.warn(`[PHASE_10] ⚠️ NOT marking ${threadIds.length} threads + ${convIds.length} conversations as processed — critical phases incomplete`);
     }
 
     return new Response(JSON.stringify({
