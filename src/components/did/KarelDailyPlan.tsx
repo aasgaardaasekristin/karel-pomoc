@@ -41,7 +41,6 @@ interface Commitment {
   committed_by: string;
 }
 
-// ── Parse structured 05A sections from plain text ──
 interface Parsed05A {
   crisisContext: string;
   sessions: string;
@@ -53,6 +52,12 @@ interface Parsed05A {
   recoveryMode: string;
   raw: string;
   cycleInfo: string;
+}
+
+interface OverviewCallout {
+  label: string;
+  text: string;
+  tone: "default" | "crisis" | "warning";
 }
 
 function parse05A(text: string): Parsed05A {
@@ -81,52 +86,56 @@ function parse05A(text: string): Parsed05A {
   };
 }
 
-const assigneeLabel = (a: string) => {
-  const l = (a || "").toLowerCase();
-  if (l === "hanka" || l === "hanička") return "Hanka";
-  if (l === "kata" || l === "káťa") return "Káťa";
-  if (l === "karel") return "Karel";
-  return "Obě";
+const normalizeLine = (line: string) =>
+  line
+    .replace(/^[\s•\-–—*0-9.()]+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const uniqueMeaningfulLines = (text: string, limit = 4): string[] => {
+  const seen = new Set<string>();
+
+  return text
+    .split("\n")
+    .map(normalizeLine)
+    .filter(Boolean)
+    .filter((line) => !/^\(?žádné|n\/a|bez změny\)?$/i.test(line))
+    .filter((line) => {
+      const key = line.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, limit);
 };
 
-// ── Section renderer for 05A parsed text ──
-function Section05A({ icon, title, content, color }: { icon: string; title: string; content: string; color?: string }) {
-  if (!content || content === "(žádné aktivní úkoly)" || content === "(žádná plánovaná sezení)") return null;
+const buildPlanCallouts = (plan: Parsed05A): OverviewCallout[] => {
+  const rawCallouts: OverviewCallout[] = [
+    {
+      label: "Krizový kontext",
+      text: uniqueMeaningfulLines(plan.crisisContext, 1)[0] || "",
+      tone: "crisis",
+    },
+    {
+      label: "Urgentní follow-up",
+      text: uniqueMeaningfulLines(plan.urgentFollowUp, 1)[0] || "",
+      tone: "warning",
+    },
+    {
+      label: "Obnova řízení",
+      text: uniqueMeaningfulLines(plan.recoveryMode, 1)[0] || "",
+      tone: "default",
+    },
+  ].filter((item) => item.text);
 
-  const hasUrgent = content.includes("🔴") || content.includes("VYŽADUJE AKCI") || content.includes("PO TERMÍNU");
-  const hasRecovery = content.includes("RECOVERY") || content.includes("POŽADAVEK NA UPDATE") || content.includes("REŽIM OBNOVY") || title.includes("obnovy");
-
-  return (
-    <div
-      className="space-y-1 rounded-lg p-3"
-      style={{
-        backgroundColor: hasRecovery
-          ? "hsl(var(--primary) / 0.08)"
-          : hasUrgent
-          ? "hsl(var(--destructive) / 0.08)"
-          : "hsl(var(--muted) / 0.4)",
-      }}
-    >
-      <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "hsl(var(--foreground))" }}>
-        {icon} {title}
-        {hasUrgent && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive font-medium">
-            vyžaduje akci
-          </span>
-        )}
-        {hasRecovery && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-primary/15 text-primary">
-            aktivní obnova
-          </span>
-        )}
-      </h3>
-      <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1 text-muted-foreground">
-        {content}
-      </div>
-      <hr className="border-border/50 mt-2" />
-    </div>
-  );
-}
+  const seen = new Set<string>();
+  return rawCallouts.filter((item) => {
+    const key = `${item.label}|${item.text.toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
 
 const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   const [plan05A, setPlan05A] = useState<Parsed05A | null>(null);
@@ -150,17 +159,13 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     }
 
     try {
-      // ── Try 05A from Drive first ──
       try {
-        const { data: fnData, error: fnError } = await supabase.functions.invoke(
-          "karel-did-drive-read",
-          {
-            body: {
-              documents: ["05A_OPERATIVNI_PLAN"],
-              subFolder: "00_CENTRUM",
-            },
-          }
-        );
+        const { data: fnData, error: fnError } = await supabase.functions.invoke("karel-did-drive-read", {
+          body: {
+            documents: ["05A_OPERATIVNI_PLAN"],
+            subFolder: "00_CENTRUM",
+          },
+        });
 
         if (!fnError && fnData?.documents?.["05A_OPERATIVNI_PLAN"]) {
           const raw = fnData.documents["05A_OPERATIVNI_PLAN"] as string;
@@ -182,7 +187,6 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         console.warn("[KarelDailyPlan] 05A Drive read failed, falling back to DB:", driveErr);
       }
 
-      // ── DB fallback ──
       setSource("db");
       const today = new Date().toISOString().slice(0, 10);
 
@@ -250,163 +254,156 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load, refreshTrigger]);
+  useEffect(() => {
+    load();
+  }, [load, refreshTrigger]);
 
   if (loading && !hasLoadedOnce.current) {
     return (
       <div className="jung-card p-5">
-        <div className="h-5 w-48 bg-muted rounded mb-3 animate-pulse" />
-        <div className="h-4 w-full bg-muted rounded animate-pulse" />
+        <div className="mb-3 h-5 w-48 animate-pulse rounded bg-muted" />
+        <div className="h-4 w-full animate-pulse rounded bg-muted" />
       </div>
     );
   }
 
-  const todayFormatted = new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" });
+  const todayFormatted = new Date().toLocaleDateString("cs-CZ", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
-  // ═══ 05A-driven view ═══
   if (source === "05A" && plan05A) {
+    const overviewLines = uniqueMeaningfulLines(plan05A.karelOverview, 4);
+    const overviewLead = overviewLines[0] || "Karel čeká na krátké dnešní operativní doplnění.";
+    const overviewDetails = overviewLines.slice(1);
+    const callouts = buildPlanCallouts(plan05A);
+
     return (
-      <div className="jung-card p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="jung-section-title text-[20px]">
-            ☉ Karlův přehled — {todayFormatted}
-          </h2>
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
-            z kartotéky
+      <div className="jung-card space-y-5 p-6">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
+            {plan05A.cycleInfo ? (
+              <p className="mt-1 text-[12px] text-muted-foreground">{plan05A.cycleInfo}</p>
+            ) : null}
+          </div>
+          <span className="rounded-full bg-primary/12 px-2 py-0.5 text-[10px] font-medium text-primary">
+            z 05A
           </span>
         </div>
-        {plan05A.cycleInfo && (
-          <p className="text-[12px] text-muted-foreground/60">
-            {plan05A.cycleInfo}
-          </p>
-        )}
 
-        {/* Karlův přehled gets rendered FIRST as hero content */}
-        <Section05A icon="🧠" title="Karlův přehled" content={plan05A.karelOverview} />
+        <div className="rounded-2xl border border-border/70 bg-background/20 p-4 sm:p-5">
+          <p className="text-[16px] font-medium leading-8 text-foreground sm:text-[18px]">{overviewLead}</p>
+          {overviewDetails.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {overviewDetails.map((line) => (
+                <div key={line} className="flex items-start gap-2 text-[13px] leading-6 text-muted-foreground">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
+                  <span>{line}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
 
-        <Section05A icon="🔴" title="Krizový kontext" content={plan05A.crisisContext} color="hsl(var(--destructive))" />
-        <Section05A icon="⚠️" title="Urgentní follow-up" content={plan05A.urgentFollowUp} color="hsl(var(--primary))" />
-        <Section05A icon="🔄" title="Režim obnovy řízení" content={plan05A.recoveryMode} />
-        <Section05A icon="🎯" title="Plánovaná sezení" content={plan05A.sessions} />
-        <Section05A icon="📝" title="Úkoly" content={plan05A.tasks} />
-        <Section05A icon="❓" title="Otevřené otázky" content={plan05A.questions} />
-        <Section05A icon="👥" title="Přehled částí" content={plan05A.partsOverview} />
+        {callouts.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {callouts.map((callout) => (
+              <div
+                key={`${callout.label}-${callout.text}`}
+                className={
+                  callout.tone === "crisis"
+                    ? "rounded-2xl border border-destructive/25 bg-destructive/10 p-3"
+                    : callout.tone === "warning"
+                      ? "rounded-2xl border border-primary/25 bg-primary/10 p-3"
+                      : "rounded-2xl border border-border/70 bg-muted/25 p-3"
+                }
+              >
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  {callout.label}
+                </p>
+                <p className="mt-1 text-[13px] leading-6 text-foreground">{callout.text}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     );
   }
 
-  // ═══ DB fallback view ═══
-  const hasAnything = crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
+  const hasAnything =
+    crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
   if (!hasAnything) {
     return (
-      <div className="jung-card p-5">
-        <h2 className="jung-section-title text-[20px] mb-2">
-          ☉ Karlův přehled — {todayFormatted}
-        </h2>
-        <p className="text-[13px] text-muted-foreground">
+      <div className="jung-card p-6">
+        <h2 className="jung-section-title mb-2 text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
+        <p className="text-[14px] leading-7 text-muted-foreground">
           Žádné aktivní operativní položky. Karel čeká na nová data.
         </p>
       </div>
     );
   }
 
-  const overdueCommitments = commitments.filter(c => {
-    const daysOverdue = Math.floor((Date.now() - new Date(c.due_date).getTime()) / 86400000);
+  const overdueCommitments = commitments.filter((commitment) => {
+    const daysOverdue = Math.floor((Date.now() - new Date(commitment.due_date).getTime()) / 86400000);
     return daysOverdue > 0;
   });
 
+  const fallbackCards = [
+    crisisPartName
+      ? {
+          label: "Krize",
+          value: `${crisisPartName}${crisisDays != null ? ` — den ${crisisDays}` : ""}`,
+        }
+      : null,
+    sessions.length > 0 ? { label: "Sezení dnes", value: `${sessions.length} aktivních položek` } : null,
+    tasks.length > 0 ? { label: "Aktivní úkoly", value: `${tasks.length} otevřených bodů` } : null,
+    questions.length > 0 ? { label: "Čeká na odpověď", value: `${questions.length} otázek` } : null,
+    overdueCommitments.length > 0
+      ? { label: "Po termínu", value: `${overdueCommitments.length} závazků` }
+      : null,
+  ].filter(Boolean) as { label: string; value: string }[];
+
+  const fallbackLead = crisisPartName
+    ? `Nejvyšší priorita dne je ${crisisPartName}${crisisJournal?.crisis_trend ? ` — trend: ${crisisJournal.crisis_trend}` : ""}.`
+    : "Karel drží denní orientaci z otevřených úkolů, sezení a čekajících odpovědí.";
+
   return (
-    <div className="jung-card p-5 space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="jung-section-title text-[20px]">
-          ☉ Karlův denní přehled — {todayFormatted}
-        </h2>
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
-          z databáze
+    <div className="jung-card space-y-5 p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
+          <p className="mt-1 text-[12px] text-muted-foreground">Pracovní fallback bez 05A dokumentu</p>
+        </div>
+        <span className="rounded-full bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-foreground">
+          z provozu
         </span>
       </div>
 
-      {crisisPartName && (
-        <div className="space-y-1">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-destructive">
-            🔴 Krize
-          </h3>
-          <div className="text-[14px] text-foreground">
-            <span className="font-semibold">{crisisPartName}</span>
-            {crisisDays != null && <span className="text-[12px] ml-1 text-muted-foreground">— den {crisisDays}</span>}
-            {crisisJournal?.crisis_trend && (
-              <span className="text-[12px] ml-2 text-muted-foreground">trend: {crisisJournal.crisis_trend}</span>
-            )}
-          </div>
-          {crisisJournal && (crisisJournal.karel_action || crisisJournal.session_summary) && (
-            <p className="text-[12px] text-muted-foreground">
-              {crisisJournal.karel_action && `Karel: ${crisisJournal.karel_action}`}
-              {crisisJournal.karel_action && crisisJournal.session_summary && " | "}
-              {crisisJournal.session_summary && `Sezení: ${crisisJournal.session_summary}`}
-            </p>
-          )}
-          <hr className="border-border/50 mt-3" />
-        </div>
-      )}
+      <div className="rounded-2xl border border-border/70 bg-background/20 p-4 sm:p-5">
+        <p className="text-[16px] font-medium leading-8 text-foreground sm:text-[18px]">{fallbackLead}</p>
+        {crisisJournal && (crisisJournal.karel_action || crisisJournal.session_summary) ? (
+          <p className="mt-3 text-[13px] leading-6 text-muted-foreground">
+            {crisisJournal.karel_action ? `Karel: ${crisisJournal.karel_action}` : ""}
+            {crisisJournal.karel_action && crisisJournal.session_summary ? " • " : ""}
+            {crisisJournal.session_summary ? `Sezení: ${crisisJournal.session_summary}` : ""}
+          </p>
+        ) : null}
+      </div>
 
-      {questions.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-foreground">
-            ❓ Karel se ptá ({questions.length})
-          </h3>
-          {questions.slice(0, 5).map(q => (
-            <p key={q.id} className="text-[13px] pl-5 leading-relaxed text-muted-foreground">
-              • {q.question.slice(0, 200)}{q.question.length > 200 ? "…" : ""}
-              <span className="text-[11px] ml-1 text-muted-foreground/60">({q.directed_to})</span>
-            </p>
-          ))}
-          <hr className="border-border/50 mt-1" />
-        </div>
-      )}
-
-      {tasks.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-foreground">
-            📝 Úkoly dnes ({tasks.length})
-          </h3>
-          {tasks.slice(0, 5).map(t => (
-            <p key={t.id} className="text-[13px] pl-5 text-muted-foreground">
-              • <span className="font-medium text-foreground">{assigneeLabel(t.assigned_to)}</span>: {t.task.slice(0, 150)}
-            </p>
-          ))}
-          <hr className="border-border/50 mt-1" />
-        </div>
-      )}
-
-      {sessions.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-foreground">
-            🎯 Sezení dnes
-          </h3>
-          {sessions.map(s => (
-            <p key={s.id} className="text-[13px] pl-5 text-muted-foreground">
-              • {s.selected_part} — {s.therapist}, {s.session_format}
-            </p>
-          ))}
-          <hr className="border-border/50 mt-1" />
-        </div>
-      )}
-
-      {overdueCommitments.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-primary">
-            ⚠️ Nesplněné závazky ({overdueCommitments.length})
-          </h3>
-          {overdueCommitments.map(c => {
-            const daysOverdue = Math.floor((Date.now() - new Date(c.due_date).getTime()) / 86400000);
-            return (
-              <p key={c.id} className="text-[13px] pl-5 text-muted-foreground">
-                • {c.commitment_text.slice(0, 150)} — <span className="font-medium text-primary">{daysOverdue} dní po termínu</span>
+      {fallbackCards.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {fallbackCards.map((card) => (
+            <div key={`${card.label}-${card.value}`} className="rounded-2xl border border-border/70 bg-muted/25 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                {card.label}
               </p>
-            );
-          })}
+              <p className="mt-1 text-[14px] text-foreground">{card.value}</p>
+            </div>
+          ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };
