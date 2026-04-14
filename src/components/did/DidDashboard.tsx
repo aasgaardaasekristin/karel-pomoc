@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCrisisOperationalState } from "@/hooks/useCrisisOperationalState";
-import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Clock, RefreshCw, Shield, Zap } from "lucide-react";
+import { Clock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
@@ -403,95 +402,6 @@ const DidDashboard = ({
     }
   }, []);
 
-  const [karelPendingQuestions, setKarelPendingQuestions] = useState<{ question: string; directed_to: string }[]>([]);
-  const [karelMissingSessions, setKarelMissingSessions] = useState<{ part: string; type: string }[]>([]);
-  const [karelCommitments, setKarelCommitments] = useState<{ text: string; due: string; by: string }[]>([]);
-
-  useEffect(() => {
-    const loadKarelRequires = async () => {
-      const today = todayISO();
-      const [qRes, commitRes] = await Promise.all([
-        (supabase as any)
-          .from("did_pending_questions")
-          .select("question, directed_to")
-          .in("status", ["pending", "sent"])
-          .order("created_at", { ascending: false })
-          .limit(5),
-        (supabase as any)
-          .from("karel_commitments")
-          .select("commitment_text, due_date, committed_by")
-          .eq("status", "open")
-          .lte("due_date", today)
-          .order("due_date", { ascending: true })
-          .limit(5),
-      ]);
-
-      setKarelPendingQuestions(qRes.data || []);
-      setKarelCommitments(
-        (commitRes.data || []).map((commitment: any) => ({
-          text: commitment.commitment_text,
-          due: commitment.due_date,
-          by: commitment.committed_by,
-        })),
-      );
-
-      const missing: { part: string; type: string }[] = [];
-      for (const card of crisisCards) {
-        if (card.missingSessionResult) missing.push({ part: card.displayName, type: "výsledek sezení" });
-        if (card.missingTherapistFeedback) missing.push({ part: card.displayName, type: "feedback terapeutky" });
-        if (card.missingTodayInterview) missing.push({ part: card.displayName, type: "dnešní interview" });
-      }
-      setKarelMissingSessions(missing);
-    };
-
-    loadKarelRequires();
-  }, [crisisCards, refreshTrigger]);
-
-  const karelRequirements = useMemo(() => {
-    const reqs: { text: string; source: string; severity: string; category: string }[] = [];
-
-    // NO crisis-sourced items here — the top banner already covers all crisis info.
-    // Only show: missing outputs, pending questions, overdue commitments.
-
-    for (const item of karelMissingSessions) {
-      reqs.push({
-        text: `Dodat ${item.type}`,
-        source: item.part,
-        severity: "high",
-        category: "chybí výstup",
-      });
-    }
-
-    for (const question of karelPendingQuestions) {
-      reqs.push({
-        text: question.question.slice(0, 160),
-        source: `pro ${question.directed_to}`,
-        severity: "medium",
-        category: "otázka",
-      });
-    }
-
-    for (const commitment of karelCommitments) {
-      const days = Math.floor((Date.now() - new Date(commitment.due).getTime()) / 86400000);
-      reqs.push({
-        text: `${commitment.text.slice(0, 130)} (${days} d po termínu)`,
-        source: commitment.by,
-        severity: days > 3 ? "high" : "medium",
-        category: "závazek",
-      });
-    }
-
-    const seen = new Set<string>();
-    return reqs
-      .filter((req) => {
-        const key = `${req.category}|${normalizeKey(req.source)}|${normalizeKey(req.text)}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9))
-      .slice(0, 6);
-  }, [karelMissingSessions, karelPendingQuestions, karelCommitments]);
 
   if (loading) {
     return (
