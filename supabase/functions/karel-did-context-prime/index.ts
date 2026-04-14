@@ -884,7 +884,7 @@ serve(async (req) => {
               reads.push(readFolderDocs(token, kataFolderId, 5, 6000).then(d => { driveData["PROFIL_KATA"] = d; }));
             }
 
-            // ── 72h Operational Memory: targeted reads for mamka/kata/hana_personal ──
+            // ── 72h Operational Memory: targeted reads for mamka/kata/general(hana_personal) ──
             if (needsOperationalMemory) {
               const targetTherapist = (subMode === "kata") ? "kata" : "hanka";
               const targetFolderId = targetTherapist === "hanka" ? hankaFolderId : kataFolderId;
