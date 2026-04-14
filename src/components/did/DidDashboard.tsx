@@ -515,23 +515,23 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
             Dnes
           </SectionTitle>
 
-          {/* 6a. Dnešní sezení (compact) */}
+          {/* 6a. Dnešní sezení */}
           <div className="mb-4">
             <ErrorBoundary fallbackTitle="Plán sezení selhal">
-              <DidDailySessionPlan refreshTrigger={refreshTrigger} compact />
+              <DidDailySessionPlan refreshTrigger={refreshTrigger} />
             </ErrorBoundary>
           </div>
 
-          {/* 6b. Úkoly (compact) */}
+          {/* 6b. Úkoly */}
           <div className="mb-4">
             <ErrorBoundary fallbackTitle="Task board selhal">
-              <DidTherapistTaskBoard refreshTrigger={refreshTrigger} compact maxItems={8} />
+              <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
             </ErrorBoundary>
           </div>
 
           {/* 6c. Čeká na odpověď */}
           <ErrorBoundary fallbackTitle="Otázky selhaly">
-            <PendingQuestionsPanel refreshTrigger={refreshTrigger} compact maxItems={5} />
+            <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
           </ErrorBoundary>
         </StudyCard>
 
