@@ -766,6 +766,15 @@ export function useCrisisOperationalState() {
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_events" }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_alerts" }, () => fetchAll())
       .on("postgres_changes", { event: "*", schema: "public", table: "crisis_daily_assessments" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_session_questions" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_closure_checklist" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "did_meetings" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_karel_interviews" }, () => fetchAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "crisis_briefs" }, () => {
+        supabase.from("crisis_briefs").select("id", { count: "exact", head: true }).eq("is_read", false).then(({ count }) => {
+          setGlobalUnreadBriefCount(count ?? 0);
+        });
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchAll]);
