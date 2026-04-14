@@ -15,7 +15,6 @@ import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidSprava from "./DidSprava";
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
-import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ── Types ──
