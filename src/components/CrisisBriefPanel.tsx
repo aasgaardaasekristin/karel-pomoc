@@ -24,7 +24,7 @@ const CrisisBriefPanel: React.FC<CrisisBriefPanelProps> = ({ refreshSignal }) =>
       .limit(10);
 
     if (!error) {
-      setBriefs((data ?? []) as unknown as DbCrisisBrief[]);
+      setBriefs((data ?? []) as DbCrisisBrief[]);
     }
 
     setLoading(false);
