@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { getSystemPrompt, ConversationMode } from "./systemPrompts.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 // ═══ DID MASTER PROMPT ═══
 const DID_MASTER_PROMPT = `# IDENTITA
