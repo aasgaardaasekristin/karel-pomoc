@@ -703,8 +703,21 @@ const PlanCard = ({
     ? Math.floor((new Date(todayPrague).getTime() - new Date(plan.plan_date).getTime()) / (24 * 60 * 60 * 1000))
     : 0;
 
+  const needsReschedule = isOverdue && overdueDays >= 3;
+  const awaitingWriteup = plan.status === "done" && !plan.completed_at;
+
+  const lifeCycleBorder = needsReschedule
+    ? "border-l-[3px] border-l-destructive"
+    : plan.status === "in_progress"
+    ? "border-l-[3px] border-l-[hsl(38,42%,48%)]"
+    : plan.status === "done"
+    ? "border-l-[3px] border-l-green-600/60"
+    : isOverdue
+    ? "border-l-[3px] border-l-amber-500"
+    : "";
+
   return (
-    <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${
+    <div className={`rounded-md border p-2.5 mt-1.5 transition-all ${lifeCycleBorder} ${
       isArchived
         ? "border-border/40 bg-muted/20 opacity-70"
         : "border-border/60 bg-background/40"
@@ -737,9 +750,19 @@ const PlanCard = ({
         )}
 
         {/* Status badges */}
-        {plan.status === "generated" && (
+        {plan.status === "generated" && !isOverdue && (
           <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-amber-500/50 text-amber-600">
-            <Clock className="mr-0.5 h-2.5 w-2.5" /> Čeká
+            <Clock className="mr-0.5 h-2.5 w-2.5" /> Naplánováno
+          </Badge>
+        )}
+        {plan.status === "generated" && isOverdue && !needsReschedule && (
+          <Badge className="text-[10px] h-5 px-1.5 bg-amber-500/20 text-amber-600 border border-amber-500/30">
+            <Clock className="mr-0.5 h-2.5 w-2.5" /> Čeká na zápis
+          </Badge>
+        )}
+        {needsReschedule && (
+          <Badge className="text-[10px] h-5 px-1.5 bg-destructive/20 text-destructive border border-destructive/30">
+            <RefreshCw className="mr-0.5 h-2.5 w-2.5" /> Vyžaduje přeplánování
           </Badge>
         )}
         {plan.status === "in_progress" && (
