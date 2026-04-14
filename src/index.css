@@ -411,59 +411,66 @@ html.theme-transitioning *::after {
 
 /* ═══ Jung Study — scoped dark theme for DID/Terapeut dashboard ═══ */
 .jung-study {
-  --background: 25 20% 10%;
-  --foreground: 38 16% 86%;
-  --card: 25 16% 13%;
-  --card-foreground: 38 16% 86%;
-  --popover: 25 16% 13%;
-  --popover-foreground: 38 16% 86%;
-  --primary: 38 42% 48%;
-  --primary-foreground: 38 18% 95%;
-  --secondary: 25 14% 18%;
-  --secondary-foreground: 38 16% 82%;
-  --muted: 25 12% 17%;
-  --muted-foreground: 38 10% 52%;
-  --accent: 38 35% 35%;
-  --accent-foreground: 38 18% 90%;
-  --destructive: 8 55% 48%;
-  --destructive-foreground: 38 18% 95%;
-  --border: 38 14% 22%;
-  --input: 38 14% 22%;
-  --ring: 38 42% 48%;
+  --background: 28 22% 14%;
+  --foreground: 36 28% 90%;
+  --card: 28 18% 18%;
+  --card-foreground: 36 28% 90%;
+  --popover: 28 18% 18%;
+  --popover-foreground: 36 28% 90%;
+  --primary: 38 52% 62%;
+  --primary-foreground: 28 22% 16%;
+  --secondary: 30 16% 24%;
+  --secondary-foreground: 36 22% 84%;
+  --muted: 28 14% 22%;
+  --muted-foreground: 36 16% 70%;
+  --accent: 34 30% 34%;
+  --accent-foreground: 36 28% 90%;
+  --destructive: 9 62% 58%;
+  --destructive-foreground: 36 28% 94%;
+  --border: 34 18% 28%;
+  --input: 34 18% 28%;
+  --ring: 38 52% 62%;
 
   color: hsl(var(--foreground));
   background:
-    radial-gradient(ellipse at 85% 8%, hsla(38, 42%, 48%, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 10% 92%, hsla(38, 42%, 48%, 0.04) 0%, transparent 40%),
-    hsl(var(--background));
+    linear-gradient(180deg, hsl(34 70% 76% / 0.08) 0%, transparent 16%),
+    radial-gradient(ellipse at top, hsl(38 52% 62% / 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse at bottom left, hsl(18 34% 26% / 0.22) 0%, transparent 45%),
+    linear-gradient(180deg, hsl(30 20% 16%) 0%, hsl(24 18% 13%) 100%);
 }
 
 .jung-study .jung-section-title {
   font-family: 'Crimson Pro', serif;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: hsl(38 42% 62%);
+  color: hsl(38 54% 74%);
 }
 
 .jung-study .jung-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, hsl(38 42% 48% / 0.25), transparent);
+  background: linear-gradient(90deg, transparent, hsl(38 52% 62% / 0.3), transparent);
   margin: 0 2rem;
 }
 
 .jung-study .jung-card {
-  background: hsl(var(--card));
+  background:
+    linear-gradient(180deg, hsl(30 18% 20% / 0.96), hsl(26 16% 16% / 0.96));
   border: 1px solid hsl(var(--border));
   border-radius: 1rem;
+  box-shadow:
+    0 18px 40px -28px hsl(20 30% 4% / 0.7),
+    inset 0 1px 0 hsl(38 20% 90% / 0.04);
 }
 
 .jung-study .jung-hero-section {
-  background: linear-gradient(135deg, hsl(38 42% 48% / 0.08), hsl(25 20% 12% / 0.4));
-  border: 1px solid hsl(38 42% 48% / 0.2);
+  background: linear-gradient(135deg, hsl(38 52% 62% / 0.12), hsl(30 20% 22% / 0.45));
+  border: 1px solid hsl(38 52% 62% / 0.22);
   border-radius: 1rem;
+  box-shadow: 0 20px 44px -30px hsl(20 30% 4% / 0.75);
 }
 
 .jung-study .jung-hero-section .jung-card {
   border: none;
   background: transparent;
+  box-shadow: none;
 }
