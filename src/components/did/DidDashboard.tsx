@@ -123,8 +123,8 @@ const DidDashboard = ({
   onRefreshMemory,
   isRefreshingMemory,
 }: Props) => {
-  const _crisisCards = useCrisisOperationalState().cards; // kept for realtime subscription side-effects
-  const { cards: crisisCards } = useCrisisOperationalState();
+  // Crisis state used only for realtime subscription side-effects
+  useCrisisOperationalState();
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
