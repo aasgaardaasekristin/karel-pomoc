@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useCrisisOperationalState, type CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Loader2, ListChecks, Upload, RefreshCw, Shield, MessageSquare, Heart, Target, ShieldCheck, ArrowRight } from "lucide-react";
+import { AlertTriangle, Loader2, Upload, RefreshCw, Shield, Zap, MessageSquare, Clock, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,18 +10,15 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { isNonDidEntity, cleanDisplayName } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
-import DidSystemMap from "./DidSystemMap";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
-// DidSystemOverview removed from main view — 05A briefing in KarelDailyPlan is the primary source
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidAgreementsPanel from "./DidAgreementsPanel";
 import DidMonthlyPanel from "./DidMonthlyPanel";
-import DidColleagueView from "./DidColleagueView";
 import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
 import DidSupervisionReport from "./DidSupervisionReport";
-import DidSwitchHistory from "./DidSwitchHistory";
+import DidSystemMap from "./DidSystemMap";
 import CrisisTimeline from "./CrisisTimeline";
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -51,10 +48,17 @@ interface Props {
   isRefreshingMemory?: boolean;
 }
 
-// Skeleton
-const SkeletonBlock = ({ className }: { className?: string }) => (
-  <div className={cn("animate-pulse rounded-xl bg-gray-100", className)} />
-);
+const STATE_LABELS: Record<string, string> = {
+  active: "aktivní",
+  intervened: "po zásahu",
+  stabilizing: "stabilizace",
+  awaiting_session_result: "čeká výsledek",
+  awaiting_therapist_feedback: "čeká feedback",
+  ready_for_joint_review: "k poradě",
+  ready_to_close: "k uzavření",
+  closed: "uzavřeno",
+  monitoring_post: "monitoring",
+};
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -75,6 +79,30 @@ const playAlertSound = () => {
   } catch { /* Audio not available */ }
 };
 
+// ── Section card wrapper ──
+const StudyCard = ({ children, className, accent }: { children: React.ReactNode; className?: string; accent?: "crisis" | "gold" | "warning" }) => {
+  const borderLeft = accent === "crisis"
+    ? "border-l-[3px] border-l-[hsl(8,55%,48%)]"
+    : accent === "gold"
+    ? "border-l-[3px] border-l-[hsl(38,42%,48%)]"
+    : accent === "warning"
+    ? "border-l-[3px] border-l-[hsl(38,60%,55%)]"
+    : "";
+
+  return (
+    <div className={cn("jung-card p-5", borderLeft, className)}>
+      {children}
+    </div>
+  );
+};
+
+const SectionTitle = ({ children, icon }: { children: React.ReactNode; icon?: React.ReactNode }) => (
+  <h3 className="jung-section-title text-[17px] flex items-center gap-2.5 mb-4">
+    {icon}
+    {children}
+  </h3>
+);
+
 const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread, onRefreshMemory, isRefreshingMemory }: Props) => {
   const navigate = useNavigate();
   const { cards: crisisCards } = useCrisisOperationalState();
@@ -91,7 +119,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [healthIssues, setHealthIssues] = useState<any[]>([]);
-  const [showCrisisDetail, setShowCrisisDetail] = useState(false);
 
   const loadDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -109,7 +136,6 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
       setHealthIssues(healthRes.data || []);
 
-      // Process threads
       const threads = (threadsRes.data || []).filter((t: any) => !isNonDidEntity(t.part_name || ""));
       const partRows: PartActivity[] = [];
       const latestByPart = new Map<string, ActiveThreadSummary>();
@@ -261,34 +287,47 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
   const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
 
+  // ── Aggregate "Karel vyžaduje" from crisis cards ──
+  const karelRequirements = useMemo(() => {
+    const reqs: { text: string; source: string; severity: string }[] = [];
+    for (const card of crisisCards) {
+      for (const req of card.karelRequires) {
+        reqs.push({ text: req, source: card.displayName, severity: card.severity || "medium" });
+      }
+    }
+    return reqs;
+  }, [crisisCards]);
+
   if (loading) {
     return (
-      <div className="max-w-[900px] mx-auto px-4 py-6 space-y-6" style={{ backgroundColor: "#F5F3EF", minHeight: "100vh" }}>
-        <SkeletonBlock className="h-10 w-full" />
-        <SkeletonBlock className="h-40 w-full" />
-        <SkeletonBlock className="h-32 w-full" />
-        <SkeletonBlock className="h-24 w-full" />
+      <div className="jung-study min-h-screen">
+        <div className="max-w-[900px] mx-auto px-4 py-6 space-y-6">
+          <div className="animate-pulse rounded-2xl h-10 w-full" style={{ background: "hsl(var(--muted))" }} />
+          <div className="animate-pulse rounded-2xl h-40 w-full" style={{ background: "hsl(var(--muted))" }} />
+          <div className="animate-pulse rounded-2xl h-32 w-full" style={{ background: "hsl(var(--muted))" }} />
+          <div className="animate-pulse rounded-2xl h-24 w-full" style={{ background: "hsl(var(--muted))" }} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#F5F3EF" }} data-no-swipe-back="true">
-      <div className="max-w-[900px] mx-auto px-4 py-6 space-y-6">
+    <div className="jung-study min-h-screen" data-no-swipe-back="true">
+      <div className="max-w-[900px] mx-auto px-4 py-6 space-y-5 relative z-10">
 
-        {/* ═══ REFRESH BAR ═══ */}
+        {/* ═══ 1. STATUS BAR ═══ */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-              Aktualizováno: {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
+            <span className="text-[12px] text-muted-foreground">
+              {lastRefreshAt.toLocaleTimeString("cs", { hour: "2-digit", minute: "2-digit" })}
             </span>
             <div className="flex items-center gap-1">
-              <div className={cn("w-1.5 h-1.5 rounded-full", realtimeConnected ? "bg-green-500" : "bg-gray-400")} />
-              <span className="text-[11px]" style={{ color: "#4A4A4A" }}>{realtimeConnected ? "live" : "offline"}</span>
+              <div className={cn("w-1.5 h-1.5 rounded-full", realtimeConnected ? "bg-green-500" : "bg-muted-foreground/40")} />
+              <span className="text-[11px] text-muted-foreground">{realtimeConnected ? "live" : "offline"}</span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" className="h-7 px-3 text-[12px] gap-1" onClick={() => setRefreshTrigger(p => p + 1)}>
+            <Button variant="ghost" size="sm" className="h-7 px-3 text-[12px] gap-1 text-muted-foreground hover:text-foreground" onClick={() => setRefreshTrigger(p => p + 1)}>
               <RefreshCw className="w-3 h-3" /> Obnovit
             </Button>
             <DidSprava
@@ -305,20 +344,20 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </div>
         </div>
 
-        {/* ═══ SYSTEM HEALTH BANNER ═══ */}
+        {/* ═══ 2. SYSTEM HEALTH ═══ */}
         {healthIssues.length > 0 && (
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4 border-l-4" style={{ borderLeftColor: "#DC2626" }}>
+          <StudyCard accent="crisis">
             <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="w-4 h-4" style={{ color: "#DC2626" }} />
-              <span className="text-[14px] font-semibold" style={{ color: "#DC2626" }}>Systémový problém</span>
+              <AlertTriangle className="w-4 h-4 text-destructive" />
+              <span className="text-[14px] font-semibold text-destructive">Systémový problém</span>
             </div>
             {healthIssues.map((h: any) => (
               <div key={h.id} className="flex items-center justify-between gap-2 py-1">
-                <span className="text-[14px]" style={{ color: "#4A4A4A" }}>• {h.message}</span>
+                <span className="text-[13px] text-foreground">• {h.message}</span>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-[12px] h-6 px-2"
+                  className="text-[12px] h-6 px-2 text-muted-foreground hover:text-foreground"
                   onClick={async () => {
                     await supabase.from("system_health_log").update({ resolved: true }).eq("id", h.id);
                     setHealthIssues(prev => prev.filter(x => x.id !== h.id));
@@ -329,116 +368,133 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                 </Button>
               </div>
             ))}
-          </div>
+          </StudyCard>
         )}
 
-        {/* ═══ 2. CRISIS DETAIL (collapsible) — from shared hook ═══ */}
+        {/* ═══ 3. CRISIS OPERATIONAL STRIP ═══ */}
         {crisisCards.length > 0 && (
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
-            <button
-              onClick={() => setShowCrisisDetail(!showCrisisDetail)}
-              className="w-full flex items-center justify-between"
-            >
-              <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4" style={{ color: "#7C2D2D" }} />
-                <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                  Aktivní krize ({crisisCards.length})
-                </span>
-              </div>
-              <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-                {showCrisisDetail ? "Sbalit ▲" : "Rozbalit ▼"}
-              </span>
-            </button>
+          <StudyCard accent="crisis" className="space-y-3">
+            {crisisCards.map((card) => {
+              const id = card.eventId || card.alertId || card.partName;
+              const stateLabel = card.operatingState ? STATE_LABELS[card.operatingState] || card.operatingState : "aktivní";
+              const missingFlags: string[] = [];
+              if (card.missingTodayInterview) missingFlags.push("interview");
+              if (card.missingSessionResult) missingFlags.push("sezení");
+              if (card.missingTherapistFeedback) missingFlags.push("feedback");
+              if (card.unansweredQuestionCount > 0) missingFlags.push(`${card.unansweredQuestionCount}Q`);
 
-            {showCrisisDetail && (
-              <div className="mt-3 space-y-3">
-                {crisisCards.map((card) => (
-                  <div key={card.eventId || card.alertId || card.partName} className="rounded-lg p-3 space-y-2" style={{ backgroundColor: "#7C2D2D10", border: "1px solid #7C2D2D30" }}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[14px] font-semibold" style={{ color: "#7C2D2D" }}>
-                        {card.displayName} ({card.severity})
-                      </span>
-                      <span className="text-[12px]" style={{ color: "#4A4A4A" }}>
-                        {card.displaySummary}
-                      </span>
-                    </div>
-
-                    {/* Karel requires */}
-                    {card.karelRequires.length > 0 && (
-                      <div className="text-[12px] text-blue-700 dark:text-blue-400">
-                        <span className="font-semibold">Karel vyžaduje:</span>{" "}
-                        {card.karelRequires.slice(0, 2).join(" · ")}
-                        {card.karelRequires.length > 2 && ` (+${card.karelRequires.length - 2})`}
-                      </div>
-                    )}
-
-                     <div className="flex gap-2 flex-wrap items-center">
-                       <button
-                         onClick={() => navigate(card.meetingId ? `/chat?meeting=${card.meetingId}` : card.conversationId ? `/chat?meeting=${card.conversationId}` : `/chat?sub=meeting`)}
-                         className="text-[11px] px-2.5 py-1 rounded-md font-medium border transition-colors"
-                         style={{ color: "#7C2D2D", borderColor: "#7C2D2D40", backgroundColor: "transparent" }}
-                         onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#7C2D2D10"; }}
-                         onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
-                       >
-                         Krizová porada
-                       </button>
-                       <span className="text-[10px] text-muted-foreground">
-                         {card.meetingOpen
-                           ? (card.meetingStatusSummary || "otevřená")
-                           : card.crisisMeetingRequired
-                             ? "doporučená"
-                             : card.meetingLastConclusionAt
-                               ? "uzavřená"
-                               : "není potřeba"}
-                       </span>
-                     </div>
-                    {/* No closure controls here — dashboard is secondary overview only */}
-
-                    {card.alertId && (
-                      <details className="text-[12px]">
-                        <summary className="cursor-pointer" style={{ color: "#4A4A4A" }}>Zobrazit historii</summary>
-                        <div className="mt-2">
-                          <CrisisTimeline
-                            crisisAlertId={card.alertId}
-                            crisisEventId={card.eventId}
-                            partName={card.partName}
-                          />
-                        </div>
-                      </details>
-                    )}
+              return (
+                <div key={id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Shield className="w-4 h-4 text-destructive shrink-0" />
+                  <span className="text-[14px] font-semibold text-foreground">{card.displayName}</span>
+                  <span className="text-[11px] text-muted-foreground">{card.severity}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">{stateLabel}</span>
+                  {card.daysActive && <span className="text-[11px] text-muted-foreground">den {card.daysActive}</span>}
+                  {card.isStale && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-destructive/20 text-destructive font-medium">
+                      {Math.round(card.hoursStale)}h bez kontaktu
+                    </span>
+                  )}
+                  {missingFlags.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-[hsl(38,60%,55%,0.2)] text-[hsl(38,50%,70%)] flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      chybí: {missingFlags.join(", ")}
+                    </span>
+                  )}
+                  <div className="flex gap-2 ml-auto">
+                    {card.computedCTAs.slice(0, 2).map(cta => (
+                      <button
+                        key={cta.key}
+                        onClick={() => navigate(card.meetingId ? `/chat?meeting=${card.meetingId}` : `/chat?sub=meeting`)}
+                        className={cn(
+                          "text-[10px] px-2.5 py-1 rounded-md font-medium border transition-colors",
+                          cta.priority === "critical"
+                            ? "border-destructive/60 text-destructive hover:bg-destructive/10"
+                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        {cta.label}
+                      </button>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              );
+            })}
+          </StudyCard>
         )}
 
-        {/* ═══ 3. HLAVNÍ BRIEFING — Operativní plán z 05A ═══ */}
+        {/* ═══ 4. KAREL VYŽADUJE — command layer ═══ */}
+        {karelRequirements.length > 0 && (
+          <StudyCard accent="gold">
+            <SectionTitle icon={<Zap className="w-4 h-4 text-primary" />}>
+              Karel vyžaduje
+            </SectionTitle>
+            <div className="space-y-3">
+              {karelRequirements.map((req, i) => (
+                <div key={i} className="flex items-start gap-3 text-[13px]">
+                  <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="text-[10px] font-bold text-primary">{i + 1}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-foreground leading-relaxed">{req.text}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-[11px] text-muted-foreground">Zdroj: {req.source}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">čeká</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </StudyCard>
+        )}
+
+        <div className="jung-divider" />
+
+        {/* ═══ 5. KARLŮV PŘEHLED — hero section ═══ */}
         <ErrorBoundary fallbackTitle="Denní plán selhal">
           <KarelDailyPlan refreshTrigger={refreshTrigger} />
         </ErrorBoundary>
 
-        {/* ═══ 4. ÚKOLY TÝMU ═══ */}
-        <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+        {/* ═══ 6. OTÁZKY ČEKAJÍCÍ NA ODPOVĚĎ ═══ */}
+        <ErrorBoundary fallbackTitle="Otázky selhaly">
+          <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
+
+        <div className="jung-divider" />
+
+        {/* ═══ 7. ÚKOLY TÝMU ═══ */}
+        <StudyCard>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[18px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
-              📋 Úkoly
-            </h3>
+            <SectionTitle icon={<span className="text-[16px]">📋</span>}>
+              Úkoly týmu
+            </SectionTitle>
             {pendingWriteCount > 0 && (
-              <span className="text-[12px] px-2 py-0.5 rounded-full" style={{ backgroundColor: "#F59E0B20", color: "#B45309" }}>
-                <Upload className="w-3 h-3 inline mr-1" />{pendingWriteCount} čeká na Drive
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/15 text-primary flex items-center gap-1">
+                <Upload className="w-3 h-3" />{pendingWriteCount} čeká na Drive
               </span>
             )}
           </div>
           <ErrorBoundary fallbackTitle="Task board selhal">
             <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
           </ErrorBoundary>
-        </div>
+        </StudyCard>
 
-        {/* ═══ 5. KDO MLUVÍ S KARLEM ═══ */}
+        {/* ═══ 8. PLÁNOVANÁ SEZENÍ ═══ */}
+        <ErrorBoundary fallbackTitle="Plán sezení selhal">
+          <DidDailySessionPlan refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
+
+        {/* ═══ 9. KOORDINAČNÍ UPOZORNĚNÍ ═══ */}
+        <ErrorBoundary fallbackTitle="Koordinace selhala">
+          <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
+
+        {/* ═══ 10. AKTIVNÍ KONVERZACE ═══ */}
         {activeThreads.length > 0 && (
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
-            <h3 className="text-[18px] font-semibold mb-3" style={{ color: "#2D2D2D" }}>Kdo mluví s Karlem</h3>
+          <StudyCard>
+            <SectionTitle icon={<MessageSquare className="w-4 h-4 text-primary" />}>
+              Kdo mluví s Karlem
+            </SectionTitle>
             <div className="flex flex-wrap gap-2">
               {activeThreads.map(t => {
                 if (isNonDidEntity(t.partName)) return null;
@@ -446,38 +502,34 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
                   <button
                     key={t.id}
                     onClick={() => onQuickThread?.(t.id, t.partName)}
-                    className="text-[14px] px-3 py-1.5 rounded-lg border transition-colors hover:bg-gray-50"
-                    style={{ color: "#01696F", borderColor: "#01696F40" }}
+                    className="text-[13px] px-3 py-1.5 rounded-lg border border-border text-foreground transition-colors hover:bg-muted hover:border-primary/40"
                   >
                     {cleanDisplayName(t.partName)}
-                    <span className="text-[12px] ml-1 opacity-60">({t.messageCount})</span>
+                    <span className="text-[11px] ml-1 text-muted-foreground">({t.messageCount})</span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </StudyCard>
         )}
 
-        {/* ═══ 6. PLÁN SEZENÍ ═══ */}
-        <ErrorBoundary fallbackTitle="Denní plán selhal">
-          <DidDailySessionPlan refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
+        <div className="jung-divider" />
 
-        {/* ═══ 8. DOHODY & TÝDENNÍ ANALÝZA ═══ */}
+        {/* ═══ 11. DOHODY ═══ */}
         <ErrorBoundary fallbackTitle="Dohody selhaly">
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+          <StudyCard>
             <DidAgreementsPanel refreshTrigger={refreshTrigger} onWeeklyCycleComplete={() => setRefreshTrigger(p => p + 1)} />
-          </div>
+          </StudyCard>
         </ErrorBoundary>
 
-        {/* ═══ 9. MĚSÍČNÍ PŘEHLEDY ═══ */}
+        {/* ═══ 12. MĚSÍČNÍ PŘEHLEDY ═══ */}
         <ErrorBoundary fallbackTitle="Měsíční panel selhal">
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+          <StudyCard>
             <DidMonthlyPanel refreshTrigger={refreshTrigger} />
-          </div>
+          </StudyCard>
         </ErrorBoundary>
 
-        {/* ═══ 10. MAPA SYSTÉMU (active only) ═══ */}
+        {/* ═══ 13. MAPA SYSTÉMU ═══ */}
         {parts.filter(p => p.status === "active").length > 0 && (
           <ErrorBoundary fallbackTitle="Mapa systému selhala">
             <DidSystemMap
@@ -495,29 +547,31 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
           </ErrorBoundary>
         )}
 
-        {/* ═══ 11. SUPERVIZNÍ REPORT ═══ */}
+        {/* ═══ 14. SUPERVIZNÍ REPORT ═══ */}
         <ErrorBoundary fallbackTitle="Supervizní report selhal">
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
+          <StudyCard>
             <DidSupervisionReport refreshTrigger={refreshTrigger} />
-          </div>
+          </StudyCard>
         </ErrorBoundary>
 
-        {/* Warning parts */}
+        {/* ═══ 15. NEAKTIVNÍ ČÁSTI ═══ */}
         {warningParts.length > 0 && (
-          <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-4">
+          <StudyCard accent="warning">
             <div className="flex items-center gap-2 mb-1">
-              <AlertTriangle className="w-4 h-4" style={{ color: "#B45309" }} />
-              <span className="text-[14px] font-semibold" style={{ color: "#2D2D2D" }}>Neaktivní části</span>
+              <AlertTriangle className="w-4 h-4 text-primary" />
+              <span className="text-[14px] font-semibold text-foreground">Neaktivní části</span>
             </div>
-            <p className="text-[14px]" style={{ color: "#4A4A4A" }}>{warningParts.map(p => cleanDisplayName(p.name)).join(", ")} – neaktivní více než 7 dní.</p>
-          </div>
+            <p className="text-[13px] text-muted-foreground">
+              {warningParts.map(p => cleanDisplayName(p.name)).join(", ")} – neaktivní více než 7 dní.
+            </p>
+          </StudyCard>
         )}
 
-        {/* Footer status */}
-        <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-[12px]" style={{ color: "#4A4A4A", backgroundColor: "#F0EFEB" }}>
-          <span>Části: <strong>{parts.filter(p => p.status === "active").length}</strong> aktivních</span>
+        {/* ═══ FOOTER ═══ */}
+        <div className="flex items-center gap-3 px-3 py-2 rounded-xl text-[12px] text-muted-foreground bg-muted/30">
+          <span>Části: <strong className="text-foreground">{parts.filter(p => p.status === "active").length}</strong> aktivních</span>
           <span>•</span>
-          <span>Vlákna: <strong>{activeThreads.length}</strong></span>
+          <span>Vlákna: <strong className="text-foreground">{activeThreads.length}</strong></span>
         </div>
       </div>
     </div>

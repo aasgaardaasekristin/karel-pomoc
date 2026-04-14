@@ -408,3 +408,51 @@ html.theme-transitioning *::after {
 .no-animations html.theme-transitioning * {
   transition: none !important;
 }
+
+/* ═══ Jung Study — scoped dark theme for DID/Terapeut dashboard ═══ */
+.jung-study {
+  --background: 25 20% 10%;
+  --foreground: 38 16% 86%;
+  --card: 25 16% 13%;
+  --card-foreground: 38 16% 86%;
+  --popover: 25 16% 13%;
+  --popover-foreground: 38 16% 86%;
+  --primary: 38 42% 48%;
+  --primary-foreground: 38 18% 95%;
+  --secondary: 25 14% 18%;
+  --secondary-foreground: 38 16% 82%;
+  --muted: 25 12% 17%;
+  --muted-foreground: 38 10% 52%;
+  --accent: 38 35% 35%;
+  --accent-foreground: 38 18% 90%;
+  --destructive: 8 55% 48%;
+  --destructive-foreground: 38 18% 95%;
+  --border: 38 14% 22%;
+  --input: 38 14% 22%;
+  --ring: 38 42% 48%;
+
+  color: hsl(var(--foreground));
+  background:
+    radial-gradient(ellipse at 85% 8%, hsla(38, 42%, 48%, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse at 10% 92%, hsla(38, 42%, 48%, 0.04) 0%, transparent 40%),
+    hsl(var(--background));
+}
+
+.jung-study .jung-section-title {
+  font-family: 'Crimson Pro', serif;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: hsl(38 42% 62%);
+}
+
+.jung-study .jung-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(38 42% 48% / 0.25), transparent);
+  margin: 0 2rem;
+}
+
+.jung-study .jung-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 1rem;
+}

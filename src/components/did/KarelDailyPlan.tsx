@@ -41,7 +41,7 @@ interface Commitment {
   committed_by: string;
 }
 
-// ── Parse structured 05A sections from plain text ──────────────
+// ── Parse structured 05A sections from plain text ──
 interface Parsed05A {
   crisisContext: string;
   sessions: string;
@@ -64,7 +64,6 @@ function parse05A(text: string): Parsed05A {
     return m?.[1]?.trim() || "";
   };
 
-  // Extract cycle info from header
   const headerMatch = clean.match(/Datum:\s*([^\n]+)/);
   const cycleInfo = headerMatch?.[1]?.trim() || "";
 
@@ -90,41 +89,52 @@ const assigneeLabel = (a: string) => {
   return "Obě";
 };
 
-// ── Section renderer for 05A parsed text ──────────────────────
+// ── Section renderer for 05A parsed text ──
 function Section05A({ icon, title, content, color }: { icon: string; title: string; content: string; color?: string }) {
   if (!content || content === "(žádné aktivní úkoly)" || content === "(žádná plánovaná sezení)") return null;
 
-  // Detect urgency markers in content
   const hasUrgent = content.includes("🔴") || content.includes("VYŽADUJE AKCI") || content.includes("PO TERMÍNU");
   const hasRecovery = content.includes("RECOVERY") || content.includes("POŽADAVEK NA UPDATE") || content.includes("REŽIM OBNOVY") || title.includes("obnovy");
-  const bgColor = hasRecovery ? "#EBF5FB" : hasUrgent ? "#FFF5F5" : undefined;
 
   return (
-    <div className="space-y-1 rounded-lg p-2" style={{ backgroundColor: bgColor }}>
+    <div
+      className="space-y-1 rounded-lg p-3"
+      style={{
+        backgroundColor: hasRecovery
+          ? "hsl(var(--primary) / 0.08)"
+          : hasUrgent
+          ? "hsl(var(--destructive) / 0.08)"
+          : "hsl(var(--muted) / 0.4)",
+      }}
+    >
       <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: color || "hsl(var(--foreground))" }}>
         {icon} {title}
-        {hasUrgent && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">vyžaduje akci</span>}
-        {hasRecovery && <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{ background: "#D4E6F1", color: "#1565C0" }}>aktivní obnova</span>}
+        {hasUrgent && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive font-medium">
+            vyžaduje akci
+          </span>
+        )}
+        {hasRecovery && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-primary/15 text-primary">
+            aktivní obnova
+          </span>
+        )}
       </h3>
-      <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1" style={{ color: "hsl(var(--muted-foreground))" }}>
+      <div className="text-[13px] leading-relaxed whitespace-pre-line pl-1 text-muted-foreground">
         {content}
       </div>
-      <hr className="border-border mt-2" />
+      <hr className="border-border/50 mt-2" />
     </div>
   );
 }
 
 const KarelDailyPlan = ({ refreshTrigger }: Props) => {
-  // 05A state
   const [plan05A, setPlan05A] = useState<Parsed05A | null>(null);
   const [source, setSource] = useState<"05A" | "db" | "loading">("loading");
 
-  // Track previous raw text to avoid unnecessary re-renders
   const prevRawRef = useRef<string>("");
-  // Track whether first load completed
   const hasLoadedOnce = useRef(false);
 
-  // DB fallback state
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [crisisDays, setCrisisDays] = useState<number | null>(null);
   const [crisisJournal, setCrisisJournal] = useState<CrisisJournalEntry | null>(null);
@@ -135,7 +145,6 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    // Only show loading skeleton on first load
     if (!hasLoadedOnce.current) {
       setLoading(true);
     }
@@ -156,7 +165,6 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         if (!fnError && fnData?.documents?.["05A_OPERATIVNI_PLAN"]) {
           const raw = fnData.documents["05A_OPERATIVNI_PLAN"] as string;
           if (raw.length > 50 && !raw.startsWith("[Dokument")) {
-            // Skip re-render if content hasn't changed
             if (raw === prevRawRef.current && hasLoadedOnce.current) {
               setLoading(false);
               return;
@@ -174,7 +182,7 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         console.warn("[KarelDailyPlan] 05A Drive read failed, falling back to DB:", driveErr);
       }
 
-      // ── DB fallback (existing logic) ──
+      // ── DB fallback ──
       setSource("db");
       const today = new Date().toISOString().slice(0, 10);
 
@@ -244,12 +252,11 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
-  // Show skeleton only on very first load
   if (loading && !hasLoadedOnce.current) {
     return (
-      <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5">
-        <div className="h-5 w-48 bg-gray-100 rounded mb-3 animate-pulse" />
-        <div className="h-4 w-full bg-gray-100 rounded animate-pulse" />
+      <div className="jung-card p-5">
+        <div className="h-5 w-48 bg-muted rounded mb-3 animate-pulse" />
+        <div className="h-4 w-full bg-muted rounded animate-pulse" />
       </div>
     );
   }
@@ -259,34 +266,36 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   // ═══ 05A-driven view ═══
   if (source === "05A" && plan05A) {
     return (
-      <div className="rounded-xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-4">
+      <div className="jung-card p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-[20px] font-semibold text-foreground">
-            📋 Operativní plán — {todayFormatted}
+          <h2 className="jung-section-title text-[20px]">
+            ☉ Karlův přehled — {todayFormatted}
           </h2>
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-green-100 text-green-800">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
             z kartotéky
           </span>
         </div>
         {plan05A.cycleInfo && (
-          <p className="text-[12px] text-muted-foreground opacity-50">
+          <p className="text-[12px] text-muted-foreground/60">
             {plan05A.cycleInfo}
           </p>
         )}
 
-        <Section05A icon="🔴" title="Krizový kontext" content={plan05A.crisisContext} color="#7C2D2D" />
+        {/* Karlův přehled gets rendered FIRST as hero content */}
+        <Section05A icon="🧠" title="Karlův přehled" content={plan05A.karelOverview} />
+
+        <Section05A icon="🔴" title="Krizový kontext" content={plan05A.crisisContext} color="hsl(var(--destructive))" />
+        <Section05A icon="⚠️" title="Urgentní follow-up" content={plan05A.urgentFollowUp} color="hsl(var(--primary))" />
+        <Section05A icon="🔄" title="Režim obnovy řízení" content={plan05A.recoveryMode} />
         <Section05A icon="🎯" title="Plánovaná sezení" content={plan05A.sessions} />
         <Section05A icon="📝" title="Úkoly" content={plan05A.tasks} />
         <Section05A icon="❓" title="Otevřené otázky" content={plan05A.questions} />
-        <Section05A icon="⚠️" title="Urgentní follow-up" content={plan05A.urgentFollowUp} color="#B45309" />
-        <Section05A icon="🔄" title="Režim obnovy řízení" content={plan05A.recoveryMode} color="#1565C0" />
-        <Section05A icon="🧠" title="Karlův přehled" content={plan05A.karelOverview} />
         <Section05A icon="👥" title="Přehled částí" content={plan05A.partsOverview} />
       </div>
     );
   }
 
-  // ═══ DB fallback view (original) ═══
+  // ═══ DB fallback view ═══
   const hasAnything = crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
   if (!hasAnything) return null;
 
@@ -296,97 +305,92 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
   });
 
   return (
-    <div className="rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] p-5 space-y-5">
+    <div className="jung-card p-5 space-y-5">
       <div className="flex items-center justify-between">
-        <h2 className="text-[20px] font-semibold" style={{ color: "#2D2D2D" }}>
-          📋 Karlův denní plán — {todayFormatted}
+        <h2 className="jung-section-title text-[20px]">
+          ☉ Karlův denní plán — {todayFormatted}
         </h2>
-        <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "#FFF3E0", color: "#E65100" }}>
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
           z databáze
         </span>
       </div>
 
-      {/* Crisis */}
       {crisisPartName && (
         <div className="space-y-1">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#7C2D2D" }}>
+          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-destructive">
             🔴 Krize
           </h3>
-          <div className="text-[14px]" style={{ color: "#4A4A4A" }}>
+          <div className="text-[14px] text-foreground">
             <span className="font-semibold">{crisisPartName}</span>
-            {crisisDays != null && <span className="text-[12px] ml-1 opacity-70">— den {crisisDays}</span>}
+            {crisisDays != null && <span className="text-[12px] ml-1 text-muted-foreground">— den {crisisDays}</span>}
             {crisisJournal?.crisis_trend && (
-              <span className="text-[12px] ml-2 opacity-70">trend: {crisisJournal.crisis_trend}</span>
+              <span className="text-[12px] ml-2 text-muted-foreground">trend: {crisisJournal.crisis_trend}</span>
             )}
           </div>
           {crisisJournal && (crisisJournal.karel_action || crisisJournal.session_summary) && (
-            <p className="text-[12px]" style={{ color: "#4A4A4A" }}>
+            <p className="text-[12px] text-muted-foreground">
               {crisisJournal.karel_action && `Karel: ${crisisJournal.karel_action}`}
               {crisisJournal.karel_action && crisisJournal.session_summary && " | "}
               {crisisJournal.session_summary && `Sezení: ${crisisJournal.session_summary}`}
             </p>
           )}
-          <hr className="border-gray-100 mt-3" />
+          <hr className="border-border/50 mt-3" />
         </div>
       )}
 
-      {/* Pending questions */}
       {questions.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-foreground">
             ❓ Karel se ptá ({questions.length})
           </h3>
           {questions.slice(0, 5).map(q => (
-            <p key={q.id} className="text-[14px] pl-5 leading-relaxed" style={{ color: "#4A4A4A" }}>
+            <p key={q.id} className="text-[13px] pl-5 leading-relaxed text-muted-foreground">
               • {q.question.slice(0, 200)}{q.question.length > 200 ? "…" : ""}
-              <span className="text-[12px] ml-1 opacity-50">({q.directed_to})</span>
+              <span className="text-[11px] ml-1 text-muted-foreground/60">({q.directed_to})</span>
             </p>
           ))}
-          <hr className="border-gray-100 mt-1" />
+          <hr className="border-border/50 mt-1" />
         </div>
       )}
 
-      {/* Tasks */}
       {tasks.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-foreground">
             📝 Úkoly dnes ({tasks.length})
           </h3>
           {tasks.slice(0, 5).map(t => (
-            <p key={t.id} className="text-[14px] pl-5" style={{ color: "#4A4A4A" }}>
-              • <span className="font-medium">{assigneeLabel(t.assigned_to)}</span>: {t.task.slice(0, 150)}
+            <p key={t.id} className="text-[13px] pl-5 text-muted-foreground">
+              • <span className="font-medium text-foreground">{assigneeLabel(t.assigned_to)}</span>: {t.task.slice(0, 150)}
             </p>
           ))}
-          <hr className="border-gray-100 mt-1" />
+          <hr className="border-border/50 mt-1" />
         </div>
       )}
 
-      {/* Sessions */}
       {sessions.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#2D2D2D" }}>
+          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-foreground">
             🎯 Sezení dnes
           </h3>
           {sessions.map(s => (
-            <p key={s.id} className="text-[14px] pl-5" style={{ color: "#4A4A4A" }}>
+            <p key={s.id} className="text-[13px] pl-5 text-muted-foreground">
               • {s.selected_part} — {s.therapist}, {s.session_format}
             </p>
           ))}
-          <hr className="border-gray-100 mt-1" />
+          <hr className="border-border/50 mt-1" />
         </div>
       )}
 
-      {/* Overdue commitments */}
       {overdueCommitments.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-[14px] font-semibold flex items-center gap-2" style={{ color: "#B45309" }}>
+          <h3 className="text-[14px] font-semibold flex items-center gap-2 text-primary">
             ⚠️ Nesplněné závazky ({overdueCommitments.length})
           </h3>
           {overdueCommitments.map(c => {
             const daysOverdue = Math.floor((Date.now() - new Date(c.due_date).getTime()) / 86400000);
             return (
-              <p key={c.id} className="text-[14px] pl-5" style={{ color: "#4A4A4A" }}>
-                • {c.commitment_text.slice(0, 150)} — <span style={{ color: "#B45309" }} className="font-medium">{daysOverdue} dní po termínu</span>
+              <p key={c.id} className="text-[13px] pl-5 text-muted-foreground">
+                • {c.commitment_text.slice(0, 150)} — <span className="font-medium text-primary">{daysOverdue} dní po termínu</span>
               </p>
             );
           })}
