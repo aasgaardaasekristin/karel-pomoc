@@ -730,7 +730,9 @@ serve(async (req) => {
     const now = new Date();
 
     // ═══ CACHE CHECK ═══
-    const cacheKey = `${partName || "none"}|${subMode || "none"}`;
+    // Normalize cache key: "general" and "hana_personal" are the same mode
+    const normalizedSubMode = (subMode === "hana_personal" || subMode === "personal") ? "general" : (subMode || "none");
+    const cacheKey = `${partName || "none"}|${normalizedSubMode}`;
     if (!forceRefresh) {
       const { data: cached } = await sb
         .from("context_cache")
@@ -794,7 +796,8 @@ serve(async (req) => {
       vlakna3Dny: string;
       kdoJeKdo: string;
     } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", vlakna3Dny: "", kdoJeKdo: "" };
-    const needsOperationalMemory = ["mamka", "kata", "hana_personal", "personal"].includes(subMode || "");
+    // "general" = Hana/osobní (frontend sends didSubMode="general" for personal mode)
+    const needsOperationalMemory = ["mamka", "kata", "general", "hana_personal", "personal"].includes(subMode || "");
 
     const drivePromise = (async () => {
       try {
@@ -881,7 +884,7 @@ serve(async (req) => {
               reads.push(readFolderDocs(token, kataFolderId, 5, 6000).then(d => { driveData["PROFIL_KATA"] = d; }));
             }
 
-            // ── 72h Operational Memory: targeted reads for mamka/kata/hana_personal ──
+            // ── 72h Operational Memory: targeted reads for mamka/kata/general(hana_personal) ──
             if (needsOperationalMemory) {
               const targetTherapist = (subMode === "kata") ? "kata" : "hanka";
               const targetFolderId = targetTherapist === "hanka" ? hankaFolderId : kataFolderId;
@@ -1513,7 +1516,7 @@ Karlova analýza: ${sp.karel_master_analysis?.slice(0, 500) || "?"}`;
     }
 
     // ═══ APPEND DNEŠNÍ VEDENÍ directly to contextBrief (not via AI synthesis) ═══
-    if (["mamka", "hana_personal", "kata"].includes(subMode || "")) {
+    if (["mamka", "kata", "general", "hana_personal"].includes(subMode || "")) {
       try {
         const todayTag = new Date().toISOString().slice(0, 10);
         const extractLastSection = (text: string | undefined, marker: string): string => {
@@ -1633,7 +1636,7 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
     };
 
     // ═══ CACHE SAVE (TTL 6 hours) ═══
-    const saveCacheKey = `${partName || "none"}|${subMode || "none"}`;
+    const saveCacheKey = `${partName || "none"}|${normalizedSubMode}`;
     try {
       // Delete old cache for this function+key
       await sb.from("context_cache").delete().eq("user_id", userId).eq("function_name", "did-context-prime").eq("cache_key", saveCacheKey);
