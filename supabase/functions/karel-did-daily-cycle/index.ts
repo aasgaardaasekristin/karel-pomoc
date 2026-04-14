@@ -5020,8 +5020,7 @@ Vrať POUZE validní JSON (bez markdown):
       console.warn("[daily-cycle] Meeting detection error (non-fatal):", meetingErr);
     }
 
-    // ═══ PHASE_9 PLACEHOLDER — queue flush moved after all write-producing phases ═══
-    // See actual PHASE_9 below, just before PHASE_10
+    // (Queue flush runs as PHASE_9 after all write-producing phases — see line ~6816)
 
     // ═══ ESCALATION LOGIC: 3-tier escalation for stale tasks (4/5/7 days) ═══
     try {
