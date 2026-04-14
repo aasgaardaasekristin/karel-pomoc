@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useCrisisOperationalState } from "@/hooks/useCrisisOperationalState";
-import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Clock, RefreshCw, Shield, Zap } from "lucide-react";
+import { Clock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
@@ -40,27 +39,7 @@ interface Props {
   isRefreshingMemory?: boolean;
 }
 
-const STATE_LABELS: Record<string, string> = {
-  active: "aktivní",
-  intervened: "po zásahu",
-  stabilizing: "stabilizace",
-  awaiting_session_result: "čeká výsledek",
-  awaiting_therapist_feedback: "čeká feedback",
-  ready_for_joint_review: "k poradě",
-  ready_to_close: "k uzavření",
-  closed: "uzavřeno",
-  monitoring_post: "monitoring",
-};
-
-const SEVERITY_RANK: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-};
-
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const normalizeKey = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
 
 const playAlertSound = () => {
   try {
@@ -124,8 +103,8 @@ const DidDashboard = ({
   onRefreshMemory,
   isRefreshingMemory,
 }: Props) => {
-  const navigate = useNavigate();
-  const { cards: crisisCards } = useCrisisOperationalState();
+  // Crisis state used only for realtime subscription side-effects
+  useCrisisOperationalState();
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
@@ -403,95 +382,6 @@ const DidDashboard = ({
     }
   }, []);
 
-  const [karelPendingQuestions, setKarelPendingQuestions] = useState<{ question: string; directed_to: string }[]>([]);
-  const [karelMissingSessions, setKarelMissingSessions] = useState<{ part: string; type: string }[]>([]);
-  const [karelCommitments, setKarelCommitments] = useState<{ text: string; due: string; by: string }[]>([]);
-
-  useEffect(() => {
-    const loadKarelRequires = async () => {
-      const today = todayISO();
-      const [qRes, commitRes] = await Promise.all([
-        (supabase as any)
-          .from("did_pending_questions")
-          .select("question, directed_to")
-          .in("status", ["pending", "sent"])
-          .order("created_at", { ascending: false })
-          .limit(5),
-        (supabase as any)
-          .from("karel_commitments")
-          .select("commitment_text, due_date, committed_by")
-          .eq("status", "open")
-          .lte("due_date", today)
-          .order("due_date", { ascending: true })
-          .limit(5),
-      ]);
-
-      setKarelPendingQuestions(qRes.data || []);
-      setKarelCommitments(
-        (commitRes.data || []).map((commitment: any) => ({
-          text: commitment.commitment_text,
-          due: commitment.due_date,
-          by: commitment.committed_by,
-        })),
-      );
-
-      const missing: { part: string; type: string }[] = [];
-      for (const card of crisisCards) {
-        if (card.missingSessionResult) missing.push({ part: card.displayName, type: "výsledek sezení" });
-        if (card.missingTherapistFeedback) missing.push({ part: card.displayName, type: "feedback terapeutky" });
-        if (card.missingTodayInterview) missing.push({ part: card.displayName, type: "dnešní interview" });
-      }
-      setKarelMissingSessions(missing);
-    };
-
-    loadKarelRequires();
-  }, [crisisCards, refreshTrigger]);
-
-  const karelRequirements = useMemo(() => {
-    const reqs: { text: string; source: string; severity: string; category: string }[] = [];
-
-    // NO crisis-sourced items here — the top banner already covers all crisis info.
-    // Only show: missing outputs, pending questions, overdue commitments.
-
-    for (const item of karelMissingSessions) {
-      reqs.push({
-        text: `Dodat ${item.type}`,
-        source: item.part,
-        severity: "high",
-        category: "chybí výstup",
-      });
-    }
-
-    for (const question of karelPendingQuestions) {
-      reqs.push({
-        text: question.question.slice(0, 160),
-        source: `pro ${question.directed_to}`,
-        severity: "medium",
-        category: "otázka",
-      });
-    }
-
-    for (const commitment of karelCommitments) {
-      const days = Math.floor((Date.now() - new Date(commitment.due).getTime()) / 86400000);
-      reqs.push({
-        text: `${commitment.text.slice(0, 130)} (${days} d po termínu)`,
-        source: commitment.by,
-        severity: days > 3 ? "high" : "medium",
-        category: "závazek",
-      });
-    }
-
-    const seen = new Set<string>();
-    return reqs
-      .filter((req) => {
-        const key = `${req.category}|${normalizeKey(req.source)}|${normalizeKey(req.text)}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9))
-      .slice(0, 6);
-  }, [karelMissingSessions, karelPendingQuestions, karelCommitments]);
 
   if (loading) {
     return (
@@ -555,64 +445,6 @@ const DidDashboard = ({
             />
           </div>
         </div>
-
-        {/* Crisis card REMOVED — the top sticky CrisisAlert banner already shows all crisis info.
-             No duplicate crisis block in the dashboard body. */}
-
-        {karelRequirements.length > 0 && (
-          <StudyCard accent="gold">
-            <SectionTitle icon={<Zap className="h-4 w-4 text-primary" />}>
-              Karel vyžaduje ({karelRequirements.length})
-            </SectionTitle>
-            <div className="space-y-3">
-              {karelRequirements.map((req, index) => (
-                <div key={`${req.source}-${req.category}-${index}`} className="flex items-start gap-3 text-[13px]">
-                  <div
-                    className={cn(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
-                      req.severity === "high" || req.severity === "critical"
-                        ? "bg-destructive/15"
-                        : "bg-primary/15",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "text-[10px] font-bold",
-                        req.severity === "high" || req.severity === "critical"
-                          ? "text-destructive"
-                          : "text-primary",
-                      )}
-                    >
-                      {index + 1}
-                    </span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="leading-relaxed text-foreground">{req.text}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] text-muted-foreground">{req.source}</span>
-                      <span
-                        className={cn(
-                          "rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                          req.category === "krize"
-                            ? "bg-destructive/15 text-destructive"
-                            : req.category === "chybí výstup"
-                              ? "bg-primary/12 text-primary"
-                              : req.category === "závazek"
-                                ? "bg-accent/20 text-accent-foreground"
-                                : "bg-muted text-muted-foreground",
-                        )}
-                      >
-                        {req.category}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </StudyCard>
-        )}
-
-        <div className="jung-divider" />
 
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
