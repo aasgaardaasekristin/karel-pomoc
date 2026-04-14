@@ -13,13 +13,8 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
-import DidAgreementsPanel from "./DidAgreementsPanel";
-import DidMonthlyPanel from "./DidMonthlyPanel";
-import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import DidSprava from "./DidSprava";
-import DidSupervisionReport from "./DidSupervisionReport";
-import DidSystemMap from "./DidSystemMap";
-import CrisisTimeline from "./CrisisTimeline";
+import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
