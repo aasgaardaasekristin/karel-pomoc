@@ -456,3 +456,14 @@ html.theme-transitioning *::after {
   border: 1px solid hsl(var(--border));
   border-radius: 1rem;
 }
+
+.jung-study .jung-hero-section {
+  background: linear-gradient(135deg, hsl(38 42% 48% / 0.08), hsl(25 20% 12% / 0.4));
+  border: 1px solid hsl(38 42% 48% / 0.2);
+  border-radius: 1rem;
+}
+
+.jung-study .jung-hero-section .jung-card {
+  border: none;
+  background: transparent;
+}
