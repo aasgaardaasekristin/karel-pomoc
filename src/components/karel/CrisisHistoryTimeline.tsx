@@ -3,13 +3,12 @@ import { Clock, Brain, FileText, Users, CheckCircle, ArrowRight } from "lucide-r
 import type { CrisisOperationalCard } from "@/hooks/useCrisisOperationalState";
 
 /**
- * CrisisHistoryTimeline — Documentary layer for crisis event history.
- * Shows: interviews, post-session analyses, daily journal entries, meeting milestones, closure summary.
+ * CrisisHistoryTimeline — renders only concrete history records that the UI really has.
+ * Sources: interviews, answered post-session cycles, crisis_journal entries, closure meeting milestones.
  *
- * NOTE: State transitions (operating_state changes) are not currently tracked
- * in a dedicated log table. The crisis_journal entries serve as the closest
- * proxy for daily operational history. When a state transition log is added,
- * this component should consume it.
+ * Historical operating-state transitions are not inferred or fabricated here,
+ * because there is no dedicated transition log in the current data model.
+ * Daily crisis_journal records are rendered explicitly as the documentary history layer.
  */
 
 interface Props {
@@ -23,6 +22,7 @@ export interface JournalEntry {
   date: string;
   dayNumber: number | null;
   karelAction: string | null;
+  karelNotes?: string | null;
   sessionSummary: string | null;
   whatWorked: string | null;
   whatFailed: string | null;
@@ -80,17 +80,19 @@ const CrisisHistoryTimeline: React.FC<Props> = ({ card, journalEntries = [] }) =
     }
   }
 
-  // Journal entries (daily operational log — proxy for state transitions)
+  // Journal entries (concrete documentary history, not inferred transitions)
   for (const je of journalEntries) {
     const parts: string[] = [];
     if (je.karelAction) parts.push(je.karelAction);
     if (je.crisisTrend) parts.push(`trend: ${je.crisisTrend}`);
     if (je.whatWorked) parts.push(`✓ ${je.whatWorked}`);
     if (je.whatFailed) parts.push(`✗ ${je.whatFailed}`);
+    if (je.karelNotes) parts.push(`pozn.: ${je.karelNotes}`);
+
     events.push({
       date: je.date ? je.date + "T12:00:00Z" : "",
       type: "journal",
-      title: `Den ${je.dayNumber ?? "?"} — ${je.sessionSummary?.slice(0, 60) || "denní záznam"}`,
+      title: `Journal den ${je.dayNumber ?? "?"} — ${je.sessionSummary?.slice(0, 60) || "denní záznam"}`,
       detail: parts.join(" · ") || null,
       icon: <ArrowRight className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />,
     });
@@ -131,7 +133,7 @@ const CrisisHistoryTimeline: React.FC<Props> = ({ card, journalEntries = [] }) =
     <div className="space-y-2">
       <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
         <Clock className="w-3.5 h-3.5" />
-        Historie krizového vedení ({events.length} záznamů)
+        Historie krize a journal ({events.length} záznamů)
       </h3>
 
       <div className="space-y-1.5">

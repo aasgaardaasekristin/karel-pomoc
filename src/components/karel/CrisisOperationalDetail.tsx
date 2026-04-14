@@ -33,12 +33,18 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab 
   // Lazy-load journal entries when history tab is activated
   useEffect(() => {
     if (activeTab !== "history") return;
-    if (!card.eventId && !card.alertId) return;
+    if (!card.eventId && !card.alertId) {
+      setJournalEntries([]);
+      return;
+    }
+
+    let cancelled = false;
+    setJournalEntries([]);
 
     const load = async () => {
       const query = supabase
         .from("crisis_journal")
-        .select("id, date, day_number, karel_action, session_summary, what_worked, what_failed, crisis_trend")
+        .select("id, date, day_number, karel_action, karel_notes, session_summary, what_worked, what_failed, crisis_trend")
         .order("date", { ascending: false })
         .limit(50);
 
@@ -49,12 +55,13 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab 
       }
 
       const { data } = await query;
-      if (data) {
+      if (!cancelled && data) {
         setJournalEntries(data.map((j: any) => ({
           id: j.id,
           date: j.date,
           dayNumber: j.day_number,
           karelAction: j.karel_action,
+          karelNotes: j.karel_notes,
           sessionSummary: j.session_summary,
           whatWorked: j.what_worked,
           whatFailed: j.what_failed,
@@ -62,7 +69,12 @@ const CrisisOperationalDetail: React.FC<Props> = ({ card, onRefetch, initialTab 
         })));
       }
     };
-    load();
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeTab, card.eventId, card.alertId]);
 
   return (
