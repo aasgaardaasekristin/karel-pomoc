@@ -1,44 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { AlertTriangle, CalendarDays, CheckSquare, HelpCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   refreshTrigger: number;
-}
-
-interface CrisisJournalEntry {
-  crisis_trend: string | null;
-  karel_action: string | null;
-  session_summary: string | null;
-  part_id: string | null;
-  date: string | null;
-}
-
-interface PendingTask {
-  id: string;
-  task: string;
-  assigned_to: string;
-  priority: string | null;
-}
-
-interface PendingQuestion {
-  id: string;
-  question: string;
-  directed_to: string;
-}
-
-interface SessionPlan {
-  id: string;
-  selected_part: string;
-  therapist: string;
-  session_format: string;
-  status: string;
-}
-
-interface Commitment {
-  id: string;
-  commitment_text: string;
-  due_date: string;
-  committed_by: string;
+  hasCrisisBanner?: boolean;
 }
 
 interface Parsed05A {
@@ -50,10 +17,10 @@ interface Parsed05A {
   karelOverview: string;
   partsOverview: string;
   recoveryMode: string;
-  raw: string;
   cycleInfo: string;
 }
 
+/* ── Parse 05A document into structured sections ── */
 function parse05A(text: string): Parsed05A {
   const clean = text.replace(/\r\n/g, "\n");
 
@@ -64,7 +31,6 @@ function parse05A(text: string): Parsed05A {
   };
 
   const headerMatch = clean.match(/Datum:\s*([^\n]+)/);
-  const cycleInfo = headerMatch?.[1]?.trim() || "";
 
   return {
     crisisContext: extractSection("1\\.\\s*KRIZOVÝ KONTEXT"),
@@ -75,52 +41,105 @@ function parse05A(text: string): Parsed05A {
     karelOverview: extractSection("6\\.\\s*KARLŮV PŘEHLED"),
     partsOverview: extractSection("7\\.\\s*PŘEHLED ČÁSTÍ"),
     recoveryMode: extractSection("8\\.\\s*REŽIM OBNOVY ŘÍZENÍ"),
-    raw: clean,
-    cycleInfo,
+    cycleInfo: headerMatch?.[1]?.trim() || "",
   };
 }
 
-/** Turn raw section text into clean prose sentences. */
-const extractProse = (text: string): string => {
-  if (!text) return "";
+/* ── Extract clean lines from a section ── */
+const extractLines = (text: string): string[] => {
+  if (!text) return [];
   return text
     .split("\n")
-    .map((l) => l.replace(/^[\s•\-–—*0-9.()]+/, "").trim())
+    .map((l) => l.replace(/^[\s•\-–—*]+/, "").trim())
     .filter(Boolean)
-    .filter((l) => !/^\(?žádné|n\/a|bez změny\)?$/i.test(l))
-    .join(" ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+    .filter((l) => !/^\(?žádné|n\/a|bez změny|---\)?$/i.test(l));
 };
 
-const KarelDailyPlan = ({ refreshTrigger }: Props) => {
+/* ── Extract narrative prose (max N sentences) ── */
+const extractProse = (text: string, maxSentences = 3): string => {
+  if (!text) return "";
+  const lines = extractLines(text);
+  const joined = lines.join(". ").replace(/\.\./g, ".").replace(/\s{2,}/g, " ").trim();
+  // Limit to N sentences
+  const sentences = joined.match(/[^.!?]+[.!?]+/g) || [joined];
+  return sentences.slice(0, maxSentences).join(" ").trim();
+};
+
+/* ── Split tasks by therapist ── */
+const splitByTherapist = (text: string): { hanka: string[]; kata: string[]; both: string[] } => {
+  const lines = extractLines(text);
+  const hanka: string[] = [];
+  const kata: string[] = [];
+  const both: string[] = [];
+
+  for (const line of lines) {
+    const lower = line.toLowerCase();
+    if (lower.includes("hani") || lower.includes("hank") || lower.includes("hanič")) {
+      hanka.push(line);
+    } else if (lower.includes("kát") || lower.includes("kata") || lower.includes("káťa")) {
+      kata.push(line);
+    } else {
+      both.push(line);
+    }
+  }
+  return { hanka, kata, both };
+};
+
+/* ── Section block component ── */
+const PlanBlock = ({
+  icon,
+  title,
+  accent,
+  children,
+  isEmpty,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  accent?: "urgent" | "gold" | "muted";
+  children: React.ReactNode;
+  isEmpty?: boolean;
+}) => {
+  if (isEmpty) return null;
+
+  const borderClass =
+    accent === "urgent"
+      ? "border-l-[3px] border-l-destructive"
+      : accent === "gold"
+        ? "border-l-[3px] border-l-primary"
+        : "border-l-[3px] border-l-muted-foreground/20";
+
+  return (
+    <div className={cn("rounded-xl bg-card/60 p-4", borderClass)}>
+      <h4 className="mb-2 flex items-center gap-2 font-['Crimson_Pro',serif] text-[15px] font-medium text-foreground/80">
+        {icon}
+        {title}
+      </h4>
+      <div className="text-[13.5px] leading-relaxed text-foreground/70">{children}</div>
+    </div>
+  );
+};
+
+const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const [plan05A, setPlan05A] = useState<Parsed05A | null>(null);
   const [source, setSource] = useState<"05A" | "db" | "loading">("loading");
-
   const prevRawRef = useRef<string>("");
   const hasLoadedOnce = useRef(false);
-
-  const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
-  const [crisisDays, setCrisisDays] = useState<number | null>(null);
-  const [crisisJournal, setCrisisJournal] = useState<CrisisJournalEntry | null>(null);
-  const [tasks, setTasks] = useState<PendingTask[]>([]);
-  const [questions, setQuestions] = useState<PendingQuestion[]>([]);
-  const [sessions, setSessions] = useState<SessionPlan[]>([]);
-  const [commitments, setCommitments] = useState<Commitment[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // DB fallback state
+  const [dbTasks, setDbTasks] = useState<{ task: string; assigned_to: string }[]>([]);
+  const [dbSessions, setDbSessions] = useState<{ selected_part: string; therapist: string }[]>([]);
+  const [dbQuestions, setDbQuestions] = useState<{ question: string; directed_to: string }[]>([]);
+  const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
+
   const load = useCallback(async () => {
-    if (!hasLoadedOnce.current) {
-      setLoading(true);
-    }
+    if (!hasLoadedOnce.current) setLoading(true);
 
     try {
+      // Try 05A from Drive first
       try {
         const { data: fnData, error: fnError } = await supabase.functions.invoke("karel-did-drive-read", {
-          body: {
-            documents: ["05A_OPERATIVNI_PLAN"],
-            subFolder: "00_CENTRUM",
-          },
+          body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
         });
 
         if (!fnError && fnData?.documents?.["05A_OPERATIVNI_PLAN"]) {
@@ -131,8 +150,7 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
               return;
             }
             prevRawRef.current = raw;
-            const parsed = parse05A(raw);
-            setPlan05A(parsed);
+            setPlan05A(parse05A(raw));
             setSource("05A");
             setLoading(false);
             hasLoadedOnce.current = true;
@@ -143,65 +161,39 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
         console.warn("[KarelDailyPlan] 05A Drive read failed, falling back to DB:", driveErr);
       }
 
+      // DB fallback
       setSource("db");
       const today = new Date().toISOString().slice(0, 10);
 
-      const [tasksRes, questionsRes, sessionsRes, commitmentsRes, crisisRes] = await Promise.all([
+      const [tasksRes, sessionsRes, questionsRes, crisisRes] = await Promise.all([
         supabase
           .from("did_therapist_tasks")
-          .select("id, task, assigned_to, priority")
+          .select("task, assigned_to")
           .in("status", ["pending", "active", "in_progress"])
           .order("priority", { ascending: true })
           .limit(10),
-        (supabase as any)
-          .from("did_pending_questions")
-          .select("id, question, directed_to")
-          .in("status", ["pending", "sent"])
-          .order("created_at", { ascending: false })
-          .limit(10),
         supabase
           .from("did_daily_session_plans")
-          .select("id, selected_part, therapist, session_format, status")
+          .select("selected_part, therapist")
           .in("status", ["planned", "in_progress"])
           .gte("plan_date", today)
-          .order("urgency_score", { ascending: false })
           .limit(5),
         (supabase as any)
-          .from("karel_commitments")
-          .select("id, commitment_text, due_date, committed_by")
-          .eq("status", "open")
-          .lte("due_date", today)
-          .order("due_date", { ascending: true })
+          .from("did_pending_questions")
+          .select("question, directed_to")
+          .in("status", ["pending", "sent"])
           .limit(10),
         supabase
           .from("crisis_events")
-          .select("id, part_name, days_active")
+          .select("part_name")
           .neq("phase", "CLOSED")
-          .order("created_at", { ascending: false })
           .limit(1),
       ]);
 
-      setTasks(tasksRes.data || []);
-      setQuestions(questionsRes.data || []);
-      setSessions(sessionsRes.data || []);
-      setCommitments(commitmentsRes.data || []);
-
-      const activeCrisis = crisisRes.data?.[0];
-      if (activeCrisis) {
-        setCrisisPartName(activeCrisis.part_name);
-        setCrisisDays(activeCrisis.days_active);
-        const { data: journal } = await (supabase as any)
-          .from("crisis_journal")
-          .select("crisis_trend, karel_action, session_summary, part_id, date")
-          .eq("crisis_event_id", activeCrisis.id)
-          .order("date", { ascending: false })
-          .limit(1);
-        setCrisisJournal(journal?.[0] || null);
-      } else {
-        setCrisisPartName(null);
-        setCrisisDays(null);
-        setCrisisJournal(null);
-      }
+      setDbTasks(tasksRes.data || []);
+      setDbSessions(sessionsRes.data || []);
+      setDbQuestions(questionsRes.data || []);
+      setCrisisPartName(crisisRes.data?.[0]?.part_name || null);
     } catch (err) {
       console.error("[KarelDailyPlan] Load failed:", err);
     } finally {
@@ -214,11 +206,15 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     load();
   }, [load, refreshTrigger]);
 
+  // ── Loading skeleton ──
   if (loading && !hasLoadedOnce.current) {
     return (
       <div className="jung-card p-5">
         <div className="mb-3 h-5 w-48 animate-pulse rounded bg-muted" />
-        <div className="h-4 w-full animate-pulse rounded bg-muted" />
+        <div className="space-y-2">
+          <div className="h-4 w-full animate-pulse rounded bg-muted" />
+          <div className="h-4 w-3/4 animate-pulse rounded bg-muted" />
+        </div>
       </div>
     );
   }
@@ -229,37 +225,133 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     year: "numeric",
   });
 
+  // ═══════════════════════════════════════════
+  // 05A SOURCE — structured 4-block layout
+  // ═══════════════════════════════════════════
   if (source === "05A" && plan05A) {
-    const overviewProse = extractProse(plan05A.karelOverview);
-    const crisisProse = extractProse(plan05A.crisisContext);
-    const followUpProse = extractProse(plan05A.urgentFollowUp);
-    const recoveryProse = extractProse(plan05A.recoveryMode);
+    const overviewProse = extractProse(plan05A.karelOverview, 3);
+    const recoveryProse = extractProse(plan05A.recoveryMode, 2);
 
-    // Build a coherent narrative from available sections
-    const narrativeParts: string[] = [];
-    if (overviewProse) narrativeParts.push(overviewProse);
-    if (crisisProse && !overviewProse.toLowerCase().includes(crisisProse.slice(0, 20).toLowerCase())) {
-      narrativeParts.push(crisisProse);
-    }
-    if (followUpProse) narrativeParts.push(followUpProse);
-    if (recoveryProse) narrativeParts.push(recoveryProse);
+    // Urgentní items (skip if crisis banner already covers it)
+    const urgentLines = [
+      ...(hasCrisisBanner ? [] : extractLines(plan05A.crisisContext)),
+      ...extractLines(plan05A.urgentFollowUp),
+    ].slice(0, 3);
 
-    const fullNarrative = narrativeParts.join(" ").slice(0, 800) || "Karel čeká na dnešní operativní doplnění.";
+    const sessionLines = extractLines(plan05A.sessions).slice(0, 5);
+    const taskSplit = splitByTherapist(plan05A.tasks);
+    const questionLines = extractLines(plan05A.questions).slice(0, 5);
+
+    const narrative = [overviewProse, recoveryProse].filter(Boolean).join(" ") ||
+      "Karel čeká na dnešní operativní data.";
 
     return (
       <div className="jung-card space-y-4 p-6">
-        <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
+        {/* ── Header ── */}
+        <h2 className="jung-section-title text-[20px]">
+          ☉ Karlův přehled — {todayFormatted}
+        </h2>
 
-        <div className="rounded-2xl border border-border/70 bg-background/30 p-5">
-          <p className="text-[14px] leading-7 text-foreground">{fullNarrative}</p>
+        {/* ── Narrative overview (max 3 sentences) ── */}
+        <p className="text-[14px] leading-7 text-foreground/80 font-['DM_Sans',sans-serif]">
+          {narrative}
+        </p>
+
+        {/* ── Structured blocks ── */}
+        <div className="space-y-3">
+          <PlanBlock
+            icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
+            title="Urgentní"
+            accent="urgent"
+            isEmpty={urgentLines.length === 0}
+          >
+            <ul className="space-y-1">
+              {urgentLines.map((line, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-destructive/60" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </PlanBlock>
+
+          <PlanBlock
+            icon={<CalendarDays className="h-4 w-4 text-primary" />}
+            title="Sezení dnes"
+            accent="gold"
+            isEmpty={sessionLines.length === 0}
+          >
+            <ul className="space-y-1">
+              {sessionLines.map((line, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/50" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </PlanBlock>
+
+          <PlanBlock
+            icon={<CheckSquare className="h-4 w-4 text-primary" />}
+            title="Úkoly na dnes"
+            accent="gold"
+            isEmpty={taskSplit.hanka.length + taskSplit.kata.length + taskSplit.both.length === 0}
+          >
+            <div className="space-y-2">
+              {taskSplit.hanka.length > 0 && (
+                <div>
+                  <span className="text-[12px] font-medium uppercase tracking-wide text-foreground/50">Hanka</span>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {taskSplit.hanka.slice(0, 5).map((t, i) => (
+                      <li key={i}>• {t}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {taskSplit.kata.length > 0 && (
+                <div>
+                  <span className="text-[12px] font-medium uppercase tracking-wide text-foreground/50">Káťa</span>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {taskSplit.kata.slice(0, 5).map((t, i) => (
+                      <li key={i}>• {t}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {taskSplit.both.length > 0 && (
+                <ul className="space-y-0.5">
+                  {taskSplit.both.slice(0, 3).map((t, i) => (
+                    <li key={i}>• {t}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </PlanBlock>
+
+          <PlanBlock
+            icon={<HelpCircle className="h-4 w-4 text-accent" />}
+            title="Otevřené otázky"
+            accent="muted"
+            isEmpty={questionLines.length === 0}
+          >
+            <ul className="space-y-1">
+              {questionLines.map((line, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/40" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </PlanBlock>
         </div>
       </div>
     );
   }
 
-  // DB fallback
-  const hasAnything =
-    crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
+  // ═══════════════════════════════════════════
+  // DB FALLBACK — same 4-block structure
+  // ═══════════════════════════════════════════
+  const hasAnything = crisisPartName || dbTasks.length > 0 || dbSessions.length > 0 || dbQuestions.length > 0;
 
   if (!hasAnything) {
     return (
@@ -272,30 +364,101 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     );
   }
 
-  // Build narrative from DB data
-  const parts: string[] = [];
-  if (crisisPartName) {
-    let s = `Nejvyšší priorita dne je ${crisisPartName}`;
-    if (crisisDays != null) s += ` (den ${crisisDays})`;
-    if (crisisJournal?.crisis_trend) s += `, trend: ${crisisJournal.crisis_trend}`;
-    s += ".";
-    parts.push(s);
-    if (crisisJournal?.karel_action) parts.push(`Karel: ${crisisJournal.karel_action}.`);
+  // Build narrative from DB
+  const narrativeParts: string[] = [];
+  if (crisisPartName && !hasCrisisBanner) {
+    narrativeParts.push(`Nejvyšší priorita dne: ${crisisPartName}.`);
   }
-  if (sessions.length > 0) parts.push(`Dnes ${sessions.length === 1 ? "je plánované 1 sezení" : `je plánováno ${sessions.length} sezení`}.`);
-  if (tasks.length > 0) parts.push(`${tasks.length} otevřených úkolů čeká na zpracování.`);
-  if (questions.length > 0) parts.push(`${questions.length} otázek čeká na odpověď od terapeutek.`);
+  if (dbSessions.length > 0) {
+    narrativeParts.push(`${dbSessions.length === 1 ? "Jedno plánované sezení" : `${dbSessions.length} plánovaných sezení`} na dnešek.`);
+  }
+  if (dbTasks.length > 0) {
+    narrativeParts.push(`${dbTasks.length} otevřených úkolů.`);
+  }
+  const narrative = narrativeParts.join(" ") || "Karel drží denní orientaci.";
 
-  const overdueCount = commitments.filter((c) => Date.now() > new Date(c.due_date).getTime()).length;
-  if (overdueCount > 0) parts.push(`${overdueCount} závazků je po termínu.`);
-
-  const fallbackNarrative = parts.join(" ") || "Karel drží denní orientaci z otevřených úkolů a sezení.";
+  const dbHanka = dbTasks.filter((t) => t.assigned_to?.toLowerCase().includes("han"));
+  const dbKata = dbTasks.filter((t) => t.assigned_to?.toLowerCase().includes("kát") || t.assigned_to?.toLowerCase().includes("kata"));
+  const dbBoth = dbTasks.filter((t) => !dbHanka.includes(t) && !dbKata.includes(t));
 
   return (
     <div className="jung-card space-y-4 p-6">
       <h2 className="jung-section-title text-[20px]">☉ Karlův přehled — {todayFormatted}</h2>
-      <div className="rounded-2xl border border-border/70 bg-background/30 p-5">
-        <p className="text-[14px] leading-7 text-foreground">{fallbackNarrative}</p>
+      <p className="text-[14px] leading-7 text-foreground/80 font-['DM_Sans',sans-serif]">{narrative}</p>
+
+      <div className="space-y-3">
+        {crisisPartName && !hasCrisisBanner && (
+          <PlanBlock
+            icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
+            title="Urgentní"
+            accent="urgent"
+          >
+            <p>Aktivní krize: {crisisPartName}</p>
+          </PlanBlock>
+        )}
+
+        <PlanBlock
+          icon={<CalendarDays className="h-4 w-4 text-primary" />}
+          title="Sezení dnes"
+          accent="gold"
+          isEmpty={dbSessions.length === 0}
+        >
+          <ul className="space-y-1">
+            {dbSessions.map((s, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/50" />
+                {s.selected_part} — {s.therapist || "?"}
+              </li>
+            ))}
+          </ul>
+        </PlanBlock>
+
+        <PlanBlock
+          icon={<CheckSquare className="h-4 w-4 text-primary" />}
+          title="Úkoly"
+          accent="gold"
+          isEmpty={dbTasks.length === 0}
+        >
+          <div className="space-y-2">
+            {dbHanka.length > 0 && (
+              <div>
+                <span className="text-[12px] font-medium uppercase tracking-wide text-foreground/50">Hanka</span>
+                <ul className="mt-0.5 space-y-0.5">
+                  {dbHanka.slice(0, 5).map((t, i) => <li key={i}>• {t.task}</li>)}
+                </ul>
+              </div>
+            )}
+            {dbKata.length > 0 && (
+              <div>
+                <span className="text-[12px] font-medium uppercase tracking-wide text-foreground/50">Káťa</span>
+                <ul className="mt-0.5 space-y-0.5">
+                  {dbKata.slice(0, 5).map((t, i) => <li key={i}>• {t.task}</li>)}
+                </ul>
+              </div>
+            )}
+            {dbBoth.length > 0 && (
+              <ul className="space-y-0.5">
+                {dbBoth.slice(0, 3).map((t, i) => <li key={i}>• {t.task}</li>)}
+              </ul>
+            )}
+          </div>
+        </PlanBlock>
+
+        <PlanBlock
+          icon={<HelpCircle className="h-4 w-4 text-accent" />}
+          title="Otevřené otázky"
+          accent="muted"
+          isEmpty={dbQuestions.length === 0}
+        >
+          <ul className="space-y-1">
+            {dbQuestions.map((q, i) => (
+              <li key={i} className="flex items-start gap-2">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/40" />
+                {q.question} <span className="text-muted-foreground">→ {q.directed_to}</span>
+              </li>
+            ))}
+          </ul>
+        </PlanBlock>
       </div>
     </div>
   );

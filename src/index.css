@@ -409,8 +409,7 @@ html.theme-transitioning *::after {
   transition: none !important;
 }
 
-/* ═══ Jung Study — scoped dark theme for DID/Terapeut dashboard ═══ */
-/* ═══ Jung Study — warm parchment theme for DID/Terapeut dashboard ═══ */
+/* ═══ Jung Study — C.G. Jung's study aesthetic ═══ */
 .jung-study {
   --background: 34 28% 94%;
   --foreground: 28 18% 18%;
@@ -434,16 +433,63 @@ html.theme-transitioning *::after {
 
   color: hsl(var(--foreground));
   background:
-    radial-gradient(ellipse at top, hsl(38 36% 88% / 0.6) 0%, transparent 55%),
-    radial-gradient(ellipse at bottom left, hsl(28 24% 86% / 0.4) 0%, transparent 45%),
-    linear-gradient(180deg, hsl(36 28% 94%) 0%, hsl(34 22% 90%) 100%);
+    radial-gradient(ellipse at 20% 10%, hsl(38 36% 88% / 0.7) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 85%, hsl(28 30% 82% / 0.5) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 50%, hsl(34 20% 90% / 0.3) 0%, transparent 70%),
+    linear-gradient(180deg, hsl(36 28% 94%) 0%, hsl(34 22% 89%) 100%);
+  position: relative;
+}
+
+/* Mandala watermark */
+.jung-study::before {
+  content: '';
+  position: fixed;
+  bottom: -10%;
+  right: -5%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, transparent 30%, hsl(28 30% 70% / 0.06) 31%, transparent 32%,
+    transparent 48%, hsl(28 30% 70% / 0.04) 49%, transparent 50%,
+    transparent 64%, hsl(28 30% 70% / 0.03) 65%, transparent 66%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  animation: mandala-rotate 120s linear infinite;
+}
+
+@keyframes mandala-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Floating gold particles */
+.jung-study::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 15% 25%, hsl(38 60% 65% / 0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 72% 18%, hsl(28 50% 60% / 0.25) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 45% 68%, hsl(38 60% 65% / 0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 88% 45%, hsl(28 50% 60% / 0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 32% 82%, hsl(38 60% 65% / 0.15) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 58% 12%, hsl(28 50% 60% / 0.2) 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 0;
+  animation: particles-drift 30s ease-in-out infinite alternate;
+}
+
+@keyframes particles-drift {
+  0% { transform: translateY(0) translateX(0); opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-15px) translateX(8px); opacity: 0.5; }
 }
 
 .jung-study .jung-section-title {
   font-family: 'Crimson Pro', serif;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: hsl(28 36% 32%);
+  color: hsl(28 36% 28%);
 }
 
 .jung-study .jung-divider {
@@ -453,23 +499,32 @@ html.theme-transitioning *::after {
 }
 
 .jung-study .jung-card {
-  background: hsl(36 22% 93% / 0.95);
-  border: 1px solid hsl(var(--border));
+  background: hsl(36 22% 93% / 0.92);
+  border: 1px solid hsl(28 20% 80% / 0.6);
   border-radius: 1rem;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-shadow:
-    0 4px 16px -8px hsl(28 20% 40% / 0.12),
-    inset 0 1px 0 hsl(0 0% 100% / 0.5);
+    0 4px 20px -8px hsl(28 20% 40% / 0.1),
+    0 1px 3px hsl(28 20% 40% / 0.06),
+    inset 0 1px 0 hsl(0 0% 100% / 0.4);
 }
 
 .jung-study .jung-hero-section {
-  background: linear-gradient(135deg, hsl(34 30% 92%), hsl(28 22% 88%));
-  border: 1px solid hsl(28 28% 78% / 0.5);
+  background:
+    linear-gradient(135deg, hsl(34 30% 92% / 0.95), hsl(28 22% 87% / 0.9));
+  border: 1px solid hsl(28 28% 75% / 0.5);
   border-radius: 1rem;
-  box-shadow: 0 6px 20px -12px hsl(28 20% 40% / 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 32px -12px hsl(28 30% 35% / 0.12),
+    inset 0 1px 0 hsl(0 0% 100% / 0.3);
 }
 
 .jung-study .jung-hero-section .jung-card {
   border: none;
   background: transparent;
   box-shadow: none;
+  backdrop-filter: none;
 }
