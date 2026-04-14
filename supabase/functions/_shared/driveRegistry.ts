@@ -54,9 +54,9 @@ export function levenshtein(a: string, b: string): number {
 export function scoreName(input: string, candidate: string): number {
   if (!input || !candidate) return 0;
   if (input === candidate) return 100;
-  if (input.includes(candidate) || candidate.includes(input)) return 80;
-
   const shorter = Math.min(input.length, candidate.length);
+  const longer = Math.max(input.length, candidate.length);
+  if ((input.includes(candidate) || candidate.includes(input)) && shorter / longer >= 0.7) return 80;
   if (shorter >= 3) {
     const dist = levenshtein(input, candidate);
     if (dist === 0) return 100;
@@ -65,8 +65,8 @@ export function scoreName(input: string, candidate: string): number {
     if (dist === 3 && shorter >= 6) return 65;
   }
 
-  if (input.length >= 3 && candidate.length >= 3) {
-    if (input.slice(0, 3) === candidate.slice(0, 3)) return 60;
+  if (input.length >= 4 && candidate.length >= 4) {
+    if (input.slice(0, 4) === candidate.slice(0, 4)) return 55;
   }
 
   return 0;
