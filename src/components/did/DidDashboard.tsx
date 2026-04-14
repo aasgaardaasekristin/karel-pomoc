@@ -287,16 +287,56 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
 
   const warningParts = useMemo(() => parts.filter(p => p.status === "warning"), [parts]);
 
-  // ── Aggregate "Karel vyžaduje" from crisis cards ──
+  // ── Aggregate "Karel vyžaduje" from ALL operational sources ──
+  const [karelPendingQuestions, setKarelPendingQuestions] = useState<{ question: string; directed_to: string }[]>([]);
+  const [karelMissingSessions, setKarelMissingSessions] = useState<{ part: string; type: string }[]>([]);
+  const [karelCommitments, setKarelCommitments] = useState<{ text: string; due: string; by: string }[]>([]);
+
+  useEffect(() => {
+    const loadKarelRequires = async () => {
+      const today = todayISO();
+      const [qRes, commitRes] = await Promise.all([
+        (supabase as any).from("did_pending_questions").select("question, directed_to").in("status", ["pending", "sent"]).order("created_at", { ascending: false }).limit(5),
+        (supabase as any).from("karel_commitments").select("commitment_text, due_date, committed_by").eq("status", "open").lte("due_date", today).order("due_date", { ascending: true }).limit(5),
+      ]);
+      setKarelPendingQuestions(qRes.data || []);
+      setKarelCommitments((commitRes.data || []).map((c: any) => ({ text: c.commitment_text, due: c.due_date, by: c.committed_by })));
+
+      // Missing session results: crisis parts with sessions awaiting write-up
+      const missing: { part: string; type: string }[] = [];
+      for (const card of crisisCards) {
+        if (card.missingSessionResult) missing.push({ part: card.displayName, type: "výsledek sezení" });
+        if (card.missingTherapistFeedback) missing.push({ part: card.displayName, type: "feedback terapeutky" });
+        if (card.missingTodayInterview) missing.push({ part: card.displayName, type: "dnešní interview" });
+      }
+      setKarelMissingSessions(missing);
+    };
+    loadKarelRequires();
+  }, [crisisCards, refreshTrigger]);
+
   const karelRequirements = useMemo(() => {
-    const reqs: { text: string; source: string; severity: string }[] = [];
+    const reqs: { text: string; source: string; severity: string; category: string }[] = [];
+    // 1. Crisis card explicit requirements
     for (const card of crisisCards) {
       for (const req of card.karelRequires) {
-        reqs.push({ text: req, source: card.displayName, severity: card.severity || "medium" });
+        reqs.push({ text: req, source: card.displayName, severity: card.severity || "medium", category: "krize" });
       }
     }
+    // 2. Missing outputs
+    for (const m of karelMissingSessions) {
+      reqs.push({ text: `Chybí ${m.type}`, source: m.part, severity: "high", category: "chybí výstup" });
+    }
+    // 3. Pending questions
+    for (const q of karelPendingQuestions) {
+      reqs.push({ text: q.question.slice(0, 200), source: `pro ${q.directed_to}`, severity: "medium", category: "otázka" });
+    }
+    // 4. Overdue commitments
+    for (const c of karelCommitments) {
+      const days = Math.floor((Date.now() - new Date(c.due).getTime()) / 86400000);
+      reqs.push({ text: `${c.text.slice(0, 150)} (${days}d po termínu)`, source: c.by, severity: days > 3 ? "high" : "medium", category: "závazek" });
+    }
     return reqs;
-  }, [crisisCards]);
+  }, [crisisCards, karelMissingSessions, karelPendingQuestions, karelCommitments]);
 
   if (loading) {
     return (
@@ -427,19 +467,31 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         {karelRequirements.length > 0 && (
           <StudyCard accent="gold">
             <SectionTitle icon={<Zap className="w-4 h-4 text-primary" />}>
-              Karel vyžaduje
+              Karel vyžaduje ({karelRequirements.length})
             </SectionTitle>
             <div className="space-y-3">
               {karelRequirements.map((req, i) => (
                 <div key={i} className="flex items-start gap-3 text-[13px]">
-                  <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
-                    <span className="text-[10px] font-bold text-primary">{i + 1}</span>
+                  <div className={cn(
+                    "w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5",
+                    req.severity === "high" || req.severity === "critical" ? "bg-destructive/20" : "bg-primary/20"
+                  )}>
+                    <span className={cn(
+                      "text-[10px] font-bold",
+                      req.severity === "high" || req.severity === "critical" ? "text-destructive" : "text-primary"
+                    )}>{i + 1}</span>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-foreground leading-relaxed">{req.text}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] text-muted-foreground">Zdroj: {req.source}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">čeká</span>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-[11px] text-muted-foreground">{req.source}</span>
+                      <span className={cn(
+                        "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                        req.category === "krize" ? "bg-destructive/15 text-destructive"
+                          : req.category === "chybí výstup" ? "bg-[hsl(38,60%,55%,0.2)] text-[hsl(38,50%,70%)]"
+                          : req.category === "závazek" ? "bg-primary/15 text-primary"
+                          : "bg-muted text-muted-foreground"
+                      )}>{req.category}</span>
                     </div>
                   </div>
                 </div>
@@ -451,9 +503,11 @@ const DidDashboard = ({ onManualUpdate, isUpdating, syncProgress, onQuickThread,
         <div className="jung-divider" />
 
         {/* ═══ 5. KARLŮV PŘEHLED — hero section ═══ */}
-        <ErrorBoundary fallbackTitle="Denní plán selhal">
-          <KarelDailyPlan refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
+        <div className="jung-hero-section rounded-2xl p-1">
+          <ErrorBoundary fallbackTitle="Denní plán selhal">
+            <KarelDailyPlan refreshTrigger={refreshTrigger} />
+          </ErrorBoundary>
+        </div>
 
         {/* ═══ 6. OTÁZKY ČEKAJÍCÍ NA ODPOVĚĎ ═══ */}
         <ErrorBoundary fallbackTitle="Otázky selhaly">

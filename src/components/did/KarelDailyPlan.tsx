@@ -297,7 +297,18 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
 
   // ═══ DB fallback view ═══
   const hasAnything = crisisPartName || questions.length > 0 || tasks.length > 0 || sessions.length > 0 || commitments.length > 0;
-  if (!hasAnything) return null;
+  if (!hasAnything) {
+    return (
+      <div className="jung-card p-5">
+        <h2 className="jung-section-title text-[20px] mb-2">
+          ☉ Karlův přehled — {todayFormatted}
+        </h2>
+        <p className="text-[13px] text-muted-foreground">
+          Žádné aktivní operativní položky. Karel čeká na nová data.
+        </p>
+      </div>
+    );
+  }
 
   const overdueCommitments = commitments.filter(c => {
     const daysOverdue = Math.floor((Date.now() - new Date(c.due_date).getTime()) / 86400000);
@@ -308,7 +319,7 @@ const KarelDailyPlan = ({ refreshTrigger }: Props) => {
     <div className="jung-card p-5 space-y-5">
       <div className="flex items-center justify-between">
         <h2 className="jung-section-title text-[20px]">
-          ☉ Karlův denní plán — {todayFormatted}
+          ☉ Karlův denní přehled — {todayFormatted}
         </h2>
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
           z databáze
