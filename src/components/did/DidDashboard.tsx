@@ -450,16 +450,8 @@ const DidDashboard = ({
   const karelRequirements = useMemo(() => {
     const reqs: { text: string; source: string; severity: string; category: string }[] = [];
 
-    for (const card of crisisCards) {
-      for (const req of card.karelRequires) {
-        reqs.push({
-          text: req,
-          source: card.displayName,
-          severity: card.severity || "medium",
-          category: "krize",
-        });
-      }
-    }
+    // NO crisis-sourced items here — the top banner already covers all crisis info.
+    // Only show: missing outputs, pending questions, overdue commitments.
 
     for (const item of karelMissingSessions) {
       reqs.push({
@@ -499,7 +491,7 @@ const DidDashboard = ({
       })
       .sort((a, b) => (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9))
       .slice(0, 6);
-  }, [crisisCards, karelMissingSessions, karelPendingQuestions, karelCommitments]);
+  }, [karelMissingSessions, karelPendingQuestions, karelCommitments]);
 
   if (loading) {
     return (
@@ -564,64 +556,8 @@ const DidDashboard = ({
           </div>
         </div>
 
-        {crisisCards.length > 0 && (
-          <StudyCard accent="crisis" className="space-y-3">
-            {crisisCards.map((card) => {
-              const id = card.eventId || card.alertId || card.partName;
-              const stateLabel = card.operatingState
-                ? STATE_LABELS[card.operatingState] || card.operatingState
-                : "aktivní";
-              const missingFlags: string[] = [];
-              if (card.missingTodayInterview) missingFlags.push("interview");
-              if (card.missingSessionResult) missingFlags.push("sezení");
-              if (card.missingTherapistFeedback) missingFlags.push("feedback");
-              if (card.unansweredQuestionCount > 0) missingFlags.push(`${card.unansweredQuestionCount}Q`);
-
-              return (
-                <div key={id} className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                  <Shield className="h-4 w-4 shrink-0 text-destructive" />
-                  <span className="text-[14px] font-semibold text-foreground">{card.displayName}</span>
-                  <span className="text-[11px] text-muted-foreground">{card.severity}</span>
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    {stateLabel}
-                  </span>
-                  {card.daysActive ? (
-                    <span className="text-[11px] text-muted-foreground">den {card.daysActive}</span>
-                  ) : null}
-                  {card.isStale ? (
-                    <span className="rounded bg-destructive/15 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
-                      {Math.round(card.hoursStale)} h bez kontaktu
-                    </span>
-                  ) : null}
-                  {missingFlags.length > 0 ? (
-                    <span className="flex items-center gap-1 rounded bg-primary/12 px-1.5 py-0.5 text-[10px] text-primary">
-                      <AlertTriangle className="h-3 w-3" />
-                      chybí: {missingFlags.join(", ")}
-                    </span>
-                  ) : null}
-                  <div className="ml-auto flex gap-2">
-                    {card.computedCTAs.slice(0, 2).map((cta) => (
-                      <button
-                        key={cta.key}
-                        onClick={() =>
-                          navigate(card.meetingId ? `/chat?meeting=${card.meetingId}` : `/chat?sub=meeting`)
-                        }
-                        className={cn(
-                          "rounded-md border px-2.5 py-1 text-[10px] font-medium transition-colors",
-                          cta.priority === "critical"
-                            ? "border-destructive/40 text-destructive hover:bg-destructive/10"
-                            : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        {cta.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </StudyCard>
-        )}
+        {/* Crisis card REMOVED — the top sticky CrisisAlert banner already shows all crisis info.
+             No duplicate crisis block in the dashboard body. */}
 
         {karelRequirements.length > 0 && (
           <StudyCard accent="gold">
