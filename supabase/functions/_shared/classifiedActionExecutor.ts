@@ -294,6 +294,79 @@ export async function executeClassifiedItems(
       });
       result.drive_writes++;
     }
+
+    // Plan updates (05A/05B/05C from generated actions)
+    const planTargetMap: Record<string, string> = {
+      "05a": "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+      "05b": "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+      "05c": "KARTOTEKA_DID/00_CENTRUM/05C_DLOUHODOBA_INTEGRACNI_TRAJEKTORIE",
+    };
+    const planContentTypeMap: Record<string, string> = {
+      "05a": "daily_plan",
+      "05b": "strategic_outlook",
+      "05c": "long_term_trajectory",
+    };
+    for (const pu of actions.planUpdates) {
+      const planTarget = planTargetMap[pu.target];
+      if (!planTarget) continue;
+      const planPayload = `\n\n--- ${sourceDateLabel} | ${callerName} ---\n${pu.content}`;
+      const planFingerprint = payloadFingerprint(planPayload);
+      const isDup = await isDuplicateWrite(
+        sb, planTarget, item.source_id, planContentTypeMap[pu.target], "system", planFingerprint,
+      );
+      if (isDup) {
+        result.dedup_skipped++;
+      } else {
+        await sb.from("did_pending_drive_writes").insert({
+          target_document: planTarget,
+          content: encodeGovernedWrite(planPayload, {
+            source_type: callerName,
+            source_id: item.source_id,
+            segment_id: (item as any).segment_id || undefined,
+            payload_fingerprint: planFingerprint,
+            content_type: planContentTypeMap[pu.target],
+            subject_type: "system",
+            subject_id: "system",
+          }),
+          write_type: "append",
+          priority: "normal",
+          status: "pending",
+          user_id: DID_OWNER_ID,
+        });
+        result.drive_writes++;
+      }
+    }
+
+    // Dashboard updates from generated actions
+    for (const du of actions.dashboardUpdates) {
+      const dashTarget = "KARTOTEKA_DID/00_CENTRUM/DASHBOARD";
+      const dashPayload = `\n\n--- ${sourceDateLabel} | ${callerName} ---\n${du.content}`;
+      const dashFingerprint = payloadFingerprint(dashPayload);
+      const isDup = await isDuplicateWrite(
+        sb, dashTarget, item.source_id, "dashboard_status", "system", dashFingerprint,
+      );
+      if (isDup) {
+        result.dedup_skipped++;
+      } else {
+        await sb.from("did_pending_drive_writes").insert({
+          target_document: dashTarget,
+          content: encodeGovernedWrite(dashPayload, {
+            source_type: callerName,
+            source_id: item.source_id,
+            segment_id: (item as any).segment_id || undefined,
+            payload_fingerprint: dashFingerprint,
+            content_type: "dashboard_status",
+            subject_type: "system",
+            subject_id: "system",
+          }),
+          write_type: "append",
+          priority: "normal",
+          status: "pending",
+          user_id: DID_OWNER_ID,
+        });
+        result.drive_writes++;
+      }
+    }
   }
 
   return result;
