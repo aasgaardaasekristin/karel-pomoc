@@ -1318,6 +1318,10 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata";
 
         if (isMemoryMode && fullResponse.length > 30) {
+          // Service-role client hoisted here — single instance for entire memory extraction block
+          const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
+          const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
           try {
             const lastUserMsgMem = (messages as any[]).filter((m: any) => m.role === "user").pop();
             const userTextMem = typeof lastUserMsgMem?.content === "string" ? lastUserMsgMem.content : "";
@@ -1411,9 +1415,6 @@ Vrať POUZE validní JSON:
                 }
 
                 if (memResult.outputs && Array.isArray(memResult.outputs) && memResult.outputs.length > 0) {
-                  // Reuse existing service-role client pattern from this file
-                  const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
-                  const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
                   const todayMarker = new Date().toISOString().slice(0, 10);
                   const VALID_SECTIONS = ["A","B","C","D","E","F","G","H","I","J","K","L","M"];
