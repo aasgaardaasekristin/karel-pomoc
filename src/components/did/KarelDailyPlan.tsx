@@ -385,7 +385,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
           <Textarea
             value={therapistMessage}
             onChange={e => setTherapistMessage(e.target.value)}
-            placeholder="Např. „Dnes nemůžu přijít…" nebo „Všimla jsem si, že Tundrupek…""
+            placeholder={'Např. „Dnes nemůžu přijít…" nebo „Všimla jsem si, že Tundrupek…"'}
             className="min-h-[48px] max-h-[100px] text-[13px] bg-card/60 border-border/40 resize-none"
             rows={2}
           />
