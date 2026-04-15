@@ -312,19 +312,36 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     }
   };
 
-  // ── Save inline answer as did_threads entry ──
+  // ── Save inline answer to did_pending_questions (canonical) ──
   const saveInlineAnswer = async (questionText: string, answer: string) => {
-    const { error } = await supabase.from("did_threads").insert({
-      part_name: "Karel",
-      sub_mode: "mamka",
-      thread_label: `Odpověď na Karlovu otázku: ${questionText.slice(0, 60)}`,
-      messages: [
-        { role: "assistant", content: questionText },
-        { role: "user", content: answer },
-      ],
-      last_activity_at: new Date().toISOString(),
+    // 1. Create pending question + immediately mark as answered
+    const { error } = await (supabase as any).from("did_pending_questions").insert({
+      question: questionText,
+      directed_to: "both",
+      status: "answered",
+      answer: answer,
+      answered_at: new Date().toISOString(),
+      answered_by: "therapist_inline",
+      source: "daily_plan_inline",
+      part_name: "system",
+      expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
     });
-    if (error) throw error;
+    if (error) {
+      // Fallback to did_threads if pending_questions insert fails
+      console.warn("[KarelDailyPlan] pending_questions insert failed, fallback to did_threads:", error);
+      const { error: threadErr } = await supabase.from("did_threads").insert({
+        part_name: "Karel",
+        sub_mode: "mamka",
+        thread_label: `Odpověď: ${questionText.slice(0, 60)}`,
+        messages: [
+          { role: "assistant", content: questionText },
+          { role: "user", content: answer },
+        ],
+        last_activity_at: new Date().toISOString(),
+      });
+      if (threadErr) throw threadErr;
+    }
+    toast.success("Děkuji — tuto informaci ihned zapracuji do plánu.");
   };
 
   // ── Navigation helpers ──
