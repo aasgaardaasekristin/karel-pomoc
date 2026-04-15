@@ -432,57 +432,58 @@ html.theme-transitioning *::after {
   --ring: 28 42% 38%;
 
   color: hsl(var(--foreground));
-  background:
-    radial-gradient(ellipse at 20% 10%, hsl(38 36% 88% / 0.7) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 85%, hsl(28 30% 82% / 0.5) 0%, transparent 45%),
-    radial-gradient(ellipse at 50% 50%, hsl(34 20% 90% / 0.3) 0%, transparent 70%),
-    linear-gradient(180deg, hsl(36 28% 94%) 0%, hsl(34 22% 89%) 100%);
+  isolation: isolate;
   position: relative;
 }
 
-/* Mandala watermark */
+/* Layered warm-light background */
+.jung-study > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Base warm parchment layer */
 .jung-study::before {
   content: '';
   position: fixed;
-  bottom: -10%;
-  right: -5%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, transparent 30%, hsl(28 30% 70% / 0.06) 31%, transparent 32%,
-    transparent 48%, hsl(28 30% 70% / 0.04) 49%, transparent 50%,
-    transparent 64%, hsl(28 30% 70% / 0.03) 65%, transparent 66%);
-  border-radius: 50%;
-  pointer-events: none;
+  inset: 0;
   z-index: 0;
-  animation: mandala-rotate 120s linear infinite;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 20% 10%, hsl(38 36% 88% / 0.85) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 85%, hsl(28 30% 82% / 0.6) 0%, transparent 45%),
+    radial-gradient(ellipse at 50% 50%, hsl(34 20% 90% / 0.4) 0%, transparent 70%),
+    linear-gradient(180deg, hsl(36 28% 94%) 0%, hsl(34 22% 89%) 100%);
 }
 
-@keyframes mandala-rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Floating gold particles */
+/* Mandala watermark + gold particles layer */
 .jung-study::after {
   content: '';
   position: fixed;
   inset: 0;
-  background-image:
-    radial-gradient(1px 1px at 15% 25%, hsl(38 60% 65% / 0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 72% 18%, hsl(28 50% 60% / 0.25) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 45% 68%, hsl(38 60% 65% / 0.2) 0%, transparent 100%),
-    radial-gradient(1px 1px at 88% 45%, hsl(28 50% 60% / 0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 32% 82%, hsl(38 60% 65% / 0.15) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 58% 12%, hsl(28 50% 60% / 0.2) 0%, transparent 100%);
+  z-index: 1;
   pointer-events: none;
-  z-index: 0;
-  animation: particles-drift 30s ease-in-out infinite alternate;
+  background-image:
+    radial-gradient(circle at 85% 90%, transparent 120px, hsl(28 30% 60% / 0.07) 121px, transparent 122px),
+    radial-gradient(circle at 85% 90%, transparent 170px, hsl(28 30% 60% / 0.05) 171px, transparent 172px),
+    radial-gradient(circle at 85% 90%, transparent 220px, hsl(28 30% 60% / 0.04) 221px, transparent 222px),
+    radial-gradient(circle at 85% 90%, transparent 270px, hsl(28 30% 60% / 0.03) 271px, transparent 272px),
+    radial-gradient(1.5px 1.5px at 15% 25%, hsl(38 60% 58% / 0.35) 0%, transparent 100%),
+    radial-gradient(1px 1px at 72% 18%, hsl(28 50% 55% / 0.3) 0%, transparent 100%),
+    radial-gradient(2px 2px at 45% 68%, hsl(38 55% 60% / 0.25) 0%, transparent 100%),
+    radial-gradient(1px 1px at 88% 42%, hsl(28 50% 55% / 0.3) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 32% 82%, hsl(38 60% 58% / 0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 58% 12%, hsl(28 50% 55% / 0.25) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 8% 55%, hsl(38 55% 62% / 0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 65% 78%, hsl(28 45% 50% / 0.15) 0%, transparent 100%);
+  animation: particles-drift 25s ease-in-out infinite alternate;
 }
 
 @keyframes particles-drift {
-  0% { transform: translateY(0) translateX(0); opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { transform: translateY(-15px) translateX(8px); opacity: 0.5; }
+  0% { transform: translateY(0) translateX(0); opacity: 0.7; }
+  33% { opacity: 1; }
+  66% { opacity: 0.8; }
+  100% { transform: translateY(-12px) translateX(6px); opacity: 0.6; }
 }
 
 .jung-study .jung-section-title {
