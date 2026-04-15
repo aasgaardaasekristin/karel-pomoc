@@ -306,6 +306,9 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
             </div>
           </div>
         </div>
+      </ScrollArea>
+    );
+  }
 
   // Meeting view
   if (didFlowState === "meeting") {
