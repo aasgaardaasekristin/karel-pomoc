@@ -449,6 +449,12 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const daysWithoutData = daysSince(lastAnyActivity);
   const isInfoDeficit = daysWithoutData >= 3;
 
+  // Deduplicate sessions by part name
+  const uniqueSessions = sessions.reduce((acc, s) => {
+    if (!acc.find(x => x.selected_part === s.selected_part)) acc.push(s);
+    return acc;
+  }, [] as typeof sessions);
+
   // ══════════════════════════════════════════════════
   // ── BUILD KAREL'S LIVE NARRATIVE (unified for both modes) ──
   // ══════════════════════════════════════════════════
@@ -589,12 +595,6 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const hankaTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "hanka"));
   const kataTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "kata"));
   const teamTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "team"));
-
-  // Deduplicate sessions by part name
-  const uniqueSessions = sessions.reduce((acc, s) => {
-    if (!acc.find(x => x.selected_part === s.selected_part)) acc.push(s);
-    return acc;
-  }, [] as typeof sessions);
 
   // ── Structured information deficit questions ──
   const deficitItems: DeficitQuestion[] = [];
