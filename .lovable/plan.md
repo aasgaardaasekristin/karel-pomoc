@@ -1,73 +1,220 @@
+<final-text>
+Stav: NENÍ OK.
 
+Co jsem ověřil:
+- Prošel jsem DOK1, DOK2, GAP audit, audit dashboardu, governance prompt i aktuální kód.
+- Udělal jsem i externí rešerši: kvalitní DID/terapeutický cockpit musí mít 1) jasnou bezpečnostní vrstvu, 2) průběžné longitudinální hodnocení, 3) mezioborovou koordinaci, 4) uzavíratelný cyklus „zadání → odpověď → vyhodnocení → další krok“, 5) individualizaci podle konkrétní části, ne generický dump.
+- Aktuální implementace to nesplňuje.
 
-# Plan: Crisis Banner Fixes + Jungian Visual Activation
+Co je teď konkrétně špatně:
+1. Dvojité funkce:
+   - `chybí interview` i `Spustit dnešní hodnocení` dnes vedou na stejnou akci `start_interview`.
+   - `chybí feedback` i `Získat feedback terapeutek` dnes fakticky nevedou do samostatného workflow.
+2. Banner není route-aware:
+   - `CrisisAlert.tsx` neumí otevřít DID/Kluci krizové vlákno ani feedback workspace.
+   - většina CTA jen rozbalí `CrisisOperationalDetail`.
+3. Semantika je rozbitá:
+   - `Vyžádat update` dnes volá `karel-crisis-daily-assessment`, což není „update od terapeutky“, ale denní assessment.
+4. Dashboard není jedno operační centrum:
+   - `DidDashboard.tsx` má useknutou strukturu,
+   - `DidContentRouter.tsx` pod ním dál renderuje tmavé černé bloky s inline styly,
+   - tím se zabíjí Jungova pracovna i informační logika.
+5. Feedback vrstva je zakopaná:
+   - `PendingQuestionsPanel` je generický inbox,
+   - `CrisisTherapistFeedback` je schované uvnitř timeline,
+   - není to samostatné pracoviště pro Haničku/Káťu.
+6. Duplicitní texty:
+   - `computeMainBlocker()` generuje „79h bez kontaktu…“
+   - `CrisisAlert.tsx` to ještě vypisuje zvlášť jako plain text.
 
-## Current Problems Identified
+Co bych udělal jinak:
+Nevázal bych banner na accordion detail. Banner musí být operační rozcestník, ne roletka.
+Zavedl bych 4 odlišné akce s odlišným výsledkem:
 
-1. **Duplicate "79h bez kontaktu"** — appears twice in the banner: once as a yellow badge (line 94-98 of CrisisAlert.tsx), and again inside `mainBlocker` text (line 110-114) which renders "79h bez kontaktu — nutný update" via `computeMainBlocker`
-2. **"Hanička" displayed separately** in the banner top row (line 78) — confusing, should be removed from the top-level badge row
-3. **"chybí: interview, feedback" badges are not clickable** — currently just static `<span>` elements
-4. **CTA buttons ("Vyžádat update", "Spustit dnešní hodnocení")** — they only toggle open the CrisisOperationalDetail panel, they don't navigate to threads or call backend functions directly
-5. **Jungian visual effects (mandala, particles) not visible** — the CSS exists (.jung-study class lines 412-530 of index.css) but the class is only applied inside DidDashboard component; it's not applied to the parent container or body, so `position: fixed` pseudo-elements may be clipped by `overflow: hidden` ancestors
+1. `chybí interview`
+- jen navigační stavový odkaz
+- otevře/resumuje krizové DID/Kluci vlákno pro konkrétní část
+- bez nového zápisu, pokud dnešní vlákno už existuje
 
-## Plan
+2. `Spustit dnešní hodnocení`
+- aktivní orchestrace
+- založí/obnoví dnešní `crisis_daily_assessment`
+- připraví Karlův krizový rozhovor
+- potom otevře stejné krizové vlákno
 
-### Step 1: Fix Crisis Banner Duplicates
-**File:** `src/components/karel/CrisisAlert.tsx`
+3. `chybí feedback`
+- jen navigační stavový odkaz
+- otevře feedback workspace na první nezodpovězenou otázku
 
-- **Remove duplicate "bez kontaktu" badge**: Remove the `card.isStale` badge (lines 94-98) since the same info is in `mainBlocker`
-- **Remove standalone "Hanička" text**: Remove line 78 (`card.primaryTherapist` text) — this info is already in the expanded detail
-- **Add plain text contact info**: Show two plain text spans: `{hoursStale}h bez kontaktu s částí` and `{hoursWithoutTherapistContact}h bez kontaktu terapeutů` (the latter derived from `card.awaitingResponseFrom` or `card.lastContactAt`)
+4. `Získat feedback terapeutek`
+- aktivní orchestrace
+- vygeneruje/obnoví sadu otázek pro Haničku a Káťu
+- potom otevře feedback workspace
 
-### Step 2: Make "chybí" Badges Clickable
-**File:** `src/components/karel/CrisisAlert.tsx`
+Tím přestane double-funkce a každé tlačítko bude mít jiný smysl.
 
-- **"interview" click** → Navigate to DID/Kluci and open a new crisis thread with the part in crisis. This requires:
-  - Accept a new prop `onNavigateToCrisisThread?: (partName: string, eventId: string) => void` 
-  - When clicked, call this prop with the crisis part name
-  - The parent (App.tsx) will need to route to the chat page with DID mode, Kluci sub-mode, and auto-create a thread with Karel's opening message for a crisis interview
+Nový návrh DID/Terapeut dashboardu:
+```text
+[ Tichá operační hlavička ]
+  poslední validní briefing | live sync | recovery | čeká se na odpověď
 
-- **"feedback" click** → Navigate to PendingQuestionsPanel filtered for this crisis. This means:
-  - Accept a new prop `onNavigateToFeedback?: (eventId: string) => void`
-  - When clicked, expand the banner detail to the "management" tab, scrolled to the Q/A section
+[ Krizový banner ]
+  část | stav | den | bez kontaktu s částí | bez kontaktu terapeutů
+  stavové odkazy: chybí interview | chybí feedback | porada
+  akce: Spustit dnešní hodnocení | Získat feedback terapeutek | Otevřít krizovou poradu
 
-Given the complexity of deep-linking to DID/Kluci thread creation with Karel's auto-generated opening, I'll implement this in two parts:
-  - **Phase A (this step)**: "interview" → expands detail + opens management tab (same as start_interview CTA). "feedback" → expands detail + opens management tab scrolled to Q/A
-  - The navigation will use the existing CTA mechanism (handleCTAClick)
+[ Karlův denní plán / 05A ]
+  urgentní | sezení dnes | úkoly pro Haničku | úkoly pro Káťu | otevřené otázky
 
-### Step 3: Fix CTA Button Functionality
-**Files:** `src/components/karel/CrisisAlert.tsx`, `src/components/karel/CrisisDailyManagement.tsx`
+[ Dnešní operační centrum ]
+  A. Kdo mluví s Karlem / kdo chybí
+  B. Sezení dnes
+  C. Úkoly týmu
+  D. Čeká na odpověď / feedback / blokace
 
-- **"Vyžádat update"** currently just opens the management tab. It should also call the backend `karel-crisis-daily-assessment` to trigger a daily cycle refresh. Will wire it to call `callFn("karel-crisis-daily-assessment", { crisisId })` when clicked.
-- **"Spustit dnešní hodnocení"** should call `karel-crisis-interview` edge function to start an interview. Will wire it to call `callFn("karel-crisis-interview", { crisis_event_id })`.
+[ Sekundární zóna ]
+  dohody | týdenní trendy | mapa systému | supervize
+```
 
-I need to verify these edge functions exist and their expected parameters.
+Co konkrétně opravím:
+1. `src/components/karel/CrisisAlert.tsx`
+- oddělím stavové odkazy od akčních tlačítek
+- odstraním duplicitní texty o hodinách bez kontaktu
+- odstraním horní terapeutický štítek typu „Hanička“, pokud není součástí skutečné akce
+- klik na `chybí interview` a `chybí feedback` už nebude rozbalovat detail, ale route/deep-link
+- CTA budou mít jasný loading, success, error a viditelný výsledek
 
-### Step 4: Fix Jungian Visual Effects
-**File:** `src/index.css`, `src/components/did/DidDashboard.tsx`
+2. `src/hooks/useCrisisOperationalState.ts`
+- přestanu generovat blocker text, který duplikuje plain-text kontakt
+- upravím CTA logiku tak, aby nevytvářela dvojice se stejným významem
+- `request_update` přestane být přejmenovaný assessment
 
-The `.jung-study` pseudo-elements (`::before` mandala, `::after` particles) use `position: fixed` but the `.jung-study` div is inside `<main>` which has `overflow-y: auto`. Fixed-position pseudo-elements should work despite overflow, but the `z-index: 0` may cause them to render behind the background.
+3. `src/pages/Chat.tsx` + `src/components/did/DidContentRouter.tsx`
+- přidám skutečné deep-linky pro krizové workflow:
+  - otevření krizového DID/Kluci vlákna
+  - otevření feedback workspace
+  - otevření krizové porady
+- banner už nebude slepý vůči routingu
+- celý terapeutický workspace přesunu do jedné vizuální shell vrstvy, aby nezůstávaly černé inline karty pod dashboardem
 
-Fix: 
-- Ensure pseudo-elements have correct z-index stacking
-- Move `.jung-study` wrapper to use `min-h-screen` with `isolation: isolate` to create proper stacking context
-- Verify the background gradient in `.jung-study` isn't fully opaque (covering the pseudo-elements)
-- The main issue: `::before` and `::after` with `position: fixed` work, but the `.jung-study` class sets a solid `background:` with multiple gradient layers that are fully opaque — the pseudo-elements render behind this opaque background. Fix by making the background semi-transparent or applying the pseudo-elements with higher z-index while keeping content above them.
+4. `src/hooks/useDidThreads.ts`
+- doplním krizový typ vlákna/resume logiku
+- při krizovém vstupu se bude hledat dnešní krizové vlákno pro `crisis_event_id`, ne jen obyčejné vlákno podle part name
+- když neexistuje, vytvoří se nové s názvem typu:
+  `Rozhovor s Arthurem — krizové sezení`
 
-### Step 5: Fix KarelDailyPlan Loading State
-**File:** `src/components/did/KarelDailyPlan.tsx`
+5. nový krizový vstup do DID/Kluci
+- Karel nepřijde do prázdného vlákna
+- vlákno dostane připravené úvodní oslovení podle stavu části a krizového kontextu
+- tohle nebude frontend hack; bootstrap udělá backend, aby úvod vycházel z reálných dat
 
-From the screenshot, the hero section shows grey placeholder blocks. The 05A Drive read may be failing silently. Need to ensure the DB fallback renders properly when Drive read fails.
+6. feedback workflow
+- `PendingQuestionsPanel` rozdělím na samostatný krizový workspace:
+  - Hanička zvlášť
+  - Káťa zvlášť
+  - každá uvidí své otázky, blokace, termín, odpovědi
+- `CrisisTherapistFeedback.tsx` přestane být schovaná timeline vložka
+- feedback bude mít jasné sekce:
+  - co Karel potřebuje vědět
+  - proč to potřebuje
+  - odpověď textem / checkboxy / škála podle typu otázky
+  - odeslat Karlovi
 
-## Implementation Order
-1. Step 1 + Step 2 (banner fixes) — highest user-visible impact
-2. Step 4 (visual effects) — visible confirmation of Jungian aesthetic
-3. Step 3 (CTA functionality) — operational improvement
-4. Step 5 (loading fix) — data display reliability
+7. `src/components/did/DidDashboard.tsx`
+- obnovím dashboard jako jednotnou pracovní místnost
+- vrátím smysluplné sekce „Kdo mluví s Karlem / kdo chybí“, „Čeká se na odpověď“, „Úkoly“ a „Sezení“ tak, aby nebyly duplicitní a byly route-aware
+- krizový detail nebude hlavní reakce na klik z banneru
 
-## Files to Modify
-- `src/components/karel/CrisisAlert.tsx` — banner dedup, clickable badges
-- `src/index.css` — fix Jungian visual z-index/opacity
-- `src/components/did/DidDashboard.tsx` — stacking context fix
-- `src/components/did/KarelDailyPlan.tsx` — loading state fix
+8. `src/components/did/KarelDailyPlan.tsx`
+- nechám 05A jako hlavní pravdu dne
+- ale napojím ho na akce a lifecycle, ne jen na textový výpis
+- opravím i současný React warning kolem `PlanBlock`
 
+9. `src/index.css` + terapeut shell
+- Jungovu pracovnu neváže jen na vnitřek dashboardu, ale na celý DID/Terapeut workspace
+- odstraním černé inline styly v routeru
+- vizuální vrstva bude skutečně vidět: pergamen, teplé světlo, mandala watermark, jemné zlaté částice, ale bez rušivosti
+
+Nutné backend změny:
+1. Nový malý backend krok pro bootstrap krizového vlákna
+- doporučuji nový izolovaný endpoint, ne lepit to celé do `karel-crisis-interview`
+- výstup:
+  - `interview_id`
+  - `thread_label`
+  - `initial_assistant_message`
+  - `resume_thread_id` pokud už existuje
+
+2. Rozšíření `karel-crisis-daily-assessment`
+- ať umí explicitně:
+  - založit dnešní assessment shell
+  - vygenerovat otázky pro terapeutky
+  - vrátit, co přesně vytvořil
+
+3. Rozšíření dat pro otázky
+- stávající `did_pending_questions` nestačí pro checkboxy a strukturované odpovědi
+- doplnil bych metadata typu:
+  - `response_mode`
+  - `response_options`
+  - `answer_json`
+  - `group_key`
+- tím půjde udělat Hanička/Káťa formulář profesionálně, ne stringovým hackem
+
+4. Volitelně rozšířit `did_threads`
+- přidat vazbu na `crisis_event_id` / `thread_kind='crisis_interview'`
+- tím půjde krizové vlákno spolehlivě znovu otevřít
+
+Implementace po malých krocích:
+Fáze A — krizový banner a routing
+- opravit význam všech 4 akcí
+- zavést skutečné deep-linky
+- odstranit duplicity a mrtvá CTA
+
+Fáze B — krizové DID/Kluci vlákno
+- bootstrap krizového vlákna
+- automatický název
+- připravený Karlův úvod
+- resume logika
+
+Fáze C — feedback workspace
+- samostatný panel pro Haničku/Káťu
+- generace otázek
+- text/checkbox/škála
+- odeslání a návrat do krizového cyklu
+
+Fáze D — přestavba dashboardu
+- jednotná Jungova pracovna
+- návrat operačních sekcí
+- odstranění černých bloků a inline stylů
+- zviditelnění opravdu živé vizuální vrstvy
+
+Fáze E — lifecycle
+- propojit: hodnocení → rozhovor → feedback → další krok → uzavření / eskalace
+- aby nic neviselo bez vlastníka a bez výsledku
+
+Co bude výsledek po opravě:
+- klik na `chybí interview` opravdu otevře DID/Kluci krizové vlákno s Karlem
+- klik na `Spustit dnešní hodnocení` nejdřív vytvoří dnešní klinický záznam a pak tě tam dovede
+- klik na `chybí feedback` opravdu otevře feedback formulář
+- klik na `Získat feedback terapeutek` opravdu připraví otázky a otevře workspace
+- banner přestane mít duplicitní texty
+- dashboard přestane být směs tmavých karet a nehotových sekcí
+- DID/Terapeut se stane živým ústředním střediskem pro Haničku, Káťu a Karla
+
+Akceptační podmínky:
+1. Arthur v banneru:
+   - `chybí interview` otevře krizové vlákno, ne roletku
+2. `Spustit dnešní hodnocení`:
+   - vytvoří dnešní assessment a je vidět, co vzniklo
+3. `chybí feedback`:
+   - otevře první nezodpovězený feedback formulář
+4. `Získat feedback terapeutek`:
+   - po kliknutí vzniknou/obnoví se otázky pro obě terapeutky
+5. žádné dvojité „79 h bez kontaktu“
+6. žádné mrtvé CTA
+7. Jungova pracovna je vidět na celé DID/Terapeut ploše, ne jen uvnitř jedné karty
+
+Nejmenší další krok k implementaci:
+1. nejdřív přepíšu semantiku banneru a routing krizových akcí
+2. potom zavedu bootstrap krizového vlákna a feedback workspace
+3. teprve potom přestavím celý dashboard shell a vizuál
+</final-text>
