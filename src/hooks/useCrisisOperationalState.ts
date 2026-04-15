@@ -362,7 +362,7 @@ function computeMainBlocker(card: Partial<CrisisOperationalCard>): string | null
   // dedicated badges + CTA buttons — do NOT duplicate them here.
   if (card.missingSessionResult) return "Chybí výsledek sezení";
   if ((card.unansweredQuestionCount ?? 0) > 0) return `${card.unansweredQuestionCount} nezodpovězených post-session otázek`;
-  if (card.crisisMeetingRequired && !card.meetingOpen) return "Doporučená porada nebyla otevřena";
+  // crisisMeetingRequired is already shown as badge + CTA — do NOT duplicate here
   const unfulfilled = (card.todayRequiredOutputs || []).filter(o => !o.fulfilled);
   if (unfulfilled.length > 0) return `Chybí: ${unfulfilled[0].label}`;
   if (card.isStale && (card.hoursStale ?? 0) > 48) return "Nutný update od terapeutky";

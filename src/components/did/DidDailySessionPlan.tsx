@@ -98,7 +98,7 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
         (supabase as any)
           .from("did_daily_session_plans")
           .select("*")
-          .or(`plan_date.eq.${today},and(status.eq.generated,plan_date.lt.${today})`)
+          .eq("plan_date", today)
           .order("created_at", { ascending: false }),
         supabase
           .from("crisis_alerts")

@@ -385,7 +385,7 @@ const DidDashboard = ({
 
   if (loading) {
     return (
-      <div className="jung-study min-h-screen">
+      <div className="min-h-screen">
         <div className="mx-auto max-w-[900px] space-y-6 px-4 py-6">
           <div className="h-10 w-full animate-pulse rounded-2xl" style={{ background: "hsl(var(--muted))" }} />
           <div className="h-40 w-full animate-pulse rounded-2xl" style={{ background: "hsl(var(--muted))" }} />
@@ -397,7 +397,7 @@ const DidDashboard = ({
   }
 
   return (
-    <div className="jung-study min-h-screen" data-no-swipe-back="true">
+    <div className="min-h-screen" data-no-swipe-back="true">
       <div className="relative z-10 mx-auto max-w-[900px] space-y-4 px-4 py-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
