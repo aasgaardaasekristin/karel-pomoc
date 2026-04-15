@@ -196,8 +196,10 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
-  const [therapistMessage, setTherapistMessage] = useState("");
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [hankaMessage, setHankaMessage] = useState("");
+  const [kataMessage, setKataMessage] = useState("");
+  const [sendingHanka, setSendingHanka] = useState(false);
+  const [sendingKata, setSendingKata] = useState(false);
   const [sessionConfirmed, setSessionConfirmed] = useState<Record<string, boolean>>({});
   const [sessionFeedback, setSessionFeedback] = useState<Record<string, string>>({});
   const [showSessionFeedback, setShowSessionFeedback] = useState<Record<string, boolean>>({});
