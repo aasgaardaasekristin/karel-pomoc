@@ -81,10 +81,12 @@ const SectionHead = ({ icon, children }: { icon: React.ReactNode; children: Reac
 
 /* ── Prohibited task patterns (Karel's work, not therapist's) ── */
 const PROHIBITED_TASK_PATTERNS = [
-  /připrav/i, /sestav/i, /vymysli/i, /zpracuj/i, /vytvoř/i,
-  /projdi.*kartu/i, /zaktualizuj/i, /doplň.*kartu/i, /naplánuj/i,
-  /analyzuj/i, /navrhni.*scén/i, /navrhni.*techniku/i,
-  /připrav.*věty/i, /připrav.*scén/i, /projdi si/i,
+  /p[řr]iprav/i, /sestav/i, /vymysli/i, /zpracuj/i, /vytvo[řr]/i,
+  /projdi.*kartu/i, /zaktualizuj/i, /dopl[ňn].*kartu/i, /napl[áa]nuj/i,
+  /analyzuj/i, /navrhni.*sc[ée]n/i, /navrhni.*techniku/i,
+  /p[řr]iprav.*v[ěe]ty/i, /p[řr]iprav.*sc[ée]n/i, /projdi si/i,
+  /p[řr]iprav.*pro\s+(han|k[áa]t)/i, /p[řr]iprav.*krizov/i,
+  /udělej/i, /vypracuj/i, /zformuluj/i,
 ];
 function isProhibitedTask(text: string): boolean {
   return PROHIBITED_TASK_PATTERNS.some(p => p.test(text));
@@ -454,13 +456,12 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const buildNarrativeParagraphs = (): string[] => {
     const paragraphs: string[] = [];
 
-    // Crisis alert — always first
+    // ═══ 1. CRISIS — always first ═══
     if (crisisPartName && !hasCrisisBanner) {
       paragraphs.push(`⚠ ${crisisPartName} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
 
     if (isInfoDeficit) {
-      // Info deficit mode: acknowledge gap
       const lastKnownSnippet = plan05ANarrative?.slice(0, 250) || "";
       let deficitOpening = `Uplynulo ${daysWithoutData} dní od poslední aktualizace.`;
       if (lastKnownSnippet) {
@@ -473,52 +474,99 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       }
       paragraphs.push(deficitOpening);
     } else {
-      // Normal mode: LIVE narrative prose from data
+      // ═══ NORMAL MODE — MANDATORY 5-SECTION NARRATIVE ═══
 
-      // 1) 05A narrative as primary source
+      // ── SECTION A: "Co vím" ──
+      const coVimParts: string[] = [];
       if (plan05ANarrative) {
-        paragraphs.push(plan05ANarrative);
+        coVimParts.push(plan05ANarrative);
       }
-
-      // 2) Recent interviews — weave into prose
       if (recentInterviews.length > 0) {
-        const interviewProse: string[] = [];
-        for (const iv of recentInterviews.slice(0, 3)) {
+        for (const iv of recentInterviews.slice(0, 2)) {
           const when = relativeTime(iv.started_at);
           let sentence = `${when ? when.charAt(0).toUpperCase() + when.slice(1) : "Nedávno"} jsem vedl rozhovor s ${iv.part_name}`;
-          if (iv.summary_for_team) {
-            sentence += ` — ${iv.summary_for_team.slice(0, 200)}`;
-          }
-          if (iv.what_shifted) {
-            sentence += ` Posun: ${iv.what_shifted.slice(0, 150)}.`;
-          }
-          interviewProse.push(sentence);
-        }
-        paragraphs.push(interviewProse.join(" "));
-      }
-
-      // 3) Recent thread activity — prose, not a list
-      if (recentThreads.length > 0 && paragraphs.length < 2) {
-        const threadGroups = recentThreads.reduce((acc, t) => {
-          if (!acc[t.part_name]) acc[t.part_name] = [];
-          if (t.thread_label) acc[t.part_name].push(t.thread_label);
-          return acc;
-        }, {} as Record<string, string[]>);
-
-        const threadProse = Object.entries(threadGroups).map(([name, labels]) => {
-          const topicHint = labels[0] ? ` (téma: ${labels[0].slice(0, 60)})` : "";
-          return `${name} byl/a naposledy aktivní ${relativeTime(recentThreads.find(t => t.part_name === name)?.last_activity_at || null)}${topicHint}`;
-        }).join(". ");
-
-        if (threadProse) {
-          paragraphs.push(threadProse + ".");
+          if (iv.summary_for_team) sentence += ` — ${iv.summary_for_team.slice(0, 200)}`;
+          if (iv.what_shifted) sentence += ` Posun: ${iv.what_shifted.slice(0, 150)}.`;
+          coVimParts.push(sentence);
         }
       }
-
-      // Fallback if still empty
-      if (paragraphs.length === 0) {
-        paragraphs.push("Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu — jakmile dorazí, okamžitě aktualizuji přehled.");
+      if (recentThreads.length > 0 && coVimParts.length === 0) {
+        // synthesize from threads — NEVER use "X byl/a naposledy aktivní" format
+        const threadSummary = recentThreads.slice(0, 3).map(t => {
+          const topic = t.thread_label ? `téma „${t.thread_label.slice(0, 50)}"` : "bez konkrétního tématu";
+          return `s ${t.part_name} (${topic}, ${relativeTime(t.last_activity_at)})`;
+        }).join(", ");
+        coVimParts.push(`V posledních dnech jsem pracoval ${threadSummary}.`);
       }
+      if (coVimParts.length === 0) {
+        coVimParts.push("Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu.");
+      }
+      paragraphs.push(coVimParts.join(" "));
+
+      // ── SECTION B: "Co z toho plyne" ──
+      const implications: string[] = [];
+      if (crisisPartName) {
+        implications.push(`Krizová situace u ${crisisPartName} vyžaduje denní monitoring a koordinovaný přístup.`);
+      }
+      const urgentTasks = tasks.filter(t => t.priority === "critical" || t.priority === "high");
+      if (urgentTasks.length > 0) {
+        implications.push(`Eviduji ${urgentTasks.length} naléhav${urgentTasks.length === 1 ? "ý úkol" : urgentTasks.length < 5 ? "é úkoly" : "ých úkolů"}, které vyžadují pozornost dnes.`);
+      }
+      const staleThreads = recentThreads.filter(t => daysSince(t.last_activity_at) >= 2);
+      if (staleThreads.length > 0) {
+        implications.push(`U ${staleThreads.map(t => t.part_name).join(", ")} jsem nezaznamenal aktivitu déle než 2 dny — potřebuji ověřit, zda je vše v pořádku.`);
+      }
+      if (implications.length === 0) {
+        implications.push("Celková situace je stabilní. Můžeme se soustředit na plánované aktivity a terapeutický postup.");
+      }
+      paragraphs.push(implications.join(" "));
+
+      // ── SECTION C: "Co navrhuji na dnes" ──
+      const proposals: string[] = [];
+      if (uniqueSessions.length > 0) {
+        proposals.push(`Navrhuji dnes pracovat s ${uniqueSessions.map(s => s.selected_part).join(" a ")} — plán sezení je připraven níže.`);
+      }
+      if (urgentTasks.length > 0) {
+        const topTask = urgentTasks[0];
+        proposals.push(`Prioritou číslo jedna je: ${topTask.task.slice(0, 100)}.`);
+      }
+      if (questions.length > 0) {
+        proposals.push(`Potřebuji od vás odpovědi na ${questions.length} otáz${questions.length === 1 ? "ku" : questions.length < 5 ? "ky" : "ek"} — najdete je níže.`);
+      }
+      if (proposals.length === 0) {
+        proposals.push("Dnes doporučuji zaměřit se na reflexi posledních dní a přípravu na další sezení. Pokud máte vlastní postřehy, napište mi.");
+      }
+      paragraphs.push(proposals.join(" "));
+
+      // ── SECTION D: "Co potřebuji od Haničky" ──
+      const hankaNeeds: string[] = [];
+      const hTasksFiltered = tasks.filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task));
+      if (hTasksFiltered.length > 0) {
+        hankaNeeds.push(`Haničko, čekám na tebe v ${hTasksFiltered.length} bod${hTasksFiltered.length === 1 ? "u" : hTasksFiltered.length < 5 ? "ech" : "ech"}: ${hTasksFiltered.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}.`);
+      }
+      const hankaQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "hanka");
+      if (hankaQuestions.length > 0) {
+        hankaNeeds.push(`Mám pro tebe ${hankaQuestions.length} otáz${hankaQuestions.length === 1 ? "ku" : "ky"} k zodpovězení.`);
+      }
+      if (hankaNeeds.length === 0) {
+        hankaNeeds.push("Haničko, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+      }
+      paragraphs.push(hankaNeeds.join(" "));
+
+      // ── SECTION E: "Co potřebuji od Káti" ──
+      const kataNeeds: string[] = [];
+      const kTasksFiltered = tasks.filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task));
+      if (kTasksFiltered.length > 0) {
+        kataNeeds.push(`Káťo, čekám na tebe v ${kTasksFiltered.length} bod${kTasksFiltered.length === 1 ? "u" : kTasksFiltered.length < 5 ? "ech" : "ech"}: ${kTasksFiltered.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}.`);
+      }
+      const kataQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "kata");
+      if (kataQuestions.length > 0) {
+        kataNeeds.push(`Mám pro tebe ${kataQuestions.length} otáz${kataQuestions.length === 1 ? "ku" : "ky"} k zodpovězení.`);
+      }
+      if (kataNeeds.length === 0) {
+        kataNeeds.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu ráda, když se podělíš.");
+      }
+      paragraphs.push(kataNeeds.join(" "));
     }
 
     return paragraphs;
@@ -593,13 +641,37 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
 
   // ── Build meeting seed from team task ──
   const buildMeetingSeed = (t: typeof tasks[0]): MeetingSeed => {
-    const di = t.detail_instruction;
+    const raw = t.detail_instruction;
+
+    // Try to parse as JSON object first
+    let parsed: any = null;
+    if (raw && typeof raw === "string") {
+      try { parsed = JSON.parse(raw); } catch { parsed = null; }
+    } else if (raw && typeof raw === "object") {
+      parsed = raw;
+    }
+
+    const taskText = t.task || "";
+    const detailStr = (typeof raw === "string" ? raw : "") || taskText;
+
+    // If parsed is a structured object, use it
+    if (parsed && typeof parsed === "object" && (parsed.reason || parsed.proposal)) {
+      return {
+        topic: taskText,
+        reason: parsed.reason || parsed.why || detailStr,
+        karelProposal: parsed.proposal || parsed.karel_proposal || `Na základě aktuální situace navrhuji: ${taskText}`,
+        questionsHanka: parsed.for_hanka || parsed.questions_hanka || `Haničko, jaký je tvůj pohled na: ${taskText.slice(0, 80)}?`,
+        questionsKata: parsed.for_kata || parsed.questions_kata || `Káťo, jaký je tvůj pohled na: ${taskText.slice(0, 80)}?`,
+      };
+    }
+
+    // Plain string — build deterministic briefing
     return {
-      topic: t.task,
-      reason: di?.reason || di?.why || t.task,
-      karelProposal: di?.proposal || di?.karel_proposal || "",
-      questionsHanka: di?.for_hanka || di?.questions_hanka || "",
-      questionsKata: di?.for_kata || di?.questions_kata || "",
+      topic: taskText,
+      reason: detailStr,
+      karelProposal: `Situaci jsem vyhodnotil a navrhuji tento postup: zaměřit se na „${taskText.slice(0, 80)}" s konkrétním plánem kroků, které dnes prodiskutujeme.`,
+      questionsHanka: `Haničko, potřebuji tvůj pohled: jak vnímáš aktuální stav ve vztahu k „${taskText.slice(0, 60)}"? Co jsi v posledních dnech pozorovala?`,
+      questionsKata: `Káťo, potřebuji tvůj pohled: jak vnímáš aktuální stav ve vztahu k „${taskText.slice(0, 60)}"? Co jsi v posledních dnech pozorovala?`,
     };
   };
 

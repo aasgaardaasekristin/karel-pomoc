@@ -435,14 +435,14 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     const meetingTopic = isTopic ? meetingIdFromUrl.slice(6) : (isSeed ? meetingIdFromUrl.slice(5) : undefined);
     const meetingId = (isTopic || isSeed) ? null : meetingIdFromUrl;
 
-    // Read structured seed from sessionStorage
+    // Read structured seed from sessionStorage — do NOT remove yet (DidMeetingPanel will clear after consumption)
     let meetingSeed: any = undefined;
     if (isSeed) {
       try {
         const seedStr = sessionStorage.getItem("karel_meeting_seed");
         if (seedStr) {
           meetingSeed = JSON.parse(seedStr);
-          sessionStorage.removeItem("karel_meeting_seed");
+          // Seed will be cleared by DidMeetingPanel after successful auto-create
         }
       } catch {}
     }
