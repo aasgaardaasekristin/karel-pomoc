@@ -244,10 +244,10 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
         <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-2">
           {narrativeParts.join(" ")}
         </p>
-        {recentInterviews.length > 0 && recentInterviews[0].karel_decision && (
+        {recentInterviews.length > 0 && recentInterviews[0].karel_decision_after_interview && (
           <p className="text-[13px] leading-6 text-foreground/65 mt-1">
             <span className="font-medium text-foreground/75">Mé rozhodnutí:</span>{" "}
-            {recentInterviews[0].karel_decision.slice(0, 200)}
+            {recentInterviews[0].karel_decision_after_interview.slice(0, 200)}
           </p>
         )}
       </div>
@@ -268,11 +268,9 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
                 <div className="flex-1">
                   <span className="font-medium text-foreground/80">{s.selected_part}</span>
                   <span className="text-foreground/50"> — {s.therapist || "?"}</span>
-                  {s.session_plan && (
-                    <div className="mt-0.5">
-                      <InlineLink label="Otevřít plán sezení" onClick={() => openThread(s.selected_part)} />
-                    </div>
-                  )}
+                  <div className="mt-0.5">
+                    <InlineLink label="Otevřít plán sezení" onClick={() => openThread(s.selected_part)} />
+                  </div>
                 </div>
               </div>
             ))}
