@@ -47,6 +47,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
   const [kataInput, setKataInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [sendingTherapist, setSendingTherapist] = useState<"hanka" | "kata" | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [newTopic, setNewTopic] = useState("");
   const [newAgenda, setNewAgenda] = useState("");
