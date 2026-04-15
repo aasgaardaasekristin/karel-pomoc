@@ -1,116 +1,73 @@
 
 
-# FÁZE 2.6 — Finální kanonické kolo
+# Plan: Crisis Banner Fixes + Jungian Visual Activation
 
-## Audit aktuálního stavu
+## Current Problems Identified
 
-Po důkladném průchodu všech 8 souborů je stav následující:
+1. **Duplicate "79h bez kontaktu"** — appears twice in the banner: once as a yellow badge (line 94-98 of CrisisAlert.tsx), and again inside `mainBlocker` text (line 110-114) which renders "79h bez kontaktu — nutný update" via `computeMainBlocker`
+2. **"Hanička" displayed separately** in the banner top row (line 78) — confusing, should be removed from the top-level badge row
+3. **"chybí: interview, feedback" badges are not clickable** — currently just static `<span>` elements
+4. **CTA buttons ("Vyžádat update", "Spustit dnešní hodnocení")** — they only toggle open the CrisisOperationalDetail panel, they don't navigate to threads or call backend functions directly
+5. **Jungian visual effects (mandala, particles) not visible** — the CSS exists (.jung-study class lines 412-530 of index.css) but the class is only applied inside DidDashboard component; it's not applied to the parent container or body, so `position: fixed` pseudo-elements may be clipped by `overflow: hidden` ancestors
 
----
+## Plan
 
-## P1 body
+### Step 1: Fix Crisis Banner Duplicates
+**File:** `src/components/karel/CrisisAlert.tsx`
 
-### 1. `partCardExists()` — thread-sorter řádky 617–667
+- **Remove duplicate "bez kontaktu" badge**: Remove the `card.isStale` badge (lines 94-98) since the same info is in `mainBlocker`
+- **Remove standalone "Hanička" text**: Remove line 78 (`card.primaryTherapist` text) — this info is already in the expanded detail
+- **Add plain text contact info**: Show two plain text spans: `{hoursStale}h bez kontaktu s částí` and `{hoursWithoutTherapistContact}h bez kontaktu terapeutů` (the latter derived from `card.awaitingResponseFrom` or `card.lastContactAt`)
 
-**Aktuální stav:** Lookup je správně omezen na `01_AKTIVNI_FRAGMENTY` a `03_ARCHIV_SPICICH` pod `kartotekaRootId`. Používá `findFolder` a `listFiles` z `driveHelpers.ts`. Fail-closed bez tokenu i bez root ID.
+### Step 2: Make "chybí" Badges Clickable
+**File:** `src/components/karel/CrisisAlert.tsx`
 
-**Zbývající problém (řádek 645):**
-```typescript
-if (!sub.name.toUpperCase().includes(canonicalName.toUpperCase())) continue;
-```
-Toto je `includes` match na název subfolderu. Pokud existuje folder `ANNA_BACKUP` a hledáme `ANNA`, projde. Nebo pokud je folder `MARIANNA` a hledáme `ANNA`, taky projde.
+- **"interview" click** → Navigate to DID/Kluci and open a new crisis thread with the part in crisis. This requires:
+  - Accept a new prop `onNavigateToCrisisThread?: (partName: string, eventId: string) => void` 
+  - When clicked, call this prop with the crisis part name
+  - The parent (App.tsx) will need to route to the chat page with DID mode, Kluci sub-mode, and auto-create a thread with Karel's opening message for a crisis interview
 
-**Oprava:** Změnit na přesný match — folder name musí být buď přesně `canonicalName` (case-insensitive), nebo `canonicalName` s definovaným separátorem (např. `ANNA_` prefix, podtržítko/mezera). Nejbezpečnější varianta:
-```typescript
-const subUpper = sub.name.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-const targetUpper = canonicalName.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-if (subUpper !== targetUpper && !subUpper.startsWith(targetUpper + "_")) continue;
-```
+- **"feedback" click** → Navigate to PendingQuestionsPanel filtered for this crisis. This means:
+  - Accept a new prop `onNavigateToFeedback?: (eventId: string) => void`
+  - When clicked, expand the banner detail to the "management" tab, scrolled to the Q/A section
 
-### 2. `reactive-loop` — raw text do KARTA
+Given the complexity of deep-linking to DID/Kluci thread creation with Karel's auto-generated opening, I'll implement this in two parts:
+  - **Phase A (this step)**: "interview" → expands detail + opens management tab (same as start_interview CTA). "feedback" → expands detail + opens management tab scrolled to Q/A
+  - The navigation will use the existing CTA mechanism (handleCTAClick)
 
-**Aktuální stav:** Zdroj D (osobní vlákna, řádky 480–521) používá `signal.derived_clinical_implication` pro KARTA zápis — to je správně abstrahovaný výstup z `deriveClinicalImplication()` v `signalNormalization.ts`. Nikdy neobsahuje raw text.
+### Step 3: Fix CTA Button Functionality
+**Files:** `src/components/karel/CrisisAlert.tsx`, `src/components/karel/CrisisDailyManagement.tsx`
 
-**Zdroj C (answered questions, řádky 352–367):** Zapisuje `answer.slice(0, 500)` do KARTA. Toto je odpověď **terapeutky** (ne osobní vlákno Hany), takže klinicky je to v pořádku — terapeut píše o části.
+- **"Vyžádat update"** currently just opens the management tab. It should also call the backend `karel-crisis-daily-assessment` to trigger a daily cycle refresh. Will wire it to call `callFn("karel-crisis-daily-assessment", { crisisId })` when clicked.
+- **"Spustit dnešní hodnocení"** should call `karel-crisis-interview` edge function to start an interview. Will wire it to call `callFn("karel-crisis-interview", { crisis_event_id })`.
 
-**Zbývající problém:** V Zdroji C chybí explicitní komentář vysvětlující, proč je raw answer přípustný (je to terapeutský vstup, ne soukromý obsah). Přidat komentář.
+I need to verify these edge functions exist and their expected parameters.
 
-**Uncertain entity v Zdroji C (řádky 370–386):** Správně triggeruje watchdog, nikdy tiše neskipuje.
+### Step 4: Fix Jungian Visual Effects
+**File:** `src/index.css`, `src/components/did/DidDashboard.tsx`
 
-**Uncertain entity v Zdroji D (řádky 506–517):** Správně triggeruje watchdog.
+The `.jung-study` pseudo-elements (`::before` mandala, `::after` particles) use `position: fixed` but the `.jung-study` div is inside `<main>` which has `overflow-y: auto`. Fixed-position pseudo-elements should work despite overflow, but the `z-index: 0` may cause them to render behind the background.
 
-### 3. `forcePart` — auto-session-plan řádky 450–490
+Fix: 
+- Ensure pseudo-elements have correct z-index stacking
+- Move `.jung-study` wrapper to use `min-h-screen` with `isolation: isolate` to create proper stacking context
+- Verify the background gradient in `.jung-study` isn't fully opaque (covering the pseudo-elements)
+- The main issue: `::before` and `::after` with `position: fixed` work, but the `.jung-study` class sets a solid `background:` with multiple gradient layers that are fully opaque — the pseudo-elements render behind this opaque background. Fix by making the background semi-transparent or applying the pseudo-elements with higher z-index while keeping content above them.
 
-**Aktuální stav:** Plně správný. Volá `resolveEntity(forcePart, entityRegistryForForce, true)`, odmítá pokud není `confirmed_did_part` nebo `confirmed_part_alias`, vrací `{ success: false, reason: "invalid_force_part" }`. Používá canonical name z resolveru.
+### Step 5: Fix KarelDailyPlan Loading State
+**File:** `src/components/did/KarelDailyPlan.tsx`
 
-**Žádná změna potřeba.**
+From the screenshot, the hero section shows grey placeholder blocks. The 05A Drive read may be failing silently. Need to ensure the DB fallback renders properly when Drive read fails.
 
-### 4. `can_be_session_target` — auto-session-plan řádky 507–543 + reactive-loop řádky 546–566
+## Implementation Order
+1. Step 1 + Step 2 (banner fixes) — highest user-visible impact
+2. Step 4 (visual effects) — visible confirmation of Jungian aesthetic
+3. Step 3 (CTA functionality) — operational improvement
+4. Step 5 (loading fix) — data display reliability
 
-**auto-session-plan:** Správně iteruje candidates v urgency pořadí, testuje `resolved.can_be_session_target` s `hasRecentThreads` jako communicability evidence. Pokud žádný candidate neprojde, vrací `{ success: false, reason: "no_session_target" }`.
-
-**reactive-loop Zdroj D:** Řádky 554–566 — pokud `!partResolved.can_be_session_target`, nastaví `agendaRelatedPart = null`, `agendaTopicType = "observation"`, prefix `[monitoring-only]`. Správně.
-
-**Zdroj C (řádky 337–344):** Agenda insert pro answered questions nemá session-target gate. Ale toto je `topic_type: "followup"` s `priority: "when_appropriate"` — není to direct-work proposal, je to follow-up na zodpovězenou otázku. **Akceptovatelné**, ale přidat komentář.
-
-**Žádná kritická změna potřeba.**
-
-### 5. Closure deadlock — karel-crisis-closure-meeting řádky 112–123
-
-**Aktuální stav:** Řádky 112–118 obsahují explicitní komentář o nekruhové logice. Readiness závisí na obsahu porady (stanoviska + statement + doporučení), ne na `status === "finalized"`. Finalizace nastává až po úspěšném `closed`.
-
-**Žádná změna potřeba.** Dokumentace je na místě.
-
----
-
-## P2 body
-
-### B. `entityRegistry` — fail-closed dokumentace
-
-**Aktuální stav:** `stampIndexConfirmation` (řádky 310–326) má rozsáhlý komentář dokumentující conscious fail-closed rozhodnutí. `getPartNames()` a `getAllKnownNames()` (řádky 274–302) iterují přes `byNormalizedCanonical.values()` (deduplicated map), ne raw entries.
-
-**Žádná změna potřeba.** Vše je korektní.
-
-### F. Dedup / payload fingerprint — classifiedActionExecutor
-
-**Aktuální stav:** `payloadFingerprint()` (řádky 52–71) hashuje celý normalizovaný payload po strip headers. `isDuplicateWrite()` (řádky 79–117) používá composite key `source_id + content_type + subject_id + payload_fingerprint`.
-
-**Žádná změna potřeba.** Implementace je korektní.
-
-### H1. `consecutiveStableEntries`
-
-**Aktuální stav:** Řádky 563–571 — IIFE s explicitním komentářem: "DERIVED VALUE computed at render time from crisis_daily_assessments — NOT a physical DB column."
-
-**Žádná změna potřeba.**
-
-### H2. `clinical_summary` mimo closing flow
-
-**Aktuální stav:** `buildCurrentSummary` (řádky 271–312) mapuje všech 9 operating states na české labely. Zahrnuje trend, staleness (hodiny bez kontaktu), zásah (fungoval/nefungoval/čeká se), a chybějící data.
-
-**Žádná změna potřeba.**
-
----
-
-## Shrnutí — jediná skutečná změna
-
-Jedinou kódovou změnou je **zpřísnění folder name match v `partCardExists()`** (thread-sorter řádek 645). Aktuální `includes` match je příliš hrubý a může produkovat false positives.
-
-Ostatní body jsou v pořádku — přidat maximálně 2 dokumentační komentáře (Zdroj C v reactive-loop).
-
-### Soubory k úpravě
-
-| Soubor | Co se mění |
-|--------|-----------|
-| `supabase/functions/karel-daily-thread-sorter/index.ts` | Řádek 645: `includes` → přesný canonical match na folder name |
-| `supabase/functions/karel-reactive-loop/index.ts` | Řádky 352, 337: přidat dokumentační komentáře (proč je raw answer přípustný v Zdroji C; proč Zdroj C followup nepotřebuje session-target gate) |
-
-### Soubory BEZ ZMĚN (ověřeno jako korektní)
-
-- `entityRegistry.ts` — dedup, fail-closed, exportované seznamy OK
-- `entityResolution.ts` — permission model, `can_be_session_target` OK
-- `entityWatchdog.ts` — dedup, both-therapists question, KDO_JE_KDO write OK
-- `karel-did-auto-session-plan/index.ts` — `forcePart` identity gate, `can_be_session_target` loop OK
-- `karel-crisis-closure-meeting/index.ts` — nekruhová closure logika zdokumentována OK
-- `src/hooks/useCrisisOperationalState.ts` — derived values, operating state labels OK
-- `classifiedActionExecutor.ts` — dedup fingerprint, composite key OK
+## Files to Modify
+- `src/components/karel/CrisisAlert.tsx` — banner dedup, clickable badges
+- `src/index.css` — fix Jungian visual z-index/opacity
+- `src/components/did/DidDashboard.tsx` — stacking context fix
+- `src/components/did/KarelDailyPlan.tsx` — loading state fix
 
