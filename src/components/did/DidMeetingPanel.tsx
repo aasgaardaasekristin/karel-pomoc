@@ -448,29 +448,68 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
       {/* Input (only if meeting is open) */}
       {activeMeeting?.status === "open" && (
         <div className="px-3 sm:px-4 py-3 border-t border-border bg-card/50">
-          <div className="flex gap-2">
-            <Textarea
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              placeholder={`Tvůj příspěvek k poradě (${therapist === "hanka" ? "Hanička" : "Káťa"})...`}
-              className="min-h-[3.75rem] text-sm flex-1"
-              onKeyDown={e => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-            />
-            <div className="flex flex-col gap-2">
-              <Button size="sm" onClick={sendMessage} disabled={!input.trim() || isSending}>
-                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+          <div className="space-y-3">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Tvůj příspěvek k poradě (Hanička)
+                </label>
+                <Textarea
+                  value={hankaInput}
+                  onChange={e => setHankaInput(e.target.value)}
+                  placeholder="Napiš příspěvek za Haničku..."
+                  className="min-h-[3.75rem] text-sm flex-1"
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage("hanka");
+                    }
+                  }}
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={() => void sendMessage("hanka")}
+                disabled={!hankaInput.trim() || sendingTherapist !== null}
+              >
+                {sendingTherapist === "hanka" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
-              {activeMeeting.hanka_joined_at && activeMeeting.kata_joined_at && (
+            </div>
+
+            <div className="flex gap-2 items-end">
+              <div className="flex-1">
+                <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  Tvůj příspěvek k poradě (Káťa)
+                </label>
+                <Textarea
+                  value={kataInput}
+                  onChange={e => setKataInput(e.target.value)}
+                  placeholder="Napiš příspěvek za Káťu..."
+                  className="min-h-[3.75rem] text-sm flex-1"
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      void sendMessage("kata");
+                    }
+                  }}
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={() => void sendMessage("kata")}
+                disabled={!kataInput.trim() || sendingTherapist !== null}
+              >
+                {sendingTherapist === "kata" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              </Button>
+            </div>
+
+            {activeMeeting.hanka_joined_at && activeMeeting.kata_joined_at && (
+              <div className="flex justify-end">
                 <Button size="sm" variant="outline" onClick={finalizeMeeting} disabled={isFinalizing} className="text-[10px] h-7">
                   {isFinalizing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       )}
