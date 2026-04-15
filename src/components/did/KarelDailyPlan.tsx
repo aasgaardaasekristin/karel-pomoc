@@ -79,25 +79,45 @@ const SectionHead = ({ icon, children }: { icon: React.ReactNode; children: Reac
   </h4>
 );
 
-/* ── Inline Question Field ── */
+/* ── Prohibited task patterns (Karel's work, not therapist's) ── */
+const PROHIBITED_TASK_PATTERNS = [
+  /připrav/i, /sestav/i, /vymysli/i, /zpracuj/i, /vytvoř/i,
+  /projdi.*kartu/i, /zaktualizuj/i, /doplň.*kartu/i, /naplánuj/i,
+  /analyzuj/i, /navrhni.*scén/i, /navrhni.*techniku/i,
+  /připrav.*věty/i, /připrav.*scén/i, /projdi si/i,
+];
+function isProhibitedTask(text: string): boolean {
+  return PROHIBITED_TASK_PATTERNS.some(p => p.test(text));
+}
+
+/* ── Structured deficit question ── */
+interface DeficitQuestion {
+  question: string;
+  intro: string;
+  karelProposal: string;
+  ifUnknownHelp: string;
+  partName?: string;
+}
+
+/* ── Inline Question Field (structured) ── */
 const InlineQuestionField = ({
-  question,
+  item,
   onSubmit,
 }: {
-  question: string;
-  onSubmit: (answer: string) => void;
+  item: DeficitQuestion;
+  onSubmit: (answer: string, question: string) => void;
 }) => {
   const [answer, setAnswer] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleSubmit = async () => {
     if (!answer.trim()) return;
     setSending(true);
     try {
-      await onSubmit(answer.trim());
+      await onSubmit(answer.trim(), item.question);
       setSubmitted(true);
-      toast.success("Děkuji. Tuto informaci ihned zapracuji.");
     } catch {
       toast.error("Odeslání se nezdařilo, zkuste znovu.");
     } finally {
@@ -109,13 +129,26 @@ const InlineQuestionField = ({
     return (
       <div className="flex items-center gap-2 text-[12.5px] text-primary/70 py-1">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        <span className="italic">Odpověď přijata — zapracuji při příštím cyklu.</span>
+        <span className="italic">Děkuji — tuto informaci ihned zapracuji do plánu.</span>
       </div>
     );
   }
 
   return (
-    <div className="mt-1.5 space-y-1.5">
+    <div className="border-l-2 border-primary/20 pl-3 space-y-1.5">
+      {/* Karel's intro / what he knows */}
+      <p className="text-[12.5px] text-foreground/55 italic leading-5">
+        {item.intro}
+      </p>
+      {/* Karel's proposal / suggestion */}
+      <p className="text-[13px] text-foreground/70 leading-5">
+        💡 <span className="font-medium">{item.karelProposal}</span>
+      </p>
+      {/* The question itself */}
+      <p className="text-[13px] text-foreground/80 font-medium leading-5">
+        {item.question}
+      </p>
+      {/* Answer textarea */}
       <Textarea
         value={answer}
         onChange={e => setAnswer(e.target.value)}
@@ -123,7 +156,7 @@ const InlineQuestionField = ({
         className="min-h-[40px] max-h-[80px] text-[12.5px] bg-card/60 border-border/40 resize-none"
         rows={2}
       />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={handleSubmit}
           disabled={!answer.trim() || sending}
@@ -132,10 +165,18 @@ const InlineQuestionField = ({
           <Send className="w-3 h-3" />
           Odeslat
         </button>
-        <span className="text-[11px] text-foreground/35">
-          Pokud nevíte jak zjistit, napište — Karel poradí.
-        </span>
+        <button
+          onClick={() => setShowHelp(!showHelp)}
+          className="text-[11px] text-foreground/40 hover:text-foreground/60 underline underline-offset-2 transition-colors"
+        >
+          Nevím jak zjistit…
+        </button>
       </div>
+      {showHelp && (
+        <p className="text-[12px] text-primary/60 bg-primary/5 rounded p-2 leading-5">
+          {item.ifUnknownHelp}
+        </p>
+      )}
     </div>
   );
 };
