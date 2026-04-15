@@ -177,25 +177,31 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
     }
   };
 
-  const sendMessage = async () => {
-    if (!input.trim() || !activeMeeting) return;
-    setIsSending(true);
+  const sendMessage = async (sender: "hanka" | "kata") => {
+    if (!activeMeeting) return;
+
+    const value = sender === "hanka" ? hankaInput : kataInput;
+    const setValue = sender === "hanka" ? setHankaInput : setKataInput;
+
+    if (!value.trim()) return;
+
+    setSendingTherapist(sender);
     try {
       const data = await callMeetingApi({
         action: "post_message",
         meetingId: activeMeeting.id,
-        message: input.trim(),
-        therapist,
+        message: value.trim(),
+        therapist: sender,
       });
       if (data.success) {
         setActiveMeeting(prev => prev ? { ...prev, messages: data.messages } : prev);
-        setInput("");
+        setValue("");
       }
     } catch (e) {
       console.error("Send message error:", e);
       toast.error("Nepodařilo se odeslat příspěvek.");
     } finally {
-      setIsSending(false);
+      setSendingTherapist(null);
     }
   };
 
