@@ -12,7 +12,6 @@ import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface PartActivity {
   name: string;
