@@ -317,8 +317,24 @@ async function applyAppUpdates(supabase: ReturnType<typeof createClient>, appDat
         return "hanka";
       };
 
+      // Anti-dup: load existing pending tasks
+      const { data: existingTasks } = await supabase
+        .from("did_therapist_tasks")
+        .select("task")
+        .in("status", ["pending", "active", "in_progress"])
+        .limit(200);
+      const existingPrefixes = new Set(
+        (existingTasks || []).map((t: any) => (t.task || "").slice(0, 40).toLowerCase())
+      );
+
       const tasksToInsert = appData.todayTasks
-        .filter((t: any) => t.task && t.assignedTo)
+        .filter((t: any) => {
+          if (!t.task || !t.assignedTo) return false;
+          const prefix = (t.task || "").slice(0, 40).toLowerCase();
+          if (existingPrefixes.has(prefix)) return false;
+          existingPrefixes.add(prefix); // prevent intra-batch dups
+          return true;
+        })
         .map((t: any) => ({
           task: t.task,
           assigned_to: normalizeAssignee(t.assignedTo),
@@ -331,7 +347,7 @@ async function applyAppUpdates(supabase: ReturnType<typeof createClient>, appDat
       if (tasksToInsert.length) {
         const { error } = await supabase.from("did_therapist_tasks").insert(tasksToInsert);
         if (error) console.warn("[Dashboard] Failed to insert tasks:", error);
-        else console.log(`[Dashboard] Vytvořeno ${tasksToInsert.length} nových úkolů.`);
+        else console.log(`[Dashboard] Vytvořeno ${tasksToInsert.length} nových úkolů (anti-dup filtr).`);
       }
     }
   } catch (err) {
@@ -550,8 +566,10 @@ Sestav kompletní denní dashboard.`;
       return content;
     };
 
-    const hanaSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + "\n\nGenerujes DENNI BRIEFING pro terapeutku HANICKU.\nZahrn POUZE ukoly prirazene Hanicce nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Katu.\nNERIKEJ Hanicce aby koordinovala Katu — to je TVOJE prace.";
-    const kataSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + "\n\nGenerujes DENNI BRIEFING pro terapeutku KATU.\nZahrn POUZE ukoly prirazene Kate nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Hanicku.\nPokud ma Kata zpozdene ukoly, upozorni JI PRIMO — neposilej upozorneni pres Hanicku.";
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const roleGuard = `\n\nDNEŠNÍ DATUM: ${todayISO}. Události starší 5 dnů považuj za HISTORICKÉ.\n\nROLE GUARD: Karel NIKDY neúkoluje terapeutky přípravou materiálů, plánů, technik ani analytickou prací. Karel tyto materiály PŘIPRAVUJE SÁM. Úkoly pro terapeutky: potvrdit účast, sdělit pozorování, odpovědět na otázku, provést konkrétní intervenci při sezení.\n`;
+    const hanaSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + roleGuard + "\nGenerujes DENNI BRIEFING pro terapeutku HANICKU.\nZahrn POUZE ukoly prirazene Hanicce nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Katu.\nNERIKEJ Hanicce aby koordinovala Katu — to je TVOJE prace.";
+    const kataSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + roleGuard + "\nGenerujes DENNI BRIEFING pro terapeutku KATU.\nZahrn POUZE ukoly prirazene Kate nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Hanicku.\nPokud ma Kata zpozdene ukoly, upozorni JI PRIMO — neposilej upozorneni pres Hanicku.";
 
     console.log("[Dashboard] Generuji dva separátní briefingy...");
     const [hanaBriefing, kataBriefing] = await Promise.all([
