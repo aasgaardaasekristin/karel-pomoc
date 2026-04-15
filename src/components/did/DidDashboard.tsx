@@ -10,9 +10,8 @@ import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
-import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidSprava from "./DidSprava";
-import PendingQuestionsPanel from "./PendingQuestionsPanel";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface PartActivity {
