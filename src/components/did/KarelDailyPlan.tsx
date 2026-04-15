@@ -196,8 +196,10 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
-  const [therapistMessage, setTherapistMessage] = useState("");
-  const [sendingMessage, setSendingMessage] = useState(false);
+  const [hankaMessage, setHankaMessage] = useState("");
+  const [kataMessage, setKataMessage] = useState("");
+  const [sendingHanka, setSendingHanka] = useState(false);
+  const [sendingKata, setSendingKata] = useState(false);
   const [sessionConfirmed, setSessionConfirmed] = useState<Record<string, boolean>>({});
   const [sessionFeedback, setSessionFeedback] = useState<Record<string, string>>({});
   const [showSessionFeedback, setShowSessionFeedback] = useState<Record<string, boolean>>({});
@@ -305,24 +307,30 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
   // ── Send therapist message ──
-  const handleSendMessage = async () => {
-    if (!therapistMessage.trim()) return;
-    setSendingMessage(true);
+  const handleSendTherapistMessage = async (sender: "hanka" | "kata") => {
+    const msg = sender === "hanka" ? hankaMessage : kataMessage;
+    if (!msg.trim()) return;
+    const setMsg = sender === "hanka" ? setHankaMessage : setKataMessage;
+    const setSending = sender === "hanka" ? setSendingHanka : setSendingKata;
+    const label = sender === "hanka"
+      ? `Vzkaz od Haničky z přehledu — ${new Date().toLocaleDateString("cs-CZ")}`
+      : `Vzkaz od Káti z přehledu — ${new Date().toLocaleDateString("cs-CZ")}`;
+    setSending(true);
     try {
       const { error } = await supabase.from("did_threads").insert({
-        part_name: "Karel",
+        part_name: "system",
         sub_mode: "mamka",
-        thread_label: `Vzkaz z přehledu — ${new Date().toLocaleDateString("cs-CZ")}`,
-        messages: [{ role: "user", content: therapistMessage.trim() }],
+        thread_label: label,
+        messages: [{ role: "user", content: msg.trim() }],
         last_activity_at: new Date().toISOString(),
       });
       if (error) throw error;
       toast.success("Vzkaz odeslán — Karel zpracuje při příštím cyklu");
-      setTherapistMessage("");
+      setMsg("");
     } catch (e: any) {
       toast.error(`Odeslání selhalo: ${e.message}`);
     } finally {
-      setSendingMessage(false);
+      setSending(false);
     }
   };
 
@@ -1000,22 +1008,46 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
 
       {/* ── I. Vstupní pole pro terapeutky ── */}
       <NarrativeDivider />
-      <div className="pt-2 pb-1">
-        <p className="text-[12px] text-foreground/45 mb-2 font-['DM_Sans',sans-serif]">
+      <div className="pt-2 pb-1 space-y-3">
+        <p className="text-[12px] text-foreground/45 mb-1 font-['DM_Sans',sans-serif]">
           Napište Karlovi vzkaz — zpracuji to v příštím cyklu:
         </p>
-        <div className="flex gap-2">
-          <Textarea
-            value={therapistMessage}
-            onChange={e => setTherapistMessage(e.target.value)}
-            placeholder={'Např. „Dnes nemůžu přijít…" nebo „Všimla jsem si, že Tundrupek…"'}
-            className="min-h-[48px] max-h-[100px] text-[13px] bg-card/60 border-border/40 resize-none"
-            rows={2}
-          />
+        {/* Hanička */}
+        <div className="flex gap-2 items-end">
+          <div className="flex-1">
+            <label className="text-[11px] text-foreground/50 font-medium mb-1 block">📝 Haničko, tvůj vzkaz pro Karla:</label>
+            <Textarea
+              value={hankaMessage}
+              onChange={e => setHankaMessage(e.target.value)}
+              placeholder={'Např. „Dnes nemůžu přijít…" nebo „Všimla jsem si, že Tundrupek…"'}
+              className="min-h-[42px] max-h-[80px] text-[13px] bg-card/60 border-border/40 resize-none"
+              rows={1}
+            />
+          </div>
           <button
-            onClick={handleSendMessage}
-            disabled={!therapistMessage.trim() || sendingMessage}
-            className="shrink-0 self-end p-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-40"
+            onClick={() => handleSendTherapistMessage("hanka")}
+            disabled={!hankaMessage.trim() || sendingHanka}
+            className="shrink-0 p-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-40"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+        {/* Káťa */}
+        <div className="flex gap-2 items-end">
+          <div className="flex-1">
+            <label className="text-[11px] text-foreground/50 font-medium mb-1 block">📝 Káťo, tvůj vzkaz pro Karla:</label>
+            <Textarea
+              value={kataMessage}
+              onChange={e => setKataMessage(e.target.value)}
+              placeholder={'Např. „Mám nový postřeh k…" nebo „Potřebuji poradit s…"'}
+              className="min-h-[42px] max-h-[80px] text-[13px] bg-card/60 border-border/40 resize-none"
+              rows={1}
+            />
+          </div>
+          <button
+            onClick={() => handleSendTherapistMessage("kata")}
+            disabled={!kataMessage.trim() || sendingKata}
+            className="shrink-0 p-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-40"
           >
             <Send className="w-4 h-4" />
           </button>
