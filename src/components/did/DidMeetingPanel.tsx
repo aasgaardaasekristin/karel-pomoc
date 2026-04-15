@@ -43,10 +43,10 @@ interface Props {
 const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSeed, therapist, onBack }: Props) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
-  const [input, setInput] = useState("");
+  const [hankaInput, setHankaInput] = useState("");
+  const [kataInput, setKataInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [sendingTherapist, setSendingTherapist] = useState<"hanka" | "kata" | null>(null);
   const [showNewMeeting, setShowNewMeeting] = useState(false);
   const [newTopic, setNewTopic] = useState("");
   const [newAgenda, setNewAgenda] = useState("");
