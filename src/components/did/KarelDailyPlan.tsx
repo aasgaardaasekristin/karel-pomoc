@@ -468,17 +468,57 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     }
 
     if (isInfoDeficit) {
+      // ═══ DEFICIT MODE — MANDATORY 5 SECTIONS SAME AS NORMAL ═══
       const lastKnownSnippet = plan05ANarrative?.slice(0, 250) || "";
-      let deficitOpening = `Uplynulo ${daysWithoutData} dní od poslední aktualizace.`;
+      const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))];
+
+      // ── SECTION A: "Co vím" ──
+      const deficitCoVim: string[] = [];
       if (lastKnownSnippet) {
-        deficitOpening += ` Naposledy vím toto: ${lastKnownSnippet}`;
+        deficitCoVim.push(`Poslední data mám z doby před ${daysWithoutData} dny. ${lastKnownSnippet}`);
+      } else if (uniqueParts.length > 0) {
+        deficitCoVim.push(`Poslední kontakt s ${uniqueParts[0]} proběhl ${relativeTime(lastAnyActivity)}. Od té doby nemám nové zprávy.`);
+      } else {
+        deficitCoVim.push(`Uplynulo ${daysWithoutData} dní od poslední aktualizace. Nemám žádné čerstvé operativní zprávy.`);
+      }
+      paragraphs.push(deficitCoVim.join(" "));
+
+      // ── SECTION B: "Co z toho plyne" ──
+      const deficitImplications: string[] = [];
+      if (crisisPartName) {
+        deficitImplications.push(`Krizová situace u ${crisisPartName} trvá i bez aktuálních dat — to zvyšuje riziko.`);
       }
       if (daysWithoutData > 7) {
-        deficitOpening += " Je to již týden bez zpráv — potřebuji vaše pozorování, abych mohl zodpovědně koordinovat péči.";
+        deficitImplications.push("Bez informací déle než týden nemohu zodpovědně koordinovat péči ani vyhodnotit dynamiku systému.");
       } else {
-        deficitOpening += " Potřebuji od vás aktuální informace, abych mohl přizpůsobit plán na dnešek.";
+        deficitImplications.push("Bez aktuálních pozorování pracuji se zastaralými daty — moje doporučení mohou být nepřesná.");
       }
-      paragraphs.push(deficitOpening);
+      paragraphs.push(deficitImplications.join(" "));
+
+      // ── SECTION C: "Co navrhuji" ──
+      const deficitProposals: string[] = [];
+      const urgentDeficitTasks = tasks.filter(t => t.priority === "critical" || t.priority === "high");
+      if (urgentDeficitTasks.length > 0) {
+        deficitProposals.push(`Prioritou dnes je: ${urgentDeficitTasks[0].task.slice(0, 100)}.`);
+      }
+      deficitProposals.push("Navrhuji dnes obnovit komunikaci — potřebuji alespoň stručné pozorování o aktuálním fungování systému.");
+      paragraphs.push(deficitProposals.join(" "));
+
+      // ── SECTION D: "Co od Haničky" ──
+      const hDeficitTasks = tasks.filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task));
+      if (hDeficitTasks.length > 0) {
+        paragraphs.push(`Haničko, čekám na tebe v ${hDeficitTasks.length} bod${hDeficitTasks.length === 1 ? "u" : "ech"}: ${hDeficitTasks.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}. A především — potřebuji tvé aktuální pozorování.`);
+      } else {
+        paragraphs.push("Haničko, potřebuji od tebe alespoň krátkou zprávu o aktuálním stavu systému — co pozoruješ, jak části fungují v každodenním životě.");
+      }
+
+      // ── SECTION E: "Co od Káti" ──
+      const kDeficitTasks = tasks.filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task));
+      if (kDeficitTasks.length > 0) {
+        paragraphs.push(`Káťo, čekám na tebe v ${kDeficitTasks.length} bod${kDeficitTasks.length === 1 ? "u" : "ech"}: ${kDeficitTasks.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}. A především — potřebuji tvé aktuální pozorování.`);
+      } else {
+        paragraphs.push("Káťo, potřebuji od tebe alespoň krátkou zprávu o aktuálním stavu — co pozoruješ ze své pozice, jak části reagují.");
+      }
     } else {
       // ═══ NORMAL MODE — MANDATORY 5-SECTION NARRATIVE ═══
 
@@ -570,7 +610,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
         kataNeeds.push(`Mám pro tebe ${kataQuestions.length} otáz${kataQuestions.length === 1 ? "ku" : "ky"} k zodpovězení.`);
       }
       if (kataNeeds.length === 0) {
-        kataNeeds.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu ráda, když se podělíš.");
+        kataNeeds.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
       }
       paragraphs.push(kataNeeds.join(" "));
     }
@@ -605,7 +645,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     if (uniqueParts.length > 0) {
       deficitItems.push({
         question: `Jak se ${uniqueParts[0]} chová od posledního kontaktu?`,
-        intro: `Naposledy jsem komunikoval s ${uniqueParts[0]} ${relativeTime(lastAnyActivity)}. ${lastKnown.slice(0, 150)}`,
+        intro: `Poslední kontakt s ${uniqueParts[0]} proběhl ${relativeTime(lastAnyActivity)}. ${lastKnown.slice(0, 150)}`,
         karelProposal: `Zkuste si všimnout: mluví ${uniqueParts[0]} spontánně? Reaguje na oslovení? Jaká je nálada?`,
         ifUnknownHelp: `Stačí krátký popis — i jedna věta pomůže. Napište třeba "nic nového" nebo "komunikuje méně" a já se zeptám přesněji.`,
         partName: uniqueParts[0],
@@ -613,7 +653,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     }
 
     deficitItems.push({
-      question: "Jaká je aktuální situace s dětmi? Co se děje?",
+      question: "Jaký je aktuální stav systému? Co se změnilo v denním fungování?",
       intro: `Od mé poslední aktualizace uplynulo ${daysWithoutData} dní. Potřebuji vědět, co se změnilo v denním fungování.`,
       karelProposal: "Zajímá mě: škola, nálady, konflikty, spánek, jídlo — cokoli, co pozorujete.",
       ifUnknownHelp: "Napište 'beze změn' pokud je vše stabilní, nebo popište konkrétní změnu. Každá informace je cenná.",
@@ -669,9 +709,9 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     return {
       topic: taskText,
       reason: detailStr,
-      karelProposal: `Situaci jsem vyhodnotil a navrhuji tento postup: zaměřit se na „${taskText.slice(0, 80)}" s konkrétním plánem kroků, které dnes prodiskutujeme.`,
-      questionsHanka: `Haničko, potřebuji tvůj pohled: jak vnímáš aktuální stav ve vztahu k „${taskText.slice(0, 60)}"? Co jsi v posledních dnech pozorovala?`,
-      questionsKata: `Káťo, potřebuji tvůj pohled: jak vnímáš aktuální stav ve vztahu k „${taskText.slice(0, 60)}"? Co jsi v posledních dnech pozorovala?`,
+      karelProposal: `Situaci jsem vyhodnotil a navrhuji tento postup: zaměřit se na „${taskText.slice(0, 80)}" s konkrétním plánem kroků. ${detailStr !== taskText ? detailStr.slice(0, 200) : "Detaily prodiskutujeme na poradě."}`,
+      questionsHanka: `Haničko, potřebuji tvé konkrétní pozorování k tématu „${taskText.slice(0, 60)}". Co jsi zaznamenala v chování části? Jaké změny pozoruješ?`,
+      questionsKata: `Káťo, potřebuji tvůj pohled z tvé pozice k tématu „${taskText.slice(0, 60)}". Co jsi zaznamenala? Jak to koresponduje s tím, co vidí Hanička?`,
     };
   };
 
