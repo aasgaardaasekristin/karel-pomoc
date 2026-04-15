@@ -174,22 +174,137 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   const isUnmountingRef = useRef(false);
   useEffect(() => { return () => { isUnmountingRef.current = true; }; }, []);
 
+  // ── Jung Study theme vars (applied directly on root to override ThemeContext inline styles) ──
+  const JUNG_STUDY_VARS: Record<string, string> = {
+    "--background": "34 28% 94%",
+    "--foreground": "28 18% 18%",
+    "--card": "36 24% 91%",
+    "--card-foreground": "28 18% 18%",
+    "--popover": "36 24% 91%",
+    "--popover-foreground": "28 18% 18%",
+    "--primary": "28 32% 38%",
+    "--primary-foreground": "36 30% 96%",
+    "--secondary": "34 20% 86%",
+    "--secondary-foreground": "28 16% 24%",
+    "--muted": "34 18% 88%",
+    "--muted-foreground": "28 12% 46%",
+    "--accent": "24 26% 48%",
+    "--accent-foreground": "36 30% 96%",
+    "--destructive": "9 52% 48%",
+    "--destructive-foreground": "36 30% 98%",
+    "--border": "34 18% 82%",
+    "--input": "34 18% 82%",
+    "--ring": "28 32% 38%",
+    "--theme-surface": "34 22% 90%",
+    "--theme-soft": "34 20% 84%",
+    "--theme-glow": "28 28% 76%",
+    "--theme-glow-strong": "24 22% 72%",
+    "--theme-noise-opacity": "0.04",
+    "--chat-user": "34 22% 86%",
+    "--chat-assistant": "34 18% 88%",
+    "--chat-border": "34 14% 78%",
+    "--surface-primary": "34 22% 92%",
+    "--surface-secondary": "34 18% 94%",
+    "--surface-tertiary": "34 14% 96%",
+    "--surface-elevated": "36 20% 97%",
+    "--text-primary": "28 18% 18%",
+    "--text-secondary": "28 12% 40%",
+    "--text-tertiary": "28 8% 56%",
+    "--sidebar-background": "34 20% 90%",
+    "--sidebar-foreground": "28 16% 22%",
+    "--sidebar-primary": "28 32% 38%",
+    "--sidebar-primary-foreground": "36 30% 96%",
+    "--sidebar-accent": "34 18% 84%",
+    "--sidebar-accent-foreground": "28 16% 22%",
+    "--sidebar-border": "34 18% 82%",
+  };
+
+  // ── Wizarding theme vars for DID/Kluci ──
+  const WIZARDING_VARS: Record<string, string> = {
+    "--background": "220 28% 14%",
+    "--foreground": "38 18% 88%",
+    "--card": "220 24% 17%",
+    "--card-foreground": "38 18% 88%",
+    "--popover": "220 24% 17%",
+    "--popover-foreground": "38 18% 88%",
+    "--primary": "38 32% 52%",
+    "--primary-foreground": "220 28% 12%",
+    "--secondary": "220 18% 22%",
+    "--secondary-foreground": "38 16% 82%",
+    "--muted": "220 16% 20%",
+    "--muted-foreground": "38 10% 58%",
+    "--accent": "260 18% 48%",
+    "--accent-foreground": "38 18% 92%",
+    "--destructive": "9 52% 48%",
+    "--destructive-foreground": "38 18% 96%",
+    "--border": "220 16% 24%",
+    "--input": "220 16% 24%",
+    "--ring": "38 32% 52%",
+    "--theme-surface": "220 22% 13%",
+    "--theme-soft": "220 18% 18%",
+    "--theme-glow": "260 16% 28%",
+    "--theme-glow-strong": "38 24% 26%",
+    "--theme-noise-opacity": "0.03",
+    "--chat-user": "220 18% 20%",
+    "--chat-assistant": "220 16% 18%",
+    "--chat-border": "220 14% 26%",
+    "--surface-primary": "220 22% 14%",
+    "--surface-secondary": "220 18% 16%",
+    "--text-primary": "38 18% 88%",
+    "--text-secondary": "38 12% 64%",
+    "--sidebar-background": "220 24% 11%",
+    "--sidebar-foreground": "38 16% 86%",
+  };
+
+  const jungVarsBackup = useRef<Map<string, string>>(new Map());
+
   // Load theme from localStorage on mount/change, restore only on unmount
   useEffect(() => {
     setLocalMode(didStorageKey);
+    const root = document.documentElement;
+
+    // Determine which theme set to apply
+    const isJungMode = didStorageKey === "theme_did_entry";
+    const isWizardingMode = didStorageKey === "theme_did_kids" || didStorageKey.startsWith("theme_did_kids_");
+
+    // Check for user-saved personalized theme first
     const saved = localStorage.getItem(didStorageKey);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === "object" && parsed.primary_color) {
           applyTemporaryTheme(parsed);
+          return;
         }
       } catch {
         localStorage.removeItem(didStorageKey);
       }
     }
+
+    // Apply ambient theme based on mode
+    if (isJungMode) {
+      // Backup current values, then apply jung vars directly on root
+      for (const [key, val] of Object.entries(JUNG_STUDY_VARS)) {
+        jungVarsBackup.current.set(key, root.style.getPropertyValue(key));
+        root.style.setProperty(key, val);
+      }
+      root.classList.remove("dark");
+    } else if (isWizardingMode) {
+      for (const [key, val] of Object.entries(WIZARDING_VARS)) {
+        jungVarsBackup.current.set(key, root.style.getPropertyValue(key));
+        root.style.setProperty(key, val);
+      }
+      root.classList.add("dark");
+    }
+
     return () => {
       if (isUnmountingRef.current) {
+        // Restore backed-up values
+        for (const [key, val] of jungVarsBackup.current.entries()) {
+          if (val) root.style.setProperty(key, val);
+          else root.style.removeProperty(key);
+        }
+        jungVarsBackup.current.clear();
         setLocalMode(null);
         restoreGlobalTheme();
       }
@@ -539,16 +654,18 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   if (didFlowState === "thread-list" && didSubMode === "cast") {
     return (
       <ScrollArea className="flex-1">
-        <DidThreadList
-          threads={didThreads.threads}
-          onSelectThread={handleSelectThread}
-          onDeleteThread={(id) => didThreads.deleteThread(id)}
-          onNewThread={handleNewCastThread}
-        />
-        <div className="flex justify-center pb-4">
-          <Button variant="ghost" size="sm" onClick={handleDidBackHierarchical}>
-            ← Zpět
-          </Button>
+        <div className="wizarding-world min-h-full">
+          <DidThreadList
+            threads={didThreads.threads}
+            onSelectThread={handleSelectThread}
+            onDeleteThread={(id) => didThreads.deleteThread(id)}
+            onNewThread={handleNewCastThread}
+          />
+          <div className="flex justify-center pb-4">
+            <Button variant="ghost" size="sm" onClick={handleDidBackHierarchical}>
+              ← Zpět
+            </Button>
+          </div>
         </div>
       </ScrollArea>
     );

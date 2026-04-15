@@ -456,7 +456,7 @@ html.theme-transitioning *::after {
     linear-gradient(180deg, hsl(36 28% 94%) 0%, hsl(34 22% 89%) 100%);
 }
 
-/* Mandala watermark + gold particles layer */
+/* Mandala watermark + gold particles layer — subtle, calming */
 .jung-study::after {
   content: '';
   position: fixed;
@@ -464,26 +464,74 @@ html.theme-transitioning *::after {
   z-index: 1;
   pointer-events: none;
   background-image:
-    radial-gradient(circle at 85% 90%, transparent 120px, hsl(28 30% 60% / 0.07) 121px, transparent 122px),
-    radial-gradient(circle at 85% 90%, transparent 170px, hsl(28 30% 60% / 0.05) 171px, transparent 172px),
-    radial-gradient(circle at 85% 90%, transparent 220px, hsl(28 30% 60% / 0.04) 221px, transparent 222px),
-    radial-gradient(circle at 85% 90%, transparent 270px, hsl(28 30% 60% / 0.03) 271px, transparent 272px),
-    radial-gradient(1.5px 1.5px at 15% 25%, hsl(38 60% 58% / 0.35) 0%, transparent 100%),
-    radial-gradient(1px 1px at 72% 18%, hsl(28 50% 55% / 0.3) 0%, transparent 100%),
-    radial-gradient(2px 2px at 45% 68%, hsl(38 55% 60% / 0.25) 0%, transparent 100%),
-    radial-gradient(1px 1px at 88% 42%, hsl(28 50% 55% / 0.3) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 32% 82%, hsl(38 60% 58% / 0.2) 0%, transparent 100%),
-    radial-gradient(1px 1px at 58% 12%, hsl(28 50% 55% / 0.25) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 8% 55%, hsl(38 55% 62% / 0.2) 0%, transparent 100%),
-    radial-gradient(1px 1px at 65% 78%, hsl(28 45% 50% / 0.15) 0%, transparent 100%);
-  animation: particles-drift 25s ease-in-out infinite alternate;
+    radial-gradient(circle at 85% 90%, transparent 120px, hsl(28 30% 60% / 0.05) 121px, transparent 122px),
+    radial-gradient(circle at 85% 90%, transparent 170px, hsl(28 30% 60% / 0.04) 171px, transparent 172px),
+    radial-gradient(circle at 85% 90%, transparent 220px, hsl(28 30% 60% / 0.03) 221px, transparent 172px),
+    radial-gradient(circle at 85% 90%, transparent 270px, hsl(28 30% 60% / 0.02) 271px, transparent 272px),
+    radial-gradient(1.5px 1.5px at 15% 25%, hsl(32 38% 58% / 0.18) 0%, transparent 100%),
+    radial-gradient(1px 1px at 72% 18%, hsl(28 35% 55% / 0.15) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 45% 68%, hsl(34 40% 58% / 0.14) 0%, transparent 100%),
+    radial-gradient(1px 1px at 88% 42%, hsl(28 35% 55% / 0.15) 0%, transparent 100%),
+    radial-gradient(1px 1px at 32% 82%, hsl(32 38% 58% / 0.12) 0%, transparent 100%),
+    radial-gradient(1px 1px at 58% 12%, hsl(28 35% 55% / 0.12) 0%, transparent 100%);
+  animation: particles-drift 45s ease-in-out infinite alternate;
 }
 
 @keyframes particles-drift {
-  0% { transform: translateY(0) translateX(0); opacity: 0.7; }
-  33% { opacity: 1; }
-  66% { opacity: 0.8; }
-  100% { transform: translateY(-12px) translateX(6px); opacity: 0.6; }
+  0% { transform: translateY(0) translateX(0); opacity: 0.6; }
+  50% { opacity: 0.8; }
+  100% { transform: translateY(-8px) translateX(4px); opacity: 0.5; }
+}
+
+/* ═══ Wizarding World — DID/Kluci magical theme ═══ */
+.wizarding-world {
+  position: relative;
+  isolation: isolate;
+}
+
+.wizarding-world > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Night sky base layer */
+.wizarding-world::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 30% 20%, hsl(260 18% 22% / 0.6) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, hsl(220 22% 18% / 0.5) 0%, transparent 45%),
+    linear-gradient(180deg, hsl(220 28% 14%) 0%, hsl(225 24% 12%) 100%);
+}
+
+/* Subtle stars layer */
+.wizarding-world::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, hsl(38 28% 72% / 0.22) 0%, transparent 100%),
+    radial-gradient(1px 1px at 35% 42%, hsl(38 24% 68% / 0.18) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 68% 15%, hsl(38 30% 75% / 0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 82% 55%, hsl(260 16% 65% / 0.16) 0%, transparent 100%),
+    radial-gradient(1px 1px at 22% 72%, hsl(38 28% 72% / 0.15) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 55% 88%, hsl(260 14% 62% / 0.14) 0%, transparent 100%),
+    radial-gradient(1px 1px at 45% 32%, hsl(38 26% 70% / 0.18) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 28%, hsl(38 24% 68% / 0.16) 0%, transparent 100%);
+  animation: stars-twinkle 60s ease-in-out infinite alternate;
+}
+
+@keyframes stars-twinkle {
+  0% { opacity: 0.7; }
+  25% { opacity: 0.9; }
+  50% { opacity: 0.6; }
+  75% { opacity: 0.85; }
+  100% { opacity: 0.7; }
 }
 
 .jung-study .jung-section-title {

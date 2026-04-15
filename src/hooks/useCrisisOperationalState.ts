@@ -358,9 +358,8 @@ function isToday(dateStr: string | null): boolean {
 
 function computeMainBlocker(card: Partial<CrisisOperationalCard>): string | null {
   // NOTE: "Xh bez kontaktu" is shown separately as plain text in the banner.
-  // Do NOT duplicate it here. Only show non-contact blockers.
-  if (card.missingTodayInterview) return "Chybí dnešní Karlův krizový rozhovor";
-  if (card.missingTherapistFeedback) return "Čeká se na feedback terapeutek";
+  // missingTodayInterview and missingTherapistFeedback are already shown as
+  // dedicated badges + CTA buttons — do NOT duplicate them here.
   if (card.missingSessionResult) return "Chybí výsledek sezení";
   if ((card.unansweredQuestionCount ?? 0) > 0) return `${card.unansweredQuestionCount} nezodpovězených post-session otázek`;
   if (card.crisisMeetingRequired && !card.meetingOpen) return "Doporučená porada nebyla otevřena";
