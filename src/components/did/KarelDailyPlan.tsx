@@ -445,10 +445,11 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     .filter(iv => iv.what_remains_unclear)
     .slice(0, 2);
 
-  // Task groups
-  const hankaTasks = tasks.filter(t => detectTarget(t.assigned_to) === "hanka");
-  const kataTasks = tasks.filter(t => detectTarget(t.assigned_to) === "kata");
-  const teamTasks = tasks.filter(t => detectTarget(t.assigned_to) === "team");
+  // Task groups — with role guard filter
+  const filterTasks = (list: typeof tasks) => list.filter(t => !isProhibitedTask(t.task));
+  const hankaTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "hanka"));
+  const kataTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "kata"));
+  const teamTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "team"));
 
   // Deduplicate sessions by part name
   const uniqueSessions = sessions.reduce((acc, s) => {
@@ -456,19 +457,46 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     return acc;
   }, [] as typeof sessions);
 
-  // ── Information deficit questions ──
-  const deficitQuestions: string[] = [];
+  // ── Structured information deficit questions ──
+  const deficitItems: DeficitQuestion[] = [];
   if (isInfoDeficit) {
     const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))];
+    const lastKnown = retroParts[0]?.slice(0, 200) || "Nemám žádné záznamy z poslední doby";
+
     if (uniqueParts.length > 0) {
-      deficitQuestions.push(`Jak se ${uniqueParts[0]} chová od posledního kontaktu (${relativeTime(lastAnyActivity)})?`);
+      deficitItems.push({
+        question: `Jak se ${uniqueParts[0]} chová od posledního kontaktu?`,
+        intro: `Naposledy jsem komunikoval s ${uniqueParts[0]} ${relativeTime(lastAnyActivity)}. ${lastKnown.slice(0, 150)}`,
+        karelProposal: `Zkuste si všimnout: mluví ${uniqueParts[0]} spontánně? Reaguje na oslovení? Jaká je nálada?`,
+        ifUnknownHelp: `Stačí krátký popis — i jedna věta pomůže. Napište třeba "nic nového" nebo "komunikuje méně" a já se zeptám přesněji.`,
+        partName: uniqueParts[0],
+      });
     }
-    deficitQuestions.push(`Jaká je aktuální situace s dětmi? Co se děje?`);
+
+    deficitItems.push({
+      question: "Jaká je aktuální situace s dětmi? Co se děje?",
+      intro: `Od mé poslední aktualizace uplynulo ${daysWithoutData} dní. Potřebuji vědět, co se změnilo v denním fungování.`,
+      karelProposal: "Zajímá mě: škola, nálady, konflikty, spánek, jídlo — cokoli, co pozorujete.",
+      ifUnknownHelp: "Napište 'beze změn' pokud je vše stabilní, nebo popište konkrétní změnu. Každá informace je cenná.",
+    });
+
     if (daysWithoutData > 5) {
-      deficitQuestions.push(`Uplynulo ${daysWithoutData} dní bez aktualizace. Co vás zdrželo? Potřebujete s něčím pomoci?`);
+      deficitItems.push({
+        question: `Uplynulo ${daysWithoutData} dní bez aktualizace. Co vás zdrželo?`,
+        intro: `${daysWithoutData > 7 ? "Toto je neobvykle dlouhá prodleva." : "Zaznamenal jsem delší pauzu."} Chci se ujistit, že je vše v pořádku.`,
+        karelProposal: "Pokud jste měly náročné období, řekněte — přizpůsobím plán. Pokud jen nebylo co hlásit, stačí to napsat.",
+        ifUnknownHelp: "Můžete napsat třeba 'bylo hodně práce' nebo 'nestíhám' — Karel pomůže s prioritizací.",
+      });
     }
+
     if (crisisPartName) {
-      deficitQuestions.push(`${crisisPartName} má aktivní krizi — jaký je aktuální stav?`);
+      deficitItems.push({
+        question: `${crisisPartName} má aktivní krizi — jaký je aktuální stav?`,
+        intro: `Krize ${crisisPartName} vyžaduje průběžný monitoring. Bez vašeho pozorování nemohu správně vyhodnotit riziko.`,
+        karelProposal: `Všímejte si: je ${crisisPartName} v kontaktu? Reaguje na grounding? Jsou přítomny rizikové signály?`,
+        ifUnknownHelp: `Pokud nevíte jak zjistit stav ${crisisPartName}, otevřete se mnou rozhovor — připravím pro vás postup.`,
+        partName: crisisPartName,
+      });
     }
   }
 
@@ -503,28 +531,26 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
               </p>
             )}
             <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-2">
-              Potřebuji vědět, jak se situace vyvíjí. Bez aktuálních informací nemohu účinně koordinovat péči.
-              Prosím, odpovězte na následující otázky — každá odpověď mi pomůže okamžitě přizpůsobit plán:
+              {daysWithoutData > 7
+                ? "Je to již týden bez zpráv. Potřebuji vaše pozorování, abych mohl zodpovědně koordinovat péči."
+                : "Potřebuji vědět, jak se situace vyvíjí. Každá vaše odpověď mi pomůže okamžitě přizpůsobit plán."
+              }
             </p>
           </div>
 
-          {/* Inline question fields */}
+          {/* Inline structured question fields */}
           <NarrativeDivider />
           <div className="py-2">
             <SectionHead icon={<AlertTriangle className="w-4 h-4 text-accent/70" />}>
               Karlovy otázky — odpovězte přímo zde
             </SectionHead>
-            <div className="space-y-4">
-              {deficitQuestions.map((q, i) => (
-                <div key={i} className="border-l-2 border-primary/20 pl-3">
-                  <p className="text-[13px] text-foreground/75 font-medium mb-1">
-                    {q}
-                  </p>
-                  <InlineQuestionField
-                    question={q}
-                    onSubmit={(answer) => saveInlineAnswer(q, answer)}
-                  />
-                </div>
+            <div className="space-y-5">
+              {deficitItems.map((item, i) => (
+                <InlineQuestionField
+                  key={i}
+                  item={item}
+                  onSubmit={(answer, question) => saveInlineAnswer(question, answer)}
+                />
               ))}
             </div>
           </div>
