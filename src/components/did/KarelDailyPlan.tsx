@@ -216,7 +216,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       const rawTasks = tasksRes.data || [];
       setTasks(deduplicateByText(rawTasks).slice(0, 5));
       setSessions(sessionsRes.data || []);
-      setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5));
+      setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
       setCrisisPartName(crisisRes.data?.[0]?.part_name || null);
