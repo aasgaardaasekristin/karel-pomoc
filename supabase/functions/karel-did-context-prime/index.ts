@@ -326,7 +326,7 @@ Jméno: Káťa – druhý terapeut, Hančina biologická dospělá dcera
 Vztah k Karlovi: Mentor → mladší kolegyně. Karel je její vedoucí, učitel, rádce, manažer a supervizor. Přistupuje k ní profesionálně ale vřele.
 Profese: Terapeut – koordinuje na dálku, odbornice na senzorickou terapii
 Lokace: České Budějovice, Kopretinová ulice, rodinný dům se zahradou – koordinace na dálku
-Rodina: Manžel Jiří, dcery Amálka (7 let) a Tonička (4 roky) – biologické děti, NE části DID systému. Fenka Ayra (bývalý týraný pes, pořízený na popud kluků).
+Rodina: Manžel Jiří, dcery Amálka (7 let) a Tonička (4 roky) – biologické děti, NE části. Fenka Ayra (bývalý týraný pes, pořízený na popud kluků).
 Ayra se zatím neshodne s Locíkem (pes kluků, bydlí s Hankou v Písku) – probíhá výcvik a postupná socializace.
 
 JIŘÍ – MANŽEL KÁTI:
