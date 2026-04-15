@@ -453,7 +453,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
           {/* Inline question fields */}
           <NarrativeDivider />
           <div className="py-2">
-            <SectionHead icon={<AlertTriangle className="w-4 h-4 text-amber-500/70" />}>
+            <SectionHead icon={<AlertTriangle className="w-4 h-4 text-accent/70" />}>
               Karlovy otázky — odpovězte přímo zde
             </SectionHead>
             <div className="space-y-4">
