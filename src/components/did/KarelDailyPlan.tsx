@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Send, MessageCircle, ClipboardList, HelpCircle,
-  CalendarDays, ArrowRight, Users, Lightbulb, AlertTriangle, CheckCircle2
+  CalendarDays, ArrowRight, Users, Lightbulb, AlertTriangle, CheckCircle2, ThumbsUp, Edit3
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -99,6 +99,15 @@ interface DeficitQuestion {
   partName?: string;
 }
 
+/* ── Meeting seed for structured handoff ── */
+interface MeetingSeed {
+  topic: string;
+  reason: string;
+  karelProposal: string;
+  questionsHanka: string;
+  questionsKata: string;
+}
+
 /* ── Inline Question Field (structured) ── */
 const InlineQuestionField = ({
   item,
@@ -187,9 +196,12 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const hasLoadedOnce = useRef(false);
   const [therapistMessage, setTherapistMessage] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [sessionConfirmed, setSessionConfirmed] = useState<Record<string, boolean>>({});
+  const [sessionFeedback, setSessionFeedback] = useState<Record<string, string>>({});
+  const [showSessionFeedback, setShowSessionFeedback] = useState<Record<string, boolean>>({});
 
   // Data
-  const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string }[]>([]);
+  const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string; detail_instruction?: any }[]>([]);
   const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string; thread_label: string | null }[]>([]);
@@ -215,7 +227,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       const [tasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, crisisRes, planRes] = await Promise.all([
         supabase
           .from("did_therapist_tasks")
-          .select("id, task, assigned_to, status, priority, created_at")
+          .select("id, task, assigned_to, status, priority, created_at, detail_instruction")
           .in("status", ["pending", "active", "in_progress"])
           .gte("created_at", threeDaysAgo)
           .order("priority", { ascending: true })
@@ -255,7 +267,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
 
       // Deduplicate tasks by text
       const rawTasks = tasksRes.data || [];
-      setTasks(deduplicateByText(rawTasks).slice(0, 5));
+      setTasks(deduplicateByText(rawTasks).slice(0, 8));
       setSessions(sessionsRes.data || []);
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
@@ -314,7 +326,6 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
 
   // ── Save inline answer to did_pending_questions (canonical) ──
   const saveInlineAnswer = async (questionText: string, answer: string) => {
-    // 1. Create pending question + immediately mark as answered
     const { error } = await (supabase as any).from("did_pending_questions").insert({
       question: questionText,
       directed_to: "both",
@@ -327,7 +338,6 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
     });
     if (error) {
-      // Fallback to did_threads if pending_questions insert fails
       console.warn("[KarelDailyPlan] pending_questions insert failed, fallback to did_threads:", error);
       const { error: threadErr } = await supabase.from("did_threads").insert({
         part_name: "Karel",
@@ -342,6 +352,31 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       if (threadErr) throw threadErr;
     }
     toast.success("Děkuji — tuto informaci ihned zapracuji do plánu.");
+  };
+
+  // ── Session plan confirmation ──
+  const confirmSession = async (sessionId: string, partName: string) => {
+    setSessionConfirmed(prev => ({ ...prev, [sessionId]: true }));
+    toast.success(`Plán sezení s ${partName} potvrzen.`);
+  };
+
+  const submitSessionFeedback = async (sessionId: string, partName: string) => {
+    const fb = sessionFeedback[sessionId]?.trim();
+    if (!fb) return;
+    await (supabase as any).from("did_pending_questions").insert({
+      question: `Zpětná vazba k plánu sezení s ${partName}: ${fb}`,
+      directed_to: "karel",
+      status: "answered",
+      answer: fb,
+      answered_at: new Date().toISOString(),
+      answered_by: "therapist_inline",
+      source: "session_plan_feedback",
+      part_name: partName,
+      expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+    });
+    setSessionConfirmed(prev => ({ ...prev, [sessionId]: true }));
+    setShowSessionFeedback(prev => ({ ...prev, [sessionId]: false }));
+    toast.success("Zpětná vazba odeslána — Karel upraví plán.");
   };
 
   // ── Navigation helpers ──
@@ -365,11 +400,14 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     navigate(`/chat?${params.toString()}`);
   };
 
-  const openMeeting = (topic?: string) => {
+  const openMeeting = (seed: MeetingSeed) => {
     const params = new URLSearchParams();
     params.set("didFlowState", "meeting");
-    if (topic) params.set("meeting_topic", topic);
-    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+    params.set("meeting_topic", seed.topic.slice(0, 80));
+    try {
+      sessionStorage.setItem("karel_hub_section", "did");
+      sessionStorage.setItem("karel_meeting_seed", JSON.stringify(seed));
+    } catch {}
     navigate(`/chat?${params.toString()}`);
   };
 
@@ -409,31 +447,84 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const daysWithoutData = daysSince(lastAnyActivity);
   const isInfoDeficit = daysWithoutData >= 3;
 
-  // ── Build 72h retrospektiva ──
-  const retroParts: string[] = [];
-  if (plan05ANarrative) {
-    retroParts.push(plan05ANarrative);
-  }
-  if (recentInterviews.length > 0) {
-    for (const iv of recentInterviews.slice(0, 3)) {
-      const when = relativeTime(iv.started_at);
-      let line = `${when ? when.charAt(0).toUpperCase() + when.slice(1) : "Nedávno"} jsem vedl rozhovor s ${iv.part_name}.`;
-      if (iv.summary_for_team) {
-        line += ` ${iv.summary_for_team.slice(0, 200)}`;
-      }
-      if (iv.what_shifted) {
-        line += ` Co se posunulo: ${iv.what_shifted.slice(0, 150)}`;
-      }
-      retroParts.push(line);
+  // ══════════════════════════════════════════════════
+  // ── BUILD KAREL'S LIVE NARRATIVE (unified for both modes) ──
+  // ══════════════════════════════════════════════════
+
+  const buildNarrativeParagraphs = (): string[] => {
+    const paragraphs: string[] = [];
+
+    // Crisis alert — always first
+    if (crisisPartName && !hasCrisisBanner) {
+      paragraphs.push(`⚠ ${crisisPartName} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
-  }
-  if (recentThreads.length > 0 && retroParts.length < 3) {
-    const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))].slice(0, 4);
-    retroParts.push(`V posledních dnech jsem komunikoval s: ${uniqueParts.join(", ")}. Jejich témata průběžně sleduji.`);
-  }
-  if (crisisPartName && !hasCrisisBanner) {
-    retroParts.unshift(`⚠ ${crisisPartName} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci.`);
-  }
+
+    if (isInfoDeficit) {
+      // Info deficit mode: acknowledge gap
+      const lastKnownSnippet = plan05ANarrative?.slice(0, 250) || "";
+      let deficitOpening = `Uplynulo ${daysWithoutData} dní od poslední aktualizace.`;
+      if (lastKnownSnippet) {
+        deficitOpening += ` Naposledy vím toto: ${lastKnownSnippet}`;
+      }
+      if (daysWithoutData > 7) {
+        deficitOpening += " Je to již týden bez zpráv — potřebuji vaše pozorování, abych mohl zodpovědně koordinovat péči.";
+      } else {
+        deficitOpening += " Potřebuji od vás aktuální informace, abych mohl přizpůsobit plán na dnešek.";
+      }
+      paragraphs.push(deficitOpening);
+    } else {
+      // Normal mode: LIVE narrative prose from data
+
+      // 1) 05A narrative as primary source
+      if (plan05ANarrative) {
+        paragraphs.push(plan05ANarrative);
+      }
+
+      // 2) Recent interviews — weave into prose
+      if (recentInterviews.length > 0) {
+        const interviewProse: string[] = [];
+        for (const iv of recentInterviews.slice(0, 3)) {
+          const when = relativeTime(iv.started_at);
+          let sentence = `${when ? when.charAt(0).toUpperCase() + when.slice(1) : "Nedávno"} jsem vedl rozhovor s ${iv.part_name}`;
+          if (iv.summary_for_team) {
+            sentence += ` — ${iv.summary_for_team.slice(0, 200)}`;
+          }
+          if (iv.what_shifted) {
+            sentence += ` Posun: ${iv.what_shifted.slice(0, 150)}.`;
+          }
+          interviewProse.push(sentence);
+        }
+        paragraphs.push(interviewProse.join(" "));
+      }
+
+      // 3) Recent thread activity — prose, not a list
+      if (recentThreads.length > 0 && paragraphs.length < 2) {
+        const threadGroups = recentThreads.reduce((acc, t) => {
+          if (!acc[t.part_name]) acc[t.part_name] = [];
+          if (t.thread_label) acc[t.part_name].push(t.thread_label);
+          return acc;
+        }, {} as Record<string, string[]>);
+
+        const threadProse = Object.entries(threadGroups).map(([name, labels]) => {
+          const topicHint = labels[0] ? ` (téma: ${labels[0].slice(0, 60)})` : "";
+          return `${name} byl/a naposledy aktivní ${relativeTime(recentThreads.find(t => t.part_name === name)?.last_activity_at || null)}${topicHint}`;
+        }).join(". ");
+
+        if (threadProse) {
+          paragraphs.push(threadProse + ".");
+        }
+      }
+
+      // Fallback if still empty
+      if (paragraphs.length === 0) {
+        paragraphs.push("Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu — jakmile dorazí, okamžitě aktualizuji přehled.");
+      }
+    }
+
+    return paragraphs;
+  };
+
+  const narrativeParagraphs = buildNarrativeParagraphs();
 
   // ── Karlova rozhodnutí ──
   const decisions = recentInterviews
@@ -461,7 +552,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const deficitItems: DeficitQuestion[] = [];
   if (isInfoDeficit) {
     const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))];
-    const lastKnown = retroParts[0]?.slice(0, 200) || "Nemám žádné záznamy z poslední doby";
+    const lastKnown = plan05ANarrative?.slice(0, 200) || "Nemám žádné záznamy z poslední doby";
 
     if (uniqueParts.length > 0) {
       deficitItems.push({
@@ -500,6 +591,18 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     }
   }
 
+  // ── Build meeting seed from team task ──
+  const buildMeetingSeed = (t: typeof tasks[0]): MeetingSeed => {
+    const di = t.detail_instruction;
+    return {
+      topic: t.task,
+      reason: di?.reason || di?.why || t.task,
+      karelProposal: di?.proposal || di?.karel_proposal || "",
+      questionsHanka: di?.for_hanka || di?.questions_hanka || "",
+      questionsKata: di?.for_kata || di?.questions_kata || "",
+    };
+  };
+
   return (
     <div className="jung-card space-y-0 p-6">
       {/* ── Header ── */}
@@ -514,31 +617,18 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
         </p>
       </div>
 
-      {/* ── INFO DEFICIT MODE ── */}
-      {isInfoDeficit ? (
-        <>
-          {/* What Karel knows last */}
-          <div className="pb-1">
-            <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
-              Uplynulo <span className="font-semibold text-foreground/90">{daysWithoutData} dní</span> od poslední aktualizace.
-              {lastAnyActivity && (
-                <> Naposledy jsem měl informace {relativeTime(lastAnyActivity)}.</>
-              )}
-            </p>
-            {retroParts.length > 0 && (
-              <p className="text-[13px] leading-6 text-foreground/60 font-['DM_Sans',sans-serif] mt-1">
-                Co vím naposledy: {retroParts[0]?.slice(0, 300)}
-              </p>
-            )}
-            <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-2">
-              {daysWithoutData > 7
-                ? "Je to již týden bez zpráv. Potřebuji vaše pozorování, abych mohl zodpovědně koordinovat péči."
-                : "Potřebuji vědět, jak se situace vyvíjí. Každá vaše odpověď mi pomůže okamžitě přizpůsobit plán."
-              }
-            </p>
-          </div>
+      {/* ── B. Unified narrative — live prose, never a list ── */}
+      <div className="pb-1">
+        {narrativeParagraphs.map((para, i) => (
+          <p key={i} className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
+            {para}
+          </p>
+        ))}
+      </div>
 
-          {/* Inline structured question fields */}
+      {/* ── INFO DEFICIT: inline structured questions ── */}
+      {isInfoDeficit && deficitItems.length > 0 && (
+        <>
           <NarrativeDivider />
           <div className="py-2">
             <SectionHead icon={<AlertTriangle className="w-4 h-4 text-accent/70" />}>
@@ -553,21 +643,6 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
                 />
               ))}
             </div>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* ── B. 72h retrospektiva (normal mode) ── */}
-          <div className="pb-1">
-            {retroParts.length > 0 ? retroParts.map((part, i) => (
-              <p key={i} className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
-                {part}
-              </p>
-            )) : (
-              <p className="text-[13.5px] leading-7 text-foreground/60 font-['DM_Sans',sans-serif] mt-1.5 italic">
-                Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu.
-              </p>
-            )}
           </div>
         </>
       )}
@@ -599,7 +674,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
         </div>
       )}
 
-      {/* ── D. Návrh sezení na dnes ── */}
+      {/* ── D. Návrh sezení na dnes s potvrzovacím workflow ── */}
       {uniqueSessions.length > 0 && (
         <>
           <NarrativeDivider />
@@ -608,19 +683,63 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
               Návrh sezení na dnes
             </SectionHead>
             <p className="text-[13px] text-foreground/65 mb-2">
-              Navrhuji dnes pracovat s {uniqueSessions.map(s => s.selected_part).join(" a ")}. Kliknutím otevřete podrobný plán sezení:
+              Na základě aktuálního stavu a terapeutického plánu navrhuji dnes pracovat s {uniqueSessions.map(s => s.selected_part).join(" a ")}:
             </p>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {uniqueSessions.map(s => (
-                <div key={s.id} className="flex items-start gap-2 text-[13px] text-foreground/70">
-                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40" />
-                  <div className="flex-1">
-                    <span className="font-medium text-foreground/80">{s.selected_part}</span>
-                    <span className="text-foreground/50"> — {s.therapist || "terapeutka dle domluvy"}</span>
-                    <div className="mt-0.5">
-                      <ActionLink label="Otevřít plán sezení" onClick={() => openSessionPlan(s.selected_part)} />
+                <div key={s.id} className="border-l-2 border-primary/20 pl-3">
+                  <div className="flex items-start gap-2 text-[13px] text-foreground/70">
+                    <div className="flex-1">
+                      <span className="font-medium text-foreground/80">{s.selected_part}</span>
+                      <span className="text-foreground/50"> — {s.therapist || "terapeutka dle domluvy"}</span>
+                      <div className="mt-1">
+                        <ActionLink label="Otevřít plán sezení" onClick={() => openSessionPlan(s.selected_part)} />
+                      </div>
                     </div>
                   </div>
+                  {/* Confirmation workflow */}
+                  {!sessionConfirmed[s.id] ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        onClick={() => confirmSession(s.id, s.selected_part)}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors"
+                      >
+                        <ThumbsUp className="w-3 h-3" />
+                        Souhlasím
+                      </button>
+                      <button
+                        onClick={() => setShowSessionFeedback(prev => ({ ...prev, [s.id]: true }))}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 rounded-md bg-accent/10 hover:bg-accent/20 text-accent-foreground transition-colors"
+                      >
+                        <Edit3 className="w-3 h-3" />
+                        Změnit
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex items-center gap-1.5 text-[12px] text-primary/70">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span className="italic">Potvrzeno — připravuji podklady.</span>
+                    </div>
+                  )}
+                  {showSessionFeedback[s.id] && !sessionConfirmed[s.id] && (
+                    <div className="mt-2 space-y-1.5">
+                      <Textarea
+                        value={sessionFeedback[s.id] || ""}
+                        onChange={e => setSessionFeedback(prev => ({ ...prev, [s.id]: e.target.value }))}
+                        placeholder="Co byste chtěly změnit v plánu sezení?"
+                        className="min-h-[40px] max-h-[80px] text-[12.5px] bg-card/60 border-border/40 resize-none"
+                        rows={2}
+                      />
+                      <button
+                        onClick={() => submitSessionFeedback(s.id, s.selected_part)}
+                        disabled={!sessionFeedback[s.id]?.trim()}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-40"
+                      >
+                        <Send className="w-3 h-3" />
+                        Odeslat změnu
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -687,7 +806,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
               Společná porada — řešíme spolu
             </SectionHead>
             <p className="text-[13px] text-foreground/60 mb-2">
-              Následující body potřebuji prodiskutovat s oběma. Kliknutím otevřete poradní prostor:
+              Následující body potřebuji prodiskutovat s oběma. Kliknutím otevřete poradní prostor s mým konkrétním briefingem:
             </p>
             <ul className="space-y-2">
               {teamTasks.slice(0, 4).map(t => (
@@ -698,7 +817,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
                     <div className="mt-0.5">
                       <ActionLink
                         label="Otevřít poradu"
-                        onClick={() => openMeeting(t.task.slice(0, 60))}
+                        onClick={() => openMeeting(buildMeetingSeed(t))}
                         icon={<Users className="w-3 h-3" />}
                       />
                     </div>

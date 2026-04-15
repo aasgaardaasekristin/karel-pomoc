@@ -4971,7 +4971,15 @@ Vrať POUZE validní JSON (bez markdown):
             messages: [{
               role: "karel",
               therapist: "karel",
-              content: `📋 **Karel svolává poradu**\n\n**Téma:** ${meetingTopic}\n\n${meetingAgenda ? `**Agenda:**\n${meetingAgenda}\n\n` : ""}Karel čeká na vyjádření obou terapeutek. Každá může odpovědět, až bude mít čas – Karel průběžně moderuje a shrnuje.`,
+              content: [
+                `\u{1F4CB} **Karel svol\u00E1v\u00E1 poradu**\n`,
+                `**T\u00E9ma:** ${meetingTopic}\n`,
+                whyMatch?.[1]?.trim() ? `**Pro\u010D svol\u00E1v\u00E1m:** ${whyMatch[1].trim()}\n` : "",
+                proposalMatch?.[1]?.trim() ? `**Co navrhuji:** ${proposalMatch[1].trim()}\n` : "",
+                `**Hani\u010Dko:** Jak to vid\u00ED\u0161 ty? Co navrhuji\u0161?\n`,
+                `**K\u00E1\u0165o:** Jak to vid\u00ED\u0161 ty? Co navrhuji\u0161?\n`,
+                `\nO\u010Dek\u00E1v\u00E1m va\u0161e vyj\u00E1d\u0159en\u00ED \u2014 ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das.`,
+              ].filter(Boolean).join("\n"),
               timestamp: new Date().toISOString(),
             }],
           };

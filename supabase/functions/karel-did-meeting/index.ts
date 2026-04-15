@@ -18,7 +18,7 @@ serve(async (req) => {
   );
 
   try {
-    const { action, meetingId, message, therapist } = await req.json();
+    const { action, meetingId, message, therapist, seed } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
@@ -30,6 +30,41 @@ serve(async (req) => {
       const agenda = therapist || "";
       const triggeredBy = "manual";
 
+      // Build structured opening message from seed or fallback
+      let openingContent: string;
+      if (seed && (seed.reason || seed.karelProposal || seed.questionsHanka || seed.questionsKata)) {
+        const parts: string[] = [];
+        parts.push(`\u{1F4CB} **Karel svol\u00E1v\u00E1 poradu**\n`);
+        parts.push(`**T\u00E9ma:** ${topic}\n`);
+        if (seed.reason && seed.reason !== topic) {
+          parts.push(`**Pro\u010D svol\u00E1v\u00E1m:** ${seed.reason}\n`);
+        }
+        if (seed.karelProposal) {
+          parts.push(`**Co navrhuji:** ${seed.karelProposal}\n`);
+        }
+        if (seed.questionsHanka) {
+          parts.push(`**Hani\u010Dko, pot\u0159ebuji od tebe:** ${seed.questionsHanka}\n`);
+        }
+        if (seed.questionsKata) {
+          parts.push(`**K\u00E1\u0165o, pot\u0159ebuji od tebe:** ${seed.questionsKata}\n`);
+        }
+        parts.push(`\nO\u010Dek\u00E1v\u00E1m va\u0161e vyj\u00E1d\u0159en\u00ED \u2014 ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das. Pr\u016Fb\u011B\u017En\u011B moderuji a shrnuji.`);
+        openingContent = parts.join("\n");
+      } else {
+        // Minimal fallback — still structured
+        const fallbackParts: string[] = [];
+        fallbackParts.push(`\u{1F4CB} **Karel svol\u00E1v\u00E1 poradu**\n`);
+        fallbackParts.push(`**T\u00E9ma:** ${topic}\n`);
+        if (agenda) {
+          fallbackParts.push(`**Agenda:**\n${agenda}\n`);
+        }
+        fallbackParts.push(`**Pro\u010D:** Pot\u0159ebuji va\u0161e spole\u010Dn\u00E9 rozhodnut\u00ED k tomuto t\u00E9matu.\n`);
+        fallbackParts.push(`**Hani\u010Dko:** Jak to vid\u00ED\u0161 ty? Co navrhuje\u0161?\n`);
+        fallbackParts.push(`**K\u00E1\u0165o:** Jak to vid\u00ED\u0161 ty? Co navrhuji\u0161?\n`);
+        fallbackParts.push(`\nO\u010Dek\u00E1v\u00E1m va\u0161e vyj\u00E1d\u0159en\u00ED \u2014 ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das.`);
+        openingContent = fallbackParts.join("\n");
+      }
+
       const { data: meeting, error } = await sb.from("did_meetings").insert({
         user_id: authResult.user.id,
         topic: topic || "Porada týmu",
@@ -39,7 +74,7 @@ serve(async (req) => {
         messages: [{
           role: "karel",
           therapist: "karel",
-          content: `📋 **Karel svolává poradu**\n\n**Téma:** ${topic}\n\n${agenda ? `**Agenda:**\n${agenda}\n\n` : ""}Karel čeká na vyjádření obou terapeutek. Každá může odpovědět, až bude mít čas – Karel průběžně moderuje a shrnuje.`,
+          content: openingContent,
           timestamp: new Date().toISOString(),
         }],
       }).select().single();

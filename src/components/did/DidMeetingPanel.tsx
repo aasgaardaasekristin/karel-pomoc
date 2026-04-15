@@ -24,14 +24,23 @@ interface Meeting {
   outcome_tasks: any[];
 }
 
+export interface MeetingSeedData {
+  topic: string;
+  reason: string;
+  karelProposal: string;
+  questionsHanka: string;
+  questionsKata: string;
+}
+
 interface Props {
   meetingId?: string | null;
   meetingTopic?: string;
+  meetingSeed?: MeetingSeedData;
   therapist: "hanka" | "kata";
   onBack: () => void;
 }
 
-const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, therapist, onBack }: Props) => {
+const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSeed, therapist, onBack }: Props) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [input, setInput] = useState("");
@@ -46,8 +55,10 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, therapist,
   useEffect(() => {
     if (initialMeetingId) {
       loadMeeting(initialMeetingId);
+    } else if (meetingSeed) {
+      // Auto-create from structured seed
+      autoCreateFromSeed(meetingSeed);
     } else if (meetingTopic) {
-      // Auto-create meeting from topic deep-link
       setNewTopic(meetingTopic);
       setShowNewMeeting(true);
       loadMeetings();
@@ -108,6 +119,32 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, therapist,
     );
     if (!resp.ok) throw new Error(`API error: ${resp.status}`);
     return resp.json();
+  };
+
+  const autoCreateFromSeed = async (seed: MeetingSeedData) => {
+    setIsLoading(true);
+    try {
+      const data = await callMeetingApi({
+        action: "create",
+        message: seed.topic,
+        therapist: "", // agenda field
+        seed: {
+          reason: seed.reason,
+          karelProposal: seed.karelProposal,
+          questionsHanka: seed.questionsHanka,
+          questionsKata: seed.questionsKata,
+        },
+      });
+      if (data.success && data.meeting) {
+        setActiveMeeting(data.meeting);
+        toast.success("Porada vytvořena s Karlovým briefingem.");
+      }
+    } catch (e) {
+      console.error("Auto-create from seed error:", e);
+      toast.error("Nepodařilo se vytvořit poradu.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const loadMeetings = async () => {
