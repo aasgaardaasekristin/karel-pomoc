@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Send, MessageCircle, ClipboardList, HelpCircle,
-  CalendarDays, ArrowRight, Users, Lightbulb
+  CalendarDays, ArrowRight, Users, Lightbulb, AlertTriangle, CheckCircle2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -33,12 +33,28 @@ function relativeTime(iso: string | null): string {
   return d === 1 ? "včera" : `před ${d} dny`;
 }
 
+function daysSince(iso: string | null): number {
+  if (!iso) return 999;
+  return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+}
+
 /* ── Detect therapist target from assigned_to ── */
 function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
   const low = (assignedTo || "").toLowerCase();
   if (low.includes("han")) return "hanka";
   if (low.includes("kát") || low.includes("kata")) return "kata";
   return "team";
+}
+
+/* ── Deduplicate tasks by first 40 chars of task text ── */
+function deduplicateByText<T extends { task?: string; question?: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter(item => {
+    const text = (item.task || item.question || "").slice(0, 40).toLowerCase().trim();
+    if (!text || seen.has(text)) return false;
+    seen.add(text);
+    return true;
+  });
 }
 
 /* ── Inline link ── */
@@ -63,6 +79,67 @@ const SectionHead = ({ icon, children }: { icon: React.ReactNode; children: Reac
   </h4>
 );
 
+/* ── Inline Question Field ── */
+const InlineQuestionField = ({
+  question,
+  onSubmit,
+}: {
+  question: string;
+  onSubmit: (answer: string) => void;
+}) => {
+  const [answer, setAnswer] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!answer.trim()) return;
+    setSending(true);
+    try {
+      await onSubmit(answer.trim());
+      setSubmitted(true);
+      toast.success("Děkuji. Tuto informaci ihned zapracuji.");
+    } catch {
+      toast.error("Odeslání se nezdařilo, zkuste znovu.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (submitted) {
+    return (
+      <div className="flex items-center gap-2 text-[12.5px] text-primary/70 py-1">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        <span className="italic">Odpověď přijata — zapracuji při příštím cyklu.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 space-y-1.5">
+      <Textarea
+        value={answer}
+        onChange={e => setAnswer(e.target.value)}
+        placeholder="Napište odpověď…"
+        className="min-h-[40px] max-h-[80px] text-[12.5px] bg-card/60 border-border/40 resize-none"
+        rows={2}
+      />
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleSubmit}
+          disabled={!answer.trim() || sending}
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-40"
+        >
+          <Send className="w-3 h-3" />
+          Odeslat
+        </button>
+        <span className="text-[11px] text-foreground/35">
+          Pokud nevíte jak zjistit, napište — Karel poradí.
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -71,7 +148,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   const [sendingMessage, setSendingMessage] = useState(false);
 
   // Data
-  const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string }[]>([]);
+  const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string }[]>([]);
   const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string; thread_label: string | null }[]>([]);
@@ -85,6 +162,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   }[]>([]);
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
+  const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true);
@@ -96,10 +174,11 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       const [tasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, crisisRes, planRes] = await Promise.all([
         supabase
           .from("did_therapist_tasks")
-          .select("id, task, assigned_to, status, priority")
+          .select("id, task, assigned_to, status, priority, created_at")
           .in("status", ["pending", "active", "in_progress"])
+          .gte("created_at", threeDaysAgo)
           .order("priority", { ascending: true })
-          .limit(12),
+          .limit(15),
         supabase
           .from("did_daily_session_plans")
           .select("id, selected_part, therapist, plan_date")
@@ -133,12 +212,21 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
         }).catch(() => ({ data: null, error: null })),
       ]);
 
-      setTasks(tasksRes.data || []);
+      // Deduplicate tasks by text
+      const rawTasks = tasksRes.data || [];
+      setTasks(deduplicateByText(rawTasks).slice(0, 5));
       setSessions(sessionsRes.data || []);
-      setQuestions(questionsRes.data || []);
+      setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
       setCrisisPartName(crisisRes.data?.[0]?.part_name || null);
+
+      // Determine last any activity date
+      const allDates = [
+        ...(threadsRes.data || []).map((t: any) => t.last_activity_at),
+        ...(interviewsRes.data || []).map((iv: any) => iv.started_at),
+      ].filter(Boolean).sort().reverse();
+      setLastAnyActivity(allDates[0] || null);
 
       // Extract narrative from 05A
       if (planRes.data?.documents?.["05A_OPERATIVNI_PLAN"]) {
@@ -181,6 +269,21 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     } finally {
       setSendingMessage(false);
     }
+  };
+
+  // ── Save inline answer as did_threads entry ──
+  const saveInlineAnswer = async (questionText: string, answer: string) => {
+    const { error } = await supabase.from("did_threads").insert({
+      part_name: "Karel",
+      sub_mode: "mamka",
+      thread_label: `Odpověď na Karlovu otázku: ${questionText.slice(0, 60)}`,
+      messages: [
+        { role: "assistant", content: questionText },
+        { role: "user", content: answer },
+      ],
+      last_activity_at: new Date().toISOString(),
+    });
+    if (error) throw error;
   };
 
   // ── Navigation helpers ──
@@ -244,6 +347,10 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   });
   const greeting = getGreeting();
 
+  // ── Determine information deficit ──
+  const daysWithoutData = daysSince(lastAnyActivity);
+  const isInfoDeficit = daysWithoutData >= 3;
+
   // ── Build 72h retrospektiva ──
   const retroParts: string[] = [];
   if (plan05ANarrative) {
@@ -269,9 +376,6 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
   if (crisisPartName && !hasCrisisBanner) {
     retroParts.unshift(`⚠ ${crisisPartName} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci.`);
   }
-  if (retroParts.length === 0) {
-    retroParts.push("Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu.");
-  }
 
   // ── Karlova rozhodnutí ──
   const decisions = recentInterviews
@@ -294,6 +398,22 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     return acc;
   }, [] as typeof sessions);
 
+  // ── Information deficit questions ──
+  const deficitQuestions: string[] = [];
+  if (isInfoDeficit) {
+    const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))];
+    if (uniqueParts.length > 0) {
+      deficitQuestions.push(`Jak se ${uniqueParts[0]} chová od posledního kontaktu (${relativeTime(lastAnyActivity)})?`);
+    }
+    deficitQuestions.push(`Jaká je aktuální situace s dětmi? Co se děje?`);
+    if (daysWithoutData > 5) {
+      deficitQuestions.push(`Uplynulo ${daysWithoutData} dní bez aktualizace. Co vás zdrželo? Potřebujete s něčím pomoci?`);
+    }
+    if (crisisPartName) {
+      deficitQuestions.push(`${crisisPartName} má aktivní krizi — jaký je aktuální stav?`);
+    }
+  }
+
   return (
     <div className="jung-card space-y-0 p-6">
       {/* ── Header ── */}
@@ -308,14 +428,65 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
         </p>
       </div>
 
-      {/* ── B. 72h retrospektiva ── */}
-      <div className="pb-1">
-        {retroParts.map((part, i) => (
-          <p key={i} className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
-            {part}
-          </p>
-        ))}
-      </div>
+      {/* ── INFO DEFICIT MODE ── */}
+      {isInfoDeficit ? (
+        <>
+          {/* What Karel knows last */}
+          <div className="pb-1">
+            <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
+              Uplynulo <span className="font-semibold text-foreground/90">{daysWithoutData} dní</span> od poslední aktualizace.
+              {lastAnyActivity && (
+                <> Naposledy jsem měl informace {relativeTime(lastAnyActivity)}.</>
+              )}
+            </p>
+            {retroParts.length > 0 && (
+              <p className="text-[13px] leading-6 text-foreground/60 font-['DM_Sans',sans-serif] mt-1">
+                Co vím naposledy: {retroParts[0]?.slice(0, 300)}
+              </p>
+            )}
+            <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-2">
+              Potřebuji vědět, jak se situace vyvíjí. Bez aktuálních informací nemohu účinně koordinovat péči.
+              Prosím, odpovězte na následující otázky — každá odpověď mi pomůže okamžitě přizpůsobit plán:
+            </p>
+          </div>
+
+          {/* Inline question fields */}
+          <NarrativeDivider />
+          <div className="py-2">
+            <SectionHead icon={<AlertTriangle className="w-4 h-4 text-accent/70" />}>
+              Karlovy otázky — odpovězte přímo zde
+            </SectionHead>
+            <div className="space-y-4">
+              {deficitQuestions.map((q, i) => (
+                <div key={i} className="border-l-2 border-primary/20 pl-3">
+                  <p className="text-[13px] text-foreground/75 font-medium mb-1">
+                    {q}
+                  </p>
+                  <InlineQuestionField
+                    question={q}
+                    onSubmit={(answer) => saveInlineAnswer(q, answer)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* ── B. 72h retrospektiva (normal mode) ── */}
+          <div className="pb-1">
+            {retroParts.length > 0 ? retroParts.map((part, i) => (
+              <p key={i} className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
+                {part}
+              </p>
+            )) : (
+              <p className="text-[13.5px] leading-7 text-foreground/60 font-['DM_Sans',sans-serif] mt-1.5 italic">
+                Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu.
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
       {/* ── C. Karlova rozhodnutí ── */}
       {decisions.length > 0 && (
@@ -490,8 +661,10 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
       <NarrativeDivider />
       <div className="py-2">
         <p className="text-[13px] leading-6 text-foreground/65 font-['DM_Sans',sans-serif]">
-          {tasks.length > 3
-            ? "Vím, že toho je hodně. Nezapomínejte — nejdůležitější je začít tím, co je nejurgetnější. Zbytek zvládneme společně."
+          {isInfoDeficit
+            ? "Vaše odpovědi jsou pro mě klíčové. Jakmile je obdržím, okamžitě přizpůsobím plán a připravím aktualizovaný přehled."
+            : tasks.length > 3
+            ? "Vím, že toho je hodně. Nezapomínejte — nejdůležitější je začít tím, co je nejurgentnější. Zbytek zvládneme společně."
             : questions.length > 2
             ? "Mám na vás několik otázek — vaše odpovědi mi pomohou lépe plánovat další kroky. Děkuji za spolupráci."
             : "Jsem tu pro vás obě. Kdykoli potřebujete poradit, konzultovat nebo se jen ujistit, otevřete rozhovor se mnou."
