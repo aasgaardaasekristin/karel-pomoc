@@ -246,97 +246,64 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   if (didFlowState === "terapeut" && !didSubMode) {
     return (
       <ScrollArea className="flex-1">
-        <ErrorBoundary fallbackTitle="Dashboard selhal">
-          <DidDashboard onManualUpdate={onManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")} isRefreshingMemory={!!(didContextPrime as any).isPriming} />
-        </ErrorBoundary>
-        <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
-          <h3
-            className="text-sm font-serif font-normal mb-3 text-center tracking-wide"
-            style={{ color: "rgba(255,255,255,0.75)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}
-          >
-            Kdo mluví s Karlem?
-          </h3>
-          <div className="space-y-2">
-            {/* Hanička */}
-            <button
-              onClick={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left"
-              style={{
-                background: "rgba(0,0,0,0.12)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderLeft: "3px solid #C8A96E",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.22)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.22)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.12)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
-            >
-              <span className="text-lg" style={{ filter: "saturate(0.6) brightness(1.2)" }}>✨</span>
-              <div>
-                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Hanička</div>
-                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
-              </div>
-            </button>
-            {/* Káťa */}
-            <button
-              onClick={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left"
-              style={{
-                background: "rgba(0,0,0,0.12)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderLeft: "3px solid rgba(255,255,255,0.45)",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.22)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.22)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.12)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
-            >
-              <span className="text-lg" style={{ color: "rgba(255,255,255,0.8)" }}>🤍</span>
-              <div>
-                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Káťa</div>
-                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
-              </div>
-            </button>
-            {/* Porady */}
-            <button
-              onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left"
-              style={{
-                background: "rgba(0,0,0,0.12)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderLeft: "3px solid #C8A96E",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.22)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.22)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.12)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
-            >
-              <span className="text-lg">📋</span>
-              <div>
-                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Porady týmu</div>
-                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
-              </div>
-            </button>
-            {/* Live DID sezení */}
-            <button
-              onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left"
-              style={{
-                background: "rgba(0,0,0,0.12)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderLeft: "3px solid #D4C060",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.22)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.22)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(0,0,0,0.12)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }}
-            >
-              <span className="text-lg" style={{ color: "#D4C060" }}>✦</span>
-              <div>
-                <div className="font-serif font-normal tracking-wide" style={{ color: "rgba(255,255,255,0.92)", textShadow: "0 1px 3px rgba(0,0,0,0.3)" }}>Live DID sezení</div>
-                <div className="text-xs font-light tracking-wide" style={{ color: "rgba(255,255,255,0.6)", textShadow: "0 1px 2px rgba(0,0,0,0.25)" }}>Karel radí v reálném čase při práci s částí – audio + chat</div>
-              </div>
-            </button>
+        <div className="jung-study min-h-full">
+          <ErrorBoundary fallbackTitle="Dashboard selhal">
+            <DidDashboard onManualUpdate={onManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")} isRefreshingMemory={!!(didContextPrime as any).isPriming} />
+          </ErrorBoundary>
+          <div className="relative z-10 max-w-2xl mx-auto px-3 sm:px-4 pb-6">
+            <h3 className="text-sm font-serif font-normal mb-3 text-center tracking-wide text-muted-foreground">
+              Kdo mluví s Karlem?
+            </h3>
+            <div className="space-y-2">
+              {/* Hanička */}
+              <button
+                onClick={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+                style={{ borderLeft: "3px solid hsl(28 42% 38%)" }}
+              >
+                <span className="text-lg">✨</span>
+                <div>
+                  <div className="font-serif font-normal tracking-wide text-foreground">Hanička</div>
+                  <div className="text-xs font-light tracking-wide text-muted-foreground">Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
+                </div>
+              </button>
+              {/* Káťa */}
+              <button
+                onClick={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+                style={{ borderLeft: "3px solid hsl(var(--muted-foreground))" }}
+              >
+                <span className="text-lg">🤍</span>
+                <div>
+                  <div className="font-serif font-normal tracking-wide text-foreground">Káťa</div>
+                  <div className="text-xs font-light tracking-wide text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
+                </div>
+              </button>
+              {/* Porady */}
+              <button
+                onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+                style={{ borderLeft: "3px solid hsl(28 42% 38%)" }}
+              >
+                <span className="text-lg">📋</span>
+                <div>
+                  <div className="font-serif font-normal tracking-wide text-foreground">Porady týmu</div>
+                  <div className="text-xs font-light tracking-wide text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
+                </div>
+              </button>
+              {/* Live DID sezení */}
+              <button
+                onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+                style={{ borderLeft: "3px solid hsl(40 60% 50%)" }}
+              >
+                <span className="text-lg" style={{ color: "hsl(40 60% 50%)" }}>✦</span>
+                <div>
+                  <div className="font-serif font-normal tracking-wide text-foreground">Live DID sezení</div>
+                  <div className="text-xs font-light tracking-wide text-muted-foreground">Karel radí v reálném čase při práci s částí – audio + chat</div>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </ScrollArea>
