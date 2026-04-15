@@ -6,11 +6,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const SYSTEM_PROMPT = SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro práci s DID systémem.
+const SYSTEM_PROMPT = SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu pro kluky (DID části).
 Provádíš INTERNÍ analýzu, která je DŮVĚRNÁ a slouží VÝHRADNĚ pro tvé vlastní rozhodování.
 
 PRAVIDLA:
-- Tvé závěry se NIKDY nesdílejí s pacienty, terapeutkami ani v aplikaci.
+- Tvé závěry se NIKDY nesdílejí s kluky, terapeutkami ani v aplikaci.
 - Nikdy nezapisuj výstupy do kartotéky DID ani do žádného uživatelsky viditelného výstupu.
 - Analyzuješ profily terapeutek, jejich silné stránky, oblasti pro růst a komunikační styl.
 - Na základě analýzy rozhoduješ o přidělení úkolů, vedení týmu a plánování sezení.
