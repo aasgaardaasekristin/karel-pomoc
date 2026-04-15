@@ -655,15 +655,17 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     return (
       <ScrollArea className="flex-1">
         <div className="wizarding-world min-h-full">
-          threads={didThreads.threads}
-          onSelectThread={handleSelectThread}
-          onDeleteThread={(id) => didThreads.deleteThread(id)}
-          onNewThread={handleNewCastThread}
-        />
-        <div className="flex justify-center pb-4">
-          <Button variant="ghost" size="sm" onClick={handleDidBackHierarchical}>
-            ← Zpět
-          </Button>
+          <DidThreadList
+            threads={didThreads.threads}
+            onSelectThread={handleSelectThread}
+            onDeleteThread={(id) => didThreads.deleteThread(id)}
+            onNewThread={handleNewCastThread}
+          />
+          <div className="flex justify-center pb-4">
+            <Button variant="ghost" size="sm" onClick={handleDidBackHierarchical}>
+              ← Zpět
+            </Button>
+          </div>
         </div>
       </ScrollArea>
     );
