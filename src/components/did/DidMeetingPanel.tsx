@@ -46,10 +46,15 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, therapist,
   useEffect(() => {
     if (initialMeetingId) {
       loadMeeting(initialMeetingId);
+    } else if (meetingTopic) {
+      // Auto-create meeting from topic deep-link
+      setNewTopic(meetingTopic);
+      setShowNewMeeting(true);
+      loadMeetings();
     } else {
       loadMeetings();
     }
-  }, [initialMeetingId]);
+  }, [initialMeetingId, meetingTopic]);
 
   // ── Realtime subscription for active meeting ──
   useEffect(() => {
