@@ -31,6 +31,7 @@ serve(async (req) => {
       const triggeredBy = "manual";
 
       const { data: meeting, error } = await sb.from("did_meetings").insert({
+        user_id: authResult.user.id,
         topic: topic || "Porada týmu",
         agenda: agenda || "",
         triggered_by: triggeredBy || "daily_cycle",

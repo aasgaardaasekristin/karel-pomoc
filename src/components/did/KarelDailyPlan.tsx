@@ -79,25 +79,45 @@ const SectionHead = ({ icon, children }: { icon: React.ReactNode; children: Reac
   </h4>
 );
 
-/* ── Inline Question Field ── */
+/* ── Prohibited task patterns (Karel's work, not therapist's) ── */
+const PROHIBITED_TASK_PATTERNS = [
+  /připrav/i, /sestav/i, /vymysli/i, /zpracuj/i, /vytvoř/i,
+  /projdi.*kartu/i, /zaktualizuj/i, /doplň.*kartu/i, /naplánuj/i,
+  /analyzuj/i, /navrhni.*scén/i, /navrhni.*techniku/i,
+  /připrav.*věty/i, /připrav.*scén/i, /projdi si/i,
+];
+function isProhibitedTask(text: string): boolean {
+  return PROHIBITED_TASK_PATTERNS.some(p => p.test(text));
+}
+
+/* ── Structured deficit question ── */
+interface DeficitQuestion {
+  question: string;
+  intro: string;
+  karelProposal: string;
+  ifUnknownHelp: string;
+  partName?: string;
+}
+
+/* ── Inline Question Field (structured) ── */
 const InlineQuestionField = ({
-  question,
+  item,
   onSubmit,
 }: {
-  question: string;
-  onSubmit: (answer: string) => void;
+  item: DeficitQuestion;
+  onSubmit: (answer: string, question: string) => void;
 }) => {
   const [answer, setAnswer] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [sending, setSending] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleSubmit = async () => {
     if (!answer.trim()) return;
     setSending(true);
     try {
-      await onSubmit(answer.trim());
+      await onSubmit(answer.trim(), item.question);
       setSubmitted(true);
-      toast.success("Děkuji. Tuto informaci ihned zapracuji.");
     } catch {
       toast.error("Odeslání se nezdařilo, zkuste znovu.");
     } finally {
@@ -109,13 +129,26 @@ const InlineQuestionField = ({
     return (
       <div className="flex items-center gap-2 text-[12.5px] text-primary/70 py-1">
         <CheckCircle2 className="w-3.5 h-3.5" />
-        <span className="italic">Odpověď přijata — zapracuji při příštím cyklu.</span>
+        <span className="italic">Děkuji — tuto informaci ihned zapracuji do plánu.</span>
       </div>
     );
   }
 
   return (
-    <div className="mt-1.5 space-y-1.5">
+    <div className="border-l-2 border-primary/20 pl-3 space-y-1.5">
+      {/* Karel's intro / what he knows */}
+      <p className="text-[12.5px] text-foreground/55 italic leading-5">
+        {item.intro}
+      </p>
+      {/* Karel's proposal / suggestion */}
+      <p className="text-[13px] text-foreground/70 leading-5">
+        💡 <span className="font-medium">{item.karelProposal}</span>
+      </p>
+      {/* The question itself */}
+      <p className="text-[13px] text-foreground/80 font-medium leading-5">
+        {item.question}
+      </p>
+      {/* Answer textarea */}
       <Textarea
         value={answer}
         onChange={e => setAnswer(e.target.value)}
@@ -123,7 +156,7 @@ const InlineQuestionField = ({
         className="min-h-[40px] max-h-[80px] text-[12.5px] bg-card/60 border-border/40 resize-none"
         rows={2}
       />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button
           onClick={handleSubmit}
           disabled={!answer.trim() || sending}
@@ -132,10 +165,18 @@ const InlineQuestionField = ({
           <Send className="w-3 h-3" />
           Odeslat
         </button>
-        <span className="text-[11px] text-foreground/35">
-          Pokud nevíte jak zjistit, napište — Karel poradí.
-        </span>
+        <button
+          onClick={() => setShowHelp(!showHelp)}
+          className="text-[11px] text-foreground/40 hover:text-foreground/60 underline underline-offset-2 transition-colors"
+        >
+          Nevím jak zjistit…
+        </button>
       </div>
+      {showHelp && (
+        <p className="text-[12px] text-primary/60 bg-primary/5 rounded p-2 leading-5">
+          {item.ifUnknownHelp}
+        </p>
+      )}
     </div>
   );
 };
@@ -271,19 +312,36 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     }
   };
 
-  // ── Save inline answer as did_threads entry ──
+  // ── Save inline answer to did_pending_questions (canonical) ──
   const saveInlineAnswer = async (questionText: string, answer: string) => {
-    const { error } = await supabase.from("did_threads").insert({
-      part_name: "Karel",
-      sub_mode: "mamka",
-      thread_label: `Odpověď na Karlovu otázku: ${questionText.slice(0, 60)}`,
-      messages: [
-        { role: "assistant", content: questionText },
-        { role: "user", content: answer },
-      ],
-      last_activity_at: new Date().toISOString(),
+    // 1. Create pending question + immediately mark as answered
+    const { error } = await (supabase as any).from("did_pending_questions").insert({
+      question: questionText,
+      directed_to: "both",
+      status: "answered",
+      answer: answer,
+      answered_at: new Date().toISOString(),
+      answered_by: "therapist_inline",
+      source: "daily_plan_inline",
+      part_name: "system",
+      expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
     });
-    if (error) throw error;
+    if (error) {
+      // Fallback to did_threads if pending_questions insert fails
+      console.warn("[KarelDailyPlan] pending_questions insert failed, fallback to did_threads:", error);
+      const { error: threadErr } = await supabase.from("did_threads").insert({
+        part_name: "Karel",
+        sub_mode: "mamka",
+        thread_label: `Odpověď: ${questionText.slice(0, 60)}`,
+        messages: [
+          { role: "assistant", content: questionText },
+          { role: "user", content: answer },
+        ],
+        last_activity_at: new Date().toISOString(),
+      });
+      if (threadErr) throw threadErr;
+    }
+    toast.success("Děkuji — tuto informaci ihned zapracuji do plánu.");
   };
 
   // ── Navigation helpers ──
@@ -387,10 +445,11 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     .filter(iv => iv.what_remains_unclear)
     .slice(0, 2);
 
-  // Task groups
-  const hankaTasks = tasks.filter(t => detectTarget(t.assigned_to) === "hanka");
-  const kataTasks = tasks.filter(t => detectTarget(t.assigned_to) === "kata");
-  const teamTasks = tasks.filter(t => detectTarget(t.assigned_to) === "team");
+  // Task groups — with role guard filter
+  const filterTasks = (list: typeof tasks) => list.filter(t => !isProhibitedTask(t.task));
+  const hankaTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "hanka"));
+  const kataTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "kata"));
+  const teamTasks = filterTasks(tasks.filter(t => detectTarget(t.assigned_to) === "team"));
 
   // Deduplicate sessions by part name
   const uniqueSessions = sessions.reduce((acc, s) => {
@@ -398,19 +457,46 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
     return acc;
   }, [] as typeof sessions);
 
-  // ── Information deficit questions ──
-  const deficitQuestions: string[] = [];
+  // ── Structured information deficit questions ──
+  const deficitItems: DeficitQuestion[] = [];
   if (isInfoDeficit) {
     const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))];
+    const lastKnown = retroParts[0]?.slice(0, 200) || "Nemám žádné záznamy z poslední doby";
+
     if (uniqueParts.length > 0) {
-      deficitQuestions.push(`Jak se ${uniqueParts[0]} chová od posledního kontaktu (${relativeTime(lastAnyActivity)})?`);
+      deficitItems.push({
+        question: `Jak se ${uniqueParts[0]} chová od posledního kontaktu?`,
+        intro: `Naposledy jsem komunikoval s ${uniqueParts[0]} ${relativeTime(lastAnyActivity)}. ${lastKnown.slice(0, 150)}`,
+        karelProposal: `Zkuste si všimnout: mluví ${uniqueParts[0]} spontánně? Reaguje na oslovení? Jaká je nálada?`,
+        ifUnknownHelp: `Stačí krátký popis — i jedna věta pomůže. Napište třeba "nic nového" nebo "komunikuje méně" a já se zeptám přesněji.`,
+        partName: uniqueParts[0],
+      });
     }
-    deficitQuestions.push(`Jaká je aktuální situace s dětmi? Co se děje?`);
+
+    deficitItems.push({
+      question: "Jaká je aktuální situace s dětmi? Co se děje?",
+      intro: `Od mé poslední aktualizace uplynulo ${daysWithoutData} dní. Potřebuji vědět, co se změnilo v denním fungování.`,
+      karelProposal: "Zajímá mě: škola, nálady, konflikty, spánek, jídlo — cokoli, co pozorujete.",
+      ifUnknownHelp: "Napište 'beze změn' pokud je vše stabilní, nebo popište konkrétní změnu. Každá informace je cenná.",
+    });
+
     if (daysWithoutData > 5) {
-      deficitQuestions.push(`Uplynulo ${daysWithoutData} dní bez aktualizace. Co vás zdrželo? Potřebujete s něčím pomoci?`);
+      deficitItems.push({
+        question: `Uplynulo ${daysWithoutData} dní bez aktualizace. Co vás zdrželo?`,
+        intro: `${daysWithoutData > 7 ? "Toto je neobvykle dlouhá prodleva." : "Zaznamenal jsem delší pauzu."} Chci se ujistit, že je vše v pořádku.`,
+        karelProposal: "Pokud jste měly náročné období, řekněte — přizpůsobím plán. Pokud jen nebylo co hlásit, stačí to napsat.",
+        ifUnknownHelp: "Můžete napsat třeba 'bylo hodně práce' nebo 'nestíhám' — Karel pomůže s prioritizací.",
+      });
     }
+
     if (crisisPartName) {
-      deficitQuestions.push(`${crisisPartName} má aktivní krizi — jaký je aktuální stav?`);
+      deficitItems.push({
+        question: `${crisisPartName} má aktivní krizi — jaký je aktuální stav?`,
+        intro: `Krize ${crisisPartName} vyžaduje průběžný monitoring. Bez vašeho pozorování nemohu správně vyhodnotit riziko.`,
+        karelProposal: `Všímejte si: je ${crisisPartName} v kontaktu? Reaguje na grounding? Jsou přítomny rizikové signály?`,
+        ifUnknownHelp: `Pokud nevíte jak zjistit stav ${crisisPartName}, otevřete se mnou rozhovor — připravím pro vás postup.`,
+        partName: crisisPartName,
+      });
     }
   }
 
@@ -445,28 +531,26 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
               </p>
             )}
             <p className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-2">
-              Potřebuji vědět, jak se situace vyvíjí. Bez aktuálních informací nemohu účinně koordinovat péči.
-              Prosím, odpovězte na následující otázky — každá odpověď mi pomůže okamžitě přizpůsobit plán:
+              {daysWithoutData > 7
+                ? "Je to již týden bez zpráv. Potřebuji vaše pozorování, abych mohl zodpovědně koordinovat péči."
+                : "Potřebuji vědět, jak se situace vyvíjí. Každá vaše odpověď mi pomůže okamžitě přizpůsobit plán."
+              }
             </p>
           </div>
 
-          {/* Inline question fields */}
+          {/* Inline structured question fields */}
           <NarrativeDivider />
           <div className="py-2">
             <SectionHead icon={<AlertTriangle className="w-4 h-4 text-accent/70" />}>
               Karlovy otázky — odpovězte přímo zde
             </SectionHead>
-            <div className="space-y-4">
-              {deficitQuestions.map((q, i) => (
-                <div key={i} className="border-l-2 border-primary/20 pl-3">
-                  <p className="text-[13px] text-foreground/75 font-medium mb-1">
-                    {q}
-                  </p>
-                  <InlineQuestionField
-                    question={q}
-                    onSubmit={(answer) => saveInlineAnswer(q, answer)}
-                  />
-                </div>
+            <div className="space-y-5">
+              {deficitItems.map((item, i) => (
+                <InlineQuestionField
+                  key={i}
+                  item={item}
+                  onSubmit={(answer, question) => saveInlineAnswer(question, answer)}
+                />
               ))}
             </div>
           </div>
