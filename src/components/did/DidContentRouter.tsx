@@ -429,9 +429,15 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
 
   // Meeting view
   if (didFlowState === "meeting") {
+    // Support topic-based meetings: meetingIdFromUrl can be "topic:Some Topic"
+    const isTopic = meetingIdFromUrl?.startsWith("topic:");
+    const meetingTopic = isTopic ? meetingIdFromUrl.slice(6) : undefined;
+    const meetingId = isTopic ? null : meetingIdFromUrl;
+
     return (
       <DidMeetingPanel
-        meetingId={meetingIdFromUrl}
+        meetingId={meetingId}
+        meetingTopic={meetingTopic}
         therapist={meetingTherapist}
         onBack={() => {
           setDidFlowState("terapeut");

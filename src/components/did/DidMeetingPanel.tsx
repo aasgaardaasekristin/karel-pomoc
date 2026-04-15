@@ -26,11 +26,12 @@ interface Meeting {
 
 interface Props {
   meetingId?: string | null;
+  meetingTopic?: string;
   therapist: "hanka" | "kata";
   onBack: () => void;
 }
 
-const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Props) => {
+const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, therapist, onBack }: Props) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [input, setInput] = useState("");
@@ -45,10 +46,15 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Pro
   useEffect(() => {
     if (initialMeetingId) {
       loadMeeting(initialMeetingId);
+    } else if (meetingTopic) {
+      // Auto-create meeting from topic deep-link
+      setNewTopic(meetingTopic);
+      setShowNewMeeting(true);
+      loadMeetings();
     } else {
       loadMeetings();
     }
-  }, [initialMeetingId]);
+  }, [initialMeetingId, meetingTopic]);
 
   // ── Realtime subscription for active meeting ──
   useEffect(() => {

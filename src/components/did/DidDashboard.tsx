@@ -10,9 +10,7 @@ import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
-import DidTherapistTaskBoard from "./DidTherapistTaskBoard";
 import DidSprava from "./DidSprava";
-import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 interface PartActivity {
@@ -458,18 +456,6 @@ const DidDashboard = ({
           <div className="max-h-[22rem] overflow-auto pr-1">
             <ErrorBoundary fallbackTitle="Plán sezení selhal">
               <DidDailySessionPlan refreshTrigger={refreshTrigger} />
-            </ErrorBoundary>
-          </div>
-
-          <div className="max-h-[24rem] overflow-auto pr-1">
-            <ErrorBoundary fallbackTitle="Task board selhal">
-              <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
-            </ErrorBoundary>
-          </div>
-
-          <div className="max-h-64 overflow-auto pr-1">
-            <ErrorBoundary fallbackTitle="Otázky selhaly">
-              <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
             </ErrorBoundary>
           </div>
         </StudyCard>
