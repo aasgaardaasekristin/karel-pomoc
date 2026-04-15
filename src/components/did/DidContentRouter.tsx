@@ -246,7 +246,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   if (didFlowState === "terapeut" && !didSubMode) {
     return (
       <ScrollArea className="flex-1">
-        <ErrorBoundary fallbackTitle="Dashboard selhal">
+        <div className="jung-study min-h-full">
           <DidDashboard onManualUpdate={onManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")} isRefreshingMemory={!!(didContextPrime as any).isPriming} />
         </ErrorBoundary>
         <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
