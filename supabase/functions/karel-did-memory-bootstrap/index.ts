@@ -332,7 +332,7 @@ serve(async (req) => {
         user_id: user.id,
         jmeno: card.partName,
         typ: "did_cast",
-        role_vuci_hance: card.role || `Část DID systému (${card.status})`,
+        role_vuci_hance: card.role || `DID část (${card.status})`,
         stabilni_vlastnosti: [
           ...(card.age ? [`Věk: ${card.age}`] : []),
           ...(card.cluster ? [`Klastr: ${card.cluster}`] : []),
@@ -363,7 +363,7 @@ serve(async (req) => {
               messages: [
                 {
                   role: "system",
-                  content: `Jsi Karel, supervizní AI pro DID systém. Z obsahu karty části vygeneruj:
+                  content: `Jsi Karel, vedoucí terapeutického týmu pro kluky (DID části). Z obsahu karty části vygeneruj:
 1) Strukturovanou epizodu
 2) Sémantické vztahy k jiným částem/osobám zmíněným v kartě
 

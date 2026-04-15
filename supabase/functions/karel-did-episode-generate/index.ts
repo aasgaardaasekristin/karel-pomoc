@@ -169,7 +169,7 @@ INSTRUKCE:
                   hana_state: { type: "string", enum: ["EMO_KLIDNA", "EMO_SMUTNA", "EMO_NASTVANA", "EMO_UZKOSTNA", "EMO_RADOSTNA", "EMO_UNAVENA", "EMO_ZMATENOST", "KRIZE", "STABILNI"] },
                   emotional_intensity: { type: "number", minimum: 1, maximum: 5 },
                   participants: { type: "array", items: { type: "string" }, description: "Jména všech zúčastněných (části + terapeutky)" },
-                  derived_facts: { type: "array", items: { type: "string" }, description: "Nově zjištěné fakty o systému" },
+                  derived_facts: { type: "array", items: { type: "string" }, description: "Nově zjištěné fakty o klucích" },
                   actions_taken: { type: "array", items: { type: "string" }, description: "Co Karel udělal (techniky, doporučení)" },
                   tags: { type: "array", items: { type: "string" }, description: "Tagy formátu: part:Arthur, submode:cast, therapist:Hanka, topic:regulace, technique:grounding atd." },
                   outcome: { type: "string", description: "Výsledek sezení (1 věta)" },
@@ -340,7 +340,7 @@ INSTRUKCE:
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: SYSTEM_RULES + `\n\nAnalyzuj konverzaci Hanky s Karlem. Obsahuje KLINICKY RELEVANTNÍ informace o DID systému (částech, fragmentech, terapeutické práci s nimi)?
+                { role: "system", content: SYSTEM_RULES + `\n\nAnalyzuj konverzaci Hanky s Karlem. Obsahuje KLINICKY RELEVANTNÍ informace o klucích (DID částech, fragmentech, terapeutické práci s nimi)?
 Odpověz POUZE "YES" nebo "NO". YES = zmíněna konkrétní informace o stavu/chování/vývoji nějaké části, která by měla být zaznamenána.` },
                 { role: "user", content: conversationText.slice(0, 4000) },
               ],
@@ -360,7 +360,7 @@ Odpověz POUZE "YES" nebo "NO". YES = zmíněna konkrétní informace o stavu/ch
             body: JSON.stringify({
               model: "google/gemini-2.5-flash-lite",
               messages: [
-                { role: "system", content: SYSTEM_RULES + `\n\nExtrahuj DID-relevantní informace z konverzace Hanky s Karlem (osobní režim). Zaměř se POUZE na zmínky o částech/fragmentech DID systému, jejich stavu, chování, pokrocích. Ignoruj osobní témata Hanky nesouvisející s DID.` },
+                { role: "system", content: SYSTEM_RULES + `\n\nExtrahuj DID-relevantní informace z konverzace Hanky s Karlem (osobní režim). Zaměř se POUZE na zmínky o částech/fragmentech (klucích), jejich stavu, chování, pokrocích. Ignoruj osobní témata Hanky nesouvisející s DID.` },
                 { role: "user", content: conversationText.slice(0, 6000) },
               ],
               tools: [{

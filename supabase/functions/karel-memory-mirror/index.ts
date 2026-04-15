@@ -880,8 +880,8 @@ Dokud tým nerozhodne, karta existuje v kartotéce jako "čekající na ověřen
             if (rewrite) {
               // ═══ FULL REWRITE for Dashboard and Operativni Plan ═══
               const header = label === "Dashboard"
-                ? `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (zrcadlení)\n\n`
-                : `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (zrcadlení)\n\n`;
+                ? `AKTUÁLNÍ DASHBOARD – KLUCI\nAktualizace: ${dateStr}\nSprávce: Karel (zrcadlení)\n\n`
+                : `OPERATIVNÍ PLÁN – KLUCI\nAktualizace: ${dateStr}\nSprávce: Karel (zrcadlení)\n\n`;
               await updateDoc(token, doc.id, header + content);
               state.driveUpdates.push(`CENTRUM/${label} (kompletní přepis)`);
               console.log(`[CENTRUM] ✅ Full rewrite via mirror: ${label}`);
@@ -1308,7 +1308,7 @@ Vrať JSON: {"raw_facts":[{"subject":"...","fact":"...","confidence":0.9,"domain
           .map(([path, content]) => `[DRIVE:${path}]\n${(content as string).slice(0, 1000)}`)
           .join("\n═══\n");
 
-        const pass2System = `Jsi Karel – STRATEGICKÝ OPERAČNÍ VELITEL DID systému. Nejsi pasivní zapisovatel. Jsi aktivní analytik který:
+        const pass2System = `Jsi Karel – STRATEGICKÝ OPERAČNÍ VELITEL terapeutického týmu pro kluky. Nejsi pasivní zapisovatel. Jsi aktivní analytik který:
 
 MYŠLENKOVÝ POSTUP PŘI KAŽDÉM ZÁPISU:
 1. FAKTA → Co přesně vím? (citace ze zdrojů)

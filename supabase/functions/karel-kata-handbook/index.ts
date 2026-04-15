@@ -71,7 +71,7 @@ serve(async (req) => {
       .map((m: any) => `${m.role === "user" ? "Káťa" : "Karel"}: ${m.content}`)
       .join("\n\n");
 
-    const synthesisPrompt = `Jsi Karel, supervizní AI asistent pro DID systém. Na základě níže uvedeného rozhovoru s Káťou (kolegyní-terapeutkou) vytvoř STRUKTUROVANOU PŘÍRUČKU pro daný problém.
+    const synthesisPrompt = `Jsi Karel, supervizní AI vedoucí terapeutického týmu pro kluky (DID části). Na základě níže uvedeného rozhovoru s Káťou (kolegyní-terapeutkou) vytvoř STRUKTUROVANOU PŘÍRUČKU pro daný problém.
 
 ROZHOVOR:
 ${conversationText}

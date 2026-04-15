@@ -155,7 +155,7 @@ ${sessions.filter(s => s.karel_therapist_feedback?.trim()).slice(0, 5).map(s => 
 
 1. ODDĚLENÍ ROLÍ:
 - Hanka a Káťa jsou TERAPEUTKY – NIKDY je nezařazuj mezi DID části
-- Locík je PES – NIKDY ho nezařazuj do DID systému
+- Locík je PES – NIKDY ho nezařazuj mezi DID části
 - Karel je AI asistent – NIKDY ho nezařazuj mezi DID části
 
 2. SPÍCÍ vs. AKTIVNÍ:
