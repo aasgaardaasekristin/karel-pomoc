@@ -55,10 +55,10 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
 
   // Data
   const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string }[]>([]);
-  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; session_plan: string | null }[]>([]);
+  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string }[]>([]);
-  const [recentInterviews, setRecentInterviews] = useState<{ part_name: string; summary_for_team: string | null; karel_decision: string | null; started_at: string | null }[]>([]);
+  const [recentInterviews, setRecentInterviews] = useState<{ part_name: string; summary_for_team: string | null; karel_decision_after_interview: string | null; started_at: string | null }[]>([]);
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
 
@@ -78,7 +78,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
           .limit(12),
         supabase
           .from("did_daily_session_plans")
-          .select("id, selected_part, therapist, session_plan")
+          .select("id, selected_part, therapist")
           .in("status", ["planned", "in_progress"])
           .gte("plan_date", today)
           .limit(5),
@@ -95,7 +95,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
           .limit(8),
         supabase
           .from("crisis_karel_interviews")
-          .select("part_name, summary_for_team, karel_decision, started_at")
+          .select("part_name, summary_for_team, karel_decision_after_interview, started_at")
           .gte("created_at", threeDaysAgo)
           .order("created_at", { ascending: false })
           .limit(5),
