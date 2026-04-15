@@ -899,9 +899,13 @@ const Chat = () => {
       return;
     }
 
-    // 2) Meeting by topic (from Karlův přehled "Otevřít poradu")
+    // 2) Meeting by topic (from Karlův přehled "Otevřít poradu") — with structured seed
     if (didFlowParam === "meeting" || meetingTopic) {
-      setMeetingIdFromUrl(meetingTopic ? `topic:${meetingTopic}` : null);
+      // Read structured seed from sessionStorage if available
+      let seedStr: string | null = null;
+      try { seedStr = sessionStorage.getItem("karel_meeting_seed"); } catch {}
+      const topicLabel = meetingTopic || "Porada";
+      setMeetingIdFromUrl(seedStr ? `seed:${topicLabel}` : (meetingTopic ? `topic:${meetingTopic}` : null));
       setDidFlowState("meeting");
       setMeetingTherapist("hanka");
       return;

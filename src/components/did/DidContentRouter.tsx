@@ -429,15 +429,29 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
 
   // Meeting view
   if (didFlowState === "meeting") {
-    // Support topic-based meetings: meetingIdFromUrl can be "topic:Some Topic"
+    // Support topic-based and seed-based meetings
+    const isSeed = meetingIdFromUrl?.startsWith("seed:");
     const isTopic = meetingIdFromUrl?.startsWith("topic:");
-    const meetingTopic = isTopic ? meetingIdFromUrl.slice(6) : undefined;
-    const meetingId = isTopic ? null : meetingIdFromUrl;
+    const meetingTopic = isTopic ? meetingIdFromUrl.slice(6) : (isSeed ? meetingIdFromUrl.slice(5) : undefined);
+    const meetingId = (isTopic || isSeed) ? null : meetingIdFromUrl;
+
+    // Read structured seed from sessionStorage
+    let meetingSeed: any = undefined;
+    if (isSeed) {
+      try {
+        const seedStr = sessionStorage.getItem("karel_meeting_seed");
+        if (seedStr) {
+          meetingSeed = JSON.parse(seedStr);
+          sessionStorage.removeItem("karel_meeting_seed");
+        }
+      } catch {}
+    }
 
     return (
       <DidMeetingPanel
         meetingId={meetingId}
         meetingTopic={meetingTopic}
+        meetingSeed={meetingSeed}
         therapist={meetingTherapist}
         onBack={() => {
           setDidFlowState("terapeut");
