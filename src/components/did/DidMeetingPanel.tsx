@@ -137,6 +137,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
       });
       if (data.success && data.meeting) {
         setActiveMeeting(data.meeting);
+        // Clear seed from sessionStorage only after successful creation
+        try { sessionStorage.removeItem("karel_meeting_seed"); } catch {}
         toast.success("Porada vytvořena s Karlovým briefingem.");
       }
     } catch (e) {
@@ -371,8 +373,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
       {/* Header */}
       <div className="px-3 sm:px-4 py-3 border-b border-border bg-card/50">
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={() => setActiveMeeting(null)}>
-            <ArrowLeft className="w-4 h-4 mr-1" /> Porady
+          <Button variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft className="w-4 h-4 mr-1" /> Zpět
           </Button>
           <div className="flex items-center gap-2">
             <ThemeQuickButton />
