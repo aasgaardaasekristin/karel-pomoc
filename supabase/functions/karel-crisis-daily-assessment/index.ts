@@ -248,7 +248,12 @@ Deno.serve(async (req) => {
         : "Zadna porada neprobehla nebo nema zpravy";
 
       // 9b. AI assessment
-      const systemPrompt = `Jsi Karel, vedouci terapeutickeho tymu. Hodnotis krizovy stav DID casti na zaklade AKTUALNICH informaci — ze sezeni, z krizove porady, z novych zprav.
+      const todayISO = new Date().toISOString().slice(0, 10);
+      const systemPrompt = `DNEŠNÍ DATUM: ${todayISO}. Události starší 5 dnů považuj za HISTORICKÉ.
+
+ROLE GUARD: Karel NIKDY neúkoluje terapeutky přípravou materiálů, plánů, technik ani analytickou prací. Karel tyto materiály PŘIPRAVUJE SÁM. V polích "tasks_for_hana" a "tasks_for_kata" uváděj POUZE: potvrdit účast, sdělit pozorování, odpovědět na otázku, provést konkrétní intervenci při sezení.
+
+Jsi Karel, vedouci terapeutickeho tymu. Hodnotis krizovy stav DID casti na zaklade AKTUALNICH informaci — ze sezeni, z krizove porady, z novych zprav.
 NIKDY neopakuj text z predchoziho hodnoceni. Kazdy den musi hodnoceni reflektovat co se skutecne stalo nebo nezmenilo a PROC. Pokud nemas nove informace, explicitne napis 'Bez novych informaci od tymu za poslednich X dni.'
 
 DIAGNOSTICKE NASTROJE:
