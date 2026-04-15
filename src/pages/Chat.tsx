@@ -292,6 +292,57 @@ const Chat = () => {
     void checkAuth();
   }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads]);
 
+  // ═══ Crisis deep-link handler ═══
+  useEffect(() => {
+    if (!authChecked || !session) return;
+    const crisisAction = searchParams.get("crisis_action");
+    if (!crisisAction) return;
+
+    const partName = searchParams.get("part_name");
+    // Clear params immediately to prevent re-triggering
+    setSearchParams({}, { replace: true });
+
+    if (crisisAction === "interview" && partName) {
+      setMode("childcare");
+      setDidSubMode("cast");
+      setDidFlowState("loading");
+      didContextPrime.runPrime(partName, "cast");
+
+      (async () => {
+        await didThreads.fetchActiveThreads("cast");
+        if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
+
+        const existingThread = await didThreads.getThreadByPart(partName, "cast");
+        if (existingThread) {
+          setActiveThread(existingThread);
+          setMessages(existingThread.messages as any);
+          setDidFlowState("chat");
+          toast.info(`Krizové vlákno: ${partName}`);
+        } else {
+          const thread = await didThreads.createThread(partName, "cast", "cs", [], {
+            threadLabel: `Krizový rozhovor — ${partName}`,
+            forceNew: true,
+          });
+          if (thread) {
+            setActiveThread(thread);
+            setMessages([]);
+            setDidFlowState("chat");
+            toast.info(`Nové krizové vlákno: ${partName}`);
+          } else {
+            setDidFlowState("thread-list");
+            toast.error("Nepodařilo se vytvořit krizové vlákno");
+          }
+        }
+      })();
+    } else if (crisisAction === "feedback") {
+      setMode("childcare");
+      setDidSubMode(null);
+      setDidFlowState("terapeut");
+      didContextPrime.runPrime(undefined, "mamka");
+      toast.info("Otevírám feedback workspace");
+    }
+  }, [authChecked, session, searchParams]);
+
   useEffect(() => {
     if (authChecked && !session) {
       navigate("/", { replace: true });
