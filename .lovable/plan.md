@@ -1,97 +1,65 @@
 
+Příčina: předchozí zásah byl opravdu polovičatý — opravil část UI, ale nedotáhl celý řetězec zdroj dat → uložení odpovědi → reaktivní zpracování → propsání do dalšího přehledu.
 
-# Plán: Karlova temporální orientace, role guard, task cleanup a inline odpovědi
+Co je teď konkrétně nedotažené
+1. `KarelDailyPlan.tsx` má stále `deficitQuestions: string[]`; renderuje jen otázku a prázdné pole. Chybí Karlovo uvítání, co ví naposledy, lehký tlak/údiv, vlastní návrh i pomoc pro „nevím“.
+2. `saveInlineAnswer()` zapisuje jen do `did_threads` a ještě natvrdo jako `sub_mode: "mamka"`. `karel-reactive-loop` ale `did_threads` nečte; čte `did_pending_questions.status='answered'`, `did_meetings`, `did_conversations`. Inline odpovědi se tedy teď fakticky nepropisují do operativní paměti ani do Drive.
+3. `karel-did-meeting/index.ts` při `create` neposílá `user_id`; log potvrzuje chybu `23502 null value in column "user_id"`. Proto porady padají.
+4. `karel-crisis-daily-assessment/index.ts` dál ukládá agregované krizové tasky a schovává zakázané Karlovy úkoly do `description`. Role guard je v promptu, ale ne v post-processingu.
+5. Deep-linky pro task/question/session v `Chat.tsx` existují. Rozbitá je hlavně větev „Otevřít poradu“ kvůli pádu create flow.
 
-## Problém
+Co opravím
+1. Přepíšu informační deficit v `KarelDailyPlan.tsx` na strukturované karty:
+   - Karlovo oslovení
+   - co ví naposledy + kolik dní uplynulo
+   - lehký tlak / motivace / údiv podle prodlevy
+   - Karlův konkrétní návrh, co zkontrolovat
+   - přesná otázka
+   - pomocná věta pro situaci „nevím / nevím jak zjistit“
+2. Inline odpovědi napojím na kanonický model `did_pending_questions`, ne na slepé `did_threads`:
+   - každá karta bude mít skutečné `questionId`, nebo se otázka nejdřív založí do `did_pending_questions`
+   - po odeslání se uloží `answer`, `answered_at`, `answered_by`, `status='answered'`, `processed_by_reactive=false`
+   - hned po uložení se spustí reaktivní zpracování, aby se odpověď dostala do operativní paměti a do fronty pro další propsání
+3. Doplním okamžitou Karlovu reakci:
+   - běžná odpověď: jemné pozitivní potvrzení + „zapracovávám“
+   - odpověď typu „nevím / nevím jak“: okamžitá rada od Karla + otevření vhodného workspace s předvyplněným kontextem
+4. Opravím `karel-did-meeting/index.ts`:
+   - `create` insert dostane `user_id: authResult.user.id`
+   - zkontroluji i návazný flow, aby `meeting_topic` skutečně otevřel/ vytvořil poradní prostor bez pádu
+5. Zavedu tvrdý role/content guard:
+   - v `karel-crisis-daily-assessment` už se Karlova práce nebude ukládat jako terapeutský task ani schovávat do `description`
+   - zakázané texty typu „Připrav scénář / Připrav 3 věty / Projdi kartu / Vymysli techniku“ se převedou buď na Karlův interní výstup, nebo na legitimní observační otázku pro terapeutku
+   - v `KarelDailyPlan.tsx` přidám druhou vrstvu filtru, aby se podobný text nezobrazil ani když znovu proteče z backendu
+6. Zpevním temporální guard v hlavním denním toku:
+   - v plánovací části `karel-did-daily-cycle` doplním explicitní „dnešní datum / 5 dní = historické / bez nových dat přepni do režimu naposledy vím…“
+   - přidám i post-AI validaci, aby Karel nemohl vydávat staré události za aktuální
 
-1. **7 218 pending úkolů** — 13 edge funkcí vkládá úkoly bez efektivní deduplikace
-2. **Temporální dezorientace** — úkoly z 5. dubna (Jeseníky, iCloud) se zobrazují jako aktuální
-3. **Role confusion** — Karel úkoluje terapeutky svou vlastní prací (sestavit scénář, projít kartu, připravit věty)
-4. **Žádný staleness filtr v UI** — `KarelDailyPlan` načítá všechny pending úkoly bez omezení stáří
-5. **Chybí inline odpovědní mechanismus** — terapeutky nemohou odpovědět přímo u otázky v přehledu
+Technické detaily
+- `src/components/did/KarelDailyPlan.tsx`
+  - nahradit `deficitQuestions: string[]` za strukturované objekty
+  - rozšířit `InlineQuestionField` o Karlův návrh a pomoc
+  - přepsat `saveInlineAnswer()` z insertu do `did_threads` na práci s `did_pending_questions` + okamžité reaktivní zpracování
+  - přidat filtr zakázaných tasků před renderem
+- `supabase/functions/karel-did-meeting/index.ts`
+  - doplnit `user_id`
+- `supabase/functions/karel-crisis-daily-assessment/index.ts`
+  - oddělit terapeutské otázky/akce od Karlových interních příprav
+  - nepřevádět Karlovu práci do `did_therapist_tasks.description`
+- `supabase/functions/karel-did-daily-cycle/index.ts`
+  - doplnit explicitní temporal/role guard do plánovací větve
+  - přidat validaci výstupu před uložením tasků/briefingu
 
-## Řešení
+Pořadí
+1. Meeting crash (`user_id`)
+2. Kanonické ukládání inline odpovědí + okamžité zpracování
+3. Přepis informačního deficitu na skutečný Karlův monolog s návrhy
+4. Tvrdý role guard v krizovém assessmentu + UI filtr
+5. Explicitní temporal guard v denním cyklu
 
-### A. DB cleanup migrace
-```sql
--- 1. Expirovat všechny pending úkoly starší 72h
-UPDATE did_therapist_tasks 
-SET status = 'expired' 
-WHERE status IN ('pending','active','in_progress') 
-  AND created_at < now() - interval '72 hours';
-
--- 2. Smazat hotové úkoly starší 14 dní (už existuje v cyklu, ale jednorázově vyčistit)
-DELETE FROM did_therapist_tasks 
-WHERE status = 'done' AND created_at < now() - interval '14 days';
-```
-
-### B. UI staleness filtr (`KarelDailyPlan.tsx`)
-- Přidat `.gte("created_at", threeDaysAgo)` do query na `did_therapist_tasks` (řádek 97-102)
-- Snížit limit z 12 na 5
-- Přidat deduplikaci podle textu úkolu (první 40 znaků)
-
-### C. Karlův přehled — informační deficit mód
-Když Karel nemá čerstvá data (žádné interviews za 72h, žádné čerstvé vlákna), místo generické věty zobrazí:
-
-1. **Co ví naposledy** — shrnutí z posledních známých dat (i starších) s explicitním časovým údajem: „Naposledy jsem komunikoval s Arthurem před 12 dny. Tehdy..."
-2. **Lehký tlak/motivace** — „Uplynulo X dní bez aktualizace. Potřebuji vědět, jak se situace vyvíjí."
-3. **Konkrétní otázky s inline odpovědním polem** — pro každou otázku `<Textarea>` přímo v briefingu:
-   - „Jak se Arthur chová od [datum]?"
-   - „Proč jste nereagovali na mé dotazy?"
-   - „Jaká je aktuální situace s dětmi?"
-4. **Okamžité zpracování odpovědi** — po odeslání:
-   - Uloží jako `did_threads` záznam (part_name: "Karel", sub_mode odpovídající terapeutce)
-   - Toast: „Děkuji, zpracuji to při příštím cyklu"
-   - Karel pozitivně reaguje na každou odpověď
-
-### D. Role guard v edge funkcích
-V `system-rules.ts` (PRAVIDLO 9) je role guard již definován, ale edge funkce ho nedodržují. Oprava:
-
-1. **`karel-did-daily-cycle`** — do promptu pro generování úkolů přidat explicitní temporal context:
-   ```
-   Dnešní datum: ${today}. Události starší 5 dnů považuj za historické.
-   ```
-2. **`karel-analyst-loop`** + **`karel-daily-dashboard`** + **`karel-crisis-daily-assessment`** — před insert přidat anti-dup check:
-   ```typescript
-   const existing = await sb.from("did_therapist_tasks")
-     .select("id").eq("task", taskText)
-     .in("status", ["pending","active"]).limit(1);
-   if (existing.data?.length) continue;
-   ```
-3. **Role guard injection** — do promptů všech 13 edge funkcí, které generují úkoly, vložit:
-   ```
-   PRAVIDLO: Karel NIKDY neúkoluje terapeutky přípravou materiálů, plánů, technik ani analytickou prací. 
-   Karel tyto materiály PŘIPRAVUJE SÁM. Úkoly pro terapeutky: potvrdit účast, sdělit pozorování, 
-   odpovědět na otázku, provést konkrétní intervenci při sezení.
-   ```
-
-### E. Inline odpovědní formuláře v briefingu
-Nový komponent `InlineQuestionField` v `KarelDailyPlan.tsx`:
-- Každá Karlova otázka bude mít vlastní `<Textarea>` + tlačítko odeslat
-- Po odeslání: insert do `did_threads` s labelem otázky
-- Karel jemně pozitivně potvrdí: „Děkuji, Haničko. Tuto informaci ihned zapracuji."
-- Pokud terapeutka napíše „nevím jak zjistit..." → Karel nabídne pomoc (link na rozhovor s Karlem s předvyplněným kontextem)
-
-## Soubory k úpravě
-1. **DB migrace** — jednorázový cleanup 7218 starých tasků
-2. `src/components/did/KarelDailyPlan.tsx` — 72h filtr, dedup, informační deficit mód, inline odpovědi
-3. `supabase/functions/_shared/system-rules.ts` — doplnit temporal awareness pravidlo
-4. `supabase/functions/karel-analyst-loop/index.ts` — anti-dup check před insert
-5. `supabase/functions/karel-daily-dashboard/index.ts` — anti-dup check
-6. `supabase/functions/karel-crisis-daily-assessment/index.ts` — anti-dup check
-7. `supabase/functions/karel-did-daily-cycle/index.ts` — temporal context do promptu
-
-## Pořadí
-1. DB cleanup migrace (okamžitý efekt)
-2. UI staleness filtr + dedup v KarelDailyPlan
-3. Informační deficit mód + inline odpovědi
-4. Anti-dup guard ve 3 hlavních edge funkcích
-5. Role guard + temporal context v system-rules a denním cyklu
-
-## Akceptace
-- Dashboard zobrazuje max 5 úkolů, všechny z posledních 72h
-- Žádné duplicity v textu úkolů
-- Když Karel nemá čerstvá data, říká co ví naposledy a ptá se s inline formulářem
-- Odpovědi terapeutek se okamžitě ukládají do DB
-- Žádné úkoly kde Karel deleguje svou analytickou/přípravnou práci na terapeutky
-
+Akceptace
+- v Karlově přehledu už nejsou prázdná okna; každá otázka má Karlovo oslovení, poslední známý stav, tlak/motivaci, konkrétní návrh a pomoc pro „nevím“
+- inline odpověď nevpadne do slepé větve; vznikne/aktualizuje se `did_pending_questions.status='answered'` a okamžitě se spustí další zpracování
+- příští briefing už pracuje s novými odpověďmi
+- „Otevřít poradu“ přestane padat na `user_id`
+- texty delegující Karlovu práci se neobjeví ani v DB jako terapeutské tasky, ani v dashboardu
+- historické události se už nevydávají za aktuální
