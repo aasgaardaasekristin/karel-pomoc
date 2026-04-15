@@ -870,17 +870,131 @@ const Chat = () => {
     toast.info(`Navazuješ na rozhovor s ${partName}`);
   }, [setDidSubMode, setMessages, setDidInitialContext, applyTemporaryTheme, getPersonaPrefs]);
 
-  // Handle ?meeting=<id> URL parameter
+  // ═══ DID deep-link handler: meeting, meeting_topic, task_id, question_id, session_part, did_submode ═══
   useEffect(() => {
+    if (!authChecked || !session) return;
+
     const meetingParam = searchParams.get("meeting");
-    if (meetingParam && hubSection === "did") {
+    const meetingTopic = searchParams.get("meeting_topic");
+    const didFlowParam = searchParams.get("didFlowState");
+    const taskId = searchParams.get("task_id");
+    const questionId = searchParams.get("question_id");
+    const sessionPart = searchParams.get("session_part");
+    const didSubmodeParam = searchParams.get("did_submode") as DidSubMode | null;
+
+    // Nothing to handle
+    if (!meetingParam && !meetingTopic && !didFlowParam && !taskId && !questionId && !sessionPart && !didSubmodeParam) return;
+
+    // Clear all DID params immediately to prevent re-triggering
+    setSearchParams({}, { replace: true });
+
+    // Ensure DID mode
+    setMode("childcare");
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+
+    // 1) Meeting by ID
+    if (meetingParam) {
       setMeetingIdFromUrl(meetingParam);
-      setMode("childcare");
       setDidFlowState("meeting");
-      searchParams.delete("meeting");
-      setSearchParams(searchParams, { replace: true });
+      return;
     }
-  }, [searchParams, hubSection]);
+
+    // 2) Meeting by topic (from Karlův přehled "Otevřít poradu")
+    if (didFlowParam === "meeting" || meetingTopic) {
+      setMeetingIdFromUrl(meetingTopic ? `topic:${meetingTopic}` : null);
+      setDidFlowState("meeting");
+      setMeetingTherapist("hanka");
+      return;
+    }
+
+    // 3) Task workspace — open therapist thread with task context
+    if (taskId && didSubmodeParam) {
+      setDidSubMode(didSubmodeParam);
+      setDidFlowState("loading");
+      didContextPrime.runPrime(undefined, didSubmodeParam === "kata" ? "kata" : "mamka");
+      (async () => {
+        const subMode = didSubmodeParam === "kata" ? "kata" : "mamka";
+        await didThreads.fetchAllThreads(subMode);
+        // Create a new thread with task context
+        const { data: taskData } = await supabase
+          .from("did_therapist_tasks")
+          .select("task, assigned_to, priority")
+          .eq("id", taskId)
+          .maybeSingle();
+        const taskLabel = taskData?.task || "Úkol od Karla";
+        const thread = await didThreads.createThread("Karel", subMode, "cs", [
+          { role: "assistant", content: `📋 **Úkol:** ${taskLabel}\n\nKarel ti tento úkol přidělil. Co potřebuješ vědět nebo co chceš prodiskutovat?` },
+        ], { threadLabel: `Úkol: ${taskLabel.slice(0, 50)}`, forceNew: true });
+        if (thread) {
+          setActiveThread(thread);
+          setMessages(thread.messages as any);
+          setDidFlowState("chat");
+        } else {
+          setDidFlowState("therapist-threads");
+        }
+      })();
+      return;
+    }
+
+    // 4) Question workspace — open thread with question context
+    if (questionId && didSubmodeParam) {
+      setDidSubMode(didSubmodeParam);
+      setDidFlowState("loading");
+      didContextPrime.runPrime(undefined, didSubmodeParam === "kata" ? "kata" : "mamka");
+      (async () => {
+        const subMode = didSubmodeParam === "kata" ? "kata" : "mamka";
+        await didThreads.fetchAllThreads(subMode);
+        const { data: qData } = await (supabase as any)
+          .from("did_pending_questions")
+          .select("question, directed_to")
+          .eq("id", questionId)
+          .maybeSingle();
+        const qText = qData?.question || "Otázka od Karla";
+        const thread = await didThreads.createThread("Karel", subMode, "cs", [
+          { role: "assistant", content: `❓ **Karlova otázka:**\n\n${qText}\n\nProsím, odpověz co nejpřesněji. Karel zpracuje tvou odpověď v příštím cyklu.` },
+        ], { threadLabel: `Otázka: ${qText.slice(0, 50)}`, forceNew: true });
+        if (thread) {
+          setActiveThread(thread);
+          setMessages(thread.messages as any);
+          setDidFlowState("chat");
+        } else {
+          setDidFlowState("therapist-threads");
+        }
+      })();
+      return;
+    }
+
+    // 5) Session plan — open mamka submode with session context
+    if (sessionPart) {
+      setDidSubMode("mamka");
+      setDidFlowState("loading");
+      didContextPrime.runPrime(sessionPart, "mamka");
+      (async () => {
+        await didThreads.fetchAllThreads("mamka");
+        const thread = await didThreads.createThread("Karel", "mamka", "cs", [
+          { role: "assistant", content: `📅 **Plán sezení: ${sessionPart}**\n\nKarel navrhl pro dnešek pracovat s ${sessionPart}. Pojďme společně projít přípravu a plán sezení.` },
+        ], { threadLabel: `Sezení: ${sessionPart}`, forceNew: true });
+        if (thread) {
+          setActiveThread(thread);
+          setMessages(thread.messages as any);
+          setDidFlowState("chat");
+        } else {
+          setDidFlowState("therapist-threads");
+        }
+      })();
+      return;
+    }
+
+    // 6) Generic did_submode switch (no specific workspace)
+    if (didSubmodeParam) {
+      setDidSubMode(didSubmodeParam);
+      if (didSubmodeParam === "mamka" || didSubmodeParam === "kata") {
+        setDidFlowState("pin-entry");
+      } else {
+        setDidFlowState("thread-list");
+      }
+    }
+  }, [authChecked, session, searchParams]);
 
   // authChecked guard moved after all hooks (see below line ~1317)
 

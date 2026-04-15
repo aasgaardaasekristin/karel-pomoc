@@ -26,11 +26,12 @@ interface Meeting {
 
 interface Props {
   meetingId?: string | null;
+  meetingTopic?: string;
   therapist: "hanka" | "kata";
   onBack: () => void;
 }
 
-const DidMeetingPanel = ({ meetingId: initialMeetingId, therapist, onBack }: Props) => {
+const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, therapist, onBack }: Props) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [input, setInput] = useState("");

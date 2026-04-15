@@ -460,18 +460,6 @@ const DidDashboard = ({
               <DidDailySessionPlan refreshTrigger={refreshTrigger} />
             </ErrorBoundary>
           </div>
-
-          <div className="max-h-[24rem] overflow-auto pr-1">
-            <ErrorBoundary fallbackTitle="Task board selhal">
-              <DidTherapistTaskBoard refreshTrigger={refreshTrigger} />
-            </ErrorBoundary>
-          </div>
-
-          <div className="max-h-64 overflow-auto pr-1">
-            <ErrorBoundary fallbackTitle="Otázky selhaly">
-              <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
-            </ErrorBoundary>
-          </div>
         </StudyCard>
 
         <div className="rounded-xl bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
