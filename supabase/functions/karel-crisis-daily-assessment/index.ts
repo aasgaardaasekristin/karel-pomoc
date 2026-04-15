@@ -538,31 +538,72 @@ Na zaklade techto informaci:
         console.error("[CRISIS-CLOSURE] Failed:", closureErr);
       }
 
-      // 11. Create therapist tasks
+      // 11. Create therapist tasks — ROLE GUARD: only legitimate therapist actions
       const therapistTasks: any[] = [];
 
-      if (assessment.questions_for_hana?.length || assessment.tasks_for_hana?.length) {
+      // ROLE GUARD: Filter out prohibited Karel-work delegations
+      const PROHIBITED_PATTERNS = [
+        /p\u0159iprav/i, /sestav/i, /vymysli/i, /zpracuj/i, /vytvo\u0159/i,
+        /projdi.*kartu/i, /zaktualizuj/i, /dopln.*kartu/i, /napl\u00e1nuj/i,
+        /analyzuj/i, /navrhni.*sc\u00e9n/i, /navrhni.*techniku/i,
+        /p\u0159iprav.*v\u011bty/i, /p\u0159iprav.*sc\u00e9n/i,
+      ];
+      const isProhibitedTask = (text: string): boolean =>
+        PROHIBITED_PATTERNS.some(p => p.test(text));
+
+      // Only questions go to therapists; tasks that are Karel's work stay internal
+      const hankaQuestions = (assessment.questions_for_hana || []).filter((q: string) => !isProhibitedTask(q));
+      const hankaTasks = (assessment.tasks_for_hana || []).filter((t: string) => !isProhibitedTask(t));
+      const kataQuestions = (assessment.questions_for_kata || []).filter((q: string) => !isProhibitedTask(q));
+      const kataTasks = (assessment.tasks_for_kata || []).filter((t: string) => !isProhibitedTask(t));
+
+      // Separate: questions become pending_questions, legitimate actions become tasks
+      for (const q of hankaQuestions) {
+        try {
+          await supabase.from("did_pending_questions").insert({
+            directed_to: "hanka",
+            question: q,
+            part_name: crisis.part_name,
+            source: "crisis_assessment",
+            expires_at: new Date(Date.now() + 3 * 86400000).toISOString(),
+          });
+        } catch (e) { console.warn("[CRISIS-Q] hanka question insert fail:", e); }
+      }
+      for (const q of kataQuestions) {
+        try {
+          await supabase.from("did_pending_questions").insert({
+            directed_to: "kata",
+            question: q,
+            part_name: crisis.part_name,
+            source: "crisis_assessment",
+            expires_at: new Date(Date.now() + 3 * 86400000).toISOString(),
+          });
+        } catch (e) { console.warn("[CRISIS-Q] kata question insert fail:", e); }
+      }
+
+      if (hankaTasks.length > 0) {
         therapistTasks.push({
-          task: `[KRIZE den ${dayNumber}] Ukoly pro Hanicku — ${crisis.part_name}`,
+          task: `[KRIZE den ${dayNumber}] ${crisis.part_name} — akce pro Hanicku`,
           assigned_to: "hanka",
-          description: ["OTAZKY:", ...(assessment.questions_for_hana || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "UKOLY:", ...(assessment.tasks_for_hana || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
+          description: hankaTasks.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n"),
           priority: "critical",
           status: "pending",
           category: "crisis",
         });
       }
 
-      if (assessment.questions_for_kata?.length || assessment.tasks_for_kata?.length) {
+      if (kataTasks.length > 0) {
         therapistTasks.push({
-          task: `[KRIZE den ${dayNumber}] Ukoly pro Katu — ${crisis.part_name}`,
+          task: `[KRIZE den ${dayNumber}] ${crisis.part_name} — akce pro Katu`,
           assigned_to: "kata",
-          description: ["OTAZKY:", ...(assessment.questions_for_kata || []).map((q: string, i: number) => `${i + 1}. ${q}`), "", "UKOLY:", ...(assessment.tasks_for_kata || []).map((t: string, i: number) => `${i + 1}. ${t}`)].join("\n"),
+          description: kataTasks.map((t: string, i: number) => `${i + 1}. ${t}`).join("\n"),
           priority: "critical",
           status: "pending",
           category: "crisis",
         });
       }
 
+      // Tests stay as tasks (legitimate therapist work — administering tests)
       for (const test of (assessment.tests_to_administer || [])) {
         therapistTasks.push({
           task: `[KRIZE] Test: ${test.test_name}`,
