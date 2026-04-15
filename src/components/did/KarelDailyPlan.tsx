@@ -72,7 +72,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
 
   // Data
   const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string }[]>([]);
-  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; session_goals: any; plan_date: string }[]>([]);
+  const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string; thread_label: string | null }[]>([]);
   const [recentInterviews, setRecentInterviews] = useState<{
@@ -102,7 +102,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
           .limit(12),
         supabase
           .from("did_daily_session_plans")
-          .select("id, selected_part, therapist, session_goals, plan_date")
+          .select("id, selected_part, therapist, plan_date")
           .eq("plan_date", today)
           .in("status", ["planned", "in_progress", "generated"])
           .limit(3),
