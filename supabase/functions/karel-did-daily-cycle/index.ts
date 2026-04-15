@@ -3525,7 +3525,13 @@ Datum: ${dateStr}` },
         messages: [
           {
             role: "system",
-            content: SYSTEM_RULES + `\n\nJsi Karel – analytik DID systému a terapeutický supervizor. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
+            content: SYSTEM_RULES + `\n\n═══ TEMPORÁLNÍ KONTEXT ═══
+DNEŠNÍ DATUM: ${new Date().toISOString().slice(0, 10)}. Události starší 5 dnů považuj za HISTORICKÉ a NEUVÁDĚJ je jako aktuální. Pokud nemáš čerstvé informace (žádné vlákna/sezení za 72h), EXPLICITNĚ to uveď: "Naposledy jsem měl informace před X dny. Od té doby nemám aktualizaci." NIKDY nevydávej zastaralé události za aktuální (např. "zítra se vrátí z Jeseníků" pokud se to stalo před týdnem).
+
+═══ ROLE GUARD ═══
+Karel NIKDY neúkoluje terapeutky přípravou materiálů, plánů, technik ani analytickou prací. V úkolech pro terapeutky (tasks_for_hana, tasks_for_kata) POUZE: potvrdit účast, sdělit pozorování, odpovědět na otázku, provést konkrétní intervenci při sezení. ZAKÁZANÉ: "Připrav scénář", "Sestav plán", "Projdi si kartu", "Vymysli techniku", "Připrav 3 věty".
+
+Jsi Karel – analytik DID systému a terapeutický supervizor. Zpracuj data z rozhovorů a rozlož KAŽDOU informaci do správných sekcí karet částí.
 
 ═══ KRITICKÉ PRAVIDLO: DETEKCE SWITCHŮ VE VLÁKNECH ═══
 ⚠️ Pokud je ve vlákně označen SWITCH (např. "vlákno začalo jako Lincoln ale část se představila jako Adam"):
