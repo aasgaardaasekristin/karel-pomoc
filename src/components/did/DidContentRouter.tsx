@@ -654,7 +654,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   if (didFlowState === "thread-list" && didSubMode === "cast") {
     return (
       <ScrollArea className="flex-1">
-        <DidThreadList
+        <div className="wizarding-world min-h-full">
           threads={didThreads.threads}
           onSelectThread={handleSelectThread}
           onDeleteThread={(id) => didThreads.deleteThread(id)}
