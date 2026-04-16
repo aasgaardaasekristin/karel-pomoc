@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
+import {
+  OPEN_QUESTION_STATUSES,
+  PENDING_QUESTIONS_CHANGED_EVENT,
+} from "@/lib/pendingQuestionStatuses";
 
 export interface OpsSnapshot {
   pendingQuestions: number;
@@ -29,7 +33,7 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
         supabase
           .from("did_pending_questions")
           .select("id", { count: "exact", head: true })
-          .in("status", ["pending", "sent", "open"]),
+          .in("status", OPEN_QUESTION_STATUSES as unknown as string[]),
         supabase
           .from("did_pending_drive_writes")
           .select("id", { count: "exact", head: true })
@@ -64,9 +68,19 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
 
     load();
     const id = window.setInterval(load, 30000);
+
+    // Immediate recount when a pending question is answered/mutated anywhere
+    // in the app — keeps DidSprava badge and dashboard snapshot in sync
+    // without waiting for the 30s polling tick.
+    const onChanged = () => {
+      load();
+    };
+    window.addEventListener(PENDING_QUESTIONS_CHANGED_EVENT, onChanged);
+
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      window.removeEventListener(PENDING_QUESTIONS_CHANGED_EVENT, onChanged);
     };
   }, [refreshTrigger]);
 
