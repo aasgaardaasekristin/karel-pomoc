@@ -45,7 +45,6 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
       if (cancelled) return;
 
       const tasks = (tRes.data as any[]) || [];
-      const now = Date.now();
       const urgentTasks = tasks.filter(
         (t) => t.priority === "critical" || t.priority === "urgent" || t.priority === "high"
       ).length;
