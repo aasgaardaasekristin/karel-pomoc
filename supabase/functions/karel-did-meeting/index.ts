@@ -72,18 +72,18 @@ serve(async (req) => {
         parts.push(`\nO\u010Dek\u00E1v\u00E1m va\u0161e vyj\u00E1d\u0159en\u00ED \u2014 ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das. Pr\u016Fb\u011B\u017En\u011B moderuji a shrnuji.`);
         openingContent = parts.join("\n");
       } else {
-        // Minimal fallback — still structured
+        // Minimal fallback — Karel still leads with analysis and proposal
         const fallbackParts: string[] = [];
         fallbackParts.push(`\u{1F4CB} **Karel svol\u00E1v\u00E1 poradu**\n`);
         fallbackParts.push(`**T\u00E9ma:** ${topic}\n`);
         if (agenda) {
           fallbackParts.push(`**Agenda:**\n${agenda}\n`);
         }
-        fallbackParts.push(`**Pro\u010D:** Pot\u0159ebuji va\u0161e spole\u010Dn\u00E9 rozhodnut\u00ED k tomuto t\u00E9matu.\n`);
-        fallbackParts.push(`Na z\u00E1klad\u011B dostupn\u00FDch dat navrhuji n\u00E1sleduj\u00EDc\u00ED kroky \u2014 pot\u0159ebuji va\u0161e pozorov\u00E1n\u00ED a zku\u0161enosti z praxe.\n`);
-        fallbackParts.push(`**Hani\u010Dko:** Co jsi pozorovala v posledn\u00EDch dnech k tomuto t\u00E9matu?\n`);
-        fallbackParts.push(`**K\u00E1\u0165o:** Jak\u00E9 sign\u00E1ly jsi zaznamenala ze sv\u00E9 strany?\n`);
-        fallbackParts.push(`\nO\u010Dek\u00E1v\u00E1m va\u0161e vyj\u00E1d\u0159en\u00ED \u2014 ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das.`);
+        fallbackParts.push(`**Co jsem vyhodnotil:** Na z\u00E1klad\u011B dostupn\u00FDch dat a posledn\u00EDch dn\u016F identifikuji pot\u0159ebu spole\u010Dn\u00E9ho rozhodnut\u00ED k tomuto t\u00E9matu.\n`);
+        fallbackParts.push(`**Co navrhuji:** Za\u010Dneme strukturovan\u00FDm p\u0159ehledem situace. P\u0159iprav\u00EDm anal\u00FDzu na z\u00E1klad\u011B va\u0161ich odpov\u011Bd\u00ED.\n`);
+        fallbackParts.push(`**Hani\u010Dko, pot\u0159ebuji od tebe:** Pop\u00ED\u0161e\u0161 mi, jak\u00E9 konkr\u00E9tn\u00ED zm\u011Bny jsi v posledn\u00EDch dnech pozorovala u d\u011Bt\u00ED ve vztahu k tomuto t\u00E9matu?\n`);
+        fallbackParts.push(`**K\u00E1\u0165o, pot\u0159ebuji od tebe:** M\u00E1\u0161 n\u011Bjak\u00E9 sign\u00E1ly ze sv\u00E9 komunikace (chat, video, nahr\u00E1vky), kter\u00E9 se toho dot\u00FDkaj\u00ED?\n`);
+        fallbackParts.push(`\nPr\u016Fb\u011B\u017En\u011B moderuji a shrnuji. Ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das.`);
         openingContent = fallbackParts.join("\n");
       }
 

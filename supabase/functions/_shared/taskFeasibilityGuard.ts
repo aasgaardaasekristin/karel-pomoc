@@ -132,29 +132,68 @@ export function checkTaskFeasibility(
   if (proposal.assignedTo === "kata") {
     const assumesPhysical = KATA_PHYSICAL_PATTERNS.some(p => p.test(proposal.taskText));
     if (assumesPhysical) {
-      reasons.push("Úkol předpokládá fyzickou přítomnost Káti — Káťa je 100 km daleko, úkol musí specifikovat vzdálený kanál");
+      return {
+        originalTask: proposal.taskText,
+        assignedTo: proposal.assignedTo,
+        targetEntity: proposal.targetEntity,
+        verdict: "blocked_therapist_load",
+        alternativeTask: `Vzdáleně (chat/video/nahrávka): ${proposal.taskText.replace(/sedni si|buď přítomn|fyzick/gi, "vzdáleně")}`,
+        reasons: [
+          "Úkol předpokládá fyzickou přítomnost Káti — Káťa je 100 km daleko",
+          "Přeformulováno na vzdálený kanál",
+        ],
+      };
     }
   }
 
-  // 3. Check therapist load
+  // 3. Check therapist load — overload CHANGES the verdict, not just reasons
   const relevantCircumstances = therapistCircumstances.filter(
     c => c.therapist === proposal.assignedTo
   );
-  const hasHighLoad = relevantCircumstances.some(
-    c => c.circumstanceType === "personal_fatigue" ||
+
+  const hasHeavyLoad = relevantCircumstances.some(
+    c => c.circumstanceType === "child_illness" ||
          c.circumstanceType === "work_overload" ||
-         c.circumstanceType === "child_illness"
+         c.circumstanceType === "reduced_availability"
   );
-  if (hasHighLoad) {
-    reasons.push(`${proposal.assignedTo} má aktuálně zvýšenou zátěž — zvážit odložení nebo přeřazení`);
-    // Not blocked, just flagged
+  const hasMediumLoad = relevantCircumstances.some(
+    c => c.circumstanceType === "personal_fatigue" ||
+         c.circumstanceType === "family_stress"
+  );
+
+  if (hasHeavyLoad) {
+    const otherTherapist = proposal.assignedTo === "hanka" ? "kata" : "hanka";
+    return {
+      originalTask: proposal.taskText,
+      assignedTo: proposal.assignedTo,
+      targetEntity: proposal.targetEntity,
+      verdict: "blocked_therapist_load",
+      alternativeTask: `Přeřadit na ${otherTherapist} nebo odložit: ${proposal.taskText}`,
+      reasons: [
+        `${proposal.assignedTo} má aktuálně vysokou zátěž (${relevantCircumstances.map(c => c.circumstanceType).join(", ")})`,
+        "Úkol musí být přeřazen nebo odložen",
+      ],
+    };
+  }
+
+  if (hasMediumLoad) {
+    // Downgrade scope but don't fully block
+    reasons.push(`${proposal.assignedTo} má zvýšenou zátěž — úkol zjednodušen na minimum`);
+    return {
+      originalTask: proposal.taskText,
+      assignedTo: proposal.assignedTo,
+      targetEntity: proposal.targetEntity,
+      verdict: "blocked_therapist_load",
+      alternativeTask: `Zjednodušená verze: ${proposal.taskText} (jen nejnutnější část, bez časového tlaku)`,
+      reasons,
+    };
   }
 
   return {
     originalTask: proposal.taskText,
     assignedTo: proposal.assignedTo,
     targetEntity: proposal.targetEntity,
-    verdict: reasons.length > 0 ? "allowed" : "allowed", // allowed but with warnings in reasons
+    verdict: "allowed",
     reasons: reasons.length > 0 ? reasons : ["Úkol je proveditelný"],
   };
 }

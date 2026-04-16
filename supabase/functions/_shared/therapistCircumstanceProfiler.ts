@@ -21,6 +21,7 @@ import type { TherapistCircumstance, InformationSensitivity } from "./phase3Type
 interface CircumstancePattern {
   patterns: RegExp[];
   type: TherapistCircumstance["circumstanceType"];
+  // Full sensitivity union preserved — includes "secret_karel_only"
   defaultSensitivity: InformationSensitivity;
 }
 
@@ -123,7 +124,8 @@ export function detectCircumstances(
           circumstanceType: pattern.type,
           summary: abstractCircumstance(pattern.type, snippet.therapist),
           operationalImpact: deriveOperationalImpact(pattern.type, snippet.therapist),
-          sensitivity: pattern.defaultSensitivity as "therapist_private" | "team_operational",
+          // Preserve full sensitivity — do NOT cast away "secret_karel_only"
+          sensitivity: pattern.defaultSensitivity,
           sources: [snippet.threadId],
         });
       }

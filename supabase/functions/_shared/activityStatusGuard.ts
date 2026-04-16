@@ -95,7 +95,11 @@ export function assessActivityStatus(
   // Derive permissions
   const canReceiveDirectTask = status === "active_in_body";
   const canReceiveMonitoringTask = status !== "unknown";
-  const canReceiveCampaignPlan = status === "dormant" || status === "mentioned_by_therapist";
+  // Campaign plan requires stronger evidence than a mere therapist mention.
+  // "mentioned_by_therapist" only allows monitoring + card updates.
+  // Campaign eligibility requires "dormant" status (confirmed prior direct activity,
+  // now gone silent) or explicit "activation_candidate" override from higher-level logic.
+  const canReceiveCampaignPlan = status === "dormant";
 
   if (!canReceiveDirectTask && status !== "unknown") {
     reasons.push("Direct tasks blocked — child is not confirmed active in body");
