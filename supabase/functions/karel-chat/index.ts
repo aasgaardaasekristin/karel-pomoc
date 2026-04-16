@@ -909,8 +909,8 @@ This overrides ALL other language instructions.
                   content: `Jsi klasifikátor složitosti dotazů v kontextu DID (disociativní porucha identity) terapie.
 Odpověz POUZE jedním slovem: "simple", "medium" nebo "complex".
 
-COMPLEX = nová/neznámá situace, selhání předchozích strategií, neobvyklé chování části, krizová situace, žádost o strategické sezení, specifická terapeutická technika, probouzení spící části, neznámý trigger.
-MEDIUM = konkrétní dotaz na práci s částí, plánování aktivity, žádost o postup.
+COMPLEX = nová/neznámá situace, selhání předchozích strategií, neobvyklé chování dítěte, krizová situace, žádost o strategické sezení, specifická terapeutická technika, probouzení spícího dítěte, neznámý trigger.
+MEDIUM = konkrétní dotaz na práci s dítětem, plánování aktivity, žádost o postup.
 SIMPLE = obecný dotaz, pozdrav, potvrzení, krátká otázka.`,
                 },
                 { role: "user", content: lastUserText },
@@ -1037,7 +1037,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
           );
 
           if (!switchResult.isSamePart && switchResult.confidence !== "low") {
-            const switchedTo = switchResult.detectedPart || "neznámá část";
+            const switchedTo = switchResult.detectedPart || "neznámé dítě";
             console.log(`[karel-chat] SWITCH DETECTED: ${didPartName} → ${switchedTo} (${switchResult.confidence})`);
 
             // Log to DB
@@ -1053,8 +1053,8 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
 
             // Inject switching alert into system prompt
             systemPrompt += `\n\n═══ ⚠️ UPOZORNĚNÍ: DETEKOVÁN SWITCHING ═══
-Původní část: ${didPartName}
-Detekovaná část: ${switchedTo}
+Původní dítě: ${didPartName}
+Nově detekované dítě: ${switchedTo}
 Jistota: ${switchResult.confidence}
 Signály: ${switchResult.signals.join(", ")}
 POKYN: ${switchResult.recommendation}
