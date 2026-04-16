@@ -1287,7 +1287,6 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata";
 
         if (isMemoryMode && fullResponse.length > 30) {
-          // Service-role client hoisted here — single instance for entire memory extraction block
           const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
           const sbMem = createSbForMem(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -1296,56 +1295,17 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
             const userTextMem = typeof lastUserMsgMem?.content === "string" ? lastUserMsgMem.content : "";
 
             if (userTextMem.length > 15) {
-              // Determine therapist key for destination routing
-              const therapistKey = didSubMode === "kata" ? "KATA" : "HANKA";
+              const therapistKey: "HANKA" | "KATA" = didSubMode === "kata" ? "KATA" : "HANKA";
               const modeLabel = isHanaPersonal ? "Hana/osobní" : didSubMode === "mamka" ? "DID/Terapeut mamka" : "DID/Terapeut kata";
-
-              // Stable source_id from available chat identifiers
               const chatSourceId = `chat_${didThreadLabel || didSubMode || "unknown"}_${lastUserMsgMem?.created_at || Date.now()}`;
 
-              // Destination type enum for AI classification
-              const DEST_TYPES = {
-                PAMET_SITUACNI: `PAMET_KAREL/DID/${therapistKey}/SITUACNI_ANALYZA`,
-                PAMET_POZNATKY: `PAMET_KAREL/DID/${therapistKey}/KARLOVY_POZNATKY`,
-                PAMET_KAREL: `PAMET_KAREL/DID/${therapistKey}/KAREL`,
-                KONTEXTY_KDO: "PAMET_KAREL/DID/KONTEXTY/KDO_JE_KDO",
-              };
-
-              const extractionPrompt = `Jsi analytický modul Karla. Analyzuj tuto výměnu z režimu "${modeLabel}" a rozhodni, které paměťové výstupy mají vzniknout.
-
-VSTUP UŽIVATELE:
-"${userTextMem.slice(0, 1500)}"
-
-ODPOVĚĎ KARLA:
-"${fullResponse.slice(0, 1500)}"
-
-PRO KAŽDÝ relevantní výstup vrať objekt v poli "outputs". Pokud konverzace neobsahuje nic relevantního, vrať prázdné pole.
-
-CÍLOVÉ TYPY:
-- "SITUACNI" = aktuální psychický stav, nálada, zatížení, co terapeutku/Hanku právě trápí nebo těší
-- "POZNATKY" = Karlovy dedukce o kapacitě terapeutky, jejích potřebách, co si Karel všímá
-- "KAREL" = vztahový obsah (jen pro Hanku osobní), intimní/partnerské výměny, pocity mezi Karlem a Hankou
-- "KDO_JE_KDO" = nová informace o osobě v okolí (ne o dětech v DID péči)
-- "PART_CARD" = důležitá DID informace o konkrétním dítěti. MUSÍ obsahovat part_name (jméno dítěte) a section (jedna z A-M podle struktury karty: A=identita, B=profil, C=switching, D=terapie, E=vztahy, F=triggery, G=bezpečí, H=vývoj, I=psychoanalýza, J=diagnostika, K=emoční regulace, L=somatika, M=poznámky)
-
-PRAVIDLA:
-- Jedno vlákno může vytvořit 0-5 výstupů
-- Každý výstup max 3 věty
-- Piš STRUČNĚ, fakticky, bez interpretací
-- "KAREL" typ POUZE pro Hana/osobní režim
-- "PART_CARD" pouze pokud padla konkrétní klinicky relevantní informace o dítěti
-
-Vrať POUZE validní JSON:
-{
-  "outputs": [
-    {
-      "dest": "SITUACNI",
-      "content": "stručný zápis",
-      "part_name": null,
-      "section": null
-    }
-  ]
-}`;
+              // ═══ Phase 5: Structured extraction prompt ═══
+              const extractionPrompt = buildExtractionPrompt(
+                userTextMem,
+                fullResponse,
+                modeLabel,
+                isHanaPersonal,
+              );
 
               // AI call with AbortController timeout (15s)
               const memController = new AbortController();
@@ -1375,96 +1335,92 @@ Vrať POUZE validní JSON:
                 const rawMem = (memData.choices?.[0]?.message?.content || "").trim();
                 const cleanMem = rawMem.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
 
-                let memResult: { outputs: Array<{ dest: string; content: string; part_name?: string | null; section?: string | null }> };
+                let memResult: { outputs: ExtractedWriteOutput[] };
                 try {
                   memResult = JSON.parse(cleanMem);
                 } catch {
-                  console.warn("[post-chat-memory] JSON parse failed, skipping. Raw:", cleanMem.slice(0, 200));
+                  console.warn("[post-chat-writeback] JSON parse failed, skipping. Raw:", cleanMem.slice(0, 200));
                   memResult = { outputs: [] };
                 }
 
                 if (memResult.outputs && Array.isArray(memResult.outputs) && memResult.outputs.length > 0) {
+                  // ═══ Phase 5: Load part registry for active/dormant routing ═══
+                  const { data: partRegData } = await sbMem.from("did_part_registry")
+                    .select("part_name, status, last_seen_at");
+                  const partRegMap = new Map<string, PartRegistryLookup>();
+                  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+                  for (const r of (partRegData || [])) {
+                    partRegMap.set(r.part_name, {
+                      status: r.status,
+                      hasRecentDirectActivity: r.last_seen_at
+                        ? new Date(r.last_seen_at).getTime() > sevenDaysAgo
+                        : false,
+                    });
+                  }
 
-                  const todayMarker = new Date().toISOString().slice(0, 10);
-                  const VALID_SECTIONS = ["A","B","C","D","E","F","G","H","I","J","K","L","M"];
+                  // ═══ Phase 5: Route, validate, guard, dedupe ═══
+                  const writebackCtx: WritebackContext = {
+                    therapistKey,
+                    sourceMode: modeLabel,
+                    sourceThreadId: didThreadLabel || null,
+                    isHanaPersonal,
+                    partRegistryLookup: (name: string) => partRegMap.get(name) || null,
+                  };
+
+                  const { intents, rejected } = buildGovernedWriteIntents(
+                    memResult.outputs,
+                    writebackCtx,
+                  );
+
+                  if (rejected.length > 0) {
+                    console.log(`[post-chat-writeback] ${rejected.length} outputs rejected: ${rejected.map(r => r.reason).join(", ")}`);
+                  }
+
+                  // ═══ Phase 5: Enqueue via governed write pipeline ═══
                   let insertedCount = 0;
-
-                  for (const output of memResult.outputs.slice(0, 5)) {
-                    if (!output.dest || !output.content || output.content.length < 5) continue;
-
-                    let targetDoc: string;
-                    let contentPrefix: string;
-
-                    switch (output.dest) {
-                      case "SITUACNI":
-                        targetDoc = DEST_TYPES.PAMET_SITUACNI;
-                        contentPrefix = `\n=== CHAT ${todayMarker} ===\n`;
-                        break;
-                      case "POZNATKY":
-                        targetDoc = DEST_TYPES.PAMET_POZNATKY;
-                        contentPrefix = `\n=== KARLŮV POZNATEK ${todayMarker} ===\n`;
-                        break;
-                      case "KAREL":
-                        if (!isHanaPersonal) continue; // KAREL type only for hana_personal
-                        targetDoc = DEST_TYPES.PAMET_KAREL;
-                        contentPrefix = `\n=== VZTAHOVÝ ZÁZNAM ${todayMarker} ===\n`;
-                        break;
-                      case "KDO_JE_KDO":
-                        targetDoc = DEST_TYPES.KONTEXTY_KDO;
-                        contentPrefix = `\n=== NOVÁ OSOBA/AKTUALIZACE ${todayMarker} ===\n`;
-                        break;
-                      case "PART_CARD":
-                        if (!output.part_name || !output.section || !VALID_SECTIONS.includes(output.section.toUpperCase())) {
-                          console.warn(`[post-chat-memory] PART_CARD skipped: missing part_name or invalid section (${output.part_name}, ${output.section})`);
-                          continue;
-                        }
-                        targetDoc = `KARTA_${output.part_name}`;
-                        contentPrefix = `\n=== SEKCE ${output.section.toUpperCase()} — CHAT ZÁZNAM ${todayMarker} ===\n`;
-                        break;
-                      default:
-                        continue;
-                    }
-
+                  for (const intent of intents) {
                     const governedContent = encodeGovernedWrite(
-                      contentPrefix + output.content,
+                      intent.content,
                       {
                         source_type: "chat_memory_extraction",
-                        source_id: `${chatSourceId}_${output.dest}`,
-                        content_type: output.dest === "PART_CARD" ? `card_section_${(output.section || "M").toUpperCase()}` : output.dest.toLowerCase(),
-                        subject_type: output.part_name ? "part" : "therapist",
-                        subject_id: output.part_name || therapistKey.toLowerCase(),
-                        segment_id: output.dest === "PART_CARD" ? (output.section || "M").toUpperCase() : undefined,
-                      }
+                        source_id: `${chatSourceId}_${intent.evidenceKind}`,
+                        content_type: intent.target.bucket.startsWith("plan_")
+                          ? intent.target.bucket
+                          : intent.target.bucket === "active_part_card" || intent.target.bucket === "dormant_part_card"
+                            ? "card_section_update"
+                            : intent.target.bucket,
+                        subject_type: intent.target.bucket.includes("part_card") ? "part" : "therapist",
+                        subject_id: intent.target.documentKey.split("/").pop() || therapistKey.toLowerCase(),
+                      },
                     );
 
                     const { error: writeErr } = await sbMem.from("did_pending_drive_writes").insert({
-                      target_document: targetDoc,
+                      target_document: intent.target.documentKey,
                       content: governedContent,
-                      priority: "normal",
+                      priority: intent.evidenceKind === "FACT" ? "high" : "normal",
                       status: "pending",
                       write_type: "append",
                     });
 
                     if (writeErr) {
-                      console.warn(`[post-chat-memory] Write error for ${output.dest}:`, writeErr.message);
+                      console.warn(`[post-chat-writeback] Write error for ${intent.target.documentKey}:`, writeErr.message);
                     } else {
                       insertedCount++;
                     }
                   }
 
                   if (insertedCount > 0) {
-                    console.log(`[post-chat-memory] ${insertedCount} governed writes enqueued for ${modeLabel}`);
+                    console.log(`[post-chat-writeback] ${insertedCount} governed writes enqueued for ${modeLabel} (${intents.length} intents, ${rejected.length} rejected)`);
                   }
                 } else {
-                  console.log(`[post-chat-memory] No relevant outputs for ${modeLabel}`);
+                  console.log(`[post-chat-writeback] No relevant outputs for ${modeLabel}`);
                 }
               } else {
-                console.warn(`[post-chat-memory] AI extraction failed: ${memExtractRes.status}`);
+                console.warn(`[post-chat-writeback] AI extraction failed: ${memExtractRes.status}`);
               }
             }
           } catch (memExtractErr) {
-            // Fail-closed: log but never affect chat response
-            console.error("[post-chat-memory] Extraction error (non-fatal):", memExtractErr);
+            console.error("[post-chat-writeback] Extraction error (non-fatal):", memExtractErr);
           }
         }
 
