@@ -40,7 +40,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
       const { data, error } = await supabase
         .from("did_pending_questions")
         .select("*")
-        .in("status", ["pending", "sent"])
+        .in("status", ["pending", "sent", "open"])
         .order("created_at", { ascending: false })
         .limit(20);
 
