@@ -18,6 +18,10 @@ import DidTrendsTab from "./DidTrendsTab";
 import DidTherapistNotes from "./DidTherapistNotes";
 import DidGoalsTab from "./DidGoalsTab";
 import DidSafetyAlerts from "./DidSafetyAlerts";
+import WriteQueueInbox from "./WriteQueueInbox";
+import SessionPacketPanel from "./SessionPacketPanel";
+import HandoffPanel from "./HandoffPanel";
+import RecoveryPanel from "./RecoveryPanel";
 
 interface Props {
   onBootstrap: () => void;
