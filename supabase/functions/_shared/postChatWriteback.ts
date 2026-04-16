@@ -44,6 +44,15 @@ function normalizeForGuard(name: string): string {
 
 const VALID_SECTIONS = new Set(["A","B","C","D","E","F","G","H","I","J","K","L","M"]);
 
+// ── Runtime Enum Validation Sets (Phase 5B-A) ──
+const VALID_CONFIDENCE = new Set(["low", "medium", "high"]);
+const VALID_FRESHNESS = new Set(["immediate", "recent", "historical", "timeless"]);
+const VALID_CHANGE_TYPES = new Set(["new", "update", "repeat", "conflict"]);
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 // ── Document Key Mapping ──
 
 function resolveTherapistDocKey(
@@ -136,18 +145,30 @@ export function validateOutput(output: ExtractedWriteOutput): ValidationResult {
     return { valid: false, reason: "plan_05b_wrong_horizon" };
   }
 
-  // Phase 5B: required quality fields
-  if (!output.confidence) {
-    return { valid: false, reason: "missing_confidence" };
+  // Phase 5B-A: runtime enum validation (AI JSON cannot be trusted on type alone)
+  if (!isNonEmptyString(output.confidence) || !VALID_CONFIDENCE.has(output.confidence)) {
+    return { valid: false, reason: "invalid_confidence" };
   }
-  if (!output.freshness) {
-    return { valid: false, reason: "missing_freshness" };
+  if (!isNonEmptyString(output.freshness) || !VALID_FRESHNESS.has(output.freshness)) {
+    return { valid: false, reason: "invalid_freshness" };
   }
-  if (!output.changeType) {
-    return { valid: false, reason: "missing_changeType" };
+  if (!isNonEmptyString(output.changeType) || !VALID_CHANGE_TYPES.has(output.changeType)) {
+    return { valid: false, reason: "invalid_changeType" };
   }
   if (typeof output.needsVerification !== "boolean") {
     return { valid: false, reason: "missing_needsVerification" };
+  }
+
+  // Phase 5B-A: conditional explanatory fields
+  if (output.changeType === "update") {
+    if (!isNonEmptyString(output.changeSummary) || output.changeSummary!.trim().length < 8) {
+      return { valid: false, reason: "update_missing_changeSummary" };
+    }
+  }
+  if (output.changeType === "conflict") {
+    if (!isNonEmptyString(output.conflictNote) || output.conflictNote!.trim().length < 8) {
+      return { valid: false, reason: "conflict_missing_conflictNote" };
+    }
   }
 
   return { valid: true };
