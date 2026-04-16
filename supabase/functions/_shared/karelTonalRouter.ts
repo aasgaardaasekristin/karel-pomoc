@@ -89,6 +89,15 @@ function getToneProfile(ctx: KarelContext): string {
 }
 
 function getExemplars(ctx: KarelContext): string[] {
+  // Porada has its own exemplars regardless of audience
+  if (ctx.domain === "porada") {
+    return [
+      "Na základě vývoje za poslední 3 dny navrhuji tyto priority pro poradu.",
+      "Tady je analýza situace a doporučené kroky — projděte a potvrďte.",
+      "Identifikoval jsem rozpor mezi plánem a realitou — potřebujeme rozhodnout.",
+    ];
+  }
+
   switch (ctx.audience) {
     case "hanicka":
       if (ctx.domain === "hana_osobni") {

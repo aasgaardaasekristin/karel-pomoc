@@ -38,6 +38,17 @@ const TERMINOLOGY_PHRASES: string[] = [
   "fragment did",
   "cast did systemu",
   "systemova dynamika",
+  "casti osobnosti",
+];
+
+// Single-word / short DID terms checked via word-boundary match
+const TERMINOLOGY_WORDS: string[] = [
+  "system",
+  "cast",
+  "casti",
+  "alter",
+  "fragment",
+  "klient",
 ];
 
 // ─── GENDER VIOLATIONS ───────────────────────────────────
@@ -72,6 +83,16 @@ export function auditKarelOutput(
       if (!seen.has(phrase) && normalized.includes(phrase)) {
         seen.add(phrase);
         violations.push({ phrase, category: "terminology" });
+      }
+    }
+    // Word-boundary checks for single/short terms
+    for (const word of TERMINOLOGY_WORDS) {
+      if (!seen.has(word)) {
+        const re = new RegExp(`(?:^|\\s|[.,;:!?()"])${word}(?:$|\\s|[.,;:!?()"])`, "i");
+        if (re.test(normalized)) {
+          seen.add(word);
+          violations.push({ phrase: word, category: "terminology" });
+        }
       }
     }
   }
