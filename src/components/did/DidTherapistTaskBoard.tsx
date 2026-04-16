@@ -217,6 +217,7 @@ const TaskCard = ({
   onAddNote: (id: string) => void;
   isPendingDriveWrite: boolean;
   isFailedDriveWrite: boolean;
+  dupeCount?: number;
   extraActions?: React.ReactNode;
 }) => {
   const isExpanded = expandedTask === task.id;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCrisisOperationalState } from "@/hooks/useCrisisOperationalState";
-import { Clock, RefreshCw } from "lucide-react";
+import { Clock, RefreshCw, MessageCircleQuestion, FileText, AlertTriangle, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
@@ -12,6 +12,7 @@ import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
 interface PartActivity {
   name: string;
@@ -460,15 +461,7 @@ const DidDashboard = ({
           </div>
         </StudyCard>
 
-        <div className="rounded-xl bg-muted/30 px-3 py-2 text-[12px] text-muted-foreground">
-          <span>
-            Části: <strong className="text-foreground">{parts.filter((part) => part.status === "active").length}</strong> aktivních
-          </span>
-          <span className="mx-2">•</span>
-          <span>
-            Vlákna: <strong className="text-foreground">{activeThreads.length}</strong>
-          </span>
-        </div>
+        <OpsSnapshotBar refreshTrigger={refreshTrigger} parts={parts} activeThreads={activeThreads} />
       </div>
     </div>
   );
