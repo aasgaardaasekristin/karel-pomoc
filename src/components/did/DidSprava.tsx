@@ -225,6 +225,60 @@ const DidSprava = ({
           </div>
         )}
 
+        {activeTab === "live" && (
+          <div className="space-y-3">
+            {!liveActive ? (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">Spusť živou asistenci pro konkrétní sezení.</p>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-medium text-foreground/80">Jméno části</label>
+                  <input
+                    className="w-full h-8 text-xs rounded-md border border-border bg-background px-2"
+                    placeholder="např. Kubík, Míša..."
+                    value={livePartName}
+                    onChange={(e) => setLivePartName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-medium text-foreground/80">Terapeutka</label>
+                  <div className="flex gap-2">
+                    {(["Hanka", "Káťa"] as const).map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setLiveTherapist(t)}
+                        className={`px-3 py-1 text-xs rounded-md border transition-colors ${liveTherapist === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="w-full h-8 text-xs"
+                  disabled={!livePartName.trim()}
+                  onClick={() => setLiveActive(true)}
+                >
+                  ⚡ Spustit živé sezení
+                </Button>
+              </div>
+            ) : (
+              <div className="min-h-[400px]">
+                <DidLiveSessionPanel
+                  partName={livePartName}
+                  therapistName={liveTherapist}
+                  onEnd={() => {
+                    setLiveActive(false);
+                    setLivePartName("");
+                    toast.success("Sezení ukončeno a uloženo.");
+                  }}
+                  onBack={() => setLiveActive(false)}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
         {activeTab === "safety" && (
           <div className="space-y-2">
             <DidSafetyAlerts />
