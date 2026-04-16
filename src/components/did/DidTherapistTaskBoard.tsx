@@ -956,6 +956,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 {...sharedProps}
                 isPendingDriveWrite={isPendingForTask(task)}
                 isFailedDriveWrite={isFailedForTask(task)}
+                dupeCount={getDupeCount(task)}
               />
             ))}
             {tomorrowTasks.length > MAX_TOMORROW && <p className="text-center text-[0.5rem] text-muted-foreground">+{tomorrowTasks.length - MAX_TOMORROW} dalších</p>}
