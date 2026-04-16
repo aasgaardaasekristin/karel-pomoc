@@ -12,6 +12,22 @@
 
 export type EvidenceKind = "FACT" | "INFERENCE" | "PLAN" | "UNKNOWN";
 
+// ── Write Quality Metadata (Phase 5B) ──
+
+export type WriteConfidence = "low" | "medium" | "high";
+
+export type FreshnessBand =
+  | "immediate"
+  | "recent"
+  | "historical"
+  | "timeless";
+
+export type ChangeType =
+  | "new"
+  | "update"
+  | "repeat"
+  | "conflict";
+
 // ── Extraction Output Kinds ──
 
 export type ExtractionOutputKind =
@@ -50,6 +66,13 @@ export interface ExtractedWriteOutput {
   partAliases?: string[];
   section?: "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" | null;
   timeHorizon?: "today_3d" | "15_60d" | null;
+  // Phase 5B quality fields
+  confidence: WriteConfidence;
+  freshness: FreshnessBand;
+  changeType: ChangeType;
+  needsVerification: boolean;
+  changeSummary?: string;
+  conflictNote?: string;
 }
 
 // ── Logical Write Target ──

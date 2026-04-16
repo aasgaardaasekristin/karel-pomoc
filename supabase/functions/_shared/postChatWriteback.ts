@@ -1,11 +1,13 @@
 /**
- * postChatWriteback.ts — Phase 5
+ * postChatWriteback.ts — Phase 5 + 5A + 5B
  *
  * Pure helper for post-chat structured writeback:
  * - validates extracted outputs
  * - routes to exact document targets
  * - applies sensitivity guards
+ * - applies evidence quality guards (5B)
  * - deduplicates within a single run
+ * - renders governed write content with quality metadata
  * - builds governed write intents
  *
  * NO DB queries. NO side effects. NO raw transcript writes.
@@ -24,12 +26,12 @@ import type {
 
 // ── Non-part entities that must NEVER be routed as PART_CARD ──
 const NON_PART_NAMES = new Set([
-  "hanka", "hanička", "hanicka", "hana",
-  "káťa", "kata", "kája",
-  "tonička", "tonicka",
-  "amálka", "amalka",
-  "jiří", "jiri",
-  "locík", "locik",
+  "hanka", "hanicka", "hana",
+  "kata", "kaja",
+  "tonicka",
+  "amalka",
+  "jiri",
+  "locik",
 ]);
 
 function normalizeForGuard(name: string): string {
@@ -91,7 +93,6 @@ export function resolvePartCardBucket(
   if (hasRecentDirectActivity) {
     return "active_part_card";
   }
-  // No direct activity + fact/inference about part → dormant by default
   if (evidenceKind === "FACT" || evidenceKind === "INFERENCE") {
     return "dormant_part_card";
   }
@@ -135,10 +136,24 @@ export function validateOutput(output: ExtractedWriteOutput): ValidationResult {
     return { valid: false, reason: "plan_05b_wrong_horizon" };
   }
 
+  // Phase 5B: required quality fields
+  if (!output.confidence) {
+    return { valid: false, reason: "missing_confidence" };
+  }
+  if (!output.freshness) {
+    return { valid: false, reason: "missing_freshness" };
+  }
+  if (!output.changeType) {
+    return { valid: false, reason: "missing_changeType" };
+  }
+  if (typeof output.needsVerification !== "boolean") {
+    return { valid: false, reason: "missing_needsVerification" };
+  }
+
   return { valid: true };
 }
 
-// ── Sensitivity Guard ──
+// ── Sensitivity Guard (Phase 5A) ──
 
 export function checkSensitivityGuard(output: ExtractedWriteOutput, targetBucket: WriteBucket): ValidationResult {
   // secret_karel_only → ONLY therapist-scoped docs, NEVER contexts/plans/cards
@@ -170,7 +185,84 @@ export function checkSensitivityGuard(output: ExtractedWriteOutput, targetBucket
   return { valid: true };
 }
 
-// ── Governed Metadata Resolvers ──
+// ── Evidence Quality Guard (Phase 5B) ──
+
+export function checkEvidenceQualityGuard(
+  output: ExtractedWriteOutput,
+  targetBucket: WriteBucket,
+): ValidationResult {
+  // 1. repeat → always reject (write churn)
+  if (output.changeType === "repeat") {
+    return { valid: false, reason: "repeat_not_enqueued" };
+  }
+
+  // Broad buckets that require higher quality
+  const broadBuckets: WriteBucket[] = [
+    "contexts",
+    "active_part_card",
+    "dormant_part_card",
+    "plan_05A",
+    "plan_05B",
+  ];
+
+  // 2. UNKNOWN evidence → only therapist notes
+  if (output.evidenceKind === "UNKNOWN") {
+    if (broadBuckets.includes(targetBucket)) {
+      return { valid: false, reason: `unknown_not_allowed_in_${targetBucket}` };
+    }
+  }
+
+  // 3. needsVerification → only therapist notes
+  if (output.needsVerification) {
+    if (broadBuckets.includes(targetBucket)) {
+      return { valid: false, reason: `needs_verification_blocked_from_${targetBucket}` };
+    }
+  }
+
+  // 4. low confidence → not into cards or plans
+  if (output.confidence === "low") {
+    const lowBlocked: WriteBucket[] = [
+      "active_part_card",
+      "dormant_part_card",
+      "plan_05A",
+      "plan_05B",
+      "contexts",
+    ];
+    if (lowBlocked.includes(targetBucket)) {
+      return { valid: false, reason: `low_confidence_blocked_from_${targetBucket}` };
+    }
+  }
+
+  // 5. conflict → only therapist-scoped notes
+  if (output.changeType === "conflict") {
+    const allowed: WriteBucket[] = ["therapist_hanka", "therapist_kata"];
+    if (!allowed.includes(targetBucket)) {
+      return { valid: false, reason: `conflict_not_allowed_in_${targetBucket}` };
+    }
+  }
+
+  // 6. PART_CARD stricter admission
+  const isPartCard =
+    targetBucket === "active_part_card" || targetBucket === "dormant_part_card";
+  if (isPartCard) {
+    if (!["FACT", "INFERENCE"].includes(output.evidenceKind)) {
+      return { valid: false, reason: "part_card_requires_fact_or_inference" };
+    }
+    if (output.confidence === "low") {
+      return { valid: false, reason: "part_card_low_confidence_blocked" };
+    }
+    if (output.needsVerification) {
+      return { valid: false, reason: "part_card_needs_verification_blocked" };
+    }
+    if (output.changeType === "conflict") {
+      return { valid: false, reason: "part_card_conflict_blocked" };
+    }
+  }
+
+  return { valid: true };
+}
+
+// ── Governed Metadata Resolvers (Phase 5A canonical taxonomy) ──
 
 export function resolveGovernedContentType(intent: GovernedWriteIntent): string {
   const bucket = intent.target.bucket;
@@ -238,9 +330,9 @@ export function resolveGovernedSubjectId(
 // ── Raw Transcript Detection ──
 
 const RAW_TRANSCRIPT_PATTERNS = [
-  /^(hanička|hanka|káťa|kata|uživatel)\s+(řekla?|napsala?|sdělila?|zmínila?)\s*[,:]/i,
-  /^"[^"]{20,}"/,  // Starts with a long quoted string
-  /^(dítě|část|arthur|clark)\s+(napsal[oa]?|řekl[oa]?)\s*:/i,
+  /^(hani\u010dka|hanka|k\u00e1\u0165a|kata|u\u017eivatel)\s+(\u0159ekla?|napsala?|sd\u011blila?|zm\u00ednila?)\s*[,:]/i,
+  /^"[^"]{20,}"/,
+  /^(d\u00edt\u011b|\u010d\u00e1st|arthur|clark)\s+(napsal[oa]?|\u0159ekl[oa]?)\s*:/i,
 ];
 
 function looksLikeRawTranscript(text: string): boolean {
@@ -251,10 +343,80 @@ function looksLikeRawTranscript(text: string): boolean {
   return false;
 }
 
-// ── Deduplication ──
+// ── Deduplication (Phase 5B: includes changeType) ──
 
 function dedupeKey(output: ExtractedWriteOutput, docKey: string): string {
-  return `${output.kind}|${docKey}|${output.summary.trim().slice(0, 100).toLowerCase()}`;
+  return [
+    output.kind,
+    docKey,
+    output.changeType,
+    output.summary.trim().slice(0, 120).toLowerCase(),
+  ].join("|");
+}
+
+// ── Content Renderer (Phase 5B: includes quality metadata) ──
+
+function renderGovernedWriteContent(output: ExtractedWriteOutput): string {
+  const todayMarker = new Date().toISOString().slice(0, 10);
+
+  const evidenceLabel =
+    output.evidenceKind === "FACT" ? "FAKT"
+    : output.evidenceKind === "INFERENCE" ? "DEDUKCE"
+    : output.evidenceKind === "PLAN" ? "PLÁN"
+    : "NEOVĚŘENO";
+
+  const confidenceLabel =
+    output.confidence === "high" ? "VYSOKÁ JISTOTA"
+    : output.confidence === "medium" ? "STŘEDNÍ JISTOTA"
+    : "NÍZKÁ JISTOTA";
+
+  const freshnessLabel =
+    output.freshness === "immediate" ? "AKUTNÍ"
+    : output.freshness === "recent" ? "NEDÁVNÉ"
+    : output.freshness === "historical" ? "HISTORICKÉ"
+    : "STABILNÍ VZOREC";
+
+  const changeLabel =
+    output.changeType === "new" ? "NOVÉ"
+    : output.changeType === "update" ? "AKTUALIZACE"
+    : output.changeType === "repeat" ? "OPAKOVÁNÍ"
+    : "KONFLIKT";
+
+  const headerParts = [
+    `[${evidenceLabel}]`,
+    `[${changeLabel}]`,
+    `[${confidenceLabel}]`,
+    `[${freshnessLabel}]`,
+  ];
+
+  if (output.needsVerification) {
+    headerParts.push("[VYŽADUJE OVĚŘENÍ]");
+  }
+
+  // For PART_CARD, include section in header
+  const sectionPrefix = (output.kind === "PART_CARD" && output.section)
+    ? `SEKCE ${output.section.toUpperCase()} — `
+    : "";
+
+  const lines = [
+    `\n=== ${sectionPrefix}${headerParts.join(" ")} ${todayMarker} ===`,
+    output.summary,
+  ];
+
+  if (output.changeSummary) {
+    lines.push(`→ Změna: ${output.changeSummary}`);
+  }
+  if (output.conflictNote) {
+    lines.push(`→ Konflikt: ${output.conflictNote}`);
+  }
+  if (output.implication) {
+    lines.push(`→ Implikace: ${output.implication}`);
+  }
+  if (output.proposedAction) {
+    lines.push(`→ Akce: ${output.proposedAction}`);
+  }
+
+  return lines.join("\n");
 }
 
 // ── Main Router ──
@@ -275,6 +437,8 @@ export interface WritebackContext {
 /**
  * Route validated outputs to governed write intents.
  * Returns only valid, deduplicated intents.
+ *
+ * Guard order: structural → raw transcript → resolve target → sensitivity → quality → dedupe → render
  */
 export function buildGovernedWriteIntents(
   outputs: ExtractedWriteOutput[],
@@ -306,7 +470,6 @@ export function buildGovernedWriteIntents(
       case "POZNATKY":
       case "STRATEGIE":
       case "KAREL": {
-        // KAREL only for Hana/osobní
         if (output.kind === "KAREL" && !ctx.isHanaPersonal) {
           rejected.push({ output, reason: "karel_not_hana_personal" });
           continue;
@@ -375,14 +538,21 @@ export function buildGovernedWriteIntents(
         continue;
     }
 
-    // 4. Sensitivity guard
+    // 4. Sensitivity guard (Phase 5A)
     const sensitivityCheck = checkSensitivityGuard(output, target.bucket);
     if (!sensitivityCheck.valid) {
       rejected.push({ output, reason: sensitivityCheck.reason! });
       continue;
     }
 
-    // 5. Deduplicate
+    // 5. Evidence quality guard (Phase 5B)
+    const qualityCheck = checkEvidenceQualityGuard(output, target.bucket);
+    if (!qualityCheck.valid) {
+      rejected.push({ output, reason: qualityCheck.reason! });
+      continue;
+    }
+
+    // 6. Deduplicate
     const dk = dedupeKey(output, target.documentKey);
     if (seenKeys.has(dk)) {
       rejected.push({ output, reason: "duplicate" });
@@ -390,30 +560,13 @@ export function buildGovernedWriteIntents(
     }
     seenKeys.add(dk);
 
-    // 6. Build content block
-    const todayMarker = new Date().toISOString().slice(0, 10);
-    const evidenceLabel = output.evidenceKind === "FACT" ? "FAKT"
-      : output.evidenceKind === "INFERENCE" ? "DEDUKCE"
-      : output.evidenceKind === "PLAN" ? "PLÁN"
-      : "NEOVĚŘENO";
+    // 7. Render content with quality metadata
+    const content = renderGovernedWriteContent(output);
 
-    const contentParts = [
-      `\n=== [${evidenceLabel}] ${todayMarker} ===`,
-      output.summary,
-    ];
-    if (output.implication) {
-      contentParts.push(`→ Implikace: ${output.implication}`);
-    }
-    if (output.proposedAction) {
-      contentParts.push(`→ Akce: ${output.proposedAction}`);
-    }
-    if (output.kind === "PART_CARD" && output.section) {
-      contentParts[0] = `\n=== SEKCE ${output.section.toUpperCase()} — [${evidenceLabel}] ${todayMarker} ===`;
-    }
-
+    // 8. Build intent
     intents.push({
       target,
-      content: contentParts.join("\n"),
+      content,
       evidenceKind: output.evidenceKind,
       sourceMode: ctx.sourceMode,
       sourceThreadId: ctx.sourceThreadId,
@@ -425,6 +578,7 @@ export function buildGovernedWriteIntents(
 
 /**
  * Build the structured extraction prompt for AI.
+ * Phase 5B: now requires confidence, freshness, changeType, needsVerification.
  */
 export function buildExtractionPrompt(
   userText: string,
@@ -473,6 +627,12 @@ SENSITIVITY:
 - "therapist_private" = jen do profilace terapeutky
 - "secret_karel_only" = jen Karlova tajná paměť
 
+WRITE QUALITY (povinné pro každý output):
+- "confidence": "high" = silně opřené o přímé sdělení, "medium" = rozumná dedukce, "low" = slabý odhad
+- "freshness": "immediate" = právě akutní, "recent" = posledních pár dnů, "historical" = starší ale relevantní, "timeless" = stabilní vzorec
+- "changeType": "new" = nová informace měnící paměť, "update" = posun v již známé oblasti (použij changeSummary), "repeat" = opakování známého bez nové hodnoty, "conflict" = rozpor nebo protichůdná informace (použij conflictNote)
+- "needsVerification": true pokud závěr je nejistý a jeho zápis do širší paměti by byl riskantní
+
 ${!isHanaPersonal ? 'UPOZORNĚNÍ: Typ "KAREL" je ZAKÁZÁN mimo Hana/osobní režim.' : ""}
 
 Vrať POUZE validní JSON:
@@ -489,7 +649,13 @@ Vrať POUZE validní JSON:
       "subject": "o kom/čem",
       "partName": null,
       "section": null,
-      "timeHorizon": null
+      "timeHorizon": null,
+      "confidence": "high",
+      "freshness": "recent",
+      "changeType": "new",
+      "needsVerification": false,
+      "changeSummary": null,
+      "conflictNote": null
     }
   ]
 }`;
