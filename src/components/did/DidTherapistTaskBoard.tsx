@@ -817,26 +817,27 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const isPendingForTask = (task: TherapistTask) => pendingTaskKeys.has(buildTaskQueueKey(task));
   const isFailedForTask = (task: TherapistTask) => failedTaskKeys.has(buildTaskQueueKey(task));
 
+  const active = tasks.filter((task) => !isAllDone(task));
+  const done = tasks.filter((task) => isAllDone(task));
+
   // Frontend dedupe: group near-identical active tasks
   const dedupeKey = (t: TherapistTask) =>
     `${normalizeTask(t.task)}|${normalizeAssignedTo(t.assigned_to)}`;
-  const seenKeys = new Map<string, number>();
   const dupeCounts = new Map<string, number>();
   for (const t of active) {
     const k = dedupeKey(t);
     dupeCounts.set(k, (dupeCounts.get(k) || 0) + 1);
   }
+  const seenKeys = new Set<string>();
   const dedupedActive: TherapistTask[] = [];
   for (const t of active) {
     const k = dedupeKey(t);
     if (!seenKeys.has(k)) {
-      seenKeys.set(k, dupeCounts.get(k) || 1);
+      seenKeys.add(k);
       dedupedActive.push(t);
     }
   }
   const getDupeCount = (t: TherapistTask) => dupeCounts.get(dedupeKey(t)) || 1;
-
-  const done = tasks.filter((task) => isAllDone(task));
 
   const visibleActive = dedupedActive.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
   const visibleDone = done.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
