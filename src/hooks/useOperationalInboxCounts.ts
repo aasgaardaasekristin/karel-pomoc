@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getDueDateFlags } from "@/lib/dateOnlyTaskHelpers";
 
 export interface OpsSnapshot {
   pendingQuestions: number;
@@ -44,12 +45,11 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
       if (cancelled) return;
 
       const tasks = (tRes.data as any[]) || [];
-      const now = Date.now();
       const urgentTasks = tasks.filter(
         (t) => t.priority === "critical" || t.priority === "urgent" || t.priority === "high"
       ).length;
       const overdueTasks = tasks.filter(
-        (t) => t.due_date && new Date(t.due_date).getTime() < now
+        (t) => getDueDateFlags(t.due_date).overdue
       ).length;
 
       setCounts({

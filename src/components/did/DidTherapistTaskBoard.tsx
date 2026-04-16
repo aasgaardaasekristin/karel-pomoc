@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getAuthHeaders } from "@/lib/auth";
+import { getDueDateFlags } from "@/lib/dateOnlyTaskHelpers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, MessageSquare, ChevronDown, ChevronUp, Send, Trash2, ExternalLink, ArrowUp } from "lucide-react";
@@ -48,6 +49,7 @@ type TrafficStatus = "not_started" | "in_progress" | "done";
 type CategoryFilter = "all" | "today" | "tomorrow" | "longterm";
 type AssigneeFilter = "all" | "hanka" | "kata" | "both";
 type TherapistAssignee = "hanka" | "kata" | "both";
+type TaskBucket = "today" | "tomorrow" | "general" | "longterm";
 
 const TRAFFIC_COLORS: Record<TrafficStatus, string> = {
   not_started: "bg-muted border border-border",
@@ -143,6 +145,44 @@ const isTomorrowCategory = (category?: string | null) => category === "tomorrow"
 const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
 const categoryLabel = (category?: string | null) => isTodayCategory(category) ? "Dnes" : isTomorrowCategory(category) ? "Zítra" : "Dlouhodobé";
 const priorityLabel = (priority?: string | null) => priority === "urgent" ? "🔴 Urgentní" : priority === "high" ? "🟠 Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
+const formatDueDate = (dueDate?: string | null) => dueDate ? new Date(`${dueDate.slice(0, 10)}T12:00:00`).toLocaleDateString("cs-CZ") : "";
+
+const resolveTaskBucket = (task: TherapistTask): TaskBucket => {
+  if (isTodayCategory(task.category)) return "today";
+  if (isTomorrowCategory(task.category)) return "tomorrow";
+  if (task.category === "general" || !task.category) return "general";
+  return "longterm";
+};
+
+const dedupeKeyInBucket = (task: TherapistTask, bucket: TaskBucket = resolveTaskBucket(task)) => [
+  bucket,
+  normalizeTask(task.task),
+  normalizeAssignedTo(task.assigned_to),
+  task.due_date?.slice(0, 10) || "no_due_date",
+].join("|");
+
+const dedupeTasksWithinBucket = (tasks: TherapistTask[], bucket: TaskBucket) => {
+  const counts = new Map<string, number>();
+
+  for (const task of tasks) {
+    const key = dedupeKeyInBucket(task, bucket);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+
+  const seen = new Set<string>();
+  const deduped: TherapistTask[] = [];
+  const dupeCountById = new Map<string, number>();
+
+  for (const task of tasks) {
+    const key = dedupeKeyInBucket(task, bucket);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(task);
+    dupeCountById.set(task.id, counts.get(key) || 1);
+  }
+
+  return { deduped, dupeCountById };
+};
 
 const aggregateTaskStatus = (task: TherapistTask): TrafficStatus => {
   if (normalizeAssignedTo(task.assigned_to) === "both") {
@@ -304,11 +344,19 @@ const TaskCard = ({
     ? "bg-primary/10 border-primary/20 text-foreground"
     : "bg-muted/40 border-border/40 text-foreground/90";
 
-  const isOverdue = task.due_date && new Date(task.due_date).getTime() < Date.now() && !isAllDone(task);
-  const isDueSoon = !isOverdue && task.due_date && new Date(task.due_date).getTime() < Date.now() + 2 * 86400000 && !isAllDone(task);
+  const dueFlags = isAllDone(task)
+    ? { overdue: false, dueToday: false, dueSoon: false }
+    : getDueDateFlags(task.due_date);
+  const dueBadgeText = dueFlags.overdue
+    ? "⚠️ Po termínu"
+    : dueFlags.dueToday
+      ? "📅 Dnes"
+      : dueFlags.dueSoon
+        ? "⏰ Blíží se"
+        : "";
 
   return (
-    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${isOverdue ? "border-destructive/80 bg-destructive/10 border-l-4 border-l-destructive" : task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : isDueSoon ? "border-accent/60 bg-accent/5 border-l-4 border-l-accent" : "border-border/60 bg-card/40"}`}>
+    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${dueFlags.overdue ? "border-destructive/80 bg-destructive/10 border-l-4 border-l-destructive" : task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : dueFlags.dueToday || dueFlags.dueSoon ? "border-accent/60 bg-accent/5 border-l-4 border-l-accent" : "border-border/60 bg-card/40"}`}>
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (
@@ -327,9 +375,9 @@ const TaskCard = ({
 
         <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
           <span className={`text-[0.6875rem] text-foreground leading-tight ${isExpanded ? "font-medium" : "truncate block"}`}>{stripMarkdownNoise(task.task)}</span>
-          {!isExpanded && (isOverdue || isDueSoon || task.due_date) && (
-            <span className={`text-[0.5rem] block ${isOverdue ? "text-destructive font-semibold" : isDueSoon ? "text-accent-foreground" : "text-muted-foreground"}`}>
-              {isOverdue ? "⚠️ Po termínu" : isDueSoon ? "⏰ Blíží se" : ""} 📅 {new Date(task.due_date!).toLocaleDateString("cs-CZ")}
+          {!isExpanded && task.due_date && (
+            <span className={`text-[0.5rem] block ${dueFlags.overdue ? "text-destructive font-semibold" : dueFlags.dueToday || dueFlags.dueSoon ? "text-accent-foreground" : "text-muted-foreground"}`}>
+              {dueBadgeText ? `${dueBadgeText} ` : ""}📅 {formatDueDate(task.due_date)}
             </span>
           )}
         </button>
@@ -357,7 +405,7 @@ const TaskCard = ({
             <span>🗂️ {categoryLabel(task.category)}</span>
             <span>⚡ {priorityLabel(task.priority)}</span>
             <span>📍 {statusSummary(task)}</span>
-            {task.due_date && <span>📅 {new Date(task.due_date).toLocaleDateString("cs-CZ")}</span>}
+            {task.due_date && <span>{dueBadgeText ? `${dueBadgeText} • ` : ""}📅 {formatDueDate(task.due_date)}</span>}
           </div>
 
           {/* Detail instruction — show only content that is NOT the same as the title */}
@@ -827,33 +875,32 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const active = tasks.filter((task) => !isAllDone(task));
   const done = tasks.filter((task) => isAllDone(task));
 
-  // Frontend dedupe: group near-identical active tasks
-  const dedupeKey = (t: TherapistTask) =>
-    `${normalizeTask(t.task)}|${normalizeAssignedTo(t.assigned_to)}`;
-  const dupeCounts = new Map<string, number>();
-  for (const t of active) {
-    const k = dedupeKey(t);
-    dupeCounts.set(k, (dupeCounts.get(k) || 0) + 1);
-  }
-  const seenKeys = new Set<string>();
-  const dedupedActive: TherapistTask[] = [];
-  for (const t of active) {
-    const k = dedupeKey(t);
-    if (!seenKeys.has(k)) {
-      seenKeys.add(k);
-      dedupedActive.push(t);
-    }
-  }
-  const getDupeCount = (t: TherapistTask) => dupeCounts.get(dedupeKey(t)) || 1;
-
-  const visibleActive = dedupedActive.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
+  const visibleActiveRaw = active.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
   const visibleDone = done.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
 
-  const todayTasks = visibleActive.filter((task) => isTodayCategory(task.category));
-  const tomorrowTasks = visibleActive.filter((task) => isTomorrowCategory(task.category));
-  const longtermTasks = visibleActive.filter((task) => isLongtermCategory(task.category));
-  const generalActive = longtermTasks.filter((task) => task.category === "general" || !task.category);
-  const longtermList = longtermTasks.filter((task) => task.category === "longterm" || task.category === "weekly");
+  const todaySource = visibleActiveRaw.filter((task) => resolveTaskBucket(task) === "today");
+  const tomorrowSource = visibleActiveRaw.filter((task) => resolveTaskBucket(task) === "tomorrow");
+  const generalSource = visibleActiveRaw.filter((task) => resolveTaskBucket(task) === "general");
+  const longtermSource = visibleActiveRaw.filter((task) => resolveTaskBucket(task) === "longterm");
+
+  const todayBucket = dedupeTasksWithinBucket(todaySource, "today");
+  const tomorrowBucket = dedupeTasksWithinBucket(tomorrowSource, "tomorrow");
+  const generalBucket = dedupeTasksWithinBucket(generalSource, "general");
+  const longtermBucket = dedupeTasksWithinBucket(longtermSource, "longterm");
+
+  const dupeCountById = new Map<string, number>([
+    ...todayBucket.dupeCountById,
+    ...tomorrowBucket.dupeCountById,
+    ...generalBucket.dupeCountById,
+    ...longtermBucket.dupeCountById,
+  ]);
+  const getDupeCount = (task: TherapistTask) => dupeCountById.get(task.id) || 1;
+
+  const todayTasks = todayBucket.deduped;
+  const tomorrowTasks = tomorrowBucket.deduped;
+  const generalActive = generalBucket.deduped;
+  const longtermList = longtermBucket.deduped;
+  const visibleActive = [...todayTasks, ...tomorrowTasks, ...generalActive, ...longtermList];
 
   const showToday = categoryFilter === "all" || categoryFilter === "today";
   const showTomorrow = categoryFilter === "all" || categoryFilter === "tomorrow";
