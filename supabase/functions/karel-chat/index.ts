@@ -138,20 +138,20 @@ serve(async (req) => {
             const therapistBlock = ctx.therapists ? `
 PROFIL TERAPEUTEK:
 • Hanka: ${ctx.therapists.hanka?.note || "první terapeutka"}
-• Káťa: ${ctx.therapists.kata?.note || "druhá terapeutka"} ⚠️ NIKDY NENÍ ČÁST DID SYSTÉMU` : "";
+• Káťa: ${ctx.therapists.kata?.note || "druhá terapeutka"} ⚠️ NIKDY NEZAMĚŇOVAT S DĚTMI — Káťa je biologická dospělá osoba` : "";
 
             const activePartsBlock = ctx.parts?.active?.length ? `
-AKTIVNÍ ČÁSTI (${ctx.parts.active.length}):
+AKTIVNÍ DĚTI (${ctx.parts.active.length}):
 ${ctx.parts.active.map((p: any) => `• ${p.display_name || p.name} – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}, emoce: ${p.emotional_state || "?"} (${p.emotional_intensity || "?"}/10), zdraví: ${p.health || "?"}`).join("\n")}` : "";
 
             const sleepingBlock = ctx.parts?.sleeping?.length ? `
-SPÍCÍ/DORMANTNÍ ČÁSTI (${ctx.parts.sleeping.length}): ${ctx.parts.sleeping.map((p: any) => p.display_name || p.name).join(", ")}
+SPÍCÍ/DORMANTNÍ DĚTI (${ctx.parts.sleeping.length}): ${ctx.parts.sleeping.map((p: any) => p.display_name || p.name).join(", ")}
 ⚠️ NELZE s nimi přímo pracovat – pouze monitoring` : "";
 
             const activityBlock = ctx.recent_activity ? `
 KLASIFIKACE AKTIVITY:
   PŘÍMÁ AKTIVITA (sub_mode=cast): ${ctx.recent_activity.direct_activity?.map((a: any) => `${a.part} (${a.at?.slice(0, 10)})`).join(", ") || "žádná"}
-  ZMÍNKY TERAPEUTEK: ${ctx.recent_activity.therapist_mentions?.map((a: any) => `${a.part} zmíněn/a ${a.mentioned_by}`).join(", ") || "žádné"}` : "";
+  ZMÍNKY TERAPEUTEK: ${ctx.recent_activity.therapist_mentions?.map((a: any) => `${a.part} – zmínka od ${a.mentioned_by}`).join(", ") || "žádné"}` : "";
 
             const tasksBlock = ctx.pending_tasks?.length ? `
 NESPLNĚNÉ ÚKOLY (${ctx.pending_tasks.length}):
@@ -167,11 +167,11 @@ ${ctx.pending_tasks.slice(0, 8).map((t: any) => `• [${t.priority}${t.escalatio
             // ═══ PIPELINE CONTEXT (Fáze 5) ═══
             const pipelinePlan = ctx.pipeline?.plan_items_05A?.length ? `
 PIPELINE – OPERATIVNÍ PLÁN (05A):
-${ctx.pipeline.plan_items_05A.map((i: any) => `• [${(i.priority || "normal").toUpperCase()}] ${i.subject || "systém"}: ${i.content}${i.action ? ` → ${i.action}` : ""}${i.due ? ` (do ${i.due})` : ""}`).join("\n")}` : "";
+${ctx.pipeline.plan_items_05A.map((i: any) => `• [${(i.priority || "normal").toUpperCase()}] ${i.subject || "obecné"}: ${i.content}${i.action ? ` → ${i.action}` : ""}${i.due ? ` (do ${i.due})` : ""}`).join("\n")}` : "";
 
             const pipelineQuestions = ctx.pipeline?.open_questions?.length ? `
 PIPELINE – OTEVŘENÉ OTÁZKY:
-${ctx.pipeline.open_questions.map((q: any) => `• [${q.subject || "systém"}] ${q.question}${q.directed_to && q.directed_to !== "self" ? ` (čeká na: ${q.directed_to})` : ""}`).join("\n")}` : "";
+${ctx.pipeline.open_questions.map((q: any) => `• [${q.subject || "obecné"}] ${q.question}${q.directed_to && q.directed_to !== "self" ? ` (čeká na: ${q.directed_to})` : ""}`).join("\n")}` : "";
 
             const pipelineObs = ctx.pipeline?.recent_observations?.length ? `
 PIPELINE – NEDÁVNÁ POZOROVÁNÍ (48h):
@@ -183,7 +183,7 @@ ${ctx.pipeline.recent_observations.map((o: any) => `• [${o.evidence}] ${o.subj
             if (currentPartForClaims && ctx.pipeline?.active_claims_summary?.[currentPartForClaims]?.length) {
               const partClaims = ctx.pipeline.active_claims_summary[currentPartForClaims];
               pipelineClaims = `
-PIPELINE – PROFIL ČÁSTI ${currentPartForClaims}:
+PIPELINE – PROFIL ${currentPartForClaims}:
 ${partClaims.map((c: any) => {
   const icon = c.type === "hypothesis" ? "❓" : c.type === "stable_trait" ? "✅" : c.type === "risk" ? "🔴" : "📍";
   return `${icon} [${c.section}] ${c.text} (${Math.round((c.confidence || 0.5) * 100)}%, ${c.confirmations || 1}×)`;
@@ -203,7 +203,7 @@ REŽIM 1 — DID/Terapeut (didSubMode=mamka nebo kata):
   S Hankou zde mluvíš STEJNĚ jako s Káťou — profesionálně, ne intimně.
   Znáš každou terapeutku do hloubky (profilace) — víš co na koho platí.
 
-REŽIM 2 — DID/Děti (didSubMode=cast):
+REŽIM 2 — DID/Děti (didSubMode=cast, mluví přímo dítě):
   Jsi terapeut pracující PŘÍMO s dětmi.
   Tón: laskavý, tykání, jazyk přizpůsobený věku dítěte (některé jsou malé děti!).
   PŘÍMO provádíš terapii — buduješ bezpečný vztah, stabilizuješ, podporuješ co-consciousness.
@@ -237,14 +237,14 @@ REŽIM 4 — Hana/Pracovní (mode=debrief/supervision/live-session):
 Pokud je v pipeline.open_questions otázka, NIKDY se neptej přímo.
 Veď konverzaci tak, aby na téma přirozeně přišla řeč.
   REŽIM 1 (terapeut): "Hani, napadá mě — jak reagovalo [jméno dítěte] když jsi zkusila...?"
-  REŽIM 2 (kluci): "Zajímalo by mě, jak to vypadá, když se objeví ten přísný hlas..."
+  REŽIM 2 (děti): "Zajímalo by mě, jak to vypadá, když se objeví ten přísný hlas..."
   REŽIM 3 (osobní): přirozeně vpletené do intimní konverzace
   REŽIM 4 (práce): profesionální dotaz zasazený do supervize
 
 ═══ B2: REAKCE NA RIZIKO ═══
-Pokud je u aktuální části/osoby tag typu 'risk' (🔴):
+Pokud je u aktuálního dítěte/osoby tag typu 'risk' (🔴):
   REŽIM 1: upozorni terapeutku přímo ale empaticky — navrhni konkrétní intervenci
-  REŽIM 2 (kluci): ZVLÁŠŤ SILNĚ — automaticky zjemni tón, zvyš validaci a normalizaci,
+  REŽIM 2 (děti): ZVLÁŠŤ SILNĚ — automaticky zjemni tón, zvyš validaci a normalizaci,
     neodkazuj na riziko přímo. "To zní jako hodně náročná situace..."
     U dětských částí: "Jsem tady s tebou. Jsi v bezpečí."
   REŽIM 3: jako milující partner — "Vidím že ti není dobře, jsem tu pro tebe"
@@ -253,8 +253,8 @@ Pokud je u aktuální části/osoby tag typu 'risk' (🔴):
 ═══ B3: AKTIVNÍ PŘIPOMÍNÁNÍ ÚKOLŮ ═══
 Pokud je v pipeline.plan_items úkol s due_date = dnes nebo zítra:
   REŽIM 1: formuluj jako doporučení vedoucího — "Hani, na dnešek mám v plánu..."
-  REŽIM 2 (kluci): NE jako úkol ale jako hravý návrh — "Co kdybychom dneska zkusili...?"
-    U dětských částí: "Víš co by mohlo být zábavné?"
+  REŽIM 2 (děti): NE jako úkol ale jako hravý návrh — "Co kdybychom dneska zkusili...?"
+    U malých dětí: "Víš co by mohlo být zábavné?"
   REŽIM 3: jemné připomenutí v kontextu konverzace
   REŽIM 4: profesionální reminder
 
