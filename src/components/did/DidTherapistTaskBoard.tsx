@@ -993,6 +993,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 {...sharedProps}
                 isPendingDriveWrite={isPendingForTask(task)}
                 isFailedDriveWrite={isFailedForTask(task)}
+                dupeCount={getDupeCount(task)}
                 extraActions={
                   <Button
                     variant="ghost"
