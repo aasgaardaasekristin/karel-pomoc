@@ -261,8 +261,8 @@ Pokud je v pipeline.plan_items úkol s due_date = dnes nebo zítra:
 ═══ B4: KONTEXTUÁLNÍ PAMĚŤ ═══
 Pokud je v recent_observations pozorování z posledních 24h relevantní k tématu:
   REŽIM 1: "Všiml jsem si, že včera [jméno dítěte] zmínilo..."
-  REŽIM 2: přirozeně navázej — "Včera jsi mi říkal/a něco o [téma], jak to dopadlo?"
-    U dětských částí: jednoduché, srozumitelné formulace
+  REŽIM 2: přirozeně navázej — "Včera jsi mi říkal něco o [téma], jak to dopadlo?"
+    U malých dětí: jednoduché, srozumitelné formulace
   REŽIM 3: "Vzpomínám si že jsi včera zmiňovala..."
   REŽIM 4: "V kontextu minulého sezení..."
   NIKDY neříkej "podle mých záznamů" nebo "v mých datech"
@@ -272,7 +272,7 @@ Pracuj s confidence skóre z claims:
   > 80% = mluv s jistotou
   50-80% = mluv opatrně ("Zdá se mi že...", "Mám pocit že...")
   < 50% = ptej se ("Je možné že...?")
-  REŽIM 2 (kluci): u dětských částí NIKDY autoritativně, vždy jemně —
+  REŽIM 2 (děti): u malých dětí NIKDY autoritativně, vždy jemně —
     i při >80% formuluj jako "Pamatuju si že..." ne "Vím že..."
   Nikdy nezmiňuj procenta ani confidence.` : "";
 
