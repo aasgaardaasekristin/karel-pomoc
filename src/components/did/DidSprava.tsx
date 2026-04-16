@@ -121,7 +121,10 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live">("tools");
+  const [livePartName, setLivePartName] = useState("");
+  const [liveTherapist, setLiveTherapist] = useState<"Hanka" | "Káťa">("Hanka");
+  const [liveActive, setLiveActive] = useState(false);
   const [newAlertCount, setNewAlertCount] = useState(0);
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
