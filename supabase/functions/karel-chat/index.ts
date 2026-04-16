@@ -1171,13 +1171,93 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
             }
 
             if (taskUserId) {
-              const rows = extractedTasks.map(t => ({ ...t, user_id: taskUserId }));
-              const { error: insErr } = await sbTasks.from("did_tasks").insert(rows);
-              if (insErr) console.warn("[task-extract] Insert error:", insErr.message);
-              else console.log(`[task-extract] Saved ${rows.length} tasks from chat response`);
+              // ═══ FEASIBILITY GUARD PIPELINE ═══
+              // 1. Load part registry for activity assessment
+              const { data: registryData } = await sbTasks.from("did_part_registry")
+                .select("part_name, status, last_seen_at");
+              const registryMap = new Map<string, any>();
+              for (const r of (registryData || [])) {
+                registryMap.set(r.part_name, r);
+              }
+
+              // 2. Load recent therapist activity for circumstance detection (last 48h)
+              const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+              const { data: recentThreads } = await sbTasks.from("did_threads")
+                .select("id, sub_mode, part_name, thread_label, last_activity_at")
+                .in("sub_mode", ["mamka", "kata"])
+                .gte("last_activity_at", twoDaysAgo)
+                .limit(20);
+
+              // Build circumstance snippets (use thread labels as pre-summarized text)
+              const snippets: TherapistActivitySnippet[] = (recentThreads || []).map((t: any) => ({
+                therapist: t.sub_mode === "kata" ? "kata" as const : "hanka" as const,
+                threadId: t.id,
+                timestamp: t.last_activity_at,
+                summaryText: t.thread_label || "",
+              }));
+              const circumstances = detectCircumstances(snippets);
+
+              // 3. For each task, run feasibility guard
+              const feasibleRows: Array<Record<string, any>> = [];
+              for (const t of extractedTasks) {
+                const targetPart = t.related_part;
+                let entityAssessment = null;
+
+                if (targetPart) {
+                  const regEntry = registryMap.get(targetPart);
+                  // Build activity evidence
+                  const lastDirectThread = recentThreads?.find(
+                    (th: any) => th.sub_mode === "cast" && th.part_name === targetPart
+                  );
+                  const recentDirectCount = (recentThreads || []).filter(
+                    (th: any) => th.sub_mode === "cast" && th.part_name === targetPart
+                  ).length;
+
+                  const evidence: ActivityEvidenceInput = {
+                    entityName: targetPart,
+                    entityKind: "did_child",
+                    lastDirectThreadDate: lastDirectThread?.last_activity_at || regEntry?.last_seen_at || null,
+                    lastTherapistMentionDate: recentThreads?.find(
+                      (th: any) => th.sub_mode !== "cast" && (th.thread_label || "").includes(targetPart)
+                    )?.last_activity_at || null,
+                    recentDirectThreadCount: recentDirectCount,
+                  };
+                  entityAssessment = assessActivityStatus(evidence);
+                }
+
+                const proposal: TaskProposal = {
+                  taskText: t.description,
+                  assignedTo: t.assigned_to,
+                  targetEntity: targetPart || undefined,
+                };
+                const result = checkTaskFeasibility(proposal, entityAssessment, circumstances);
+
+                // Apply verdict
+                if (result.verdict === "allowed") {
+                  feasibleRows.push({ ...t, user_id: taskUserId });
+                } else if (result.alternativeTask) {
+                  // Use the safe alternative
+                  feasibleRows.push({
+                    ...t,
+                    description: result.alternativeTask.slice(0, 500),
+                    user_id: taskUserId,
+                  });
+                  console.log(`[task-guard] ${result.verdict}: "${t.description.slice(0,60)}" → alternative`);
+                } else {
+                  // Fully blocked, no alternative — skip
+                  console.log(`[task-guard] BLOCKED (${result.verdict}): "${t.description.slice(0,60)}" — ${result.reasons.join("; ")}`);
+                }
+              }
+
+              if (feasibleRows.length > 0) {
+                const { error: insErr } = await sbTasks.from("did_tasks").insert(feasibleRows);
+                if (insErr) console.warn("[task-extract] Insert error:", insErr.message);
+                else console.log(`[task-extract] Saved ${feasibleRows.length}/${extractedTasks.length} tasks (${extractedTasks.length - feasibleRows.length} blocked/downgraded)`);
+              } else if (extractedTasks.length > 0) {
+                console.log(`[task-guard] All ${extractedTasks.length} tasks blocked by feasibility guard`);
+              }
             }
           }
-        }
 
         // ═══ POST-CHAT MEMORY EXTRACTION (fire-and-forget) ═══
         // For hana_personal, mamka, kata: extract structured memory outputs
