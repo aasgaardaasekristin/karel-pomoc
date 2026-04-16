@@ -80,8 +80,9 @@ serve(async (req) => {
           fallbackParts.push(`**Agenda:**\n${agenda}\n`);
         }
         fallbackParts.push(`**Pro\u010D:** Pot\u0159ebuji va\u0161e spole\u010Dn\u00E9 rozhodnut\u00ED k tomuto t\u00E9matu.\n`);
-        fallbackParts.push(`**Hani\u010Dko:** Jak to vid\u00ED\u0161 ty? Co navrhuje\u0161?\n`);
-        fallbackParts.push(`**K\u00E1\u0165o:** Jak to vid\u00ED\u0161 ty? Co navrhuji\u0161?\n`);
+        fallbackParts.push(`Na z\u00E1klad\u011B dostupn\u00FDch dat navrhuji n\u00E1sleduj\u00EDc\u00ED kroky \u2014 pot\u0159ebuji va\u0161e pozorov\u00E1n\u00ED a zku\u0161enosti z praxe.\n`);
+        fallbackParts.push(`**Hani\u010Dko:** Co jsi pozorovala v posledn\u00EDch dnech k tomuto t\u00E9matu?\n`);
+        fallbackParts.push(`**K\u00E1\u0165o:** Jak\u00E9 sign\u00E1ly jsi zaznamenala ze sv\u00E9 strany?\n`);
         fallbackParts.push(`\nO\u010Dek\u00E1v\u00E1m va\u0161e vyj\u00E1d\u0159en\u00ED \u2014 ka\u017Ed\u00E1 m\u016F\u017Ee odpov\u011Bd\u011Bt, a\u017E bude m\u00EDt \u010Das.`);
         openingContent = fallbackParts.join("\n");
       }
