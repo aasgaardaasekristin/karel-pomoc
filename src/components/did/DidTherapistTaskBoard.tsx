@@ -302,8 +302,11 @@ const TaskCard = ({
     ? "bg-primary/10 border-primary/20 text-foreground"
     : "bg-muted/40 border-border/40 text-foreground/90";
 
+  const isOverdue = task.due_date && new Date(task.due_date).getTime() < Date.now() && !isAllDone(task);
+  const isDueSoon = !isOverdue && task.due_date && new Date(task.due_date).getTime() < Date.now() + 2 * 86400000 && !isAllDone(task);
+
   return (
-    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : "border-border/60 bg-card/40"}`}>
+    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${isOverdue ? "border-destructive/80 bg-destructive/10 border-l-4 border-l-destructive" : task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : isDueSoon ? "border-accent/60 bg-accent/5 border-l-4 border-l-accent" : "border-border/60 bg-card/40"}`}>
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (
@@ -322,6 +325,11 @@ const TaskCard = ({
 
         <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
           <span className={`text-[0.6875rem] text-foreground leading-tight ${isExpanded ? "font-medium" : "truncate block"}`}>{stripMarkdownNoise(task.task)}</span>
+          {!isExpanded && (isOverdue || isDueSoon || task.due_date) && (
+            <span className={`text-[0.5rem] block ${isOverdue ? "text-destructive font-semibold" : isDueSoon ? "text-accent-foreground" : "text-muted-foreground"}`}>
+              {isOverdue ? "⚠️ Po termínu" : isDueSoon ? "⏰ Blíží se" : ""} 📅 {new Date(task.due_date!).toLocaleDateString("cs-CZ")}
+            </span>
+          )}
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
