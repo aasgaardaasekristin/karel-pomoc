@@ -40,7 +40,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
       const { data, error } = await supabase
         .from("did_pending_questions")
         .select("*")
-        .in("status", ["pending", "sent"])
+        .in("status", ["pending", "sent", "open"])
         .order("created_at", { ascending: false })
         .limit(20);
 
@@ -85,7 +85,14 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
   };
 
   if (loading) return null;
-  if (questions.length === 0) return null;
+  if (questions.length === 0) {
+    return (
+      <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-center">
+        <p className="text-[11px] text-emerald-700 font-medium">✅ Žádné otevřené otázky</p>
+        <p className="text-[10px] text-muted-foreground">Karel momentálně nic nepotřebuje.</p>
+      </div>
+    );
+  }
 
   const formatAge = (created: string) => {
     const hours = Math.floor((Date.now() - new Date(created).getTime()) / 3600000);

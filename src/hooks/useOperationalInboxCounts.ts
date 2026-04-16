@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { getDueDateFlags } from "@/lib/dateOnlyTaskHelpers";
+import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 
 export interface OpsSnapshot {
   pendingQuestions: number;
@@ -23,7 +23,9 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
     let cancelled = false;
 
     async function load() {
-      const [qRes, wRes, tRes, pRes] = await Promise.all([
+      const todayISO = pragueTodayISO();
+
+      const [qRes, wRes, urgentRes, overdueRes, pRes] = await Promise.all([
         supabase
           .from("did_pending_questions")
           .select("id", { count: "exact", head: true })
@@ -34,8 +36,15 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
           .eq("status", "pending"),
         supabase
           .from("did_therapist_tasks")
-          .select("id, priority, due_date, status")
-          .in("status", ["pending", "active", "in_progress"] as any),
+          .select("id", { count: "exact", head: true })
+          .in("status", ["pending", "active", "in_progress"] as any)
+          .in("priority", ["critical", "urgent", "high"] as any),
+        supabase
+          .from("did_therapist_tasks")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["pending", "active", "in_progress"] as any)
+          .not("due_date", "is", null)
+          .lt("due_date", todayISO),
         supabase
           .from("did_daily_session_plans")
           .select("id", { count: "exact", head: true })
@@ -44,19 +53,11 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
 
       if (cancelled) return;
 
-      const tasks = (tRes.data as any[]) || [];
-      const urgentTasks = tasks.filter(
-        (t) => t.priority === "critical" || t.priority === "urgent" || t.priority === "high"
-      ).length;
-      const overdueTasks = tasks.filter(
-        (t) => getDueDateFlags(t.due_date).overdue
-      ).length;
-
       setCounts({
         pendingQuestions: qRes.count ?? 0,
         pendingWrites: wRes.count ?? 0,
-        urgentTasks,
-        overdueTasks,
+        urgentTasks: urgentRes.count ?? 0,
+        overdueTasks: overdueRes.count ?? 0,
         livePlans: pRes.count ?? 0,
       });
     }
