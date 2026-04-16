@@ -18,6 +18,10 @@ import DidTrendsTab from "./DidTrendsTab";
 import DidTherapistNotes from "./DidTherapistNotes";
 import DidGoalsTab from "./DidGoalsTab";
 import DidSafetyAlerts from "./DidSafetyAlerts";
+import WriteQueueInbox from "./WriteQueueInbox";
+import SessionPacketPanel from "./SessionPacketPanel";
+import HandoffPanel from "./HandoffPanel";
+import RecoveryPanel from "./RecoveryPanel";
 
 interface Props {
   onBootstrap: () => void;
@@ -116,7 +120,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery">("tools");
   const [newAlertCount, setNewAlertCount] = useState(0);
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
@@ -164,6 +168,10 @@ const DidSprava = ({
         <div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
          {([
             { key: "safety" as const, label: newAlertCount > 0 ? `Bezpečnost (${newAlertCount})` : "Bezpečnost" },
+            { key: "writes" as const, label: "📝 Zápisy" },
+            { key: "packet" as const, label: "📦 Packet" },
+            { key: "handoff" as const, label: "🔄 Předávka" },
+            { key: "recovery" as const, label: "💓 Recovery" },
             { key: "tools" as const, label: "Nástroje" },
             ...(hasCrisis ? [{ key: "crisis" as const, label: "Krize" }] : []),
             { key: "plan" as const, label: "Plán" },
@@ -187,6 +195,30 @@ const DidSprava = ({
             </button>
           ))}
         </div>
+
+        {activeTab === "writes" && (
+          <div className="space-y-2">
+            <WriteQueueInbox refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "packet" && (
+          <div className="space-y-2">
+            <SessionPacketPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "handoff" && (
+          <div className="space-y-2">
+            <HandoffPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "recovery" && (
+          <div className="space-y-2">
+            <RecoveryPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
 
         {activeTab === "safety" && (
           <div className="space-y-2">
