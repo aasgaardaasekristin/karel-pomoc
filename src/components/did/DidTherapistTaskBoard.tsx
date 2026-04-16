@@ -334,6 +334,11 @@ const TaskCard = ({
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
+          {(task as any).dupeCount > 1 && (
+            <span className="text-[0.5rem] text-muted-foreground bg-muted rounded-full px-1.5 py-0 mr-0.5" title="Seskupené podobné úkoly">
+              ×{(task as any).dupeCount}
+            </span>
+          )}
           {extraActions}
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setExpandedTask(isExpanded ? null : task.id); }} className="h-5 w-5 p-0">
             {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
