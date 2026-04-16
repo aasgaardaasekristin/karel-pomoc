@@ -6,6 +6,9 @@ import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import {
   buildGovernedWriteIntents,
   buildExtractionPrompt,
+  resolveGovernedContentType,
+  resolveGovernedSubjectType,
+  resolveGovernedSubjectId,
   type WritebackContext,
   type PartRegistryLookup,
 } from "../_shared/postChatWriteback.ts";
@@ -226,7 +229,7 @@ REŽIM 2 — DID/Děti (didSubMode=cast, mluví přímo dítě):
   Znáš každé dítě z kartotéky — víš jakou terapii potřebuje.
 
 REŽIM 3 — Hana/Osobní (didSubMode=general nebo kontext osobní konverzace):
-  Tón: intimní, hluboce osobní, laskavý, milující.
+  Tón: intimní, hluboce osobní, laskavý, vřele a stabilně opěrný.
   Drž vřelý, stabilní a důvěrný tón. Udržuj pocit bezpečí a kontinuity.
   ALE: Hanka mixuje témata — osobní I terapeutické v jednom vlákně.
   → Pokud mluví o sobě, pocitech, vztahu → intimní, blízký tón
@@ -1384,13 +1387,9 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                       {
                         source_type: "chat_memory_extraction",
                         source_id: `${chatSourceId}_${intent.evidenceKind}`,
-                        content_type: intent.target.bucket.startsWith("plan_")
-                          ? intent.target.bucket
-                          : intent.target.bucket === "active_part_card" || intent.target.bucket === "dormant_part_card"
-                            ? "card_section_update"
-                            : intent.target.bucket,
-                        subject_type: intent.target.bucket.includes("part_card") ? "part" : "therapist",
-                        subject_id: intent.target.documentKey.split("/").pop() || therapistKey.toLowerCase(),
+                        content_type: resolveGovernedContentType(intent),
+                        subject_type: resolveGovernedSubjectType(intent),
+                        subject_id: resolveGovernedSubjectId(intent, therapistKey),
                       },
                     );
 
