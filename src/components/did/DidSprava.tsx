@@ -196,6 +196,30 @@ const DidSprava = ({
           ))}
         </div>
 
+        {activeTab === "writes" && (
+          <div className="space-y-2">
+            <WriteQueueInbox refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "packet" && (
+          <div className="space-y-2">
+            <SessionPacketPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "handoff" && (
+          <div className="space-y-2">
+            <HandoffPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
+        {activeTab === "recovery" && (
+          <div className="space-y-2">
+            <RecoveryPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
+
         {activeTab === "safety" && (
           <div className="space-y-2">
             <DidSafetyAlerts />
