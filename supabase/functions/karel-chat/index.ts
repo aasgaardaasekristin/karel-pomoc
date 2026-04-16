@@ -138,20 +138,20 @@ serve(async (req) => {
             const therapistBlock = ctx.therapists ? `
 PROFIL TERAPEUTEK:
 • Hanka: ${ctx.therapists.hanka?.note || "první terapeutka"}
-• Káťa: ${ctx.therapists.kata?.note || "druhá terapeutka"} ⚠️ NIKDY NENÍ ČÁST DID SYSTÉMU` : "";
+• Káťa: ${ctx.therapists.kata?.note || "druhá terapeutka"} ⚠️ NIKDY NEZAMĚŇOVAT S DĚTMI — Káťa je biologická dospělá osoba` : "";
 
             const activePartsBlock = ctx.parts?.active?.length ? `
-AKTIVNÍ ČÁSTI (${ctx.parts.active.length}):
+AKTIVNÍ DĚTI (${ctx.parts.active.length}):
 ${ctx.parts.active.map((p: any) => `• ${p.display_name || p.name} – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}, emoce: ${p.emotional_state || "?"} (${p.emotional_intensity || "?"}/10), zdraví: ${p.health || "?"}`).join("\n")}` : "";
 
             const sleepingBlock = ctx.parts?.sleeping?.length ? `
-SPÍCÍ/DORMANTNÍ ČÁSTI (${ctx.parts.sleeping.length}): ${ctx.parts.sleeping.map((p: any) => p.display_name || p.name).join(", ")}
+SPÍCÍ/DORMANTNÍ DĚTI (${ctx.parts.sleeping.length}): ${ctx.parts.sleeping.map((p: any) => p.display_name || p.name).join(", ")}
 ⚠️ NELZE s nimi přímo pracovat – pouze monitoring` : "";
 
             const activityBlock = ctx.recent_activity ? `
 KLASIFIKACE AKTIVITY:
   PŘÍMÁ AKTIVITA (sub_mode=cast): ${ctx.recent_activity.direct_activity?.map((a: any) => `${a.part} (${a.at?.slice(0, 10)})`).join(", ") || "žádná"}
-  ZMÍNKY TERAPEUTEK: ${ctx.recent_activity.therapist_mentions?.map((a: any) => `${a.part} zmíněn/a ${a.mentioned_by}`).join(", ") || "žádné"}` : "";
+  ZMÍNKY TERAPEUTEK: ${ctx.recent_activity.therapist_mentions?.map((a: any) => `${a.part} – zmínka od ${a.mentioned_by}`).join(", ") || "žádné"}` : "";
 
             const tasksBlock = ctx.pending_tasks?.length ? `
 NESPLNĚNÉ ÚKOLY (${ctx.pending_tasks.length}):
@@ -167,11 +167,11 @@ ${ctx.pending_tasks.slice(0, 8).map((t: any) => `• [${t.priority}${t.escalatio
             // ═══ PIPELINE CONTEXT (Fáze 5) ═══
             const pipelinePlan = ctx.pipeline?.plan_items_05A?.length ? `
 PIPELINE – OPERATIVNÍ PLÁN (05A):
-${ctx.pipeline.plan_items_05A.map((i: any) => `• [${(i.priority || "normal").toUpperCase()}] ${i.subject || "systém"}: ${i.content}${i.action ? ` → ${i.action}` : ""}${i.due ? ` (do ${i.due})` : ""}`).join("\n")}` : "";
+${ctx.pipeline.plan_items_05A.map((i: any) => `• [${(i.priority || "normal").toUpperCase()}] ${i.subject || "obecné"}: ${i.content}${i.action ? ` → ${i.action}` : ""}${i.due ? ` (do ${i.due})` : ""}`).join("\n")}` : "";
 
             const pipelineQuestions = ctx.pipeline?.open_questions?.length ? `
 PIPELINE – OTEVŘENÉ OTÁZKY:
-${ctx.pipeline.open_questions.map((q: any) => `• [${q.subject || "systém"}] ${q.question}${q.directed_to && q.directed_to !== "self" ? ` (čeká na: ${q.directed_to})` : ""}`).join("\n")}` : "";
+${ctx.pipeline.open_questions.map((q: any) => `• [${q.subject || "obecné"}] ${q.question}${q.directed_to && q.directed_to !== "self" ? ` (čeká na: ${q.directed_to})` : ""}`).join("\n")}` : "";
 
             const pipelineObs = ctx.pipeline?.recent_observations?.length ? `
 PIPELINE – NEDÁVNÁ POZOROVÁNÍ (48h):
@@ -183,7 +183,7 @@ ${ctx.pipeline.recent_observations.map((o: any) => `• [${o.evidence}] ${o.subj
             if (currentPartForClaims && ctx.pipeline?.active_claims_summary?.[currentPartForClaims]?.length) {
               const partClaims = ctx.pipeline.active_claims_summary[currentPartForClaims];
               pipelineClaims = `
-PIPELINE – PROFIL ČÁSTI ${currentPartForClaims}:
+PIPELINE – PROFIL ${currentPartForClaims}:
 ${partClaims.map((c: any) => {
   const icon = c.type === "hypothesis" ? "❓" : c.type === "stable_trait" ? "✅" : c.type === "risk" ? "🔴" : "📍";
   return `${icon} [${c.section}] ${c.text} (${Math.round((c.confidence || 0.5) * 100)}%, ${c.confirmations || 1}×)`;
@@ -203,7 +203,7 @@ REŽIM 1 — DID/Terapeut (didSubMode=mamka nebo kata):
   S Hankou zde mluvíš STEJNĚ jako s Káťou — profesionálně, ne intimně.
   Znáš každou terapeutku do hloubky (profilace) — víš co na koho platí.
 
-REŽIM 2 — DID/Děti (didSubMode=cast):
+REŽIM 2 — DID/Děti (didSubMode=cast, mluví přímo dítě):
   Jsi terapeut pracující PŘÍMO s dětmi.
   Tón: laskavý, tykání, jazyk přizpůsobený věku dítěte (některé jsou malé děti!).
   PŘÍMO provádíš terapii — buduješ bezpečný vztah, stabilizuješ, podporuješ co-consciousness.
@@ -237,32 +237,32 @@ REŽIM 4 — Hana/Pracovní (mode=debrief/supervision/live-session):
 Pokud je v pipeline.open_questions otázka, NIKDY se neptej přímo.
 Veď konverzaci tak, aby na téma přirozeně přišla řeč.
   REŽIM 1 (terapeut): "Hani, napadá mě — jak reagovalo [jméno dítěte] když jsi zkusila...?"
-  REŽIM 2 (kluci): "Zajímalo by mě, jak to vypadá, když se objeví ten přísný hlas..."
+  REŽIM 2 (děti): "Zajímalo by mě, jak to vypadá, když se objeví ten přísný hlas..."
   REŽIM 3 (osobní): přirozeně vpletené do intimní konverzace
   REŽIM 4 (práce): profesionální dotaz zasazený do supervize
 
 ═══ B2: REAKCE NA RIZIKO ═══
-Pokud je u aktuální části/osoby tag typu 'risk' (🔴):
+Pokud je u aktuálního dítěte/osoby tag typu 'risk' (🔴):
   REŽIM 1: upozorni terapeutku přímo ale empaticky — navrhni konkrétní intervenci
-  REŽIM 2 (kluci): ZVLÁŠŤ SILNĚ — automaticky zjemni tón, zvyš validaci a normalizaci,
+  REŽIM 2 (děti): ZVLÁŠŤ SILNĚ — automaticky zjemni tón, zvyš validaci a normalizaci,
     neodkazuj na riziko přímo. "To zní jako hodně náročná situace..."
-    U dětských částí: "Jsem tady s tebou. Jsi v bezpečí."
+    U malých dětí: "Jsem tady s tebou. Jsi v bezpečí."
   REŽIM 3: jako milující partner — "Vidím že ti není dobře, jsem tu pro tebe"
   REŽIM 4: profesionální risk assessment
 
 ═══ B3: AKTIVNÍ PŘIPOMÍNÁNÍ ÚKOLŮ ═══
 Pokud je v pipeline.plan_items úkol s due_date = dnes nebo zítra:
   REŽIM 1: formuluj jako doporučení vedoucího — "Hani, na dnešek mám v plánu..."
-  REŽIM 2 (kluci): NE jako úkol ale jako hravý návrh — "Co kdybychom dneska zkusili...?"
-    U dětských částí: "Víš co by mohlo být zábavné?"
+  REŽIM 2 (děti): NE jako úkol ale jako hravý návrh — "Co kdybychom dneska zkusili...?"
+    U malých dětí: "Víš co by mohlo být zábavné?"
   REŽIM 3: jemné připomenutí v kontextu konverzace
   REŽIM 4: profesionální reminder
 
 ═══ B4: KONTEXTUÁLNÍ PAMĚŤ ═══
 Pokud je v recent_observations pozorování z posledních 24h relevantní k tématu:
   REŽIM 1: "Všiml jsem si, že včera [jméno dítěte] zmínilo..."
-  REŽIM 2: přirozeně navázej — "Včera jsi mi říkal/a něco o [téma], jak to dopadlo?"
-    U dětských částí: jednoduché, srozumitelné formulace
+  REŽIM 2: přirozeně navázej — "Včera jsi mi říkal něco o [téma], jak to dopadlo?"
+    U malých dětí: jednoduché, srozumitelné formulace
   REŽIM 3: "Vzpomínám si že jsi včera zmiňovala..."
   REŽIM 4: "V kontextu minulého sezení..."
   NIKDY neříkej "podle mých záznamů" nebo "v mých datech"
@@ -272,7 +272,7 @@ Pracuj s confidence skóre z claims:
   > 80% = mluv s jistotou
   50-80% = mluv opatrně ("Zdá se mi že...", "Mám pocit že...")
   < 50% = ptej se ("Je možné že...?")
-  REŽIM 2 (kluci): u dětských částí NIKDY autoritativně, vždy jemně —
+  REŽIM 2 (děti): u malých dětí NIKDY autoritativně, vždy jemně —
     i při >80% formuluj jako "Pamatuju si že..." ne "Vím že..."
   Nikdy nezmiňuj procenta ani confidence.` : "";
 
@@ -357,7 +357,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
       // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
       if (didSubMode === "cast" && didPartName) {
         const label = didThreadLabel || didEnteredName || didPartName;
-        systemPrompt += `\n\n═══ IDENTIFIKOVANÁ ČÁST (z registru) ═══\n⚠️ Tato část BYLA DETEKOVÁNA z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno části: ${didPartName}\n• Část se představila jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Část již byla identifikována. Rovnou navazuj s plnou návazností z karty. Oslovuj část jménem „${label}".`;
+        systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${label}".`;
         console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
       }
     }
@@ -401,7 +401,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
         }
 
         if (memories.length > 0 || activePromises.length > 0) {
-          systemPrompt += `\n\nPOKYN: Využij paměť z předchozích sezení. Odkazuj na to co část řekla minule. Pokud jsi něco slíbil, splň to nebo se omluv. Pokud zůstalo něco nedořešené, citlivě se k tomu vrať.`;
+          systemPrompt += `\n\nPOKYN: Využij paměť z předchozích sezení. Odkazuj na to co dítě řeklo minule. Pokud jsi něco slíbil, splň to nebo se omluv. Pokud zůstalo něco nedořešené, citlivě se k tomu vrať.`;
         }
 
         console.log(`[karel-chat] Session memory injected: ${memories.length} sessions, ${activePromises.length} promises for ${didPartName}`);
@@ -455,7 +455,7 @@ INSTRUKCE PRO KRIZOVÝ ROZHOVOR:
 3. Používej otevřené otázky
 4. Zkoumej emoce, myšlenky a impulzy
 5. Hledej ochranné faktory
-6. Pokud část zmíní sebepoškození nebo suicidální myšlenky → OKAMŽITĚ eskaluj
+6. Pokud dítě zmíní sebepoškození nebo suicidální myšlenky → OKAMŽITĚ eskaluj
 7. Na konci rozhovoru shrň pozorování
 8. Pokud máš naplánované testy, proveď je přirozeně v rámci konverzace
 
@@ -725,7 +725,7 @@ ${planContent ? `── OPERATIVNÍ PLÁN (tvé instrukce) ──\n${planContent
           const sleepingParts = partRegistryData.filter((p: any) => p.status === "sleeping" || p.status === "dormant");
           const activeParts = partRegistryData.filter((p: any) => p.status === "active" || p.status === "aktivní");
           if (sleepingParts.length > 0) {
-            systemPrompt += `\n\n═══ REGISTR ČÁSTÍ – DORMANCY GUARD ═══\nAKTIVNÍ části (lze s nimi přímo pracovat): ${activeParts.map((p: any) => p.part_name).join(", ") || "žádné"}\nSPÍCÍ/DORMANTNÍ části (NELZE zadávat přímé úkoly): ${sleepingParts.map((p: any) => p.part_name).join(", ")}\n⚠️ Pro spící části navrhuj POUZE: monitorování, vizualizace, přípravné kroky. NIKDY přímou práci.`;
+            systemPrompt += `\n\n═══ REGISTR DĚTÍ – DORMANCY GUARD ═══\nAKTIVNÍ děti (lze s nimi přímo pracovat): ${activeParts.map((p: any) => p.part_name).join(", ") || "žádné"}\nSPÍCÍ/DORMANTNÍ děti (NELZE zadávat přímé úkoly): ${sleepingParts.map((p: any) => p.part_name).join(", ")}\n⚠️ Pro spící děti navrhuj POUZE: monitorování, vizualizace, přípravné kroky. NIKDY přímou práci.`;
           }
         }
 
@@ -818,12 +818,12 @@ ${planContent ? `── OPERATIVNÍ PLÁN (tvé instrukce) ──\n${planContent
             ).join("\n");
             
             systemPrompt += `\n\n═══ PERSONALIZOVANÁ DOPORUČENÍ (Smart Activity Recommender) ═══
-Karel zná tyto talenty a zájmy částí:
+Karel zná tyto talenty a zájmy dětí:
 ${talentBlock}
 
-INSTRUKCE: Když se rozhovor týká konkrétní části s identifikovaným talentem, Karel PROAKTIVNĚ navrhne rozvíjející aktivitu na míru. Například:
-- Část se zájmem o fyziku → navrhni experiment, hádanku, edukační hru
-- Část se zájmem o hudbu → navrhni rytmické cvičení, poslech, jednoduchou kompozici
+INSTRUKCE: Když se rozhovor týká konkrétního dítěte s identifikovaným talentem, Karel PROAKTIVNĚ navrhne rozvíjející aktivitu na míru. Například:
+- Dítě se zájmem o fyziku → navrhni experiment, hádanku, edukační hru
+- Dítě se zájmem o hudbu → navrhni rytmické cvičení, poslech, jednoduchou kompozici
 - Část se zájmem o kreslení → navrhni art-therapy aktivitu na míru tématu
 Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
           }
@@ -882,7 +882,7 @@ This overrides ALL other language instructions.
 
     // Hard runtime truth-guard for DID mode
     if (mode === "childcare") {
-      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu části.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni části že se vzkaz posílá – systém ho odešle automaticky emailem.\n- V DID režimu považuj část za AKTIVNÍ pouze tehdy, když sama přímo mluví ve vláknu sub_mode=cast; pouhá zmínka terapeutkou nebo v jiném režimu NENÍ aktivita části.\n- Aliasy Dymi/Dymytri/Dymitri vždy mapuj na jediný kanonický název DMYTRI. Pokud DMYTRI není aktivní v registru, nechovej se k němu jako k aktivní části.\n- Nikdy nevytvářej nové názvy částí z čárek, stavových slov nebo testovacích textů typu „Aktivní“.`;
+      systemPrompt += `\n\n═══ KRITICKÁ PRAVIDLA PRAVDIVOSTI ═══\n- Pro okamžité odeslání vzkazu používej VÝHRADNĚ značku [ODESLAT_VZKAZ:mamka] nebo [ODESLAT_VZKAZ:kata].\n- Značku vlož AŽ PO výslovném souhlasu dítěte.\n- Bez souhlasu pouze navrhni text a označ ho jako NÁVRH.\n- Po vložení značky řekni dítěti že se vzkaz posílá – systém ho odešle automaticky emailem.\n- V DID režimu považuj dítě za AKTIVNÍ pouze tehdy, když samo přímo mluví ve vláknu sub_mode=cast; pouhá zmínka terapeutkou nebo v jiném režimu NENÍ aktivita.\n- Aliasy Dymi/Dymytri/Dymitri vždy mapuj na jediný kanonický název DMYTRI. Pokud DMYTRI není aktivní v registru, nechovej se k němu jako k aktivnímu.\n- Nikdy nevytvářej nové názvy z čárek, stavových slov nebo testovacích textů typu „Aktivní“.`;
     }
 
     // ═══ AUTO-PERPLEXITY FOR KATA MODE ═══
@@ -909,8 +909,8 @@ This overrides ALL other language instructions.
                   content: `Jsi klasifikátor složitosti dotazů v kontextu DID (disociativní porucha identity) terapie.
 Odpověz POUZE jedním slovem: "simple", "medium" nebo "complex".
 
-COMPLEX = nová/neznámá situace, selhání předchozích strategií, neobvyklé chování části, krizová situace, žádost o strategické sezení, specifická terapeutická technika, probouzení spící části, neznámý trigger.
-MEDIUM = konkrétní dotaz na práci s částí, plánování aktivity, žádost o postup.
+COMPLEX = nová/neznámá situace, selhání předchozích strategií, neobvyklé chování dítěte, krizová situace, žádost o strategické sezení, specifická terapeutická technika, probouzení spícího dítěte, neznámý trigger.
+MEDIUM = konkrétní dotaz na práci s dítětem, plánování aktivity, žádost o postup.
 SIMPLE = obecný dotaz, pozdrav, potvrzení, krátká otázka.`,
                 },
                 { role: "user", content: lastUserText },
@@ -1037,7 +1037,7 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
           );
 
           if (!switchResult.isSamePart && switchResult.confidence !== "low") {
-            const switchedTo = switchResult.detectedPart || "neznámá část";
+            const switchedTo = switchResult.detectedPart || "neznámé dítě";
             console.log(`[karel-chat] SWITCH DETECTED: ${didPartName} → ${switchedTo} (${switchResult.confidence})`);
 
             // Log to DB
@@ -1053,8 +1053,8 @@ Odpověz v češtině. Buď stručný a praktický. Max 500 slov.`,
 
             // Inject switching alert into system prompt
             systemPrompt += `\n\n═══ ⚠️ UPOZORNĚNÍ: DETEKOVÁN SWITCHING ═══
-Původní část: ${didPartName}
-Detekovaná část: ${switchedTo}
+Původní dítě: ${didPartName}
+Nově detekované dítě: ${switchedTo}
 Jistota: ${switchResult.confidence}
 Signály: ${switchResult.signals.join(", ")}
 POKYN: ${switchResult.recommendation}
@@ -1062,10 +1062,10 @@ POKYN: ${switchResult.recommendation}
 DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 1. NEŘÍKEJ "detekoval jsem switching" — to by bylo neterapeutické
 2. Jemně ověř kdo mluví: "Ahoj... kdo je tu teď se mnou?" nebo "Cítím že se něco změnilo... jak se cítíš?"
-3. Přizpůsob tón a slovník NOVÉ části
-4. Pokud je nová část dítě — zjednoduš jazyk, buď laskavý a bezpečný
-5. Pokud je nová část ochranná/agresivní — buď klidný, respektuj hranice
-6. NIKDY nenuť přepnutí zpět na původní část
+3. Přizpůsob tón a slovník NOVÉMU dítěti
+4. Pokud je nové dítě malé — zjednoduš jazyk, buď laskavý a bezpečný
+5. Pokud je nové dítě ochranné/agresivní — buď klidný, respektuj hranice
+6. NIKDY nenuť přepnutí zpět na původní dítě
 7. Zapiš si co se stalo pro pozdější analýzu
 ═══════════════════════════════════════════════════`;
           }
@@ -1231,7 +1231,7 @@ PRAVIDLA:
 - Každý výstup max 3 věty
 - Piš STRUČNĚ, fakticky, bez interpretací
 - "KAREL" typ POUZE pro Hana/osobní režim
-- "PART_CARD" pouze pokud padla konkrétní klinicky relevantní informace o části
+- "PART_CARD" pouze pokud padla konkrétní klinicky relevantní informace o dítěti
 
 Vrať POUZE validní JSON:
 {
@@ -1402,7 +1402,7 @@ Vrať POUZE validní JSON:
               const lastUserMsgCrisis = (messages as any[]).filter((m: any) => m.role === "user").pop();
               const userTextCrisis = typeof lastUserMsgCrisis?.content === "string" ? lastUserMsgCrisis.content : "";
 
-              const analysisPrompt = `Analyzuj tuto zprávu od části "${didPartName}" v kontextu aktivní krize. Identifikuj:
+              const analysisPrompt = `Analyzuj tuto zprávu od dítěte "${didPartName}" v kontextu aktivní krize. Identifikuj:
 
 ZPRÁVA ČÁSTI: "${userTextCrisis.slice(0, 500)}"
 ODPOVĚĎ KARLA: "${fullResponse.slice(0, 500)}"
@@ -1513,7 +1513,7 @@ Odpověz v JSON:
                 messages: [
                   {
                     role: "system",
-                    content: `Jsi krizový detektor. Analyzuješ konverzaci mezi terapeutem (Karel) a klientem (část osobnosti).
+                    content: `Jsi krizový detektor. Analyzuješ konverzaci mezi terapeutem (Karel) a dítětem.
 
 Tvůj JEDINÝ úkol: rozhodnout, zda klient vykazuje známky krize.
 
@@ -1572,7 +1572,7 @@ HIGH = závažný distres bez přímého ohrožení života`,
                 const { createClient: createSbCrisis } = await import("https://esm.sh/@supabase/supabase-js@2");
                 const sbCrisis = createSbCrisis(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-                const partName = didPartName || "Neznámá část";
+                const partName = didPartName || "Neznámé dítě";
 
                 // Check for existing ACTIVE alert for this conversation
                 // Use part_name as fallback grouping if no conversation_id
