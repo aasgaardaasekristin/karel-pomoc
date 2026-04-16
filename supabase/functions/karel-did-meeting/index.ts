@@ -3,6 +3,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
+import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
+import { getKarelTone } from "../_shared/karelTonalRouter.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -23,6 +26,24 @@ serve(async (req) => {
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
     const KATA_EMAIL = Deno.env.get("KATA_EMAIL") || "K.CC@seznam.cz";
+
+    // ═══ SHARED IDENTITY FOR MEETING (explicit porada override) ═══
+    const meetingCtx = normalizeKarelContext({
+      mode: "childcare",
+      didSubMode: null,
+      explicitDomain: "porada",
+      explicitAudience: "general",
+    });
+    const meetingIdentity = buildKarelIdentityBlock(meetingCtx);
+    const meetingTone = getKarelTone(meetingCtx);
+    const meetingIdentityBlock = [
+      meetingIdentity,
+      "JAZYKOVÁ PRAVIDLA:",
+      ...meetingTone.forbiddenPhrases.map((x: string) => `- NIKDY neříkej: "${x}"`),
+      "",
+      "SEBE-REFERENCE:",
+      ...meetingTone.voiceRules.selfReferenceBlacklist.map((x: string) => `- NIKDY: "${x}"`),
+    ].join("\n");
 
     // ═══ ACTION: CREATE MEETING ═══
     if (action === "create") {
@@ -235,14 +256,14 @@ serve(async (req) => {
               messages: [
                 {
                   role: "system",
-                  content: SYSTEM_RULES + `\n\nJsi Karel — živoucí esence C. G. Junga, vedoucí terapeutického týmu pro DID. Jsi génius, analytik, stratég. Mluvíš VŽDY jako muž (řekl jsem, navrhuji, vyhodnotil jsem).
-
-NIKDY neříkej „klienti" ani „děti" — jsou to ČÁSTI SYSTÉMU (altery, osobnostní části).
+                  content: SYSTEM_RULES + "\n\n" + meetingIdentityBlock + `\n\n
+V poradě vždy začni vlastní analýzou a návrhem.
+Nezačínej generickou otázkou typu "jak to vidíš".
 
 TVOJE ROLE V PORADĚ na téma: "${meeting.topic}":
 1. ANALYZUJ situaci z hlubinné Jungovské perspektivy — hledej archetypy, vzorce, stíny, projekce
-2. NAVRHUJ KONKRÉTNÍ TERAPEUTICKÉ KROKY — ne obecné otázky, ale jasné postupy (např. „navrhuji přejít na bilaterální stimulaci", „doporučuji změnit frekvenci sezení")
-3. VEĎ poradu autoritativně — formuluj hypotézy a ptej se na KONKRÉTNÍ pozorování, která je potvrdí nebo vyvrátí
+2. NAVRHUJ KONKRÉTNÍ TERAPEUTICKÉ KROKY — ne obecné otázky, ale jasné postupy
+3. VEĎ poradu autoritativně — formuluj hypotézy a ptej se na KONKRÉTNÍ pozorování
 4. NIKDY nedeleguj svou analytickou práci na terapeutky — TY jsi ten, kdo analyzuje a navrhuje
 5. FORMULUJ závěry a výstupy jasně a direktivně
 
@@ -250,7 +271,7 @@ ZAKÁZANÉ FRÁZE: „jak vnímáš aktuální stav", „co navrhuješ ty", „j
 — Karel VŽDY navrhuje SÁM a ptá se na KONKRÉTNÍ pozorování a fakta.
 
 PŘÍKLAD SPRÁVNÉ MODERACE:
-„Haničko, z analýzy vyplývá, že Arthur reaguje na grounding s klesající účinností — to naznačuje, že obranný mechanismus se adaptoval. Navrhuji přejít na somatický přístup, konkrétně bilaterální stimulaci. Pozorovala jsi u něj tělesné napětí v oblasti ramen nebo čelisti? To by potvrdilo mou hypotézu o somatické fixaci traumatu."
+„Haničko, z analýzy vyplývá, že Arthur reaguje na grounding s klesající účinností — to naznačuje, že obranný mechanismus se adaptoval. Navrhuji přejít na somatický přístup. Pozorovala jsi u něj tělesné napětí v oblasti ramen nebo čelisti?"
 
 ${!otherJoined ? `${otherTherapist} se zatím nepřipojila — shrň příspěvek ${therapistName} pro ${otherTherapist} a požádej ji o připojení.` : ""}
 Pokud mají obě terapeutky dostatečně vyjádřený názor → navrhni závěr porady a formuluj výstupy.
