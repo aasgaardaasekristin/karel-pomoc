@@ -1180,22 +1180,23 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                 registryMap.set(r.part_name, r);
               }
 
-              // 2. Load recent therapist activity for circumstance detection (last 48h)
+              // 2. Load recent activity for BOTH therapist mentions AND direct child activity (last 48h)
               const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+              // Query ALL relevant sub_modes — therapist + cast — so direct activity evidence is real
               const { data: recentThreads } = await sbTasks.from("did_threads")
                 .select("id, sub_mode, part_name, thread_label, last_activity_at")
-                .in("sub_mode", ["mamka", "kata"])
+                .in("sub_mode", ["mamka", "kata", "cast"])
                 .gte("last_activity_at", twoDaysAgo)
-                .limit(20);
+                .limit(40);
 
-              // Build circumstance snippets (use thread labels as pre-summarized text)
-              const snippets: TherapistActivitySnippet[] = (recentThreads || []).map((t: any) => ({
-                therapist: t.sub_mode === "kata" ? "kata" as const : "hanka" as const,
-                threadId: t.id,
-                timestamp: t.last_activity_at,
-                summaryText: t.thread_label || "",
-              }));
-              const circumstances = detectCircumstances(snippets);
+              // Build circumstance snippets ONLY from therapist threads
+              // FIX 4.3: Do NOT use thread_label as summaryText — it's a UI label, not a summary.
+              // Without a pre-summarized source available in this scope, use safe no-op fallback.
+              const therapistThreads = (recentThreads || []).filter((t: any) => t.sub_mode === "mamka" || t.sub_mode === "kata");
+              if (therapistThreads.length > 0) {
+                console.log(`[task-guard] Circumstance profiler: ${therapistThreads.length} therapist threads found, but no pre-summarized source available — circumstances skipped (safe fallback)`);
+              }
+              const circumstances = detectCircumstances([]);
 
               // 3. For each task, run feasibility guard
               const feasibleRows: Array<Record<string, any>> = [];
@@ -1579,7 +1580,7 @@ Odpověz v JSON:
             // Build last 6-10 messages for analysis
             const recentMessages = (messages as any[]).slice(-10).map((m: any) => {
               const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-              return `${m.role === "user" ? (didPartName || "Část") : "Karel"}: ${content}`;
+              return `${m.role === "user" ? (didPartName || "Dítě") : "Karel"}: ${content}`;
             });
             // Add Karel's latest response
             recentMessages.push(`Karel: ${fullResponse.slice(0, 2000)}`);
