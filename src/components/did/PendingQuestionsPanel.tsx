@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import {
+  OPEN_QUESTION_STATUSES,
+  emitPendingQuestionsChanged,
+} from "@/lib/pendingQuestionStatuses";
 
 interface PendingQuestion {
   id: string;
@@ -28,24 +32,33 @@ interface Props {
   refreshTrigger?: number;
 }
 
+const LIST_LIMIT = 20;
+type Responder = "hanka" | "kata";
+
 const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
   const [questions, setQuestions] = useState<PendingQuestion[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [answeringId, setAnsweringId] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState("");
+  const [answerResponder, setAnswerResponder] = useState<Responder>("hanka");
   const [submitting, setSubmitting] = useState(false);
 
   const loadQuestions = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // Single query: rows + exact total count for the same filter so the
+      // header badge always reflects the real backlog, even when the list
+      // is capped at LIST_LIMIT rows.
+      const { data, count, error } = await supabase
         .from("did_pending_questions")
-        .select("*")
-        .in("status", ["pending", "sent", "open"])
+        .select("*", { count: "exact" })
+        .in("status", OPEN_QUESTION_STATUSES as unknown as string[])
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(LIST_LIMIT);
 
       if (error) throw error;
       setQuestions((data as PendingQuestion[]) || []);
+      setTotalCount(count ?? 0);
     } catch (e) {
       console.error("[PendingQuestions] Load error:", e);
     } finally {
@@ -57,6 +70,15 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
     loadQuestions();
   }, [loadQuestions, refreshTrigger]);
 
+  const beginAnswer = (q: PendingQuestion) => {
+    setAnsweringId(q.id);
+    setAnswerText("");
+    // Default the responder identity to the question's directed_to when it
+    // unambiguously points at a single therapist, otherwise fall back to hanka.
+    if (q.directed_to === "kata") setAnswerResponder("kata");
+    else setAnswerResponder("hanka");
+  };
+
   const handleAnswer = async (questionId: string) => {
     if (!answerText.trim()) return;
     setSubmitting(true);
@@ -66,16 +88,19 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
         .update({
           answer: answerText.trim(),
           answered_at: new Date().toISOString(),
-          answered_by: "therapist",
+          answered_by: answerResponder,
           status: "answered",
         })
         .eq("id", questionId);
 
       if (error) throw error;
-      toast.success("Odpověď uložena");
+      toast.success(`Odpověď uložena (${answerResponder === "kata" ? "Káťa" : "Hanka"})`);
       setAnsweringId(null);
       setAnswerText("");
-      loadQuestions();
+      await loadQuestions();
+      // Notify shared ops counts hook so dashboard / DidSprava badges
+      // recompute immediately instead of waiting for the 30s tick.
+      emitPendingQuestionsChanged();
     } catch (e) {
       console.error("[PendingQuestions] Answer error:", e);
       toast.error("Chyba při ukládání odpovědi");
@@ -85,7 +110,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
   };
 
   if (loading) return null;
-  if (questions.length === 0) {
+  if (totalCount === 0) {
     return (
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-center">
         <p className="text-[11px] text-emerald-700 font-medium">✅ Žádné otevřené otázky</p>
@@ -108,14 +133,21 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
     return directed || "—";
   };
 
+  const truncated = totalCount > questions.length;
+
   return (
     <KarelCard variant="default" padding="md">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <MessageCircleQuestion size={14} className="text-primary" />
         <span className="text-sm font-medium text-foreground">Karel se ptá</span>
         <KarelBadge variant="info" size="sm">
-          {questions.length}
+          {totalCount}
         </KarelBadge>
+        {truncated && (
+          <span className="text-[10px] text-muted-foreground">
+            Zobrazeno {questions.length} z {totalCount}
+          </span>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -133,8 +165,8 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                   : "border-border bg-card hover:bg-accent/5"
               )}
             >
-              <div className="flex items-start justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="flex items-start justify-between gap-2 mb-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
                   <Clock size={10} />
                   <span>{formatAge(q.created_at)}</span>
                   <span>•</span>
@@ -172,6 +204,37 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                 <>
                   {isAnswering ? (
                     <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Odpovídá:
+                        </span>
+                        <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setAnswerResponder("hanka")}
+                            className={cn(
+                              "px-2 py-0.5 text-[11px] rounded transition-colors",
+                              answerResponder === "hanka"
+                                ? "bg-background text-foreground shadow-sm font-medium"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            Hanka
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAnswerResponder("kata")}
+                            className={cn(
+                              "px-2 py-0.5 text-[11px] rounded transition-colors",
+                              answerResponder === "kata"
+                                ? "bg-background text-foreground shadow-sm font-medium"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            Káťa
+                          </button>
+                        </div>
+                      </div>
                       <Textarea
                         value={answerText}
                         onChange={(e) => setAnswerText(e.target.value)}
@@ -179,7 +242,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                         className="text-sm min-h-[60px]"
                         autoFocus
                       />
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <Button
                           size="sm"
                           onClick={() => handleAnswer(q.id)}
@@ -201,7 +264,7 @@ const PendingQuestionsPanel = ({ refreshTrigger }: Props) => {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setAnsweringId(q.id)}
+                      onClick={() => beginAnswer(q)}
                       className="text-xs"
                     >
                       Odpovědět
