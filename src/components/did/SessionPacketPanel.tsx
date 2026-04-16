@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isNonDidEntity } from "@/lib/didPartNaming";
 import { Loader2, Package, AlertTriangle, CheckCircle2, HelpCircle, ClipboardList, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -64,10 +65,12 @@ const SessionPacketPanel = ({ refreshTrigger = 0 }: Props) => {
         category: t.category,
       }));
       const directActivitySignals = toDirectActivitySignals(
-        (partsRes.data || []).map((p: any) => ({
-          part_name: p.part_name,
-          last_seen_at: p.last_seen_at,
-        }))
+        (partsRes.data || [])
+          .filter((p: any) => !isNonDidEntity(p.part_name || ""))
+          .map((p: any) => ({
+            part_name: p.part_name,
+            last_seen_at: p.last_seen_at,
+          }))
       );
 
       setPacket(buildSessionPacket({ recentWrites: writes, tasks, directActivitySignals }));

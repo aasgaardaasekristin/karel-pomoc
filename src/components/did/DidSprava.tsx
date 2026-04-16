@@ -122,9 +122,9 @@ const DidSprava = ({
 }: Props) => {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live">("tools");
-  const [livePartName, setLivePartName] = useState("");
-  const [liveTherapist, setLiveTherapist] = useState<"Hanka" | "Káťa">("Hanka");
-  const [liveActive, setLiveActive] = useState(false);
+  const [livePlan, setLivePlan] = useState<{ id: string; partName: string; therapistName: string; contextBrief: string } | null>(null);
+  const [livePlans, setLivePlans] = useState<Array<{ id: string; selected_part: string; session_lead: string; plan_markdown: string; status: string; plan_date: string }>>([]);
+  const [livePlansLoading, setLivePlansLoading] = useState(false);
   const [newAlertCount, setNewAlertCount] = useState(0);
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
@@ -227,54 +227,45 @@ const DidSprava = ({
 
         {activeTab === "live" && (
           <div className="space-y-3">
-            {!liveActive ? (
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">Spusť živou asistenci pro konkrétní sezení.</p>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-medium text-foreground/80">Jméno části</label>
-                  <input
-                    className="w-full h-8 text-xs rounded-md border border-border bg-background px-2"
-                    placeholder="např. Kubík, Míša..."
-                    value={livePartName}
-                    onChange={(e) => setLivePartName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-medium text-foreground/80">Terapeutka</label>
-                  <div className="flex gap-2">
-                    {(["Hanka", "Káťa"] as const).map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setLiveTherapist(t)}
-                        className={`px-3 py-1 text-xs rounded-md border transition-colors ${liveTherapist === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  className="w-full h-8 text-xs"
-                  disabled={!livePartName.trim()}
-                  onClick={() => setLiveActive(true)}
-                >
-                  ⚡ Spustit živé sezení
-                </Button>
-              </div>
-            ) : (
+            {livePlan ? (
               <div className="min-h-[400px]">
                 <DidLiveSessionPanel
-                  partName={livePartName}
-                  therapistName={liveTherapist}
+                  partName={livePlan.partName}
+                  therapistName={livePlan.therapistName}
+                  contextBrief={livePlan.contextBrief}
                   onEnd={() => {
-                    setLiveActive(false);
-                    setLivePartName("");
+                    setLivePlan(null);
                     toast.success("Sezení ukončeno a uloženo.");
                   }}
-                  onBack={() => setLiveActive(false)}
+                  onBack={() => setLivePlan(null)}
                 />
               </div>
+            ) : (
+              <LivePlanPicker
+                plans={livePlans}
+                loading={livePlansLoading}
+                onLoad={() => {
+                  setLivePlansLoading(true);
+                  supabase
+                    .from("did_daily_session_plans")
+                    .select("id, selected_part, session_lead, plan_markdown, status, plan_date")
+                    .in("status", ["generated", "in_progress"])
+                    .order("plan_date", { ascending: false })
+                    .limit(10)
+                    .then(({ data }) => {
+                      setLivePlans((data as any[]) || []);
+                      setLivePlansLoading(false);
+                    });
+                }}
+                onSelect={(plan) => {
+                  setLivePlan({
+                    id: plan.id,
+                    partName: plan.selected_part,
+                    therapistName: plan.session_lead === "kata" ? "Káťa" : "Hanka",
+                    contextBrief: plan.plan_markdown || "Bez dostupného session briefu.",
+                  });
+                }}
+              />
             )}
           </div>
         )}
@@ -512,6 +503,61 @@ function ToolButton({ icon, title, desc, loading, onClick, badge }: {
         </div>
       )}
     </button>
+  );
+}
+
+/* ── Live Plan Picker ── */
+function LivePlanPicker({ plans, loading, onLoad, onSelect }: {
+  plans: Array<{ id: string; selected_part: string; session_lead: string; plan_markdown: string; status: string; plan_date: string }>;
+  loading: boolean;
+  onLoad: () => void;
+  onSelect: (plan: { id: string; selected_part: string; session_lead: string; plan_markdown: string }) => void;
+}) {
+  useEffect(() => { onLoad(); }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (plans.length === 0) {
+    return (
+      <div className="text-center py-6 space-y-1">
+        <p className="text-xs text-muted-foreground">Žádné připravené live sezení.</p>
+        <p className="text-[10px] text-muted-foreground/70">Nejdříve vygenerujte session plán v záložce Plán.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">Vyberte připravené sezení:</p>
+      {plans.map((plan) => (
+        <button
+          key={plan.id}
+          onClick={() => onSelect(plan)}
+          className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors space-y-1"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-foreground">{plan.selected_part}</span>
+            <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
+              {plan.session_lead === "kata" ? "Káťa" : "Hanka"}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>{plan.plan_date}</span>
+            <span>·</span>
+            <span>{plan.status}</span>
+          </div>
+          {plan.plan_markdown && (
+            <p className="text-[10px] text-muted-foreground/80 line-clamp-2">{plan.plan_markdown.slice(0, 120)}…</p>
+          )}
+        </button>
+      ))}
+    </div>
   );
 }
 
