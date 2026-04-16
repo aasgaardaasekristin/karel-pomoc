@@ -467,4 +467,34 @@ const DidDashboard = ({
   );
 };
 
+/* ── Compact ops snapshot bar ── */
+function OpsSnapshotBar({ refreshTrigger, parts, activeThreads }: {
+  refreshTrigger: number;
+  parts: PartActivity[];
+  activeThreads: ActiveThreadSummary[];
+}) {
+  const ops = useOperationalInboxCounts(refreshTrigger);
+
+  const items = [
+    { icon: <span className="text-[10px]">👥</span>, label: "Části", value: parts.filter(p => p.status === "active").length },
+    { icon: <span className="text-[10px]">🧵</span>, label: "Vlákna", value: activeThreads.length },
+    ...(ops.pendingQuestions > 0 ? [{ icon: <MessageCircleQuestion className="w-3 h-3" />, label: "Otázky", value: ops.pendingQuestions, warn: true }] : []),
+    ...(ops.pendingWrites > 0 ? [{ icon: <FileText className="w-3 h-3" />, label: "Zápisy", value: ops.pendingWrites }] : []),
+    ...(ops.overdueTasks > 0 ? [{ icon: <AlertTriangle className="w-3 h-3" />, label: "Po termínu", value: ops.overdueTasks, warn: true }] : []),
+    ...(ops.urgentTasks > 0 ? [{ icon: <span className="text-[10px]">🔴</span>, label: "Urgentní", value: ops.urgentTasks, warn: true }] : []),
+    ...(ops.livePlans > 0 ? [{ icon: <Calendar className="w-3 h-3" />, label: "Live plány", value: ops.livePlans }] : []),
+  ];
+
+  return (
+    <div className="rounded-xl bg-muted/30 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
+      {items.map((item, i) => (
+        <span key={i} className="flex items-center gap-1">
+          {item.icon}
+          {item.label}: <strong className={item.warn ? "text-destructive" : "text-foreground"}>{item.value}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default DidDashboard;
