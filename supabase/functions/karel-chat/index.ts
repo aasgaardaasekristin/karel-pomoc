@@ -818,12 +818,12 @@ ${planContent ? `── OPERATIVNÍ PLÁN (tvé instrukce) ──\n${planContent
             ).join("\n");
             
             systemPrompt += `\n\n═══ PERSONALIZOVANÁ DOPORUČENÍ (Smart Activity Recommender) ═══
-Karel zná tyto talenty a zájmy částí:
+Karel zná tyto talenty a zájmy dětí:
 ${talentBlock}
 
-INSTRUKCE: Když se rozhovor týká konkrétní části s identifikovaným talentem, Karel PROAKTIVNĚ navrhne rozvíjející aktivitu na míru. Například:
-- Část se zájmem o fyziku → navrhni experiment, hádanku, edukační hru
-- Část se zájmem o hudbu → navrhni rytmické cvičení, poslech, jednoduchou kompozici
+INSTRUKCE: Když se rozhovor týká konkrétního dítěte s identifikovaným talentem, Karel PROAKTIVNĚ navrhne rozvíjející aktivitu na míru. Například:
+- Dítě se zájmem o fyziku → navrhni experiment, hádanku, edukační hru
+- Dítě se zájmem o hudbu → navrhni rytmické cvičení, poslech, jednoduchou kompozici
 - Část se zájmem o kreslení → navrhni art-therapy aktivitu na míru tématu
 Karel doporučení přirozeně začlení do rozhovoru, ne jako seznam.`;
           }
@@ -1062,10 +1062,10 @@ POKYN: ${switchResult.recommendation}
 DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 1. NEŘÍKEJ "detekoval jsem switching" — to by bylo neterapeutické
 2. Jemně ověř kdo mluví: "Ahoj... kdo je tu teď se mnou?" nebo "Cítím že se něco změnilo... jak se cítíš?"
-3. Přizpůsob tón a slovník NOVÉ části
-4. Pokud je nová část dítě — zjednoduš jazyk, buď laskavý a bezpečný
-5. Pokud je nová část ochranná/agresivní — buď klidný, respektuj hranice
-6. NIKDY nenuť přepnutí zpět na původní část
+3. Přizpůsob tón a slovník NOVÉMU dítěti
+4. Pokud je nové dítě malé — zjednoduš jazyk, buď laskavý a bezpečný
+5. Pokud je nové dítě ochranné/agresivní — buď klidný, respektuj hranice
+6. NIKDY nenuť přepnutí zpět na původní dítě
 7. Zapiš si co se stalo pro pozdější analýzu
 ═══════════════════════════════════════════════════`;
           }
@@ -1231,7 +1231,7 @@ PRAVIDLA:
 - Každý výstup max 3 věty
 - Piš STRUČNĚ, fakticky, bez interpretací
 - "KAREL" typ POUZE pro Hana/osobní režim
-- "PART_CARD" pouze pokud padla konkrétní klinicky relevantní informace o části
+- "PART_CARD" pouze pokud padla konkrétní klinicky relevantní informace o dítěti
 
 Vrať POUZE validní JSON:
 {
@@ -1402,7 +1402,7 @@ Vrať POUZE validní JSON:
               const lastUserMsgCrisis = (messages as any[]).filter((m: any) => m.role === "user").pop();
               const userTextCrisis = typeof lastUserMsgCrisis?.content === "string" ? lastUserMsgCrisis.content : "";
 
-              const analysisPrompt = `Analyzuj tuto zprávu od části "${didPartName}" v kontextu aktivní krize. Identifikuj:
+              const analysisPrompt = `Analyzuj tuto zprávu od dítěte "${didPartName}" v kontextu aktivní krize. Identifikuj:
 
 ZPRÁVA ČÁSTI: "${userTextCrisis.slice(0, 500)}"
 ODPOVĚĎ KARLA: "${fullResponse.slice(0, 500)}"
@@ -1513,7 +1513,7 @@ Odpověz v JSON:
                 messages: [
                   {
                     role: "system",
-                    content: `Jsi krizový detektor. Analyzuješ konverzaci mezi terapeutem (Karel) a klientem (část osobnosti).
+                    content: `Jsi krizový detektor. Analyzuješ konverzaci mezi terapeutem (Karel) a dítětem.
 
 Tvůj JEDINÝ úkol: rozhodnout, zda klient vykazuje známky krize.
 
@@ -1572,7 +1572,7 @@ HIGH = závažný distres bez přímého ohrožení života`,
                 const { createClient: createSbCrisis } = await import("https://esm.sh/@supabase/supabase-js@2");
                 const sbCrisis = createSbCrisis(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-                const partName = didPartName || "Neznámá část";
+                const partName = didPartName || "Neznámé dítě";
 
                 // Check for existing ACTIVE alert for this conversation
                 // Use part_name as fallback grouping if no conversation_id
