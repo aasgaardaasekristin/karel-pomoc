@@ -9,7 +9,13 @@ import { getKarelTone } from "../_shared/karelTonalRouter.ts";
 import { auditKarelOutput } from "../_shared/karelLanguageGuard.ts";
 import { assessActivityStatus, type ActivityEvidenceInput } from "../_shared/activityStatusGuard.ts";
 import { checkTaskFeasibility, type TaskProposal } from "../_shared/taskFeasibilityGuard.ts";
-import { detectCircumstances, type TherapistActivitySnippet } from "../_shared/therapistCircumstanceProfiler.ts";
+import { detectCircumstances } from "../_shared/therapistCircumstanceProfiler.ts";
+import {
+  splitRecentThreads,
+  extractTherapistActivitySnippets,
+  findLastTherapistMentionEvidence,
+  type DidThreadLite,
+} from "../_shared/runtimeEvidence.ts";
 
 // DID_MASTER_PROMPT removed — identity is now sourced from _shared/karelIdentity.ts
 // Domain-specific DID workflow instructions remain in systemPrompts.ts
@@ -1189,28 +1195,13 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                 .gte("last_activity_at", twoDaysAgo)
                 .limit(40);
 
-              // ═══ FIX 4B.1: Extract real therapist message content for circumstance profiler ═══
-              const circumstanceSnippets: TherapistActivitySnippet[] = [];
-              for (const row of (recentThreads || []) as any[]) {
-                if (row.sub_mode !== "mamka" && row.sub_mode !== "kata") continue;
-                const therapist: "hanka" | "kata" = row.sub_mode === "kata" ? "kata" : "hanka";
-                const msgs = Array.isArray(row.messages) ? row.messages : [];
-                for (const msg of msgs.slice(-8)) {
-                  const content = typeof msg?.content === "string" ? msg.content.trim() : "";
-                  if (!content) continue;
-                  const role = `${msg?.role ?? msg?.author ?? ""}`.toLowerCase();
-                  if (role.includes("assistant") || role.includes("karel")) continue;
-                  circumstanceSnippets.push({
-                    therapist,
-                    threadId: row.id,
-                    timestamp: typeof msg?.timestamp === "string" ? msg.timestamp : (row.last_activity_at ?? new Date().toISOString()),
-                    summaryText: content.slice(0, 1200),
-                  });
-                }
-              }
+               // ═══ Phase 4C: Therapist evidence via shared helper ═══
+              const rows = (recentThreads || []) as DidThreadLite[];
+              const { castRows, therapistRows } = splitRecentThreads(rows);
+              const circumstanceSnippets = extractTherapistActivitySnippets(therapistRows);
               const circumstances = detectCircumstances(circumstanceSnippets);
               if (circumstanceSnippets.length > 0) {
-                console.log(`[task-guard] Circumstance profiler: ${circumstanceSnippets.length} snippets from therapist messages, ${circumstances.length} circumstances detected`);
+                console.log(`[task-guard] Circumstance profiler: ${circumstanceSnippets.length} snippets, ${circumstances.length} circumstances detected`);
               }
 
               // 3. For each task, run feasibility guard
@@ -1221,51 +1212,25 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
                 if (targetPart) {
                   const regEntry = registryMap.get(targetPart);
-                  // Build activity evidence
-                  const lastDirectThread = recentThreads?.find(
-                    (th: any) => th.sub_mode === "cast" && th.part_name === targetPart
+                  const lastDirectThread = castRows.find(
+                    (th) => th.part_name === targetPart
                   );
-                  const recentDirectCount = (recentThreads || []).filter(
-                    (th: any) => th.sub_mode === "cast" && th.part_name === targetPart
+                  const recentDirectCount = castRows.filter(
+                    (th) => th.part_name === targetPart
                   ).length;
+
+                  // Phase 4C: mention evidence via shared helper (message-level timestamp)
+                  const mentionEvidence = findLastTherapistMentionEvidence(
+                    therapistRows,
+                    targetPart,
+                    [], // alias source not yet available
+                  );
 
                   const evidence: ActivityEvidenceInput = {
                     entityName: targetPart,
                     entityKind: "did_child",
                     lastDirectThreadDate: lastDirectThread?.last_activity_at || regEntry?.last_seen_at || null,
-                  // ═══ FIX 4B-R1+R2: Robust mention matching with message-level timestamp ═══
-                  lastTherapistMentionDate: (() => {
-                    const _normalizeText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-                    const _escapeRx = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-                    const needles = Array.from(new Set([targetPart, ...([] as string[])].map(x => x.trim()).filter(Boolean)));
-                    const _matchesAny = (content: string) => {
-                      const nc = _normalizeText(content);
-                      return needles.some(needle => {
-                        const nn = _normalizeText(needle);
-                        const rx = new RegExp(`(^|\\W)${_escapeRx(nn)}($|\\W)`, "i");
-                        return rx.test(nc);
-                      });
-                    };
-                    let bestTs: string | null = null;
-                    let bestTime = 0;
-                    for (const th of (recentThreads || []) as any[]) {
-                      if (th.sub_mode === "cast") continue;
-                      const msgs = Array.isArray(th.messages) ? th.messages : [];
-                      for (const m of msgs) {
-                        const content = typeof m?.content === "string" ? m.content : "";
-                        if (!content) continue;
-                        const role = `${m?.role ?? m?.author ?? ""}`.toLowerCase();
-                        if (role.includes("assistant") || role.includes("karel")) continue;
-                        if (!_matchesAny(content)) continue;
-                        const ts = typeof m?.timestamp === "string" ? m.timestamp
-                          : (typeof th.last_activity_at === "string" ? th.last_activity_at : null);
-                        if (!ts) continue;
-                        const t = new Date(ts).getTime();
-                        if (t > bestTime) { bestTime = t; bestTs = ts; }
-                      }
-                    }
-                    return bestTs;
-                  })(),
+                    lastTherapistMentionDate: mentionEvidence.mentionedAt,
                     recentDirectThreadCount: recentDirectCount,
                   };
                   entityAssessment = assessActivityStatus(evidence);
