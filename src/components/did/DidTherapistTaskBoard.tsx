@@ -205,6 +205,7 @@ const TaskCard = ({
   onAddNote,
   isPendingDriveWrite,
   isFailedDriveWrite,
+  dupeCount = 1,
   extraActions,
 }: {
   task: TherapistTask;
@@ -334,9 +335,9 @@ const TaskCard = ({
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
-          {(task as any).dupeCount > 1 && (
+          {dupeCount > 1 && (
             <span className="text-[0.5rem] text-muted-foreground bg-muted rounded-full px-1.5 py-0 mr-0.5" title="Seskupené podobné úkoly">
-              ×{(task as any).dupeCount}
+              ×{dupeCount}
             </span>
           )}
           {extraActions}
