@@ -250,7 +250,7 @@ Pokud je u aktuálního dítěte/osoby tag typu 'risk' (🔴):
   REŽIM 2 (děti): ZVLÁŠŤ SILNĚ — automaticky zjemni tón, zvyš validaci a normalizaci,
     neodkazuj na riziko přímo. "To zní jako hodně náročná situace..."
     U malých dětí: "Jsem tady s tebou. Jsi v bezpečí."
-  REŽIM 3: jako milující partner — "Vidím že ti není dobře, jsem tu pro tebe"
+  REŽIM 3: blízce, citlivě a opěrně — "Vidím, že ti není dobře, jsem tu pro tebe"
   REŽIM 4: profesionální risk assessment
 
 ═══ B3: AKTIVNÍ PŘIPOMÍNÁNÍ ÚKOLŮ ═══
@@ -1233,17 +1233,38 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     entityName: targetPart,
                     entityKind: "did_child",
                     lastDirectThreadDate: lastDirectThread?.last_activity_at || regEntry?.last_seen_at || null,
-                  // ═══ FIX 4B.2: Mention evidence from actual message content, not thread_label ═══
+                  // ═══ FIX 4B-R1+R2: Robust mention matching with message-level timestamp ═══
                   lastTherapistMentionDate: (() => {
+                    const _normalizeText = (v: string) => v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+                    const _escapeRx = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                    const needles = Array.from(new Set([targetPart, ...([] as string[])].map(x => x.trim()).filter(Boolean)));
+                    const _matchesAny = (content: string) => {
+                      const nc = _normalizeText(content);
+                      return needles.some(needle => {
+                        const nn = _normalizeText(needle);
+                        const rx = new RegExp(`(^|\\W)${_escapeRx(nn)}($|\\W)`, "i");
+                        return rx.test(nc);
+                      });
+                    };
+                    let bestTs: string | null = null;
+                    let bestTime = 0;
                     for (const th of (recentThreads || []) as any[]) {
                       if (th.sub_mode === "cast") continue;
                       const msgs = Array.isArray(th.messages) ? th.messages : [];
-                      const hasMention = msgs.some((m: any) =>
-                        typeof m?.content === "string" && m.content.includes(targetPart)
-                      );
-                      if (hasMention) return th.last_activity_at;
+                      for (const m of msgs) {
+                        const content = typeof m?.content === "string" ? m.content : "";
+                        if (!content) continue;
+                        const role = `${m?.role ?? m?.author ?? ""}`.toLowerCase();
+                        if (role.includes("assistant") || role.includes("karel")) continue;
+                        if (!_matchesAny(content)) continue;
+                        const ts = typeof m?.timestamp === "string" ? m.timestamp
+                          : (typeof th.last_activity_at === "string" ? th.last_activity_at : null);
+                        if (!ts) continue;
+                        const t = new Date(ts).getTime();
+                        if (t > bestTime) { bestTime = t; bestTs = ts; }
+                      }
                     }
-                    return null;
+                    return bestTs;
                   })(),
                     recentDirectThreadCount: recentDirectCount,
                   };
