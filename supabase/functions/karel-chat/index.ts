@@ -246,7 +246,7 @@ Pokud je u aktuálního dítěte/osoby tag typu 'risk' (🔴):
   REŽIM 1: upozorni terapeutku přímo ale empaticky — navrhni konkrétní intervenci
   REŽIM 2 (děti): ZVLÁŠŤ SILNĚ — automaticky zjemni tón, zvyš validaci a normalizaci,
     neodkazuj na riziko přímo. "To zní jako hodně náročná situace..."
-    U dětských částí: "Jsem tady s tebou. Jsi v bezpečí."
+    U malých dětí: "Jsem tady s tebou. Jsi v bezpečí."
   REŽIM 3: jako milující partner — "Vidím že ti není dobře, jsem tu pro tebe"
   REŽIM 4: profesionální risk assessment
 
@@ -357,7 +357,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
       // ═══ IDENTITA ČÁSTI — injekce do kontextu ═══
       if (didSubMode === "cast" && didPartName) {
         const label = didThreadLabel || didEnteredName || didPartName;
-        systemPrompt += `\n\n═══ IDENTIFIKOVANÁ ČÁST (z registru) ═══\n⚠️ Tato část BYLA DETEKOVÁNA z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno části: ${didPartName}\n• Část se představila jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Část již byla identifikována. Rovnou navazuj s plnou návazností z karty. Oslovuj část jménem „${label}".`;
+        systemPrompt += `\n\n═══ IDENTIFIKOVANÉ DÍTĚ (z registru) ═══\n⚠️ Toto dítě BYLO DETEKOVÁNO z registru PŘED zahájením hovoru. Karel VÍ kdo s ním mluví.\n• Kanonické jméno: ${didPartName}\n• Představilo se jako: ${label}\n\nKRITICKÉ PRAVIDLO: NEPTEJ SE znovu „Jak ti říkají?" ani „Jsi Arthur?". Dítě již bylo identifikováno. Rovnou navazuj s plnou návazností z karty. Oslovuj jménem „${label}".`;
         console.log(`[karel-chat] Part identity injected: canonical=${didPartName}, label=${label}`);
       }
     }
@@ -401,7 +401,7 @@ INSTRUKCE: Přirozeně vpletej tato témata do konverzace. NEŘÍKEJ "mám v age
         }
 
         if (memories.length > 0 || activePromises.length > 0) {
-          systemPrompt += `\n\nPOKYN: Využij paměť z předchozích sezení. Odkazuj na to co část řekla minule. Pokud jsi něco slíbil, splň to nebo se omluv. Pokud zůstalo něco nedořešené, citlivě se k tomu vrať.`;
+          systemPrompt += `\n\nPOKYN: Využij paměť z předchozích sezení. Odkazuj na to co dítě řeklo minule. Pokud jsi něco slíbil, splň to nebo se omluv. Pokud zůstalo něco nedořešené, citlivě se k tomu vrať.`;
         }
 
         console.log(`[karel-chat] Session memory injected: ${memories.length} sessions, ${activePromises.length} promises for ${didPartName}`);
@@ -455,7 +455,7 @@ INSTRUKCE PRO KRIZOVÝ ROZHOVOR:
 3. Používej otevřené otázky
 4. Zkoumej emoce, myšlenky a impulzy
 5. Hledej ochranné faktory
-6. Pokud část zmíní sebepoškození nebo suicidální myšlenky → OKAMŽITĚ eskaluj
+6. Pokud dítě zmíní sebepoškození nebo suicidální myšlenky → OKAMŽITĚ eskaluj
 7. Na konci rozhovoru shrň pozorování
 8. Pokud máš naplánované testy, proveď je přirozeně v rámci konverzace
 
@@ -725,7 +725,7 @@ ${planContent ? `── OPERATIVNÍ PLÁN (tvé instrukce) ──\n${planContent
           const sleepingParts = partRegistryData.filter((p: any) => p.status === "sleeping" || p.status === "dormant");
           const activeParts = partRegistryData.filter((p: any) => p.status === "active" || p.status === "aktivní");
           if (sleepingParts.length > 0) {
-            systemPrompt += `\n\n═══ REGISTR ČÁSTÍ – DORMANCY GUARD ═══\nAKTIVNÍ části (lze s nimi přímo pracovat): ${activeParts.map((p: any) => p.part_name).join(", ") || "žádné"}\nSPÍCÍ/DORMANTNÍ části (NELZE zadávat přímé úkoly): ${sleepingParts.map((p: any) => p.part_name).join(", ")}\n⚠️ Pro spící části navrhuj POUZE: monitorování, vizualizace, přípravné kroky. NIKDY přímou práci.`;
+            systemPrompt += `\n\n═══ REGISTR DĚTÍ – DORMANCY GUARD ═══\nAKTIVNÍ děti (lze s nimi přímo pracovat): ${activeParts.map((p: any) => p.part_name).join(", ") || "žádné"}\nSPÍCÍ/DORMANTNÍ děti (NELZE zadávat přímé úkoly): ${sleepingParts.map((p: any) => p.part_name).join(", ")}\n⚠️ Pro spící děti navrhuj POUZE: monitorování, vizualizace, přípravné kroky. NIKDY přímou práci.`;
           }
         }
 
