@@ -23,6 +23,8 @@ import SessionPacketPanel from "./SessionPacketPanel";
 import HandoffPanel from "./HandoffPanel";
 import RecoveryPanel from "./RecoveryPanel";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
+import PendingQuestionsPanel from "./PendingQuestionsPanel";
+import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
 interface Props {
   onBootstrap: () => void;
@@ -121,7 +123,8 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions">("tools");
+  const opsSnapshot = useOperationalInboxCounts(refreshTrigger);
   const [livePlan, setLivePlan] = useState<{ id: string; partName: string; therapistName: string; contextBrief: string } | null>(null);
   const [livePlans, setLivePlans] = useState<Array<{ id: string; selected_part: string; session_lead: string; plan_markdown: string; status: string; plan_date: string }>>([]);
   const [livePlansLoading, setLivePlansLoading] = useState(false);
@@ -172,11 +175,12 @@ const DidSprava = ({
         <div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
          {([
             { key: "safety" as const, label: newAlertCount > 0 ? `Bezpečnost (${newAlertCount})` : "Bezpečnost" },
-            { key: "writes" as const, label: "📝 Zápisy" },
-            { key: "packet" as const, label: "📦 Packet" },
-            { key: "handoff" as const, label: "🔄 Předávka" },
-             { key: "recovery" as const, label: "💓 Recovery" },
-             { key: "live" as const, label: "⚡ Live" },
+             { key: "questions" as const, label: opsSnapshot.pendingQuestions > 0 ? `❓ Otázky (${opsSnapshot.pendingQuestions})` : "❓ Otázky" },
+             { key: "writes" as const, label: "📝 Zápisy" },
+             { key: "packet" as const, label: "📦 Packet" },
+             { key: "handoff" as const, label: "🔄 Předávka" },
+              { key: "recovery" as const, label: "💓 Recovery" },
+              { key: "live" as const, label: "⚡ Live" },
             { key: "tools" as const, label: "Nástroje" },
             ...(hasCrisis ? [{ key: "crisis" as const, label: "Krize" }] : []),
             { key: "plan" as const, label: "Plán" },
@@ -200,6 +204,12 @@ const DidSprava = ({
             </button>
           ))}
         </div>
+
+        {activeTab === "questions" && (
+          <div className="space-y-2">
+            <PendingQuestionsPanel refreshTrigger={refreshTrigger} />
+          </div>
+        )}
 
         {activeTab === "writes" && (
           <div className="space-y-2">

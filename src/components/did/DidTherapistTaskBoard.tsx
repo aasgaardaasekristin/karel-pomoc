@@ -205,6 +205,7 @@ const TaskCard = ({
   onAddNote,
   isPendingDriveWrite,
   isFailedDriveWrite,
+  dupeCount = 1,
   extraActions,
 }: {
   task: TherapistTask;
@@ -217,6 +218,7 @@ const TaskCard = ({
   onAddNote: (id: string) => void;
   isPendingDriveWrite: boolean;
   isFailedDriveWrite: boolean;
+  dupeCount?: number;
   extraActions?: React.ReactNode;
 }) => {
   const isExpanded = expandedTask === task.id;
@@ -302,8 +304,11 @@ const TaskCard = ({
     ? "bg-primary/10 border-primary/20 text-foreground"
     : "bg-muted/40 border-border/40 text-foreground/90";
 
+  const isOverdue = task.due_date && new Date(task.due_date).getTime() < Date.now() && !isAllDone(task);
+  const isDueSoon = !isOverdue && task.due_date && new Date(task.due_date).getTime() < Date.now() + 2 * 86400000 && !isAllDone(task);
+
   return (
-    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : "border-border/60 bg-card/40"}`}>
+    <div className={`group rounded-md border px-2 py-1.5 transition-colors hover:bg-accent/30 ${isOverdue ? "border-destructive/80 bg-destructive/10 border-l-4 border-l-destructive" : task.priority === "urgent" ? "border-destructive/60 bg-destructive/5 border-l-4 border-l-destructive" : isDueSoon ? "border-accent/60 bg-accent/5 border-l-4 border-l-accent" : "border-border/60 bg-card/40"}`}>
       <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-0.5 shrink-0">
           {assigned === "both" ? (
@@ -322,9 +327,19 @@ const TaskCard = ({
 
         <button className="flex-1 min-w-0 text-left" onClick={() => setExpandedTask(isExpanded ? null : task.id)}>
           <span className={`text-[0.6875rem] text-foreground leading-tight ${isExpanded ? "font-medium" : "truncate block"}`}>{stripMarkdownNoise(task.task)}</span>
+          {!isExpanded && (isOverdue || isDueSoon || task.due_date) && (
+            <span className={`text-[0.5rem] block ${isOverdue ? "text-destructive font-semibold" : isDueSoon ? "text-accent-foreground" : "text-muted-foreground"}`}>
+              {isOverdue ? "⚠️ Po termínu" : isDueSoon ? "⏰ Blíží se" : ""} 📅 {new Date(task.due_date!).toLocaleDateString("cs-CZ")}
+            </span>
+          )}
         </button>
 
         <div className="flex items-center gap-0 shrink-0">
+          {dupeCount > 1 && (
+            <span className="text-[0.5rem] text-muted-foreground bg-muted rounded-full px-1.5 py-0 mr-0.5" title="Seskupené podobné úkoly">
+              ×{dupeCount}
+            </span>
+          )}
           {extraActions}
           <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); setExpandedTask(isExpanded ? null : task.id); }} className="h-5 w-5 p-0">
             {isExpanded ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
@@ -812,7 +827,26 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
   const active = tasks.filter((task) => !isAllDone(task));
   const done = tasks.filter((task) => isAllDone(task));
 
-  const visibleActive = active.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
+  // Frontend dedupe: group near-identical active tasks
+  const dedupeKey = (t: TherapistTask) =>
+    `${normalizeTask(t.task)}|${normalizeAssignedTo(t.assigned_to)}`;
+  const dupeCounts = new Map<string, number>();
+  for (const t of active) {
+    const k = dedupeKey(t);
+    dupeCounts.set(k, (dupeCounts.get(k) || 0) + 1);
+  }
+  const seenKeys = new Set<string>();
+  const dedupedActive: TherapistTask[] = [];
+  for (const t of active) {
+    const k = dedupeKey(t);
+    if (!seenKeys.has(k)) {
+      seenKeys.add(k);
+      dedupedActive.push(t);
+    }
+  }
+  const getDupeCount = (t: TherapistTask) => dupeCounts.get(dedupeKey(t)) || 1;
+
+  const visibleActive = dedupedActive.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
   const visibleDone = done.filter((task) => matchesCategoryFilter(task) && isAssigneeVisible(normalizeAssignedTo(task.assigned_to) as TherapistAssignee, assigneeFilter));
 
   const todayTasks = visibleActive.filter((task) => isTodayCategory(task.category));
@@ -903,6 +937,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 {...sharedProps}
                 isPendingDriveWrite={isPendingForTask(task)}
                 isFailedDriveWrite={isFailedForTask(task)}
+                dupeCount={getDupeCount(task)}
               />
             ))}
             {todayTasks.length > MAX_TODAY && <p className="text-center text-[0.5rem] text-muted-foreground">+{todayTasks.length - MAX_TODAY} dalších</p>}
@@ -921,6 +956,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 {...sharedProps}
                 isPendingDriveWrite={isPendingForTask(task)}
                 isFailedDriveWrite={isFailedForTask(task)}
+                dupeCount={getDupeCount(task)}
               />
             ))}
             {tomorrowTasks.length > MAX_TOMORROW && <p className="text-center text-[0.5rem] text-muted-foreground">+{tomorrowTasks.length - MAX_TOMORROW} dalších</p>}
@@ -939,6 +975,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 {...sharedProps}
                 isPendingDriveWrite={isPendingForTask(task)}
                 isFailedDriveWrite={isFailedForTask(task)}
+                dupeCount={getDupeCount(task)}
               />
             ))}
           </div>
@@ -956,6 +993,7 @@ const DidTherapistTaskBoard = ({ refreshTrigger = 0 }: { refreshTrigger?: number
                 {...sharedProps}
                 isPendingDriveWrite={isPendingForTask(task)}
                 isFailedDriveWrite={isFailedForTask(task)}
+                dupeCount={getDupeCount(task)}
                 extraActions={
                   <Button
                     variant="ghost"
