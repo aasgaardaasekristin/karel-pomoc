@@ -22,6 +22,7 @@ import WriteQueueInbox from "./WriteQueueInbox";
 import SessionPacketPanel from "./SessionPacketPanel";
 import HandoffPanel from "./HandoffPanel";
 import RecoveryPanel from "./RecoveryPanel";
+import DidLiveSessionPanel from "./DidLiveSessionPanel";
 
 interface Props {
   onBootstrap: () => void;

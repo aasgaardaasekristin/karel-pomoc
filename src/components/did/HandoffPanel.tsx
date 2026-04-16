@@ -7,7 +7,7 @@ import {
   getBadgeTone,
   BADGE_TONE_STYLES,
 } from "@/lib/governedWriteDecoder";
-import { buildHandoff, type HandoffSection } from "@/lib/operationalBuilders";
+import { buildHandoff, toDirectActivitySignals, type HandoffSection } from "@/lib/operationalBuilders";
 
 interface Props {
   refreshTrigger?: number;
@@ -28,7 +28,7 @@ const HandoffPanel = ({ refreshTrigger = 0 }: Props) => {
     try {
       const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
-      const [writesRes, tasksRes] = await Promise.all([
+      const [writesRes, tasksRes, partsRes] = await Promise.all([
         supabase
           .from("did_pending_drive_writes")
           .select("id, target_document, content, priority, status, created_at")
@@ -40,6 +40,10 @@ const HandoffPanel = ({ refreshTrigger = 0 }: Props) => {
           .select("task, priority, status")
           .in("status", ["pending", "active", "in_progress", "blocked"])
           .limit(20),
+        supabase
+          .from("did_part_registry")
+          .select("part_name, last_seen_at")
+          .limit(50),
       ]);
 
       const writes = (writesRes.data || []).map((r: any) => toWriteQueueItemView(r));
@@ -48,8 +52,14 @@ const HandoffPanel = ({ refreshTrigger = 0 }: Props) => {
         priority: t.priority,
         status: t.status,
       }));
+      const directActivitySignals = toDirectActivitySignals(
+        (partsRes.data || []).map((p: any) => ({
+          part_name: p.part_name,
+          last_seen_at: p.last_seen_at,
+        }))
+      );
 
-      setSections(buildHandoff({ recentWrites: writes, tasks }));
+      setSections(buildHandoff({ recentWrites: writes, tasks, directActivitySignals }));
     } catch (e) {
       console.error("[HandoffPanel] load failed:", e);
     } finally {
