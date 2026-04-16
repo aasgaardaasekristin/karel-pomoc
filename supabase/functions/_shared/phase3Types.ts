@@ -140,7 +140,8 @@ export interface TherapistCircumstance {
     | "positive_energy";     // dobrá nálada, energie
   summary: string;
   operationalImpact: string;
-  sensitivity: "therapist_private" | "team_operational";
+  // Full sensitivity — "secret_karel_only" MUST survive end-to-end
+  sensitivity: InformationSensitivity;
   /** Source evidence (thread IDs, NOT raw content) */
   sources: string[];
 }
