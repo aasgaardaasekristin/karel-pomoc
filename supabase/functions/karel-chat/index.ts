@@ -1259,6 +1259,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
               }
             }
           }
+        }
 
         // ═══ POST-CHAT MEMORY EXTRACTION (fire-and-forget) ═══
         // For hana_personal, mamka, kata: extract structured memory outputs
