@@ -506,4 +506,59 @@ function ToolButton({ icon, title, desc, loading, onClick, badge }: {
   );
 }
 
+/* ── Live Plan Picker ── */
+function LivePlanPicker({ plans, loading, onLoad, onSelect }: {
+  plans: Array<{ id: string; selected_part: string; session_lead: string; plan_markdown: string; status: string; plan_date: string }>;
+  loading: boolean;
+  onLoad: () => void;
+  onSelect: (plan: { id: string; selected_part: string; session_lead: string; plan_markdown: string }) => void;
+}) {
+  useEffect(() => { onLoad(); }, []);
+
+  if (loading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (plans.length === 0) {
+    return (
+      <div className="text-center py-6 space-y-1">
+        <p className="text-xs text-muted-foreground">Žádné připravené live sezení.</p>
+        <p className="text-[10px] text-muted-foreground/70">Nejdříve vygenerujte session plán v záložce Plán.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">Vyberte připravené sezení:</p>
+      {plans.map((plan) => (
+        <button
+          key={plan.id}
+          onClick={() => onSelect(plan)}
+          className="w-full text-left p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors space-y-1"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-foreground">{plan.selected_part}</span>
+            <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
+              {plan.session_lead === "kata" ? "Káťa" : "Hanka"}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+            <span>{plan.plan_date}</span>
+            <span>·</span>
+            <span>{plan.status}</span>
+          </div>
+          {plan.plan_markdown && (
+            <p className="text-[10px] text-muted-foreground/80 line-clamp-2">{plan.plan_markdown.slice(0, 120)}…</p>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default DidSprava;
