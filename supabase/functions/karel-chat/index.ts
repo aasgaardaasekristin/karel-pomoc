@@ -3,6 +3,13 @@ import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { getSystemPrompt, ConversationMode } from "./systemPrompts.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import {
+  buildGovernedWriteIntents,
+  buildExtractionPrompt,
+  type WritebackContext,
+  type PartRegistryLookup,
+} from "../_shared/postChatWriteback.ts";
+import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
