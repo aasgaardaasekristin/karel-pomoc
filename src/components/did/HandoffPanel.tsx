@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isNonDidEntity } from "@/lib/didPartNaming";
 import { Loader2, ArrowRightLeft } from "lucide-react";
 import {
   toWriteQueueItemView,
@@ -53,10 +54,12 @@ const HandoffPanel = ({ refreshTrigger = 0 }: Props) => {
         status: t.status,
       }));
       const directActivitySignals = toDirectActivitySignals(
-        (partsRes.data || []).map((p: any) => ({
-          part_name: p.part_name,
-          last_seen_at: p.last_seen_at,
-        }))
+        (partsRes.data || [])
+          .filter((p: any) => !isNonDidEntity(p.part_name || ""))
+          .map((p: any) => ({
+            part_name: p.part_name,
+            last_seen_at: p.last_seen_at,
+          }))
       );
 
       setSections(buildHandoff({ recentWrites: writes, tasks, directActivitySignals }));
