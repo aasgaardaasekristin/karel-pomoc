@@ -227,54 +227,45 @@ const DidSprava = ({
 
         {activeTab === "live" && (
           <div className="space-y-3">
-            {!liveActive ? (
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">Spusť živou asistenci pro konkrétní sezení.</p>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-medium text-foreground/80">Jméno části</label>
-                  <input
-                    className="w-full h-8 text-xs rounded-md border border-border bg-background px-2"
-                    placeholder="např. Kubík, Míša..."
-                    value={livePartName}
-                    onChange={(e) => setLivePartName(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-medium text-foreground/80">Terapeutka</label>
-                  <div className="flex gap-2">
-                    {(["Hanka", "Káťa"] as const).map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setLiveTherapist(t)}
-                        className={`px-3 py-1 text-xs rounded-md border transition-colors ${liveTherapist === t ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  className="w-full h-8 text-xs"
-                  disabled={!livePartName.trim()}
-                  onClick={() => setLiveActive(true)}
-                >
-                  ⚡ Spustit živé sezení
-                </Button>
-              </div>
-            ) : (
+            {livePlan ? (
               <div className="min-h-[400px]">
                 <DidLiveSessionPanel
-                  partName={livePartName}
-                  therapistName={liveTherapist}
+                  partName={livePlan.partName}
+                  therapistName={livePlan.therapistName}
+                  contextBrief={livePlan.contextBrief}
                   onEnd={() => {
-                    setLiveActive(false);
-                    setLivePartName("");
+                    setLivePlan(null);
                     toast.success("Sezení ukončeno a uloženo.");
                   }}
-                  onBack={() => setLiveActive(false)}
+                  onBack={() => setLivePlan(null)}
                 />
               </div>
+            ) : (
+              <LivePlanPicker
+                plans={livePlans}
+                loading={livePlansLoading}
+                onLoad={() => {
+                  setLivePlansLoading(true);
+                  supabase
+                    .from("did_daily_session_plans")
+                    .select("id, selected_part, session_lead, plan_markdown, status, plan_date")
+                    .in("status", ["generated", "in_progress"])
+                    .order("plan_date", { ascending: false })
+                    .limit(10)
+                    .then(({ data }) => {
+                      setLivePlans((data as any[]) || []);
+                      setLivePlansLoading(false);
+                    });
+                }}
+                onSelect={(plan) => {
+                  setLivePlan({
+                    id: plan.id,
+                    partName: plan.selected_part,
+                    therapistName: plan.session_lead === "kata" ? "Káťa" : "Hanka",
+                    contextBrief: plan.plan_markdown || "Bez dostupného session briefu.",
+                  });
+                }}
+              />
             )}
           </div>
         )}
