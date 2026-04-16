@@ -141,23 +141,98 @@ export function validateOutput(output: ExtractedWriteOutput): ValidationResult {
 // ── Sensitivity Guard ──
 
 export function checkSensitivityGuard(output: ExtractedWriteOutput, targetBucket: WriteBucket): ValidationResult {
-  // secret_karel_only → only therapist private docs or contexts, never plans/cards
+  // secret_karel_only → ONLY therapist-scoped docs, NEVER contexts/plans/cards
   if (output.sensitivity === "secret_karel_only") {
-    const allowed: WriteBucket[] = ["therapist_hanka", "therapist_kata", "contexts"];
+    const allowed: WriteBucket[] = ["therapist_hanka", "therapist_kata"];
     if (!allowed.includes(targetBucket)) {
       return { valid: false, reason: `secret_karel_only_leaked_to_${targetBucket}` };
     }
+    // Additionally restrict to analytical kinds only
+    const allowedKinds = new Set(["SITUACNI", "POZNATKY", "STRATEGIE"]);
+    if (!allowedKinds.has(output.kind)) {
+      return { valid: false, reason: `secret_karel_only_invalid_kind_${output.kind}` };
+    }
   }
 
-  // therapist_private → not to part cards or plans (abstract reference ok in plans but handled at content level)
+  // therapist_private → blocked from part cards AND plans (no abstraction layer yet)
   if (output.sensitivity === "therapist_private") {
-    const blocked: WriteBucket[] = ["active_part_card", "dormant_part_card"];
+    const blocked: WriteBucket[] = [
+      "active_part_card",
+      "dormant_part_card",
+      "plan_05A",
+      "plan_05B",
+    ];
     if (blocked.includes(targetBucket)) {
       return { valid: false, reason: `therapist_private_leaked_to_${targetBucket}` };
     }
   }
 
   return { valid: true };
+}
+
+// ── Governed Metadata Resolvers ──
+
+export function resolveGovernedContentType(intent: GovernedWriteIntent): string {
+  const bucket = intent.target.bucket;
+  const doc = intent.target.documentKey;
+
+  if (bucket === "active_part_card" || bucket === "dormant_part_card") {
+    return "card_section_update";
+  }
+  if (doc.includes("SITUACNI_ANALYZA")) {
+    return "situational_analysis";
+  }
+  if (doc.includes("KARLOVY_POZNATKY") || doc.endsWith("/KAREL")) {
+    return "therapist_memory_note";
+  }
+  if (doc.includes("STRATEGIE_KOMUNIKACE")) {
+    return "therapist_memory_note";
+  }
+  if (bucket === "plan_05A") {
+    return "daily_plan";
+  }
+  if (bucket === "plan_05B") {
+    return "strategic_outlook";
+  }
+  if (bucket === "contexts") {
+    return "general_classification";
+  }
+  return "general_classification";
+}
+
+export function resolveGovernedSubjectType(intent: GovernedWriteIntent): string {
+  const bucket = intent.target.bucket;
+
+  if (bucket === "active_part_card" || bucket === "dormant_part_card") {
+    return "part";
+  }
+  if (bucket === "therapist_hanka" || bucket === "therapist_kata") {
+    return "therapist";
+  }
+  if (bucket === "contexts") {
+    return "family_context";
+  }
+  if (bucket === "plan_05A" || bucket === "plan_05B") {
+    return "system";
+  }
+  return "system";
+}
+
+export function resolveGovernedSubjectId(
+  intent: GovernedWriteIntent,
+  therapistKey: "HANKA" | "KATA",
+): string {
+  const bucket = intent.target.bucket;
+  const doc = intent.target.documentKey;
+
+  if (bucket === "active_part_card" || bucket === "dormant_part_card") {
+    return doc.split("/").pop()?.replace(/^KARTA_/, "").toLowerCase() || "unknown_part";
+  }
+  if (bucket === "therapist_hanka") return "hanka";
+  if (bucket === "therapist_kata") return "kata";
+  if (bucket === "contexts") return "family_context";
+  if (bucket === "plan_05A" || bucket === "plan_05B") return "did_system";
+  return therapistKey.toLowerCase();
 }
 
 // ── Raw Transcript Detection ──
