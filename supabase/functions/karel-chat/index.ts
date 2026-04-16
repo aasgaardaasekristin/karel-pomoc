@@ -1184,19 +1184,34 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
               const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
               // Query ALL relevant sub_modes — therapist + cast — so direct activity evidence is real
               const { data: recentThreads } = await sbTasks.from("did_threads")
-                .select("id, sub_mode, part_name, thread_label, last_activity_at")
+                .select("id, sub_mode, part_name, last_activity_at, messages")
                 .in("sub_mode", ["mamka", "kata", "cast"])
                 .gte("last_activity_at", twoDaysAgo)
                 .limit(40);
 
-              // Build circumstance snippets ONLY from therapist threads
-              // FIX 4.3: Do NOT use thread_label as summaryText — it's a UI label, not a summary.
-              // Without a pre-summarized source available in this scope, use safe no-op fallback.
-              const therapistThreads = (recentThreads || []).filter((t: any) => t.sub_mode === "mamka" || t.sub_mode === "kata");
-              if (therapistThreads.length > 0) {
-                console.log(`[task-guard] Circumstance profiler: ${therapistThreads.length} therapist threads found, but no pre-summarized source available — circumstances skipped (safe fallback)`);
+              // ═══ FIX 4B.1: Extract real therapist message content for circumstance profiler ═══
+              const circumstanceSnippets: TherapistActivitySnippet[] = [];
+              for (const row of (recentThreads || []) as any[]) {
+                if (row.sub_mode !== "mamka" && row.sub_mode !== "kata") continue;
+                const therapist: "hanka" | "kata" = row.sub_mode === "kata" ? "kata" : "hanka";
+                const msgs = Array.isArray(row.messages) ? row.messages : [];
+                for (const msg of msgs.slice(-8)) {
+                  const content = typeof msg?.content === "string" ? msg.content.trim() : "";
+                  if (!content) continue;
+                  const role = `${msg?.role ?? msg?.author ?? ""}`.toLowerCase();
+                  if (role.includes("assistant") || role.includes("karel")) continue;
+                  circumstanceSnippets.push({
+                    therapist,
+                    threadId: row.id,
+                    timestamp: typeof msg?.timestamp === "string" ? msg.timestamp : (row.last_activity_at ?? new Date().toISOString()),
+                    summaryText: content.slice(0, 1200),
+                  });
+                }
               }
-              const circumstances = detectCircumstances([]);
+              const circumstances = detectCircumstances(circumstanceSnippets);
+              if (circumstanceSnippets.length > 0) {
+                console.log(`[task-guard] Circumstance profiler: ${circumstanceSnippets.length} snippets from therapist messages, ${circumstances.length} circumstances detected`);
+              }
 
               // 3. For each task, run feasibility guard
               const feasibleRows: Array<Record<string, any>> = [];
@@ -1218,9 +1233,18 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     entityName: targetPart,
                     entityKind: "did_child",
                     lastDirectThreadDate: lastDirectThread?.last_activity_at || regEntry?.last_seen_at || null,
-                    lastTherapistMentionDate: recentThreads?.find(
-                      (th: any) => th.sub_mode !== "cast" && (th.thread_label || "").includes(targetPart)
-                    )?.last_activity_at || null,
+                  // ═══ FIX 4B.2: Mention evidence from actual message content, not thread_label ═══
+                  lastTherapistMentionDate: (() => {
+                    for (const th of (recentThreads || []) as any[]) {
+                      if (th.sub_mode === "cast") continue;
+                      const msgs = Array.isArray(th.messages) ? th.messages : [];
+                      const hasMention = msgs.some((m: any) =>
+                        typeof m?.content === "string" && m.content.includes(targetPart)
+                      );
+                      if (hasMention) return th.last_activity_at;
+                    }
+                    return null;
+                  })(),
                     recentDirectThreadCount: recentDirectCount,
                   };
                   entityAssessment = assessActivityStatus(evidence);
