@@ -168,6 +168,10 @@ const DidSprava = ({
         <div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
          {([
             { key: "safety" as const, label: newAlertCount > 0 ? `Bezpečnost (${newAlertCount})` : "Bezpečnost" },
+            { key: "writes" as const, label: "📝 Zápisy" },
+            { key: "packet" as const, label: "📦 Packet" },
+            { key: "handoff" as const, label: "🔄 Předávka" },
+            { key: "recovery" as const, label: "💓 Recovery" },
             { key: "tools" as const, label: "Nástroje" },
             ...(hasCrisis ? [{ key: "crisis" as const, label: "Krize" }] : []),
             { key: "plan" as const, label: "Plán" },
