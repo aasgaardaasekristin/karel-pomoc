@@ -7,6 +7,9 @@ import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
 import { auditKarelOutput } from "../_shared/karelLanguageGuard.ts";
+import { assessActivityStatus, type ActivityEvidenceInput } from "../_shared/activityStatusGuard.ts";
+import { checkTaskFeasibility, type TaskProposal } from "../_shared/taskFeasibilityGuard.ts";
+import { detectCircumstances, type TherapistActivitySnippet } from "../_shared/therapistCircumstanceProfiler.ts";
 
 // DID_MASTER_PROMPT removed — identity is now sourced from _shared/karelIdentity.ts
 // Domain-specific DID workflow instructions remain in systemPrompts.ts
