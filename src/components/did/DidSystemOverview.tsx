@@ -48,18 +48,41 @@ const loadLatestContext = async () => {
   return data?.[0] ?? null;
 };
 
-/** Extract display text from a context record */
-const extractOverviewText = (ctx: { analysis_json: any; context_json: any }): string | null => {
+/** Extract display text from a context record.
+ *  FÁZE 3B: NIKDY nečteme `context_json.crisis_alerts` jako pravdu.
+ *  Krizový count odvozujeme z kanonických polí (`canonical_crisis_count`
+ *  / `parts.active`) — případně z živé canonical query jako fallback. */
+const extractOverviewText = async (ctx: { analysis_json: any; context_json: any }): Promise<string | null> => {
   const analysis = ctx.analysis_json as any;
   if (analysis?.overview) return analysis.overview;
   if (analysis?.briefing) return analysis.briefing;
 
-  // Try to build a brief summary from context_json
   const cj = ctx.context_json as any;
   if (cj) {
     const parts: string[] = [];
-    if (cj.crisis_alerts?.length) parts.push(`🔴 Krize: ${cj.crisis_alerts.length}`);
-    if (cj.active_parts?.length) parts.push(`👥 Aktivní části: ${cj.active_parts.length}`);
+
+    // 1) Preferuj kanonické pole z server snapshotu, pokud daily-refresh už ho dává.
+    let crisisCount: number | null = typeof cj.canonical_crisis_count === "number"
+      ? cj.canonical_crisis_count
+      : null;
+
+    // 2) Fallback: živý dotaz na `crisis_events` (kanonický model).
+    if (crisisCount === null) {
+      try {
+        const { count } = await supabase
+          .from("crisis_events")
+          .select("id", { count: "exact", head: true })
+          .not("phase", "in", '("closed","CLOSED")');
+        crisisCount = count ?? 0;
+      } catch {
+        crisisCount = 0;
+      }
+    }
+    if (crisisCount > 0) parts.push(`🔴 Krize: ${crisisCount}`);
+
+    if (cj.parts?.active?.length) parts.push(`👥 Aktivní části: ${cj.parts.active.length}`);
+    else if (cj.active_parts?.length) parts.push(`👥 Aktivní části: ${cj.active_parts.length}`);
+
     if (cj.pending_tasks?.length) parts.push(`📝 Úkoly: ${cj.pending_tasks.length}`);
     if (parts.length) return parts.join(" | ");
   }
