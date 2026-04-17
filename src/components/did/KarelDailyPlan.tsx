@@ -210,7 +210,7 @@ const InlineQuestionField = ({
   );
 };
 
-const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false }: Props) => {
+const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: snapshotFromProps = null }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
