@@ -4,13 +4,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Send, MessageCircle, ClipboardList, HelpCircle,
-  CalendarDays, ArrowRight, Users, Lightbulb, AlertTriangle, CheckCircle2, ThumbsUp, Edit3
+  CalendarDays, ArrowRight, Users, Lightbulb, AlertTriangle, CheckCircle2, ThumbsUp, Edit3,
+  Sparkles, TrendingDown, HelpCircle as HelpCircle2, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+
+interface SnapshotItem {
+  entity: string;
+  owner: string;
+  reason: string;
+  lastUpdate: string | null;
+  deadline?: string | null;
+  ctaPath: string;
+}
+
+interface DashboardSnapshot {
+  todayNew?: SnapshotItem[];
+  todayWorse?: SnapshotItem[];
+  todayUnconfirmed?: SnapshotItem[];
+  todayActionRequired?: SnapshotItem[];
+}
 
 interface Props {
   refreshTrigger: number;
   hasCrisisBanner?: boolean;
+  snapshot?: DashboardSnapshot | null;
 }
 
 /* ── Greeting by time of day ── */
