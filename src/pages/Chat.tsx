@@ -293,41 +293,68 @@ const Chat = () => {
   }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads]);
 
   // ═══ Crisis deep-link handler ═══
+  // Accepts BOTH:
+  //   ?crisis_action=interview&crisis_id=<crisis_events.id>   (canonical, from CommandCrisisCard)
+  //   ?crisis_action=interview&part_name=<name>               (legacy fallback)
+  // When crisis_id is provided, we resolve crisis_events → part_name first,
+  // then open / reuse / create the correct crisis thread.
   useEffect(() => {
     if (!authChecked || !session) return;
     const crisisAction = searchParams.get("crisis_action");
     if (!crisisAction) return;
 
-    const partName = searchParams.get("part_name");
+    const partNameParam = searchParams.get("part_name");
+    const crisisIdParam = searchParams.get("crisis_id");
     // Clear params immediately to prevent re-triggering
     setSearchParams({}, { replace: true });
 
-    if (crisisAction === "interview" && partName) {
+    if (crisisAction === "interview" && (partNameParam || crisisIdParam)) {
       setMode("childcare");
       setDidSubMode("cast");
       setDidFlowState("loading");
-      didContextPrime.runPrime(partName, "cast");
 
       (async () => {
+        // Resolve canonical part_name from crisis_id when present
+        let resolvedPart: string | null = partNameParam;
+        if (crisisIdParam) {
+          try {
+            const { data: crisisRow } = await supabase
+              .from("crisis_events")
+              .select("part_name")
+              .eq("id", crisisIdParam)
+              .maybeSingle();
+            if (crisisRow?.part_name) resolvedPart = crisisRow.part_name;
+          } catch (e) {
+            console.warn("[Chat] crisis_id resolution failed, falling back to part_name", e);
+          }
+        }
+
+        if (!resolvedPart) {
+          setDidFlowState("thread-list");
+          toast.error("Nepodařilo se otevřít krizové vlákno (chybí část)");
+          return;
+        }
+
+        didContextPrime.runPrime(resolvedPart, "cast");
         await didThreads.fetchActiveThreads("cast");
         if (basicDocsRef.current) setDidInitialContext(basicDocsRef.current);
 
-        const existingThread = await didThreads.getThreadByPart(partName, "cast");
+        const existingThread = await didThreads.getThreadByPart(resolvedPart, "cast");
         if (existingThread) {
           setActiveThread(existingThread);
           setMessages(existingThread.messages as any);
           setDidFlowState("chat");
-          toast.info(`Krizové vlákno: ${partName}`);
+          toast.info(`Krizové vlákno: ${resolvedPart}`);
         } else {
-          const thread = await didThreads.createThread(partName, "cast", "cs", [], {
-            threadLabel: `Krizový rozhovor — ${partName}`,
+          const thread = await didThreads.createThread(resolvedPart, "cast", "cs", [], {
+            threadLabel: `Krizový rozhovor — ${resolvedPart}`,
             forceNew: true,
           });
           if (thread) {
             setActiveThread(thread);
             setMessages([]);
             setDidFlowState("chat");
-            toast.info(`Nové krizové vlákno: ${partName}`);
+            toast.info(`Nové krizové vlákno: ${resolvedPart}`);
           } else {
             setDidFlowState("thread-list");
             toast.error("Nepodařilo se vytvořit krizové vlákno");

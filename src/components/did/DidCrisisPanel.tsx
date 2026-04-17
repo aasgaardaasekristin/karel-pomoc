@@ -145,12 +145,14 @@ export default function DidCrisisPanel({
             .maybeSingle();
           evRow = data as any;
         } else if (partName) {
+          // Open-phase filter: must match snapshot / badge logic exactly
+          // (backend uses NOT IN ('closed','CLOSED'); DB rows can be either case).
           const { data } = await supabase
             .from("crisis_events")
             .select("*")
             .eq("part_name", partName)
-            .not("phase", "eq", "closed")
-            .order("created_at", { ascending: false })
+            .not("phase", "in", '("closed","CLOSED")')
+            .order("updated_at", { ascending: false })
             .limit(1)
             .maybeSingle();
           evRow = data as any;
