@@ -166,10 +166,25 @@ const DidCoordinationAlerts = ({
       }
     }
 
-    // 3. OVERDUE — per-task rows (no batch summarization)
+    // 3a. PLAN ITEMS (canonical) — Karel-generated overdue / high-priority actions
+    if (planItemsRes.data) {
+      for (const pi of planItemsRes.data as any[]) {
+        result.push({
+          type: "overdue",
+          icon: Clock,
+          partName: pi.section || pi.plan_type || "",
+          owner: "tým",
+          deadline: pi.review_at,
+          lastUpdate: pi.created_at,
+          reason: `[${(pi.priority || "high").toUpperCase()}] ${(pi.action_required || "akce bez popisu").slice(0, 90)}`,
+          ctaPath: `/chat?did_submode=mamka&plan_item_id=${pi.id}`,
+        });
+      }
+    }
+
+    // 3b. MANUAL TASKS (adjunct, deduped) — only those NOT linked to canonical plan_item
     if (tasksRes.data) {
       for (const t of tasksRes.data as any[]) {
-        // 5-day implicit deadline if due_date missing
         const implicitDeadline =
           t.due_date ||
           new Date(
@@ -182,7 +197,7 @@ const DidCoordinationAlerts = ({
           owner: detectOwner(t.assigned_to),
           deadline: implicitDeadline,
           lastUpdate: t.created_at,
-          reason: (t.task || "úkol bez popisu").slice(0, 90),
+          reason: `(manuální) ${(t.task || "úkol bez popisu").slice(0, 90)}`,
           ctaPath: `/chat?did_submode=mamka&task_id=${t.id}`,
         });
       }
