@@ -311,8 +311,11 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     };
   }, [didStorageKey]);
 
-  // ═══ CRISIS INDICATOR STATE ═══
-  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string; days_in_crisis: number; summary: string } | null>(null);
+  // ═══ CRISIS INDICATOR ═══
+  // Note: full velitelská karta lives in DidDashboard (CommandCrisisCard).
+  // Inside a thread we only show a tiny non-narrative badge so the therapist
+  // knows the part is in active crisis and can jump back to the command card.
+  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string } | null>(null);
 
   useEffect(() => {
     if (didSubMode !== "cast" || !activeThread?.partName) {
@@ -321,14 +324,14 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     }
     (supabase as any)
       .from("crisis_alerts")
-      .select("severity, days_in_crisis, summary")
+      .select("severity")
       .eq("part_name", activeThread.partName)
       .in("status", ["ACTIVE", "ACKNOWLEDGED"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }: any) => {
-        setActiveCrisisBanner(data || null);
+        setActiveCrisisBanner(data ? { severity: data.severity } : null);
       });
   }, [didSubMode, activeThread?.partName]);
 
@@ -732,15 +735,15 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
               />
             </div>
           )}
-          {/* Crisis indicator banner */}
+          {/* Compact crisis hint — non-narrative, points back to command card */}
           {activeCrisisBanner && didSubMode === "cast" && (
             <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2 flex items-center gap-2 text-xs">
-              <span className="text-destructive font-bold">🔴 KRIZOVÝ REŽIM</span>
+              <span className="text-destructive font-bold">⚠ AKTIVNÍ KRIZE</span>
               <span className="text-destructive/80">
-                Den {activeCrisisBanner.days_in_crisis || 1} — {activeCrisisBanner.severity}
+                {activeCrisisBanner.severity}
               </span>
               <span className="text-muted-foreground ml-auto text-[10px]">
-                Karel sleduje rizikové signály
+                detail v Karlově přehledu
               </span>
             </div>
           )}
