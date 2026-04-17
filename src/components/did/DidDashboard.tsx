@@ -269,17 +269,28 @@ const DidDashboard = ({
     }
   }, []);
 
-  useEffect(() => {
-    loadDashboardData();
-    loadSnapshot(refreshTrigger > 0);
-  }, [loadDashboardData, loadSnapshot, refreshTrigger]);
+  // ── Unified refresh: dashboard data + snapshot always move together.
+  //    Used for initial load, interval, realtime handlers and manual refresh.
+  const refreshAll = useCallback(
+    async (opts: { silent?: boolean; force?: boolean } = {}) => {
+      const { silent = false, force = false } = opts;
+      await Promise.all([loadDashboardData(silent), loadSnapshot(force)]);
+    },
+    [loadDashboardData, loadSnapshot],
+  );
 
+  // Initial load + manual refresh trigger
+  useEffect(() => {
+    refreshAll({ force: refreshTrigger > 0 });
+  }, [refreshAll, refreshTrigger]);
+
+  // Interval polling — silent + uses cache, but still keeps snapshot fresh
   useEffect(() => {
     const interval = setInterval(() => {
-      loadDashboardData(true);
+      refreshAll({ silent: true });
     }, 60000);
     return () => clearInterval(interval);
-  }, [loadDashboardData]);
+  }, [refreshAll]);
 
   useEffect(() => {
     const alertChannel = supabase
@@ -296,7 +307,7 @@ const DidDashboard = ({
               duration: 15000,
             });
           }
-          loadDashboardData(true);
+          refreshAll({ silent: true, force: true });
         },
       )
       .subscribe();
@@ -311,7 +322,18 @@ const DidDashboard = ({
             playAlertSound();
             toast.error(`🔴 NOVÁ KRIZE: ${payload.new?.part_name || "?"}`, { duration: 20000 });
           }
-          loadDashboardData(true);
+          refreshAll({ silent: true, force: true });
+        },
+      )
+      .subscribe();
+
+    const crisisEventsChannel = supabase
+      .channel("dashboard-crisis-events")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "crisis_events" },
+        () => {
+          refreshAll({ silent: true, force: true });
         },
       )
       .subscribe();
@@ -322,8 +344,9 @@ const DidDashboard = ({
       setRealtimeConnected(false);
       supabase.removeChannel(alertChannel);
       supabase.removeChannel(crisisChannel);
+      supabase.removeChannel(crisisEventsChannel);
     };
-  }, [loadDashboardData]);
+  }, [refreshAll]);
 
   const runDidBootstrap = useCallback(async () => {
     setIsBootstrapping(true);

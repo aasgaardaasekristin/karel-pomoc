@@ -243,19 +243,23 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     what_shifted: string | null;
     what_remains_unclear: string | null;
   }[]>([]);
-  const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
   const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
+  // Fallback only — used when the snapshot has no command crisis.
+  // Loaded inside `load()` from crisis_events with the same open-phase filter
+  // as the badge / snapshot / detail panel.
+  const [fallbackCrisisPart, setFallbackCrisisPart] = useState<string | null>(null);
 
   // ── Snapshot (4-section command data) — uses prop if provided, else local cache + fetch
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(snapshotFromProps);
 
-  // Crisis priority is read ONLY from snapshot.command.crises (canonical from
-  // crisis_events). Old useCrisisOperationalState / hasCrisisBanner path is gone.
+  // SINGLE source of truth for crisis priority across ALL narrative / implications /
+  // deficit questions. Primary: snapshot.command.crises[0]. Fallback only if snapshot
+  // has no crisis but DB does (e.g. snapshot still warming up).
   const snapshotCrisis = (snapshot?.command?.crises && snapshot.command.crises.length > 0)
     ? snapshot.command.crises[0]
     : null;
-  const snapshotCrisisPart = snapshotCrisis?.partName || null;
+  const effectiveCrisisPart: string | null = snapshotCrisis?.partName || fallbackCrisisPart || null;
 
   useEffect(() => {
     if (snapshotFromProps) { setSnapshot(snapshotFromProps); return; }
@@ -346,7 +350,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         supabase
           .from("crisis_events")
           .select("part_name")
-          .neq("phase", "CLOSED")
+          .not("phase", "in", '("closed","CLOSED")')
+          .order("updated_at", { ascending: false })
           .limit(1),
         supabase.functions.invoke("karel-did-drive-read", {
           body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
@@ -360,9 +365,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
-      // Crisis part name now comes from snapshot (canonical via crisis_events).
-      // Keep local crisisRes only as a last-resort fallback when snapshot is empty.
-      setCrisisPartName(snapshotCrisisPart || crisisRes.data?.[0]?.part_name || null);
+      // Fallback only — primary crisis source-of-truth is snapshot.command.crises.
+      setFallbackCrisisPart(crisisRes.data?.[0]?.part_name || null);
 
       // Determine last any activity date
       const allDates = [
@@ -557,8 +561,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     const paragraphs: string[] = [];
 
     // ═══ 1. CRISIS — always first (driven only by snapshot.command.crises) ═══
-    if (snapshotCrisisPart) {
-      paragraphs.push(`⚠ ${snapshotCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
+    if (effectiveCrisisPart) {
+      paragraphs.push(`⚠ ${effectiveCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
 
     if (isInfoDeficit) {
@@ -579,8 +583,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
       // ── SECTION B: "Co z toho plyne" ──
       const deficitImplications: string[] = [];
-      if (crisisPartName) {
-        deficitImplications.push(`Krizová situace u ${crisisPartName} trvá i bez aktuálních dat — to zvyšuje riziko.`);
+      if (effectiveCrisisPart) {
+        deficitImplications.push(`Krizová situace u ${effectiveCrisisPart} trvá i bez aktuálních dat — to zvyšuje riziko.`);
       }
       if (daysWithoutData > 7) {
         deficitImplications.push("Bez informací déle než týden nemohu zodpovědně koordinovat péči ani vyhodnotit dynamiku systému.");
@@ -645,8 +649,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
       // ── SECTION B: "Co z toho plyne" ──
       const implications: string[] = [];
-      if (crisisPartName) {
-        implications.push(`Krizová situace u ${crisisPartName} vyžaduje denní monitoring a koordinovaný přístup.`);
+      if (effectiveCrisisPart) {
+        implications.push(`Krizová situace u ${effectiveCrisisPart} vyžaduje denní monitoring a koordinovaný přístup.`);
       }
       const urgentTasks = tasks.filter(t => t.priority === "critical" || t.priority === "high");
       if (urgentTasks.length > 0) {
@@ -762,13 +766,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       });
     }
 
-    if (crisisPartName) {
+    if (effectiveCrisisPart) {
       deficitItems.push({
-        question: `${crisisPartName} má aktivní krizi — jaký je aktuální stav?`,
-        intro: `Krize ${crisisPartName} vyžaduje průběžný monitoring. Bez vašeho pozorování nemohu správně vyhodnotit riziko.`,
-        karelProposal: `Všímejte si: je ${crisisPartName} v kontaktu? Reaguje na grounding? Jsou přítomny rizikové signály?`,
-        ifUnknownHelp: `Pokud nevíte jak zjistit stav ${crisisPartName}, otevřete se mnou rozhovor — připravím pro vás postup.`,
-        partName: crisisPartName,
+        question: `${effectiveCrisisPart} má aktivní krizi — jaký je aktuální stav?`,
+        intro: `Krize ${effectiveCrisisPart} vyžaduje průběžný monitoring. Bez vašeho pozorování nemohu správně vyhodnotit riziko.`,
+        karelProposal: `Všímejte si: je ${effectiveCrisisPart} v kontaktu? Reaguje na grounding? Jsou přítomny rizikové signály?`,
+        ifUnknownHelp: `Pokud nevíte jak zjistit stav ${effectiveCrisisPart}, otevřete se mnou rozhovor — připravím pro vás postup.`,
+        partName: effectiveCrisisPart,
       });
     }
   }
