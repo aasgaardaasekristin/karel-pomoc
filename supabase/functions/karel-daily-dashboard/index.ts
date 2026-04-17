@@ -269,7 +269,194 @@ async function fetchCrisisAlerts(supabase: ReturnType<typeof createClient>): Pro
 }
 
 /* ================================================================
-   DRIVE WRITE
+   COMMAND SNAPSHOT — structured 4-section data for KarelDailyPlan
+   ================================================================ */
+async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): Promise<any> {
+  const now = Date.now();
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startISO = startOfDay.toISOString();
+  const oneDayAgoISO = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const fiveDaysAgoISO = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [threadsRes, registryRes, crisisRes, questionsRes, tasksRes, prevMetricsRes, todayMetricsRes] = await Promise.all([
+    supabase
+      .from("did_threads")
+      .select("id, part_name, sub_mode, last_activity_at, created_at, thread_label")
+      .gte("created_at", startISO)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("did_part_registry")
+      .select("part_name, status, last_seen_at, last_emotional_intensity, updated_at, first_seen_at")
+      .order("updated_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("crisis_alerts")
+      .select("id, part_name, severity, summary, created_at, status")
+      .in("status", ["ACTIVE", "ACKNOWLEDGED"])
+      .gte("created_at", oneDayAgoISO)
+      .order("created_at", { ascending: false })
+      .limit(10),
+    supabase
+      .from("did_pending_questions")
+      .select("id, question, directed_to, created_at, status, part_name")
+      .in("status", ["pending", "sent", "open"])
+      .lt("created_at", oneDayAgoISO)
+      .order("created_at", { ascending: true })
+      .limit(15),
+    supabase
+      .from("did_therapist_tasks")
+      .select("id, task, assigned_to, priority, status, created_at, due_date")
+      .in("priority", ["high", "urgent", "critical"])
+      .in("status", ["pending", "active", "in_progress", "not_started"])
+      .lt("created_at", fiveDaysAgoISO)
+      .order("created_at", { ascending: true })
+      .limit(15),
+    supabase
+      .from("daily_metrics")
+      .select("part_name, valence, captured_at")
+      .gte("captured_at", new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString())
+      .lt("captured_at", oneDayAgoISO)
+      .order("captured_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("daily_metrics")
+      .select("part_name, valence, captured_at")
+      .gte("captured_at", oneDayAgoISO)
+      .order("captured_at", { ascending: false })
+      .limit(50),
+  ]);
+
+  const isBanned = (n: string | null) => {
+    const x = (n || "").toLowerCase();
+    return !x || x === "system" || x === "karel" || x === "hanka" || x === "hanička" || x === "kata" || x === "káťa" || x === "locík";
+  };
+  const hoursSince = (iso: string | null) => iso ? Math.round((now - new Date(iso).getTime()) / 3_600_000) : null;
+  const detectOwner = (raw: string | null): string => {
+    const low = (raw || "").toLowerCase();
+    if (low.includes("han")) return "hanka";
+    if (low.includes("kát") || low.includes("kata")) return "kata";
+    if (low.includes("both") || low.includes("obe")) return "obě";
+    return "tým";
+  };
+
+  // 1. DNES NOVĚ — new threads or new registry parts created today
+  const todayNewMap = new Map<string, any>();
+  for (const t of (threadsRes.data || [])) {
+    if (isBanned(t.part_name)) continue;
+    if (todayNewMap.has(t.part_name)) continue;
+    todayNewMap.set(t.part_name, {
+      entity: t.part_name,
+      owner: t.sub_mode === "kata" ? "kata" : "hanka",
+      lastUpdate: t.last_activity_at,
+      reason: t.thread_label ? `nové vlákno: „${(t.thread_label || "").slice(0, 80)}"` : "nové vlákno",
+      ctaPath: `/chat?did_submode=cast&thread_id=${t.id}`,
+    });
+  }
+  for (const r of (registryRes.data || [])) {
+    if (isBanned(r.part_name)) continue;
+    if (!r.first_seen_at || r.first_seen_at < startISO) continue;
+    if (todayNewMap.has(r.part_name)) continue;
+    todayNewMap.set(r.part_name, {
+      entity: r.part_name,
+      owner: "tým",
+      lastUpdate: r.first_seen_at,
+      reason: "nově identifikovaná část",
+      ctaPath: `/chat?did_submode=cast`,
+    });
+  }
+  const todayNew = Array.from(todayNewMap.values()).slice(0, 6);
+
+  // 2. DNES HORŠÍ — high intensity (≥4) registry rows updated today, or new high-severity crisis
+  const todayWorse: any[] = [];
+  const prevValence = new Map<string, number>();
+  for (const m of (prevMetricsRes.data || [])) {
+    if (!prevValence.has(m.part_name)) prevValence.set(m.part_name, m.valence);
+  }
+  for (const m of (todayMetricsRes.data || [])) {
+    if (isBanned(m.part_name)) continue;
+    const prev = prevValence.get(m.part_name);
+    if (prev != null && m.valence < prev - 0.3) {
+      todayWorse.push({
+        entity: m.part_name,
+        owner: "tým",
+        lastUpdate: m.captured_at,
+        reason: `valence klesla ${prev.toFixed(1)} → ${m.valence.toFixed(1)}`,
+        ctaPath: `/chat?did_submode=cast`,
+      });
+    }
+  }
+  for (const r of (registryRes.data || [])) {
+    if (isBanned(r.part_name)) continue;
+    if ((r.last_emotional_intensity || 0) >= 4 && r.updated_at && r.updated_at >= oneDayAgoISO) {
+      if (todayWorse.find(x => x.entity === r.part_name)) continue;
+      todayWorse.push({
+        entity: r.part_name,
+        owner: "tým",
+        lastUpdate: r.updated_at,
+        reason: `emoční intenzita ${r.last_emotional_intensity}/5`,
+        ctaPath: `/chat?did_submode=cast`,
+      });
+    }
+  }
+  for (const c of (crisisRes.data || [])) {
+    if (isBanned(c.part_name)) continue;
+    if (c.severity !== "high" && c.severity !== "critical") continue;
+    if (todayWorse.find(x => x.entity === c.part_name)) continue;
+    todayWorse.push({
+      entity: c.part_name,
+      owner: "tým",
+      lastUpdate: c.created_at,
+      reason: `nová ${c.severity} krize: ${(c.summary || "").slice(0, 80)}`,
+      ctaPath: `/chat?did_submode=cast&crisis_action=interview&part_name=${encodeURIComponent(c.part_name)}`,
+    });
+  }
+
+  // 3. DNES NEPOTVRZENÉ — pending questions older than 24h
+  const todayUnconfirmed = (questionsRes.data || []).map((q: any) => ({
+    entity: q.part_name && !isBanned(q.part_name) ? q.part_name : "obecné",
+    owner: detectOwner(q.directed_to),
+    lastUpdate: q.created_at,
+    reason: (q.question || "").slice(0, 100),
+    ctaPath: `/chat?did_submode=mamka&question_id=${q.id}`,
+  })).slice(0, 6);
+
+  // 4. DNES VYŽADUJE ZÁSAH — overdue tasks (priority high+) + crises without today interview
+  const todayActionRequired: any[] = [];
+  for (const t of (tasksRes.data || [])) {
+    todayActionRequired.push({
+      entity: t.task ? (t.task.match(/[A-ZČŠŘŽÝÁÍÉŮÚĎŤŇ][a-zčšřžýáíéůúďťň]+/)?.[0] || "úkol") : "úkol",
+      owner: detectOwner(t.assigned_to),
+      lastUpdate: t.created_at,
+      reason: `${t.priority?.toUpperCase() || "HIGH"}: ${(t.task || "").slice(0, 80)}`,
+      deadline: t.due_date,
+      ctaPath: `/chat?did_submode=mamka&task_id=${t.id}`,
+    });
+  }
+
+  // Crisis command cards (top of dashboard)
+  const commandCrises = (crisisRes.data || []).map((c: any) => ({
+    partName: c.part_name,
+    state: c.status === "ACTIVE" ? "active" : "awaiting_feedback",
+    severity: c.severity,
+    hoursStaleUpdate: hoursSince(c.created_at),
+    missing: [],
+    requires: [(c.summary || "").slice(0, 120)],
+    ctas: [
+      { label: "Otevřít krizové vlákno", path: `/chat?crisis_action=interview&part_name=${encodeURIComponent(c.part_name)}` },
+    ],
+  }));
+
+  return {
+    generated_at: new Date().toISOString(),
+    command: { crises: commandCrises },
+    todayNew,
+    todayWorse: todayWorse.slice(0, 6),
+    todayUnconfirmed,
+    todayActionRequired: todayActionRequired.slice(0, 8),
+  };
+}
    ================================================================ */
 
 async function saveDashboardToDrive(supabase: ReturnType<typeof createClient>, markdown: string): Promise<void> {
