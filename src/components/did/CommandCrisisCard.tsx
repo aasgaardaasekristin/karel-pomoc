@@ -11,6 +11,7 @@ import {
 import DidCrisisPanel from "./DidCrisisPanel";
 
 export interface CommandCrisis {
+  crisisEventId?: string | null; // canonical crisis_events.id (preferred)
   partName: string;
   state: string; // active | awaiting_feedback | ready_to_close
   severity: string;
