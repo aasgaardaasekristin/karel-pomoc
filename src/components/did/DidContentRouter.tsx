@@ -29,6 +29,7 @@ import ChatMessage from "@/components/ChatMessage";
 import type { DidThread } from "@/hooks/useDidThreads";
 import type { DidFlowState } from "@/lib/chatHelpers";
 import type { SyncProgress } from "@/hooks/useManualUpdate";
+import { useCrisisOperationalState } from "@/hooks/useCrisisOperationalState";
 
 type DidSubMode = "mamka" | "cast" | "kata" | "form" | "freetext" | "general" | "research" | null;
 import type { ConversationMode } from "@/lib/chatHelpers";
