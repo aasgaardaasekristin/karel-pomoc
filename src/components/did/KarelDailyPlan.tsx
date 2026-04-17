@@ -309,7 +309,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     if (!hasLoadedOnce.current) setLoading(true);
 
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = pragueTodayISO();
       const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
       const [tasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, crisisRes, planRes] = await Promise.all([
@@ -360,7 +360,9 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
-      setCrisisPartName(crisisRes.data?.[0]?.part_name || null);
+      // Crisis part name now comes from snapshot (canonical via crisis_events).
+      // Keep local crisisRes only as a last-resort fallback when snapshot is empty.
+      setCrisisPartName(snapshotCrisisPart || crisisRes.data?.[0]?.part_name || null);
 
       // Determine last any activity date
       const allDates = [
@@ -554,9 +556,9 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
   const buildNarrativeParagraphs = (): string[] => {
     const paragraphs: string[] = [];
 
-    // ═══ 1. CRISIS — always first ═══
-    if (crisisPartName && !hasCrisisBanner) {
-      paragraphs.push(`⚠ ${crisisPartName} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
+    // ═══ 1. CRISIS — always first (driven only by snapshot.command.crises) ═══
+    if (snapshotCrisisPart) {
+      paragraphs.push(`⚠ ${snapshotCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
 
     if (isInfoDeficit) {

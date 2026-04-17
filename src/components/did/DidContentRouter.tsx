@@ -312,10 +312,10 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   }, [didStorageKey]);
 
   // ═══ CRISIS INDICATOR ═══
-  // Note: full velitelská karta lives in DidDashboard (CommandCrisisCard).
-  // Inside a thread we only show a tiny non-narrative badge so the therapist
-  // knows the part is in active crisis and can jump back to the command card.
-  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string } | null>(null);
+  // Tiny non-narrative badge — reads from canonical crisis_events (same source as
+  // the velitelská CommandCrisisCard + DidCrisisPanel). All three views (badge,
+  // command card, detail) now resolve to the same crisis entity.
+  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string; eventId: string } | null>(null);
 
   useEffect(() => {
     if (didSubMode !== "cast" || !activeThread?.partName) {
@@ -323,15 +323,15 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
       return;
     }
     (supabase as any)
-      .from("crisis_alerts")
-      .select("severity")
+      .from("crisis_events")
+      .select("id, severity, phase")
       .eq("part_name", activeThread.partName)
-      .in("status", ["ACTIVE", "ACKNOWLEDGED"])
-      .order("created_at", { ascending: false })
+      .not("phase", "in", '("closed","CLOSED")')
+      .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data }: any) => {
-        setActiveCrisisBanner(data ? { severity: data.severity } : null);
+        setActiveCrisisBanner(data ? { severity: data.severity, eventId: data.id } : null);
       });
   }, [didSubMode, activeThread?.partName]);
 
