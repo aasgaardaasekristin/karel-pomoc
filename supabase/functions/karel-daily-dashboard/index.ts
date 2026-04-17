@@ -271,15 +271,34 @@ async function fetchCrisisAlerts(supabase: ReturnType<typeof createClient>): Pro
 /* ================================================================
    COMMAND SNAPSHOT — structured 4-section data for KarelDailyPlan
    ================================================================ */
+
+// Prague-day boundary: returns ISO timestamp for today's 00:00 in Europe/Prague.
+function pragueStartOfDayISO(reference: Date = new Date()): string {
+  // sv-SE locale yields "YYYY-MM-DD" — same calendar day as Prague.
+  const ymd = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague" }).format(reference);
+  // Prague offset varies (CET +01:00 / CEST +02:00). We compute it for the reference moment.
+  const dtfParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Prague",
+    timeZoneName: "shortOffset",
+  }).formatToParts(reference);
+  const offPart = dtfParts.find((p) => p.type === "timeZoneName")?.value || "GMT+01:00";
+  const m = offPart.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+  const sign = m?.[1] === "-" ? "-" : "+";
+  const hh = (m?.[2] || "1").padStart(2, "0");
+  const mm = (m?.[3] || "00").padStart(2, "0");
+  return `${ymd}T00:00:00${sign}${hh}:${mm}`;
+}
+function pragueTodayYMD(reference: Date = new Date()): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague" }).format(reference);
+}
+
 async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): Promise<any> {
   const now = Date.now();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const startISO = startOfDay.toISOString();
+  const startISO = pragueStartOfDayISO(new Date(now));
   const oneDayAgoISO = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const fiveDaysAgoISO = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [threadsRes, registryRes, crisisRes, questionsRes, tasksRes, prevMetricsRes, todayMetricsRes] = await Promise.all([
+  const [threadsRes, registryRes, crisisEventsRes, crisisAlertsRes, questionsRes, tasksRes, prevMetricsRes, todayMetricsRes] = await Promise.all([
     supabase
       .from("did_threads")
       .select("id, part_name, sub_mode, last_activity_at, created_at, thread_label")
