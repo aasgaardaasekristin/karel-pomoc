@@ -310,6 +310,14 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
       .select("part_name, status, last_seen_at, last_emotional_intensity, updated_at, first_seen_at")
       .order("updated_at", { ascending: false })
       .limit(50),
+    // CANONICAL crisis source: crisis_events (open phases). crisis_alerts is secondary
+    // and only used to enrich severity / summary / hours-stale when not present on event.
+    supabase
+      .from("crisis_events")
+      .select("id, part_name, severity, phase, trigger_description, opened_at, updated_at, awaiting_response_from")
+      .not("phase", "in", "(\"closed\",\"CLOSED\")")
+      .order("updated_at", { ascending: false })
+      .limit(10),
     supabase
       .from("crisis_alerts")
       .select("id, part_name, severity, summary, created_at, status")
