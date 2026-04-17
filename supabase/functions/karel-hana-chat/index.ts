@@ -645,6 +645,29 @@ serve(async (req) => {
           saveEpisodeInBackground(user.id, analysis, fullResponse, conversationId || null)
             .catch(e => console.error("Episode save failed:", e));
         }
+
+        // ═══ STEP 5 (Phase 2): Post-chat structured writeback ═══
+        // karel-hana-chat = Hana/osobní režim → isHanaPersonal=true → HARD firewall
+        // applies (intimate content forced to KAREL + secret_karel_only).
+        // DID-relevantní fakta projdou jako SITUACNI/POZNATKY a sensitivity guard
+        // je odpojí od PART_CARD pokud jsou therapist_private.
+        if (fullResponse.length > 30) {
+          const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
+          const userTextHana = typeof lastUserMsg?.content === "string"
+            ? lastUserMsg.content
+            : Array.isArray(lastUserMsg?.content)
+              ? (lastUserMsg.content.find((c: any) => c?.type === "text")?.text || "")
+              : "";
+          if (userTextHana.length > 15) {
+            runHanaPostChatWriteback({
+              userId: user.id,
+              userText: userTextHana,
+              karelResponse: fullResponse,
+              conversationId: conversationId || null,
+              apiKey: LOVABLE_API_KEY,
+            }).catch((e) => console.error("[hana-writeback] failed:", e));
+          }
+        }
       }
     })();
 
