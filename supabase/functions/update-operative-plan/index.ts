@@ -206,17 +206,23 @@ serve(async (req) => {
     console.log(`[operative-plan] Written ${planContent.length} chars to 05A`);
 
     // === LOG ===
+    const totalSessionsCount = dailyPlans.length + midTermPlanned.length;
     await sb.from("system_health_log").insert({
       event_type: "operative_plan_update",
       severity: "info",
-      message: `05A updated: ${parts.length} parts, ${crises.length} crises, ${planned.length} sessions`,
-      details: { parts_count: parts.length, crises_count: crises.length, sessions_count: planned.length },
+      message: `05A updated: ${parts.length} parts, ${crises.length} crises, ${dailyPlans.length} canonical sessions (+${midTermPlanned.length} mid-term)`,
+      details: {
+        parts_count: parts.length,
+        crises_count: crises.length,
+        canonical_sessions_count: dailyPlans.length,
+        midterm_sessions_count: midTermPlanned.length,
+      },
     });
 
     await sb.from("plan_update_log").insert({
       plan_type: "operative",
       parts_included: parts.map((p: any) => p.part_name),
-      sessions_planned: planned.length,
+      sessions_planned: totalSessionsCount,
       processing_time_ms: Date.now() - startTime,
     });
 
@@ -224,7 +230,9 @@ serve(async (req) => {
       success: true,
       partsIncluded: parts.length,
       crisesActive: crises.length,
-      sessionsPlanned: planned.length,
+      sessionsPlanned: totalSessionsCount,
+      canonicalSessions: dailyPlans.length,
+      midTermSessions: midTermPlanned.length,
       contentLength: planContent.length,
       processingTimeMs: Date.now() - startTime,
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
