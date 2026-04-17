@@ -7,6 +7,10 @@ import {
   FOLDER_MIME, GDOC_MIME,
 } from "../_shared/driveHelpers.ts";
 
+// FÁZE 3B: tato funkce zapisuje 05B = STRATEGIC OUTLOOK (15-60 dní).
+// `planned_sessions` a `part_goals` jsou zde jen VSTUP / DLOUHODOBÁ PROJEKCE,
+// NIKDY rozhodovací autorita pro dnešní operativu. Dnešek řeší
+// `did_daily_session_plans` a `did_plan_items` (kanonický model).
 const today = () => new Date().toISOString().slice(0, 10);
 const futureDate = (days: number) => new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 const pastDate = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
@@ -133,9 +137,13 @@ serve(async (req) => {
     }
 
     // --- SEKCE 6: Kritéria pro povýšení do 05A ---
+    // FÁZE 3B: planned_sessions zde slouží JEN jako střednědobá projekce / fallback.
+    // Promotion do 05A znamená vytvoření kanonického did_daily_session_plans záznamu,
+    // ne přímou autoritu této tabulky.
     lines.push(`\n━━━ 6. KRITÉRIA PRO POVÝŠENÍ Z 05B DO 05A ━━━\n`);
+    lines.push(`(legacy projekce — kanonický dnešek = did_daily_session_plans)\n`);
     if (promotionSessions.length) {
-      lines.push(`Sezení plánovaná na 15-60 dní:`);
+      lines.push(`Sezení plánovaná na 15-60 dní (projekce):`);
       for (const s of promotionSessions) {
         lines.push(`  • ${s.part_name} — ${s.method_name} — ${s.session_date || '?'} — terapeut: ${s.therapist}`);
       }

@@ -335,7 +335,10 @@ serve(async (req) => {
       suppBlock += `\n${(todaySessionPlan.plan_markdown || "").slice(0, 4000)}`;
     }
 
-    // ═══ SECTION N: Karlovy plány sezení z karet částí ═══
+    // ═══ SECTION N: Karlovy plány sezení (FÁZE 3B: hint, ne dnešní pravda) ═══
+    // Dnešní operativní pravda = did_daily_session_plans (viz blok 🎯 výše).
+    // `next_session_plan` zůstává jen kontextový hint k dané části, ne autorita.
+    // Crisis sort používá kanonický OPEN_PHASE filter (sjednoceno s canonicalCrisis).
     try {
       const { data: partsWithPlans } = await sb.from("did_part_registry")
         .select("part_name, display_name, next_session_plan, status")
@@ -343,10 +346,10 @@ serve(async (req) => {
         .order("status", { ascending: true });
 
       if (partsWithPlans && partsWithPlans.length > 0) {
-        // Check which parts are in crisis
+        // CANONICAL: open-phase filter aligned with canonicalCrisis.ts.
         const { data: crisisEvents } = await sb.from("crisis_events")
           .select("part_name")
-          .not("phase", "eq", "closed");
+          .not("phase", "in", '("closed","CLOSED")');
         const crisisSet = new Set((crisisEvents || []).map((c: any) => c.part_name));
 
         // Sort: crisis first, then by status
@@ -356,7 +359,8 @@ serve(async (req) => {
           return aCrisis - bCrisis;
         });
 
-        suppBlock += `\n\n📋 ═══ KARLOVY PLÁNY SEZENÍ ═══\n`;
+        suppBlock += `\n\n📋 ═══ NEXT_SESSION_PLAN HINTY (legacy projekce, ne dnešek) ═══\n`;
+        suppBlock += `(dnešek = did_daily_session_plans, viz blok 🎯 výše)\n`;
         for (const p of sorted) {
           const isCrisis = crisisSet.has(p.part_name);
           const prefix = isCrisis ? "🔴 " : "";

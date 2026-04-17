@@ -245,9 +245,53 @@ serve(async (req) => {
     const recentCastThreads = (recentThreads || []).filter((t: any) => t.sub_mode === "cast");
     const recentTherapistThreads = (recentThreads || []).filter((t: any) => t.sub_mode === "mamka" || t.sub_mode === "kata");
 
+    // ═══ FÁZE 3B: CANONICAL summary fields for frontend snapshot readers. ═══
+    // Frontend (DidSystemOverview, KarelDailyPlan, atd.) NEMÁ resolvovat krizi/sezení
+    // z legacy alert vrstev. Tyto pole jsou jediná pravda do `context_json`.
+    let canonicalCrisisCount = 0;
+    let canonicalCrisisList: Array<{ id: string; partName: string; severity: string | null; phase: string }> = [];
+    let canonicalTodaySession: any = null;
+    try {
+      const { data: openCrises } = await sb
+        .from("crisis_events")
+        .select("id, part_name, severity, phase")
+        .not("phase", "in", '("closed","CLOSED")')
+        .order("opened_at", { ascending: false });
+      canonicalCrisisList = (openCrises || []).map((c: any) => ({
+        id: c.id, partName: c.part_name, severity: c.severity, phase: c.phase,
+      }));
+      canonicalCrisisCount = canonicalCrisisList.length;
+    } catch (e) {
+      console.warn("[daily-refresh] canonical crisis snapshot failed:", e);
+    }
+    try {
+      const { data: todayPlan } = await sb
+        .from("did_daily_session_plans")
+        .select("id, selected_part, therapist, session_lead, urgency_score, status, crisis_event_id")
+        .eq("plan_date", today)
+        .in("status", ["pending", "planned", "generated", "in_progress"])
+        .order("urgency_score", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (todayPlan) canonicalTodaySession = todayPlan;
+    } catch (e) {
+      console.warn("[daily-refresh] canonical session snapshot failed:", e);
+    }
+
     const contextJson = {
       date: today,
       generated_at: new Date().toISOString(),
+
+      // ═══ FÁZE 3B CANONICAL FIELDS — primary truth for frontend readers ═══
+      // Frontend snapshot readers MUST use these instead of resolving from
+      // legacy alert / planned_sessions / next_session_plan layers.
+      canonical_crisis_count: canonicalCrisisCount,
+      canonical_crises: canonicalCrisisList,
+      canonical_today_session: canonicalTodaySession, // null = no canonical plan today
+      canonical_queue: {
+        plan_items_count: (planItems05A || []).length,
+        manual_tasks_count: (tasks || []).length,
+      },
 
       // Therapist profiles
       therapists: {

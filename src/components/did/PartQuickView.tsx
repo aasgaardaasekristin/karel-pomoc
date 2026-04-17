@@ -5,6 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { X, Pencil, RotateCcw } from "lucide-react";
 import RichMarkdown from "@/components/ui/RichMarkdown";
+import { OPEN_PHASE_FILTER } from "@/lib/canonicalSnapshot";
+import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 
 interface PartQuickViewProps {
   partName: string;
@@ -44,8 +46,9 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
     const load = async () => {
       setLoading(true);
       const sb = supabase as any;
-      const today = new Date().toISOString().slice(0, 10);
-      const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      // FÁZE 3B: Prague-day, sjednoceno s ostatními callsites.
+      const today = pragueTodayISO();
+      const weekAgo = pragueTodayISO(new Date(Date.now() - 7 * 86400000));
 
       const [
         registryRes, kartotekaRes, goalsRes, weekMetricsRes,
@@ -59,7 +62,11 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
         sb.from("safety_alerts").select("id, alert_type, severity, status, created_at, description").eq("part_name", partName).in("status", ["new", "acknowledged"]).order("created_at", { ascending: false }).limit(5),
         sb.from("switching_events").select("id, original_part, detected_part, confidence, created_at").or(`original_part.eq.${partName},detected_part.eq.${partName}`).gte("created_at", today + "T00:00:00").order("created_at", { ascending: false }).limit(5),
         sb.from("therapist_notes").select("id, note_text, note_type, created_at").eq("part_name", partName).order("created_at", { ascending: false }).limit(3),
-        sb.from("crisis_events").select("part_name, phase").eq("part_name", partName).not("phase", "eq", "closed").limit(1),
+        // FÁZE 3B: kanonický open-phase filter — sjednoceno s canonicalCrisis / canonicalSnapshot.
+        sb.from("crisis_events").select("part_name, phase")
+          .eq("part_name", partName)
+          .not("phase", "in", `(${OPEN_PHASE_FILTER.map((p) => `"${p}"`).join(",")})`)
+          .limit(1),
       ]);
 
       const reg = registryRes.data;
