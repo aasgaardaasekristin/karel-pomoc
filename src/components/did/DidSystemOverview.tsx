@@ -49,45 +49,53 @@ const loadLatestContext = async () => {
 };
 
 /** Extract display text from a context record.
- *  FÁZE 3B: NIKDY nečteme `context_json.crisis_alerts` jako pravdu.
- *  Krizový count odvozujeme z kanonických polí (`canonical_crisis_count`
- *  / `parts.active`) — případně z živé canonical query jako fallback. */
-const extractOverviewText = async (ctx: { analysis_json: any; context_json: any }): Promise<string | null> => {
+ *  FÁZE 3B: čistý SYNC selektor nad kanonickým snapshotem.
+ *  - žádné živé DB dotazy (žádný druhý frontend resolver mozek)
+ *  - žádný `crisis_alerts` jako pravda
+ *  - jen kanonická pole z `analysis_json` / `context_json` ze serveru */
+const extractOverviewText = (ctx: { analysis_json: any; context_json: any }): string | null => {
   const analysis = ctx.analysis_json as any;
   if (analysis?.overview) return analysis.overview;
   if (analysis?.briefing) return analysis.briefing;
 
   const cj = ctx.context_json as any;
-  if (cj) {
-    const parts: string[] = [];
+  if (!cj) return null;
 
-    // 1) Preferuj kanonické pole z server snapshotu, pokud daily-refresh už ho dává.
-    let crisisCount: number | null = typeof cj.canonical_crisis_count === "number"
+  const parts: string[] = [];
+
+  const crisisCount =
+    typeof cj.canonical_crisis_count === "number"
       ? cj.canonical_crisis_count
-      : null;
-
-    // 2) Fallback: živý dotaz na `crisis_events` (kanonický model).
-    if (crisisCount === null) {
-      try {
-        const { count } = await supabase
-          .from("crisis_events")
-          .select("id", { count: "exact", head: true })
-          .not("phase", "in", '("closed","CLOSED")');
-        crisisCount = count ?? 0;
-      } catch {
-        crisisCount = 0;
-      }
-    }
-    if (crisisCount > 0) parts.push(`🔴 Krize: ${crisisCount}`);
-
-    if (cj.parts?.active?.length) parts.push(`👥 Aktivní části: ${cj.parts.active.length}`);
-    else if (cj.active_parts?.length) parts.push(`👥 Aktivní části: ${cj.active_parts.length}`);
-
-    if (cj.pending_tasks?.length) parts.push(`📝 Úkoly: ${cj.pending_tasks.length}`);
-    if (parts.length) return parts.join(" | ");
+      : Array.isArray(cj?.command?.crises)
+        ? cj.command.crises.length
+        : Array.isArray(cj?.crises)
+          ? cj.crises.length
+          : null;
+  if (typeof crisisCount === "number" && crisisCount > 0) {
+    parts.push(`🔴 Krize: ${crisisCount}`);
   }
 
-  return null;
+  const activePartsCount =
+    Array.isArray(cj?.parts?.active)
+      ? cj.parts.active.length
+      : Array.isArray(cj?.active_parts)
+        ? cj.active_parts.length
+        : null;
+  if (typeof activePartsCount === "number" && activePartsCount > 0) {
+    parts.push(`👥 Aktivní části: ${activePartsCount}`);
+  }
+
+  const queueCount =
+    Array.isArray(cj?.command?.queue?.primary) || Array.isArray(cj?.command?.queue?.adjunct)
+      ? (cj.command.queue.primary?.length || 0) + (cj.command.queue.adjunct?.length || 0)
+      : Array.isArray(cj?.pending_tasks)
+        ? cj.pending_tasks.length
+        : null;
+  if (typeof queueCount === "number" && queueCount > 0) {
+    parts.push(`📝 Úkoly: ${queueCount}`);
+  }
+
+  return parts.length ? parts.join(" | ") : null;
 };
 
 const parseOverviewStream = async (response: Response): Promise<string> => {
