@@ -427,16 +427,23 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
       });
     }
   }
-  for (const c of (crisisRes.data || [])) {
-    if (isBanned(c.part_name)) continue;
-    if (c.severity !== "high" && c.severity !== "critical") continue;
-    if (todayWorse.find(x => x.entity === c.part_name)) continue;
+  // Index alerts by part_name for enrichment of canonical crisis_events rows.
+  const alertsByPart = new Map<string, any>();
+  for (const a of (crisisAlertsRes.data || [])) {
+    if (!alertsByPart.has(a.part_name)) alertsByPart.set(a.part_name, a);
+  }
+
+  for (const ev of (crisisEventsRes.data || [])) {
+    if (isBanned(ev.part_name)) continue;
+    const sev = ev.severity || alertsByPart.get(ev.part_name)?.severity;
+    if (sev !== "high" && sev !== "critical") continue;
+    if (todayWorse.find(x => x.entity === ev.part_name)) continue;
     todayWorse.push({
-      entity: c.part_name,
+      entity: ev.part_name,
       owner: "tým",
-      lastUpdate: c.created_at,
-      reason: `nová ${c.severity} krize: ${(c.summary || "").slice(0, 80)}`,
-      ctaPath: `/chat?did_submode=cast&crisis_action=interview&part_name=${encodeURIComponent(c.part_name)}`,
+      lastUpdate: ev.updated_at || ev.opened_at,
+      reason: `${sev} krize: ${(ev.trigger_description || alertsByPart.get(ev.part_name)?.summary || "").slice(0, 80)}`,
+      ctaPath: `/chat?did_submode=cast&crisis_id=${ev.id}`,
     });
   }
 
@@ -462,21 +469,41 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
     });
   }
 
-  // Crisis command cards (top of dashboard)
-  const commandCrises = (crisisRes.data || []).map((c: any) => ({
-    partName: c.part_name,
-    state: c.status === "ACTIVE" ? "active" : "awaiting_feedback",
-    severity: c.severity,
-    hoursStaleUpdate: hoursSince(c.created_at),
-    missing: [],
-    requires: [(c.summary || "").slice(0, 120)],
-    ctas: [
-      { label: "Otevřít krizové vlákno", path: `/chat?crisis_action=interview&part_name=${encodeURIComponent(c.part_name)}` },
-    ],
-  }));
+  // Crisis command cards (top of dashboard) — canonical source: crisis_events.
+  // Each card carries the canonical crisisEventId so command card, thread badge and
+  // detail panel point to the SAME entity.
+  const phaseToState = (phase: string | null): string => {
+    const p = (phase || "").toLowerCase();
+    if (p === "closing" || p === "ready_to_close") return "ready_to_close";
+    if (p === "diagnostic" || p === "stabilizing") return "awaiting_feedback";
+    if (p === "closed") return "closed";
+    return "active";
+  };
+  const commandCrises = (crisisEventsRes.data || []).map((ev: any) => {
+    const alert = alertsByPart.get(ev.part_name);
+    const sev = ev.severity || alert?.severity || "medium";
+    const lastUpdate = ev.updated_at || ev.opened_at || alert?.created_at;
+    const summary = ev.trigger_description || alert?.summary || "";
+    const awaiting: string[] = Array.isArray(ev.awaiting_response_from) ? ev.awaiting_response_from : [];
+    const missing: string[] = [];
+    if (awaiting.length > 0) missing.push(`feedback: ${awaiting.join(", ")}`);
+    return {
+      crisisEventId: ev.id,
+      partName: ev.part_name,
+      state: phaseToState(ev.phase),
+      severity: sev,
+      hoursStaleUpdate: hoursSince(lastUpdate),
+      missing,
+      requires: summary ? [summary.slice(0, 120)] : [],
+      ctas: [
+        { label: "Otevřít krizové vlákno", path: `/chat?crisis_action=interview&crisis_id=${ev.id}` },
+      ],
+    };
+  });
 
   return {
     generated_at: new Date().toISOString(),
+    pragueDate: pragueTodayYMD(new Date(now)),
     command: { crises: commandCrises },
     todayNew,
     todayWorse: todayWorse.slice(0, 6),
@@ -484,7 +511,6 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
     todayActionRequired: todayActionRequired.slice(0, 8),
   };
 }
-   ================================================================ */
 
 async function saveDashboardToDrive(supabase: ReturnType<typeof createClient>, markdown: string): Promise<void> {
   try {
