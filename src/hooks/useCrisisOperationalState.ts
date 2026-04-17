@@ -435,8 +435,9 @@ export function useCrisisOperationalState() {
 
   const fetchAll = useCallback(async () => {
     try {
+      // FÁZE 3 — canonical OPEN_PHASE_FILTER ('closed', 'CLOSED'). crisis_alerts is enrichment only.
       const [eventsRes, alertsRes, assessmentsRes, checklistRes, tasksRes, questionsRes, interventionsRes, meetingsRes, interviewsRes, sessionQuestionsRes] = await Promise.all([
-        supabase.from("crisis_events").select("*").not("phase", "eq", "closed").order("created_at", { ascending: false }),
+        supabase.from("crisis_events").select("*").not("phase", "in", '("closed","CLOSED")').order("created_at", { ascending: false }),
         supabase.from("crisis_alerts").select("*").in("status", ["ACTIVE", "ACKNOWLEDGED"]).order("created_at", { ascending: false }),
         supabase.from("crisis_daily_assessments").select("*").order("assessment_date", { ascending: true }),
         supabase.from("crisis_closure_checklist").select("*"),

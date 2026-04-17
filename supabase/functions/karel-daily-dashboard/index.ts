@@ -2,6 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES, isKnownNonPart, deduplicateTasks } from "../_shared/system-rules.ts";
 import { appendToDoc, findFolder, findFileByName, getAccessToken } from "../_shared/driveHelpers.ts";
+// FÁZE 3 — canonical resolvers (single source of truth)
+import { resolveActiveCrises } from "../_shared/canonicalCrisis.ts";
+import { resolveTodaysSessions } from "../_shared/canonicalSession.ts";
+import { resolveOperationalQueue } from "../_shared/canonicalQueue.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -456,16 +460,35 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
     ctaPath: `/chat?did_submode=mamka&question_id=${q.id}`,
   })).slice(0, 6);
 
-  // 4. DNES VYŽADUJE ZÁSAH — overdue tasks (priority high+) + crises without today interview
+  // 4. DNES VYŽADUJE ZÁSAH — FÁZE 3 CANONICAL: built from canonicalQueue resolver.
+  // Primary source: did_plan_items (Karel-generated). Adjunct: did_therapist_tasks (manual).
+  // Manual tasks linked to a plan_item are deduplicated automatically.
+  const opQueue = await resolveOperationalQueue(supabase);
   const todayActionRequired: any[] = [];
-  for (const t of (tasksRes.data || [])) {
+  // Primary (canonical Karel actions)
+  for (const it of opQueue.primary) {
+    if (!["high", "urgent", "critical"].includes((it.priority || "").toLowerCase())) continue;
     todayActionRequired.push({
-      entity: t.task ? (t.task.match(/[A-ZČŠŘŽÝÁÍÉŮÚĎŤŇ][a-zčšřžýáíéůúďťň]+/)?.[0] || "úkol") : "úkol",
-      owner: detectOwner(t.assigned_to),
-      lastUpdate: t.created_at,
-      reason: `${t.priority?.toUpperCase() || "HIGH"}: ${(t.task || "").slice(0, 80)}`,
-      deadline: t.due_date,
-      ctaPath: `/chat?did_submode=mamka&task_id=${t.id}`,
+      entity: it.section || it.planType || "akce",
+      owner: "tým",
+      lastUpdate: it.createdAt,
+      reason: `${(it.priority || "high").toUpperCase()}: ${(it.text || "").slice(0, 80)}`,
+      deadline: null,
+      ctaPath: `/chat?did_submode=mamka&plan_item_id=${it.id}`,
+      source: "plan_item",
+    });
+  }
+  // Adjunct (manual tasks not linked to canonical plan_item)
+  for (const it of opQueue.adjunct) {
+    if (!["high", "urgent", "critical"].includes((it.priority || "").toLowerCase())) continue;
+    todayActionRequired.push({
+      entity: it.text ? (it.text.match(/[A-ZČŠŘŽÝÁÍÉŮÚĎŤŇ][a-zčšřžýáíéůúďťň]+/)?.[0] || "úkol") : "úkol",
+      owner: detectOwner(it.assignedTo),
+      lastUpdate: it.createdAt,
+      reason: `${(it.priority || "HIGH").toUpperCase()}: ${(it.text || "").slice(0, 80)}`,
+      deadline: it.dueDate,
+      ctaPath: `/chat?did_submode=mamka&task_id=${it.id}`,
+      source: "manual_task",
     });
   }
 
@@ -501,10 +524,33 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
     };
   });
 
+  // FÁZE 3: expose canonical operational queue snapshot for UI
+  const queueSnapshot = {
+    primary: opQueue.primary.slice(0, 20).map((it) => ({
+      id: it.id,
+      text: it.text,
+      priority: it.priority,
+      section: it.section,
+      planType: it.planType,
+      createdAt: it.createdAt,
+      reviewAt: it.reviewAt,
+    })),
+    adjunct: opQueue.adjunct.slice(0, 20).map((it) => ({
+      id: it.id,
+      text: it.text,
+      priority: it.priority,
+      assignedTo: it.assignedTo,
+      category: it.category,
+      dueDate: it.dueDate,
+      createdAt: it.createdAt,
+    })),
+    total: opQueue.total,
+  };
+
   return {
     generated_at: new Date().toISOString(),
     pragueDate: pragueTodayYMD(new Date(now)),
-    command: { crises: commandCrises },
+    command: { crises: commandCrises, queue: queueSnapshot },
     todayNew,
     todayWorse: todayWorse.slice(0, 6),
     todayUnconfirmed,

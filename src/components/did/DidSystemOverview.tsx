@@ -11,22 +11,27 @@ interface Props {
   onTasksSynced?: () => void;
 }
 
-/** Build a minimal summary directly from DB tables when no daily context exists */
+/** Build a minimal summary directly from DB tables when no daily context exists.
+ *  FÁZE 3: crisis count uses canonical crisis_events (not crisis_alerts).
+ *  Tasks: primary did_plan_items + adjunct did_therapist_tasks (deduped via plan_item_id). */
 const buildEmergencyFallback = async (): Promise<string | null> => {
   try {
-    const [crisisRes, tasksRes, questionsRes, sessionsRes] = await Promise.all([
-      supabase.from("crisis_alerts").select("id", { count: "exact", head: true }).neq("status", "resolved"),
-      supabase.from("did_therapist_tasks").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    const [crisisRes, planItemsRes, manualTasksRes, questionsRes, sessionsRes] = await Promise.all([
+      // CANONICAL: crisis_events with open phases
+      supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "in", '("closed","CLOSED")'),
+      supabase.from("did_plan_items").select("id", { count: "exact", head: true }).eq("status", "active"),
+      supabase.from("did_therapist_tasks").select("id", { count: "exact", head: true }).eq("status", "pending").is("plan_item_id", null),
       supabase.from("did_pending_questions").select("id", { count: "exact", head: true }).in("status", ["pending", "sent"]),
       supabase.from("did_daily_session_plans").select("id", { count: "exact", head: true }).eq("status", "planned"),
     ]);
 
     const crisis = crisisRes.count ?? 0;
-    const tasks = tasksRes.count ?? 0;
+    const planItems = planItemsRes.count ?? 0;
+    const manualTasks = manualTasksRes.count ?? 0;
     const questions = questionsRes.count ?? 0;
     const sessions = sessionsRes.count ?? 0;
 
-    return `Karlův přehled (bez denní analýzy):\n🔴 Aktivní krize: ${crisis} | 📝 Úkoly: ${tasks} | ❓ Otázky: ${questions} | 🎯 Sezení: ${sessions}`;
+    return `Karlův přehled (bez denní analýzy):\n🔴 Aktivní krize: ${crisis} | 📝 Akce (Karel/manuální): ${planItems}/${manualTasks} | ❓ Otázky: ${questions} | 🎯 Sezení: ${sessions}`;
   } catch (e) {
     console.warn("Emergency fallback query failed:", e);
     return null;

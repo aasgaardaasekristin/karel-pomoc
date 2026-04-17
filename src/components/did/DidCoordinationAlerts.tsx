@@ -76,7 +76,9 @@ const DidCoordinationAlerts = ({
       Date.now() - 5 * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    const [sessionsRes, registryRes, tasksRes] = await Promise.all([
+    // FÁZE 3 — canonical operational queue: primárně did_plan_items, adjunct did_therapist_tasks.
+    // Manual tasks linked to plan_item are skipped (deduped against canonical).
+    const [sessionsRes, registryRes, planItemsRes, tasksRes] = await Promise.all([
       supabase
         .from("did_part_sessions")
         .select("part_name, therapist, session_date")
@@ -87,10 +89,20 @@ const DidCoordinationAlerts = ({
         .select("part_name, last_emotional_intensity, updated_at")
         .gte("last_emotional_intensity", 4)
         .order("last_emotional_intensity", { ascending: false }),
+      // Primary: canonical Karel-generated action items
+      supabase
+        .from("did_plan_items")
+        .select("id, action_required, priority, plan_type, section, created_at, review_at")
+        .eq("status", "active")
+        .in("priority", ["high", "urgent", "critical"])
+        .order("created_at", { ascending: true })
+        .limit(6),
+      // Adjunct: manual tasks NOT linked to a canonical plan_item (dedup)
       supabase
         .from("did_therapist_tasks")
-        .select("id, task, assigned_to, created_at, due_date, category")
+        .select("id, task, assigned_to, created_at, due_date, category, plan_item_id")
         .in("status", ["pending", "not_started"])
+        .is("plan_item_id", null)
         .lt("created_at", fiveDaysAgo)
         .order("created_at", { ascending: true })
         .limit(6),
