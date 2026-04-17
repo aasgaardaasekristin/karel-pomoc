@@ -600,6 +600,7 @@ export function buildGovernedWriteIntents(
 /**
  * Build the structured extraction prompt for AI.
  * Phase 5B: now requires confidence, freshness, changeType, needsVerification.
+ * Phase 2 (FÁZE 2): hard firewall for intimate Hana↔Karel content.
  */
 export function buildExtractionPrompt(
   userText: string,
@@ -607,7 +608,32 @@ export function buildExtractionPrompt(
   modeLabel: string,
   isHanaPersonal: boolean,
 ): string {
+  // ── HARD FIREWALL block injected only for Hana/osobní ──
+  // Forces any intimate / partner-relational / erotic content to KAREL + secret_karel_only
+  // and BANS leaking that content to PART_CARD / PLAN / KDO_JE_KDO / DULEZITA_DATA.
+  const intimacyFirewall = isHanaPersonal ? `
+═══ HARD FIREWALL — INTIMNÍ HANA↔KAREL OBSAH ═══
+Pokud konverzace obsahuje JAKÝKOLI z těchto motivů:
+  - intimní / partnerské / vztahové vyznání mezi Haničkou a Karlem
+  - erotický / smyslný / fyzický obsah
+  - vyznání lásky, něhy, touhy, oslovení typu "miláčku/lásko"
+  - sdílení velmi osobních pochybností o vztahu nebo o Karlovi
+  - jakékoli sexuální nebo vysoce intimní téma
+PAK PLATÍ ABSOLUTNÍ PRAVIDLA (nesmí být porušena):
+  1. kind MUSÍ být "KAREL"
+  2. sensitivity MUSÍ být "secret_karel_only"
+  3. partName MUSÍ být null
+  4. section MUSÍ být null
+  5. ZAKÁZÁNO vytvořit pro tento obsah jakýkoli output s kind:
+       PART_CARD, PLAN_05A, PLAN_05B, KDO_JE_KDO, DULEZITA_DATA, SLOVNIK, VZORCE
+  6. ZAKÁZÁNO zmiňovat tento obsah v outputu typu SITUACNI / POZNATKY / STRATEGIE
+       (ty mohou popsat jen obecný emoční rámec, NE intimní detail)
+  7. Intimní detail NIKDY nesmí téct do DID kartotéky ani do plánů.
+Pokud si nejsi jistý, zda je obsah intimní → klasifikuj jako KAREL + secret_karel_only.
+` : "";
+
   return `Analyzuj pouze relevantní závěry z této konverzace v režimu "${modeLabel}".
+${intimacyFirewall}
 
 VSTUP UŽIVATELE:
 "${userText.slice(0, 1500)}"
