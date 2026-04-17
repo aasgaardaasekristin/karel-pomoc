@@ -154,7 +154,7 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
   const [forcingAnalysis, setForcingAnalysis] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = pragueDayISO();
 
   /** QUICK REFRESH — loads from did_daily_context only, no edge function calls */
   const quickRefresh = useCallback(async () => {
