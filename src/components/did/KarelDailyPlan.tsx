@@ -1121,4 +1121,98 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
   );
 };
 
+/* ── 4-section command snapshot block ── */
+function CommandFourSections({
+  snapshot,
+  navigate,
+}: {
+  snapshot: DashboardSnapshot | null;
+  navigate: (path: string) => void;
+}) {
+  if (!snapshot) return null;
+  const sections: Array<{
+    key: string;
+    title: string;
+    icon: React.ReactNode;
+    items: SnapshotItem[];
+  }> = [
+    { key: "new", title: "Dnes nově", icon: <Sparkles className="w-3.5 h-3.5 text-primary/70" />, items: snapshot.todayNew || [] },
+    { key: "worse", title: "Dnes horší", icon: <TrendingDown className="w-3.5 h-3.5 text-destructive/80" />, items: snapshot.todayWorse || [] },
+    { key: "unconfirmed", title: "Dnes nepotvrzené", icon: <HelpCircle2 className="w-3.5 h-3.5 text-accent/70" />, items: snapshot.todayUnconfirmed || [] },
+    { key: "action", title: "Dnes vyžaduje zásah", icon: <Zap className="w-3.5 h-3.5 text-destructive/80" />, items: snapshot.todayActionRequired || [] },
+  ];
+  const total = sections.reduce((n, s) => n + s.items.length, 0);
+  if (total === 0) return null;
+
+  const fmtRel = (iso: string | null | undefined) => {
+    if (!iso) return "—";
+    const ms = Date.now() - new Date(iso).getTime();
+    const h = Math.round(ms / 3_600_000);
+    if (h < 1) return "před chvílí";
+    if (h < 24) return `před ${h}h`;
+    const d = Math.round(h / 24);
+    return d === 1 ? "včera" : `před ${d}d`;
+  };
+  const fmtDeadline = (iso: string | null | undefined) => {
+    if (!iso) return null;
+    try { return new Date(iso).toLocaleDateString("cs", { day: "2-digit", month: "2-digit" }); } catch { return null; }
+  };
+
+  const goTo = (path: string) => {
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch { /* ignore */ }
+    navigate(path);
+  };
+
+  return (
+    <>
+      <div className="jung-divider my-4" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {sections.map((sec) => (
+          sec.items.length === 0 ? null : (
+            <div key={sec.key} className="rounded-lg border border-border/40 bg-card/30 p-3">
+              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                {sec.icon}
+                {sec.title}
+                <span className="ml-auto text-[10.5px] text-muted-foreground/70">{sec.items.length}</span>
+              </div>
+              <ul className="space-y-1.5">
+                {sec.items.slice(0, 5).map((it, i) => {
+                  const dl = fmtDeadline(it.deadline);
+                  return (
+                    <li key={i} className="text-[12px] leading-5 text-foreground/85">
+                      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <span className="font-medium text-foreground">{it.entity}</span>
+                        {it.owner && (
+                          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-foreground/80">
+                            {it.owner}
+                          </span>
+                        )}
+                        <span className="text-[10.5px] text-muted-foreground">· {fmtRel(it.lastUpdate)}</span>
+                        {dl && (
+                          <span className="text-[10.5px] uppercase tracking-wide text-muted-foreground">
+                            · deadline {dl}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11.5px] text-foreground/70 leading-5">{it.reason}</div>
+                      {it.ctaPath && (
+                        <button
+                          onClick={() => goTo(it.ctaPath)}
+                          className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+                        >
+                          Otevřít <ArrowRight className="w-3 h-3" />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )
+        ))}
+      </div>
+    </>
+  );
+}
+
 export default KarelDailyPlan;
