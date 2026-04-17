@@ -239,6 +239,49 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
   const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
   const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
 
+  // ── Snapshot (4-section command data) — uses prop if provided, else local cache + fetch
+  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(snapshotFromProps);
+
+  useEffect(() => {
+    if (snapshotFromProps) { setSnapshot(snapshotFromProps); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const { data: u } = await supabase.auth.getUser();
+        const userId = u?.user?.id || "anon";
+        const today = new Date().toISOString().slice(0, 10);
+        const cacheKey = `karel-command:${userId}:${today}`;
+        // Read cache first
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached && alive) {
+            const parsed = JSON.parse(cached);
+            if (parsed?.snapshot) setSnapshot(parsed.snapshot);
+          }
+        } catch { /* ignore */ }
+
+        // Refetch
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+        const resp = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-dashboard`,
+          { method: "POST", headers, body: JSON.stringify({ mode: "snapshot", date: today }) },
+        );
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json?.snapshot && alive) {
+            setSnapshot(json.snapshot);
+            try { localStorage.setItem(cacheKey, JSON.stringify({ snapshot: json.snapshot, cachedAt: Date.now() })); } catch { /* ignore */ }
+          }
+        }
+      } catch (e) {
+        console.warn("[KarelDailyPlan] snapshot fetch failed, keeping cache", e);
+      }
+    })();
+    return () => { alive = false; };
+  }, [refreshTrigger, snapshotFromProps]);
+
   const load = useCallback(async () => {
     if (!hasLoadedOnce.current) setLoading(true);
 
