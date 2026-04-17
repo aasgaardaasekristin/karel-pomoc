@@ -241,11 +241,11 @@ Vrať POUZE validní JSON, nic jiného.`;
       }
 
       // Risks → governed write into KARLOVY_POZNATKY for therapist visibility
+      const therapistKey = sessionMode === "kata" ? "KATA" : "HANKA";
+      const today = new Date().toISOString().slice(0, 10);
       const risks = (parsed.risk_signals || []).filter((r: any) => typeof r === "string" && r.length > 5);
       if (risks.length > 0) {
-        const therapistKey = sessionMode === "kata" ? "KATA" : "HANKA";
         const docKey = `PAMET_KAREL/DID/${therapistKey}/KARLOVY_POZNATKY`;
-        const today = new Date().toISOString().slice(0, 10);
         const content = `\n=== SEKCE C — [DEDUKCE] [NOVÉ] [STŘEDNÍ JISTOTA] [AKUTNÍ] [VYŽADUJE OVĚŘENÍ] ${today} ===\nRizikové signály ze sezení s ${partName}:\n${risks.map((r: string) => `- ${r}`).join("\n")}\n→ Implikace: vyžaduje pozornost terapeutky před dalším sezením.`;
         const governed = encodeGovernedWrite(content, {
           source_type: "session_memory_extraction",
@@ -263,22 +263,24 @@ Vrať POUZE validní JSON, nic jiného.`;
         }).then(({ error }) => {
           if (error) console.warn("[extract-session-memory] risk writeback failed:", error.message);
         });
+      }
 
-        // Also create a pending question if any unresolved exists
-        for (const ur of (parsed.unresolved || []).slice(0, 3)) {
-          if (typeof ur !== "string" || ur.length < 8) continue;
-          await sb.from("did_pending_questions").insert({
-            question: `Nedořešené ze sezení s ${partName}: ${ur.slice(0, 240)}`,
-            context: `Session ${newMemoryId}, ${today}`,
-            subject_type: "part",
-            subject_id: partName.toLowerCase(),
-            directed_to: therapistKey === "KATA" ? "kata" : "hanka",
-            status: "open",
-            expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-          }).then(({ error }) => {
-            if (error) console.warn("[extract-session-memory] pending question failed:", error.message);
-          });
-        }
+      // FÁZE 2C: unresolved → pending questions ALWAYS (independent of risks).
+      // Risks and unresolved are two different things; an unanswered question
+      // is not necessarily a risk signal.
+      for (const ur of (parsed.unresolved || []).slice(0, 3)) {
+        if (typeof ur !== "string" || ur.length < 8) continue;
+        await sb.from("did_pending_questions").insert({
+          question: `Nedořešené ze sezení s ${partName}: ${ur.slice(0, 240)}`,
+          context: `Session ${newMemoryId}, ${today}`,
+          subject_type: "part",
+          subject_id: partName.toLowerCase(),
+          directed_to: therapistKey === "KATA" ? "kata" : "hanka",
+          status: "open",
+          expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        }).then(({ error }) => {
+          if (error) console.warn("[extract-session-memory] pending question failed:", error.message);
+        });
       }
     } catch (evErr) {
       console.warn("[extract-session-memory] evidence propagation failed (non-fatal):", evErr);
