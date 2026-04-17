@@ -680,47 +680,10 @@ export function useCrisisOperationalState() {
         builtCard.computedCTAs = computeCTAs(builtCard);
       }
 
-      // Add alerts without events (legacy)
-      for (const a of alerts) {
-        const key = a.part_name.toUpperCase();
-        if (!cardMap.has(key)) {
-          const displayName = cleanDisplayName(a.part_name);
-          const hoursStale = (Date.now() - new Date(a.created_at).getTime()) / 3_600_000;
-          const emptyChecklist: ClosureChecklistState = {
-            karelDiagnosticDone: false, hankaAgrees: false, kataAgrees: false, emotionalStableDays: 0,
-            noRiskSignals: false, groundingWorks: false, triggerManaged: false, noOpenQuestions: false,
-            relapsePlanExists: false, karelRecommendsClosure: false, closureRecommendation: null,
-          };
-          cardMap.set(key, {
-            partName: a.part_name, displayName, alertId: a.id, eventId: null, conversationId: a.conversation_id,
-            severity: a.severity, phase: null, operatingState: null, daysActive: a.days_in_crisis, sessionsCount: null,
-            trend48h: "unknown", lastAssessmentDate: null, lastAssessmentDecision: null, lastAssessmentRisk: null, lastAssessmentDayNumber: null,
-            lastContactAt: a.created_at, hoursStale, isStale: hoursStale > 24,
-            primaryTherapist: "neurčeno", secondaryTherapist: null, ownershipSource: "unknown" as const,
-            currentSummary: buildCurrentSummary({ phase: null, trend: "unknown", daysActive: a.days_in_crisis, hoursStale, lastDecision: null, lastInterventionType: null, lastInterventionWorked: null }),
-            clinicalSummary: null,
-            displaySummary: buildCurrentSummary({ phase: null, trend: "unknown", daysActive: a.days_in_crisis, hoursStale, lastDecision: null, lastInterventionType: null, lastInterventionWorked: null }),
-            karelRequires: hoursStale > 24 ? [`Čerstvý update od terapeutky (${displayName})`] : [],
-            closureReadiness: 0, closureChecklistState: emptyChecklist, canProposeClosing: false, closureReady: false,
-            closureReadiness4Layer: null, canEvaluate: false,
-            lastEntryBy: null, lastEntrySummary: null, lastInterventionType: null, lastInterventionWorked: null,
-            triggerDescription: null, triggerActive: null, riskLevel0to3: null, stableHours: null, consecutiveStableEntries: null,
-            indicators: { safety: null, coherence: null, emotionalRegulation: null, trust: null, timeOrientation: null },
-            openTasks: [], pendingQuestions: [],
-            lastMorningReviewAt: null, lastAfternoonReviewAt: null, lastEveningDecisionAt: null, lastOutcomeRecordedAt: null,
-            awaitingResponseFrom: [], todayRequiredOutputs: [], dailyChecklist: parseDailyChecklist(null),
-            crisisMeetingRequired: false, crisisMeetingReason: null,
-            meetingOpen: false, meetingId: null, meetingLastConclusionAt: null, meetingWaitingFor: null, meetingStatusSummary: null,
-            interviews: [], todayInterviewDone: false, sessionQuestions: [], unansweredQuestionCount: 0, sessionQAComplete: false,
-            closureMeeting: null, mainBlocker: null, missingTodayInterview: true, missingSessionResult: false, missingTherapistFeedback: false,
-            cardPropagationStatus: [], planSyncStatus: null,
-            computedCTAs: [], closureBlockerSummary: null,
-          });
-          // Compute CTAs for legacy alert-only cards
-          const legacyCard = cardMap.get(key)!;
-          legacyCard.computedCTAs = computeCTAs(legacyCard);
-        }
-      }
+      // FÁZE 3B — alert-only krizové karty ZAKÁZÁNY.
+      // crisis_alerts NESMÍ být source-of-truth pro existenci krize.
+      // Pokud chybí crisis_event, krize prostě "není". Alerty fungují jen jako
+      // notifikace/trigger refresh + enrichment uvnitř event větve výše.
 
       const builtCards = Array.from(cardMap.values());
       setCards(builtCards);
