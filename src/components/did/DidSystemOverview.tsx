@@ -152,7 +152,7 @@ const DidSystemOverview = ({ refreshTrigger, onTasksSynced }: Props) => {
     try {
       const ctx = await loadLatestContext();
       if (ctx) {
-        const text = await extractOverviewText(ctx);
+        const text = extractOverviewText(ctx);
         if (text) {
           setOverview(text);
           setLastUpdated(ctx.context_date !== today ? `Poslední aktualizace: ${new Date(ctx.context_date + "T12:00:00").toLocaleDateString("cs")}` : null);
