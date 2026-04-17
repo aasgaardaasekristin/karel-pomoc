@@ -350,7 +350,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         supabase
           .from("crisis_events")
           .select("part_name")
-          .neq("phase", "CLOSED")
+          .not("phase", "in", '("closed","CLOSED")')
+          .order("updated_at", { ascending: false })
           .limit(1),
         supabase.functions.invoke("karel-did-drive-read", {
           body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
@@ -364,9 +365,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
-      // Crisis part name now comes from snapshot (canonical via crisis_events).
-      // Keep local crisisRes only as a last-resort fallback when snapshot is empty.
-      setCrisisPartName(snapshotCrisisPart || crisisRes.data?.[0]?.part_name || null);
+      // Fallback only — primary crisis source-of-truth is snapshot.command.crises.
+      setFallbackCrisisPart(crisisRes.data?.[0]?.part_name || null);
 
       // Determine last any activity date
       const allDates = [
