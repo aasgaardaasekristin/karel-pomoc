@@ -76,7 +76,9 @@ const DidCoordinationAlerts = ({
       Date.now() - 5 * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    const [sessionsRes, registryRes, tasksRes] = await Promise.all([
+    // FÁZE 3 — canonical operational queue: primárně did_plan_items, adjunct did_therapist_tasks.
+    // Manual tasks linked to plan_item are skipped (deduped against canonical).
+    const [sessionsRes, registryRes, planItemsRes, tasksRes] = await Promise.all([
       supabase
         .from("did_part_sessions")
         .select("part_name, therapist, session_date")
@@ -87,10 +89,20 @@ const DidCoordinationAlerts = ({
         .select("part_name, last_emotional_intensity, updated_at")
         .gte("last_emotional_intensity", 4)
         .order("last_emotional_intensity", { ascending: false }),
+      // Primary: canonical Karel-generated action items
+      supabase
+        .from("did_plan_items")
+        .select("id, action_required, priority, plan_type, section, created_at, review_at")
+        .eq("status", "active")
+        .in("priority", ["high", "urgent", "critical"])
+        .order("created_at", { ascending: true })
+        .limit(6),
+      // Adjunct: manual tasks NOT linked to a canonical plan_item (dedup)
       supabase
         .from("did_therapist_tasks")
-        .select("id, task, assigned_to, created_at, due_date, category")
+        .select("id, task, assigned_to, created_at, due_date, category, plan_item_id")
         .in("status", ["pending", "not_started"])
+        .is("plan_item_id", null)
         .lt("created_at", fiveDaysAgo)
         .order("created_at", { ascending: true })
         .limit(6),
@@ -154,10 +166,25 @@ const DidCoordinationAlerts = ({
       }
     }
 
-    // 3. OVERDUE — per-task rows (no batch summarization)
+    // 3a. PLAN ITEMS (canonical) — Karel-generated overdue / high-priority actions
+    if (planItemsRes.data) {
+      for (const pi of planItemsRes.data as any[]) {
+        result.push({
+          type: "overdue",
+          icon: Clock,
+          partName: pi.section || pi.plan_type || "",
+          owner: "tým",
+          deadline: pi.review_at,
+          lastUpdate: pi.created_at,
+          reason: `[${(pi.priority || "high").toUpperCase()}] ${(pi.action_required || "akce bez popisu").slice(0, 90)}`,
+          ctaPath: `/chat?did_submode=mamka&plan_item_id=${pi.id}`,
+        });
+      }
+    }
+
+    // 3b. MANUAL TASKS (adjunct, deduped) — only those NOT linked to canonical plan_item
     if (tasksRes.data) {
       for (const t of tasksRes.data as any[]) {
-        // 5-day implicit deadline if due_date missing
         const implicitDeadline =
           t.due_date ||
           new Date(
@@ -170,7 +197,7 @@ const DidCoordinationAlerts = ({
           owner: detectOwner(t.assigned_to),
           deadline: implicitDeadline,
           lastUpdate: t.created_at,
-          reason: (t.task || "úkol bez popisu").slice(0, 90),
+          reason: `(manuální) ${(t.task || "úkol bez popisu").slice(0, 90)}`,
           ctaPath: `/chat?did_submode=mamka&task_id=${t.id}`,
         });
       }

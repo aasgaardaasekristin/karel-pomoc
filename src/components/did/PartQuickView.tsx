@@ -233,20 +233,24 @@ const PartQuickView = ({ partName, onClose }: PartQuickViewProps) => {
           </div>
         )}
 
-        {/* 📋 PLÁN PŘÍŠTÍHO SEZENÍ — vždy NAHOŘE */}
+        {/* 📋 KONTEXTOVÝ HINT (legacy next_session_plan) — NENÍ source-of-truth dnešního sezení.
+            FÁZE 3: dnešní sezení žije v did_daily_session_plans. Toto je jen kontext k části. */}
         {data.registry?.next_session_plan && (
           <div className={cn(
-            "rounded-md border-2 p-2.5",
-            data.isInCrisis ? "border-destructive bg-destructive/5" : "border-primary/40 bg-primary/5"
+            "rounded-md border p-2.5 opacity-90",
+            data.isInCrisis ? "border-destructive/40 bg-destructive/5" : "border-muted bg-muted/30"
           )}>
             <span className={cn(
               "text-[11px] font-semibold",
-              data.isInCrisis ? "text-destructive" : "text-primary"
+              data.isInCrisis ? "text-destructive" : "text-muted-foreground"
             )}>
-              📋 Karlův plán příštího sezení
+              📋 Kontext k části (hint, ne dnešní plán)
             </span>
             <div className="mt-1.5 text-[10px] leading-relaxed text-foreground prose-sm max-w-none">
               <RichMarkdown compact>{data.registry.next_session_plan}</RichMarkdown>
+            </div>
+            <div className="mt-1 text-[9px] text-muted-foreground/70 italic">
+              Dnešní plán sezení: viz hlavní dashboard (Karlův denní plán).
             </div>
           </div>
         )}

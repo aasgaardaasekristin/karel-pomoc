@@ -745,6 +745,22 @@ ${perplexityResult || "(nedostupná)"}`;
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\n/g, "<br>");
 
+    // ═══ FÁZE 3: resolve canonical crisis_event_id for selected part (open phases only) ═══
+    let crisisEventId: string | null = null;
+    try {
+      const { data: openCrisis } = await sb
+        .from("crisis_events")
+        .select("id")
+        .eq("part_name", selectedPart.partName)
+        .not("phase", "in", '("closed","CLOSED")')
+        .order("opened_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      crisisEventId = (openCrisis as any)?.id ?? null;
+    } catch (e) {
+      console.warn("[auto-session-plan] crisis_event resolution skipped:", e);
+    }
+
     // ═══ SAVE TO DB (INSERT — never delete old plans) ═══
     const generatedBy = forcePart ? "manual" : "auto";
     const { error: insertErr } = await sb.from("did_daily_session_plans").insert({
@@ -761,6 +777,7 @@ ${perplexityResult || "(nedostupná)"}`;
       part_tier: selectedTier || selectedPart.tier,
       session_lead: sessionLead,
       session_format: sessionFormat,
+      crisis_event_id: crisisEventId, // FÁZE 3: canonical crisis linkage
     });
 
     if (insertErr) {

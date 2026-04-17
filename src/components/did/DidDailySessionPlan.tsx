@@ -100,12 +100,18 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     setLoading(true);
     try {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-      const [plansRes, crisisRes] = await Promise.all([
+      // FÁZE 3 — canonical: aktivní krize čte z crisis_events (open phases), nikoli z crisis_alerts.
+      const [plansRes, crisisEventsRes, crisisAlertsRes] = await Promise.all([
         (supabase as any)
           .from("did_daily_session_plans")
           .select("*")
           .eq("plan_date", today)
           .order("created_at", { ascending: false }),
+        supabase
+          .from("crisis_events")
+          .select("id, part_name, severity, trigger_description, phase")
+          .not("phase", "in", '("closed","CLOSED")'),
+        // crisis_alerts only as enrichment for severity/summary if missing on event
         supabase
           .from("crisis_alerts")
           .select("id, part_name, severity, summary, conversation_id")
@@ -113,7 +119,22 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
       ]);
       if (plansRes.error) throw plansRes.error;
       setPlans(plansRes.data || []);
-      setActiveCrises(crisisRes.data || []);
+      const alertsByPart = new Map<string, any>();
+      for (const a of (crisisAlertsRes.data || [])) {
+        if (!alertsByPart.has(a.part_name)) alertsByPart.set(a.part_name, a);
+      }
+      const canonicalCrises = (crisisEventsRes.data || []).map((ev: any) => {
+        const enrich = alertsByPart.get(ev.part_name);
+        return {
+          id: ev.id,
+          part_name: ev.part_name,
+          severity: ev.severity || enrich?.severity,
+          summary: ev.trigger_description || enrich?.summary,
+          conversation_id: enrich?.conversation_id,
+          crisis_event_id: ev.id,
+        };
+      });
+      setActiveCrises(canonicalCrises);
     } catch (e) {
       console.error("Failed to load session plans:", e);
     } finally {

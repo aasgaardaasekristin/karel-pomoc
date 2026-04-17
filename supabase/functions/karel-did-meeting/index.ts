@@ -21,7 +21,8 @@ serve(async (req) => {
   );
 
   try {
-    const { action, meetingId, message, therapist, seed } = await req.json();
+    // FÁZE 3 — accept dailyPlanId for canonical session<->meeting linkage
+    const { action, meetingId, message, therapist, seed, dailyPlanId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
     const MAMKA_EMAIL = "mujosobniasistentnamiru@gmail.com";
@@ -109,12 +110,32 @@ serve(async (req) => {
         openingContent = fallbackParts.join("\n");
       }
 
+      // FÁZE 3: resolve canonical daily_plan_id (explicit param wins, else heuristic by topic+today)
+      let resolvedDailyPlanId: string | null = dailyPlanId || null;
+      if (!resolvedDailyPlanId && topic) {
+        try {
+          const todayPrague = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+          const { data: candidate } = await sb
+            .from("did_daily_session_plans")
+            .select("id, selected_part")
+            .eq("plan_date", todayPrague)
+            .order("created_at", { ascending: false });
+          const match = (candidate || []).find((p: any) =>
+            p.selected_part && topic.toLowerCase().includes(String(p.selected_part).toLowerCase()),
+          );
+          resolvedDailyPlanId = (match as any)?.id || null;
+        } catch (e) {
+          console.warn("[karel-did-meeting] daily_plan resolution skipped:", e);
+        }
+      }
+
       const { data: meeting, error } = await sb.from("did_meetings").insert({
         user_id: authResult.user.id,
         topic: topic || "Porada týmu",
         agenda: agenda || "",
         triggered_by: triggeredBy || "daily_cycle",
         deadline_at: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        daily_plan_id: resolvedDailyPlanId, // FÁZE 3 canonical linkage
         messages: [{
           role: "karel",
           therapist: "karel",
