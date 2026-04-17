@@ -807,6 +807,9 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
         ))}
       </div>
 
+      {/* ── B2. 4 sekce dneška — velitelský pohled ze snapshotu ── */}
+      <CommandFourSections snapshot={snapshot} navigate={navigate} />
+
       {/* ── INFO DEFICIT: inline structured questions ── */}
       {isInfoDeficit && deficitItems.length > 0 && (
         <>
