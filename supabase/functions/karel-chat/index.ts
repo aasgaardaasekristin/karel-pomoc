@@ -1453,7 +1453,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                   }
 
                   if (insertedCount > 0 || evidenceCount > 0) {
-                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence stops for ${modeLabel} (${intents.length} intents, ${rejected.length} rejected)`);
+                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence stops for ${modeLabel} (${pairs.length} pairs, ${rejected.length} rejected)`);
                   }
                 } else {
                   console.log(`[post-chat-writeback] No relevant outputs for ${modeLabel}`);
