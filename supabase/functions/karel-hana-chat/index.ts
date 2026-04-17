@@ -3,6 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import {
+  persistEvidenceForIntent,
+  auditDriveEnqueue,
+  type EvidencePersistenceContext,
+} from "../_shared/evidencePersistence.ts";
+import {
   buildGovernedWriteIntents,
   buildExtractionPrompt,
   resolveGovernedContentType,
