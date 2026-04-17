@@ -577,3 +577,328 @@ html.theme-transitioning *::after {
   box-shadow: none;
   backdrop-filter: none;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   FÁZE 4A — Shared primitives for hero surfaces
+   (DidEntryScreen + KarelDailyPlan)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Karel briefing — typographic primitives ── */
+.karel-briefing {
+  --briefing-ink: 28 22% 18%;
+  --briefing-ink-soft: 28 14% 32%;
+  --briefing-ink-faint: 28 10% 48%;
+  --briefing-paper: 36 28% 95%;
+  --briefing-rule: 28 22% 70%;
+  --briefing-accent: 24 48% 42%;
+  font-family: 'Crimson Pro', Georgia, serif;
+  color: hsl(var(--briefing-ink));
+}
+
+.karel-briefing-eyebrow {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: hsl(var(--briefing-ink-faint));
+}
+
+.karel-briefing-headline {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-weight: 500;
+  font-size: 1.625rem;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  color: hsl(var(--briefing-ink));
+}
+
+.karel-briefing-deck {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  color: hsl(var(--briefing-ink-soft));
+}
+
+.karel-briefing-prose {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: hsl(var(--briefing-ink-soft));
+}
+
+.karel-briefing-prose p + p {
+  margin-top: 0.85rem;
+  text-indent: 1.25rem;
+}
+
+.karel-briefing-prose p:first-of-type::first-letter {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 2.6rem;
+  font-weight: 500;
+  line-height: 0.9;
+  float: left;
+  margin: 0.2rem 0.45rem 0 0;
+  color: hsl(var(--briefing-accent));
+}
+
+.karel-briefing-section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: hsl(var(--briefing-ink-faint));
+}
+
+.karel-briefing-section-label::before,
+.karel-briefing-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--briefing-rule) / 0.55), transparent);
+}
+
+.karel-briefing-section-label.is-anchored::before {
+  display: none;
+}
+
+.karel-briefing-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--briefing-rule) / 0.55), transparent);
+  margin: 1.5rem 0;
+}
+
+.karel-briefing-rule.is-ornament::after {
+  content: '☙';
+  position: relative;
+  top: -0.7rem;
+  display: block;
+  text-align: center;
+  color: hsl(var(--briefing-accent) / 0.55);
+  background: hsl(var(--briefing-paper));
+  width: 1.25rem;
+  margin: 0 auto;
+  font-size: 0.85rem;
+}
+
+.karel-briefing-callout {
+  position: relative;
+  border-left: 3px solid hsl(var(--briefing-accent) / 0.55);
+  padding: 0.4rem 0 0.4rem 1rem;
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1.025rem;
+  line-height: 1.55;
+  color: hsl(var(--briefing-ink));
+  background: linear-gradient(90deg, hsl(var(--briefing-accent) / 0.06), transparent 80%);
+}
+
+.karel-briefing-callout-crisis {
+  border-left-color: hsl(9 62% 48% / 0.7);
+  background: linear-gradient(90deg, hsl(9 62% 48% / 0.08), transparent 80%);
+  color: hsl(9 35% 28%);
+}
+
+.karel-briefing-figure {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  font-family: 'Crimson Pro', Georgia, serif;
+}
+.karel-briefing-figure .num {
+  font-size: 2rem;
+  font-weight: 500;
+  line-height: 1;
+  color: hsl(var(--briefing-accent));
+}
+.karel-briefing-figure .label {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--briefing-ink-faint));
+}
+
+/* ── Editorial signature ── */
+.karel-signature {
+  font-family: 'Caveat', 'Crimson Pro', cursive;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: hsl(var(--briefing-accent));
+  letter-spacing: 0.01em;
+}
+
+/* ── Two-worlds gateway (DidEntryScreen) ── */
+.karel-gate {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  cursor: pointer;
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+              box-shadow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.karel-gate:hover {
+  transform: translateY(-2px);
+}
+
+.karel-gate-jung {
+  background:
+    radial-gradient(ellipse at 78% 22%, hsl(38 38% 88% / 0.65), transparent 55%),
+    radial-gradient(ellipse at 18% 88%, hsl(28 32% 78% / 0.55), transparent 50%),
+    linear-gradient(155deg, hsl(36 30% 92%) 0%, hsl(30 24% 84%) 100%);
+  box-shadow:
+    0 10px 38px -16px hsl(28 38% 32% / 0.28),
+    inset 0 1px 0 hsl(0 0% 100% / 0.5),
+    inset 0 -1px 0 hsl(28 28% 60% / 0.18);
+}
+
+.karel-gate-jung:hover {
+  box-shadow:
+    0 22px 52px -18px hsl(28 38% 28% / 0.36),
+    inset 0 1px 0 hsl(0 0% 100% / 0.6);
+}
+
+.karel-gate-wizard {
+  background:
+    radial-gradient(ellipse at 28% 18%, hsl(258 26% 28% / 0.75), transparent 55%),
+    radial-gradient(ellipse at 82% 82%, hsl(218 36% 18% / 0.85), transparent 55%),
+    linear-gradient(160deg, hsl(228 28% 14%) 0%, hsl(232 32% 9%) 100%);
+  box-shadow:
+    0 10px 38px -14px hsl(228 60% 6% / 0.7),
+    inset 0 1px 0 hsl(38 30% 70% / 0.08),
+    inset 0 -1px 0 hsl(228 40% 4% / 0.6);
+  color: hsl(38 28% 88%);
+}
+
+.karel-gate-wizard:hover {
+  box-shadow:
+    0 22px 52px -16px hsl(228 60% 4% / 0.8),
+    inset 0 1px 0 hsl(38 36% 76% / 0.16);
+}
+
+/* Atmospheric overlay layers — evoke each world without literal imagery */
+.karel-gate-jung::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.5px 1.5px at 18% 28%, hsl(32 38% 52% / 0.22) 0%, transparent 100%),
+    radial-gradient(1px 1px at 72% 22%, hsl(28 35% 50% / 0.18) 0%, transparent 100%),
+    radial-gradient(1px 1px at 48% 72%, hsl(34 40% 54% / 0.16) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 88% 58%, hsl(28 35% 50% / 0.18) 0%, transparent 100%);
+  opacity: 0.85;
+}
+
+.karel-gate-wizard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1px 1px at 14% 22%, hsl(38 50% 78% / 0.55) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 38% 52%, hsl(38 56% 80% / 0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 68% 18%, hsl(38 50% 78% / 0.42) 0%, transparent 100%),
+    radial-gradient(1px 1px at 84% 62%, hsl(220 35% 78% / 0.4) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 22% 82%, hsl(38 50% 78% / 0.45) 0%, transparent 100%),
+    radial-gradient(1px 1px at 56% 88%, hsl(220 35% 78% / 0.35) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 38%, hsl(38 56% 80% / 0.5) 0%, transparent 100%);
+  animation: stars-twinkle 50s ease-in-out infinite alternate;
+}
+
+.karel-gate-wizard::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 76% 32%, hsl(38 60% 70% / 0.06) 0%, transparent 35%),
+    radial-gradient(circle at 22% 78%, hsl(258 40% 60% / 0.08) 0%, transparent 40%);
+  mix-blend-mode: screen;
+}
+
+.karel-gate-content {
+  position: relative;
+  z-index: 2;
+}
+
+.karel-gate-eyebrow {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.karel-gate-jung .karel-gate-eyebrow { color: hsl(28 32% 38%); }
+.karel-gate-wizard .karel-gate-eyebrow { color: hsl(38 30% 72% / 0.9); }
+
+.karel-gate-title {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-weight: 500;
+  font-size: 2rem;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+.karel-gate-jung .karel-gate-title { color: hsl(28 36% 22%); }
+.karel-gate-wizard .karel-gate-title { color: hsl(38 32% 92%); }
+
+.karel-gate-deck {
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-style: italic;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+.karel-gate-jung .karel-gate-deck { color: hsl(28 18% 38%); }
+.karel-gate-wizard .karel-gate-deck { color: hsl(38 24% 78% / 0.85); }
+
+.karel-gate-meta {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+
+.karel-gate-jung .karel-gate-meta { color: hsl(28 14% 44%); }
+.karel-gate-wizard .karel-gate-meta { color: hsl(38 20% 70% / 0.8); }
+
+/* Sigil — abstract symbolic mark */
+.karel-gate-sigil {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Crimson Pro', Georgia, serif;
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.karel-gate-jung .karel-gate-sigil {
+  background: radial-gradient(circle at 32% 32%, hsl(38 40% 88%), hsl(28 30% 76%));
+  color: hsl(28 42% 30%);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.5),
+    0 4px 14px -6px hsl(28 38% 28% / 0.35);
+}
+
+.karel-gate-wizard .karel-gate-sigil {
+  background: radial-gradient(circle at 32% 32%, hsl(228 28% 32%), hsl(232 36% 18%));
+  color: hsl(38 50% 80%);
+  box-shadow:
+    inset 0 1px 0 hsl(38 30% 60% / 0.18),
+    0 4px 18px -4px hsl(38 50% 60% / 0.25),
+    0 0 24px -8px hsl(38 60% 70% / 0.4);
+}
