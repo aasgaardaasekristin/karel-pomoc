@@ -607,16 +607,33 @@ serve(async (req) => {
   }
 
   try {
-    const { date, trigger } = await req.json();
+    const reqBody = await req.json().catch(() => ({}));
+    const { date, trigger, mode } = reqBody;
     const targetDate = date || new Date().toISOString().slice(0, 10);
     const triggerSource = trigger || "manual";
 
-    console.log(`[Dashboard] ═══ Spouštím dashboard pro ${targetDate} (trigger: ${triggerSource}) ═══`);
+    console.log(`[Dashboard] ═══ Spouštím dashboard pro ${targetDate} (trigger: ${triggerSource}, mode: ${mode || "full"}) ═══`);
+
+    const supabase = createSupabaseAdmin();
+
+    // ═══ MODE: snapshot — return only structured command data (no AI, no Drive write) ═══
+    if (mode === "snapshot") {
+      try {
+        const snapshot = await buildCommandSnapshot(supabase);
+        return new Response(JSON.stringify({ success: true, snapshot }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        console.error("[Dashboard] snapshot build failed:", e);
+        return new Response(JSON.stringify({ success: false, error: String(e) }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
-    const supabase = createSupabaseAdmin();
 
     // 1. COLLECT ALL DATA (parallel)
     console.log("[Dashboard] Krok 1: Sběr dat server-side...");
