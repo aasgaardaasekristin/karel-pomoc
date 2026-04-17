@@ -530,6 +530,119 @@ async function saveEpisodeInBackground(
   }
 }
 
+// ═══ PHASE 2: POST-CHAT STRUCTURED WRITEBACK (Hana/osobní) ═══
+// Reuses the SAME pipeline as karel-chat (DID/Terapeut + Hana/osobní).
+// HARD firewall in buildExtractionPrompt ensures intimate Hana↔Karel content
+// stays in PAMET_KAREL/DID/HANKA/KAREL only — never leaks to PART_CARD/PLAN/contexts.
+async function runHanaPostChatWriteback(args: {
+  userId: string;
+  userText: string;
+  karelResponse: string;
+  conversationId: string | null;
+  apiKey: string;
+}): Promise<void> {
+  const { userText, karelResponse, conversationId, apiKey } = args;
+  const sb = getServiceClient();
+
+  const therapistKey: "HANKA" | "KATA" = "HANKA";
+  const modeLabel = "Hana/osobní";
+  const isHanaPersonal = true;
+  const sourceId = `hana_chat_${conversationId || "no-conv"}_${Date.now()}`;
+
+  const extractionPrompt = buildExtractionPrompt(userText, karelResponse, modeLabel, isHanaPersonal);
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          { role: "system", content: "Jsi analytický modul. Odpovídej POUZE validním JSON." },
+          { role: "user", content: extractionPrompt },
+        ],
+        temperature: 0.1,
+      }),
+    });
+    clearTimeout(t);
+    if (!res.ok) {
+      console.warn(`[hana-writeback] AI extraction failed: ${res.status}`);
+      return;
+    }
+    const data = await res.json();
+    const raw = (data.choices?.[0]?.message?.content || "").trim();
+    const clean = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    let parsed: { outputs: ExtractedWriteOutput[] };
+    try { parsed = JSON.parse(clean); } catch {
+      console.warn("[hana-writeback] JSON parse failed, skipping. Raw head:", clean.slice(0, 200));
+      return;
+    }
+    const outputs = parsed?.outputs;
+    if (!Array.isArray(outputs) || outputs.length === 0) {
+      console.log("[hana-writeback] no relevant outputs");
+      return;
+    }
+
+    const { data: partRegData } = await sb.from("did_part_registry")
+      .select("part_name, status, last_seen_at");
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const partRegMap = new Map<string, PartRegistryLookup>();
+    for (const r of (partRegData || [])) {
+      partRegMap.set(r.part_name, {
+        status: r.status,
+        hasRecentDirectActivity: r.last_seen_at
+          ? new Date(r.last_seen_at).getTime() > sevenDaysAgo
+          : false,
+      });
+    }
+
+    const writebackCtx: WritebackContext = {
+      therapistKey,
+      sourceMode: modeLabel,
+      sourceThreadId: conversationId,
+      isHanaPersonal,
+      partRegistryLookup: (n: string) => partRegMap.get(n) || null,
+    };
+
+    const { intents, rejected } = buildGovernedWriteIntents(outputs, writebackCtx);
+    if (rejected.length > 0) {
+      console.log(`[hana-writeback] ${rejected.length} outputs rejected: ${rejected.map(r => r.reason).join(", ")}`);
+    }
+
+    let inserted = 0;
+    for (const intent of intents) {
+      const governedContent = encodeGovernedWrite(intent.content, {
+        source_type: "chat_memory_extraction",
+        source_id: `${sourceId}_${intent.evidenceKind}`,
+        content_type: resolveGovernedContentType(intent),
+        subject_type: resolveGovernedSubjectType(intent),
+        subject_id: resolveGovernedSubjectId(intent, therapistKey),
+      });
+      const { error: writeErr } = await sb.from("did_pending_drive_writes").insert({
+        target_document: intent.target.documentKey,
+        content: governedContent,
+        priority: intent.evidenceKind === "FACT" ? "high" : "normal",
+        status: "pending",
+        write_type: "append",
+      });
+      if (writeErr) {
+        console.warn(`[hana-writeback] Write error for ${intent.target.documentKey}:`, writeErr.message);
+      } else {
+        inserted++;
+      }
+    }
+    if (inserted > 0) {
+      console.log(`[hana-writeback] ${inserted} governed writes enqueued (Hana/osobní, ${rejected.length} rejected)`);
+    }
+  } catch (e) {
+    clearTimeout(t);
+    console.error("[hana-writeback] error:", e);
+  }
+}
+
 // ═══ MAIN HANDLER ═══
 serve(async (req) => {
   if (req.method === "OPTIONS") {
