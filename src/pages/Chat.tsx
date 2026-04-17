@@ -1875,6 +1875,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
             navigate={navigate}
             meetingIdFromUrl={meetingIdFromUrl}
             setMeetingIdFromUrl={setMeetingIdFromUrl}
+            dailyPlanIdFromUrl={dailyPlanIdFromUrl}
             meetingTherapist={meetingTherapist}
             setMeetingTherapist={setMeetingTherapist}
             mode={mode}
