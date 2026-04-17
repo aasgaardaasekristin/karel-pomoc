@@ -36,13 +36,17 @@ interface Props {
   meetingId?: string | null;
   meetingTopic?: string;
   meetingSeed?: MeetingSeedData;
+  /** FÁZE 3B: canonical linkage to did_daily_session_plans.
+   *  Když je dailyPlanId známé, pokusíme se rehydratovat existující meeting
+   *  navázaný na ten plán — kanonická vrstva, NE topic-based heuristika. */
+  dailyPlanId?: string | null;
   therapist: "hanka" | "kata";
   onBack: () => void;
 }
 
 const DRAFT_KEY = (mid: string, who: "hanka" | "kata") => `meeting-draft:${mid}:${who}`;
 
-const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSeed, therapist, onBack }: Props) => {
+const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSeed, dailyPlanId, therapist, onBack }: Props) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
   const [hankaInput, setHankaInput] = useState("");
@@ -55,7 +59,26 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
   const [newAgenda, setNewAgenda] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Pre-flight: try to find an existing open meeting with same topic in last 24h
+  // FÁZE 3B: CANONICAL rehydration — meeting bound to did_daily_session_plans.
+  // dailyPlanId vyhrává nad topic-based heuristikou. Topic match je legacy fallback.
+  const findExistingOpenMeetingByDailyPlan = async (planId: string): Promise<string | null> => {
+    if (!planId) return null;
+    try {
+      const { data } = await (supabase as any)
+        .from("did_meetings")
+        .select("id, status, created_at")
+        .eq("daily_plan_id", planId)
+        .neq("status", "finalized")
+        .order("created_at", { ascending: false })
+        .limit(1);
+      return data?.[0]?.id || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Legacy/fallback: try to find an existing open meeting with same topic in last 24h.
+  // Used only when dailyPlanId není k dispozici. NENÍ rozhodovací autorita.
   const findExistingOpenMeetingByTopic = async (topic: string): Promise<string | null> => {
     if (!topic) return null;
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -81,7 +104,17 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
         loadMeeting(initialMeetingId);
         return;
       }
-      // For seed/topic flows, try to rehydrate an existing open meeting first
+      // FÁZE 3B: PRIMARY rehydration — daily_plan_id (canonical session linkage).
+      if (dailyPlanId) {
+        const planMeetingId = await findExistingOpenMeetingByDailyPlan(dailyPlanId);
+        if (cancelled) return;
+        if (planMeetingId) {
+          console.log(`[DidMeetingPanel] CANONICAL rehydrate — meeting ${planMeetingId} bound to daily_plan ${dailyPlanId}`);
+          loadMeeting(planMeetingId);
+          return;
+        }
+      }
+      // SECONDARY (legacy): topic-based fuzzy match.
       const desiredTopic = meetingSeed?.topic || meetingTopic || "";
       if (desiredTopic) {
         const existingId = await findExistingOpenMeetingByTopic(desiredTopic);
@@ -103,7 +136,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
       }
     })();
     return () => { cancelled = true; };
-  }, [initialMeetingId, meetingTopic, meetingSeed?.topic]);
+  }, [initialMeetingId, meetingTopic, meetingSeed?.topic, dailyPlanId]);
 
   // ── Restore draft inputs from localStorage when activeMeeting hydrates ──
   useEffect(() => {

@@ -108,6 +108,17 @@ export default function DidPlanTab() {
 
   return (
     <div className="space-y-3">
+      {/* FÁZE 3B: explicitní legacy/projection banner.
+          Tato záložka NENÍ kanonickou pravdou dnešní operativy.
+          Dnešní sezení = did_daily_session_plans. Dnešní akce = did_plan_items.
+          planned_sessions a strategic_goals jsou jen vstup / dlouhodobá projekce. */}
+      <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
+        <span className="font-semibold">⚠️ Strategický plán / legacy projekce.</span>{" "}
+        Dnešní operativní pravda žije v Karlově denním plánu (sekce „Dnešek“) a v <code>did_daily_session_plans</code> /
+        {" "}<code>did_plan_items</code>. Položky zde jsou jen <em>vstupní vrstva</em> a střednědobá projekce — jejich
+        editace se musí materializovat přes kanonické modely, ne přímo jako dnešní rozhodnutí.
+      </div>
+
       {/* Sub-tabs */}
       <div className="flex gap-1 p-0.5 rounded-md bg-muted/50">
         {([
