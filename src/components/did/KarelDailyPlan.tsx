@@ -873,28 +873,44 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     };
   };
 
+  // ── Editorial date frontispiece ──
+  const dayNum = new Date().getDate();
+  const monthNames = ["ledna","února","března","dubna","května","června","července","srpna","září","října","listopadu","prosince"];
+  const monthName = monthNames[new Date().getMonth()];
+  const yearNum = new Date().getFullYear();
+
   return (
-    <div className="jung-card space-y-0 p-6">
-      {/* ── Header ── */}
-      <h2 className="jung-section-title text-[20px] mb-1">
-        ☉ Karlův přehled — {todayFormatted}
-      </h2>
-
-      {/* ── A. Oslovení obou terapeutek ── */}
-      <div className="pt-3 pb-1">
-        <p className="text-[14.5px] leading-7 text-foreground/85 font-['Crimson_Pro',serif] italic">
-          „{greeting}, Haničko a Káťo.
-        </p>
-      </div>
-
-      {/* ── B. Unified narrative — live prose, never a list ── */}
-      <div className="pb-1">
-        {narrativeParagraphs.map((para, i) => (
-          <p key={i} className="text-[13.5px] leading-7 text-foreground/75 font-['DM_Sans',sans-serif] mt-1.5">
-            {para}
+    <article className="karel-briefing jung-card relative px-6 py-8 sm:px-10 sm:py-10 max-w-3xl mx-auto">
+      {/* ── Editorial frontispiece ── */}
+      <header className="mb-7">
+        <div className="flex items-center justify-between mb-3">
+          <span className="karel-briefing-eyebrow">Karlův přehled</span>
+          <span className="karel-briefing-eyebrow" aria-label="Datum">
+            {dayNum}. {monthName} {yearNum}
+          </span>
+        </div>
+        <h1 className="karel-briefing-headline">
+          {greeting}, Haničko a Káťo.
+        </h1>
+        {effectiveCrisisPart ? (
+          <p className="mt-3 karel-briefing-callout karel-briefing-callout-crisis">
+            Dnes je v aktivní krizi <strong className="font-medium">{effectiveCrisisPart}</strong>. To má přednost před vším ostatním.
           </p>
+        ) : (
+          <p className="mt-3 karel-briefing-deck">
+            {isInfoDeficit
+              ? `Uplynulo ${daysWithoutData} dní bez aktualizace — potřebuji od vás krátkou zprávu.`
+              : "Tady je dnešní situace, jak ji čtu."}
+          </p>
+        )}
+      </header>
+
+      {/* ── B. Unified narrative — editorial prose ── */}
+      <section className="karel-briefing-prose">
+        {narrativeParagraphs.map((para, i) => (
+          <p key={i}>{para}</p>
         ))}
-      </div>
+      </section>
 
       {/* ── B2. 4 sekce dneška — velitelský pohled ze snapshotu ── */}
       <CommandFourSections snapshot={snapshot} navigate={navigate} />
@@ -1206,7 +1222,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           </button>
         </div>
       </div>
-    </div>
+    </article>
   );
 };
 
