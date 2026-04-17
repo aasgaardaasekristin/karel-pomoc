@@ -324,7 +324,9 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     if (didSubMode !== "cast" || !activeThread?.partName) return null;
     const partLower = activeThread.partName.toLowerCase();
     const match = crisisCards.find(c => (c.partName || "").toLowerCase() === partLower);
-    return match ? { severity: match.severity || "moderate", eventId: match.id } : null;
+    return match && match.eventId
+      ? { severity: match.severity || "moderate", eventId: match.eventId }
+      : null;
   }, [didSubMode, activeThread?.partName, crisisCards]);
 
   // Entry screen: Terapeut / Kluci
