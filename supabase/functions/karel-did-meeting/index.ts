@@ -51,6 +51,28 @@ serve(async (req) => {
       const agenda = therapist || "";
       const triggeredBy = "manual";
 
+      // ═══ SERVER-SIDE DEDUPE — return existing open meeting on same topic in last 6h ═══
+      const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      try {
+        const { data: existingOpen } = await sb
+          .from("did_meetings")
+          .select("*")
+          .eq("user_id", authResult.user.id)
+          .eq("topic", topic)
+          .neq("status", "finalized")
+          .gte("created_at", sixHoursAgo)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (existingOpen && existingOpen.length > 0) {
+          console.log(`[karel-did-meeting] dedupe HIT — returning existing meeting ${existingOpen[0].id} for topic "${topic}"`);
+          return new Response(JSON.stringify({ success: true, meeting: existingOpen[0], deduped: true }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      } catch (e) {
+        console.warn("[karel-did-meeting] dedupe lookup failed (continuing):", e);
+      }
+
       // Build structured opening message from seed or fallback
       let openingContent: string;
       if (seed && (seed.reason || seed.karelProposal || seed.questionsHanka || seed.questionsKata)) {

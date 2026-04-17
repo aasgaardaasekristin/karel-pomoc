@@ -86,9 +86,15 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   // Live session state
   const [liveSessionActive, setLiveSessionActive] = useState(false);
+  const [openingSessionThread, setOpeningSessionThread] = useState(false);
 
-  // First pending plan (for live session)
-  const firstPendingPlan = plans.find(p => p.status === "generated" || p.status === "in_progress") || null;
+  // Today key (Prague TZ) — used as filter and for "stale" guard
+  const todayPragueKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+
+  // First pending plan TODAY only (no stale plans from yesterday allowed as "today's reality")
+  const firstPendingPlan = plans.find(
+    p => (p.status === "generated" || p.status === "in_progress") && p.plan_date === todayPragueKey
+  ) || null;
 
   const loadTodayPlans = useCallback(async () => {
     setLoading(true);
@@ -405,23 +411,52 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
   return (
     <>
       <div className="mb-4 rounded-lg border border-border/70 bg-card/38 p-3 backdrop-blur-sm sm:p-4">
-        {/* Crisis session block */}
-        {activeCrises.length > 0 && (
-          <div className="mb-3 rounded-lg border-2 border-destructive bg-destructive/10 p-3 space-y-2">
-            {activeCrises.map((crisis: any) => (
-              <div key={crisis.id} className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-destructive">🔴 KRIZOVÉ SEZENÍ – {crisis.part_name} (večer)</span>
+        {/* Crisis session block — only shows when there's a TODAY plan for the crisis part */}
+        {activeCrises.length > 0 && (() => {
+          const crisesWithTodayPlan = activeCrises.filter((c: any) =>
+            plans.some(p => p.plan_date === todayPragueKey && p.selected_part?.toLowerCase() === (c.part_name || "").toLowerCase())
+          );
+          const crisesWithoutTodayPlan = activeCrises.filter((c: any) =>
+            !plans.some(p => p.plan_date === todayPragueKey && p.selected_part?.toLowerCase() === (c.part_name || "").toLowerCase())
+          );
+          return (
+            <>
+              {crisesWithTodayPlan.length > 0 && (
+                <div className="mb-3 rounded-lg border-2 border-destructive bg-destructive/10 p-3 space-y-2">
+                  {crisesWithTodayPlan.map((crisis: any) => (
+                    <div key={crisis.id} className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-destructive">🔴 KRIZOVÉ SEZENÍ – {crisis.part_name} (dnes)</span>
+                      </div>
+                      <div className="text-[0.6875rem] text-foreground/80 space-y-0.5">
+                        <p>Plán pro {crisis.part_name} je pro dnešek vygenerován – viz níže.</p>
+                        <p className="text-[0.625rem] text-muted-foreground">{(crisis.summary || "").slice(0, 140)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-[0.6875rem] text-foreground/80 space-y-0.5">
-                  <p>Typ: Krizová intervence · Vede: Káťa · Koordinuje: Hanička</p>
-                  <p>Cíl: Ověřit bezpečí, zmapovat situaci, sestavit plán ochrany</p>
-                  <p className="text-[0.625rem] text-muted-foreground">{crisis.summary}</p>
+              )}
+              {crisesWithoutTodayPlan.length > 0 && (
+                <div className="mb-3 rounded-md border border-destructive/40 bg-destructive/5 p-2 space-y-1.5">
+                  {crisesWithoutTodayPlan.map((crisis: any) => (
+                    <div key={crisis.id} className="flex items-center justify-between gap-2 text-[0.6875rem]">
+                      <span className="text-destructive font-medium">🔴 {crisis.part_name} – krize aktivní, bez dnešního plánu</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-[10px] border-destructive/50 text-destructive hover:bg-destructive/10"
+                        onClick={() => generatePlan(crisis.part_name)}
+                        disabled={generating}
+                      >
+                        Vygenerovat plán
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              )}
+            </>
+          );
+        })()}
 
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-xs font-medium text-foreground flex items-center gap-1.5">

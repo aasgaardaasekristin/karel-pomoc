@@ -349,6 +349,25 @@ serve(async (req) => {
       }
     }
 
+    // ═══ IDEMPOTENCE GUARD — block duplicate plan for same part on same day (manual or auto) ═══
+    if (forcePart) {
+      const { data: dupePartPlans } = await sb.from("did_daily_session_plans")
+        .select("id, selected_part, status")
+        .eq("plan_date", todayPrague)
+        .ilike("selected_part", forcePart)
+        .in("status", ["generated", "in_progress"]);
+      if (dupePartPlans && dupePartPlans.length > 0) {
+        console.log(`[auto-session-plan] Plan already exists today for "${forcePart}" — skipping duplicate.`);
+        return new Response(JSON.stringify({
+          success: true,
+          skipped: true,
+          reason: "duplicate_part_today",
+          existingPlanId: dupePartPlans[0].id,
+          selectedPart: forcePart,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     // NOTE: Manual override (forcePart) always INSERTs a new plan, never deletes old ones
 
     // ═══ PRIORITY 1: OVERDUE ESCALATION — update overdue_days for old pending plans ═══
