@@ -94,7 +94,7 @@ export default function DidPlanTab() {
   // Ponechán jen informativní redirect — žádný direct write do legacy tabulky.
   function explainCanonicalRoute() {
     toast.info(
-      "Splnění/přeskočení dnešního sezení patří do denního plánu (sekce „Dnešek").",
+      'Splnění/přeskočení dnešního sezení patří do denního plánu (sekce "Dnešek").',
       { description: "Tato záložka je legacy projekce — operativní změny se materializují přes kanonické modely." },
     );
   }
