@@ -141,6 +141,10 @@ const Chat = () => {
   const basicDocsRef = useRef<string>("");
   const [isEnrichingContext, setIsEnrichingContext] = useState(false);
   const [meetingIdFromUrl, setMeetingIdFromUrl] = useState<string | null>(null);
+  // FÁZE 3C: canonical did_daily_session_plans.id from deep-link.
+  // When ?daily_plan_id=<uuid> arrives (alone or with meeting/topic), the meeting
+  // create + rehydration flow will bind to that canonical session.
+  const [dailyPlanIdFromUrl, setDailyPlanIdFromUrl] = useState<string | null>(null);
   const [meetingTherapist, setMeetingTherapist] = useState<"hanka" | "kata">("hanka");
   const [switchAlert, setSwitchAlert] = useState<{ from: string; to: string; confidence: string; threadId: string } | null>(null);
   const [didLiveSession, setDidLiveSession] = useState<{ partName: string; therapistName: string } | null>(null);
