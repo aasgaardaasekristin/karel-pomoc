@@ -278,19 +278,65 @@ serve(async (req) => {
       console.warn("[daily-refresh] canonical session snapshot failed:", e);
     }
 
+    // ═══ FÁZE 3C: CANONICAL queue snapshot — deduped against canonical plan items. ═══
+    // Primary = did_plan_items (active). Adjunct = did_therapist_tasks WHERE plan_item_id IS NULL.
+    // Toto je jediná pravda pro frontend snapshot readery — žádné raw counts z legacy tabulek.
+    let canonicalQueuePrimary: any[] = [];
+    let canonicalQueueAdjunct: any[] = [];
+    try {
+      const [primaryRes, adjunctRes] = await Promise.all([
+        sb.from("did_plan_items")
+          .select("id, action_required, priority, status, section, plan_type, review_at, created_at")
+          .eq("status", "active")
+          .order("priority", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(50),
+        sb.from("did_therapist_tasks")
+          .select("id, task, assigned_to, priority, status, category, due_date, created_at, plan_item_id")
+          .in("status", ["pending", "active", "in_progress"])
+          .is("plan_item_id", null) // ← dedupe against canonical
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ]);
+      canonicalQueuePrimary = (primaryRes.data || []).map((p: any) => ({
+        id: p.id,
+        text: p.action_required || `${p.plan_type ?? ""}/${p.section ?? ""}`.trim(),
+        priority: p.priority,
+        section: p.section,
+        planType: p.plan_type,
+        reviewAt: p.review_at,
+      }));
+      canonicalQueueAdjunct = (adjunctRes.data || []).map((t: any) => ({
+        id: t.id,
+        text: t.task,
+        assignedTo: t.assigned_to,
+        priority: t.priority,
+        status: t.status,
+        category: t.category,
+        dueDate: t.due_date,
+      }));
+    } catch (e) {
+      console.warn("[daily-refresh] canonical queue snapshot failed:", e);
+    }
+
     const contextJson = {
       date: today,
       generated_at: new Date().toISOString(),
 
-      // ═══ FÁZE 3B CANONICAL FIELDS — primary truth for frontend readers ═══
+      // ═══ FÁZE 3B/3C CANONICAL FIELDS — primary truth for frontend readers ═══
       // Frontend snapshot readers MUST use these instead of resolving from
       // legacy alert / planned_sessions / next_session_plan layers.
       canonical_crisis_count: canonicalCrisisCount,
       canonical_crises: canonicalCrisisList,
       canonical_today_session: canonicalTodaySession, // null = no canonical plan today
       canonical_queue: {
-        plan_items_count: (planItems05A || []).length,
-        manual_tasks_count: (tasks || []).length,
+        primary: canonicalQueuePrimary,
+        adjunct: canonicalQueueAdjunct,
+        primary_count: canonicalQueuePrimary.length,
+        adjunct_count: canonicalQueueAdjunct.length,
+        // Legacy back-compat keys (kept for any reader that still consumes counts only).
+        plan_items_count: canonicalQueuePrimary.length,
+        manual_tasks_count: canonicalQueueAdjunct.length,
       },
 
       // Therapist profiles

@@ -1,70 +1,98 @@
-// FÁZE 3 — Frontend canonical selectors (THIN ONLY).
-// These are NOT a parallel resolver. They are read-only selectors over server snapshots
-// and minimal direct queries that mirror the server canonical filter.
-// All decisive truth still lives in canonical resolvers on the server side.
-
-import { supabase } from "@/integrations/supabase/client";
+// FÁZE 3C — THIN canonical snapshot helpers (FRONTEND IS NOT A RESOLVER).
+//
+// Tento soubor je VÝLUČNĚ tenká vrstva nad serverovým canonical snapshotem
+// (did_daily_context.context_json + canonical_*). NEdotazuje DB jako paralelní
+// resolver vedle serveru. Jediná autorita pro "aktivní krize" zůstává:
+//   - server canonicalCrisis resolver (supabase/functions/_shared/canonicalCrisis.ts)
+//   - did_daily_context.context_json.canonical_crises emitované karel-daily-refresh
+//
+// Pokud nějaká část UI dnes potřebuje aktivní krize, musí je číst:
+//   1) z propsu / kontextu, kterému je server snapshot předán shora, nebo
+//   2) přes useCrisisOperationalState (canonical view-model nad crisis_events,
+//      jediný legitimní front-end resolver, jehož dotaz odpovídá serverovému
+//      canonical filtru).
+//
+// Tento helper NESMÍ obsahovat raw SELECT proti crisis_events / crisis_alerts.
 
 export const OPEN_PHASE_FILTER = ["closed", "CLOSED"] as const;
 
-export interface UICanonicalCrisis {
+/** Server-emitted snapshot shape used by frontend readers. */
+export interface CanonicalCrisisSnapshotItem {
   id: string;
   partName: string;
   severity: string | null;
   phase: string;
-  openedAt: string | null;
-  alertId?: string | null;
-  alertSummary?: string | null;
 }
 
-/**
- * Resolve active crises directly (mirrors server canonicalCrisis.ts).
- * Used only when no fresher server snapshot is available.
- */
-export async function selectActiveCrises(): Promise<UICanonicalCrisis[]> {
-  const { data: events } = await supabase
-    .from("crisis_events")
-    .select("id, part_name, severity, phase, opened_at")
-    .not("phase", "in", `(${OPEN_PHASE_FILTER.map((p) => `"${p}"`).join(",")})`)
-    .order("opened_at", { ascending: false });
-  if (!events || events.length === 0) return [];
+export interface CanonicalQueueSnapshot {
+  primary: Array<{
+    id: string;
+    text: string;
+    priority: string | null;
+    section: string | null;
+    planType: string | null;
+    reviewAt: string | null;
+  }>;
+  adjunct: Array<{
+    id: string;
+    text: string;
+    assignedTo: string | null;
+    priority: string | null;
+    status: string | null;
+    category: string | null;
+    dueDate: string | null;
+  }>;
+  primaryCount: number;
+  adjunctCount: number;
+}
 
-  const partNames = events.map((e: any) => e.part_name).filter(Boolean);
-  const { data: alerts } = await supabase
-    .from("crisis_alerts")
-    .select("id, part_name, severity, summary, status")
-    .in("part_name", partNames)
-    .in("status", ["ACTIVE", "ACKNOWLEDGED"]);
+export interface CanonicalTodaySession {
+  id: string;
+  selected_part: string | null;
+  therapist: string | null;
+  session_lead: string | null;
+  urgency_score: number | null;
+  status: string | null;
+  crisis_event_id: string | null;
+}
 
-  const alertMap = new Map<string, any>();
-  for (const a of alerts || []) {
-    if (!alertMap.has(a.part_name)) alertMap.set(a.part_name, a);
+/** ── Pure selectors over already-loaded server snapshots ── */
+
+export function selectCanonicalCrisesFromSnapshot(
+  contextJson: any,
+): CanonicalCrisisSnapshotItem[] {
+  if (!contextJson) return [];
+  const list = Array.isArray(contextJson.canonical_crises)
+    ? contextJson.canonical_crises
+    : Array.isArray(contextJson?.command?.crises)
+      ? contextJson.command.crises
+      : [];
+  return list as CanonicalCrisisSnapshotItem[];
+}
+
+export function selectCanonicalCrisisCountFromSnapshot(contextJson: any): number {
+  if (typeof contextJson?.canonical_crisis_count === "number") {
+    return contextJson.canonical_crisis_count;
   }
-
-  return (events as any[]).map((e) => {
-    const enrich = alertMap.get(e.part_name);
-    return {
-      id: e.id,
-      partName: e.part_name,
-      severity: e.severity || enrich?.severity || null,
-      phase: e.phase,
-      openedAt: e.opened_at,
-      alertId: enrich?.id ?? null,
-      alertSummary: enrich?.summary ?? null,
-    };
-  });
+  return selectCanonicalCrisesFromSnapshot(contextJson).length;
 }
 
-/** Resolve canonical crisis_event_id for a part name. Returns null if no open crisis. */
-export async function selectCrisisIdForPart(partName: string): Promise<string | null> {
-  if (!partName) return null;
-  const { data } = await supabase
-    .from("crisis_events")
-    .select("id")
-    .eq("part_name", partName)
-    .not("phase", "in", `(${OPEN_PHASE_FILTER.map((p) => `"${p}"`).join(",")})`)
-    .order("opened_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data as any)?.id ?? null;
+export function selectCanonicalTodaySessionFromSnapshot(
+  contextJson: any,
+): CanonicalTodaySession | null {
+  return (contextJson?.canonical_today_session ?? null) as CanonicalTodaySession | null;
+}
+
+export function selectCanonicalQueueFromSnapshot(
+  contextJson: any,
+): CanonicalQueueSnapshot {
+  const q = contextJson?.canonical_queue;
+  const primary = Array.isArray(q?.primary) ? q.primary : [];
+  const adjunct = Array.isArray(q?.adjunct) ? q.adjunct : [];
+  return {
+    primary,
+    adjunct,
+    primaryCount: typeof q?.primary_count === "number" ? q.primary_count : primary.length,
+    adjunctCount: typeof q?.adjunct_count === "number" ? q.adjunct_count : adjunct.length,
+  };
 }

@@ -134,6 +134,8 @@ interface MeetingSeed {
   karelProposal: string;
   questionsHanka: string;
   questionsKata: string;
+  /** FÁZE 3C: canonical did_daily_session_plans.id when meeting is rooted in today's session. */
+  dailyPlanId?: string | null;
 }
 
 /* ── Inline Question Field (structured) ── */
@@ -316,11 +318,24 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       const today = pragueTodayISO();
       const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
-      const [tasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, crisisRes, planRes] = await Promise.all([
+      // FÁZE 3C: CANONICAL queue primary = did_plan_items. Manual did_therapist_tasks
+      // jsou jen adjunct fallback (deduped by plan_item_id IS NULL). Žádný raw
+      // crisis_events query — krize bere snapshot.command.crises (canonical).
+      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, planRes] = await Promise.all([
+        // CANONICAL primary queue
         supabase
+          .from("did_plan_items")
+          .select("id, action_required, priority, status, section, plan_type, created_at")
+          .eq("status", "active")
+          .order("priority", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(20),
+        // Adjunct: only manual tasks NOT linked to a canonical plan item
+        (supabase as any)
           .from("did_therapist_tasks")
-          .select("id, task, assigned_to, status, priority, created_at, detail_instruction")
+          .select("id, task, assigned_to, status, priority, created_at, detail_instruction, plan_item_id")
           .in("status", ["pending", "active", "in_progress"])
+          .is("plan_item_id", null)
           .gte("created_at", threeDaysAgo)
           .order("priority", { ascending: true })
           .limit(15),
@@ -347,26 +362,44 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           .gte("created_at", threeDaysAgo)
           .order("created_at", { ascending: false })
           .limit(5),
-        supabase
-          .from("crisis_events")
-          .select("part_name")
-          .not("phase", "in", '("closed","CLOSED")')
-          .order("updated_at", { ascending: false })
-          .limit(1),
         supabase.functions.invoke("karel-did-drive-read", {
           body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
         }).catch(() => ({ data: null, error: null })),
       ]);
 
-      // Deduplicate tasks by text
-      const rawTasks = tasksRes.data || [];
-      setTasks(deduplicateByText(rawTasks).slice(0, 8));
+      // ── Canonical queue: primary plan items (mapped to UI task shape), then adjunct manual tasks ──
+      const planItemsAsTasks = (planItemsRes.data || []).map((p: any) => ({
+        id: `plan:${p.id}`,
+        task: p.action_required || `${p.plan_type ?? ""}/${p.section ?? ""}`.trim(),
+        // Plan items are Karel-generated for the team; default to team unless section maps to a specific therapist.
+        assigned_to: "team",
+        status: p.status,
+        priority: typeof p.priority === "number"
+          ? (p.priority >= 4 ? "critical" : p.priority >= 3 ? "high" : "normal")
+          : (p.priority || "normal"),
+        created_at: p.created_at,
+        detail_instruction: null,
+      }));
+      const adjunctTasks = (manualTasksRes.data || []).map((t: any) => ({
+        id: t.id,
+        task: t.task,
+        assigned_to: t.assigned_to,
+        status: t.status,
+        priority: t.priority,
+        created_at: t.created_at,
+        detail_instruction: t.detail_instruction,
+      }));
+      const merged = [...planItemsAsTasks, ...adjunctTasks];
+      setTasks(deduplicateByText(merged).slice(0, 8));
+
       setSessions(sessionsRes.data || []);
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
-      // Fallback only — primary crisis source-of-truth is snapshot.command.crises.
-      setFallbackCrisisPart(crisisRes.data?.[0]?.part_name || null);
+      // FÁZE 3C: NO raw crisis_events query here. Crisis truth = snapshot.command.crises only.
+      // If snapshot is warming up, effectiveCrisisPart will be null until next refresh — that
+      // is the correct behavior to avoid creating a parallel resolver on the client.
+      setFallbackCrisisPart(null);
 
       // Determine last any activity date
       const allDates = [
@@ -504,6 +537,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     const params = new URLSearchParams();
     params.set("didFlowState", "meeting");
     params.set("meeting_topic", seed.topic.slice(0, 80));
+    // FÁZE 3C: canonical linkage in URL — wins over seed for resolver.
+    if (seed.dailyPlanId) params.set("daily_plan_id", seed.dailyPlanId);
     try {
       sessionStorage.setItem("karel_hub_section", "did");
       sessionStorage.setItem("karel_meeting_seed", JSON.stringify(seed));

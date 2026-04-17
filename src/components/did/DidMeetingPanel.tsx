@@ -228,6 +228,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
         action: "create",
         message: seed.topic,
         therapist: "", // agenda field
+        // FÁZE 3C: canonical linkage at CREATE time — meeting bound to today's session plan.
+        dailyPlanId: dailyPlanId || null,
         seed: {
           reason: seed.reason,
           karelProposal: seed.karelProposal,
@@ -338,6 +340,8 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
         action: "create",
         message: newTopic.trim(),
         therapist: newAgenda.trim(),
+        // FÁZE 3C: canonical linkage even on manual create flow.
+        dailyPlanId: dailyPlanId || null,
       });
       if (data.success && data.meeting) {
         setActiveMeeting(data.meeting);
