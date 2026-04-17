@@ -193,7 +193,7 @@ async function fetchMeetingsData(supabase: ReturnType<typeof createClient>): Pro
 }
 
 async function fetchOperativePlan(supabase: ReturnType<typeof createClient>): Promise<string> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = pragueTodayYMD();
   try {
     const { data, error } = await supabase
       .from("did_daily_session_plans")
@@ -271,15 +271,34 @@ async function fetchCrisisAlerts(supabase: ReturnType<typeof createClient>): Pro
 /* ================================================================
    COMMAND SNAPSHOT — structured 4-section data for KarelDailyPlan
    ================================================================ */
+
+// Prague-day boundary: returns ISO timestamp for today's 00:00 in Europe/Prague.
+function pragueStartOfDayISO(reference: Date = new Date()): string {
+  // sv-SE locale yields "YYYY-MM-DD" — same calendar day as Prague.
+  const ymd = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague" }).format(reference);
+  // Prague offset varies (CET +01:00 / CEST +02:00). We compute it for the reference moment.
+  const dtfParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Prague",
+    timeZoneName: "shortOffset",
+  }).formatToParts(reference);
+  const offPart = dtfParts.find((p) => p.type === "timeZoneName")?.value || "GMT+01:00";
+  const m = offPart.match(/GMT([+-])(\d{1,2})(?::?(\d{2}))?/);
+  const sign = m?.[1] === "-" ? "-" : "+";
+  const hh = (m?.[2] || "1").padStart(2, "0");
+  const mm = (m?.[3] || "00").padStart(2, "0");
+  return `${ymd}T00:00:00${sign}${hh}:${mm}`;
+}
+function pragueTodayYMD(reference: Date = new Date()): string {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Prague" }).format(reference);
+}
+
 async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): Promise<any> {
   const now = Date.now();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-  const startISO = startOfDay.toISOString();
+  const startISO = pragueStartOfDayISO(new Date(now));
   const oneDayAgoISO = new Date(now - 24 * 60 * 60 * 1000).toISOString();
   const fiveDaysAgoISO = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [threadsRes, registryRes, crisisRes, questionsRes, tasksRes, prevMetricsRes, todayMetricsRes] = await Promise.all([
+  const [threadsRes, registryRes, crisisEventsRes, crisisAlertsRes, questionsRes, tasksRes, prevMetricsRes, todayMetricsRes] = await Promise.all([
     supabase
       .from("did_threads")
       .select("id, part_name, sub_mode, last_activity_at, created_at, thread_label")
@@ -291,6 +310,14 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
       .select("part_name, status, last_seen_at, last_emotional_intensity, updated_at, first_seen_at")
       .order("updated_at", { ascending: false })
       .limit(50),
+    // CANONICAL crisis source: crisis_events (open phases). crisis_alerts is secondary
+    // and only used to enrich severity / summary / hours-stale when not present on event.
+    supabase
+      .from("crisis_events")
+      .select("id, part_name, severity, phase, trigger_description, opened_at, updated_at, awaiting_response_from")
+      .not("phase", "in", "(\"closed\",\"CLOSED\")")
+      .order("updated_at", { ascending: false })
+      .limit(10),
     supabase
       .from("crisis_alerts")
       .select("id, part_name, severity, summary, created_at, status")
@@ -400,16 +427,23 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
       });
     }
   }
-  for (const c of (crisisRes.data || [])) {
-    if (isBanned(c.part_name)) continue;
-    if (c.severity !== "high" && c.severity !== "critical") continue;
-    if (todayWorse.find(x => x.entity === c.part_name)) continue;
+  // Index alerts by part_name for enrichment of canonical crisis_events rows.
+  const alertsByPart = new Map<string, any>();
+  for (const a of (crisisAlertsRes.data || [])) {
+    if (!alertsByPart.has(a.part_name)) alertsByPart.set(a.part_name, a);
+  }
+
+  for (const ev of (crisisEventsRes.data || [])) {
+    if (isBanned(ev.part_name)) continue;
+    const sev = ev.severity || alertsByPart.get(ev.part_name)?.severity;
+    if (sev !== "high" && sev !== "critical") continue;
+    if (todayWorse.find(x => x.entity === ev.part_name)) continue;
     todayWorse.push({
-      entity: c.part_name,
+      entity: ev.part_name,
       owner: "tým",
-      lastUpdate: c.created_at,
-      reason: `nová ${c.severity} krize: ${(c.summary || "").slice(0, 80)}`,
-      ctaPath: `/chat?did_submode=cast&crisis_action=interview&part_name=${encodeURIComponent(c.part_name)}`,
+      lastUpdate: ev.updated_at || ev.opened_at,
+      reason: `${sev} krize: ${(ev.trigger_description || alertsByPart.get(ev.part_name)?.summary || "").slice(0, 80)}`,
+      ctaPath: `/chat?did_submode=cast&crisis_id=${ev.id}`,
     });
   }
 
@@ -435,21 +469,41 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
     });
   }
 
-  // Crisis command cards (top of dashboard)
-  const commandCrises = (crisisRes.data || []).map((c: any) => ({
-    partName: c.part_name,
-    state: c.status === "ACTIVE" ? "active" : "awaiting_feedback",
-    severity: c.severity,
-    hoursStaleUpdate: hoursSince(c.created_at),
-    missing: [],
-    requires: [(c.summary || "").slice(0, 120)],
-    ctas: [
-      { label: "Otevřít krizové vlákno", path: `/chat?crisis_action=interview&part_name=${encodeURIComponent(c.part_name)}` },
-    ],
-  }));
+  // Crisis command cards (top of dashboard) — canonical source: crisis_events.
+  // Each card carries the canonical crisisEventId so command card, thread badge and
+  // detail panel point to the SAME entity.
+  const phaseToState = (phase: string | null): string => {
+    const p = (phase || "").toLowerCase();
+    if (p === "closing" || p === "ready_to_close") return "ready_to_close";
+    if (p === "diagnostic" || p === "stabilizing") return "awaiting_feedback";
+    if (p === "closed") return "closed";
+    return "active";
+  };
+  const commandCrises = (crisisEventsRes.data || []).map((ev: any) => {
+    const alert = alertsByPart.get(ev.part_name);
+    const sev = ev.severity || alert?.severity || "medium";
+    const lastUpdate = ev.updated_at || ev.opened_at || alert?.created_at;
+    const summary = ev.trigger_description || alert?.summary || "";
+    const awaiting: string[] = Array.isArray(ev.awaiting_response_from) ? ev.awaiting_response_from : [];
+    const missing: string[] = [];
+    if (awaiting.length > 0) missing.push(`feedback: ${awaiting.join(", ")}`);
+    return {
+      crisisEventId: ev.id,
+      partName: ev.part_name,
+      state: phaseToState(ev.phase),
+      severity: sev,
+      hoursStaleUpdate: hoursSince(lastUpdate),
+      missing,
+      requires: summary ? [summary.slice(0, 120)] : [],
+      ctas: [
+        { label: "Otevřít krizové vlákno", path: `/chat?crisis_action=interview&crisis_id=${ev.id}` },
+      ],
+    };
+  });
 
   return {
     generated_at: new Date().toISOString(),
+    pragueDate: pragueTodayYMD(new Date(now)),
     command: { crises: commandCrises },
     todayNew,
     todayWorse: todayWorse.slice(0, 6),
@@ -457,7 +511,6 @@ async function buildCommandSnapshot(supabase: ReturnType<typeof createClient>): 
     todayActionRequired: todayActionRequired.slice(0, 8),
   };
 }
-   ================================================================ */
 
 async function saveDashboardToDrive(supabase: ReturnType<typeof createClient>, markdown: string): Promise<void> {
   try {
@@ -609,7 +662,7 @@ serve(async (req) => {
   try {
     const reqBody = await req.json().catch(() => ({}));
     const { date, trigger, mode } = reqBody;
-    const targetDate = date || new Date().toISOString().slice(0, 10);
+    const targetDate = date || pragueTodayYMD();
     const triggerSource = trigger || "manual";
 
     console.log(`[Dashboard] ═══ Spouštím dashboard pro ${targetDate} (trigger: ${triggerSource}, mode: ${mode || "full"}) ═══`);
@@ -770,7 +823,7 @@ Sestav kompletní denní dashboard.`;
       return content;
     };
 
-    const todayISO = new Date().toISOString().slice(0, 10);
+    const todayISO = pragueTodayYMD();
     const roleGuard = `\n\nDNEŠNÍ DATUM: ${todayISO}. Události starší 5 dnů považuj za HISTORICKÉ.\n\nROLE GUARD: Karel NIKDY neúkoluje terapeutky přípravou materiálů, plánů, technik ani analytickou prací. Karel tyto materiály PŘIPRAVUJE SÁM. Úkoly pro terapeutky: potvrdit účast, sdělit pozorování, odpovědět na otázku, provést konkrétní intervenci při sezení.\n`;
     const hanaSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + roleGuard + "\nGenerujes DENNI BRIEFING pro terapeutku HANICKU.\nZahrn POUZE ukoly prirazene Hanicce nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Katu.\nNERIKEJ Hanicce aby koordinovala Katu — to je TVOJE prace.";
     const kataSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + roleGuard + "\nGenerujes DENNI BRIEFING pro terapeutku KATU.\nZahrn POUZE ukoly prirazene Kate nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Hanicku.\nPokud ma Kata zpozdene ukoly, upozorni JI PRIMO — neposilej upozorneni pres Hanicku.";

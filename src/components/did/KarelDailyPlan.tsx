@@ -8,6 +8,7 @@ import {
   Sparkles, TrendingDown, HelpCircle as HelpCircle2, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 
 interface SnapshotItem {
   entity: string;
@@ -18,16 +19,23 @@ interface SnapshotItem {
   ctaPath: string;
 }
 
+interface CommandCrisisItem {
+  crisisEventId?: string | null;
+  partName: string;
+  severity?: string;
+  state?: string;
+}
+
 interface DashboardSnapshot {
   todayNew?: SnapshotItem[];
   todayWorse?: SnapshotItem[];
   todayUnconfirmed?: SnapshotItem[];
   todayActionRequired?: SnapshotItem[];
+  command?: { crises?: CommandCrisisItem[] };
 }
 
 interface Props {
   refreshTrigger: number;
-  hasCrisisBanner?: boolean;
   snapshot?: DashboardSnapshot | null;
 }
 
@@ -210,7 +218,7 @@ const InlineQuestionField = ({
   );
 };
 
-const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: snapshotFromProps = null }: Props) => {
+const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
@@ -242,6 +250,13 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
   // ── Snapshot (4-section command data) — uses prop if provided, else local cache + fetch
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(snapshotFromProps);
 
+  // Crisis priority is read ONLY from snapshot.command.crises (canonical from
+  // crisis_events). Old useCrisisOperationalState / hasCrisisBanner path is gone.
+  const snapshotCrisis = (snapshot?.command?.crises && snapshot.command.crises.length > 0)
+    ? snapshot.command.crises[0]
+    : null;
+  const snapshotCrisisPart = snapshotCrisis?.partName || null;
+
   useEffect(() => {
     if (snapshotFromProps) { setSnapshot(snapshotFromProps); return; }
     let alive = true;
@@ -249,14 +264,16 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
       try {
         const { data: u } = await supabase.auth.getUser();
         const userId = u?.user?.id || "anon";
-        const today = new Date().toISOString().slice(0, 10);
+        const today = pragueTodayISO();
         const cacheKey = `karel-command:${userId}:${today}`;
-        // Read cache first
+        // Read cache first — only accept if cached pragueDate matches today's Prague day.
         try {
           const cached = localStorage.getItem(cacheKey);
           if (cached && alive) {
             const parsed = JSON.parse(cached);
-            if (parsed?.snapshot) setSnapshot(parsed.snapshot);
+            if (parsed?.snapshot && (!parsed.pragueDate || parsed.pragueDate === today)) {
+              setSnapshot(parsed.snapshot);
+            }
           }
         } catch { /* ignore */ }
 
@@ -272,7 +289,13 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
           const json = await resp.json();
           if (json?.snapshot && alive) {
             setSnapshot(json.snapshot);
-            try { localStorage.setItem(cacheKey, JSON.stringify({ snapshot: json.snapshot, cachedAt: Date.now() })); } catch { /* ignore */ }
+            try {
+              localStorage.setItem(cacheKey, JSON.stringify({
+                snapshot: json.snapshot,
+                pragueDate: today,
+                cachedAt: Date.now(),
+              }));
+            } catch { /* ignore */ }
           }
         }
       } catch (e) {
@@ -286,7 +309,7 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
     if (!hasLoadedOnce.current) setLoading(true);
 
     try {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = pragueTodayISO();
       const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
       const [tasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, crisisRes, planRes] = await Promise.all([
@@ -337,7 +360,9 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
       setRecentThreads(threadsRes.data || []);
       setRecentInterviews(interviewsRes.data || []);
-      setCrisisPartName(crisisRes.data?.[0]?.part_name || null);
+      // Crisis part name now comes from snapshot (canonical via crisis_events).
+      // Keep local crisisRes only as a last-resort fallback when snapshot is empty.
+      setCrisisPartName(snapshotCrisisPart || crisisRes.data?.[0]?.part_name || null);
 
       // Determine last any activity date
       const allDates = [
@@ -531,9 +556,9 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
   const buildNarrativeParagraphs = (): string[] => {
     const paragraphs: string[] = [];
 
-    // ═══ 1. CRISIS — always first ═══
-    if (crisisPartName && !hasCrisisBanner) {
-      paragraphs.push(`⚠ ${crisisPartName} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
+    // ═══ 1. CRISIS — always first (driven only by snapshot.command.crises) ═══
+    if (snapshotCrisisPart) {
+      paragraphs.push(`⚠ ${snapshotCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
 
     if (isInfoDeficit) {

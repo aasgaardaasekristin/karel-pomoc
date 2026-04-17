@@ -11,6 +11,7 @@ import {
 import DidCrisisPanel from "./DidCrisisPanel";
 
 export interface CommandCrisis {
+  crisisEventId?: string | null; // canonical crisis_events.id (preferred)
   partName: string;
   state: string; // active | awaiting_feedback | ready_to_close
   severity: string;
@@ -158,7 +159,10 @@ export default function CommandCrisisCard({ crises, refreshTrigger }: Props) {
                         </SheetTitle>
                       </SheetHeader>
                       <div className="mt-4">
-                        <DidCrisisPanel partName={c.partName} />
+                        <DidCrisisPanel
+                          crisisId={c.crisisEventId || undefined}
+                          partName={c.crisisEventId ? undefined : c.partName}
+                        />
                       </div>
                     </SheetContent>
                   </Sheet>

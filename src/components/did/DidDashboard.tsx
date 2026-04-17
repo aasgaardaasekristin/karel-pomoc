@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useCrisisOperationalState } from "@/hooks/useCrisisOperationalState";
+import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { Clock, RefreshCw, MessageCircleQuestion, FileText, AlertTriangle, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,7 +40,7 @@ interface Props {
   isRefreshingMemory?: boolean;
 }
 
-const todayISO = () => new Date().toISOString().slice(0, 10);
+const todayISO = () => pragueTodayISO();
 
 const playAlertSound = () => {
   try {
@@ -104,8 +104,9 @@ const DidDashboard = ({
   onRefreshMemory,
   isRefreshingMemory,
 }: Props) => {
-  const { cards: crisisCards } = useCrisisOperationalState();
-  const hasCrisisBanner = crisisCards.length > 0;
+  // ── Crisis priority is now driven by snapshot.command.crises (canonical from
+  //    crisis_events). The old useCrisisOperationalState path is intentionally
+  //    NOT used here so KarelDailyPlan never receives a stale hasCrisisBanner.
   const [parts, setParts] = useState<PartActivity[]>([]);
   const [activeThreads, setActiveThreads] = useState<ActiveThreadSummary[]>([]);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
@@ -119,12 +120,12 @@ const DidDashboard = ({
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<any>(null);
 
-  // ── Daily snapshot loader (with localStorage cache, fallback on error) ──
+  // ── Daily snapshot loader (Prague-day cache, fallback on error) ──
   const loadSnapshot = useCallback(async (force = false) => {
     try {
       const { data: u } = await supabase.auth.getUser();
       const userId = u?.user?.id || "anon";
-      const today = new Date().toISOString().slice(0, 10);
+      const today = pragueTodayISO();
       const cacheKey = `karel-command:${userId}:${today}`;
 
       if (!force) {
@@ -132,7 +133,8 @@ const DidDashboard = ({
           const cached = localStorage.getItem(cacheKey);
           if (cached) {
             const parsed = JSON.parse(cached);
-            if (parsed?.snapshot) {
+            // Only accept cache if it matches today's Prague day.
+            if (parsed?.snapshot && (!parsed.pragueDate || parsed.pragueDate === today)) {
               setSnapshot(parsed.snapshot);
             }
           }
@@ -157,7 +159,11 @@ const DidDashboard = ({
         try {
           localStorage.setItem(
             cacheKey,
-            JSON.stringify({ snapshot: json.snapshot, cachedAt: Date.now() }),
+            JSON.stringify({
+              snapshot: json.snapshot,
+              pragueDate: today,
+              cachedAt: Date.now(),
+            }),
           );
         } catch {
           /* quota exceeded — ignore */
@@ -517,7 +523,6 @@ const DidDashboard = ({
           <ErrorBoundary fallbackTitle="Denní plán selhal">
             <KarelDailyPlan
               refreshTrigger={refreshTrigger}
-              hasCrisisBanner={hasCrisisBanner}
               snapshot={snapshot}
             />
           </ErrorBoundary>

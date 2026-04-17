@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 
 /**
  * DidCrisisPanel — pure 6-block detail (no narrative, no progress bars without context).
@@ -167,7 +168,7 @@ export default function DidCrisisPanel({
           return;
         }
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = pragueTodayISO();
 
         const [ivRes, interRes, logRes, planRes] = await Promise.all([
           supabase
