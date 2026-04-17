@@ -1749,6 +1749,7 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string
+          crisis_event_id: string | null
           distributed_drive: boolean
           distributed_email: boolean
           generated_by: string
@@ -1771,6 +1772,7 @@ export type Database = {
         Insert: {
           completed_at?: string | null
           created_at?: string
+          crisis_event_id?: string | null
           distributed_drive?: boolean
           distributed_email?: boolean
           generated_by?: string
@@ -1793,6 +1795,7 @@ export type Database = {
         Update: {
           completed_at?: string | null
           created_at?: string
+          crisis_event_id?: string | null
           distributed_drive?: boolean
           distributed_email?: boolean
           generated_by?: string
@@ -1812,7 +1815,15 @@ export type Database = {
           urgency_score?: number
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "did_daily_session_plans_crisis_event_id_fkey"
+            columns: ["crisis_event_id"]
+            isOneToOne: false
+            referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_doc_sync_log: {
         Row: {
@@ -1980,6 +1991,7 @@ export type Database = {
           closure_recommendation: string | null
           created_at: string
           crisis_event_id: string | null
+          daily_plan_id: string | null
           deadline_at: string | null
           finalized_at: string | null
           hanka_joined_at: string | null
@@ -2006,6 +2018,7 @@ export type Database = {
           closure_recommendation?: string | null
           created_at?: string
           crisis_event_id?: string | null
+          daily_plan_id?: string | null
           deadline_at?: string | null
           finalized_at?: string | null
           hanka_joined_at?: string | null
@@ -2032,6 +2045,7 @@ export type Database = {
           closure_recommendation?: string | null
           created_at?: string
           crisis_event_id?: string | null
+          daily_plan_id?: string | null
           deadline_at?: string | null
           finalized_at?: string | null
           hanka_joined_at?: string | null
@@ -2059,6 +2073,13 @@ export type Database = {
             columns: ["crisis_event_id"]
             isOneToOne: false
             referencedRelation: "crisis_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "did_meetings_daily_plan_id_fkey"
+            columns: ["daily_plan_id"]
+            isOneToOne: false
+            referencedRelation: "did_daily_session_plans"
             referencedColumns: ["id"]
           },
         ]
@@ -3042,6 +3063,7 @@ export type Database = {
           id: string
           last_escalation_email_at: string | null
           note: string | null
+          plan_item_id: string | null
           priority: string | null
           processed_by_reactive: boolean | null
           related_task_id: string | null
@@ -3068,6 +3090,7 @@ export type Database = {
           id?: string
           last_escalation_email_at?: string | null
           note?: string | null
+          plan_item_id?: string | null
           priority?: string | null
           processed_by_reactive?: boolean | null
           related_task_id?: string | null
@@ -3094,6 +3117,7 @@ export type Database = {
           id?: string
           last_escalation_email_at?: string | null
           note?: string | null
+          plan_item_id?: string | null
           priority?: string | null
           processed_by_reactive?: boolean | null
           related_task_id?: string | null
@@ -3107,7 +3131,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "did_therapist_tasks_plan_item_id_fkey"
+            columns: ["plan_item_id"]
+            isOneToOne: false
+            referencedRelation: "did_plan_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_threads: {
         Row: {
