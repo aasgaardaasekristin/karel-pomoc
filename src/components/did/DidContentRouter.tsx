@@ -131,6 +131,8 @@ export interface DidContentRouterProps {
   navigate: (path: string) => void;
   meetingIdFromUrl: string | null;
   setMeetingIdFromUrl: React.Dispatch<React.SetStateAction<string | null>>;
+  /** FÁZE 3C: canonical did_daily_session_plans.id — pokud meeting/CTA vznikl z dnešního plánu. */
+  dailyPlanIdFromUrl?: string | null;
   meetingTherapist: "hanka" | "kata";
   setMeetingTherapist: React.Dispatch<React.SetStateAction<"hanka" | "kata">>;
   mode: ConversationMode;
@@ -157,7 +159,7 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     drivePickerOpen, setDrivePickerOpen,
     didLiveSession, setDidLiveSession, didLiveSessionReady, setDidLiveSessionReady,
     didLivePartContext, setDidLivePartContext,
-    navigate, meetingIdFromUrl, setMeetingIdFromUrl,
+    navigate, meetingIdFromUrl, setMeetingIdFromUrl, dailyPlanIdFromUrl,
     meetingTherapist, setMeetingTherapist, mode, setMode,
   } = props;
 
@@ -440,21 +442,28 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
 
     // Read structured seed from sessionStorage — do NOT remove yet (DidMeetingPanel will clear after consumption)
     let meetingSeed: any = undefined;
+    let seedDailyPlanId: string | null = null;
     if (isSeed) {
       try {
         const seedStr = sessionStorage.getItem("karel_meeting_seed");
         if (seedStr) {
           meetingSeed = JSON.parse(seedStr);
+          // Seed may carry canonical daily_plan_id (set by KarelDailyPlan when opening meeting from today's session).
+          seedDailyPlanId = meetingSeed?.dailyPlanId || meetingSeed?.daily_plan_id || null;
           // Seed will be cleared by DidMeetingPanel after successful auto-create
         }
       } catch {}
     }
+
+    // FÁZE 3C: canonical daily_plan_id — URL param wins, then seed, then null.
+    const resolvedDailyPlanId = dailyPlanIdFromUrl || seedDailyPlanId || null;
 
     return (
       <DidMeetingPanel
         meetingId={meetingId}
         meetingTopic={meetingTopic}
         meetingSeed={meetingSeed}
+        dailyPlanId={resolvedDailyPlanId}
         therapist={meetingTherapist}
         onBack={() => {
           setDidFlowState("terapeut");
