@@ -912,9 +912,11 @@ const Chat = () => {
     const questionId = searchParams.get("question_id");
     const sessionPart = searchParams.get("session_part");
     const didSubmodeParam = searchParams.get("did_submode") as DidSubMode | null;
+    // FÁZE 3C: canonical did_daily_session_plans.id deep-link param.
+    const dailyPlanIdParam = searchParams.get("daily_plan_id");
 
     // Nothing to handle
-    if (!meetingParam && !meetingTopic && !didFlowParam && !taskId && !questionId && !sessionPart && !didSubmodeParam) return;
+    if (!meetingParam && !meetingTopic && !didFlowParam && !taskId && !questionId && !sessionPart && !didSubmodeParam && !dailyPlanIdParam) return;
 
     // Clear all DID params immediately to prevent re-triggering
     setSearchParams({}, { replace: true });
@@ -922,6 +924,11 @@ const Chat = () => {
     // Ensure DID mode
     setMode("childcare");
     try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+
+    // FÁZE 3C: capture daily_plan_id for downstream meeting/session create flow.
+    if (dailyPlanIdParam) {
+      setDailyPlanIdFromUrl(dailyPlanIdParam);
+    }
 
     // 1) Meeting by ID
     if (meetingParam) {
