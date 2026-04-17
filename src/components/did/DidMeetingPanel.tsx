@@ -40,6 +40,8 @@ interface Props {
   onBack: () => void;
 }
 
+const DRAFT_KEY = (mid: string, who: "hanka" | "kata") => `meeting-draft:${mid}:${who}`;
+
 const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSeed, therapist, onBack }: Props) => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [activeMeeting, setActiveMeeting] = useState<Meeting | null>(null);
@@ -53,20 +55,84 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
   const [newAgenda, setNewAgenda] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (initialMeetingId) {
-      loadMeeting(initialMeetingId);
-    } else if (meetingSeed) {
-      // Auto-create from structured seed
-      autoCreateFromSeed(meetingSeed);
-    } else if (meetingTopic) {
-      setNewTopic(meetingTopic);
-      setShowNewMeeting(true);
-      loadMeetings();
-    } else {
-      loadMeetings();
+  // Pre-flight: try to find an existing open meeting with same topic in last 24h
+  const findExistingOpenMeetingByTopic = async (topic: string): Promise<string | null> => {
+    if (!topic) return null;
+    const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    try {
+      const { data } = await supabase
+        .from("did_meetings")
+        .select("id, topic, status, created_at")
+        .ilike("topic", topic.slice(0, 80))
+        .neq("status", "finalized")
+        .gte("created_at", dayAgo)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      return data?.[0]?.id || null;
+    } catch {
+      return null;
     }
-  }, [initialMeetingId, meetingTopic]);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (initialMeetingId) {
+        loadMeeting(initialMeetingId);
+        return;
+      }
+      // For seed/topic flows, try to rehydrate an existing open meeting first
+      const desiredTopic = meetingSeed?.topic || meetingTopic || "";
+      if (desiredTopic) {
+        const existingId = await findExistingOpenMeetingByTopic(desiredTopic);
+        if (cancelled) return;
+        if (existingId) {
+          console.log(`[DidMeetingPanel] Pre-flight HIT — reusing meeting ${existingId} for topic "${desiredTopic}"`);
+          loadMeeting(existingId);
+          return;
+        }
+      }
+      if (meetingSeed) {
+        autoCreateFromSeed(meetingSeed);
+      } else if (meetingTopic) {
+        setNewTopic(meetingTopic);
+        setShowNewMeeting(true);
+        loadMeetings();
+      } else {
+        loadMeetings();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [initialMeetingId, meetingTopic, meetingSeed?.topic]);
+
+  // ── Restore draft inputs from localStorage when activeMeeting hydrates ──
+  useEffect(() => {
+    if (!activeMeeting?.id) return;
+    try {
+      const h = localStorage.getItem(DRAFT_KEY(activeMeeting.id, "hanka")) || "";
+      const k = localStorage.getItem(DRAFT_KEY(activeMeeting.id, "kata")) || "";
+      setHankaInput(h);
+      setKataInput(k);
+    } catch {}
+  }, [activeMeeting?.id]);
+
+  // ── Persist drafts on change (debounced via setTimeout per render) ──
+  useEffect(() => {
+    if (!activeMeeting?.id) return;
+    const id = setTimeout(() => {
+      try { localStorage.setItem(DRAFT_KEY(activeMeeting.id, "hanka"), hankaInput); } catch {}
+    }, 200);
+    return () => clearTimeout(id);
+  }, [hankaInput, activeMeeting?.id]);
+
+  useEffect(() => {
+    if (!activeMeeting?.id) return;
+    const id = setTimeout(() => {
+      try { localStorage.setItem(DRAFT_KEY(activeMeeting.id, "kata"), kataInput); } catch {}
+    }, 200);
+    return () => clearTimeout(id);
+  }, [kataInput, activeMeeting?.id]);
+
 
   // ── Realtime subscription for active meeting ──
   useEffect(() => {
