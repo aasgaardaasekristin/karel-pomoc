@@ -11,9 +11,19 @@ interface Props {
   onTasksSynced?: () => void;
 }
 
-/** Build a minimal summary directly from DB tables when no daily context exists.
- *  FÁZE 3: crisis count uses canonical crisis_events (not crisis_alerts).
- *  Tasks: primary did_plan_items + adjunct did_therapist_tasks (deduped via plan_item_id). */
+/** FÁZE 3B architektura komponenty:
+ *  - server (karel-did-context-prime / karel-did-system-overview) je jediná autorita
+ *  - tato komponenta je pouze čtečka kanonického snapshotu z `did_daily_context`
+ *  - `extractOverviewText` je čistý SYNC selektor — žádné živé DB dotazy
+ *  - `buildEmergencyFallback` je oddělená nouzová větev pro stav, kdy snapshot vůbec neexistuje */
+
+/** Prague-day ISO (YYYY-MM-DD) — sjednoceno s ostatními callsites Phase 2C/3 */
+const pragueDayISO = (d: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+
+/** EMERGENCY FALLBACK — spouští se jen když v `did_daily_context` není snapshot.
+ *  Není to druhý frontend resolver mozek; je to last-resort, aby UI nebylo prázdné.
+ *  Crisis count = kanonický `crisis_events` (open phases), ne `crisis_alerts`. */
 const buildEmergencyFallback = async (): Promise<string | null> => {
   try {
     const [crisisRes, planItemsRes, manualTasksRes, questionsRes, sessionsRes] = await Promise.all([
