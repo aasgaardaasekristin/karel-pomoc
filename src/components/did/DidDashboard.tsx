@@ -11,6 +11,8 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
+import DidCoordinationAlerts from "./DidCoordinationAlerts";
+import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
