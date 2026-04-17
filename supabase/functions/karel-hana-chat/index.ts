@@ -612,7 +612,7 @@ async function runHanaPostChatWriteback(args: {
       partRegistryLookup: (n: string) => partRegMap.get(n) || null,
     };
 
-    const { intents, rejected } = buildGovernedWriteIntents(outputs, writebackCtx);
+    const { pairs, rejected } = buildGovernedWriteIntents(outputs, writebackCtx);
     if (rejected.length > 0) {
       console.log(`[hana-writeback] ${rejected.length} outputs rejected: ${rejected.map(r => r.reason).join(", ")}`);
     }
@@ -627,15 +627,7 @@ async function runHanaPostChatWriteback(args: {
 
     let inserted = 0;
     let evidenceCount = 0;
-    for (const intent of intents) {
-      // Find the matching output (intents are built from validated outputs in order)
-      const matchedOutput = outputs.find(
-        (o) =>
-          o.kind === (intent.evidenceKind === "PLAN" || intent.target.bucket.startsWith("plan_")
-            ? o.kind
-            : o.kind) &&
-          intent.content.includes(o.summary.slice(0, 60)),
-      ) || outputs.find((o) => intent.content.includes(o.summary.slice(0, 40)));
+    for (const { intent, output: matchedOutput } of pairs) {
 
       const governedContent = encodeGovernedWrite(intent.content, {
         source_type: "chat_memory_extraction",
