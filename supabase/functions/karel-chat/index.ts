@@ -12,6 +12,11 @@ import {
   type WritebackContext,
   type PartRegistryLookup,
 } from "../_shared/postChatWriteback.ts";
+import {
+  persistEvidenceForIntent,
+  auditDriveEnqueue,
+  type EvidencePersistenceContext,
+} from "../_shared/evidencePersistence.ts";
 import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
