@@ -19,16 +19,23 @@ interface SnapshotItem {
   ctaPath: string;
 }
 
+interface CommandCrisisItem {
+  crisisEventId?: string | null;
+  partName: string;
+  severity?: string;
+  state?: string;
+}
+
 interface DashboardSnapshot {
   todayNew?: SnapshotItem[];
   todayWorse?: SnapshotItem[];
   todayUnconfirmed?: SnapshotItem[];
   todayActionRequired?: SnapshotItem[];
+  command?: { crises?: CommandCrisisItem[] };
 }
 
 interface Props {
   refreshTrigger: number;
-  hasCrisisBanner?: boolean;
   snapshot?: DashboardSnapshot | null;
 }
 
