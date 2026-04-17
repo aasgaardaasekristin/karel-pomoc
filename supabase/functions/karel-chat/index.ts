@@ -1282,12 +1282,13 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
         }
 
         // ═══ POST-CHAT MEMORY EXTRACTION (fire-and-forget) ═══
-        // For hana_personal, mamka, kata: extract structured memory outputs
-        // and enqueue them as governed writes to PAMET_KAREL destinations
-        // Detect memory-eligible modes using the same convention as the rest of the file
-        // didSubMode "general" within mode "childcare" = Hana/osobní (see line ~351)
+        // For hana_personal, mamka, kata, AND cast: extract structured memory outputs
+        // and enqueue them as governed writes to PAMET_KAREL destinations.
+        // Phase 2: cast (přímá konverzace s dítětem) je nově zapojen — sensitivity
+        // guard a evidence quality guard nadále chrání co kam smí.
         const isHanaPersonal = mode === "childcare" && didSubMode === "general";
-        const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata";
+        const isCastMode = didSubMode === "cast";
+        const isMemoryMode = isHanaPersonal || didSubMode === "mamka" || didSubMode === "kata" || isCastMode;
 
         if (isMemoryMode && fullResponse.length > 30) {
           const { createClient: createSbForMem } = await import("https://esm.sh/@supabase/supabase-js@2");
@@ -1299,7 +1300,11 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
             if (userTextMem.length > 15) {
               const therapistKey: "HANKA" | "KATA" = didSubMode === "kata" ? "KATA" : "HANKA";
-              const modeLabel = isHanaPersonal ? "Hana/osobní" : didSubMode === "mamka" ? "DID/Terapeut mamka" : "DID/Terapeut kata";
+              const modeLabel = isHanaPersonal
+                ? "Hana/osobní"
+                : isCastMode
+                  ? `DID/Část ${didPartName || "?"}`
+                  : didSubMode === "mamka" ? "DID/Terapeut mamka" : "DID/Terapeut kata";
               const chatSourceId = `chat_${didThreadLabel || didSubMode || "unknown"}_${lastUserMsgMem?.created_at || Date.now()}`;
 
               // ═══ Phase 5: Structured extraction prompt ═══
