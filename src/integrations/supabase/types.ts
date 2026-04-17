@@ -2122,11 +2122,16 @@ export type Database = {
       }
       did_observations: {
         Row: {
+          change_type: string | null
           confidence: number | null
+          confidence_band: string | null
           created_at: string
+          evidence_kind: string | null
           evidence_level: string
           fact: string
+          freshness_band: string | null
           id: string
+          needs_verification: boolean
           processed: boolean | null
           processed_at: string | null
           source_ref: string | null
@@ -2137,11 +2142,16 @@ export type Database = {
           time_horizon: string
         }
         Insert: {
+          change_type?: string | null
           confidence?: number | null
+          confidence_band?: string | null
           created_at?: string
+          evidence_kind?: string | null
           evidence_level?: string
           fact: string
+          freshness_band?: string | null
           id?: string
+          needs_verification?: boolean
           processed?: boolean | null
           processed_at?: string | null
           source_ref?: string | null
@@ -2152,11 +2162,16 @@ export type Database = {
           time_horizon?: string
         }
         Update: {
+          change_type?: string | null
           confidence?: number | null
+          confidence_band?: string | null
           created_at?: string
+          evidence_kind?: string | null
           evidence_level?: string
           fact?: string
+          freshness_band?: string | null
           id?: string
+          needs_verification?: boolean
           processed?: boolean | null
           processed_at?: string | null
           source_ref?: string | null
