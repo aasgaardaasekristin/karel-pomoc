@@ -86,9 +86,15 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
 
   // Live session state
   const [liveSessionActive, setLiveSessionActive] = useState(false);
+  const [openingSessionThread, setOpeningSessionThread] = useState(false);
 
-  // First pending plan (for live session)
-  const firstPendingPlan = plans.find(p => p.status === "generated" || p.status === "in_progress") || null;
+  // Today key (Prague TZ) — used as filter and for "stale" guard
+  const todayPragueKey = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+
+  // First pending plan TODAY only (no stale plans from yesterday allowed as "today's reality")
+  const firstPendingPlan = plans.find(
+    p => (p.status === "generated" || p.status === "in_progress") && p.plan_date === todayPragueKey
+  ) || null;
 
   const loadTodayPlans = useCallback(async () => {
     setLoading(true);
