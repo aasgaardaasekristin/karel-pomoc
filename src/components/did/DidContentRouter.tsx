@@ -313,29 +313,18 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     };
   }, [didStorageKey]);
 
-  // ═══ CRISIS INDICATOR ═══
-  // Tiny non-narrative badge — reads from canonical crisis_events (same source as
-  // the velitelská CommandCrisisCard + DidCrisisPanel). All three views (badge,
-  // command card, detail) now resolve to the same crisis entity.
-  const [activeCrisisBanner, setActiveCrisisBanner] = useState<{ severity: string; eventId: string } | null>(null);
-
-  useEffect(() => {
-    if (didSubMode !== "cast" || !activeThread?.partName) {
-      setActiveCrisisBanner(null);
-      return;
-    }
-    (supabase as any)
-      .from("crisis_events")
-      .select("id, severity, phase")
-      .eq("part_name", activeThread.partName)
-      .not("phase", "in", '("closed","CLOSED")')
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }: any) => {
-        setActiveCrisisBanner(data ? { severity: data.severity, eventId: data.id } : null);
-      });
-  }, [didSubMode, activeThread?.partName]);
+  // ═══ CRISIS INDICATOR (FÁZE 3E) ═══
+  // Reader-only over the canonical view-model `useCrisisOperationalState`.
+  // No raw `crisis_events` query here — the router must NOT be a parallel
+  // frontend resolver. The hook already encapsulates the canonical filter
+  // (open phase + crisis_events as source of truth).
+  const { cards: crisisCards } = useCrisisOperationalState();
+  const activeCrisisBanner = React.useMemo(() => {
+    if (didSubMode !== "cast" || !activeThread?.partName) return null;
+    const partLower = activeThread.partName.toLowerCase();
+    const match = crisisCards.find(c => (c.partName || "").toLowerCase() === partLower);
+    return match ? { severity: match.severity || "moderate", eventId: match.id } : null;
+  }, [didSubMode, activeThread?.partName, crisisCards]);
 
   // Entry screen: Terapeut / Kluci
   if (didFlowState === "entry" && !didSubMode) {

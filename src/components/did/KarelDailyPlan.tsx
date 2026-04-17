@@ -812,6 +812,28 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     }
   }
 
+  // ── FÁZE 3E: Resolve canonical did_daily_session_plans.id for a task ──
+  // Priority:
+  //   1) Exactly one today's session → use its id
+  //   2) Today's session whose selected_part appears in task text / detail → its id
+  //   3) Canonical today_session from snapshot (fallback) → its id
+  //   4) null
+  const resolveDailyPlanIdForTask = (t: typeof tasks[0]): string | null => {
+    const todays = uniqueSessions; // already deduped sessions for today
+    if (todays.length === 1) return todays[0].id;
+
+    const haystack = `${t.task || ""} ${typeof t.detail_instruction === "string" ? t.detail_instruction : ""}`.toLowerCase();
+    if (todays.length > 1) {
+      const matched = todays.find(s => s.selected_part && haystack.includes(s.selected_part.toLowerCase()));
+      if (matched) return matched.id;
+    }
+
+    const canonicalToday = (snapshot as any)?.canonical_today_session;
+    if (canonicalToday?.id) return canonicalToday.id as string;
+
+    return null;
+  };
+
   // ── Build meeting seed from team task ──
   const buildMeetingSeed = (t: typeof tasks[0]): MeetingSeed => {
     const raw = t.detail_instruction;
@@ -826,6 +848,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
     const taskText = t.task || "";
     const detailStr = (typeof raw === "string" ? raw : "") || taskText;
+    const dailyPlanId = resolveDailyPlanIdForTask(t);
 
     // If parsed is a structured object, use it
     if (parsed && typeof parsed === "object" && (parsed.reason || parsed.proposal)) {
@@ -835,6 +858,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         karelProposal: parsed.proposal || parsed.karel_proposal || `Na základě aktuální situace navrhuji: ${taskText}`,
         questionsHanka: parsed.for_hanka || parsed.questions_hanka || `Haničko, jaký je tvůj pohled na: ${taskText.slice(0, 80)}?`,
         questionsKata: parsed.for_kata || parsed.questions_kata || `Káťo, jaký je tvůj pohled na: ${taskText.slice(0, 80)}?`,
+        dailyPlanId,
       };
     }
 
@@ -845,6 +869,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       karelProposal: `Situaci jsem vyhodnotil a navrhuji tento postup: zaměřit se na „${taskText.slice(0, 80)}" s konkrétním plánem kroků. ${detailStr !== taskText ? detailStr.slice(0, 200) : "Detaily prodiskutujeme na poradě."}`,
       questionsHanka: `Haničko, potřebuji tvé konkrétní pozorování k tématu „${taskText.slice(0, 60)}". Co jsi zaznamenala v chování části? Jaké změny pozoruješ?`,
       questionsKata: `Káťo, potřebuji tvůj pohled z tvé pozice k tématu „${taskText.slice(0, 60)}". Co jsi zaznamenala? Jak to koresponduje s tím, co vidí Hanička?`,
+      dailyPlanId,
     };
   };
 
