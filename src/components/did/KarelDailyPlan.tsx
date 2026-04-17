@@ -537,6 +537,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     const params = new URLSearchParams();
     params.set("didFlowState", "meeting");
     params.set("meeting_topic", seed.topic.slice(0, 80));
+    // FÁZE 3C: canonical linkage in URL — wins over seed for resolver.
+    if (seed.dailyPlanId) params.set("daily_plan_id", seed.dailyPlanId);
     try {
       sessionStorage.setItem("karel_hub_section", "did");
       sessionStorage.setItem("karel_meeting_seed", JSON.stringify(seed));
