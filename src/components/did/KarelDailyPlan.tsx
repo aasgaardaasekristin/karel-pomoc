@@ -244,17 +244,18 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     what_remains_unclear: string | null;
   }[]>([]);
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
+  const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
+  const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
+
+  // ── Snapshot (4-section command data) — uses prop if provided, else local cache + fetch
+  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(snapshotFromProps);
+
   // Crisis priority is read ONLY from snapshot.command.crises (canonical from
   // crisis_events). Old useCrisisOperationalState / hasCrisisBanner path is gone.
   const snapshotCrisis = (snapshot?.command?.crises && snapshot.command.crises.length > 0)
     ? snapshot.command.crises[0]
     : null;
   const snapshotCrisisPart = snapshotCrisis?.partName || null;
-  const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
-  const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
-
-  // ── Snapshot (4-section command data) — uses prop if provided, else local cache + fetch
-  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(snapshotFromProps);
 
   useEffect(() => {
     if (snapshotFromProps) { setSnapshot(snapshotFromProps); return; }
@@ -263,14 +264,16 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       try {
         const { data: u } = await supabase.auth.getUser();
         const userId = u?.user?.id || "anon";
-        const today = new Date().toISOString().slice(0, 10);
+        const today = pragueTodayISO();
         const cacheKey = `karel-command:${userId}:${today}`;
-        // Read cache first
+        // Read cache first — only accept if cached pragueDate matches today's Prague day.
         try {
           const cached = localStorage.getItem(cacheKey);
           if (cached && alive) {
             const parsed = JSON.parse(cached);
-            if (parsed?.snapshot) setSnapshot(parsed.snapshot);
+            if (parsed?.snapshot && (!parsed.pragueDate || parsed.pragueDate === today)) {
+              setSnapshot(parsed.snapshot);
+            }
           }
         } catch { /* ignore */ }
 
@@ -286,7 +289,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           const json = await resp.json();
           if (json?.snapshot && alive) {
             setSnapshot(json.snapshot);
-            try { localStorage.setItem(cacheKey, JSON.stringify({ snapshot: json.snapshot, cachedAt: Date.now() })); } catch { /* ignore */ }
+            try {
+              localStorage.setItem(cacheKey, JSON.stringify({
+                snapshot: json.snapshot,
+                pragueDate: today,
+                cachedAt: Date.now(),
+              }));
+            } catch { /* ignore */ }
           }
         }
       } catch (e) {
