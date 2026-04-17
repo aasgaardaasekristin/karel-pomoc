@@ -243,19 +243,23 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     what_shifted: string | null;
     what_remains_unclear: string | null;
   }[]>([]);
-  const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
   const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
   const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
+  // Fallback only — used when the snapshot has no command crisis.
+  // Loaded inside `load()` from crisis_events with the same open-phase filter
+  // as the badge / snapshot / detail panel.
+  const [fallbackCrisisPart, setFallbackCrisisPart] = useState<string | null>(null);
 
   // ── Snapshot (4-section command data) — uses prop if provided, else local cache + fetch
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(snapshotFromProps);
 
-  // Crisis priority is read ONLY from snapshot.command.crises (canonical from
-  // crisis_events). Old useCrisisOperationalState / hasCrisisBanner path is gone.
+  // SINGLE source of truth for crisis priority across ALL narrative / implications /
+  // deficit questions. Primary: snapshot.command.crises[0]. Fallback only if snapshot
+  // has no crisis but DB does (e.g. snapshot still warming up).
   const snapshotCrisis = (snapshot?.command?.crises && snapshot.command.crises.length > 0)
     ? snapshot.command.crises[0]
     : null;
-  const snapshotCrisisPart = snapshotCrisis?.partName || null;
+  const effectiveCrisisPart: string | null = snapshotCrisis?.partName || fallbackCrisisPart || null;
 
   useEffect(() => {
     if (snapshotFromProps) { setSnapshot(snapshotFromProps); return; }
