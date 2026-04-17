@@ -848,12 +848,21 @@ Sestav kompletní denní dashboard.`;
       console.error("[Dashboard] Crisis assessment failed:", e);
     }
 
+    // Build command snapshot for KarelDailyPlan command sections (best-effort, non-fatal)
+    let commandSnapshot: any = null;
+    try {
+      commandSnapshot = await buildCommandSnapshot(supabase);
+    } catch (e) {
+      console.warn("[Dashboard] command snapshot build failed (non-fatal):", e);
+    }
+
     return new Response(JSON.stringify({
       success: true,
       date: targetDate,
       trigger: triggerSource,
       dashboardLength: aiContent.length,
       appDataExtracted: !!appData,
+      snapshot: commandSnapshot,
       summary: `Dashboard pro ${targetDate} vygenerován (${aiContent.length} znaků), ${appData?.todayTasks?.length || 0} úkolů vytvořeno, témata: ${topicSync.synced} synchronizována / ${topicSync.pending} čeká.`,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
