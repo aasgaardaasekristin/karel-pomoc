@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { corsHeaders } from "../_shared/auth.ts";
 import { callAiForJson } from "../_shared/aiCallWrapper.ts";
+import { createObservation } from "../_shared/observations.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -209,6 +211,77 @@ Vrať POUZE validní JSON, nic jiného.`;
             .eq("id", match.id);
         }
       }
+    }
+
+    // ═══ FÁZE 2B: Propagate to evidence pipeline + therapist memory ═══
+    try {
+      const sourceRefBase = `session_memory_${newMemoryId}`;
+      // Each key_point becomes an observation about the part
+      for (const kp of (parsed.key_points || []).slice(0, 8)) {
+        if (typeof kp !== "string" || kp.length < 8) continue;
+        try {
+          const obsId = await createObservation(sb, {
+            subject_type: "part",
+            subject_id: partName.toLowerCase(),
+            source_type: "session",
+            source_ref: `${sourceRefBase}_${kp.slice(0, 30)}`,
+            fact: kp.slice(0, 600),
+            evidence_level: "D2",
+            confidence: 0.7,
+            time_horizon: "0_14d",
+          });
+          await sb.from("did_observations").update({
+            freshness_band: "recent",
+            confidence_band: "medium",
+            change_type: "new",
+            needs_verification: false,
+            evidence_kind: "FACT",
+          }).eq("id", obsId);
+        } catch (_) { /* non-fatal */ }
+      }
+
+      // Risks → governed write into KARLOVY_POZNATKY for therapist visibility
+      const risks = (parsed.risk_signals || []).filter((r: any) => typeof r === "string" && r.length > 5);
+      if (risks.length > 0) {
+        const therapistKey = sessionMode === "kata" ? "KATA" : "HANKA";
+        const docKey = `PAMET_KAREL/DID/${therapistKey}/KARLOVY_POZNATKY`;
+        const today = new Date().toISOString().slice(0, 10);
+        const content = `\n=== SEKCE C — [DEDUKCE] [NOVÉ] [STŘEDNÍ JISTOTA] [AKUTNÍ] [VYŽADUJE OVĚŘENÍ] ${today} ===\nRizikové signály ze sezení s ${partName}:\n${risks.map((r: string) => `- ${r}`).join("\n")}\n→ Implikace: vyžaduje pozornost terapeutky před dalším sezením.`;
+        const governed = encodeGovernedWrite(content, {
+          source_type: "session_memory_extraction",
+          source_id: `session_${newMemoryId}_risks`,
+          content_type: "therapist_memory_note",
+          subject_type: "part",
+          subject_id: partName.toLowerCase(),
+        });
+        await sb.from("did_pending_drive_writes").insert({
+          target_document: docKey,
+          content: governed,
+          priority: "high",
+          status: "pending",
+          write_type: "append",
+        }).then(({ error }) => {
+          if (error) console.warn("[extract-session-memory] risk writeback failed:", error.message);
+        });
+
+        // Also create a pending question if any unresolved exists
+        for (const ur of (parsed.unresolved || []).slice(0, 3)) {
+          if (typeof ur !== "string" || ur.length < 8) continue;
+          await sb.from("did_pending_questions").insert({
+            question: `Nedořešené ze sezení s ${partName}: ${ur.slice(0, 240)}`,
+            context: `Session ${newMemoryId}, ${today}`,
+            subject_type: "part",
+            subject_id: partName.toLowerCase(),
+            directed_to: therapistKey === "KATA" ? "kata" : "hanka",
+            status: "open",
+            expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          }).then(({ error }) => {
+            if (error) console.warn("[extract-session-memory] pending question failed:", error.message);
+          });
+        }
+      }
+    } catch (evErr) {
+      console.warn("[extract-session-memory] evidence propagation failed (non-fatal):", evErr);
     }
 
     console.log(`[extract-session-memory] Done for ${partName}: ${parsed.key_points?.length || 0} points, ${parsed.promises?.length || 0} promises`);

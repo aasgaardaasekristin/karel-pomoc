@@ -12,6 +12,11 @@ import {
   type WritebackContext,
   type PartRegistryLookup,
 } from "../_shared/postChatWriteback.ts";
+import {
+  persistEvidenceForIntent,
+  auditDriveEnqueue,
+  type EvidencePersistenceContext,
+} from "../_shared/evidencePersistence.ts";
 import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
@@ -1384,9 +1389,23 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     console.log(`[post-chat-writeback] ${rejected.length} outputs rejected: ${rejected.map(r => r.reason).join(", ")}`);
                   }
 
-                  // ═══ Phase 5: Enqueue via governed write pipeline ═══
+                  // ═══ Phase 5: Enqueue via governed write pipeline + FÁZE 2B DB evidence ═══
+                  const evidenceCtx: EvidencePersistenceContext = {
+                    therapistKey,
+                    sourceMode: modeLabel,
+                    sourceThreadId: didThreadLabel || null,
+                    sourceType: isCastMode ? "part_direct" : "thread",
+                    userId: user.id,
+                  };
+
                   let insertedCount = 0;
+                  let evidenceCount = 0;
                   for (const intent of intents) {
+                    // Match intent → original output (intents preserve order of validated outputs)
+                    const matchedOutput =
+                      memResult.outputs.find((o) => intent.content.includes(o.summary.slice(0, 60))) ||
+                      memResult.outputs.find((o) => intent.content.includes(o.summary.slice(0, 40)));
+
                     const governedContent = encodeGovernedWrite(
                       intent.content,
                       {
@@ -1406,6 +1425,30 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                       write_type: "append",
                     });
 
+                    // FÁZE 2B: parallel DB evidence pipeline
+                    let observationId: string | null = null;
+                    if (matchedOutput) {
+                      try {
+                        const ev = await persistEvidenceForIntent(sbMem, matchedOutput, intent, evidenceCtx);
+                        observationId = ev.observation_id;
+                        if (observationId && !ev.skipped_reason) evidenceCount++;
+                      } catch (evErr) {
+                        console.warn("[post-chat-writeback] evidence persistence error:", evErr);
+                      }
+                    }
+
+                    // Audit Drive enqueue
+                    await auditDriveEnqueue(sbMem, {
+                      intent,
+                      observationId,
+                      contentType: resolveGovernedContentType(intent),
+                      subjectType: resolveGovernedSubjectType(intent),
+                      subjectId: resolveGovernedSubjectId(intent, therapistKey),
+                      userId: user.id,
+                      success: !writeErr,
+                      errorMessage: writeErr?.message,
+                    });
+
                     if (writeErr) {
                       console.warn(`[post-chat-writeback] Write error for ${intent.target.documentKey}:`, writeErr.message);
                     } else {
@@ -1413,8 +1456,8 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     }
                   }
 
-                  if (insertedCount > 0) {
-                    console.log(`[post-chat-writeback] ${insertedCount} governed writes enqueued for ${modeLabel} (${intents.length} intents, ${rejected.length} rejected)`);
+                  if (insertedCount > 0 || evidenceCount > 0) {
+                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence stops for ${modeLabel} (${intents.length} intents, ${rejected.length} rejected)`);
                   }
                 } else {
                   console.log(`[post-chat-writeback] No relevant outputs for ${modeLabel}`);

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 import { loadDriveRegistryEntries, type DriveRegistryEntry } from "../_shared/driveRegistry.ts";
+import { computeDailyDiff } from "../_shared/dailyDiff.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -351,9 +352,44 @@ serve(async (req) => {
       },
     };
 
-    // ═══ 4. Upsert into did_daily_context ═══
+    // ═══ 4. FÁZE 2B: Compute daily diff vs. yesterday ═══
+    let dailyDiff: ReturnType<typeof computeDailyDiff> | null = null;
+    try {
+      const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10);
+      const { data: yesterdayCtx } = await sb
+        .from("did_daily_context")
+        .select("context_json")
+        .eq("user_id", userId)
+        .eq("context_date", yesterdayDate)
+        .maybeSingle();
+
+      dailyDiff = computeDailyDiff(
+        contextJson as any,
+        (yesterdayCtx?.context_json as any) || null,
+      );
+      console.log(`[daily-refresh] diff: ${dailyDiff.summary_line}`);
+    } catch (diffErr) {
+      console.warn("[daily-refresh] diff computation failed (non-fatal):", diffErr);
+    }
+
+    // Inline diff into context_json so existing readers see it
+    const enrichedContextJson = {
+      ...contextJson,
+      diff: dailyDiff || null,
+    };
+
+    // ═══ 5. Upsert into did_daily_context (with diff in analysis_json) ═══
     const { error: upsertError } = await sb.from("did_daily_context").upsert(
-      { user_id: userId, context_date: today, context_json: contextJson, source: "karel-daily-refresh", updated_at: new Date().toISOString() },
+      {
+        user_id: userId,
+        context_date: today,
+        context_json: enrichedContextJson,
+        analysis_json: dailyDiff ? { daily_diff: dailyDiff } : null,
+        source: "karel-daily-refresh",
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: "user_id,context_date" },
     );
 
@@ -362,7 +398,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: upsertError.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    console.log(`[daily-refresh] ✅ Context saved: ${JSON.stringify(contextJson).length} bytes, parts=${(parts || []).length}, tasks=${(tasks || []).length}`);
+    console.log(`[daily-refresh] ✅ Context saved: ${JSON.stringify(enrichedContextJson).length} bytes, parts=${(parts || []).length}, tasks=${(tasks || []).length}, diff_new=${dailyDiff?.new_items.length || 0}, diff_worse=${dailyDiff?.worse_items.length || 0}`);
 
     return new Response(JSON.stringify({
       success: true,
@@ -372,7 +408,16 @@ serve(async (req) => {
         sleeping_parts: sleepingParts.length,
         pending_tasks: (tasks || []).length,
         drive_docs_loaded: Object.values(contextJson.drive_documents).filter(Boolean).length,
-        context_size_bytes: JSON.stringify(contextJson).length,
+        context_size_bytes: JSON.stringify(enrichedContextJson).length,
+        diff: dailyDiff
+          ? {
+              new: dailyDiff.new_items.length,
+              worse: dailyDiff.worse_items.length,
+              changed: dailyDiff.changed_items.length,
+              unconfirmed: dailyDiff.unconfirmed_items.length,
+              has_yesterday: dailyDiff.has_yesterday,
+            }
+          : null,
       },
     }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 

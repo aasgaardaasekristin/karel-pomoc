@@ -3,6 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import {
+  persistEvidenceForIntent,
+  auditDriveEnqueue,
+  type EvidencePersistenceContext,
+} from "../_shared/evidencePersistence.ts";
+import {
   buildGovernedWriteIntents,
   buildExtractionPrompt,
   resolveGovernedContentType,
@@ -612,8 +617,26 @@ async function runHanaPostChatWriteback(args: {
       console.log(`[hana-writeback] ${rejected.length} outputs rejected: ${rejected.map(r => r.reason).join(", ")}`);
     }
 
+    const evidenceCtx: EvidencePersistenceContext = {
+      therapistKey,
+      sourceMode: modeLabel,
+      sourceThreadId: conversationId,
+      sourceType: "thread",
+      userId: args.userId,
+    };
+
     let inserted = 0;
+    let evidenceCount = 0;
     for (const intent of intents) {
+      // Find the matching output (intents are built from validated outputs in order)
+      const matchedOutput = outputs.find(
+        (o) =>
+          o.kind === (intent.evidenceKind === "PLAN" || intent.target.bucket.startsWith("plan_")
+            ? o.kind
+            : o.kind) &&
+          intent.content.includes(o.summary.slice(0, 60)),
+      ) || outputs.find((o) => intent.content.includes(o.summary.slice(0, 40)));
+
       const governedContent = encodeGovernedWrite(intent.content, {
         source_type: "chat_memory_extraction",
         source_id: `${sourceId}_${intent.evidenceKind}`,
@@ -628,14 +651,46 @@ async function runHanaPostChatWriteback(args: {
         status: "pending",
         write_type: "append",
       });
+
+      // ── FÁZE 2B: DB evidence pipeline (parallel with Drive enqueue) ──
+      let observationId: string | null = null;
+      if (matchedOutput) {
+        try {
+          const ev = await persistEvidenceForIntent(sb, matchedOutput, intent, evidenceCtx);
+          observationId = ev.observation_id;
+          if (observationId && !ev.skipped_reason) evidenceCount++;
+        } catch (e) {
+          console.warn("[hana-writeback] evidence persistence error:", e);
+        }
+      }
+
       if (writeErr) {
         console.warn(`[hana-writeback] Write error for ${intent.target.documentKey}:`, writeErr.message);
+        await auditDriveEnqueue(sb, {
+          intent,
+          observationId,
+          contentType: resolveGovernedContentType(intent),
+          subjectType: resolveGovernedSubjectType(intent),
+          subjectId: resolveGovernedSubjectId(intent, therapistKey),
+          userId: args.userId,
+          success: false,
+          errorMessage: writeErr.message,
+        });
       } else {
         inserted++;
+        await auditDriveEnqueue(sb, {
+          intent,
+          observationId,
+          contentType: resolveGovernedContentType(intent),
+          subjectType: resolveGovernedSubjectType(intent),
+          subjectId: resolveGovernedSubjectId(intent, therapistKey),
+          userId: args.userId,
+          success: true,
+        });
       }
     }
-    if (inserted > 0) {
-      console.log(`[hana-writeback] ${inserted} governed writes enqueued (Hana/osobní, ${rejected.length} rejected)`);
+    if (inserted > 0 || evidenceCount > 0) {
+      console.log(`[hana-writeback] ${inserted} drive writes + ${evidenceCount} DB evidence stops enqueued (Hana/osobní, ${rejected.length} rejected)`);
     }
   } catch (e) {
     clearTimeout(t);
