@@ -1,6 +1,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
+import {
+  buildGovernedWriteIntents,
+  buildExtractionPrompt,
+  resolveGovernedContentType,
+  resolveGovernedSubjectType,
+  resolveGovernedSubjectId,
+  type WritebackContext,
+  type PartRegistryLookup,
+} from "../_shared/postChatWriteback.ts";
+import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
