@@ -117,6 +117,56 @@ const DidDashboard = ({
   const [loading, setLoading] = useState(true);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [snapshot, setSnapshot] = useState<any>(null);
+
+  // ── Daily snapshot loader (with localStorage cache, fallback on error) ──
+  const loadSnapshot = useCallback(async (force = false) => {
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const userId = u?.user?.id || "anon";
+      const today = new Date().toISOString().slice(0, 10);
+      const cacheKey = `karel-command:${userId}:${today}`;
+
+      if (!force) {
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed?.snapshot) {
+              setSnapshot(parsed.snapshot);
+            }
+          }
+        } catch {
+          /* ignore corrupted cache */
+        }
+      }
+
+      const headers = await getAuthHeaders();
+      const resp = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/karel-daily-dashboard`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ mode: "snapshot", date: today, trigger: force ? "manual" : "auto" }),
+        },
+      );
+      if (!resp.ok) throw new Error(`snapshot ${resp.status}`);
+      const json = await resp.json();
+      if (json?.snapshot) {
+        setSnapshot(json.snapshot);
+        try {
+          localStorage.setItem(
+            cacheKey,
+            JSON.stringify({ snapshot: json.snapshot, cachedAt: Date.now() }),
+          );
+        } catch {
+          /* quota exceeded — ignore */
+        }
+      }
+    } catch (e) {
+      console.warn("[DidDashboard] snapshot load failed, using cache if any", e);
+    }
+  }, []);
 
   const loadDashboardData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -215,7 +265,8 @@ const DidDashboard = ({
 
   useEffect(() => {
     loadDashboardData();
-  }, [loadDashboardData, refreshTrigger]);
+    loadSnapshot(refreshTrigger > 0);
+  }, [loadDashboardData, loadSnapshot, refreshTrigger]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -447,9 +498,28 @@ const DidDashboard = ({
           </div>
         </div>
 
+        {/* ── Velitelská krizová karta — vrch dashboardu ── */}
+        {snapshot?.command?.crises?.length > 0 && (
+          <ErrorBoundary fallbackTitle="Velitelská karta selhala">
+            <CommandCrisisCard
+              crises={snapshot.command.crises as CommandCrisis[]}
+              refreshTrigger={refreshTrigger}
+            />
+          </ErrorBoundary>
+        )}
+
+        {/* ── Koordinační upozornění (owner / deadline / důvod) ── */}
+        <ErrorBoundary fallbackTitle="Koordinační upozornění selhala">
+          <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
+        </ErrorBoundary>
+
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
-            <KarelDailyPlan refreshTrigger={refreshTrigger} hasCrisisBanner={hasCrisisBanner} />
+            <KarelDailyPlan
+              refreshTrigger={refreshTrigger}
+              hasCrisisBanner={hasCrisisBanner}
+              snapshot={snapshot}
+            />
           </ErrorBoundary>
         </div>
 
