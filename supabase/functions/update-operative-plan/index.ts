@@ -19,31 +19,48 @@ serve(async (req) => {
 
   try {
     // === LOAD ALL DATA IN PARALLEL ===
+    // ═══ FÁZE 4A — CANONICAL READS ═══
+    // Today's session truth = did_daily_session_plans (canonical, FÁZE 3).
+    // planned_sessions is a mid-term projection only — used for >14-day horizon enrichment.
+    // Crisis truth = crisis_events (canonical) — crisis_alerts is now legacy mirror only.
     const [
       crisisRes, critTasksRes, blockingQRes,
       partsRes, shortGoalsRes, sessionsRes,
-      plannedRes, pendingQRes,
+      dailyPlansRes, midTermPlannedRes, pendingQRes,
       motivHankaRes, motivKataRes,
       taskCountRes, journalRes
     ] = await Promise.all([
-      // Sekce 1
-      sb.from("crisis_alerts").select("id,part_name,severity,status,created_at,days_in_crisis,summary").neq("status", "resolved"),
+      // Sekce 1 — canonical crises (open phase)
+      sb.from("crisis_events")
+        .select("id,part_name,severity,phase,opened_at,days_active,clinical_summary")
+        .not("phase", "in", "(closed,CLOSED)"),
       sb.from("did_therapist_tasks").select("*").in("status", ["pending", "active", "in_progress"]).eq("priority", "critical").lte("due_date", futureDate(3)),
       sb.from("did_pending_questions").select("*").not("subject_type", "is", null).neq("status", "answered").limit(20),
       // Sekce 2
       sb.from("did_part_registry").select("part_name,display_name,status,last_seen_at,health_score,last_emotional_state,next_session_plan").or("status.eq.active,status.eq.Aktivní"),
       sb.from("part_goals").select("*").eq("status", "active").eq("goal_type", "short"),
       sb.from("did_part_sessions").select("part_name,therapist,session_date,session_type,karel_notes").gte("created_at", pastDate(14)).order("session_date", { ascending: false }),
-      // Sekce 3
-      sb.from("planned_sessions").select("*").in("status", ["planned", "in_progress"]).lte("session_date", futureDate(14)).order("priority", { ascending: true }),
+      // Sekce 3 — CANONICAL today + near-future (≤14d) operational sessions
+      sb.from("did_daily_session_plans")
+        .select("id,selected_part,therapist,plan_date,status,session_type,urgency_score,crisis_event_id")
+        .in("status", ["planned", "in_progress", "generated"])
+        .lte("plan_date", futureDate(14))
+        .order("plan_date", { ascending: true }),
+      // Sekce 3 fallback — mid-term projection from planned_sessions (>14d horizon only)
+      sb.from("planned_sessions")
+        .select("part_name,method_name,therapist,priority,status,description,session_date")
+        .in("status", ["planned", "in_progress"])
+        .gt("session_date", futureDate(14))
+        .order("priority", { ascending: true })
+        .limit(20),
       // Sekce 4
       sb.from("did_pending_questions").select("*").in("status", ["pending", "sent"]).order("created_at", { ascending: true }).limit(10),
       // Sekce 5
       sb.from("did_motivation_profiles").select("*").eq("therapist", "hanka").limit(1),
       sb.from("did_motivation_profiles").select("*").eq("therapist", "kata").limit(1),
       sb.from("did_therapist_tasks").select("assigned_to,status").neq("status", "done"),
-      // Sekce 6
-      sb.from("crisis_journal").select("crisis_alert_id,crisis_trend,date").order("date", { ascending: false }).limit(50),
+      // Sekce 6 — by canonical crisis_event_id (crisis_alert_id kept as legacy fallback)
+      sb.from("crisis_journal").select("crisis_alert_id,crisis_event_id,crisis_trend,date").order("date", { ascending: false }).limit(50),
     ]);
 
     const crises = crisisRes.data || [];
