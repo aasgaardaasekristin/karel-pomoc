@@ -561,8 +561,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     const paragraphs: string[] = [];
 
     // ═══ 1. CRISIS — always first (driven only by snapshot.command.crises) ═══
-    if (snapshotCrisisPart) {
-      paragraphs.push(`⚠ ${snapshotCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
+    if (effectiveCrisisPart) {
+      paragraphs.push(`⚠ ${effectiveCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
 
     if (isInfoDeficit) {
@@ -583,8 +583,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
       // ── SECTION B: "Co z toho plyne" ──
       const deficitImplications: string[] = [];
-      if (crisisPartName) {
-        deficitImplications.push(`Krizová situace u ${crisisPartName} trvá i bez aktuálních dat — to zvyšuje riziko.`);
+      if (effectiveCrisisPart) {
+        deficitImplications.push(`Krizová situace u ${effectiveCrisisPart} trvá i bez aktuálních dat — to zvyšuje riziko.`);
       }
       if (daysWithoutData > 7) {
         deficitImplications.push("Bez informací déle než týden nemohu zodpovědně koordinovat péči ani vyhodnotit dynamiku systému.");
@@ -649,8 +649,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
       // ── SECTION B: "Co z toho plyne" ──
       const implications: string[] = [];
-      if (crisisPartName) {
-        implications.push(`Krizová situace u ${crisisPartName} vyžaduje denní monitoring a koordinovaný přístup.`);
+      if (effectiveCrisisPart) {
+        implications.push(`Krizová situace u ${effectiveCrisisPart} vyžaduje denní monitoring a koordinovaný přístup.`);
       }
       const urgentTasks = tasks.filter(t => t.priority === "critical" || t.priority === "high");
       if (urgentTasks.length > 0) {
@@ -766,13 +766,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       });
     }
 
-    if (crisisPartName) {
+    if (effectiveCrisisPart) {
       deficitItems.push({
-        question: `${crisisPartName} má aktivní krizi — jaký je aktuální stav?`,
-        intro: `Krize ${crisisPartName} vyžaduje průběžný monitoring. Bez vašeho pozorování nemohu správně vyhodnotit riziko.`,
-        karelProposal: `Všímejte si: je ${crisisPartName} v kontaktu? Reaguje na grounding? Jsou přítomny rizikové signály?`,
-        ifUnknownHelp: `Pokud nevíte jak zjistit stav ${crisisPartName}, otevřete se mnou rozhovor — připravím pro vás postup.`,
-        partName: crisisPartName,
+        question: `${effectiveCrisisPart} má aktivní krizi — jaký je aktuální stav?`,
+        intro: `Krize ${effectiveCrisisPart} vyžaduje průběžný monitoring. Bez vašeho pozorování nemohu správně vyhodnotit riziko.`,
+        karelProposal: `Všímejte si: je ${effectiveCrisisPart} v kontaktu? Reaguje na grounding? Jsou přítomny rizikové signály?`,
+        ifUnknownHelp: `Pokud nevíte jak zjistit stav ${effectiveCrisisPart}, otevřete se mnou rozhovor — připravím pro vás postup.`,
+        partName: effectiveCrisisPart,
       });
     }
   }
