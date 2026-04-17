@@ -193,7 +193,7 @@ async function fetchMeetingsData(supabase: ReturnType<typeof createClient>): Pro
 }
 
 async function fetchOperativePlan(supabase: ReturnType<typeof createClient>): Promise<string> {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = pragueTodayYMD();
   try {
     const { data, error } = await supabase
       .from("did_daily_session_plans")
@@ -662,7 +662,7 @@ serve(async (req) => {
   try {
     const reqBody = await req.json().catch(() => ({}));
     const { date, trigger, mode } = reqBody;
-    const targetDate = date || new Date().toISOString().slice(0, 10);
+    const targetDate = date || pragueTodayYMD();
     const triggerSource = trigger || "manual";
 
     console.log(`[Dashboard] ═══ Spouštím dashboard pro ${targetDate} (trigger: ${triggerSource}, mode: ${mode || "full"}) ═══`);
@@ -823,7 +823,7 @@ Sestav kompletní denní dashboard.`;
       return content;
     };
 
-    const todayISO = new Date().toISOString().slice(0, 10);
+    const todayISO = pragueTodayYMD();
     const roleGuard = `\n\nDNEŠNÍ DATUM: ${todayISO}. Události starší 5 dnů považuj za HISTORICKÉ.\n\nROLE GUARD: Karel NIKDY neúkoluje terapeutky přípravou materiálů, plánů, technik ani analytickou prací. Karel tyto materiály PŘIPRAVUJE SÁM. Úkoly pro terapeutky: potvrdit účast, sdělit pozorování, odpovědět na otázku, provést konkrétní intervenci při sezení.\n`;
     const hanaSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + roleGuard + "\nGenerujes DENNI BRIEFING pro terapeutku HANICKU.\nZahrn POUZE ukoly prirazene Hanicce nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Katu.\nNERIKEJ Hanicce aby koordinovala Katu — to je TVOJE prace.";
     const kataSystemPrompt = SYSTEM_RULES + "\n\n" + effectiveSystemPrompt + roleGuard + "\nGenerujes DENNI BRIEFING pro terapeutku KATU.\nZahrn POUZE ukoly prirazene Kate nebo obema.\nNEZAHRNUJ ukoly ktere jsou POUZE pro Hanicku.\nPokud ma Kata zpozdene ukoly, upozorni JI PRIMO — neposilej upozorneni pres Hanicku.";
