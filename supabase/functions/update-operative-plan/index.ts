@@ -69,7 +69,8 @@ serve(async (req) => {
     const parts = partsRes.data || [];
     const shortGoals = shortGoalsRes.data || [];
     const sessions14 = sessionsRes.data || [];
-    const planned = plannedRes.data || [];
+    const dailyPlans = dailyPlansRes.data || []; // CANONICAL today + ≤14d
+    const midTermPlanned = midTermPlannedRes.data || []; // legacy projection >14d only
     const pendingQ = pendingQRes.data || [];
     const motivHanka = motivHankaRes.data?.[0];
     const motivKata = motivKataRes.data?.[0];
@@ -80,14 +81,16 @@ serve(async (req) => {
     const lines: string[] = [];
     lines.push(`═══ OPERATIVNÍ PLÁN ═══`);
     lines.push(`Aktualizováno: ${today()}\n`);
+    lines.push(`(Canonical: did_daily_session_plans · crisis_events)\n`);
 
     // --- SEKCE 1: Kritický kontext 72h ---
     lines.push(`━━━ 1. KRITICKÝ KONTEXT 72h ━━━\n`);
     if (crises.length) {
       lines.push(`🔴 AKTIVNÍ KRIZE (${crises.length}):`);
       for (const c of crises) {
-        const journal = journalEntries.find((j: any) => j.crisis_alert_id === c.id);
-        lines.push(`  • ${c.part_name} — ${c.severity} — den ${c.days_in_crisis || '?'} — ${c.summary?.slice(0, 100)}`);
+        const journal = journalEntries.find((j: any) => j.crisis_event_id === c.id || j.crisis_alert_id === c.id);
+        const summary = (c.clinical_summary || "").slice(0, 100);
+        lines.push(`  • ${c.part_name} — ${c.severity} — fáze ${c.phase} — den ${c.days_active ?? '?'}${summary ? ` — ${summary}` : ''}`);
         if (journal) lines.push(`    trend: ${journal.crisis_trend}`);
       }
     } else {
@@ -128,15 +131,27 @@ serve(async (req) => {
       }
     }
 
-    // --- SEKCE 3: Rozpracovaná sezení ---
+    // --- SEKCE 3: Rozpracovaná sezení (CANONICAL) ---
+    // Primary read = did_daily_session_plans (today + ≤14d operational truth, FÁZE 3).
+    // planned_sessions kept only as >14d mid-term projection enrichment.
     lines.push(`\n━━━ 3. ROZPRACOVANÁ SEZENÍ ━━━\n`);
-    if (planned.length) {
-      for (const s of planned) {
-        lines.push(`  • ${s.part_name} — ${s.method_name} — terapeut: ${s.therapist} — priorita: ${s.priority} — status: ${s.status}`);
-        if (s.description) lines.push(`    ${s.description.slice(0, 120)}`);
+    if (dailyPlans.length) {
+      lines.push(`▸ Operativně do 14 dní (canonical: did_daily_session_plans):`);
+      for (const s of dailyPlans) {
+        const dateLabel = s.plan_date === today() ? `DNES (${s.plan_date})` : s.plan_date;
+        const urgency = typeof s.urgency_score === "number" ? ` · urgency ${s.urgency_score}` : "";
+        const crisisLink = s.crisis_event_id ? ` · 🔴krize` : "";
+        lines.push(`  • ${dateLabel} — ${s.selected_part} — terapeut: ${s.therapist || '?'} — typ: ${s.session_type || '?'} — status: ${s.status}${urgency}${crisisLink}`);
       }
     } else {
-      lines.push(`  (žádná naplánovaná sezení)`);
+      lines.push(`  (žádná operativně rozpracovaná sezení v canonical did_daily_session_plans)`);
+    }
+    if (midTermPlanned.length) {
+      lines.push(`\n▸ Středně-dobý výhled >14 dní (legacy projekce: planned_sessions):`);
+      for (const s of midTermPlanned) {
+        lines.push(`  • ${s.session_date} — ${s.part_name} — ${s.method_name} — terapeut: ${s.therapist} — priorita: ${s.priority}`);
+        if (s.description) lines.push(`    ${s.description.slice(0, 120)}`);
+      }
     }
 
     // --- SEKCE 4: Otevřené otázky ---
@@ -160,9 +175,9 @@ serve(async (req) => {
     lines.push(`\n━━━ 6. KRIZOVÉ SLEDOVÁNÍ ━━━\n`);
     if (crises.length) {
       for (const c of crises) {
-        const cJournals = journalEntries.filter((j: any) => j.crisis_alert_id === c.id);
+        const cJournals = journalEntries.filter((j: any) => j.crisis_event_id === c.id || j.crisis_alert_id === c.id);
         const lastJ = cJournals[0];
-        lines.push(`  ${c.part_name}: fáze=${c.status}, den ${c.days_in_crisis || '?'}`);
+        lines.push(`  ${c.part_name}: fáze=${c.phase}, den ${c.days_active ?? '?'}`);
         if (lastJ) lines.push(`    trend: ${lastJ.crisis_trend}, poslední záznam: ${lastJ.date}`);
       }
     } else {
