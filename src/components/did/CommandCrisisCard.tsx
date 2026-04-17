@@ -159,7 +159,10 @@ export default function CommandCrisisCard({ crises, refreshTrigger }: Props) {
                         </SheetTitle>
                       </SheetHeader>
                       <div className="mt-4">
-                        <DidCrisisPanel partName={c.partName} />
+                        <DidCrisisPanel
+                          crisisId={c.crisisEventId || undefined}
+                          partName={c.crisisEventId ? undefined : c.partName}
+                        />
                       </div>
                     </SheetContent>
                   </Sheet>
