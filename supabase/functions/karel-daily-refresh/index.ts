@@ -358,9 +358,9 @@ serve(async (req) => {
     // ═══ 4. FÁZE 2B: Compute daily diff vs. yesterday ═══
     let dailyDiff: ReturnType<typeof computeDailyDiff> | null = null;
     try {
-      const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
+      const yesterdayDate = pragueDayISO(
+        new Date(Date.now() - 24 * 60 * 60 * 1000),
+      );
       const { data: yesterdayCtx } = await sb
         .from("did_daily_context")
         .select("context_json")
