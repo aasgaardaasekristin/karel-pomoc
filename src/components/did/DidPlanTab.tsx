@@ -89,13 +89,14 @@ export default function DidPlanTab() {
     }
   }
 
-  async function markSession(id: string, status: "done" | "skipped") {
-    await supabase.from("planned_sessions").update({
-      status,
-      [status === "done" ? "completed_date" : "updated_at"]: new Date().toISOString().slice(0, 10),
-    }).eq("id", id);
-    toast.success(status === "done" ? "Splněno ✅" : "Přeskočeno ⏭");
-    load();
+  // FÁZE 3C: operativní mutace `planned_sessions` jsou ZAKÁZANÉ.
+  // Dnešní pravda žije v `did_daily_session_plans` a `did_plan_items`.
+  // Ponechán jen informativní redirect — žádný direct write do legacy tabulky.
+  function explainCanonicalRoute() {
+    toast.info(
+      "Splnění/přeskočení dnešního sezení patří do denního plánu (sekce „Dnešek").",
+      { description: "Tato záložka je legacy projekce — operativní změny se materializují přes kanonické modely." },
+    );
   }
 
   const activeSessions = sessions.filter(s => s.status === "planned" || s.status === "scheduled")
@@ -113,10 +114,11 @@ export default function DidPlanTab() {
           Dnešní sezení = did_daily_session_plans. Dnešní akce = did_plan_items.
           planned_sessions a strategic_goals jsou jen vstup / dlouhodobá projekce. */}
       <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[10px] text-amber-700 dark:text-amber-400 leading-relaxed">
-        <span className="font-semibold">⚠️ Strategický plán / legacy projekce.</span>{" "}
-        Dnešní operativní pravda žije v Karlově denním plánu (sekce „Dnešek“) a v <code>did_daily_session_plans</code> /
-        {" "}<code>did_plan_items</code>. Položky zde jsou jen <em>vstupní vrstva</em> a střednědobá projekce — jejich
-        editace se musí materializovat přes kanonické modely, ne přímo jako dnešní rozhodnutí.
+        <span className="font-semibold">⚠️ Strategický plán / legacy projekce — read-only.</span>{" "}
+        Dnešní operativní pravda žije v Karlově denním plánu (sekce „Dnešek") a v <code>did_daily_session_plans</code> /
+        {" "}<code>did_plan_items</code>. Tato záložka je jen vstupní vrstva a střednědobá projekce — operativní akce
+        (splnit / přeskočit / restartovat sezení) <strong>nelze</strong> provádět přímo zde, jinak by vznikla druhá
+        pravda vedle kanonických modelů.
       </div>
 
       {/* Sub-tabs */}
@@ -156,12 +158,10 @@ export default function DidPlanTab() {
                 <Badge variant="outline" className="text-[9px] ml-auto">{s.therapist}</Badge>
               </div>
               {s.description && <p className="text-[10px] text-muted-foreground">{s.description}</p>}
+              {/* FÁZE 3C: žádné write CTA do `planned_sessions`. Akce vede do dnešního plánu. */}
               <div className="flex gap-1 pt-1">
-                <Button size="sm" variant="ghost" className="h-5 text-[9px] gap-0.5 px-1.5" onClick={() => markSession(s.id, "done")}>
-                  <CheckCircle className="w-3 h-3 text-emerald-600" /> Splněno
-                </Button>
-                <Button size="sm" variant="ghost" className="h-5 text-[9px] gap-0.5 px-1.5" onClick={() => markSession(s.id, "skipped")}>
-                  <SkipForward className="w-3 h-3 text-amber-600" /> Přeskočeno
+                <Button size="sm" variant="ghost" className="h-5 text-[9px] gap-0.5 px-1.5 opacity-70" onClick={explainCanonicalRoute}>
+                  <CheckCircle className="w-3 h-3 text-emerald-600/70" /> Řešit v denním plánu
                 </Button>
               </div>
             </div>
