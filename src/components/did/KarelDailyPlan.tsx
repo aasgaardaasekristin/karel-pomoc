@@ -218,7 +218,7 @@ const InlineQuestionField = ({
   );
 };
 
-const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: snapshotFromProps = null }: Props) => {
+const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
@@ -244,6 +244,12 @@ const KarelDailyPlan = ({ refreshTrigger, hasCrisisBanner = false, snapshot: sna
     what_remains_unclear: string | null;
   }[]>([]);
   const [crisisPartName, setCrisisPartName] = useState<string | null>(null);
+  // Crisis priority is read ONLY from snapshot.command.crises (canonical from
+  // crisis_events). Old useCrisisOperationalState / hasCrisisBanner path is gone.
+  const snapshotCrisis = (snapshot?.command?.crises && snapshot.command.crises.length > 0)
+    ? snapshot.command.crises[0]
+    : null;
+  const snapshotCrisisPart = snapshotCrisis?.partName || null;
   const [plan05ANarrative, setPlan05ANarrative] = useState<string>("");
   const [lastAnyActivity, setLastAnyActivity] = useState<string | null>(null);
 
