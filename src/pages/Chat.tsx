@@ -901,13 +901,40 @@ const Chat = () => {
 
     // 2) Meeting by topic (from Karlův přehled "Otevřít poradu") — with structured seed
     if (didFlowParam === "meeting" || meetingTopic) {
-      // Read structured seed from sessionStorage if available
+      // ── PRE-FLIGHT: try to find an existing open meeting with same topic in last 24h ──
+      // This prevents creating duplicate meetings when therapist navigates back into a session-thread.
       let seedStr: string | null = null;
       try { seedStr = sessionStorage.getItem("karel_meeting_seed"); } catch {}
       const topicLabel = meetingTopic || "Porada";
-      setMeetingIdFromUrl(seedStr ? `seed:${topicLabel}` : (meetingTopic ? `topic:${meetingTopic}` : null));
-      setDidFlowState("meeting");
-      setMeetingTherapist("hanka");
+      (async () => {
+        let existingId: string | null = null;
+        if (meetingTopic) {
+          try {
+            const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data } = await supabase
+              .from("did_meetings")
+              .select("id")
+              .ilike("topic", meetingTopic.slice(0, 80))
+              .neq("status", "finalized")
+              .gte("created_at", dayAgo)
+              .order("created_at", { ascending: false })
+              .limit(1);
+            existingId = data?.[0]?.id || null;
+          } catch (e) {
+            console.warn("[Chat] meeting pre-flight lookup failed:", e);
+          }
+        }
+        if (existingId) {
+          console.log(`[Chat] meeting pre-flight HIT — opening existing ${existingId}`);
+          // Clear seed since we're not creating a new meeting
+          try { sessionStorage.removeItem("karel_meeting_seed"); } catch {}
+          setMeetingIdFromUrl(existingId);
+        } else {
+          setMeetingIdFromUrl(seedStr ? `seed:${topicLabel}` : (meetingTopic ? `topic:${meetingTopic}` : null));
+        }
+        setDidFlowState("meeting");
+        setMeetingTherapist("hanka");
+      })();
       return;
     }
 
