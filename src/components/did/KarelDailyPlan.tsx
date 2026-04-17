@@ -1222,7 +1222,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           </button>
         </div>
       </div>
-    </div>
+    </article>
   );
 };
 
