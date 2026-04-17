@@ -262,6 +262,7 @@ const DidMeetingPanel = ({ meetingId: initialMeetingId, meetingTopic, meetingSee
       if (data.success) {
         setActiveMeeting(prev => prev ? { ...prev, messages: data.messages } : prev);
         setValue("");
+        try { localStorage.removeItem(DRAFT_KEY(activeMeeting.id, sender)); } catch {}
       }
     } catch (e) {
       console.error("Send message error:", e);
