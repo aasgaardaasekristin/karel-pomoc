@@ -461,11 +461,25 @@ export interface WritebackContext {
  *
  * Guard order: structural → raw transcript → resolve target → sensitivity → quality → dedupe → render
  */
+/**
+ * Pair of (intent, originating output) — used by callers to drive deterministic
+ * downstream evidence persistence WITHOUT heuristic substring matching.
+ */
+export interface GovernedWriteIntentPair {
+  intent: GovernedWriteIntent;
+  output: ExtractedWriteOutput;
+}
+
 export function buildGovernedWriteIntents(
   outputs: ExtractedWriteOutput[],
   ctx: WritebackContext,
-): { intents: GovernedWriteIntent[]; rejected: Array<{ output: ExtractedWriteOutput; reason: string }> } {
+): {
+  intents: GovernedWriteIntent[];
+  pairs: GovernedWriteIntentPair[];
+  rejected: Array<{ output: ExtractedWriteOutput; reason: string }>;
+} {
   const intents: GovernedWriteIntent[] = [];
+  const pairs: GovernedWriteIntentPair[] = [];
   const rejected: Array<{ output: ExtractedWriteOutput; reason: string }> = [];
   const seenKeys = new Set<string>();
 
@@ -584,17 +598,19 @@ export function buildGovernedWriteIntents(
     // 7. Render content with quality metadata
     const content = renderGovernedWriteContent(output);
 
-    // 8. Build intent
-    intents.push({
+    // 8. Build intent + deterministic pair
+    const builtIntent: GovernedWriteIntent = {
       target,
       content,
       evidenceKind: output.evidenceKind,
       sourceMode: ctx.sourceMode,
       sourceThreadId: ctx.sourceThreadId,
-    });
+    };
+    intents.push(builtIntent);
+    pairs.push({ intent: builtIntent, output });
   }
 
-  return { intents, rejected };
+  return { intents, pairs, rejected };
 }
 
 /**

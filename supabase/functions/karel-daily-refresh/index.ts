@@ -123,8 +123,11 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "No user found" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    console.log(`[daily-refresh] Starting for user=${userId}, date=${today}`);
+    // FÁZE 2C: Prague-day everywhere (matches DID UI / planning logic).
+    const pragueDayISO = (d: Date = new Date()): string =>
+      new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+    const today = pragueDayISO();
+    console.log(`[daily-refresh] Starting for user=${userId}, date=${today} (Europe/Prague)`);
 
     // ═══ 1. DRIVE: Read key CENTRUM documents ═══
     let dashboardText = "";
@@ -355,9 +358,9 @@ serve(async (req) => {
     // ═══ 4. FÁZE 2B: Compute daily diff vs. yesterday ═══
     let dailyDiff: ReturnType<typeof computeDailyDiff> | null = null;
     try {
-      const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
+      const yesterdayDate = pragueDayISO(
+        new Date(Date.now() - 24 * 60 * 60 * 1000),
+      );
       const { data: yesterdayCtx } = await sb
         .from("did_daily_context")
         .select("context_json")

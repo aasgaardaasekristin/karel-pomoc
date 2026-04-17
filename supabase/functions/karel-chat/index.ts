@@ -1380,7 +1380,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                     partRegistryLookup: (name: string) => partRegMap.get(name) || null,
                   };
 
-                  const { intents, rejected } = buildGovernedWriteIntents(
+                  const { pairs, rejected } = buildGovernedWriteIntents(
                     memResult.outputs,
                     writebackCtx,
                   );
@@ -1400,11 +1400,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
 
                   let insertedCount = 0;
                   let evidenceCount = 0;
-                  for (const intent of intents) {
-                    // Match intent → original output (intents preserve order of validated outputs)
-                    const matchedOutput =
-                      memResult.outputs.find((o) => intent.content.includes(o.summary.slice(0, 60))) ||
-                      memResult.outputs.find((o) => intent.content.includes(o.summary.slice(0, 40)));
+                  for (const { intent, output: matchedOutput } of pairs) {
 
                     const governedContent = encodeGovernedWrite(
                       intent.content,
@@ -1457,7 +1453,7 @@ DŮLEŽITÉ CHOVÁNÍ PŘI SWITCHINGU:
                   }
 
                   if (insertedCount > 0 || evidenceCount > 0) {
-                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence stops for ${modeLabel} (${intents.length} intents, ${rejected.length} rejected)`);
+                    console.log(`[post-chat-writeback] ${insertedCount} drive writes + ${evidenceCount} DB evidence stops for ${modeLabel} (${pairs.length} pairs, ${rejected.length} rejected)`);
                   }
                 } else {
                   console.log(`[post-chat-writeback] No relevant outputs for ${modeLabel}`);
