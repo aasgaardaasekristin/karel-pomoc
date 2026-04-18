@@ -380,14 +380,19 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         // Adjunct: only manual tasks NOT linked to a canonical plan item.
         // Window expanded to 14d so stale/archive-candidate tasks counted in
         // OpsSnapshotBar are actually displayable here with a framing badge.
+        // STATUS FILTER NOTE (audited against production DB): the table only
+        // ever uses `pending` / `expired` / `archived`. `active` and
+        // `in_progress` were aspirational values that never materialized in
+        // the write path, so listing them here promised a surface state that
+        // does not exist. Open work === `pending`. Mirrors useOperationalInboxCounts.
         (supabase as any)
           .from("did_therapist_tasks")
           .select("id, task, assigned_to, status, priority, created_at, due_date, detail_instruction, plan_item_id")
-          .in("status", ["pending", "active", "in_progress"])
+          .eq("status", "pending")
           .is("plan_item_id", null)
           .gte("created_at", fourteenDaysAgo)
           .order("priority", { ascending: true })
-          .limit(20),
+          .limit(40),
         supabase
           .from("did_daily_session_plans")
           .select("id, selected_part, therapist, plan_date")
