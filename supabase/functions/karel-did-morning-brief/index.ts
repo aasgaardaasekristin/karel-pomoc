@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 
 /**
  * karel-did-morning-brief — Morning brief for therapists.
