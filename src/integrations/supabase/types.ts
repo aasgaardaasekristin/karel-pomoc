@@ -3216,6 +3216,36 @@ export type Database = {
         }
         Relationships: []
       }
+      did_threads_workspace_backfill_log: {
+        Row: {
+          candidate_ids: string[] | null
+          created_at: string
+          id: string
+          label_slice: string
+          match_status: string
+          thread_id: string
+          workspace_type: string
+        }
+        Insert: {
+          candidate_ids?: string[] | null
+          created_at?: string
+          id?: string
+          label_slice: string
+          match_status: string
+          thread_id: string
+          workspace_type: string
+        }
+        Update: {
+          candidate_ids?: string[] | null
+          created_at?: string
+          id?: string
+          label_slice?: string
+          match_status?: string
+          thread_id?: string
+          workspace_type?: string
+        }
+        Relationships: []
+      }
       did_update_cycles: {
         Row: {
           cards_updated: Json | null
