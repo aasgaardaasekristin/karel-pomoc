@@ -120,6 +120,7 @@ const DidDashboard = ({
   const [lastRefreshAt, setLastRefreshAt] = useState<Date>(new Date());
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<any>(null);
+  const [openDeliberationId, setOpenDeliberationId] = useState<string | null>(null);
 
   // ── Daily snapshot loader (Prague-day cache, fallback on error) ──
   const loadSnapshot = useCallback(async (force = false) => {
@@ -547,6 +548,16 @@ const DidDashboard = ({
             />
           </ErrorBoundary>
         </div>
+
+        {/* ── BLOCK 2b — TEAM DELIBERATIONS (společná porada týmu, max 2+1) ── */}
+        <StudyCard className="space-y-3">
+          <ErrorBoundary fallbackTitle="Porada týmu selhala">
+            <TeamDeliberationsPanel
+              refreshTrigger={refreshTrigger}
+              onOpenRoom={(id) => setOpenDeliberationId(id)}
+            />
+          </ErrorBoundary>
+        </StudyCard>
 
         <StudyCard className="space-y-4">
           <SectionTitle icon={<Clock className="h-4 w-4 text-primary" />}>Dnes</SectionTitle>
