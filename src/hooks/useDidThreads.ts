@@ -339,6 +339,27 @@ export const useDidThreads = () => {
     return thread;
   }, []);
 
+  // BUGFIX: canonical workspace lookup. Returns the most recent persistent
+  // thread bound to (workspaceType, workspaceId), regardless of activity age.
+  // Used by deep-link reopen flows so the same task / question / session
+  // always returns the same workspace.
+  const getThreadByWorkspace = useCallback(async (
+    workspaceType: Exclude<WorkspaceType, null>,
+    workspaceId: string,
+  ): Promise<DidThread | null> => {
+    if (!workspaceId) return null;
+    const { data, error } = await supabase
+      .from("did_threads")
+      .select("*")
+      .eq("workspace_type", workspaceType)
+      .eq("workspace_id", workspaceId)
+      .order("last_activity_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return rowToThread(data);
+  }, []);
+
   const deleteThread = useCallback(async (threadId: string) => {
     await supabase.from("did_threads").delete().eq("id", threadId);
     setThreads((prev) => prev.filter((thread) => thread.id !== threadId));
@@ -393,6 +414,7 @@ export const useDidThreads = () => {
     createThread,
     updateThreadMessages,
     getThreadByPart,
+    getThreadByWorkspace,
     deleteThread,
     updateThreadTheme,
     updateThreadThemeConfig,

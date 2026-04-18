@@ -853,7 +853,7 @@ const Chat = () => {
       return;
     }
     
-    const thread = {
+    const thread: DidThread = {
       id: data.id,
       partName: data.part_name,
       partLanguage: data.part_language || "cs",
@@ -867,6 +867,8 @@ const Chat = () => {
       threadEmoji: (data as any).thread_emoji || "",
       threadLabel: (data as any).thread_label || "",
       enteredName: (data as any).entered_name || "",
+      workspaceType: ((data as any).workspace_type ?? null) as DidThread["workspaceType"],
+      workspaceId: ((data as any).workspace_id ?? null) as string | null,
     };
     
     setActiveThread(thread);
