@@ -833,6 +833,23 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
      6. Skip empty thread topics rather than emitting
         'téma „"' or 'bez konkrétního tématu' bullet noise.
      ────────────────────────────────────────────────────────────── */
+  /* Helper: pick the most concrete crisis check-in target for a therapist.
+     In active crisis Karel MUST always have a concrete ask — never
+     "nepotřebuji nic". Returns a single short instruction. */
+  const crisisCheckInForHanka = (partName: string): string =>
+    `Haničko, prosím dej mi dnes vědět, jak ${partName} vypadá v každodenním kontaktu — jestli reaguje, jestli se drží v přítomnosti a co mu pomáhá.`;
+  const crisisCheckInForKata = (partName: string): string =>
+    `Káťo, potřebuji tvůj pohled zvenčí — jak ${partName} působí v komunikaci s tebou a jestli vidíš něco, co Hanička z bezprostřední blízkosti vidět nemůže.`;
+
+  /* Compose a natural Czech sentence about pending questions.
+     Avoids "Mám pro tebe X otázky k zodpovězení". */
+  const phraseQuestions = (n: number, name: "Haničko" | "Káťo"): string => {
+    if (n <= 0) return "";
+    if (n === 1) return `${name}, níže najdeš jednu otázku, na kterou potřebuji tvou odpověď.`;
+    if (n <= 4) return `${name}, níže pro tebe mám ${n} otázky, ke kterým potřebuji tvůj pohled.`;
+    return `${name}, níže pro tebe mám ${n} otázek, ke kterým potřebuji tvůj pohled.`;
+  };
+
   const buildNarrativeParagraphs = (): string[] => {
     const paragraphs: string[] = [];
 
@@ -884,30 +901,30 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       deficitProposals.push("Navrhuji dnes obnovit komunikaci — potřebuji alespoň stručné pozorování o tom, jak kluci aktuálně fungují.");
       paragraphs.push(deficitProposals.join(" "));
 
-      // ── SECTION D: "Co od Haničky" ──
+      // ── SECTION D: "Co od Haničky" — krize MUSÍ mít konkrétní check-in ──
       const hDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
         .map(t => humanizeText(t.task))
         .filter(Boolean);
       if (hDeficitTasks.length > 0) {
         const lead = hDeficitTasks[0];
-        const rest = hDeficitTasks.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}.` : "";
-        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail} A především — potřebuji tvé aktuální pozorování.`);
+        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
+      } else if (effectiveCrisisPart) {
+        paragraphs.push(crisisCheckInForHanka(effectiveCrisisPart));
       } else {
         paragraphs.push("Haničko, potřebuji od tebe alespoň krátkou zprávu o tom, jak kluci aktuálně fungují v každodenním životě.");
       }
 
-      // ── SECTION E: "Co od Káti" ──
+      // ── SECTION E: "Co od Káti" — krize MUSÍ mít konkrétní check-in ──
       const kDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
         .map(t => humanizeText(t.task))
         .filter(Boolean);
       if (kDeficitTasks.length > 0) {
         const lead = kDeficitTasks[0];
-        const rest = kDeficitTasks.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}.` : "";
-        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail} A především — potřebuji tvé aktuální pozorování.`);
+        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
+      } else if (effectiveCrisisPart) {
+        paragraphs.push(crisisCheckInForKata(effectiveCrisisPart));
       } else {
         paragraphs.push("Káťo, potřebuji od tebe alespoň krátkou zprávu — co pozoruješ ze své pozice, jak kluci reagují.");
       }
@@ -933,22 +950,21 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         }
       }
       if (recentThreads.length > 0 && coVimParts.length === 0) {
-        // Synthesize from threads: filter pseudo-parts, drop empty
-        // labels, render with proper preposition ("pracoval jsem na").
-        const usableThreads = recentThreads
-          .filter(t => isUsableLabel(t.part_name))
-          .slice(0, 3);
-        const topicFragments = usableThreads
-          .map(t => {
-            const cleanLabel = humanizeText(t.thread_label);
-            const topic = isUsableLabel(cleanLabel) ? `téma „${cleanLabel.slice(0, 50)}"` : "";
-            const when = relativeTime(t.last_activity_at);
-            const detail = [topic, when].filter(Boolean).join(", ");
-            return detail ? `s ${t.part_name} (${detail})` : `s ${t.part_name}`;
-          })
-          .filter(Boolean);
-        if (topicFragments.length > 0) {
-          coVimParts.push(`V posledních dnech jsem pracoval na rozhovorech ${topicFragments.join(", ")}.`);
+        // Synthesize from threads INTO MEANING — never as a tuple list.
+        // No "(téma „...", před 8h)" syntax. No comma-separated contact log.
+        // Just translate which children Karel was working with into one
+        // calm sentence about WHO got the focus.
+        const usableNames = [...new Set(
+          recentThreads
+            .filter(t => isUsableLabel(t.part_name))
+            .map(t => t.part_name),
+        )].slice(0, 3);
+        if (usableNames.length === 1) {
+          coVimParts.push(`V posledních dnech jsem se soustředil hlavně na ${usableNames[0]}.`);
+        } else if (usableNames.length === 2) {
+          coVimParts.push(`V posledních dnech jsem se soustředil hlavně na ${usableNames[0]} a ${usableNames[1]}.`);
+        } else if (usableNames.length >= 3) {
+          coVimParts.push(`V posledních dnech jsem se soustředil hlavně na ${usableNames[0]}, ${usableNames[1]} a ${usableNames[2]}.`);
         }
       }
       if (coVimParts.length === 0) {
@@ -993,7 +1009,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         proposals.push(`Prioritou číslo jedna je toto: ${topUrgent}.`);
       }
       if (questions.length > 0) {
-        proposals.push(`Potřebuji od vás odpovědi na ${questions.length} otáz${questions.length === 1 ? "ku" : questions.length < 5 ? "ky" : "ek"} — najdete je níže.`);
+        if (questions.length === 1) {
+          proposals.push("Níže najdete jednu otázku, na kterou potřebuji vaši odpověď.");
+        } else if (questions.length <= 4) {
+          proposals.push(`Níže pro vás mám ${questions.length} otázky, ke kterým si potřebuji upřesnit pohled.`);
+        } else {
+          proposals.push(`Níže pro vás mám ${questions.length} otázek, ke kterým si potřebuji upřesnit pohled.`);
+        }
       }
       if (proposals.length === 0) {
         proposals.push("Dnes doporučuji zaměřit se na reflexi posledních dní a přípravu na další sezení. Pokud máte vlastní postřehy, napište mi.");
@@ -1010,14 +1032,20 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       if (hankaTasksHumanized.length > 0) {
         const lead = hankaTasksHumanized[0];
         const rest = hankaTasksHumanized.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í drobnost" : rest <= 4 ? "í drobnosti" : "ích drobností"}.` : "";
+        const restTail = rest > 0
+          ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
+          : "";
         hankaSentences.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail}`);
       }
-      if (hankaQuestions.length > 0) {
-        hankaSentences.push(`Mám pro tebe ${hankaQuestions.length} otáz${hankaQuestions.length === 1 ? "ku" : "ky"} k zodpovězení — najdeš je níže.`);
-      }
+      const hQ = phraseQuestions(hankaQuestions.length, "Haničko");
+      if (hQ) hankaSentences.push(hQ);
       if (hankaSentences.length === 0) {
-        hankaSentences.push("Haničko, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+        // V krizi MUSÍ být konkrétní check-in — nikdy "nepotřebuji nic".
+        if (effectiveCrisisPart) {
+          hankaSentences.push(crisisCheckInForHanka(effectiveCrisisPart));
+        } else {
+          hankaSentences.push("Haničko, dnes od tebe nemám žádný konkrétní úkol. Pokud něco z denního kontaktu s kluky stojí za zmínku, dej mi vědět.");
+        }
       }
       paragraphs.push(hankaSentences.join(" "));
 
@@ -1031,14 +1059,19 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       if (kataTasksHumanized.length > 0) {
         const lead = kataTasksHumanized[0];
         const rest = kataTasksHumanized.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í drobnost" : rest <= 4 ? "í drobnosti" : "ích drobností"}.` : "";
+        const restTail = rest > 0
+          ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
+          : "";
         kataSentences.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail}`);
       }
-      if (kataQuestions.length > 0) {
-        kataSentences.push(`Mám pro tebe ${kataQuestions.length} otáz${kataQuestions.length === 1 ? "ku" : "ky"} k zodpovězení — najdeš je níže.`);
-      }
+      const kQ = phraseQuestions(kataQuestions.length, "Káťo");
+      if (kQ) kataSentences.push(kQ);
       if (kataSentences.length === 0) {
-        kataSentences.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+        if (effectiveCrisisPart) {
+          kataSentences.push(crisisCheckInForKata(effectiveCrisisPart));
+        } else {
+          kataSentences.push("Káťo, dnes od tebe nemám žádný konkrétní úkol. Pokud něco z tvojí strany stojí za zmínku, dej mi vědět.");
+        }
       }
       paragraphs.push(kataSentences.join(" "));
     }
