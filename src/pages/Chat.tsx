@@ -1158,9 +1158,11 @@ const Chat = () => {
       return;
     }
 
-    // 5) Session plan — workspace bound to a (mamka, sessionPart) pair.
-    //    Until a sessionId is part of the deep-link, we key by sessionPart so
-    //    reopening "Sezení s X" today reuses the same prep workspace.
+    // 5) Session plan — workspace bound to a real did_daily_session_plans row.
+    //    BUGFIX (P1): workspace_id MUST be a UUID (column type). The previous
+    //    `session:${part}` synthetic key would silently fail the UUID column
+    //    insert and spawn parallel threads. We now resolve sessionPart to the
+    //    most recent today / upcoming plan row and bind to its real id.
     if (sessionPart) {
       setDidSubMode("mamka");
       setDidFlowState("loading");
@@ -1168,22 +1170,55 @@ const Chat = () => {
       (async () => {
         await didThreads.fetchAllThreads("mamka");
 
-        const sessionKey = `session:${sessionPart.toLowerCase().trim()}`;
-        const existing = await didThreads.getThreadByWorkspace("session", sessionKey);
-        if (existing) {
-          setActiveThread(existing);
-          setMessages(existing.messages as any);
-          setDidFlowState("chat");
-          return;
+        // Resolve canonical did_daily_session_plans.id for this part.
+        // Prefer today/upcoming planned/in_progress over completed; fall back
+        // to most recent of any status.
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+        let resolvedSessionId: string | null = null;
+        try {
+          const { data: planRows } = await (supabase as any)
+            .from("did_daily_session_plans")
+            .select("id, plan_date, status, created_at")
+            .ilike("selected_part", sessionPart)
+            .order("created_at", { ascending: false })
+            .limit(10);
+          const list = (planRows || []) as Array<{ id: string; plan_date: string; status: string }>;
+          const todays = list.find(p => p.plan_date === today && (p.status === "planned" || p.status === "in_progress" || p.status === "generated"));
+          const upcoming = list.find(p => p.plan_date >= today && (p.status === "planned" || p.status === "in_progress" || p.status === "generated"));
+          resolvedSessionId = todays?.id || upcoming?.id || list[0]?.id || null;
+        } catch (e) {
+          console.warn("[Chat] session_part resolution failed", e);
         }
 
-        const intro = `📅 **Plán sezení s ${sessionPart}**\n\nKarel navrhl pro dnešek pracovat s ${sessionPart}. Pojďme společně projít přípravu a plán sezení.`;
+        if (resolvedSessionId) {
+          const existing = await didThreads.getThreadByWorkspace("session", resolvedSessionId);
+          if (existing) {
+            setActiveThread(existing);
+            setMessages(existing.messages as any);
+            setDidFlowState("chat");
+            return;
+          }
+        }
+
+        const intro = [
+          `📅 **Plán sezení s ${sessionPart}**`,
+          "",
+          `Pro dnešek navrhuji pracovat s **${sessionPart}**.`,
+          "",
+          `*Proč právě teď:* na základě stavu registru a posledních pozorování je ${sessionPart} prioritou pro dnešní sezení.`,
+          "",
+          `*Můj návrh prvního kroku:* začněme krátkým ground-checkem a projděme si terapeutický plán pro dnešek. Pokud máte nový postřeh z posledních 24h, prosím sdílejte hned na začátku.`,
+        ].join("\n");
         const thread = await didThreads.createThread("Karel", "mamka", "cs", [
           { role: "assistant", content: intro },
         ], {
           threadLabel: `Sezení: ${sessionPart}`,
-          workspaceType: "session",
-          workspaceId: sessionKey,
+          // Only bind workspace identity when we resolved a real UUID. Without
+          // it we leave the thread as an orphan one-off rather than corrupt
+          // the canonical lookup with synthetic keys.
+          ...(resolvedSessionId
+            ? { workspaceType: "session" as const, workspaceId: resolvedSessionId }
+            : {}),
         });
         if (thread) {
           setActiveThread(thread);
