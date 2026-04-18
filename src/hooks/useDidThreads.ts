@@ -99,6 +99,12 @@ export interface CreateThreadOptions {
   threadLabel?: string;
   enteredName?: string;
   forceNew?: boolean;
+  // BUGFIX: when supplied, thread is bound to a canonical workspace
+  // (task / question / session). Reopen flows must look up by this pair
+  // before creating a new thread, so the same task always returns the
+  // same persistent workspace.
+  workspaceType?: WorkspaceType;
+  workspaceId?: string | null;
 }
 
 export const useDidThreads = () => {
