@@ -3163,6 +3163,8 @@ export type Database = {
           thread_emoji: string | null
           thread_label: string | null
           user_id: string
+          workspace_id: string | null
+          workspace_type: string | null
         }
         Insert: {
           archive_status?: string
@@ -3185,6 +3187,8 @@ export type Database = {
           thread_emoji?: string | null
           thread_label?: string | null
           user_id?: string
+          workspace_id?: string | null
+          workspace_type?: string | null
         }
         Update: {
           archive_status?: string
@@ -3207,6 +3211,8 @@ export type Database = {
           thread_emoji?: string | null
           thread_label?: string | null
           user_id?: string
+          workspace_id?: string | null
+          workspace_type?: string | null
         }
         Relationships: []
       }
