@@ -17,7 +17,7 @@ import DidPartSelector from "@/components/did/DidPartSelector";
 import DidPartCard from "@/components/did/DidPartCard";
 import DidLiveSessionPanel from "@/components/did/DidLiveSessionPanel";
 import DidPinEntry from "@/components/did/DidPinEntry";
-import DidTherapistThreads from "@/components/did/DidTherapistThreads";
+import DidTherapistThreadsContainer from "@/components/did/DidTherapistThreadsContainer";
 import DidThreadList from "@/components/did/DidThreadList";
 import DidPartIdentifier from "@/components/did/DidPartIdentifier";
 import DidKidsThemeEditor from "@/components/did/DidKidsThemeEditor";
@@ -599,8 +599,8 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
     return (
       <ScrollArea className="flex-1">
-        <DidTherapistThreadsWithMeta
-          name={name}
+        <DidTherapistThreadsContainer
+          therapistName={name}
           threads={didThreads.threads}
           onSelectThread={(thread) => {
             setActiveThread(thread);
