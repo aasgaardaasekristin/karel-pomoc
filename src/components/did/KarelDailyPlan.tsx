@@ -94,25 +94,30 @@ const ActionLink = ({ label, onClick, icon }: { label: string; onClick: () => vo
   </button>
 );
 
-/* ── Task framing badge — explicit overdue / blocked / stale / archive label.
+/* ── Task framing badge — explicit overdue / stale / archive label.
    Calmer than red urgency: stale tasks get a subtle muted chip instead of
-   silently inflating the urgent counter. ── */
-const TaskFrameBadge = ({ createdAt, dueDate, status }: { createdAt?: string; dueDate?: string | null; status?: string }) => {
+   silently inflating the urgent counter.
+
+   NOTE on `blocked`: the `did_therapist_tasks` table only ever uses
+   `pending` / `expired` / `archived` in production. There is no `blocked`
+   status anywhere in the write path, so we deliberately do NOT render a
+   `blokováno` label here — it would be a dead branch that promises a
+   surface state the data layer never produces. If a real "blocked" status
+   is ever introduced, re-add the branch here AND extend the visible-task
+   query in `load()` to include it; until then keep the framing honest. ── */
+const TaskFrameBadge = ({ createdAt, dueDate }: { createdAt?: string; dueDate?: string | null; status?: string }) => {
   const now = Date.now();
   const ageDays = createdAt ? Math.floor((now - new Date(createdAt).getTime()) / 86400000) : 0;
   const isOverdue = !!dueDate && new Date(dueDate).getTime() < now;
-  const isBlocked = status === "blocked";
-  const isStale = ageDays >= 7 && !isOverdue;
   const isArchiveCandidate = ageDays >= 14;
+  const isStale = ageDays >= 7 && !isOverdue && !isArchiveCandidate;
 
-  if (!isOverdue && !isBlocked && !isStale && !isArchiveCandidate) return null;
+  if (!isOverdue && !isStale && !isArchiveCandidate) return null;
 
   const label = isArchiveCandidate
     ? "k archivaci"
     : isOverdue
     ? "po termínu"
-    : isBlocked
-    ? "blokováno"
     : "starší úkol";
   const tone = isOverdue
     ? "bg-destructive/10 text-destructive/80 border-destructive/20"
