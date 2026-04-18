@@ -1,0 +1,186 @@
+/**
+ * TeamDeliberation — kanonický workflow objekt pro společné porady
+ * Karel ↔ Hanička ↔ Káťa.
+ *
+ * NENÍ to live sezení. Live sezení žije v `did_daily_session_plans`
+ * (kanonický plán) + Chat (`didFlowState=live-session`, runtime).
+ *
+ * Porada končí trojnásobným podpisem (hanka_signed_at, kata_signed_at,
+ * karel_signed_at) → status = 'approved' → bridge propíše schválený
+ * plán do `did_daily_session_plans` (pro typ `session_plan`).
+ */
+
+export type DeliberationStatus =
+  | "draft"
+  | "active"
+  | "awaiting_signoff"
+  | "approved"
+  | "closed"
+  | "archived";
+
+export type DeliberationPriority =
+  | "low"
+  | "normal"
+  | "high"
+  | "urgent"
+  | "crisis";
+
+/**
+ * Povolené důvody vzniku týmové porady. Žádný individuální task,
+ * žádná běžná operativa bez potřeby společného signoffu.
+ */
+export type DeliberationType =
+  | "team_task"          // společné klinické rozhodnutí
+  | "session_plan"       // plán dnešního/zítřejšího live sezení
+  | "crisis"             // krizová koordinace
+  | "followup_review"    // vyhodnocení uplynulého sezení
+  | "supervision";       // supervizní bod
+
+export interface DeliberationQuestion {
+  id?: string;
+  question: string;
+  answer?: string | null;
+  answered_at?: string | null;
+}
+
+export interface DiscussionMessage {
+  id?: string;
+  author: "karel" | "hanka" | "kata";
+  content: string;
+  created_at: string;
+  /** when karel posts a revised plan after a therapist's reply */
+  is_plan_revision?: boolean;
+}
+
+export interface TeamDeliberation {
+  id: string;
+  user_id: string;
+
+  title: string;
+  reason: string | null;
+  status: DeliberationStatus;
+  priority: DeliberationPriority;
+  deliberation_type: DeliberationType;
+
+  subject_parts: string[];
+  participants: string[];
+  created_by: string;
+
+  initial_karel_brief: string | null;
+  karel_proposed_plan: string | null;
+  questions_for_hanka: DeliberationQuestion[];
+  questions_for_kata: DeliberationQuestion[];
+
+  discussion_log: DiscussionMessage[];
+
+  hanka_signed_at: string | null;
+  kata_signed_at: string | null;
+  karel_signed_at: string | null;
+
+  linked_live_session_id: string | null;   // → did_daily_session_plans.id
+  linked_task_id: string | null;
+  linked_drive_write_id: string | null;
+  linked_crisis_event_id: string | null;
+
+  final_summary: string | null;
+  followup_needed: boolean;
+
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+/* ================================================================
+   DASHBOARD VISIBILITY POLICY
+   Agresivní limit — dashboard NENÍ backlog.
+   ================================================================ */
+
+export const DASHBOARD_MAX_NORMAL = 2;
+export const DASHBOARD_MAX_CRISIS_BONUS = 1;
+
+/**
+ * Vrátí, které porady se mají zobrazit na hlavním dashboardu.
+ * Pravidlo:
+ *   - max 2 aktivní normální (active / awaiting_signoff)
+ *   - + 1 navíc pokud je to krize
+ *   - vše ostatní → "další otevřené (N)" sklápěcí sekce
+ *
+ * Řazení uvnitř obou bucketů: priority desc, updated_at desc.
+ */
+export function partitionDashboardDeliberations(
+  list: TeamDeliberation[]
+): { primary: TeamDeliberation[]; overflow: TeamDeliberation[] } {
+  const PRIORITY_RANK: Record<DeliberationPriority, number> = {
+    crisis: 0,
+    urgent: 1,
+    high: 2,
+    normal: 3,
+    low: 4,
+  };
+  const open = list.filter(
+    (d) => d.status === "active" || d.status === "awaiting_signoff"
+  );
+  const sorted = [...open].sort((a, b) => {
+    const pa = PRIORITY_RANK[a.priority] ?? 5;
+    const pb = PRIORITY_RANK[b.priority] ?? 5;
+    if (pa !== pb) return pa - pb;
+    return (
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+  });
+
+  const primary: TeamDeliberation[] = [];
+  let crisisSlotUsed = false;
+
+  for (const d of sorted) {
+    if (primary.length < DASHBOARD_MAX_NORMAL) {
+      primary.push(d);
+      continue;
+    }
+    // bonus crisis slot
+    if (
+      !crisisSlotUsed &&
+      (d.priority === "crisis" || d.deliberation_type === "crisis")
+    ) {
+      primary.push(d);
+      crisisSlotUsed = true;
+      continue;
+    }
+    break;
+  }
+
+  const primaryIds = new Set(primary.map((d) => d.id));
+  const overflow = sorted.filter((d) => !primaryIds.has(d.id));
+  return { primary, overflow };
+}
+
+/**
+ * Tvrdá guard funkce — povolené typy porad.
+ * Cokoliv mimo tyto typy by NIKDY nemělo vzniknout jako TeamDeliberation:
+ *   - individuální task pro Haničku
+ *   - individuální task pro Káťu
+ *   - běžná operativa bez společného rozhodnutí
+ */
+export function isAllowedDeliberationReason(
+  type: DeliberationType
+): boolean {
+  return (
+    type === "team_task" ||
+    type === "session_plan" ||
+    type === "crisis" ||
+    type === "followup_review" ||
+    type === "supervision"
+  );
+}
+
+export function signoffProgress(d: TeamDeliberation): {
+  signed: number;
+  total: number;
+  missing: Array<"hanka" | "kata" | "karel">;
+} {
+  const missing: Array<"hanka" | "kata" | "karel"> = [];
+  if (!d.hanka_signed_at) missing.push("hanka");
+  if (!d.kata_signed_at) missing.push("kata");
+  if (!d.karel_signed_at) missing.push("karel");
+  return { signed: 3 - missing.length, total: 3, missing };
+}
