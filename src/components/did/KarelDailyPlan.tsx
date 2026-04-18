@@ -1009,7 +1009,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         proposals.push(`Prioritou číslo jedna je toto: ${topUrgent}.`);
       }
       if (questions.length > 0) {
-        proposals.push(`Potřebuji od vás odpovědi na ${questions.length} otáz${questions.length === 1 ? "ku" : questions.length < 5 ? "ky" : "ek"} — najdete je níže.`);
+        if (questions.length === 1) {
+          proposals.push("Níže najdete jednu otázku, na kterou potřebuji vaši odpověď.");
+        } else if (questions.length <= 4) {
+          proposals.push(`Níže pro vás mám ${questions.length} otázky, ke kterým si potřebuji upřesnit pohled.`);
+        } else {
+          proposals.push(`Níže pro vás mám ${questions.length} otázek, ke kterým si potřebuji upřesnit pohled.`);
+        }
       }
       if (proposals.length === 0) {
         proposals.push("Dnes doporučuji zaměřit se na reflexi posledních dní a přípravu na další sezení. Pokud máte vlastní postřehy, napište mi.");
