@@ -510,17 +510,15 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
                           onClick={() => handlePartSelected(p.part_name)}
                           className="w-full flex items-center gap-2 rounded px-2 py-1.5 text-left text-[0.6875rem] hover:bg-accent transition-colors"
                         >
-                          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                            p.status === "active" ? "bg-green-500" : "bg-muted-foreground/40"
-                          }`} />
+                          <span className="h-1.5 w-1.5 rounded-full shrink-0 bg-green-500" />
                           {p.part_name}
                           <span className="text-[0.5625rem] text-muted-foreground ml-auto">
-                            {p.status === "active" ? "aktivní" : "spící"}
+                            aktivní
                           </span>
                         </button>
                       ))}
                       {registryParts.length === 0 && (
-                        <p className="text-[0.625rem] text-muted-foreground px-2 py-1">Žádné části v registru</p>
+                        <p className="text-[0.625rem] text-muted-foreground px-2 py-1">Žádné aktivní části v registru</p>
                       )}
                     </div>
                     <div className="border-t border-border/60 pt-2 px-1">
