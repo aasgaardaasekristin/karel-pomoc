@@ -11,6 +11,15 @@ import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { isTherapistName, normalizeTherapist } from "@/lib/therapistIdentity";
 import { voiceGreeting, auditVoiceGuide } from "@/lib/karelVoiceGuide";
+// Shared pure-text render pipeline (UI ↔ edge mirror).
+// Source of truth: src/lib/karelRender + supabase/functions/_shared/karelRender.
+import {
+  humanizeText,
+  describeUrgentLoad,
+  addressTaskTo2ndPerson,
+  guardPartName,
+  renderTherapistAsk,
+} from "@/lib/karelRender";
 
 interface SnapshotItem {
   entity: string;
