@@ -833,6 +833,23 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
      6. Skip empty thread topics rather than emitting
         'téma „"' or 'bez konkrétního tématu' bullet noise.
      ────────────────────────────────────────────────────────────── */
+  /* Helper: pick the most concrete crisis check-in target for a therapist.
+     In active crisis Karel MUST always have a concrete ask — never
+     "nepotřebuji nic". Returns a single short instruction. */
+  const crisisCheckInForHanka = (partName: string): string =>
+    `Haničko, prosím dej mi dnes vědět, jak ${partName} vypadá v každodenním kontaktu — jestli reaguje, jestli se drží v přítomnosti a co mu pomáhá.`;
+  const crisisCheckInForKata = (partName: string): string =>
+    `Káťo, potřebuji tvůj pohled zvenčí — jak ${partName} působí v komunikaci s tebou a jestli vidíš něco, co Hanička z bezprostřední blízkosti vidět nemůže.`;
+
+  /* Compose a natural Czech sentence about pending questions.
+     Avoids "Mám pro tebe X otázky k zodpovězení". */
+  const phraseQuestions = (n: number, name: "Haničko" | "Káťo"): string => {
+    if (n <= 0) return "";
+    if (n === 1) return `${name}, níže najdeš jednu otázku, na kterou potřebuji tvou odpověď.`;
+    if (n <= 4) return `${name}, níže pro tebe mám ${n} otázky, ke kterým potřebuji tvůj pohled.`;
+    return `${name}, níže pro tebe mám ${n} otázek, ke kterým potřebuji tvůj pohled.`;
+  };
+
   const buildNarrativeParagraphs = (): string[] => {
     const paragraphs: string[] = [];
 
