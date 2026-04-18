@@ -478,8 +478,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // pass through. We intentionally do NOT scan task text for part names
       // here — that would be a fragile heuristic. The dormant guard runs at
       // the SESSION/THREAD/INTERVIEW level where the part is structured.
+      // VISIBLE-SURFACE GUARANTEE: do NOT slice() here. Counter sanity in
+      // useOperationalInboxCounts is built around the assumption that every
+      // pending task within the 14-day window is reachable in the briefing.
+      // Slicing to 8 would silently drop stale/archive candidates and cause
+      // the dashboard "K archivaci: N" badge to refer to invisible items.
       const merged = [...planItemsAsTasks, ...adjunctTasks];
-      setTasks(deduplicateByText(merged).slice(0, 8));
+      setTasks(deduplicateByText(merged));
 
       // Sessions: drop any planned session whose selected_part is not active
       // (or is the active crisis part).
