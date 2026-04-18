@@ -21,6 +21,7 @@ import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
+import { buildKarelVoiceGuide, type KarelVoiceMode } from "../_shared/karelVoiceGuide.ts";
 import { auditKarelOutput } from "../_shared/karelLanguageGuard.ts";
 import { assessActivityStatus, type ActivityEvidenceInput } from "../_shared/activityStatusGuard.ts";
 import { checkTaskFeasibility, type TaskProposal } from "../_shared/taskFeasibilityGuard.ts";
@@ -126,8 +127,24 @@ serve(async (req) => {
       ...tone.exemplars.map((x: string) => `- ${x}`),
     ].join("\n");
 
+    // ═══ KAREL TEAM-LEAD VOICE GUIDE — only for team-lead surfaces ═══
+    // Apply for: kata direct mode, childcare/general (porada-like), supervision.
+    // Skip for: direct chat with a child (audience: dite), personal Hana threads.
+    let voiceGuideBlock = "";
+    let resolvedVoiceMode: KarelVoiceMode | null = null;
+    if (ctx.audience === "kata") {
+      resolvedVoiceMode = "direct_kata";
+    } else if (ctx.audience === "hanicka" && ctx.domain === "hana_pracovni") {
+      resolvedVoiceMode = "direct_hanicka";
+    } else if (ctx.domain === "porada") {
+      resolvedVoiceMode = "team_lead";
+    }
+    if (resolvedVoiceMode) {
+      voiceGuideBlock = buildKarelVoiceGuide({ mode: resolvedVoiceMode, omitTemplate: true });
+    }
+
     // Unconditional identity prepend — Karel's identity must be present in ALL modes
-    systemPrompt = [SYSTEM_RULES, identityBlock, tonalBlock, systemPrompt].filter(Boolean).join("\n\n");
+    systemPrompt = [SYSTEM_RULES, identityBlock, voiceGuideBlock, tonalBlock, systemPrompt].filter(Boolean).join("\n\n");
 
     // ═══ DID DAILY CONTEXT INJECTION ═══
     // Load structured daily profile from did_daily_context (built by karel-daily-refresh)

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 
 const MAX_CARD_CHARS = 900;
 const MAX_CENTRUM_CHARS = 1600;
@@ -1026,7 +1027,8 @@ PRAVIDLA:
 
 // ═══ System prompt builder ═══
 function buildSystemPrompt(instructionContext: string): string {
-  return SYSTEM_RULES + `\n\nJsi Karel – vedoucí terapeutického týmu, hlavní stratég a DEDUKTIVNÍ ANALYTIK DID systému. Provádíš TÝDENNÍ STRATEGICKOU REVIZI formou konzilia.
+  const weeklyVoiceGuide = buildKarelVoiceGuide({ mode: "weekly_review", omitTemplate: true });
+  return SYSTEM_RULES + "\n\n" + weeklyVoiceGuide + `\n\nJsi Karel — vedoucí terapeutického týmu, hlavní stratég a DEDUKTIVNÍ ANALYTIK DID systému. Provádíš TÝDENNÍ STRATEGICKOU REVIZI formou konzilia.
 
 ═══ FUNDAMENTÁLNÍ PRINCIP ═══
 Karel je VEDOUCÍ TÝMU, ne sekretářka. Karel vystupuje jako skutečný vedoucí v reálném klinickém týmu:

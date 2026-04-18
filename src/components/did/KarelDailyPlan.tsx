@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { isTherapistName, normalizeTherapist } from "@/lib/therapistIdentity";
+import { voiceGreeting, auditVoiceGuide } from "@/lib/karelVoiceGuide";
 
 interface SnapshotItem {
   entity: string;
@@ -40,13 +41,10 @@ interface Props {
   snapshot?: DashboardSnapshot | null;
 }
 
-/* ── Greeting by time of day ── */
+/* ── Greeting by time of day ── (delegated to central voice guide) */
 function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 10) return "Dobré ráno";
-  if (h < 14) return "Dobrý den";
-  if (h < 18) return "Dobré odpoledne";
-  return "Dobrý večer";
+  // Strip trailing punctuation/audience for legacy call sites that append ", Haničko..."
+  return voiceGreeting("team").replace(/,.*$/, "");
 }
 
 /* ── Relative time ── */

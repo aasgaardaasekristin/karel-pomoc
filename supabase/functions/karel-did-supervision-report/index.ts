@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
+import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -149,7 +150,8 @@ ZPĚTNÁ VAZBA KARLA TERAPEUTKÁM:
 ${sessions.filter(s => s.karel_therapist_feedback?.trim()).slice(0, 5).map(s => `[${s.session_date}] ${s.therapist} — ${s.part_name}:\n${s.karel_therapist_feedback?.slice(0, 200)}`).join("\n\n") || "Žádná"}
 `;
 
-    const systemPrompt = `Jsi Karel, expertní klinický supervizor specializovaný na DID (disociativní poruchu identity). Generuješ komplexní SUPERVIZNÍ REPORT pro tým terapeutek pracujících se systémem.
+    const supervisionVoiceGuide = buildKarelVoiceGuide({ mode: "supervision", omitTemplate: true });
+    const systemPrompt = supervisionVoiceGuide + `\n\nJsi Karel, expertní klinický supervizor specializovaný na DID (disociativní poruchu identity). Generuješ komplexní SUPERVIZNÍ REPORT pro tým terapeutek pracujících se systémem.
 
 ═══ KRITICKÁ PRAVIDLA ═══
 
