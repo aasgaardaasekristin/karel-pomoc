@@ -3049,6 +3049,96 @@ export type Database = {
         }
         Relationships: []
       }
+      did_team_deliberations: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          created_by: string
+          deliberation_type: string
+          discussion_log: Json
+          final_summary: string | null
+          followup_needed: boolean
+          hanka_signed_at: string | null
+          id: string
+          initial_karel_brief: string | null
+          karel_proposed_plan: string | null
+          karel_signed_at: string | null
+          kata_signed_at: string | null
+          linked_crisis_event_id: string | null
+          linked_drive_write_id: string | null
+          linked_live_session_id: string | null
+          linked_task_id: string | null
+          participants: string[] | null
+          priority: string
+          questions_for_hanka: Json
+          questions_for_kata: Json
+          reason: string | null
+          status: string
+          subject_parts: string[] | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string
+          deliberation_type?: string
+          discussion_log?: Json
+          final_summary?: string | null
+          followup_needed?: boolean
+          hanka_signed_at?: string | null
+          id?: string
+          initial_karel_brief?: string | null
+          karel_proposed_plan?: string | null
+          karel_signed_at?: string | null
+          kata_signed_at?: string | null
+          linked_crisis_event_id?: string | null
+          linked_drive_write_id?: string | null
+          linked_live_session_id?: string | null
+          linked_task_id?: string | null
+          participants?: string[] | null
+          priority?: string
+          questions_for_hanka?: Json
+          questions_for_kata?: Json
+          reason?: string | null
+          status?: string
+          subject_parts?: string[] | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          created_by?: string
+          deliberation_type?: string
+          discussion_log?: Json
+          final_summary?: string | null
+          followup_needed?: boolean
+          hanka_signed_at?: string | null
+          id?: string
+          initial_karel_brief?: string | null
+          karel_proposed_plan?: string | null
+          karel_signed_at?: string | null
+          kata_signed_at?: string | null
+          linked_crisis_event_id?: string | null
+          linked_drive_write_id?: string | null
+          linked_live_session_id?: string | null
+          linked_task_id?: string | null
+          participants?: string[] | null
+          priority?: string
+          questions_for_hanka?: Json
+          questions_for_kata?: Json
+          reason?: string | null
+          status?: string
+          subject_parts?: string[] | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       did_therapist_tasks: {
         Row: {
           assigned_to: string
