@@ -40,6 +40,13 @@ export interface OpsSnapshot {
 // us noticing the underlying bug.
 const HARD_COUNT_CAP = 99;
 const STALE_TASK_THRESHOLD_DAYS = 7;
+// Visible-surface ceiling: KarelDailyPlan only loads tasks created within
+// the last 14 days. Counters MUST NOT count anything older than that ceiling
+// — otherwise the dashboard advertises "K archivaci: N" while none of those
+// N tasks are reachable in any task surface. The visible-surface ceiling and
+// the counter ceiling are deliberately the same constant so the two can
+// never drift apart again.
+const VISIBLE_TASK_WINDOW_DAYS = 14;
 
 function capCount(n: number | null | undefined): number {
   if (!n || n <= 0) return 0;
@@ -67,6 +74,13 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
       // instead of letting them inflate the urgent / overdue figures forever.
       const staleCutoffISO = new Date(
         Date.now() - STALE_TASK_THRESHOLD_DAYS * 86400000,
+      ).toISOString();
+      // Anything older than the visible-surface ceiling is invisible in the
+      // briefing and therefore must not be counted. This is the SAME 14-day
+      // window used by KarelDailyPlan's task query — see comment on
+      // VISIBLE_TASK_WINDOW_DAYS above.
+      const visibleFloorISO = new Date(
+        Date.now() - VISIBLE_TASK_WINDOW_DAYS * 86400000,
       ).toISOString();
 
       const [qRes, wRes, urgentRes, overdueRes, pRes, staleRes] = await Promise.all([
@@ -98,13 +112,17 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
           .from("did_daily_session_plans")
           .select("id", { count: "exact", head: true })
           .in("status", ["generated", "in_progress"]),
-        // Stale / archive-candidate: open tasks older than the threshold.
-        // Surfaced as a separate (calmer) counter — never red.
+        // Stale / archive-candidate: open tasks older than the stale
+        // threshold BUT still within the visible-surface window (14 days).
+        // Anything older than 14d is unreachable in any task surface and
+        // would be a counter without dohledatelný obsah — explicitly
+        // excluded so the counter and the briefing list are sladěné.
         supabase
           .from("did_therapist_tasks")
           .select("id", { count: "exact", head: true })
           .in("status", ["pending", "active", "in_progress"] as any)
-          .lt("created_at", staleCutoffISO),
+          .lt("created_at", staleCutoffISO)
+          .gte("created_at", visibleFloorISO),
       ]);
 
       if (cancelled) return;
