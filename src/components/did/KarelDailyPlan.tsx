@@ -1197,7 +1197,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
               Káťo, potřebuji od tebe
             </SectionHead>
             <ul className="space-y-2">
-              {kataTasks.slice(0, 5).map(t => (
+              {kataTasks.map(t => (
                 <li key={t.id} className="text-[13px] text-foreground/70 flex items-start gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
