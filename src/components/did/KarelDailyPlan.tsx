@@ -987,11 +987,11 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION D: "Co od Haničky" — krize MUSÍ mít konkrétní check-in ──
       const hDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "hanka"))
         .filter(Boolean);
       if (hDeficitTasks.length > 0) {
         const lead = hDeficitTasks[0];
-        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
+        paragraphs.push(`Haničko, hlavní věc na dnes je ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
       } else if (effectiveCrisisPart) {
         paragraphs.push(crisisCheckInForHanka(effectiveCrisisPart));
       } else {
@@ -1001,11 +1001,11 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION E: "Co od Káti" — krize MUSÍ mít konkrétní check-in ──
       const kDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "kata"))
         .filter(Boolean);
       if (kDeficitTasks.length > 0) {
         const lead = kDeficitTasks[0];
-        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
+        paragraphs.push(`Káťo, hlavní věc na dnes je ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
       } else if (effectiveCrisisPart) {
         paragraphs.push(crisisCheckInForKata(effectiveCrisisPart));
       } else {
@@ -1108,7 +1108,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION D: "Co potřebuji od Haničky" ──
       const hankaTasksHumanized = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "hanka"))
         .filter(Boolean);
       const hankaQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "hanka");
       const hankaSentences: string[] = [];
@@ -1118,7 +1118,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         const restTail = rest > 0
           ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
           : "";
-        hankaSentences.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail}`);
+        hankaSentences.push(`Haničko, hlavní věc na dnes je ${lead}.${restTail}`);
       }
       const hQ = phraseQuestions(hankaQuestions.length, "Haničko");
       if (hQ) hankaSentences.push(hQ);
@@ -1135,7 +1135,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION E: "Co potřebuji od Káti" ──
       const kataTasksHumanized = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "kata"))
         .filter(Boolean);
       const kataQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "kata");
       const kataSentences: string[] = [];
@@ -1145,7 +1145,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         const restTail = rest > 0
           ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
           : "";
-        kataSentences.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail}`);
+        kataSentences.push(`Káťo, hlavní věc na dnes je ${lead}.${restTail}`);
       }
       const kQ = phraseQuestions(kataQuestions.length, "Káťo");
       if (kQ) kataSentences.push(kQ);
