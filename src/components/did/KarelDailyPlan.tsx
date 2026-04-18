@@ -180,6 +180,84 @@ function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
   return normalizeTherapist(assignedTo) ?? "team";
 }
 
+/* ── Rewrite a task text written in 3rd person ABOUT a therapist
+   into 2nd-person form addressed TO that therapist.
+
+   Tasks in DB are typically stored as infinitives or 3rd-person
+   directives ("Zapojit Káťu do porady", "Promluvit s Haničkou o…",
+   "Připravit pro Káťu briefing"). When Karel addresses the
+   therapist directly ("Káťo, hlavní věc na dnes: …"), continuing
+   in 3rd person about her is jarring and grammatically wrong.
+
+   This rewriter:
+   1. removes the therapist's own name in any case (acc/dat/loc/instr)
+   2. removes redundant prepositional phrases referring to her
+      ("s Haničkou", "pro Káťu", "od Káti", "u Haničky")
+   3. lowercases the leading verb (was capitalized as sentence start)
+   4. drops trailing/leading whitespace and stray punctuation
+
+   It deliberately does NOT try to conjugate verbs — turning Czech
+   infinitive ("zapojit") into clean imperative ("zapoj se") would
+   need a morphology engine. Instead it produces a clean infinitive
+   clause that reads naturally after "hlavní věc na dnes: …",
+   avoiding the broken "Káťo, hlavní věc: zapojit Káťu" pattern. */
+function addressTaskTo2ndPerson(
+  text: string,
+  target: "hanka" | "kata",
+): string {
+  if (!text) return "";
+  let s = text.trim();
+
+  // Build a regex of the target's own-name forms to strip.
+  // Order matters: longer forms first so "Haničku" doesn't get partly
+  // matched as "Hanič". Includes nominative + common Czech cases.
+  const ownNamePatterns: RegExp[] = target === "hanka"
+    ? [
+        // Hanička, Haničku, Haničce, Haničko, Haničkou
+        /\b(Hanič[kc]?[aueoy]?[mu]?)\b/gi,
+        // Hanka, Hanku, Hance, Hanko, Hankou
+        /\b(Han[kc][aueoy]?[mu]?)\b/gi,
+        // Hana, Hanu, Haně, Hano, Hanou
+        /\b(Han[aueoy]?[mu]?)\b/gi,
+        // legacy alias forms
+        /\b(mamk[aueoyi]|mám[aueoy]|maminc?[aueoyi])\b/gi,
+      ]
+    : [
+        // Káťa, Káťu, Káti, Káťo, Káťou
+        /\b(Káť?[aueoyi]?[mu]?)\b/gi,
+        // Katka, Katku, Katce, Katko, Katkou
+        /\b(Kat[kc][aueoy]?[mu]?)\b/gi,
+        // Kata, Katu, Katě, Kato, Katou
+        /\b(Kat[aueoy]?[mu]?)\b/gi,
+      ];
+
+  // Strip prepositional + own-name phrases first ("s Haničkou", "pro Káťu",
+  // "od Káti", "u Haničky", "k Hanič ce", "Hance", "Káti").
+  // Then strip bare own-name occurrences left over.
+  const preps = "(?:s|se|pro|od|u|k|ke|na|do|o|v|ve|za|po|před|nad|pod)";
+  for (const namePat of ownNamePatterns) {
+    const src = namePat.source;
+    const flags = namePat.flags;
+    // "<prep> <name>" — drop the whole phrase
+    const phrasePat = new RegExp(`\\b${preps}\\s+${src}`, flags);
+    s = s.replace(phrasePat, "");
+    // bare name occurrence — drop the name
+    s = s.replace(namePat, "");
+  }
+
+  // Collapse whitespace, fix stray ", ," / " ," / leading punctuation
+  s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/,\s*,/g, ",");
+  s = s.replace(/^[\s,;:.]+/, "").replace(/[\s,;:]+$/, "").trim();
+
+  if (!s) return "";
+
+  // Lowercase the very first letter so it reads naturally after a colon
+  // ("hlavní věc na dnes: zapojit se do porady" — not "Zapojit").
+  s = s.charAt(0).toLocaleLowerCase("cs") + s.slice(1);
+
+  return s;
+}
+
 /* ── Deduplicate tasks by first 40 chars of task text ── */
 function deduplicateByText<T extends { task?: string; question?: string }>(items: T[]): T[] {
   const seen = new Set<string>();
@@ -909,11 +987,11 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION D: "Co od Haničky" — krize MUSÍ mít konkrétní check-in ──
       const hDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "hanka"))
         .filter(Boolean);
       if (hDeficitTasks.length > 0) {
         const lead = hDeficitTasks[0];
-        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
+        paragraphs.push(`Haničko, hlavní věc na dnes je ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
       } else if (effectiveCrisisPart) {
         paragraphs.push(crisisCheckInForHanka(effectiveCrisisPart));
       } else {
@@ -923,11 +1001,11 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION E: "Co od Káti" — krize MUSÍ mít konkrétní check-in ──
       const kDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "kata"))
         .filter(Boolean);
       if (kDeficitTasks.length > 0) {
         const lead = kDeficitTasks[0];
-        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
+        paragraphs.push(`Káťo, hlavní věc na dnes je ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
       } else if (effectiveCrisisPart) {
         paragraphs.push(crisisCheckInForKata(effectiveCrisisPart));
       } else {
@@ -1030,7 +1108,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION D: "Co potřebuji od Haničky" ──
       const hankaTasksHumanized = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "hanka"))
         .filter(Boolean);
       const hankaQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "hanka");
       const hankaSentences: string[] = [];
@@ -1040,7 +1118,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         const restTail = rest > 0
           ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
           : "";
-        hankaSentences.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail}`);
+        hankaSentences.push(`Haničko, hlavní věc na dnes je ${lead}.${restTail}`);
       }
       const hQ = phraseQuestions(hankaQuestions.length, "Haničko");
       if (hQ) hankaSentences.push(hQ);
@@ -1057,7 +1135,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // ── SECTION E: "Co potřebuji od Káti" ──
       const kataTasksHumanized = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
-        .map(t => humanizeText(t.task))
+        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "kata"))
         .filter(Boolean);
       const kataQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "kata");
       const kataSentences: string[] = [];
@@ -1067,7 +1145,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         const restTail = rest > 0
           ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
           : "";
-        kataSentences.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail}`);
+        kataSentences.push(`Káťo, hlavní věc na dnes je ${lead}.${restTail}`);
       }
       const kQ = phraseQuestions(kataQuestions.length, "Káťo");
       if (kQ) kataSentences.push(kQ);
