@@ -599,14 +599,13 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     const name = didSubMode === "mamka" ? "Hanička" : "Káťa";
     return (
       <ScrollArea className="flex-1">
-        <DidTherapistThreads
-          therapistName={name}
+        <DidTherapistThreadsWithMeta
+          name={name}
           threads={didThreads.threads}
           onSelectThread={(thread) => {
             setActiveThread(thread);
             setMessages(thread.messages as { role: "user" | "assistant"; content: string }[]);
             setDidFlowState("chat");
-            // Load docs in background
             (async () => {
               try {
                 const headers = await getAuthHeaders();

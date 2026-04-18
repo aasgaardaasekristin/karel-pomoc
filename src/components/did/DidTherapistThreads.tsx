@@ -3,6 +3,19 @@ import { Button } from "@/components/ui/button";
 import type { DidThread } from "@/hooks/useDidThreads";
 import DidPersonalizedSessionPrep from "./DidPersonalizedSessionPrep";
 
+/**
+ * BUGFIX (FÁZE 3 stabilization): meta no longer derived via regex from the
+ * intro message. Caller provides a typed map (workspaceMeta) populated from
+ * the actual workspace row (tasks.assigned_to / questions.directed_to /
+ * session.selected_part). When the entry is missing the row degrades
+ * gracefully to label + preview — no fabricated meta.
+ */
+export interface DidWorkspaceMeta {
+  assignee?: string;
+  partName?: string;
+  detailLine?: string;
+}
+
 interface Props {
   therapistName: string;
   threads: DidThread[];
@@ -10,28 +23,13 @@ interface Props {
   onDeleteThread: (threadId: string) => void;
   onNewThread: () => void;
   onBack: () => void;
+  workspaceMeta?: Record<string, DidWorkspaceMeta>;
 }
 
-// BUGFIX (P1 list identity): for system workspaces (task / question / session)
-// we render the thread label as the PRIMARY title so two different tasks no
-// longer look like "the same thread with a different preview". The last
-// message becomes a secondary preview line under the title.
 const WORKSPACE_TYPE_META: Record<string, { label: string; icon: typeof ClipboardList; tone: string }> = {
   task: { label: "Úkol", icon: ClipboardList, tone: "rgba(255, 200, 120, 0.85)" },
   question: { label: "Otázka", icon: HelpCircle, tone: "rgba(160, 200, 255, 0.85)" },
   session: { label: "Sezení", icon: CalendarDays, tone: "rgba(180, 230, 180, 0.85)" },
-};
-
-// Try to extract assignee/directed-to hint from threadLabel + first assistant
-// message (which Karel writes with "**Pro Haničku**" / "**Pro Káťu**" / "**Pro Haničku i Káťu**").
-const extractAssigneeHint = (thread: DidThread): string => {
-  const firstAssistant = thread.messages.find(m => m.role === "assistant");
-  const text = (firstAssistant?.content || "") + " " + (thread.threadLabel || "");
-  if (/Pro\s+Han[ií]čku\s+i\s+K[áa][tť]u/i.test(text)) return "Hanička + Káťa";
-  if (/Pro\s+K[áa][tť]u/i.test(text)) return "Káťa";
-  if (/Pro\s+Han[ií]čku/i.test(text)) return "Hanička";
-  if (/Pro\s+t[yý]m/i.test(text)) return "tým";
-  return "";
 };
 
 const lastTextMessage = (thread: DidThread): string => {
@@ -44,7 +42,7 @@ const lastTextMessage = (thread: DidThread): string => {
 
 const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "…" : s;
 
-const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteThread, onNewThread, onBack }: Props) => {
+const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteThread, onNewThread, onBack, workspaceMeta }: Props) => {
   const formatTime = (isoStr: string) => {
     const diff = Date.now() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
@@ -170,9 +168,14 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
                       {formatTime(thread.lastActivityAt)}
                     </span>
                     <span>{thread.messages.length} zpráv</span>
-                    {meta && extractAssigneeHint(thread) && (
+                    {meta && workspaceMeta?.[thread.id]?.assignee && (
                       <span className="px-1.5 py-0 rounded-full" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                        → {extractAssigneeHint(thread)}
+                        → {workspaceMeta[thread.id].assignee}
+                      </span>
+                    )}
+                    {meta && workspaceMeta?.[thread.id]?.partName && (
+                      <span className="px-1.5 py-0 rounded-full" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                        {workspaceMeta[thread.id].partName}
                       </span>
                     )}
                   </div>
