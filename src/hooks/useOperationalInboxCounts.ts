@@ -15,10 +15,29 @@ export interface OpsSnapshot {
   staleTasks: number;
 }
 
-// BUGFIX (counter sanity): hard cap on every counter so a runaway query (e.g.
-// a regression that strips status filtering and returns every row in the table)
-// can never render "1247 urgentních" in the dashboard. We surface 99+ as the
-// max — anything beyond that is a bug, not a real operational state.
+// SCOPE GUARANTEE (counter sanity, root-cause level):
+//
+// Per-user isolation for these counters is enforced at the DATABASE LEVEL via RLS,
+// not at the query level. Verified policies (cmd=SELECT, qual=auth.uid()=user_id):
+//   - did_therapist_tasks         → "Users can read own therapist tasks"
+//   - did_daily_session_plans     → "Users can read own plans"
+//   - did_pending_drive_writes    → "Users can read own pending writes"
+//
+// `did_pending_questions` intentionally has SELECT qual=true: this table is a
+// SHARED inbox between the two therapists (Hanka + Káťa), it has no `user_id`
+// column and acts as a single-tenant operational queue for the practice. So no
+// per-user filter is meaningful or possible — the count reflects the practice's
+// real shared question backlog.
+//
+// Therefore NO additional `.eq("user_id", uid)` filter is needed at the query
+// level — adding one would be redundant for the RLS-protected tables and
+// impossible for the shared questions table.
+//
+// HARD_COUNT_CAP exists as a defense-in-depth safeguard, NOT as a substitute
+// for proper scoping: if a future regression strips status/priority filters
+// and a single user genuinely accumulates > 99 open tasks, the cap surfaces
+// "99+" so the UI never renders absurd counts like "1247 urgentních" without
+// us noticing the underlying bug.
 const HARD_COUNT_CAP = 99;
 const STALE_TASK_THRESHOLD_DAYS = 7;
 

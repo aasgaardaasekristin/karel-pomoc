@@ -264,7 +264,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
   const [showSessionFeedback, setShowSessionFeedback] = useState<Record<string, boolean>>({});
 
   // Data
-  const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string; detail_instruction?: any }[]>([]);
+  const [tasks, setTasks] = useState<{ id: string; task: string; assigned_to: string; status: string; priority: string; created_at?: string; due_date?: string | null; detail_instruction?: any }[]>([]);
   const [sessions, setSessions] = useState<{ id: string; selected_part: string; therapist: string; plan_date: string }[]>([]);
   const [questions, setQuestions] = useState<{ id: string; question: string; directed_to: string | null }[]>([]);
   const [recentThreads, setRecentThreads] = useState<{ part_name: string; last_activity_at: string; sub_mode: string; thread_label: string | null }[]>([]);
@@ -348,6 +348,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
     try {
       const today = pragueTodayISO();
       const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
+      // BUGFIX (stale framing alignment): the dashboard's OpsSnapshotBar
+      // surfaces stale tasks (>7d) under a separate "k archivaci" counter,
+      // so the briefing MUST also be able to display them — otherwise the
+      // counter points at items that have no surface anywhere. We expand
+      // the manual-task window to 14 days here and rely on TaskFrameBadge
+      // to label each row (po termínu / blokováno / starší úkol / k archivaci).
+      const fourteenDaysAgo = new Date(Date.now() - 14 * 86400000).toISOString();
 
       // BUGFIX (FÁZE 3 dormant leak): every part-derived surface (threads,
       // sessions, interviews, tasks) MUST be filtered against the canonical
@@ -365,15 +372,17 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           .order("priority", { ascending: false })
           .order("created_at", { ascending: false })
           .limit(20),
-        // Adjunct: only manual tasks NOT linked to a canonical plan item
+        // Adjunct: only manual tasks NOT linked to a canonical plan item.
+        // Window expanded to 14d so stale/archive-candidate tasks counted in
+        // OpsSnapshotBar are actually displayable here with a framing badge.
         (supabase as any)
           .from("did_therapist_tasks")
-          .select("id, task, assigned_to, status, priority, created_at, detail_instruction, plan_item_id")
+          .select("id, task, assigned_to, status, priority, created_at, due_date, detail_instruction, plan_item_id")
           .in("status", ["pending", "active", "in_progress"])
           .is("plan_item_id", null)
-          .gte("created_at", threeDaysAgo)
+          .gte("created_at", fourteenDaysAgo)
           .order("priority", { ascending: true })
-          .limit(15),
+          .limit(20),
         supabase
           .from("did_daily_session_plans")
           .select("id, selected_part, therapist, plan_date")
@@ -451,6 +460,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         status: t.status,
         priority: t.priority,
         created_at: t.created_at,
+        due_date: t.due_date ?? null,
         detail_instruction: t.detail_instruction,
       }));
       // Tasks: keep only those that don't reference a non-active part by name.
@@ -1151,7 +1161,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
-                    <TaskFrameBadge createdAt={t.created_at} />
+                    <TaskFrameBadge createdAt={t.created_at} dueDate={t.due_date} status={t.status} />
                     <div className="mt-0.5">
                       <ActionLink label="Odpovědět / řešit" onClick={() => openTaskWorkspace(t)} />
                     </div>
@@ -1177,7 +1187,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
-                    <TaskFrameBadge createdAt={t.created_at} />
+                    <TaskFrameBadge createdAt={t.created_at} dueDate={t.due_date} status={t.status} />
                     <div className="mt-0.5">
                       <ActionLink label="Odpovědět / řešit" onClick={() => openTaskWorkspace(t)} />
                     </div>
