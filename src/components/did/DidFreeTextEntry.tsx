@@ -28,7 +28,7 @@ const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID – vnitřn
     if (goalNow) context += `Cíl teď: ${goalNow}\n`;
     if (text.trim()) context += `\nDoplňující kontext / výňatek z NotebookLM:\n${text.trim()}\n`;
 
-    context += "\n\nPOKYN: Přečti si tento text. Pomoz ho strukturovat, proveď supervizní rozhovor a navrhni další postup nebo řešení. Na konci konverzace nabídni: \"Chceš z toho udělat krátký zápis?\" Pokud mamka souhlasí, vytvoř strukturovaný textový zápis (shrnutí, doporučení, další kroky) a nabídni export.";
+    context += "\n\nPOKYN: Přečti si tento text. Pomoz ho strukturovat, proveď supervizní rozhovor a navrhni další postup nebo řešení. Na konci konverzace nabídni: \"Chceš z toho udělat krátký zápis?\" Pokud Hanička souhlasí, vytvoř strukturovaný textový zápis (shrnutí, doporučení, další kroky) a nabídni export.";
 
     onSubmit(context);
   };

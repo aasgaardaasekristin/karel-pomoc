@@ -652,7 +652,7 @@ Odpověz POUZE platným JSON:
           crisis_event_id: crisisEventId,
           title: `VEČERNÍ SEZENÍ S ${thread.part_name.toUpperCase()} – krizová intervence`,
           description: analysis.hanka_session_plan.slice(0, 500),
-          assigned_to: "hanicka",
+          assigned_to: "hanka", // canonical therapist id (see _shared/therapistIdentity.ts)
           priority: "CRITICAL",
         },
       ]);

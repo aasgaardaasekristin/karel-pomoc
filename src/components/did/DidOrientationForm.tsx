@@ -40,13 +40,13 @@ const DidOrientationForm = ({ onSubmit, onBack, notebookProject = "DID – vnit�
       (id) => checkboxOptions.find((o) => o.id === id)?.label ?? id
     );
 
-    let context = "ORIENTAČNÍ FORMULÁŘ (mamka vyplnila před zahájením rozhovoru):\n\n";
+    let context = "ORIENTAČNÍ FORMULÁŘ (Hanička vyplnila před zahájením rozhovoru):\n\n";
     context += `NotebookLM projekt: ${notebookProject}\n\n`;
     if (selectedLabels.length > 0) {
       context += "Aktuální situace:\n" + selectedLabels.map((l) => `- ${l}`).join("\n");
     }
     if (note.trim()) {
-      context += `\n\nDoplňující poznámka od mamky:\n${note.trim()}`;
+      context += `\n\nDoplňující poznámka od Haničky:\n${note.trim()}`;
     }
     context +=
       "\n\nPOKYN: Tyto informace už MÁŠ. NEOPAKUJ je a NEPTEJ se na ně znovu. Rovnou reaguj – zvol odpovídající typ reakce (uklidnění, strukturování, výchovná rada, supervize) podle toho, co formulář naznačuje.";
