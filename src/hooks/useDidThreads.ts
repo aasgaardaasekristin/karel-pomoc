@@ -6,6 +6,8 @@ import {
   sanitizePartName,
 } from "@/lib/didPartNaming";
 
+export type WorkspaceType = "task" | "question" | "session" | null;
+
 export interface DidThread {
   id: string;
   partName: string;
@@ -20,6 +22,11 @@ export interface DidThread {
   threadEmoji: string;
   threadLabel: string;
   enteredName: string;
+  // BUGFIX: canonical workspace identity. When non-null, this thread is the
+  // single persistent workspace for the referenced task / question / session.
+  // Reopening the same source row MUST resolve back to the same thread.
+  workspaceType: WorkspaceType;
+  workspaceId: string | null;
 }
 
 const rowToThread = (row: any): DidThread | null => {
@@ -40,6 +47,8 @@ const rowToThread = (row: any): DidThread | null => {
     threadEmoji: (row as any).thread_emoji || "",
     threadLabel: (row as any).thread_label || "",
     enteredName: (row as any).entered_name || "",
+    workspaceType: ((row as any).workspace_type ?? null) as WorkspaceType,
+    workspaceId: ((row as any).workspace_id ?? null) as string | null,
   };
 };
 
