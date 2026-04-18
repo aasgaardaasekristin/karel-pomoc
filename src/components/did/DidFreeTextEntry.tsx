@@ -21,7 +21,9 @@ const DidFreeTextEntry = ({ onSubmit, onBack, notebookProject = "DID – vnitřn
   const handleSubmit = () => {
     if (!isValid) return;
 
-    let context = "ZÁZNAM OD MAMKY (strukturovaný vstup před zahájením rozhovoru):\n\n";
+    // NOTE: header is user-facing prompt context. Must use canonical
+    // therapist display name "Hanička" — never legacy "MAMKA" alias.
+    let context = "ZÁZNAM OD HANIČKY (strukturovaný vstup před zahájením rozhovoru):\n\n";
     context += `NotebookLM projekt: ${notebookProject}\n\n`;
     if (whatNow.trim()) context += `Co se děje teď: ${whatNow.trim()}\n`;
     if (whoActive.trim()) context += `Kdo je aktivní: ${whoActive.trim()}\n`;
