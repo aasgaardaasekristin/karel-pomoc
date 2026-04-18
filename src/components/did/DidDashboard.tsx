@@ -12,6 +12,8 @@ import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
 import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
+import TeamDeliberationsPanel from "./TeamDeliberationsPanel";
+import DeliberationRoom from "./DeliberationRoom";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
