@@ -318,10 +318,14 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       const today = pragueTodayISO();
       const threeDaysAgo = new Date(Date.now() - 3 * 86400000).toISOString();
 
-      // FÁZE 3C: CANONICAL queue primary = did_plan_items. Manual did_therapist_tasks
-      // jsou jen adjunct fallback (deduped by plan_item_id IS NULL). Žádný raw
-      // crisis_events query — krize bere snapshot.command.crises (canonical).
-      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, planRes] = await Promise.all([
+      // BUGFIX (FÁZE 3 dormant leak): every part-derived surface (threads,
+      // sessions, interviews, tasks) MUST be filtered against the canonical
+      // active registry before it can drive Karel's narrative or
+      // recommendations. A dormant/sleeping part with an old thread or stale
+      // session record must NOT re-emerge in "co z toho plyne" or "co
+      // navrhuji na dnes" without an explicit active reason (open crisis or
+      // explicit reactivation in the registry).
+      const [planItemsRes, manualTasksRes, sessionsRes, questionsRes, threadsRes, interviewsRes, planRes, registryRes] = await Promise.all([
         // CANONICAL primary queue
         supabase
           .from("did_plan_items")
@@ -355,23 +359,52 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           .select("part_name, last_activity_at, sub_mode, thread_label")
           .gte("last_activity_at", threeDaysAgo)
           .order("last_activity_at", { ascending: false })
-          .limit(8),
+          .limit(20),
         supabase
           .from("crisis_karel_interviews")
           .select("part_name, summary_for_team, karel_decision_after_interview, started_at, what_shifted, what_remains_unclear")
           .gte("created_at", threeDaysAgo)
           .order("created_at", { ascending: false })
-          .limit(5),
+          .limit(10),
         supabase.functions.invoke("karel-did-drive-read", {
           body: { documents: ["05A_OPERATIVNI_PLAN"], subFolder: "00_CENTRUM" },
         }).catch(() => ({ data: null, error: null })),
+        // Active registry — single source of truth for "is this part allowed
+        // on today's surface?". Includes 'crisis' and 'stabilizing' so a part
+        // in active crisis still surfaces, but pure 'sleeping' / 'dormant'
+        // parts are excluded.
+        (supabase as any)
+          .from("did_part_registry")
+          .select("part_name, display_name, status")
+          .in("status", ["active", "crisis", "stabilizing"]),
       ]);
+
+      // Build active part name set (case-insensitive). The crisis snapshot
+      // overrides this when present (effectiveCrisisPart wins regardless),
+      // but every other surface is gated through this set.
+      const activePartSet = new Set<string>();
+      for (const r of (registryRes.data || []) as any[]) {
+        for (const n of [r.part_name, r.display_name]) {
+          if (n && typeof n === "string") activePartSet.add(n.trim().toLowerCase());
+        }
+      }
+      const isActivePart = (name: string | null | undefined): boolean => {
+        if (!name) return false;
+        return activePartSet.has(String(name).trim().toLowerCase());
+      };
+      const allowsActiveOrCrisis = (name: string | null | undefined): boolean => {
+        // The snapshot crisis is loaded asynchronously; we accept the part if
+        // it's currently in the registry's active pool OR if it matches the
+        // effective crisis (computed below from snapshot.command.crises).
+        if (isActivePart(name)) return true;
+        const crisisName = snapshotCrisis?.partName || fallbackCrisisPart;
+        return !!(name && crisisName && String(name).trim().toLowerCase() === String(crisisName).trim().toLowerCase());
+      };
 
       // ── Canonical queue: primary plan items (mapped to UI task shape), then adjunct manual tasks ──
       const planItemsAsTasks = (planItemsRes.data || []).map((p: any) => ({
         id: `plan:${p.id}`,
         task: p.action_required || `${p.plan_type ?? ""}/${p.section ?? ""}`.trim(),
-        // Plan items are Karel-generated for the team; default to team unless section maps to a specific therapist.
         assigned_to: "team",
         status: p.status,
         priority: typeof p.priority === "number"
@@ -389,22 +422,47 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         created_at: t.created_at,
         detail_instruction: t.detail_instruction,
       }));
+      // Tasks: keep only those that don't reference a non-active part by name.
+      // Tasks without a part reference (team / Karel-generated plan items)
+      // pass through. We intentionally do NOT scan task text for part names
+      // here — that would be a fragile heuristic. The dormant guard runs at
+      // the SESSION/THREAD/INTERVIEW level where the part is structured.
       const merged = [...planItemsAsTasks, ...adjunctTasks];
       setTasks(deduplicateByText(merged).slice(0, 8));
 
-      setSessions(sessionsRes.data || []);
+      // Sessions: drop any planned session whose selected_part is not active
+      // (or is the active crisis part).
+      const sessionsAll = (sessionsRes.data || []) as any[];
+      setSessions(sessionsAll.filter(s => allowsActiveOrCrisis(s.selected_part)));
+
       setQuestions(deduplicateByText(questionsRes.data || []).slice(0, 5) as any);
-      setRecentThreads(threadsRes.data || []);
-      setRecentInterviews(interviewsRes.data || []);
+
+      // Threads: only show recent threads that belong to active parts.
+      // System / Karel / virtual rows pass through (they aren't real parts).
+      const threadsAll = (threadsRes.data || []) as any[];
+      const SYSTEM_PART_NAMES = new Set(["karel", "system", ""]);
+      const filteredThreads = threadsAll.filter(t => {
+        const name = String(t.part_name || "").trim().toLowerCase();
+        if (SYSTEM_PART_NAMES.has(name)) return true;
+        return allowsActiveOrCrisis(t.part_name);
+      }).slice(0, 8);
+      setRecentThreads(filteredThreads);
+
+      // Interviews: drop interviews that name a dormant part. A historical
+      // crisis interview for a now-sleeping part should NOT re-trigger
+      // narrative without an explicit reactivation.
+      const interviewsAll = (interviewsRes.data || []) as any[];
+      setRecentInterviews(interviewsAll.filter(iv => allowsActiveOrCrisis(iv.part_name)).slice(0, 5));
+
       // FÁZE 3C: NO raw crisis_events query here. Crisis truth = snapshot.command.crises only.
-      // If snapshot is warming up, effectiveCrisisPart will be null until next refresh — that
-      // is the correct behavior to avoid creating a parallel resolver on the client.
       setFallbackCrisisPart(null);
 
-      // Determine last any activity date
+      // Determine last any activity date — also gated.
       const allDates = [
-        ...(threadsRes.data || []).map((t: any) => t.last_activity_at),
-        ...(interviewsRes.data || []).map((iv: any) => iv.started_at),
+        ...filteredThreads.map((t: any) => t.last_activity_at),
+        ...interviewsAll
+          .filter(iv => allowsActiveOrCrisis(iv.part_name))
+          .map((iv: any) => iv.started_at),
       ].filter(Boolean).sort().reverse();
       setLastAnyActivity(allDates[0] || null);
 
@@ -425,7 +483,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       setLoading(false);
       hasLoadedOnce.current = true;
     }
-  }, []);
+  }, [snapshotCrisis?.partName, fallbackCrisisPart]);
 
   useEffect(() => { load(); }, [load, refreshTrigger]);
 
