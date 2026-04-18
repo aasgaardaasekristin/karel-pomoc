@@ -26,6 +26,7 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -36,7 +37,10 @@ const Login = () => {
     checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate("/hub");
+      if (session) {
+        // Show welcome intro instead of immediate redirect
+        setShowIntro(true);
+      }
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
