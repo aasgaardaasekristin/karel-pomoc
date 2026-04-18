@@ -563,8 +563,10 @@ const TaskCard = ({
           <div className="space-y-1">
             {assigned === "both" && (
               <div className="flex items-center gap-1.5">
-                <span className="text-[0.5rem] uppercase tracking-wide text-muted-foreground">Odpovídá:</span>
-                <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+                <span className="text-[0.5rem] uppercase tracking-wide text-muted-foreground">
+                  Odpovídá:{!responder && <span className="ml-1 text-destructive">vyber</span>}
+                </span>
+                <div className={`inline-flex rounded-md border p-0.5 ${!responder ? "border-destructive/60 bg-destructive/5" : "border-border bg-muted/40"}`}>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setResponder("hanka"); }}
@@ -586,11 +588,21 @@ const TaskCard = ({
               <Input
                 value={noteInputs[task.id] || ""}
                 onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                placeholder={assigned === "both" ? `Update jako ${responder === "hanka" ? "Hanka" : "Káťa"}…` : "Jak to jde? Napiš update..."}
+                placeholder={
+                  assigned === "both"
+                    ? (responder ? `Update jako ${responder === "hanka" ? "Hanka" : "Káťa"}…` : "Vyber kdo odpovídá ↑")
+                    : "Jak to jde? Napiš update..."
+                }
                 className="h-6 flex-1 bg-background text-[0.5625rem]"
                 onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
+                disabled={assigned === "both" && !responder}
               />
-              <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
+              <Button
+                size="sm"
+                onClick={() => void handleSendUpdate()}
+                className="h-6 w-6 p-0"
+                disabled={!noteInputs[task.id]?.trim() || sendingFeedback || (assigned === "both" && !responder)}
+              >
                 {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
               </Button>
             </div>
