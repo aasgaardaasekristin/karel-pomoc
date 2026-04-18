@@ -42,7 +42,7 @@ const lastTextMessage = (thread: DidThread): string => {
 
 const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "…" : s;
 
-const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteThread, onNewThread, onBack }: Props) => {
+const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteThread, onNewThread, onBack, workspaceMeta }: Props) => {
   const formatTime = (isoStr: string) => {
     const diff = Date.now() - new Date(isoStr).getTime();
     const mins = Math.floor(diff / 60000);
@@ -168,9 +168,14 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
                       {formatTime(thread.lastActivityAt)}
                     </span>
                     <span>{thread.messages.length} zpráv</span>
-                    {meta && extractAssigneeHint(thread) && (
+                    {meta && workspaceMeta?.[thread.id]?.assignee && (
                       <span className="px-1.5 py-0 rounded-full" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
-                        → {extractAssigneeHint(thread)}
+                        → {workspaceMeta[thread.id].assignee}
+                      </span>
+                    )}
+                    {meta && workspaceMeta?.[thread.id]?.partName && (
+                      <span className="px-1.5 py-0 rounded-full" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                        {workspaceMeta[thread.id].partName}
                       </span>
                     )}
                   </div>
