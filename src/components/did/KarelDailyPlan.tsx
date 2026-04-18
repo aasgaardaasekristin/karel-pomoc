@@ -11,6 +11,15 @@ import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
 import { isTherapistName, normalizeTherapist } from "@/lib/therapistIdentity";
 import { voiceGreeting, auditVoiceGuide } from "@/lib/karelVoiceGuide";
+// Shared pure-text render pipeline (UI ↔ edge mirror).
+// Source of truth: src/lib/karelRender + supabase/functions/_shared/karelRender.
+import {
+  humanizeText,
+  describeUrgentLoad,
+  addressTaskTo2ndPerson,
+  guardPartName,
+  renderTherapistAsk,
+} from "@/lib/karelRender";
 
 interface SnapshotItem {
   entity: string;
@@ -79,97 +88,28 @@ function daysSince(iso: string | null): number {
    - duplicated trailing punctuation, double spaces, stray colons
    ────────────────────────────────────────────────────────────── */
 
-const PROSE_PROHIBITED_PREFIXES = [
-  /^úkol\s*[:\-–]\s*/i,
-  /^otázka\s*[:\-–]\s*/i,
-  /^otazka\s*[:\-–]\s*/i,
-  /^sezení\s*[:\-–]\s*/i,
-  /^sezeni\s*[:\-–]\s*/i,
-  /^dotaz\s*[:\-–]\s*/i,
-  /^téma\s*[:\-–]\s*/i,
-  /^tema\s*[:\-–]\s*/i,
-  /^poznámka\s*[:\-–]\s*/i,
-  /^poznamka\s*[:\-–]\s*/i,
-  /^todo\s*[:\-–]\s*/i,
-];
+/* ──────────────────────────────────────────────────────────────
+   HUMANIZATION + IDENTITY + VOICE
+   ────────────────────────────────────────────────────────────── 
 
-const PROSE_INLINE_TAGS = [
-  /\[recovery\]\s*/gi,
-  /\[auto\]\s*/gi,
-  /\[system\]\s*/gi,
-  /\[debug\]\s*/gi,
-  /\[bot\]\s*/gi,
-];
+   All narrative-text helpers used below are imported from the shared
+   pure-text pipeline `karelRender` (src/lib/karelRender) which is
+   mirrored 1:1 to `supabase/functions/_shared/karelRender` so UI and
+   edge prompts speak with the same voice.
 
-const PROSE_CRISIS_HEADLINE = /^[🔴⚠️⚠️\s]*(?:krizová\s+intervence|krizova\s+intervence)\s*[–\-—]\s*([^–\-—]+?)\s*[–\-—].*$/i;
+   Layers consumed here:
+     - identity.ts  → guardPartName(), normalizeTherapist()
+     - humanize.ts  → humanizeText(), describeUrgentLoad(),
+                      addressTaskTo2ndPerson(), czechTaskWord()
+     - template.ts  → renderTherapistAsk()
 
-function humanizeText(raw: string | null | undefined): string {
-  if (!raw) return "";
-  let s = String(raw).trim();
-  if (!s) return "";
+   DO NOT redefine these helpers locally — that is exactly the drift
+   that produced "Eviduji 3 úkoly" / "Káťo, zapojit Káťu" regressions.
+*/
 
-  // Strip crisis-headline pattern but keep the part name as a plain mention
-  const m = s.match(PROSE_CRISIS_HEADLINE);
-  if (m) s = `krizová situace u ${m[1].trim()}`;
-
-  // Strip ticket-style prefixes
-  for (const re of PROSE_PROHIBITED_PREFIXES) s = s.replace(re, "");
-
-  // Strip background-job tags anywhere in string
-  for (const re of PROSE_INLINE_TAGS) s = s.replace(re, "");
-
-  // Normalize whitespace and stray punctuation
-  s = s.replace(/\s+/g, " ").replace(/\s*:\s*$/g, "").trim();
-
-  // Drop trailing period — caller composes punctuation
-  s = s.replace(/[.!?]+$/g, "").trim();
-  return s;
-}
-
-/* Pseudo-names that must never appear inside Karel's narrative
-   ("system", empty, "karel" itself). Used both for thread filtering
-   and label sanitization. Therapists (Hanka, Káťa) are filtered
-   separately via isTherapistName() — they are NOT DID parts and
-   must never leak into part-only narrative surfaces. */
-const NARRATIVE_PSEUDO_NAMES = new Set(["", "system", "karel", "ai", "bot"]);
-
-function isUsableLabel(raw: string | null | undefined): boolean {
-  const cleaned = humanizeText(raw);
-  if (!cleaned) return false;
-  if (NARRATIVE_PSEUDO_NAMES.has(cleaned.toLowerCase())) return false;
-  // Hard guard: therapist != DID part. Never let Hanka/Káťa/aliases
-  // (including "mamka") surface in part-narrative.
-  if (isTherapistName(cleaned)) return false;
-  if (cleaned.length < 3) return false;
-  return true;
-}
-
-/* Pluralize Czech "tasks" (úkol / úkoly / úkolů) without admin tone.
-   Used inside humanized sentences, NOT as a standalone counter. */
-function czechTaskWord(n: number): string {
-  if (n === 1) return "úkol";
-  if (n >= 2 && n <= 4) return "úkoly";
-  return "úkolů";
-}
-
-/* Compose a short, natural sentence summarizing N items WITHOUT
-   admin-counter phrasing ("Eviduji X..."). Returns "" when nothing
-   meaningful to say. */
-function describeUrgentLoad(n: number, topTaskHumanized: string): string {
-  if (n <= 0) return "";
-  if (n === 1) {
-    return topTaskHumanized
-      ? `Dnes mě nejvíc zajímá toto: ${topTaskHumanized}.`
-      : "Dnes je jeden úkol, který nesnese odklad.";
-  }
-  // Lead with the top task, then mention the rest plainly
-  if (topTaskHumanized) {
-    const rest = n - 1;
-    const restWord = czechTaskWord(rest);
-    return `Dnes je nejdůležitější toto: ${topTaskHumanized}. K tomu ještě ${rest} dalš${rest === 1 ? "í" : rest <= 4 ? "í" : "ích"} ${restWord} čeká na pozornost.`;
-  }
-  return `Dnes je ${n} ${czechTaskWord(n)} k vyřízení — detail níže.`;
-}
+/** Thin alias kept for backwards compatibility with existing callsites. */
+const isUsableLabel = (raw: string | null | undefined): boolean =>
+  guardPartName(raw) !== null;
 
 /* ── Detect therapist target from assigned_to ──
    Uses central normalizeTherapist() — no local substring guessing.
@@ -177,85 +117,6 @@ function describeUrgentLoad(n: number, topTaskHumanized: string): string {
 function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
   return normalizeTherapist(assignedTo) ?? "team";
 }
-
-/* ── Rewrite a task text written in 3rd person ABOUT a therapist
-   into 2nd-person form addressed TO that therapist.
-
-   Tasks in DB are typically stored as infinitives or 3rd-person
-   directives ("Zapojit Káťu do porady", "Promluvit s Haničkou o…",
-   "Připravit pro Káťu briefing"). When Karel addresses the
-   therapist directly ("Káťo, hlavní věc na dnes: …"), continuing
-   in 3rd person about her is jarring and grammatically wrong.
-
-   This rewriter:
-   1. removes the therapist's own name in any case (acc/dat/loc/instr)
-   2. removes redundant prepositional phrases referring to her
-      ("s Haničkou", "pro Káťu", "od Káti", "u Haničky")
-   3. lowercases the leading verb (was capitalized as sentence start)
-   4. drops trailing/leading whitespace and stray punctuation
-
-   It deliberately does NOT try to conjugate verbs — turning Czech
-   infinitive ("zapojit") into clean imperative ("zapoj se") would
-   need a morphology engine. Instead it produces a clean infinitive
-   clause that reads naturally after "hlavní věc na dnes: …",
-   avoiding the broken "Káťo, hlavní věc: zapojit Káťu" pattern. */
-function addressTaskTo2ndPerson(
-  text: string,
-  target: "hanka" | "kata",
-): string {
-  if (!text) return "";
-  let s = text.trim();
-
-  // Build a regex of the target's own-name forms to strip.
-  // Order matters: longer forms first so "Haničku" doesn't get partly
-  // matched as "Hanič". Includes nominative + common Czech cases.
-  const ownNamePatterns: RegExp[] = target === "hanka"
-    ? [
-        // Hanička, Haničku, Haničce, Haničko, Haničkou
-        /\b(Hanič[kc]?[aueoy]?[mu]?)\b/gi,
-        // Hanka, Hanku, Hance, Hanko, Hankou
-        /\b(Han[kc][aueoy]?[mu]?)\b/gi,
-        // Hana, Hanu, Haně, Hano, Hanou
-        /\b(Han[aueoy]?[mu]?)\b/gi,
-        // legacy alias forms
-        /\b(mamk[aueoyi]|mám[aueoy]|maminc?[aueoyi])\b/gi,
-      ]
-    : [
-        // Káťa, Káťu, Káti, Káťo, Káťou
-        /\b(Káť?[aueoyi]?[mu]?)\b/gi,
-        // Katka, Katku, Katce, Katko, Katkou
-        /\b(Kat[kc][aueoy]?[mu]?)\b/gi,
-        // Kata, Katu, Katě, Kato, Katou
-        /\b(Kat[aueoy]?[mu]?)\b/gi,
-      ];
-
-  // Strip prepositional + own-name phrases first ("s Haničkou", "pro Káťu",
-  // "od Káti", "u Haničky", "k Hanič ce", "Hance", "Káti").
-  // Then strip bare own-name occurrences left over.
-  const preps = "(?:s|se|pro|od|u|k|ke|na|do|o|v|ve|za|po|před|nad|pod)";
-  for (const namePat of ownNamePatterns) {
-    const src = namePat.source;
-    const flags = namePat.flags;
-    // "<prep> <name>" — drop the whole phrase
-    const phrasePat = new RegExp(`\\b${preps}\\s+${src}`, flags);
-    s = s.replace(phrasePat, "");
-    // bare name occurrence — drop the name
-    s = s.replace(namePat, "");
-  }
-
-  // Collapse whitespace, fix stray ", ," / " ," / leading punctuation
-  s = s.replace(/\s+/g, " ").replace(/\s+,/g, ",").replace(/,\s*,/g, ",");
-  s = s.replace(/^[\s,;:.]+/, "").replace(/[\s,;:]+$/, "").trim();
-
-  if (!s) return "";
-
-  // Lowercase the very first letter so it reads naturally after a colon
-  // ("hlavní věc na dnes: zapojit se do porady" — not "Zapojit").
-  s = s.charAt(0).toLocaleLowerCase("cs") + s.slice(1);
-
-  return s;
-}
-
 /* ── Deduplicate tasks by first 40 chars of task text ── */
 function deduplicateByText<T extends { task?: string; question?: string }>(items: T[]): T[] {
   const seen = new Set<string>();
@@ -983,13 +844,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       paragraphs.push(deficitProposals.join(" "));
 
       // ── SECTION D: "Co od Haničky" — krize MUSÍ mít konkrétní check-in ──
-      const hDeficitTasks = tasks
+      const hDeficitTasksRaw = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
-        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "hanka"))
+        .map(t => t.task)
         .filter(Boolean);
-      if (hDeficitTasks.length > 0) {
-        const lead = hDeficitTasks[0];
-        paragraphs.push(`Haničko, hlavní věc na dnes je ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
+      if (hDeficitTasksRaw.length > 0) {
+        const lead = renderTherapistAsk({ audience: "hanka", topTaskRaw: hDeficitTasksRaw[0] });
+        paragraphs.push(`${lead} A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
       } else if (effectiveCrisisPart) {
         paragraphs.push(crisisCheckInForHanka(effectiveCrisisPart));
       } else {
@@ -997,13 +858,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       }
 
       // ── SECTION E: "Co od Káti" — krize MUSÍ mít konkrétní check-in ──
-      const kDeficitTasks = tasks
+      const kDeficitTasksRaw = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
-        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "kata"))
+        .map(t => t.task)
         .filter(Boolean);
-      if (kDeficitTasks.length > 0) {
-        const lead = kDeficitTasks[0];
-        paragraphs.push(`Káťo, hlavní věc na dnes je ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
+      if (kDeficitTasksRaw.length > 0) {
+        const lead = renderTherapistAsk({ audience: "kata", topTaskRaw: kDeficitTasksRaw[0] });
+        paragraphs.push(`${lead} A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
       } else if (effectiveCrisisPart) {
         paragraphs.push(crisisCheckInForKata(effectiveCrisisPart));
       } else {
@@ -1104,19 +965,19 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       paragraphs.push(proposals.join(" "));
 
       // ── SECTION D: "Co potřebuji od Haničky" ──
-      const hankaTasksHumanized = tasks
+      const hankaTasksRaw = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
-        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "hanka"))
+        .map(t => t.task)
         .filter(Boolean);
       const hankaQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "hanka");
       const hankaSentences: string[] = [];
-      if (hankaTasksHumanized.length > 0) {
-        const lead = hankaTasksHumanized[0];
-        const rest = hankaTasksHumanized.length - 1;
+      if (hankaTasksRaw.length > 0) {
+        const lead = renderTherapistAsk({ audience: "hanka", topTaskRaw: hankaTasksRaw[0] });
+        const rest = hankaTasksRaw.length - 1;
         const restTail = rest > 0
           ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
           : "";
-        hankaSentences.push(`Haničko, hlavní věc na dnes je ${lead}.${restTail}`);
+        hankaSentences.push(`${lead}${restTail}`);
       }
       const hQ = phraseQuestions(hankaQuestions.length, "Haničko");
       if (hQ) hankaSentences.push(hQ);
@@ -1131,19 +992,19 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       paragraphs.push(hankaSentences.join(" "));
 
       // ── SECTION E: "Co potřebuji od Káti" ──
-      const kataTasksHumanized = tasks
+      const kataTasksRaw = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
-        .map(t => addressTaskTo2ndPerson(humanizeText(t.task), "kata"))
+        .map(t => t.task)
         .filter(Boolean);
       const kataQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "kata");
       const kataSentences: string[] = [];
-      if (kataTasksHumanized.length > 0) {
-        const lead = kataTasksHumanized[0];
-        const rest = kataTasksHumanized.length - 1;
+      if (kataTasksRaw.length > 0) {
+        const lead = renderTherapistAsk({ audience: "kata", topTaskRaw: kataTasksRaw[0] });
+        const rest = kataTasksRaw.length - 1;
         const restTail = rest > 0
           ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
           : "";
-        kataSentences.push(`Káťo, hlavní věc na dnes je ${lead}.${restTail}`);
+        kataSentences.push(`${lead}${restTail}`);
       }
       const kQ = phraseQuestions(kataQuestions.length, "Káťo");
       if (kQ) kataSentences.push(kQ);
