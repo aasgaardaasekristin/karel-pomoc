@@ -233,7 +233,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 <h4 className="text-[11px] font-semibold text-muted-foreground mb-1.5">
                   Karel svolal poradu
                 </h4>
-                <RichMarkdown content={d.initial_karel_brief ?? "(žádný brief)"} />
+                <RichMarkdown compact>{d.initial_karel_brief ?? "(žádný brief)"}</RichMarkdown>
                 {d.reason && (
                   <p className="text-[11px] text-muted-foreground italic mt-2">
                     Důvod: {d.reason}
@@ -246,7 +246,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 <h4 className="text-[11px] font-semibold text-primary mb-1.5">
                   Karlův pracovní návrh
                 </h4>
-                <RichMarkdown content={d.karel_proposed_plan ?? "(zatím bez návrhu)"} />
+                <RichMarkdown compact>{d.karel_proposed_plan ?? "(zatím bez návrhu)"}</RichMarkdown>
               </section>
 
               {/* Otázky pro Haničku */}
