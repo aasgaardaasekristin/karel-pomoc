@@ -555,17 +555,40 @@ const TaskCard = ({
             </div>
           )}
 
-          <div className="flex gap-1">
-            <Input
-              value={noteInputs[task.id] || ""}
-              onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
-              placeholder="Jak to jde? Napiš update..."
-              className="h-6 flex-1 bg-background text-[0.5625rem]"
-              onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
-            />
-            <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
-              {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
-            </Button>
+          <div className="space-y-1">
+            {assigned === "both" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[0.5rem] uppercase tracking-wide text-muted-foreground">Odpovídá:</span>
+                <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setResponder("hanka"); }}
+                    className={`px-2 py-0.5 text-[0.5625rem] rounded transition-colors ${responder === "hanka" ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Hanka
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setResponder("kata"); }}
+                    className={`px-2 py-0.5 text-[0.5625rem] rounded transition-colors ${responder === "kata" ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Káťa
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-1">
+              <Input
+                value={noteInputs[task.id] || ""}
+                onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                placeholder={assigned === "both" ? `Update jako ${responder === "hanka" ? "Hanka" : "Káťa"}…` : "Jak to jde? Napiš update..."}
+                className="h-6 flex-1 bg-background text-[0.5625rem]"
+                onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
+              />
+              <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
+                {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
+              </Button>
+            </div>
           </div>
         </div>
       )}
