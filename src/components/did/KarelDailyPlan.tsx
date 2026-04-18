@@ -117,8 +117,8 @@ const isUsableLabel = (raw: string | null | undefined): boolean =>
 function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
   return normalizeTherapist(assignedTo) ?? "team";
 }
-
-
+/* ── Deduplicate tasks by first 40 chars of task text ── */
+function deduplicateByText<T extends { task?: string; question?: string }>(items: T[]): T[] {
   const seen = new Set<string>();
   return items.filter(item => {
     const text = (item.task || item.question || "").slice(0, 40).toLowerCase().trim();
