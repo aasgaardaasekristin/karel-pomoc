@@ -100,8 +100,12 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     setLoading(true);
     try {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
-      // FÁZE 3 — canonical: aktivní krize čte z crisis_events (open phases), nikoli z crisis_alerts.
-      const [plansRes, crisisEventsRes, crisisAlertsRes] = await Promise.all([
+      // BUGFIX (FÁZE 3 dormant leak): operational truth for "is there a crisis
+      // today?" comes ONLY from crisis_events (canonical). crisis_alerts is
+      // a notification projection — reading it here re-introduces the parallel
+      // resolver bug (a closed event but an unclosed alert would falsely
+      // trigger a "crisis" badge in today's session plan).
+      const [plansRes, crisisEventsRes] = await Promise.all([
         (supabase as any)
           .from("did_daily_session_plans")
           .select("*")
@@ -111,29 +115,16 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
           .from("crisis_events")
           .select("id, part_name, severity, trigger_description, phase")
           .not("phase", "in", '("closed","CLOSED")'),
-        // crisis_alerts only as enrichment for severity/summary if missing on event
-        supabase
-          .from("crisis_alerts")
-          .select("id, part_name, severity, summary, conversation_id")
-          .in("status", ["ACTIVE", "ACKNOWLEDGED"]),
       ]);
       if (plansRes.error) throw plansRes.error;
       setPlans(plansRes.data || []);
-      const alertsByPart = new Map<string, any>();
-      for (const a of (crisisAlertsRes.data || [])) {
-        if (!alertsByPart.has(a.part_name)) alertsByPart.set(a.part_name, a);
-      }
-      const canonicalCrises = (crisisEventsRes.data || []).map((ev: any) => {
-        const enrich = alertsByPart.get(ev.part_name);
-        return {
-          id: ev.id,
-          part_name: ev.part_name,
-          severity: ev.severity || enrich?.severity,
-          summary: ev.trigger_description || enrich?.summary,
-          conversation_id: enrich?.conversation_id,
-          crisis_event_id: ev.id,
-        };
-      });
+      const canonicalCrises = (crisisEventsRes.data || []).map((ev: any) => ({
+        id: ev.id,
+        part_name: ev.part_name,
+        severity: ev.severity,
+        summary: ev.trigger_description,
+        crisis_event_id: ev.id,
+      }));
       setActiveCrises(canonicalCrises);
     } catch (e) {
       console.error("Failed to load session plans:", e);
@@ -165,11 +156,16 @@ const DidDailySessionPlan = ({ refreshTrigger }: Props) => {
     loadPrev();
   }, [firstPendingPlan?.selected_part, firstPendingPlan?.therapist]);
 
+  // BUGFIX (dormant leak): default override picker MUST NOT include `sleeping`.
+  // The everyday "Určit část" flow is for today's reality. A separate explicit
+  // toggle could later expose the dormant pool; until then we keep it strictly
+  // active-only to prevent Karel from being nudged toward parts that have no
+  // canonical reason to be on the schedule.
   const loadRegistryParts = useCallback(async () => {
     const { data } = await supabase
       .from("did_part_registry")
       .select("part_name, status")
-      .in("status", ["active", "sleeping"])
+      .eq("status", "active")
       .order("part_name");
     setRegistryParts(data || []);
   }, []);
