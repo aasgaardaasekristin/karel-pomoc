@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { requireAuth, corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
