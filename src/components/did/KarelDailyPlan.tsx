@@ -901,30 +901,30 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       deficitProposals.push("Navrhuji dnes obnovit komunikaci — potřebuji alespoň stručné pozorování o tom, jak kluci aktuálně fungují.");
       paragraphs.push(deficitProposals.join(" "));
 
-      // ── SECTION D: "Co od Haničky" ──
+      // ── SECTION D: "Co od Haničky" — krize MUSÍ mít konkrétní check-in ──
       const hDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
         .map(t => humanizeText(t.task))
         .filter(Boolean);
       if (hDeficitTasks.length > 0) {
         const lead = hDeficitTasks[0];
-        const rest = hDeficitTasks.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}.` : "";
-        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail} A především — potřebuji tvé aktuální pozorování.`);
+        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}. A především — potřebuji tvé aktuální pozorování, jak kluci v tichu fungují.`);
+      } else if (effectiveCrisisPart) {
+        paragraphs.push(crisisCheckInForHanka(effectiveCrisisPart));
       } else {
         paragraphs.push("Haničko, potřebuji od tebe alespoň krátkou zprávu o tom, jak kluci aktuálně fungují v každodenním životě.");
       }
 
-      // ── SECTION E: "Co od Káti" ──
+      // ── SECTION E: "Co od Káti" — krize MUSÍ mít konkrétní check-in ──
       const kDeficitTasks = tasks
         .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
         .map(t => humanizeText(t.task))
         .filter(Boolean);
       if (kDeficitTasks.length > 0) {
         const lead = kDeficitTasks[0];
-        const rest = kDeficitTasks.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}.` : "";
-        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail} A především — potřebuji tvé aktuální pozorování.`);
+        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}. A především — potřebuji tvůj pohled zvenčí, jak kluci aktuálně působí.`);
+      } else if (effectiveCrisisPart) {
+        paragraphs.push(crisisCheckInForKata(effectiveCrisisPart));
       } else {
         paragraphs.push("Káťo, potřebuji od tebe alespoň krátkou zprávu — co pozoruješ ze své pozice, jak kluci reagují.");
       }
