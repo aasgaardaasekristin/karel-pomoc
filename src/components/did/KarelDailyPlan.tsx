@@ -94,6 +94,37 @@ const ActionLink = ({ label, onClick, icon }: { label: string; onClick: () => vo
   </button>
 );
 
+/* ── Task framing badge — explicit overdue / blocked / stale / archive label.
+   Calmer than red urgency: stale tasks get a subtle muted chip instead of
+   silently inflating the urgent counter. ── */
+const TaskFrameBadge = ({ createdAt, dueDate, status }: { createdAt?: string; dueDate?: string | null; status?: string }) => {
+  const now = Date.now();
+  const ageDays = createdAt ? Math.floor((now - new Date(createdAt).getTime()) / 86400000) : 0;
+  const isOverdue = !!dueDate && new Date(dueDate).getTime() < now;
+  const isBlocked = status === "blocked";
+  const isStale = ageDays >= 7 && !isOverdue;
+  const isArchiveCandidate = ageDays >= 14;
+
+  if (!isOverdue && !isBlocked && !isStale && !isArchiveCandidate) return null;
+
+  const label = isArchiveCandidate
+    ? "k archivaci"
+    : isOverdue
+    ? "po termínu"
+    : isBlocked
+    ? "blokováno"
+    : "starší úkol";
+  const tone = isOverdue
+    ? "bg-destructive/10 text-destructive/80 border-destructive/20"
+    : "bg-muted/40 text-muted-foreground border-border/40";
+  return (
+    <span className={`ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border ${tone}`}>
+      {label}
+      {ageDays > 0 ? ` · ${ageDays}d` : ""}
+    </span>
+  );
+};
+
 /* ── Divider ── */
 const NarrativeDivider = () => <div className="jung-divider my-4" />;
 
