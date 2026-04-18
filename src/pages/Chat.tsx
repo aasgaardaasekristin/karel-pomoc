@@ -264,7 +264,17 @@ const Chat = () => {
     const checkAuth = async () => {
       if (!session) navigate("/", { replace: true });
       else {
-        if (!hubSection && !activeSession) {
+        // BUGFIX (spontaneous reset): once the user has been admitted into a
+        // DID workspace (chat / meeting / live-session / part-identify), do
+        // NOT bounce them to /hub on subsequent auth re-checks. This effect
+        // can re-run on visibility / mode toggles and was kicking the user
+        // back to the hub mid-thread when hubSection wasn't set yet.
+        const inLiveDidFlow = mode === "childcare" && (
+          didFlowState === "chat" || didFlowState === "meeting" ||
+          didFlowState === "live-session" || didFlowState === "part-identify" ||
+          didFlowState === "therapist-threads" || didFlowState === "thread-list"
+        );
+        if (!hubSection && !activeSession && !inLiveDidFlow) {
           navigate("/hub", { replace: true });
           return;
         }
@@ -294,7 +304,7 @@ const Chat = () => {
       }
     };
     void checkAuth();
-  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads]);
+  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads, didFlowState]);
 
   // ═══ Crisis deep-link handler ═══
   // Accepts BOTH:
@@ -853,7 +863,7 @@ const Chat = () => {
       return;
     }
     
-    const thread = {
+    const thread: DidThread = {
       id: data.id,
       partName: data.part_name,
       partLanguage: data.part_language || "cs",
@@ -867,6 +877,8 @@ const Chat = () => {
       threadEmoji: (data as any).thread_emoji || "",
       threadLabel: (data as any).thread_label || "",
       enteredName: (data as any).entered_name || "",
+      workspaceType: ((data as any).workspace_type ?? null) as DidThread["workspaceType"],
+      workspaceId: ((data as any).workspace_id ?? null) as string | null,
     };
     
     setActiveThread(thread);
@@ -976,7 +988,8 @@ const Chat = () => {
       return;
     }
 
-    // 3) Task workspace — open therapist thread with task context
+    // 3) Task workspace — open canonical thread bound to (workspace_type=task, workspace_id=task.id)
+    //    BUGFIX: NO MORE forceNew. Reopening the same task MUST land in the same persistent thread.
     if (taskId && didSubmodeParam) {
       setDidSubMode(didSubmodeParam);
       setDidFlowState("loading");
@@ -984,16 +997,40 @@ const Chat = () => {
       (async () => {
         const subMode = didSubmodeParam === "kata" ? "kata" : "mamka";
         await didThreads.fetchAllThreads(subMode);
-        // Create a new thread with task context
+
+        // 1. Lookup canonical workspace thread first
+        const existing = await didThreads.getThreadByWorkspace("task", taskId);
+        if (existing) {
+          setActiveThread(existing);
+          setMessages(existing.messages as any);
+          setDidFlowState("chat");
+          return;
+        }
+
+        // 2. Not found → create ONCE with full assignee context in intro
         const { data: taskData } = await supabase
           .from("did_therapist_tasks")
-          .select("task, assigned_to, priority")
+          .select("task, assigned_to, priority, detail_instruction, status_hanka, status_kata")
           .eq("id", taskId)
           .maybeSingle();
         const taskLabel = taskData?.task || "Úkol od Karla";
+        const assigned = (taskData?.assigned_to || "").toLowerCase();
+        const recipientLine =
+          assigned === "both" ? "**Pro Haničku i Káťu**" :
+          assigned === "kata" ? "**Pro Káťu**" :
+          assigned === "hanka" ? "**Pro Haničku**" :
+          "**Pro tým**";
+        const verb = assigned === "both" ? "Karel vám tento úkol přidělil" : "Karel ti tento úkol přidělil";
+        const detail = taskData?.detail_instruction ? `\n\n${taskData.detail_instruction}` : "";
+        const intro = `📋 ${recipientLine}\n**Úkol:** ${taskLabel}${detail}\n\n${verb}. Co potřebujete vědět nebo co chcete prodiskutovat?`;
+
         const thread = await didThreads.createThread("Karel", subMode, "cs", [
-          { role: "assistant", content: `📋 **Úkol:** ${taskLabel}\n\nKarel ti tento úkol přidělil. Co potřebuješ vědět nebo co chceš prodiskutovat?` },
-        ], { threadLabel: `Úkol: ${taskLabel.slice(0, 50)}`, forceNew: true });
+          { role: "assistant", content: intro },
+        ], {
+          threadLabel: `Úkol: ${taskLabel.slice(0, 60)}`,
+          workspaceType: "task",
+          workspaceId: taskId,
+        });
         if (thread) {
           setActiveThread(thread);
           setMessages(thread.messages as any);
@@ -1005,7 +1042,7 @@ const Chat = () => {
       return;
     }
 
-    // 4) Question workspace — open thread with question context
+    // 4) Question workspace — canonical thread bound to (workspace_type=question, workspace_id=question.id)
     if (questionId && didSubmodeParam) {
       setDidSubMode(didSubmodeParam);
       setDidFlowState("loading");
@@ -1013,15 +1050,36 @@ const Chat = () => {
       (async () => {
         const subMode = didSubmodeParam === "kata" ? "kata" : "mamka";
         await didThreads.fetchAllThreads(subMode);
+
+        const existing = await didThreads.getThreadByWorkspace("question", questionId);
+        if (existing) {
+          setActiveThread(existing);
+          setMessages(existing.messages as any);
+          setDidFlowState("chat");
+          return;
+        }
+
         const { data: qData } = await (supabase as any)
           .from("did_pending_questions")
           .select("question, directed_to")
           .eq("id", questionId)
           .maybeSingle();
         const qText = qData?.question || "Otázka od Karla";
+        const directed = (qData?.directed_to || "").toLowerCase();
+        const recipientLine =
+          directed === "both" ? "**Pro Haničku i Káťu**" :
+          directed === "kata" ? "**Pro Káťu**" :
+          directed === "hanka" ? "**Pro Haničku**" :
+          "**Otázka**";
+        const intro = `❓ ${recipientLine}\n\n${qText}\n\nProsím, odpovězte co nejpřesněji. Karel vaši odpověď zpracuje v příštím cyklu.`;
+
         const thread = await didThreads.createThread("Karel", subMode, "cs", [
-          { role: "assistant", content: `❓ **Karlova otázka:**\n\n${qText}\n\nProsím, odpověz co nejpřesněji. Karel zpracuje tvou odpověď v příštím cyklu.` },
-        ], { threadLabel: `Otázka: ${qText.slice(0, 50)}`, forceNew: true });
+          { role: "assistant", content: intro },
+        ], {
+          threadLabel: `Otázka: ${qText.slice(0, 60)}`,
+          workspaceType: "question",
+          workspaceId: questionId,
+        });
         if (thread) {
           setActiveThread(thread);
           setMessages(thread.messages as any);
@@ -1033,16 +1091,33 @@ const Chat = () => {
       return;
     }
 
-    // 5) Session plan — open mamka submode with session context
+    // 5) Session plan — workspace bound to a (mamka, sessionPart) pair.
+    //    Until a sessionId is part of the deep-link, we key by sessionPart so
+    //    reopening "Sezení s X" today reuses the same prep workspace.
     if (sessionPart) {
       setDidSubMode("mamka");
       setDidFlowState("loading");
       didContextPrime.runPrime(sessionPart, "mamka");
       (async () => {
         await didThreads.fetchAllThreads("mamka");
+
+        const sessionKey = `session:${sessionPart.toLowerCase().trim()}`;
+        const existing = await didThreads.getThreadByWorkspace("session", sessionKey);
+        if (existing) {
+          setActiveThread(existing);
+          setMessages(existing.messages as any);
+          setDidFlowState("chat");
+          return;
+        }
+
+        const intro = `📅 **Plán sezení s ${sessionPart}**\n\nKarel navrhl pro dnešek pracovat s ${sessionPart}. Pojďme společně projít přípravu a plán sezení.`;
         const thread = await didThreads.createThread("Karel", "mamka", "cs", [
-          { role: "assistant", content: `📅 **Plán sezení: ${sessionPart}**\n\nKarel navrhl pro dnešek pracovat s ${sessionPart}. Pojďme společně projít přípravu a plán sezení.` },
-        ], { threadLabel: `Sezení: ${sessionPart}`, forceNew: true });
+          { role: "assistant", content: intro },
+        ], {
+          threadLabel: `Sezení: ${sessionPart}`,
+          workspaceType: "session",
+          workspaceId: sessionKey,
+        });
         if (thread) {
           setActiveThread(thread);
           setMessages(thread.messages as any);

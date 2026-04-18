@@ -144,7 +144,7 @@ const isTodayCategory = (category?: string | null) => category === "today" || ca
 const isTomorrowCategory = (category?: string | null) => category === "tomorrow";
 const isLongtermCategory = (category?: string | null) => category === "longterm" || category === "weekly" || (!isTodayCategory(category) && !isTomorrowCategory(category));
 const categoryLabel = (category?: string | null) => isTodayCategory(category) ? "Dnes" : isTomorrowCategory(category) ? "Zítra" : "Dlouhodobé";
-const priorityLabel = (priority?: string | null) => priority === "urgent" ? "🔴 Urgentní" : priority === "high" ? "🟠 Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
+const priorityLabel = (priority?: string | null) => priority === "urgent" ? "Urgentní" : priority === "high" ? "Vysoká" : priority === "normal" ? "Běžná" : "Nízká";
 const formatDueDate = (dueDate?: string | null) => dueDate ? new Date(`${dueDate.slice(0, 10)}T12:00:00`).toLocaleDateString("cs-CZ") : "";
 
 const resolveTaskBucket = (task: TherapistTask): TaskBucket => {
@@ -266,9 +266,14 @@ const TaskCard = ({
   const assigned = normalizeAssignedTo(task.assigned_to) as TherapistAssignee;
 
   const [feedback, setFeedback] = useState<TaskFeedbackEntry[]>([]);
-  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [autoFeedback, setAutoFeedback] = useState<AutoFeedbackEntry | null>(null);
+  // BUGFIX (P1): tasks assigned to BOTH must NOT default the author to "hanka".
+  // Therapist explicitly picks who is replying. For single-assignee tasks the
+  // selector is locked to that therapist (still shown so identity is unambiguous).
+  const [responder, setResponder] = useState<TherapistAssignee>(
+    assigned === "kata" ? "kata" : assigned === "both" ? "hanka" : "hanka"
+  );
   const feedEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -302,8 +307,12 @@ const TaskCard = ({
     if (!text) return;
     setSendingFeedback(true);
 
-    // Determine author from the assigned_to or default to hanka
-    const author = assigned === "kata" ? "kata" : "hanka";
+    // BUGFIX (P1): for both-assigned tasks use the explicit responder pick.
+    // For single-assignee tasks force the canonical author (no implicit hanka).
+    const author: TherapistAssignee =
+      assigned === "hanka" ? "hanka" :
+      assigned === "kata" ? "kata" :
+      responder;
 
     // Save therapist's message
     const { error: insertErr } = await supabase.from("did_task_feedback").insert({
@@ -546,17 +555,40 @@ const TaskCard = ({
             </div>
           )}
 
-          <div className="flex gap-1">
-            <Input
-              value={noteInputs[task.id] || ""}
-              onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
-              placeholder="Jak to jde? Napiš update..."
-              className="h-6 flex-1 bg-background text-[0.5625rem]"
-              onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
-            />
-            <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
-              {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
-            </Button>
+          <div className="space-y-1">
+            {assigned === "both" && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[0.5rem] uppercase tracking-wide text-muted-foreground">Odpovídá:</span>
+                <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setResponder("hanka"); }}
+                    className={`px-2 py-0.5 text-[0.5625rem] rounded transition-colors ${responder === "hanka" ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Hanka
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setResponder("kata"); }}
+                    className={`px-2 py-0.5 text-[0.5625rem] rounded transition-colors ${responder === "kata" ? "bg-background text-foreground shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    Káťa
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="flex gap-1">
+              <Input
+                value={noteInputs[task.id] || ""}
+                onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                placeholder={assigned === "both" ? `Update jako ${responder === "hanka" ? "Hanka" : "Káťa"}…` : "Jak to jde? Napiš update..."}
+                className="h-6 flex-1 bg-background text-[0.5625rem]"
+                onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
+              />
+              <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
+                {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
+              </Button>
+            </div>
           </div>
         </div>
       )}

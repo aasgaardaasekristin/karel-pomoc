@@ -6,6 +6,8 @@ import {
   sanitizePartName,
 } from "@/lib/didPartNaming";
 
+export type WorkspaceType = "task" | "question" | "session" | null;
+
 export interface DidThread {
   id: string;
   partName: string;
@@ -20,6 +22,11 @@ export interface DidThread {
   threadEmoji: string;
   threadLabel: string;
   enteredName: string;
+  // BUGFIX: canonical workspace identity. When non-null, this thread is the
+  // single persistent workspace for the referenced task / question / session.
+  // Reopening the same source row MUST resolve back to the same thread.
+  workspaceType: WorkspaceType;
+  workspaceId: string | null;
 }
 
 const rowToThread = (row: any): DidThread | null => {
@@ -40,6 +47,8 @@ const rowToThread = (row: any): DidThread | null => {
     threadEmoji: (row as any).thread_emoji || "",
     threadLabel: (row as any).thread_label || "",
     enteredName: (row as any).entered_name || "",
+    workspaceType: ((row as any).workspace_type ?? null) as WorkspaceType,
+    workspaceId: ((row as any).workspace_id ?? null) as string | null,
   };
 };
 
@@ -90,6 +99,12 @@ export interface CreateThreadOptions {
   threadLabel?: string;
   enteredName?: string;
   forceNew?: boolean;
+  // BUGFIX: when supplied, thread is bound to a canonical workspace
+  // (task / question / session). Reopen flows must look up by this pair
+  // before creating a new thread, so the same task always returns the
+  // same persistent workspace.
+  workspaceType?: WorkspaceType;
+  workspaceId?: string | null;
 }
 
 export const useDidThreads = () => {
@@ -251,6 +266,8 @@ export const useDidThreads = () => {
         processed_at: null,
         thread_label: options?.threadLabel || "",
         entered_name: options?.enteredName || "",
+        workspace_type: options?.workspaceType ?? null,
+        workspace_id: options?.workspaceId ?? null,
       } as any)
       .select()
       .single();
@@ -322,6 +339,27 @@ export const useDidThreads = () => {
     return thread;
   }, []);
 
+  // BUGFIX: canonical workspace lookup. Returns the most recent persistent
+  // thread bound to (workspaceType, workspaceId), regardless of activity age.
+  // Used by deep-link reopen flows so the same task / question / session
+  // always returns the same workspace.
+  const getThreadByWorkspace = useCallback(async (
+    workspaceType: Exclude<WorkspaceType, null>,
+    workspaceId: string,
+  ): Promise<DidThread | null> => {
+    if (!workspaceId) return null;
+    const { data, error } = await supabase
+      .from("did_threads")
+      .select("*")
+      .eq("workspace_type", workspaceType)
+      .eq("workspace_id", workspaceId)
+      .order("last_activity_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return rowToThread(data);
+  }, []);
+
   const deleteThread = useCallback(async (threadId: string) => {
     await supabase.from("did_threads").delete().eq("id", threadId);
     setThreads((prev) => prev.filter((thread) => thread.id !== threadId));
@@ -376,6 +414,7 @@ export const useDidThreads = () => {
     createThread,
     updateThreadMessages,
     getThreadByPart,
+    getThreadByWorkspace,
     deleteThread,
     updateThreadTheme,
     updateThreadThemeConfig,
