@@ -112,13 +112,17 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
           .from("did_daily_session_plans")
           .select("id", { count: "exact", head: true })
           .in("status", ["generated", "in_progress"]),
-        // Stale / archive-candidate: open tasks older than the threshold.
-        // Surfaced as a separate (calmer) counter — never red.
+        // Stale / archive-candidate: open tasks older than the stale
+        // threshold BUT still within the visible-surface window (14 days).
+        // Anything older than 14d is unreachable in any task surface and
+        // would be a counter without dohledatelný obsah — explicitly
+        // excluded so the counter and the briefing list are sladěné.
         supabase
           .from("did_therapist_tasks")
           .select("id", { count: "exact", head: true })
           .in("status", ["pending", "active", "in_progress"] as any)
-          .lt("created_at", staleCutoffISO),
+          .lt("created_at", staleCutoffISO)
+          .gte("created_at", visibleFloorISO),
       ]);
 
       if (cancelled) return;
