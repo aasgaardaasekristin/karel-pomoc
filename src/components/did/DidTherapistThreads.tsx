@@ -1,4 +1,4 @@
-import { MessageCircle, Clock, Trash2, Plus } from "lucide-react";
+import { MessageCircle, Clock, Trash2, Plus, ClipboardList, HelpCircle, CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { DidThread } from "@/hooks/useDidThreads";
 import DidPersonalizedSessionPrep from "./DidPersonalizedSessionPrep";
@@ -12,6 +12,26 @@ interface Props {
   onBack: () => void;
 }
 
+// BUGFIX (P1 list identity): for system workspaces (task / question / session)
+// we render the thread label as the PRIMARY title so two different tasks no
+// longer look like "the same thread with a different preview". The last
+// message becomes a secondary preview line under the title.
+const WORKSPACE_TYPE_META: Record<string, { label: string; icon: typeof ClipboardList; tone: string }> = {
+  task: { label: "Úkol", icon: ClipboardList, tone: "rgba(255, 200, 120, 0.85)" },
+  question: { label: "Otázka", icon: HelpCircle, tone: "rgba(160, 200, 255, 0.85)" },
+  session: { label: "Sezení", icon: CalendarDays, tone: "rgba(180, 230, 180, 0.85)" },
+};
+
+const lastTextMessage = (thread: DidThread): string => {
+  const lastUser = [...thread.messages].reverse().find(m => m.role === "user");
+  if (lastUser && typeof lastUser.content === "string") return lastUser.content;
+  const lastAssistant = [...thread.messages].reverse().find(m => m.role === "assistant");
+  if (lastAssistant && typeof lastAssistant.content === "string") return lastAssistant.content;
+  return "";
+};
+
+const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "…" : s;
+
 const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteThread, onNewThread, onBack }: Props) => {
   const formatTime = (isoStr: string) => {
     const diff = Date.now() - new Date(isoStr).getTime();
@@ -23,15 +43,6 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
     return new Date(isoStr).toLocaleDateString("cs-CZ", {
       day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
     });
-  };
-
-  // Extract preview from thread messages
-  const getPreview = (thread: DidThread): string => {
-    const lastUser = [...thread.messages].reverse().find(m => m.role === "user");
-    if (lastUser) return typeof lastUser.content === "string" ? lastUser.content.slice(0, 80) : "...";
-    const lastAssistant = [...thread.messages].reverse().find(m => m.role === "assistant");
-    if (lastAssistant) return typeof lastAssistant.content === "string" ? lastAssistant.content.slice(0, 80) : "...";
-    return "Nový rozhovor";
   };
 
   return (
@@ -78,57 +89,91 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
         </div>
       ) : (
         <div className="space-y-2">
-          {threads.map((thread) => (
-            <div
-              key={thread.id}
-              className="flex items-center gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-200 group"
-              style={{
-                background: "rgba(0, 0, 0, 0.1)",
-                backdropFilter: "blur(10px)",
-                WebkitBackdropFilter: "blur(10px)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "rgba(0, 0, 0, 0.18)";
-                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "rgba(0, 0, 0, 0.1)";
-                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
-              }}
-              onClick={() => onSelectThread(thread)}
-            >
+          {threads.map((thread) => {
+            const meta = thread.workspaceType ? WORKSPACE_TYPE_META[thread.workspaceType] : null;
+            const lastMsg = lastTextMessage(thread);
+            // For system workspaces: title = threadLabel (assigned identity).
+            // For ad-hoc therapist threads: title = first non-empty user/assistant snippet.
+            const primaryTitle = meta
+              ? (thread.threadLabel || `${meta.label}`)
+              : (thread.threadLabel || truncate(lastMsg, 80) || "Nový rozhovor");
+            const previewLine = meta
+              ? truncate(lastMsg.replace(/\s+/g, " ").trim(), 90)
+              : "";
+            const Icon = meta?.icon || MessageCircle;
+            const iconTone = meta?.tone || "rgba(255, 255, 255, 0.7)";
+
+            return (
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: "rgba(255, 255, 255, 0.12)" }}
-              >
-                <MessageCircle className="w-4 h-4" style={{ color: "rgba(255, 255, 255, 0.7)" }} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm truncate" style={{ color: "rgba(255, 255, 255, 0.9)" }}>
-                  {getPreview(thread)}
-                </div>
-                <div className="flex items-center gap-2 text-[0.625rem] mt-0.5" style={{ color: "rgba(255, 255, 255, 0.5)" }}>
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {formatTime(thread.lastActivityAt)}
-                  </span>
-                  <span>{thread.messages.length} zpráv</span>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteThread(thread.id);
+                key={thread.id}
+                className="flex items-start gap-3 p-3 rounded-2xl cursor-pointer transition-all duration-200 group"
+                style={{
+                  background: "rgba(0, 0, 0, 0.1)",
+                  backdropFilter: "blur(10px)",
+                  WebkitBackdropFilter: "blur(10px)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
                 }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(0, 0, 0, 0.18)";
+                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(0, 0, 0, 0.1)";
+                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+                }}
+                onClick={() => onSelectThread(thread)}
               >
-                <Trash2 className="w-3.5 h-3.5 text-destructive" />
-              </Button>
-            </div>
-          ))}
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                  style={{ background: "rgba(255, 255, 255, 0.12)" }}
+                >
+                  <Icon className="w-4 h-4" style={{ color: iconTone }} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {meta && (
+                      <span
+                        className="inline-flex items-center text-[0.55rem] uppercase tracking-wider px-1.5 py-0 rounded-full"
+                        style={{
+                          background: "rgba(255, 255, 255, 0.08)",
+                          color: iconTone,
+                          border: "1px solid rgba(255, 255, 255, 0.12)",
+                        }}
+                      >
+                        {meta.label}
+                      </span>
+                    )}
+                    <span className="text-sm truncate font-medium" style={{ color: "rgba(255, 255, 255, 0.92)" }}>
+                      {primaryTitle}
+                    </span>
+                  </div>
+                  {previewLine && (
+                    <div className="text-[0.6875rem] mt-0.5 truncate" style={{ color: "rgba(255, 255, 255, 0.55)" }}>
+                      {previewLine}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-[0.625rem] mt-0.5" style={{ color: "rgba(255, 255, 255, 0.5)" }}>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatTime(thread.lastActivityAt)}
+                    </span>
+                    <span>{thread.messages.length} zpráv</span>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteThread(thread.id);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                </Button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

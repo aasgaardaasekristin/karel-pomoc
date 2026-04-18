@@ -264,7 +264,17 @@ const Chat = () => {
     const checkAuth = async () => {
       if (!session) navigate("/", { replace: true });
       else {
-        if (!hubSection && !activeSession) {
+        // BUGFIX (spontaneous reset): once the user has been admitted into a
+        // DID workspace (chat / meeting / live-session / part-identify), do
+        // NOT bounce them to /hub on subsequent auth re-checks. This effect
+        // can re-run on visibility / mode toggles and was kicking the user
+        // back to the hub mid-thread when hubSection wasn't set yet.
+        const inLiveDidFlow = mode === "childcare" && (
+          didFlowState === "chat" || didFlowState === "meeting" ||
+          didFlowState === "live-session" || didFlowState === "part-identify" ||
+          didFlowState === "therapist-threads" || didFlowState === "thread-list"
+        );
+        if (!hubSection && !activeSession && !inLiveDidFlow) {
           navigate("/hub", { replace: true });
           return;
         }
@@ -294,7 +304,7 @@ const Chat = () => {
       }
     };
     void checkAuth();
-  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads]);
+  }, [isAuthReady, session, navigate, hubSection, activeSession, mode, setMode, researchThreads, didFlowState]);
 
   // ═══ Crisis deep-link handler ═══
   // Accepts BOTH:

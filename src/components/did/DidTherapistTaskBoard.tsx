@@ -266,9 +266,14 @@ const TaskCard = ({
   const assigned = normalizeAssignedTo(task.assigned_to) as TherapistAssignee;
 
   const [feedback, setFeedback] = useState<TaskFeedbackEntry[]>([]);
-  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [autoFeedback, setAutoFeedback] = useState<AutoFeedbackEntry | null>(null);
+  // BUGFIX (P1): tasks assigned to BOTH must NOT default the author to "hanka".
+  // Therapist explicitly picks who is replying. For single-assignee tasks the
+  // selector is locked to that therapist (still shown so identity is unambiguous).
+  const [responder, setResponder] = useState<TherapistAssignee>(
+    assigned === "kata" ? "kata" : assigned === "both" ? "hanka" : "hanka"
+  );
   const feedEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -302,8 +307,12 @@ const TaskCard = ({
     if (!text) return;
     setSendingFeedback(true);
 
-    // Determine author from the assigned_to or default to hanka
-    const author = assigned === "kata" ? "kata" : "hanka";
+    // BUGFIX (P1): for both-assigned tasks use the explicit responder pick.
+    // For single-assignee tasks force the canonical author (no implicit hanka).
+    const author: TherapistAssignee =
+      assigned === "hanka" ? "hanka" :
+      assigned === "kata" ? "kata" :
+      responder;
 
     // Save therapist's message
     const { error: insertErr } = await supabase.from("did_task_feedback").insert({
