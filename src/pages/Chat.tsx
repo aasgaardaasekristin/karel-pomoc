@@ -97,13 +97,37 @@ const Chat = () => {
     }
   }, [mainMode]);
 
-  // Determine hub section from sessionStorage
-  const [hubSection] = useState<HubSection>(() => {
+  // BUGFIX (P1 spontaneous reset): hubSection MUST be a live read of
+  // sessionStorage, not a snapshot frozen at component mount. Earlier code
+  // grabbed the value once via useState(() => ...) — but other code paths
+  // (deep links, hub navigation) write `karel_hub_section` later, and the
+  // auth guard then kept seeing `null` and bounced the user back to /hub.
+  // We now use state + a tiny re-read helper, and also re-read on every
+  // sessionStorage / visibility change so updates are reflected immediately.
+  const readHubSection = (): HubSection => {
     try {
       const section = sessionStorage.getItem("karel_hub_section") as HubSection;
       return section || null;
     } catch { return null; }
-  });
+  };
+  const [hubSection, setHubSection] = useState<HubSection>(readHubSection);
+  useEffect(() => {
+    const sync = () => {
+      const next = readHubSection();
+      setHubSection((prev) => (prev === next ? prev : next));
+    };
+    window.addEventListener("storage", sync);
+    document.addEventListener("visibilitychange", sync);
+    // Poll once per second — sessionStorage changes from same-tab writes do
+    // NOT fire the `storage` event, so this guarantees the guard sees
+    // updates within ~1s without forcing every writer to publish events.
+    const tick = window.setInterval(sync, 1000);
+    return () => {
+      window.removeEventListener("storage", sync);
+      document.removeEventListener("visibilitychange", sync);
+      window.clearInterval(tick);
+    };
+  }, []);
 
   const [input, setInput] = useState("");
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
@@ -265,14 +289,16 @@ const Chat = () => {
       if (!session) navigate("/", { replace: true });
       else {
         // BUGFIX (spontaneous reset): once the user has been admitted into a
-        // DID workspace (chat / meeting / live-session / part-identify), do
-        // NOT bounce them to /hub on subsequent auth re-checks. This effect
-        // can re-run on visibility / mode toggles and was kicking the user
-        // back to the hub mid-thread when hubSection wasn't set yet.
+        // DID workspace, do NOT bounce them to /hub on subsequent auth
+        // re-checks. Includes `loading` so brief transitional states (deep
+        // link → workspace) don't kick the user out mid-navigation.
         const inLiveDidFlow = mode === "childcare" && (
           didFlowState === "chat" || didFlowState === "meeting" ||
           didFlowState === "live-session" || didFlowState === "part-identify" ||
-          didFlowState === "therapist-threads" || didFlowState === "thread-list"
+          didFlowState === "therapist-threads" || didFlowState === "thread-list" ||
+          didFlowState === "loading" || didFlowState === "submode-select" ||
+          didFlowState === "did-kartoteka" || didFlowState === "dashboard" ||
+          didFlowState === "terapeut"
         );
         if (!hubSection && !activeSession && !inLiveDidFlow) {
           navigate("/hub", { replace: true });
@@ -1007,10 +1033,13 @@ const Chat = () => {
           return;
         }
 
-        // 2. Not found → create ONCE with full assignee context in intro
+        // 2. Not found → create ONCE with an ACTIVE Karel briefing as intro.
+        //    The intro must say (a) who it's for, (b) why it matters now,
+        //    (c) what Karel proposes as first step, (d) explicit ask for
+        //    Hanička and (e) explicit ask for Káťa when assigned to BOTH.
         const { data: taskData } = await supabase
           .from("did_therapist_tasks")
-          .select("task, assigned_to, priority, detail_instruction, status_hanka, status_kata")
+          .select("task, assigned_to, priority, detail_instruction, status_hanka, status_kata, source_agreement, category, due_date")
           .eq("id", taskId)
           .maybeSingle();
         const taskLabel = taskData?.task || "Úkol od Karla";
@@ -1020,9 +1049,31 @@ const Chat = () => {
           assigned === "kata" ? "**Pro Káťu**" :
           assigned === "hanka" ? "**Pro Haničku**" :
           "**Pro tým**";
-        const verb = assigned === "both" ? "Karel vám tento úkol přidělil" : "Karel ti tento úkol přidělil";
-        const detail = taskData?.detail_instruction ? `\n\n${taskData.detail_instruction}` : "";
-        const intro = `📋 ${recipientLine}\n**Úkol:** ${taskLabel}${detail}\n\n${verb}. Co potřebujete vědět nebo co chcete prodiskutovat?`;
+        const detailLine = taskData?.detail_instruction
+          ? String(taskData.detail_instruction).slice(0, 600)
+          : "";
+        const reasonLine = taskData?.source_agreement
+          ? `Vychází z: ${String(taskData.source_agreement).slice(0, 220)}`
+          : "Tento úkol jsem zařadil na základě aktuálního stavu systému a poslední synchronizace s vámi.";
+        const firstStep = detailLine
+          ? `Jako první krok navrhuji projít konkrétní instrukci výše a říct mi, co je realisticky proveditelné dnes vs. zítra.`
+          : `Jako první krok navrhuji, abychom úkol rozdělili na nejmenší proveditelný díl pro dnešek a domluvili kdo ho vezme.`;
+        const askHanka = assigned === "both" || assigned === "hanka"
+          ? `**Od Haničky potřebuji:** tvé pozorování posledních 24h k tématu úkolu — co vidíš ty, co by mi pomohlo úkol zpřesnit.`
+          : "";
+        const askKata = assigned === "both" || assigned === "kata"
+          ? `**Od Káti potřebuji:** tvůj pohled jako druhé terapeutky — zda souhlasíš s mým návrhem prvního kroku, případně co bys udělala jinak.`
+          : "";
+        const introBlocks = [
+          `📋 ${recipientLine}`,
+          `**Úkol:** ${taskLabel}`,
+          detailLine ? `\n${detailLine}` : "",
+          `\n*Proč teď:* ${reasonLine}`,
+          `\n*První krok:* ${firstStep}`,
+          askHanka ? `\n${askHanka}` : "",
+          askKata ? `\n${askKata}` : "",
+        ].filter(Boolean);
+        const intro = introBlocks.join("\n");
 
         const thread = await didThreads.createThread("Karel", subMode, "cs", [
           { role: "assistant", content: intro },
@@ -1061,7 +1112,7 @@ const Chat = () => {
 
         const { data: qData } = await (supabase as any)
           .from("did_pending_questions")
-          .select("question, directed_to")
+          .select("question, directed_to, part_name, source")
           .eq("id", questionId)
           .maybeSingle();
         const qText = qData?.question || "Otázka od Karla";
@@ -1070,8 +1121,24 @@ const Chat = () => {
           directed === "both" ? "**Pro Haničku i Káťu**" :
           directed === "kata" ? "**Pro Káťu**" :
           directed === "hanka" ? "**Pro Haničku**" :
-          "**Otázka**";
-        const intro = `❓ ${recipientLine}\n\n${qText}\n\nProsím, odpovězte co nejpřesněji. Karel vaši odpověď zpracuje v příštím cyklu.`;
+          "**Otázka pro tým**";
+        const partLine = qData?.part_name && qData.part_name !== "system"
+          ? `*Týká se:* ${qData.part_name}`
+          : "";
+        const askHankaQ = directed === "both" || directed === "hanka"
+          ? "**Hanička:** odpověz prosím prvně ze své pozice — co k tomu víš teď."
+          : "";
+        const askKataQ = directed === "both" || directed === "kata"
+          ? "**Káťa:** přidej prosím svůj pohled, případně doplň, co ti z odpovědi Haničky chybí."
+          : "";
+        const intro = [
+          `❓ ${recipientLine}`,
+          `\n${qText}`,
+          partLine ? `\n${partLine}` : "",
+          `\n*Proč se ptám:* potřebuji to pro správné rozhodnutí v dalším cyklu — bez vaší odpovědi pracuji se slepým místem.`,
+          askHankaQ ? `\n${askHankaQ}` : "",
+          askKataQ ? `\n${askKataQ}` : "",
+        ].filter(Boolean).join("\n");
 
         const thread = await didThreads.createThread("Karel", subMode, "cs", [
           { role: "assistant", content: intro },
@@ -1091,9 +1158,11 @@ const Chat = () => {
       return;
     }
 
-    // 5) Session plan — workspace bound to a (mamka, sessionPart) pair.
-    //    Until a sessionId is part of the deep-link, we key by sessionPart so
-    //    reopening "Sezení s X" today reuses the same prep workspace.
+    // 5) Session plan — workspace bound to a real did_daily_session_plans row.
+    //    BUGFIX (P1): workspace_id MUST be a UUID (column type). The previous
+    //    `session:${part}` synthetic key would silently fail the UUID column
+    //    insert and spawn parallel threads. We now resolve sessionPart to the
+    //    most recent today / upcoming plan row and bind to its real id.
     if (sessionPart) {
       setDidSubMode("mamka");
       setDidFlowState("loading");
@@ -1101,22 +1170,55 @@ const Chat = () => {
       (async () => {
         await didThreads.fetchAllThreads("mamka");
 
-        const sessionKey = `session:${sessionPart.toLowerCase().trim()}`;
-        const existing = await didThreads.getThreadByWorkspace("session", sessionKey);
-        if (existing) {
-          setActiveThread(existing);
-          setMessages(existing.messages as any);
-          setDidFlowState("chat");
-          return;
+        // Resolve canonical did_daily_session_plans.id for this part.
+        // Prefer today/upcoming planned/in_progress over completed; fall back
+        // to most recent of any status.
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
+        let resolvedSessionId: string | null = null;
+        try {
+          const { data: planRows } = await (supabase as any)
+            .from("did_daily_session_plans")
+            .select("id, plan_date, status, created_at")
+            .ilike("selected_part", sessionPart)
+            .order("created_at", { ascending: false })
+            .limit(10);
+          const list = (planRows || []) as Array<{ id: string; plan_date: string; status: string }>;
+          const todays = list.find(p => p.plan_date === today && (p.status === "planned" || p.status === "in_progress" || p.status === "generated"));
+          const upcoming = list.find(p => p.plan_date >= today && (p.status === "planned" || p.status === "in_progress" || p.status === "generated"));
+          resolvedSessionId = todays?.id || upcoming?.id || list[0]?.id || null;
+        } catch (e) {
+          console.warn("[Chat] session_part resolution failed", e);
         }
 
-        const intro = `📅 **Plán sezení s ${sessionPart}**\n\nKarel navrhl pro dnešek pracovat s ${sessionPart}. Pojďme společně projít přípravu a plán sezení.`;
+        if (resolvedSessionId) {
+          const existing = await didThreads.getThreadByWorkspace("session", resolvedSessionId);
+          if (existing) {
+            setActiveThread(existing);
+            setMessages(existing.messages as any);
+            setDidFlowState("chat");
+            return;
+          }
+        }
+
+        const intro = [
+          `📅 **Plán sezení s ${sessionPart}**`,
+          "",
+          `Pro dnešek navrhuji pracovat s **${sessionPart}**.`,
+          "",
+          `*Proč právě teď:* na základě stavu registru a posledních pozorování je ${sessionPart} prioritou pro dnešní sezení.`,
+          "",
+          `*Můj návrh prvního kroku:* začněme krátkým ground-checkem a projděme si terapeutický plán pro dnešek. Pokud máte nový postřeh z posledních 24h, prosím sdílejte hned na začátku.`,
+        ].join("\n");
         const thread = await didThreads.createThread("Karel", "mamka", "cs", [
           { role: "assistant", content: intro },
         ], {
           threadLabel: `Sezení: ${sessionPart}`,
-          workspaceType: "session",
-          workspaceId: sessionKey,
+          // Only bind workspace identity when we resolved a real UUID. Without
+          // it we leave the thread as an orphan one-off rather than corrupt
+          // the canonical lookup with synthetic keys.
+          ...(resolvedSessionId
+            ? { workspaceType: "session" as const, workspaceId: resolvedSessionId }
+            : {}),
         });
         if (thread) {
           setActiveThread(thread);

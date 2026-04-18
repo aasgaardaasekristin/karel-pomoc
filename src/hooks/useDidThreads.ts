@@ -230,8 +230,31 @@ export const useDidThreads = () => {
       return null;
     }
 
-    // Only deduplicate when NOT forceNew
-    if (!options?.forceNew) {
+    // BUGFIX (P1): when a workspace identity is supplied, NEVER fall back to
+    // generic part_name + sub_mode dedupe. The canonical lookup is by
+    // (workspace_type, workspace_id) only — anything else risks bouncing the
+    // new workspace into an unrelated "Karel" task/question/session thread.
+    if (options?.workspaceType && options?.workspaceId) {
+      const existingByWorkspace = await supabase
+        .from("did_threads")
+        .select("*")
+        .eq("workspace_type", options.workspaceType)
+        .eq("workspace_id", options.workspaceId)
+        .order("last_activity_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existingByWorkspace.data) {
+        const thread = rowToThread(existingByWorkspace.data);
+        if (thread) {
+          setThreads((prev) => prev.some((t) => t.id === thread.id) ? prev : [thread, ...prev]);
+          return thread;
+        }
+      }
+      // No existing workspace thread → fall through to insert. Skip the old
+      // part_name dedupe entirely; that path would only cause cross-task leaks.
+    } else if (!options?.forceNew) {
+      // Legacy dedupe path — only used for ad-hoc therapist/cast threads
+      // without a workspace identity.
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const { data: existing } = await supabase
         .from("did_threads")

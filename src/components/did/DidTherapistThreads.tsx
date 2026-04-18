@@ -22,6 +22,18 @@ const WORKSPACE_TYPE_META: Record<string, { label: string; icon: typeof Clipboar
   session: { label: "Sezení", icon: CalendarDays, tone: "rgba(180, 230, 180, 0.85)" },
 };
 
+// Try to extract assignee/directed-to hint from threadLabel + first assistant
+// message (which Karel writes with "**Pro Haničku**" / "**Pro Káťu**" / "**Pro Haničku i Káťu**").
+const extractAssigneeHint = (thread: DidThread): string => {
+  const firstAssistant = thread.messages.find(m => m.role === "assistant");
+  const text = (firstAssistant?.content || "") + " " + (thread.threadLabel || "");
+  if (/Pro\s+Han[ií]čku\s+i\s+K[áa][tť]u/i.test(text)) return "Hanička + Káťa";
+  if (/Pro\s+K[áa][tť]u/i.test(text)) return "Káťa";
+  if (/Pro\s+Han[ií]čku/i.test(text)) return "Hanička";
+  if (/Pro\s+t[yý]m/i.test(text)) return "tým";
+  return "";
+};
+
 const lastTextMessage = (thread: DidThread): string => {
   const lastUser = [...thread.messages].reverse().find(m => m.role === "user");
   if (lastUser && typeof lastUser.content === "string") return lastUser.content;
@@ -158,6 +170,11 @@ const DidTherapistThreads = ({ therapistName, threads, onSelectThread, onDeleteT
                       {formatTime(thread.lastActivityAt)}
                     </span>
                     <span>{thread.messages.length} zpráv</span>
+                    {meta && extractAssigneeHint(thread) && (
+                      <span className="px-1.5 py-0 rounded-full" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                        → {extractAssigneeHint(thread)}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <Button

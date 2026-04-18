@@ -268,11 +268,11 @@ const TaskCard = ({
   const [feedback, setFeedback] = useState<TaskFeedbackEntry[]>([]);
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [autoFeedback, setAutoFeedback] = useState<AutoFeedbackEntry | null>(null);
-  // BUGFIX (P1): tasks assigned to BOTH must NOT default the author to "hanka".
-  // Therapist explicitly picks who is replying. For single-assignee tasks the
-  // selector is locked to that therapist (still shown so identity is unambiguous).
-  const [responder, setResponder] = useState<TherapistAssignee>(
-    assigned === "kata" ? "kata" : assigned === "both" ? "hanka" : "hanka"
+  // BUGFIX (P1): tasks assigned to BOTH must NOT default the author. Therapist
+  // MUST explicitly choose Hanička or Káťa before sending — no implicit fallback.
+  // For single-assignee tasks we lock the responder to that therapist.
+  const [responder, setResponder] = useState<TherapistAssignee | null>(
+    assigned === "hanka" ? "hanka" : assigned === "kata" ? "kata" : null
   );
   const feedEndRef = useRef<HTMLDivElement>(null);
 
@@ -305,14 +305,19 @@ const TaskCard = ({
   const handleSendUpdate = async () => {
     const text = noteInputs[task.id]?.trim();
     if (!text) return;
+
+    // BUGFIX (P1): for both-assigned tasks REQUIRE explicit responder pick.
+    // No silent fallback to Hanka — refuse the send and prompt the user.
+    if (assigned === "both" && !responder) {
+      toast.error("Vyber prosím nejprve, kdo odpovídá: Hanička nebo Káťa.");
+      return;
+    }
     setSendingFeedback(true);
 
-    // BUGFIX (P1): for both-assigned tasks use the explicit responder pick.
-    // For single-assignee tasks force the canonical author (no implicit hanka).
     const author: TherapistAssignee =
       assigned === "hanka" ? "hanka" :
       assigned === "kata" ? "kata" :
-      responder;
+      (responder as TherapistAssignee);
 
     // Save therapist's message
     const { error: insertErr } = await supabase.from("did_task_feedback").insert({
@@ -558,8 +563,10 @@ const TaskCard = ({
           <div className="space-y-1">
             {assigned === "both" && (
               <div className="flex items-center gap-1.5">
-                <span className="text-[0.5rem] uppercase tracking-wide text-muted-foreground">Odpovídá:</span>
-                <div className="inline-flex rounded-md border border-border bg-muted/40 p-0.5">
+                <span className="text-[0.5rem] uppercase tracking-wide text-muted-foreground">
+                  Odpovídá:{!responder && <span className="ml-1 text-destructive">vyber</span>}
+                </span>
+                <div className={`inline-flex rounded-md border p-0.5 ${!responder ? "border-destructive/60 bg-destructive/5" : "border-border bg-muted/40"}`}>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); setResponder("hanka"); }}
@@ -581,11 +588,21 @@ const TaskCard = ({
               <Input
                 value={noteInputs[task.id] || ""}
                 onChange={(e) => setNoteInputs((prev) => ({ ...prev, [task.id]: e.target.value }))}
-                placeholder={assigned === "both" ? `Update jako ${responder === "hanka" ? "Hanka" : "Káťa"}…` : "Jak to jde? Napiš update..."}
+                placeholder={
+                  assigned === "both"
+                    ? (responder ? `Update jako ${responder === "hanka" ? "Hanka" : "Káťa"}…` : "Vyber kdo odpovídá ↑")
+                    : "Jak to jde? Napiš update..."
+                }
                 className="h-6 flex-1 bg-background text-[0.5625rem]"
                 onKeyDown={(e) => { if (e.key === "Enter") void handleSendUpdate(); }}
+                disabled={assigned === "both" && !responder}
               />
-              <Button size="sm" onClick={() => void handleSendUpdate()} className="h-6 w-6 p-0" disabled={!noteInputs[task.id]?.trim() || sendingFeedback}>
+              <Button
+                size="sm"
+                onClick={() => void handleSendUpdate()}
+                className="h-6 w-6 p-0"
+                disabled={!noteInputs[task.id]?.trim() || sendingFeedback || (assigned === "both" && !responder)}
+              >
                 {sendingFeedback ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Send className="w-2.5 h-2.5" />}
               </Button>
             </div>
