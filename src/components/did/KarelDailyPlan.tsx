@@ -1108,6 +1108,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
+                    <TaskFrameBadge createdAt={t.created_at} />
                     <div className="mt-0.5">
                       <ActionLink label="Odpovědět / řešit" onClick={() => openTaskWorkspace(t)} />
                     </div>
@@ -1133,6 +1134,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
+                    <TaskFrameBadge createdAt={t.created_at} />
                     <div className="mt-0.5">
                       <ActionLink label="Odpovědět / řešit" onClick={() => openTaskWorkspace(t)} />
                     </div>
