@@ -94,6 +94,37 @@ const ActionLink = ({ label, onClick, icon }: { label: string; onClick: () => vo
   </button>
 );
 
+/* ── Task framing badge — explicit overdue / blocked / stale / archive label.
+   Calmer than red urgency: stale tasks get a subtle muted chip instead of
+   silently inflating the urgent counter. ── */
+const TaskFrameBadge = ({ createdAt, dueDate, status }: { createdAt?: string; dueDate?: string | null; status?: string }) => {
+  const now = Date.now();
+  const ageDays = createdAt ? Math.floor((now - new Date(createdAt).getTime()) / 86400000) : 0;
+  const isOverdue = !!dueDate && new Date(dueDate).getTime() < now;
+  const isBlocked = status === "blocked";
+  const isStale = ageDays >= 7 && !isOverdue;
+  const isArchiveCandidate = ageDays >= 14;
+
+  if (!isOverdue && !isBlocked && !isStale && !isArchiveCandidate) return null;
+
+  const label = isArchiveCandidate
+    ? "k archivaci"
+    : isOverdue
+    ? "po termínu"
+    : isBlocked
+    ? "blokováno"
+    : "starší úkol";
+  const tone = isOverdue
+    ? "bg-destructive/10 text-destructive/80 border-destructive/20"
+    : "bg-muted/40 text-muted-foreground border-border/40";
+  return (
+    <span className={`ml-2 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium border ${tone}`}>
+      {label}
+      {ageDays > 0 ? ` · ${ageDays}d` : ""}
+    </span>
+  );
+};
+
 /* ── Divider ── */
 const NarrativeDivider = () => <div className="jung-divider my-4" />;
 
@@ -1108,6 +1139,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
+                    <TaskFrameBadge createdAt={t.created_at} />
                     <div className="mt-0.5">
                       <ActionLink label="Odpovědět / řešit" onClick={() => openTaskWorkspace(t)} />
                     </div>
@@ -1133,6 +1165,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
+                    <TaskFrameBadge createdAt={t.created_at} />
                     <div className="mt-0.5">
                       <ActionLink label="Odpovědět / řešit" onClick={() => openTaskWorkspace(t)} />
                     </div>
@@ -1207,21 +1240,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         </>
       )}
 
-      {/* ── G. Hodnocení + motivace ── */}
-      <NarrativeDivider />
-      <div className="py-2">
-        <p className="text-[13px] leading-6 text-foreground/65 font-['DM_Sans',sans-serif]">
-          {isInfoDeficit
-            ? "Vaše odpovědi jsou pro mě klíčové. Jakmile je obdržím, okamžitě přizpůsobím plán a připravím aktualizovaný přehled."
-            : tasks.length > 3
-            ? "Vím, že toho je hodně. Nezapomínejte — nejdůležitější je začít tím, co je nejurgentnější. Zbytek zvládneme společně."
-            : questions.length > 2
-            ? "Mám na vás několik otázek — vaše odpovědi mi pomohou lépe plánovat další kroky. Děkuji za spolupráci."
-            : "Jsem tu pro vás obě. Kdykoli potřebujete poradit, konzultovat nebo se jen ujistit, otevřete rozhovor se mnou."
-          }"
-        </p>
-      </div>
-
+      {/* ── G. (removed) Motivační/hodnoticí blok byl admin-flavored copy
+              recyklovaný za briefing — Karel má dedukovat, ne motivovat. ── */}
       {/* ── H. Nabídka pomoci ── */}
       <div className="py-1">
         <button

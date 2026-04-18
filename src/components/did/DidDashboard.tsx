@@ -578,14 +578,21 @@ function OpsSnapshotBar({ refreshTrigger, parts, activeThreads }: {
     ...(ops.overdueTasks > 0 ? [{ icon: <AlertTriangle className="w-3 h-3" />, label: "Po termínu", value: ops.overdueTasks, warn: true }] : []),
     ...(ops.urgentTasks > 0 ? [{ icon: <span className="text-[10px]">🔴</span>, label: "Urgentní", value: ops.urgentTasks, warn: true }] : []),
     ...(ops.livePlans > 0 ? [{ icon: <Calendar className="w-3 h-3" />, label: "Live plány", value: ops.livePlans }] : []),
+    // Stale tasks framed as a calm "k archivaci" hint, never as red urgency.
+    ...(ops.staleTasks > 0 ? [{ icon: <Clock className="w-3 h-3" />, label: "K archivaci", value: ops.staleTasks }] : []),
   ];
+
+  // ── Counter sanity helper: render 99+ when the hook hit its hard cap so the
+  //    UI never silently shows a runaway "1247" figure. The cap itself lives
+  //    in useOperationalInboxCounts — here we just acknowledge it visually.
+  const fmt = (n: number) => (n >= 99 ? "99+" : String(n));
 
   return (
     <div className="rounded-xl bg-muted/30 px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
       {items.map((item, i) => (
         <span key={i} className="flex items-center gap-1">
           {item.icon}
-          {item.label}: <strong className={item.warn ? "text-destructive" : "text-foreground"}>{item.value}</strong>
+          {item.label}: <strong className={item.warn ? "text-destructive" : "text-foreground"}>{fmt(item.value as number)}</strong>
         </span>
       ))}
     </div>

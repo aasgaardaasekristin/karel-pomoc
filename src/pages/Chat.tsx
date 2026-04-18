@@ -1159,10 +1159,17 @@ const Chat = () => {
     }
 
     // 5) Session plan — workspace bound to a real did_daily_session_plans row.
-    //    BUGFIX (P1): workspace_id MUST be a UUID (column type). The previous
-    //    `session:${part}` synthetic key would silently fail the UUID column
-    //    insert and spawn parallel threads. We now resolve sessionPart to the
-    //    most recent today / upcoming plan row and bind to its real id.
+    //    BUGFIX (P1 session canonicality): workspace_id MUST be a real UUID
+    //    (column type). The previous `session:${part}` synthetic key would
+    //    silently fail the UUID column insert and spawn parallel threads.
+    //
+    //    BUGFIX (P1 session canonical fallback): if we cannot resolve a real
+    //    canonical did_daily_session_plans.id, we DO NOT silently spawn a
+    //    pseudo-canonical thread. Instead the deep-link is rejected with a
+    //    clear toast, and we land on the therapist threads list. The earlier
+    //    silent fallback (creating a workspace-less thread) was the source of
+    //    invisible parallel session threads that re-appeared as duplicates in
+    //    Karlův přehled. We refuse rather than fabricate.
     if (sessionPart) {
       setDidSubMode("mamka");
       setDidFlowState("loading");
@@ -1171,8 +1178,9 @@ const Chat = () => {
         await didThreads.fetchAllThreads("mamka");
 
         // Resolve canonical did_daily_session_plans.id for this part.
-        // Prefer today/upcoming planned/in_progress over completed; fall back
-        // to most recent of any status.
+        // Acceptable: today's planned/in_progress/generated, or upcoming planned.
+        // NOT acceptable: yesterday's stale plan, or completed plans → those
+        // mean "no live session for this part right now".
         const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(new Date());
         let resolvedSessionId: string | null = null;
         try {
@@ -1180,26 +1188,39 @@ const Chat = () => {
             .from("did_daily_session_plans")
             .select("id, plan_date, status, created_at")
             .ilike("selected_part", sessionPart)
+            .gte("plan_date", today)
+            .in("status", ["planned", "in_progress", "generated"])
+            .order("plan_date", { ascending: true })
             .order("created_at", { ascending: false })
-            .limit(10);
+            .limit(5);
           const list = (planRows || []) as Array<{ id: string; plan_date: string; status: string }>;
-          const todays = list.find(p => p.plan_date === today && (p.status === "planned" || p.status === "in_progress" || p.status === "generated"));
-          const upcoming = list.find(p => p.plan_date >= today && (p.status === "planned" || p.status === "in_progress" || p.status === "generated"));
-          resolvedSessionId = todays?.id || upcoming?.id || list[0]?.id || null;
+          const todays = list.find(p => p.plan_date === today);
+          resolvedSessionId = todays?.id || list[0]?.id || null;
         } catch (e) {
           console.warn("[Chat] session_part resolution failed", e);
         }
 
-        if (resolvedSessionId) {
-          const existing = await didThreads.getThreadByWorkspace("session", resolvedSessionId);
-          if (existing) {
-            setActiveThread(existing);
-            setMessages(existing.messages as any);
-            setDidFlowState("chat");
-            return;
-          }
+        // Hard fallback: no canonical session → reject. No pseudo-canonical
+        // thread is created. The therapist sees an explicit toast and lands
+        // on the therapist threads list to pick another action.
+        if (!resolvedSessionId) {
+          toast.error(
+            `Pro ${sessionPart} dnes nemám aktivní plán sezení — otevři jiné vlákno nebo nejdřív vygeneruj plán.`,
+          );
+          setDidFlowState("therapist-threads");
+          return;
         }
 
+        // Canonical workspace lookup → reuse.
+        const existing = await didThreads.getThreadByWorkspace("session", resolvedSessionId);
+        if (existing) {
+          setActiveThread(existing);
+          setMessages(existing.messages as any);
+          setDidFlowState("chat");
+          return;
+        }
+
+        // Create canonical thread bound to the resolved session UUID.
         const intro = [
           `📅 **Plán sezení s ${sessionPart}**`,
           "",
@@ -1213,12 +1234,8 @@ const Chat = () => {
           { role: "assistant", content: intro },
         ], {
           threadLabel: `Sezení: ${sessionPart}`,
-          // Only bind workspace identity when we resolved a real UUID. Without
-          // it we leave the thread as an orphan one-off rather than corrupt
-          // the canonical lookup with synthetic keys.
-          ...(resolvedSessionId
-            ? { workspaceType: "session" as const, workspaceId: resolvedSessionId }
-            : {}),
+          workspaceType: "session" as const,
+          workspaceId: resolvedSessionId,
         });
         if (thread) {
           setActiveThread(thread);
