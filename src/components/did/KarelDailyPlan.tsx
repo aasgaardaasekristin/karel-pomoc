@@ -64,6 +64,109 @@ function daysSince(iso: string | null): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+/* ──────────────────────────────────────────────────────────────
+   HUMANIZATION LAYER — guards user-facing briefing prose against
+   internal artefacts leaking from raw DB rows. NEVER bypass these
+   helpers when composing narrative sentences.
+
+   Concrete leaks observed in production data this strips:
+   - thread_label / task.task starting with "Úkol:", "Otázka:",
+     "Sezení:", "Dotaz:", "Téma:" (raw ticket prefixes)
+   - "[RECOVERY]" / "[Auto]" / "[AUTO]" / "[SYSTEM]" tags inserted
+     by background jobs
+   - "🔴 KRIZOVÁ INTERVENCE – PARTNAME – DATE" headlines that are
+     valid card titles but read as debug output inside prose
+   - empty / whitespace-only / pseudo-name labels (system, karel)
+   - duplicated trailing punctuation, double spaces, stray colons
+   ────────────────────────────────────────────────────────────── */
+
+const PROSE_PROHIBITED_PREFIXES = [
+  /^úkol\s*[:\-–]\s*/i,
+  /^otázka\s*[:\-–]\s*/i,
+  /^otazka\s*[:\-–]\s*/i,
+  /^sezení\s*[:\-–]\s*/i,
+  /^sezeni\s*[:\-–]\s*/i,
+  /^dotaz\s*[:\-–]\s*/i,
+  /^téma\s*[:\-–]\s*/i,
+  /^tema\s*[:\-–]\s*/i,
+  /^poznámka\s*[:\-–]\s*/i,
+  /^poznamka\s*[:\-–]\s*/i,
+  /^todo\s*[:\-–]\s*/i,
+];
+
+const PROSE_INLINE_TAGS = [
+  /\[recovery\]\s*/gi,
+  /\[auto\]\s*/gi,
+  /\[system\]\s*/gi,
+  /\[debug\]\s*/gi,
+  /\[bot\]\s*/gi,
+];
+
+const PROSE_CRISIS_HEADLINE = /^[🔴⚠️⚠️\s]*(?:krizová\s+intervence|krizova\s+intervence)\s*[–\-—]\s*([^–\-—]+?)\s*[–\-—].*$/i;
+
+function humanizeText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let s = String(raw).trim();
+  if (!s) return "";
+
+  // Strip crisis-headline pattern but keep the part name as a plain mention
+  const m = s.match(PROSE_CRISIS_HEADLINE);
+  if (m) s = `krizová situace u ${m[1].trim()}`;
+
+  // Strip ticket-style prefixes
+  for (const re of PROSE_PROHIBITED_PREFIXES) s = s.replace(re, "");
+
+  // Strip background-job tags anywhere in string
+  for (const re of PROSE_INLINE_TAGS) s = s.replace(re, "");
+
+  // Normalize whitespace and stray punctuation
+  s = s.replace(/\s+/g, " ").replace(/\s*:\s*$/g, "").trim();
+
+  // Drop trailing period — caller composes punctuation
+  s = s.replace(/[.!?]+$/g, "").trim();
+  return s;
+}
+
+/* Pseudo-names that must never appear inside Karel's narrative
+   ("system", empty, "karel" itself). Used both for thread filtering
+   and label sanitization. */
+const NARRATIVE_PSEUDO_NAMES = new Set(["", "system", "karel", "ai", "bot"]);
+
+function isUsableLabel(raw: string | null | undefined): boolean {
+  const cleaned = humanizeText(raw);
+  if (!cleaned) return false;
+  if (NARRATIVE_PSEUDO_NAMES.has(cleaned.toLowerCase())) return false;
+  if (cleaned.length < 3) return false;
+  return true;
+}
+
+/* Pluralize Czech "tasks" (úkol / úkoly / úkolů) without admin tone.
+   Used inside humanized sentences, NOT as a standalone counter. */
+function czechTaskWord(n: number): string {
+  if (n === 1) return "úkol";
+  if (n >= 2 && n <= 4) return "úkoly";
+  return "úkolů";
+}
+
+/* Compose a short, natural sentence summarizing N items WITHOUT
+   admin-counter phrasing ("Eviduji X..."). Returns "" when nothing
+   meaningful to say. */
+function describeUrgentLoad(n: number, topTaskHumanized: string): string {
+  if (n <= 0) return "";
+  if (n === 1) {
+    return topTaskHumanized
+      ? `Dnes mě nejvíc zajímá toto: ${topTaskHumanized}.`
+      : "Dnes je jeden úkol, který nesnese odklad.";
+  }
+  // Lead with the top task, then mention the rest plainly
+  if (topTaskHumanized) {
+    const rest = n - 1;
+    const restWord = czechTaskWord(rest);
+    return `Dnes je nejdůležitější toto: ${topTaskHumanized}. K tomu ještě ${rest} dalš${rest === 1 ? "í" : rest <= 4 ? "í" : "ích"} ${restWord} čeká na pozornost.`;
+  }
+  return `Dnes je ${n} ${czechTaskWord(n)} k vyřízení — detail níže.`;
+}
+
 /* ── Detect therapist target from assigned_to ── */
 function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
   const low = (assignedTo || "").toLowerCase();
