@@ -6,6 +6,7 @@ import { SYSTEM_RULES } from "../_shared/system-rules.ts";
 import { normalizeKarelContext } from "../_shared/karelContextNormalizer.ts";
 import { buildKarelIdentityBlock } from "../_shared/karelIdentity.ts";
 import { getKarelTone } from "../_shared/karelTonalRouter.ts";
+import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -37,8 +38,11 @@ serve(async (req) => {
     });
     const meetingIdentity = buildKarelIdentityBlock(meetingCtx);
     const meetingTone = getKarelTone(meetingCtx);
+    // Voice guide pro poradu = team_lead voice (Hanička + Káťa současně)
+    const meetingVoiceGuide = buildKarelVoiceGuide({ mode: "team_lead" });
     const meetingIdentityBlock = [
       meetingIdentity,
+      meetingVoiceGuide,
       "JAZYKOVÁ PRAVIDLA:",
       ...meetingTone.forbiddenPhrases.map((x: string) => `- NIKDY neříkej: "${x}"`),
       "",
