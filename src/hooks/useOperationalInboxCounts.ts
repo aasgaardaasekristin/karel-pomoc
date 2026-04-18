@@ -83,6 +83,13 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
         Date.now() - VISIBLE_TASK_WINDOW_DAYS * 86400000,
       ).toISOString();
 
+      // STATUS FILTER NOTE (audited against production DB):
+      //   did_therapist_tasks only ever uses `pending` / `expired` / `archived`.
+      //   `active` and `in_progress` were aspirational status values that
+      //   never landed in the write path — counting them was a no-op that
+      //   made the audit trail lie about what we measure. Open work = `pending`.
+      const OPEN_TASK_STATUSES = ["pending"] as any;
+
       const [qRes, wRes, urgentRes, overdueRes, pRes, staleRes] = await Promise.all([
         supabase
           .from("did_pending_questions")
@@ -98,13 +105,13 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
         supabase
           .from("did_therapist_tasks")
           .select("id", { count: "exact", head: true })
-          .in("status", ["pending", "active", "in_progress"] as any)
+          .in("status", OPEN_TASK_STATUSES)
           .in("priority", ["critical", "urgent", "high"] as any)
           .gte("created_at", staleCutoffISO),
         supabase
           .from("did_therapist_tasks")
           .select("id", { count: "exact", head: true })
-          .in("status", ["pending", "active", "in_progress"] as any)
+          .in("status", OPEN_TASK_STATUSES)
           .not("due_date", "is", null)
           .lt("due_date", todayISO)
           .gte("created_at", staleCutoffISO),
@@ -120,7 +127,7 @@ export function useOperationalInboxCounts(refreshTrigger: number) {
         supabase
           .from("did_therapist_tasks")
           .select("id", { count: "exact", head: true })
-          .in("status", ["pending", "active", "in_progress"] as any)
+          .in("status", OPEN_TASK_STATUSES)
           .lt("created_at", staleCutoffISO)
           .gte("created_at", visibleFloorISO),
       ]);

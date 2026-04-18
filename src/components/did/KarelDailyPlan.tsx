@@ -380,14 +380,19 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         // Adjunct: only manual tasks NOT linked to a canonical plan item.
         // Window expanded to 14d so stale/archive-candidate tasks counted in
         // OpsSnapshotBar are actually displayable here with a framing badge.
+        // STATUS FILTER NOTE (audited against production DB): the table only
+        // ever uses `pending` / `expired` / `archived`. `active` and
+        // `in_progress` were aspirational values that never materialized in
+        // the write path, so listing them here promised a surface state that
+        // does not exist. Open work === `pending`. Mirrors useOperationalInboxCounts.
         (supabase as any)
           .from("did_therapist_tasks")
           .select("id, task, assigned_to, status, priority, created_at, due_date, detail_instruction, plan_item_id")
-          .in("status", ["pending", "active", "in_progress"])
+          .eq("status", "pending")
           .is("plan_item_id", null)
           .gte("created_at", fourteenDaysAgo)
           .order("priority", { ascending: true })
-          .limit(20),
+          .limit(40),
         supabase
           .from("did_daily_session_plans")
           .select("id, selected_part, therapist, plan_date")
@@ -473,8 +478,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       // pass through. We intentionally do NOT scan task text for part names
       // here — that would be a fragile heuristic. The dormant guard runs at
       // the SESSION/THREAD/INTERVIEW level where the part is structured.
+      // VISIBLE-SURFACE GUARANTEE: do NOT slice() here. Counter sanity in
+      // useOperationalInboxCounts is built around the assumption that every
+      // pending task within the 14-day window is reachable in the briefing.
+      // Slicing to 8 would silently drop stale/archive candidates and cause
+      // the dashboard "K archivaci: N" badge to refer to invisible items.
       const merged = [...planItemsAsTasks, ...adjunctTasks];
-      setTasks(deduplicateByText(merged).slice(0, 8));
+      setTasks(deduplicateByText(merged));
 
       // Sessions: drop any planned session whose selected_part is not active
       // (or is the active crisis part).
@@ -1161,7 +1171,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
               Haničko, potřebuji od tebe
             </SectionHead>
             <ul className="space-y-2">
-              {hankaTasks.slice(0, 5).map(t => (
+              {hankaTasks.map(t => (
                 <li key={t.id} className="text-[13px] text-foreground/70 flex items-start gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
@@ -1187,7 +1197,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
               Káťo, potřebuji od tebe
             </SectionHead>
             <ul className="space-y-2">
-              {kataTasks.slice(0, 5).map(t => (
+              {kataTasks.map(t => (
                 <li key={t.id} className="text-[13px] text-foreground/70 flex items-start gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/30" />
                   <div className="flex-1">
@@ -1216,11 +1226,15 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
               Následující body potřebuji prodiskutovat s oběma. Kliknutím otevřete poradní prostor s mým konkrétním briefingem:
             </p>
             <ul className="space-y-2">
-              {teamTasks.slice(0, 4).map(t => (
+              {teamTasks.map(t => (
                 <li key={t.id} className="text-[13px] text-foreground/70 flex items-start gap-2">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/30" />
                   <div className="flex-1">
                     <span>{t.task}</span>
+                    {/* Team/shared tasks fall into the same stale/archive
+                        counter as Hanka/Káťa tasks — frame them with the
+                        same badge so a counted item is never invisible here. */}
+                    <TaskFrameBadge createdAt={t.created_at} dueDate={t.due_date} status={t.status} />
                     <div className="mt-0.5">
                       <ActionLink
                         label="Otevřít poradu"
