@@ -64,6 +64,109 @@ function daysSince(iso: string | null): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 }
 
+/* ──────────────────────────────────────────────────────────────
+   HUMANIZATION LAYER — guards user-facing briefing prose against
+   internal artefacts leaking from raw DB rows. NEVER bypass these
+   helpers when composing narrative sentences.
+
+   Concrete leaks observed in production data this strips:
+   - thread_label / task.task starting with "Úkol:", "Otázka:",
+     "Sezení:", "Dotaz:", "Téma:" (raw ticket prefixes)
+   - "[RECOVERY]" / "[Auto]" / "[AUTO]" / "[SYSTEM]" tags inserted
+     by background jobs
+   - "🔴 KRIZOVÁ INTERVENCE – PARTNAME – DATE" headlines that are
+     valid card titles but read as debug output inside prose
+   - empty / whitespace-only / pseudo-name labels (system, karel)
+   - duplicated trailing punctuation, double spaces, stray colons
+   ────────────────────────────────────────────────────────────── */
+
+const PROSE_PROHIBITED_PREFIXES = [
+  /^úkol\s*[:\-–]\s*/i,
+  /^otázka\s*[:\-–]\s*/i,
+  /^otazka\s*[:\-–]\s*/i,
+  /^sezení\s*[:\-–]\s*/i,
+  /^sezeni\s*[:\-–]\s*/i,
+  /^dotaz\s*[:\-–]\s*/i,
+  /^téma\s*[:\-–]\s*/i,
+  /^tema\s*[:\-–]\s*/i,
+  /^poznámka\s*[:\-–]\s*/i,
+  /^poznamka\s*[:\-–]\s*/i,
+  /^todo\s*[:\-–]\s*/i,
+];
+
+const PROSE_INLINE_TAGS = [
+  /\[recovery\]\s*/gi,
+  /\[auto\]\s*/gi,
+  /\[system\]\s*/gi,
+  /\[debug\]\s*/gi,
+  /\[bot\]\s*/gi,
+];
+
+const PROSE_CRISIS_HEADLINE = /^[🔴⚠️⚠️\s]*(?:krizová\s+intervence|krizova\s+intervence)\s*[–\-—]\s*([^–\-—]+?)\s*[–\-—].*$/i;
+
+function humanizeText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  let s = String(raw).trim();
+  if (!s) return "";
+
+  // Strip crisis-headline pattern but keep the part name as a plain mention
+  const m = s.match(PROSE_CRISIS_HEADLINE);
+  if (m) s = `krizová situace u ${m[1].trim()}`;
+
+  // Strip ticket-style prefixes
+  for (const re of PROSE_PROHIBITED_PREFIXES) s = s.replace(re, "");
+
+  // Strip background-job tags anywhere in string
+  for (const re of PROSE_INLINE_TAGS) s = s.replace(re, "");
+
+  // Normalize whitespace and stray punctuation
+  s = s.replace(/\s+/g, " ").replace(/\s*:\s*$/g, "").trim();
+
+  // Drop trailing period — caller composes punctuation
+  s = s.replace(/[.!?]+$/g, "").trim();
+  return s;
+}
+
+/* Pseudo-names that must never appear inside Karel's narrative
+   ("system", empty, "karel" itself). Used both for thread filtering
+   and label sanitization. */
+const NARRATIVE_PSEUDO_NAMES = new Set(["", "system", "karel", "ai", "bot"]);
+
+function isUsableLabel(raw: string | null | undefined): boolean {
+  const cleaned = humanizeText(raw);
+  if (!cleaned) return false;
+  if (NARRATIVE_PSEUDO_NAMES.has(cleaned.toLowerCase())) return false;
+  if (cleaned.length < 3) return false;
+  return true;
+}
+
+/* Pluralize Czech "tasks" (úkol / úkoly / úkolů) without admin tone.
+   Used inside humanized sentences, NOT as a standalone counter. */
+function czechTaskWord(n: number): string {
+  if (n === 1) return "úkol";
+  if (n >= 2 && n <= 4) return "úkoly";
+  return "úkolů";
+}
+
+/* Compose a short, natural sentence summarizing N items WITHOUT
+   admin-counter phrasing ("Eviduji X..."). Returns "" when nothing
+   meaningful to say. */
+function describeUrgentLoad(n: number, topTaskHumanized: string): string {
+  if (n <= 0) return "";
+  if (n === 1) {
+    return topTaskHumanized
+      ? `Dnes mě nejvíc zajímá toto: ${topTaskHumanized}.`
+      : "Dnes je jeden úkol, který nesnese odklad.";
+  }
+  // Lead with the top task, then mention the rest plainly
+  if (topTaskHumanized) {
+    const rest = n - 1;
+    const restWord = czechTaskWord(rest);
+    return `Dnes je nejdůležitější toto: ${topTaskHumanized}. K tomu ještě ${rest} dalš${rest === 1 ? "í" : rest <= 4 ? "í" : "ích"} ${restWord} čeká na pozornost.`;
+  }
+  return `Dnes je ${n} ${czechTaskWord(n)} k vyřízení — detail níže.`;
+}
+
 /* ── Detect therapist target from assigned_to ── */
 function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
   const low = (assignedTo || "").toLowerCase();
@@ -706,6 +809,30 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
   // ── BUILD KAREL'S LIVE NARRATIVE (unified for both modes) ──
   // ══════════════════════════════════════════════════
 
+  /* ──────────────────────────────────────────────────────────────
+     NARRATIVE BUILDER
+
+     Output rules (enforced via humanizeText / isUsableLabel /
+     describeUrgentLoad):
+
+     1. NEVER paste raw thread_label or task.task into prose. They
+        carry ticket prefixes ("Úkol:", "Otázka:", "Sezení:"),
+        background-job tags ("[RECOVERY]", "[Auto]"), or full crisis
+        headlines that read as debug output. Always pass them through
+        humanizeText() first.
+     2. NEVER write admin-counter sentences like "Eviduji X úkolů".
+        Translate the count into a human meaning via
+        describeUrgentLoad() — lead with the most important task.
+     3. NEVER mention pseudo-parts ("system", "Karel", empty) in any
+        narrative sentence. Filter via isUsableLabel().
+     4. NEVER use bare "pracoval ${X}" without a preposition — the
+        readable form is "pracoval jsem na" + listed topics.
+     5. Address Hanička / Káťa personally with ONE leading sentence;
+        avoid mechanical "čekám na tebe v N bodech: A; B" syntax.
+        Lead with the concrete top item, mention the rest plainly.
+     6. Skip empty thread topics rather than emitting
+        'téma „"' or 'bez konkrétního tématu' bullet noise.
+     ────────────────────────────────────────────────────────────── */
   const buildNarrativeParagraphs = (): string[] => {
     const paragraphs: string[] = [];
 
@@ -714,15 +841,22 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       paragraphs.push(`⚠ ${effectiveCrisisPart} je v aktivní krizi — potřebuji vaši plnou pozornost a koordinaci. Toto je nyní absolutní priorita.`);
     }
 
+    // Pre-compute humanized urgent task list (shared by both branches).
+    const urgentTasksRaw = tasks.filter(t => t.priority === "critical" || t.priority === "high");
+    const urgentHumanized = urgentTasksRaw
+      .map(t => humanizeText(t.task))
+      .filter(Boolean);
+    const topUrgent = urgentHumanized[0] || "";
+
     if (isInfoDeficit) {
       // ═══ DEFICIT MODE — MANDATORY 5 SECTIONS SAME AS NORMAL ═══
-      const lastKnownSnippet = plan05ANarrative?.slice(0, 250) || "";
-      const uniqueParts = [...new Set(recentThreads.map(t => t.part_name))];
+      const lastKnownSnippet = humanizeText(plan05ANarrative).slice(0, 250);
+      const uniqueParts = [...new Set(recentThreads.map(t => t.part_name).filter(isUsableLabel))];
 
       // ── SECTION A: "Co vím" ──
       const deficitCoVim: string[] = [];
       if (lastKnownSnippet) {
-        deficitCoVim.push(`Poslední data mám z doby před ${daysWithoutData} dny. ${lastKnownSnippet}`);
+        deficitCoVim.push(`Poslední data mám z doby před ${daysWithoutData} dny. ${lastKnownSnippet}.`);
       } else if (uniqueParts.length > 0) {
         deficitCoVim.push(`Poslední kontakt s ${uniqueParts[0]} proběhl ${relativeTime(lastAnyActivity)}. Od té doby nemám nové zprávy.`);
       } else {
@@ -736,7 +870,7 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         deficitImplications.push(`Krizová situace u ${effectiveCrisisPart} trvá i bez aktuálních dat — to zvyšuje riziko.`);
       }
       if (daysWithoutData > 7) {
-        deficitImplications.push("Bez informací déle než týden nemohu zodpovědně koordinovat péči ani vyhodnotit dynamiku systému.");
+        deficitImplications.push("Bez informací déle než týden nemohu zodpovědně koordinovat péči ani vyhodnotit dynamiku u dětí.");
       } else {
         deficitImplications.push("Bez aktuálních pozorování pracuji se zastaralými daty — moje doporučení mohou být nepřesná.");
       }
@@ -744,52 +878,78 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
       // ── SECTION C: "Co navrhuji" ──
       const deficitProposals: string[] = [];
-      const urgentDeficitTasks = tasks.filter(t => t.priority === "critical" || t.priority === "high");
-      if (urgentDeficitTasks.length > 0) {
-        deficitProposals.push(`Prioritou dnes je: ${urgentDeficitTasks[0].task.slice(0, 100)}.`);
+      if (topUrgent) {
+        deficitProposals.push(`Prioritou dnes je toto: ${topUrgent}.`);
       }
-      deficitProposals.push("Navrhuji dnes obnovit komunikaci — potřebuji alespoň stručné pozorování o aktuálním fungování systému.");
+      deficitProposals.push("Navrhuji dnes obnovit komunikaci — potřebuji alespoň stručné pozorování o tom, jak kluci aktuálně fungují.");
       paragraphs.push(deficitProposals.join(" "));
 
       // ── SECTION D: "Co od Haničky" ──
-      const hDeficitTasks = tasks.filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task));
+      const hDeficitTasks = tasks
+        .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
+        .map(t => humanizeText(t.task))
+        .filter(Boolean);
       if (hDeficitTasks.length > 0) {
-        paragraphs.push(`Haničko, čekám na tebe v ${hDeficitTasks.length} bod${hDeficitTasks.length === 1 ? "u" : "ech"}: ${hDeficitTasks.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}. A především — potřebuji tvé aktuální pozorování.`);
+        const lead = hDeficitTasks[0];
+        const rest = hDeficitTasks.length - 1;
+        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}.` : "";
+        paragraphs.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail} A především — potřebuji tvé aktuální pozorování.`);
       } else {
-        paragraphs.push("Haničko, potřebuji od tebe alespoň krátkou zprávu o aktuálním stavu systému — co pozoruješ, jak části fungují v každodenním životě.");
+        paragraphs.push("Haničko, potřebuji od tebe alespoň krátkou zprávu o tom, jak kluci aktuálně fungují v každodenním životě.");
       }
 
       // ── SECTION E: "Co od Káti" ──
-      const kDeficitTasks = tasks.filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task));
+      const kDeficitTasks = tasks
+        .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
+        .map(t => humanizeText(t.task))
+        .filter(Boolean);
       if (kDeficitTasks.length > 0) {
-        paragraphs.push(`Káťo, čekám na tebe v ${kDeficitTasks.length} bod${kDeficitTasks.length === 1 ? "u" : "ech"}: ${kDeficitTasks.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}. A především — potřebuji tvé aktuální pozorování.`);
+        const lead = kDeficitTasks[0];
+        const rest = kDeficitTasks.length - 1;
+        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}.` : "";
+        paragraphs.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail} A především — potřebuji tvé aktuální pozorování.`);
       } else {
-        paragraphs.push("Káťo, potřebuji od tebe alespoň krátkou zprávu o aktuálním stavu — co pozoruješ ze své pozice, jak části reagují.");
+        paragraphs.push("Káťo, potřebuji od tebe alespoň krátkou zprávu — co pozoruješ ze své pozice, jak kluci reagují.");
       }
     } else {
       // ═══ NORMAL MODE — MANDATORY 5-SECTION NARRATIVE ═══
 
       // ── SECTION A: "Co vím" ──
       const coVimParts: string[] = [];
-      if (plan05ANarrative) {
-        coVimParts.push(plan05ANarrative);
+      const cleanedPlan = humanizeText(plan05ANarrative);
+      if (cleanedPlan) {
+        coVimParts.push(cleanedPlan + ".");
       }
       if (recentInterviews.length > 0) {
         for (const iv of recentInterviews.slice(0, 2)) {
+          if (!isUsableLabel(iv.part_name)) continue;
           const when = relativeTime(iv.started_at);
           let sentence = `${when ? when.charAt(0).toUpperCase() + when.slice(1) : "Nedávno"} jsem vedl rozhovor s ${iv.part_name}`;
-          if (iv.summary_for_team) sentence += ` — ${iv.summary_for_team.slice(0, 200)}`;
-          if (iv.what_shifted) sentence += ` Posun: ${iv.what_shifted.slice(0, 150)}.`;
-          coVimParts.push(sentence);
+          const summary = humanizeText(iv.summary_for_team).slice(0, 200);
+          if (summary) sentence += ` — ${summary}`;
+          const shifted = humanizeText(iv.what_shifted).slice(0, 150);
+          if (shifted) sentence += `. Posun: ${shifted}`;
+          coVimParts.push(sentence + ".");
         }
       }
       if (recentThreads.length > 0 && coVimParts.length === 0) {
-        // synthesize from threads — NEVER use "X byl/a naposledy aktivní" format
-        const threadSummary = recentThreads.slice(0, 3).map(t => {
-          const topic = t.thread_label ? `téma „${t.thread_label.slice(0, 50)}"` : "bez konkrétního tématu";
-          return `s ${t.part_name} (${topic}, ${relativeTime(t.last_activity_at)})`;
-        }).join(", ");
-        coVimParts.push(`V posledních dnech jsem pracoval ${threadSummary}.`);
+        // Synthesize from threads: filter pseudo-parts, drop empty
+        // labels, render with proper preposition ("pracoval jsem na").
+        const usableThreads = recentThreads
+          .filter(t => isUsableLabel(t.part_name))
+          .slice(0, 3);
+        const topicFragments = usableThreads
+          .map(t => {
+            const cleanLabel = humanizeText(t.thread_label);
+            const topic = isUsableLabel(cleanLabel) ? `téma „${cleanLabel.slice(0, 50)}"` : "";
+            const when = relativeTime(t.last_activity_at);
+            const detail = [topic, when].filter(Boolean).join(", ");
+            return detail ? `s ${t.part_name} (${detail})` : `s ${t.part_name}`;
+          })
+          .filter(Boolean);
+        if (topicFragments.length > 0) {
+          coVimParts.push(`V posledních dnech jsem pracoval na rozhovorech ${topicFragments.join(", ")}.`);
+        }
       }
       if (coVimParts.length === 0) {
         coVimParts.push("Zatím nemám čerstvé operativní zprávy za poslední 3 dny. Čekám na data z denního cyklu.");
@@ -801,21 +961,17 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       if (effectiveCrisisPart) {
         implications.push(`Krizová situace u ${effectiveCrisisPart} vyžaduje denní monitoring a koordinovaný přístup.`);
       }
-      const urgentTasks = tasks.filter(t => t.priority === "critical" || t.priority === "high");
-      if (urgentTasks.length > 0) {
-        implications.push(`Eviduji ${urgentTasks.length} naléhav${urgentTasks.length === 1 ? "ý úkol" : urgentTasks.length < 5 ? "é úkoly" : "ých úkolů"}, které vyžadují pozornost dnes.`);
-      }
-      // BUGFIX (dormant leak regression sweep): exclude pseudo-parts
-      // (system / Karel / empty) from the "není aktivita" narrative —
-      // those rows pass through the registry filter as infrastructure
-      // threads and would otherwise show up as "U system, Karel jsem
-      // nezaznamenal aktivitu", which leaks internal artefacts into
-      // Karel's deductive briefing.
-      const SYSTEM_LIKE = new Set(["karel", "system", ""]);
+      // Replace admin counter with humanized lead-with-top-item phrasing.
+      const urgentLine = describeUrgentLoad(urgentTasksRaw.length, topUrgent);
+      if (urgentLine) implications.push(urgentLine);
+
+      // Exclude pseudo-parts from "není aktivita" sweep — those rows
+      // would otherwise leak as "U system, Karel jsem nezaznamenal
+      // aktivitu" inside Karel's deductive briefing.
       const staleThreads = recentThreads.filter(
         t =>
           daysSince(t.last_activity_at) >= 2 &&
-          !SYSTEM_LIKE.has(String(t.part_name || "").trim().toLowerCase()),
+          isUsableLabel(t.part_name),
       );
       if (staleThreads.length > 0) {
         const uniqStaleNames = [...new Set(staleThreads.map(t => t.part_name))];
@@ -828,12 +984,13 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
       // ── SECTION C: "Co navrhuji na dnes" ──
       const proposals: string[] = [];
-      if (uniqueSessions.length > 0) {
-        proposals.push(`Navrhuji dnes pracovat s ${uniqueSessions.map(s => s.selected_part).join(" a ")} — plán sezení je připraven níže.`);
+      const usableSessions = uniqueSessions.filter(s => isUsableLabel(s.selected_part));
+      if (usableSessions.length > 0) {
+        proposals.push(`Navrhuji dnes pracovat s ${usableSessions.map(s => s.selected_part).join(" a ")} — plán sezení je připraven níže.`);
       }
-      if (urgentTasks.length > 0) {
-        const topTask = urgentTasks[0];
-        proposals.push(`Prioritou číslo jedna je: ${topTask.task.slice(0, 100)}.`);
+      if (topUrgent && !urgentLine.includes(topUrgent)) {
+        // Fallback only — usually urgentLine already surfaces it
+        proposals.push(`Prioritou číslo jedna je toto: ${topUrgent}.`);
       }
       if (questions.length > 0) {
         proposals.push(`Potřebuji od vás odpovědi na ${questions.length} otáz${questions.length === 1 ? "ku" : questions.length < 5 ? "ky" : "ek"} — najdete je níže.`);
@@ -844,34 +1001,46 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       paragraphs.push(proposals.join(" "));
 
       // ── SECTION D: "Co potřebuji od Haničky" ──
-      const hankaNeeds: string[] = [];
-      const hTasksFiltered = tasks.filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task));
-      if (hTasksFiltered.length > 0) {
-        hankaNeeds.push(`Haničko, čekám na tebe v ${hTasksFiltered.length} bod${hTasksFiltered.length === 1 ? "u" : hTasksFiltered.length < 5 ? "ech" : "ech"}: ${hTasksFiltered.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}.`);
-      }
+      const hankaTasksHumanized = tasks
+        .filter(t => detectTarget(t.assigned_to) === "hanka" && !isProhibitedTask(t.task))
+        .map(t => humanizeText(t.task))
+        .filter(Boolean);
       const hankaQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "hanka");
+      const hankaSentences: string[] = [];
+      if (hankaTasksHumanized.length > 0) {
+        const lead = hankaTasksHumanized[0];
+        const rest = hankaTasksHumanized.length - 1;
+        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í drobnost" : rest <= 4 ? "í drobnosti" : "ích drobností"}.` : "";
+        hankaSentences.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail}`);
+      }
       if (hankaQuestions.length > 0) {
-        hankaNeeds.push(`Mám pro tebe ${hankaQuestions.length} otáz${hankaQuestions.length === 1 ? "ku" : "ky"} k zodpovězení.`);
+        hankaSentences.push(`Mám pro tebe ${hankaQuestions.length} otáz${hankaQuestions.length === 1 ? "ku" : "ky"} k zodpovězení — najdeš je níže.`);
       }
-      if (hankaNeeds.length === 0) {
-        hankaNeeds.push("Haničko, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+      if (hankaSentences.length === 0) {
+        hankaSentences.push("Haničko, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
       }
-      paragraphs.push(hankaNeeds.join(" "));
+      paragraphs.push(hankaSentences.join(" "));
 
       // ── SECTION E: "Co potřebuji od Káti" ──
-      const kataNeeds: string[] = [];
-      const kTasksFiltered = tasks.filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task));
-      if (kTasksFiltered.length > 0) {
-        kataNeeds.push(`Káťo, čekám na tebe v ${kTasksFiltered.length} bod${kTasksFiltered.length === 1 ? "u" : kTasksFiltered.length < 5 ? "ech" : "ech"}: ${kTasksFiltered.slice(0, 2).map(t => t.task.slice(0, 60)).join("; ")}.`);
-      }
+      const kataTasksHumanized = tasks
+        .filter(t => detectTarget(t.assigned_to) === "kata" && !isProhibitedTask(t.task))
+        .map(t => humanizeText(t.task))
+        .filter(Boolean);
       const kataQuestions = questions.filter(q => detectTarget(q.directed_to || "") === "kata");
+      const kataSentences: string[] = [];
+      if (kataTasksHumanized.length > 0) {
+        const lead = kataTasksHumanized[0];
+        const rest = kataTasksHumanized.length - 1;
+        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í drobnost" : rest <= 4 ? "í drobnosti" : "ích drobností"}.` : "";
+        kataSentences.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail}`);
+      }
       if (kataQuestions.length > 0) {
-        kataNeeds.push(`Mám pro tebe ${kataQuestions.length} otáz${kataQuestions.length === 1 ? "ku" : "ky"} k zodpovězení.`);
+        kataSentences.push(`Mám pro tebe ${kataQuestions.length} otáz${kataQuestions.length === 1 ? "ku" : "ky"} k zodpovězení — najdeš je níže.`);
       }
-      if (kataNeeds.length === 0) {
-        kataNeeds.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+      if (kataSentences.length === 0) {
+        kataSentences.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
       }
-      paragraphs.push(kataNeeds.join(" "));
+      paragraphs.push(kataSentences.join(" "));
     }
 
     return paragraphs;
