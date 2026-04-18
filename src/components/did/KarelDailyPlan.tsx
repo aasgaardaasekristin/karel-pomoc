@@ -1207,21 +1207,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         </>
       )}
 
-      {/* ── G. Hodnocení + motivace ── */}
-      <NarrativeDivider />
-      <div className="py-2">
-        <p className="text-[13px] leading-6 text-foreground/65 font-['DM_Sans',sans-serif]">
-          {isInfoDeficit
-            ? "Vaše odpovědi jsou pro mě klíčové. Jakmile je obdržím, okamžitě přizpůsobím plán a připravím aktualizovaný přehled."
-            : tasks.length > 3
-            ? "Vím, že toho je hodně. Nezapomínejte — nejdůležitější je začít tím, co je nejurgentnější. Zbytek zvládneme společně."
-            : questions.length > 2
-            ? "Mám na vás několik otázek — vaše odpovědi mi pomohou lépe plánovat další kroky. Děkuji za spolupráci."
-            : "Jsem tu pro vás obě. Kdykoli potřebujete poradit, konzultovat nebo se jen ujistit, otevřete rozhovor se mnou."
-          }"
-        </p>
-      </div>
-
+      {/* ── G. (removed) Motivační/hodnoticí blok byl admin-flavored copy
+              recyklovaný za briefing — Karel má dedukovat, ne motivovat. ── */}
       {/* ── H. Nabídka pomoci ── */}
       <div className="py-1">
         <button
