@@ -11,7 +11,6 @@ import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
-import DidCoordinationAlerts from "./DidCoordinationAlerts";
 import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
@@ -527,7 +526,7 @@ const DidDashboard = ({
           </div>
         </div>
 
-        {/* ── Velitelská krizová karta — vrch dashboardu ── */}
+        {/* ── BLOCK 1 — CRISIS COMMAND (renders only when active crisis exists) ── */}
         {snapshot?.command?.crises?.length > 0 && (
           <ErrorBoundary fallbackTitle="Velitelská karta selhala">
             <CommandCrisisCard
@@ -537,11 +536,7 @@ const DidDashboard = ({
           </ErrorBoundary>
         )}
 
-        {/* ── Koordinační upozornění (owner / deadline / důvod) ── */}
-        <ErrorBoundary fallbackTitle="Koordinační upozornění selhala">
-          <DidCoordinationAlerts refreshTrigger={refreshTrigger} />
-        </ErrorBoundary>
-
+        {/* ── BLOCK 2 — OPERATIONAL QUEUE (briefing + today's actionable plan) ── */}
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
             <KarelDailyPlan
