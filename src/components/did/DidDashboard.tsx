@@ -571,6 +571,11 @@ const DidDashboard = ({
 
         <OpsSnapshotBar refreshTrigger={refreshTrigger} parts={parts} activeThreads={activeThreads} />
       </div>
+
+      <DeliberationRoom
+        deliberationId={openDeliberationId}
+        onClose={() => setOpenDeliberationId(null)}
+      />
     </div>
   );
 };
