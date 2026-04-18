@@ -780,9 +780,21 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       if (urgentTasks.length > 0) {
         implications.push(`Eviduji ${urgentTasks.length} naléhav${urgentTasks.length === 1 ? "ý úkol" : urgentTasks.length < 5 ? "é úkoly" : "ých úkolů"}, které vyžadují pozornost dnes.`);
       }
-      const staleThreads = recentThreads.filter(t => daysSince(t.last_activity_at) >= 2);
+      // BUGFIX (dormant leak regression sweep): exclude pseudo-parts
+      // (system / Karel / empty) from the "není aktivita" narrative —
+      // those rows pass through the registry filter as infrastructure
+      // threads and would otherwise show up as "U system, Karel jsem
+      // nezaznamenal aktivitu", which leaks internal artefacts into
+      // Karel's deductive briefing.
+      const SYSTEM_LIKE = new Set(["karel", "system", ""]);
+      const staleThreads = recentThreads.filter(
+        t =>
+          daysSince(t.last_activity_at) >= 2 &&
+          !SYSTEM_LIKE.has(String(t.part_name || "").trim().toLowerCase()),
+      );
       if (staleThreads.length > 0) {
-        implications.push(`U ${staleThreads.map(t => t.part_name).join(", ")} jsem nezaznamenal aktivitu déle než 2 dny — potřebuji ověřit, zda je vše v pořádku.`);
+        const uniqStaleNames = [...new Set(staleThreads.map(t => t.part_name))];
+        implications.push(`U ${uniqStaleNames.join(", ")} jsem nezaznamenal aktivitu déle než 2 dny — potřebuji ověřit, zda je vše v pořádku.`);
       }
       if (implications.length === 0) {
         implications.push("Celková situace je stabilní. Můžeme se soustředit na plánované aktivity a terapeutický postup.");
