@@ -950,22 +950,21 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         }
       }
       if (recentThreads.length > 0 && coVimParts.length === 0) {
-        // Synthesize from threads: filter pseudo-parts, drop empty
-        // labels, render with proper preposition ("pracoval jsem na").
-        const usableThreads = recentThreads
-          .filter(t => isUsableLabel(t.part_name))
-          .slice(0, 3);
-        const topicFragments = usableThreads
-          .map(t => {
-            const cleanLabel = humanizeText(t.thread_label);
-            const topic = isUsableLabel(cleanLabel) ? `téma „${cleanLabel.slice(0, 50)}"` : "";
-            const when = relativeTime(t.last_activity_at);
-            const detail = [topic, when].filter(Boolean).join(", ");
-            return detail ? `s ${t.part_name} (${detail})` : `s ${t.part_name}`;
-          })
-          .filter(Boolean);
-        if (topicFragments.length > 0) {
-          coVimParts.push(`V posledních dnech jsem pracoval na rozhovorech ${topicFragments.join(", ")}.`);
+        // Synthesize from threads INTO MEANING — never as a tuple list.
+        // No "(téma „...", před 8h)" syntax. No comma-separated contact log.
+        // Just translate which children Karel was working with into one
+        // calm sentence about WHO got the focus.
+        const usableNames = [...new Set(
+          recentThreads
+            .filter(t => isUsableLabel(t.part_name))
+            .map(t => t.part_name),
+        )].slice(0, 3);
+        if (usableNames.length === 1) {
+          coVimParts.push(`V posledních dnech jsem se soustředil hlavně na ${usableNames[0]}.`);
+        } else if (usableNames.length === 2) {
+          coVimParts.push(`V posledních dnech jsem se soustředil hlavně na ${usableNames[0]} a ${usableNames[1]}.`);
+        } else if (usableNames.length >= 3) {
+          coVimParts.push(`V posledních dnech jsem se soustředil hlavně na ${usableNames[0]}, ${usableNames[1]} a ${usableNames[2]}.`);
         }
       }
       if (coVimParts.length === 0) {
