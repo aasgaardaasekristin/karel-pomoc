@@ -289,14 +289,16 @@ const Chat = () => {
       if (!session) navigate("/", { replace: true });
       else {
         // BUGFIX (spontaneous reset): once the user has been admitted into a
-        // DID workspace (chat / meeting / live-session / part-identify), do
-        // NOT bounce them to /hub on subsequent auth re-checks. This effect
-        // can re-run on visibility / mode toggles and was kicking the user
-        // back to the hub mid-thread when hubSection wasn't set yet.
+        // DID workspace, do NOT bounce them to /hub on subsequent auth
+        // re-checks. Includes `loading` so brief transitional states (deep
+        // link → workspace) don't kick the user out mid-navigation.
         const inLiveDidFlow = mode === "childcare" && (
           didFlowState === "chat" || didFlowState === "meeting" ||
           didFlowState === "live-session" || didFlowState === "part-identify" ||
-          didFlowState === "therapist-threads" || didFlowState === "thread-list"
+          didFlowState === "therapist-threads" || didFlowState === "thread-list" ||
+          didFlowState === "loading" || didFlowState === "submode-select" ||
+          didFlowState === "did-kartoteka" || didFlowState === "dashboard" ||
+          didFlowState === "terapeut"
         );
         if (!hubSection && !activeSession && !inLiveDidFlow) {
           navigate("/hub", { replace: true });
