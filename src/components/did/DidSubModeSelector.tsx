@@ -17,9 +17,11 @@ const DidSubModeSelector = ({ onSelect, onBack }: DidSubModeSelectorProps) => {
       description: "Každá část má vlastní vlákno s 24h pamětí. Karel přizpůsobí jazyk a věk.",
     },
     {
+      // "mamka" is a legacy routing token; user-facing label is "Hanička"
+      // (canonical), see src/lib/therapistIdentity.ts.
       id: "mamka" as const,
       icon: Feather,
-      label: "Mamka mluví s Karlem",
+      label: "Hanička mluví s Karlem",
       description: "Supervize, analýza, plánování – Karel načte kartotéku a pracuje jako tandem-terapeut.",
     },
     {

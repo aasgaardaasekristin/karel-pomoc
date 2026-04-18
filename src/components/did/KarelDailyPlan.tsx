@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
+import { isTherapistName } from "@/lib/therapistIdentity";
 
 interface SnapshotItem {
   entity: string;
@@ -129,13 +130,18 @@ function humanizeText(raw: string | null | undefined): string {
 
 /* Pseudo-names that must never appear inside Karel's narrative
    ("system", empty, "karel" itself). Used both for thread filtering
-   and label sanitization. */
+   and label sanitization. Therapists (Hanka, Káťa) are filtered
+   separately via isTherapistName() — they are NOT DID parts and
+   must never leak into part-only narrative surfaces. */
 const NARRATIVE_PSEUDO_NAMES = new Set(["", "system", "karel", "ai", "bot"]);
 
 function isUsableLabel(raw: string | null | undefined): boolean {
   const cleaned = humanizeText(raw);
   if (!cleaned) return false;
   if (NARRATIVE_PSEUDO_NAMES.has(cleaned.toLowerCase())) return false;
+  // Hard guard: therapist != DID part. Never let Hanka/Káťa/aliases
+  // (including "mamka") surface in part-narrative.
+  if (isTherapistName(cleaned)) return false;
   if (cleaned.length < 3) return false;
   return true;
 }

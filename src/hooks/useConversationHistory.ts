@@ -15,8 +15,11 @@ const MAX_CONVERSATIONS = 5;
 const LOCAL_HISTORY_KEY = "karel_did_history";
 const MIGRATION_DONE_KEY = "karel_did_history_migrated_v1";
 
+// User-facing labels for sub_mode tokens. The "mamka" sub_mode is a
+// LEGACY routing token only — its display name is "Hanička" (canonical),
+// never "Mamka". See src/lib/therapistIdentity.ts.
 const labelMap: Record<string, string> = {
-  mamka: "Mamka",
+  mamka: "Hanička",
   cast: "Část mluví",
   general: "Obecné DID",
   form: "Formulář",

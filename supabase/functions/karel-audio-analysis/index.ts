@@ -73,12 +73,12 @@ serve(async (req) => {
     
     // Enhance with DID-specific tandem context
     if (didMode && partName) {
-      systemPrompt += `\n\n═══ TANDEM REŽIM: AUDIO ANALÝZA SEZENÍ S ČÁSTÍ ═══\nPrávě analyzuješ audio ze sezení mamky s částí "${partName}".
+      systemPrompt += `\n\n═══ TANDEM REŽIM: AUDIO ANALÝZA SEZENÍ S ČÁSTÍ ═══\nPrávě analyzuješ audio ze sezení Haničky (terapeutka) s částí "${partName}".
 Zaměř se na:
 - Jak část komunikuje (tón, tempo, slovní zásoba, přepínání)
-- Zda je mamka v kontaktu – validuje, netlačí, respektuje hranice
+- Zda je Hanička v kontaktu – validuje, netlačí, respektuje hranice
 - Známky dysregulace nebo přepnutí na jinou část
-- Konkrétní rady pro mamku: co říct, co NEŘÍKAT, jak pokračovat
+- Konkrétní rady pro Haničku: co říct, co NEŘÍKAT, jak pokračovat
 - Pokud je to relevantní, navrhni konkrétní aktivitu/hru pro stabilizaci`;
     }
     

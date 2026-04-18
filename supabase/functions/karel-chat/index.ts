@@ -1734,7 +1734,7 @@ HIGH = závažný distres bez přímého ohrožení života`,
                         crisis_event_id: crisisEventIdForTask,
                         title: `KRIZOVÁ INTERVENCE – ${partName}`,
                         description: `Okamžitě kontaktovat ${partName}. ${crisisResult.summary || ""}`,
-                        assigned_to: "hanicka",
+                        assigned_to: "hanka", // canonical therapist id (see _shared/therapistIdentity.ts)
                         priority: "CRITICAL",
                       },
                       {

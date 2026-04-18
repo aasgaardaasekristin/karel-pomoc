@@ -1786,7 +1786,7 @@ Vlákno je uložené a epizoda se právě generuje. Karty i souhrnný report se 
           const messageText = match[2].trim();
           if (messageText) {
             const recipientEmail = recipient === "kata" ? "K.CC@seznam.cz" : "mujosobniasistentnamiru@gmail.com";
-            const recipientName = recipient === "kata" ? "Káťa" : "Mamka";
+            const recipientName = recipient === "kata" ? "Káťa" : "Hanička";
             (async () => {
               try {
                 const emailHeaders = await getAuthHeaders();
