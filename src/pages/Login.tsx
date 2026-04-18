@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Lock, Heart, Leaf, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import KarelWelcomeIntro from "@/components/KarelWelcomeIntro";
 
 const THEME_STORAGE_KEY = "theme_login";
 
@@ -25,6 +26,7 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,7 +37,10 @@ const Login = () => {
     checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate("/hub");
+      if (session) {
+        // Show welcome intro instead of immediate redirect
+        setShowIntro(true);
+      }
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
@@ -56,7 +61,9 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <>
+      {showIntro && <KarelWelcomeIntro onComplete={() => navigate("/hub")} />}
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="mb-4 flex justify-end">
           <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
@@ -127,7 +134,8 @@ const Login = () => {
           <p className="text-xs text-muted-foreground mt-2">Bez přihlášení · nic se neukládá</p>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
