@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { pragueTodayISO } from "@/lib/dateOnlyTaskHelpers";
-import { isTherapistName } from "@/lib/therapistIdentity";
+import { isTherapistName, normalizeTherapist } from "@/lib/therapistIdentity";
 
 interface SnapshotItem {
   entity: string;
@@ -173,12 +173,11 @@ function describeUrgentLoad(n: number, topTaskHumanized: string): string {
   return `Dnes je ${n} ${czechTaskWord(n)} k vyřízení — detail níže.`;
 }
 
-/* ── Detect therapist target from assigned_to ── */
+/* ── Detect therapist target from assigned_to ──
+   Uses central normalizeTherapist() — no local substring guessing.
+   Returns "team" only when the value resolves to neither therapist. */
 function detectTarget(assignedTo: string): "hanka" | "kata" | "team" {
-  const low = (assignedTo || "").toLowerCase();
-  if (low.includes("han")) return "hanka";
-  if (low.includes("kát") || low.includes("kata")) return "kata";
-  return "team";
+  return normalizeTherapist(assignedTo) ?? "team";
 }
 
 /* ── Deduplicate tasks by first 40 chars of task text ── */

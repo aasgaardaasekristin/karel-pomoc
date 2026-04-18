@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, Clock, Flame, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeTherapist, THERAPIST_DISPLAY_NAME } from "@/lib/therapistIdentity";
 
 /**
  * DidCoordinationAlerts — kompaktní operační upozornění s:
@@ -45,10 +46,13 @@ const formatDeadline = (iso: string | null): string | null => {
   }
 };
 
+/* Owner detection uses central normalizeTherapist() — no local
+   substring guessing. "both" / "obě" remain as alert-specific
+   collective tokens (not therapist identities). */
 const detectOwner = (raw: string | null | undefined): string => {
+  const canonical = normalizeTherapist(raw);
+  if (canonical) return THERAPIST_DISPLAY_NAME[canonical];
   const low = (raw || "").toLowerCase();
-  if (low.includes("han")) return "Hanička";
-  if (low.includes("kát") || low.includes("kata")) return "Káťa";
   if (low.includes("both") || low.includes("obě")) return "obě";
   return "tým";
 };
