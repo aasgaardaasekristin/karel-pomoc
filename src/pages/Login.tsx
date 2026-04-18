@@ -61,7 +61,9 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <>
+      {showIntro && <KarelWelcomeIntro onComplete={() => navigate("/hub")} />}
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="mb-4 flex justify-end">
           <ThemeQuickButton storageKey={THEME_STORAGE_KEY} />
