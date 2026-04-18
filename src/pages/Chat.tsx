@@ -97,13 +97,37 @@ const Chat = () => {
     }
   }, [mainMode]);
 
-  // Determine hub section from sessionStorage
-  const [hubSection] = useState<HubSection>(() => {
+  // BUGFIX (P1 spontaneous reset): hubSection MUST be a live read of
+  // sessionStorage, not a snapshot frozen at component mount. Earlier code
+  // grabbed the value once via useState(() => ...) — but other code paths
+  // (deep links, hub navigation) write `karel_hub_section` later, and the
+  // auth guard then kept seeing `null` and bounced the user back to /hub.
+  // We now use state + a tiny re-read helper, and also re-read on every
+  // sessionStorage / visibility change so updates are reflected immediately.
+  const readHubSection = (): HubSection => {
     try {
       const section = sessionStorage.getItem("karel_hub_section") as HubSection;
       return section || null;
     } catch { return null; }
-  });
+  };
+  const [hubSection, setHubSection] = useState<HubSection>(readHubSection);
+  useEffect(() => {
+    const sync = () => {
+      const next = readHubSection();
+      setHubSection((prev) => (prev === next ? prev : next));
+    };
+    window.addEventListener("storage", sync);
+    document.addEventListener("visibilitychange", sync);
+    // Poll once per second — sessionStorage changes from same-tab writes do
+    // NOT fire the `storage` event, so this guarantees the guard sees
+    // updates within ~1s without forcing every writer to publish events.
+    const tick = window.setInterval(sync, 1000);
+    return () => {
+      window.removeEventListener("storage", sync);
+      document.removeEventListener("visibilitychange", sync);
+      window.clearInterval(tick);
+    };
+  }, []);
 
   const [input, setInput] = useState("");
   const { attachments, fileInputRef, openFilePicker, handleFileChange, captureScreenshot, removeAttachment, clearAttachments, addAttachment } = useUniversalUpload();
