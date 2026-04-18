@@ -1033,10 +1033,13 @@ const Chat = () => {
           return;
         }
 
-        // 2. Not found → create ONCE with full assignee context in intro
+        // 2. Not found → create ONCE with an ACTIVE Karel briefing as intro.
+        //    The intro must say (a) who it's for, (b) why it matters now,
+        //    (c) what Karel proposes as first step, (d) explicit ask for
+        //    Hanička and (e) explicit ask for Káťa when assigned to BOTH.
         const { data: taskData } = await supabase
           .from("did_therapist_tasks")
-          .select("task, assigned_to, priority, detail_instruction, status_hanka, status_kata")
+          .select("task, assigned_to, priority, detail_instruction, status_hanka, status_kata, source_agreement, category, due_date")
           .eq("id", taskId)
           .maybeSingle();
         const taskLabel = taskData?.task || "Úkol od Karla";
@@ -1046,9 +1049,31 @@ const Chat = () => {
           assigned === "kata" ? "**Pro Káťu**" :
           assigned === "hanka" ? "**Pro Haničku**" :
           "**Pro tým**";
-        const verb = assigned === "both" ? "Karel vám tento úkol přidělil" : "Karel ti tento úkol přidělil";
-        const detail = taskData?.detail_instruction ? `\n\n${taskData.detail_instruction}` : "";
-        const intro = `📋 ${recipientLine}\n**Úkol:** ${taskLabel}${detail}\n\n${verb}. Co potřebujete vědět nebo co chcete prodiskutovat?`;
+        const detailLine = taskData?.detail_instruction
+          ? String(taskData.detail_instruction).slice(0, 600)
+          : "";
+        const reasonLine = taskData?.source_agreement
+          ? `Vychází z: ${String(taskData.source_agreement).slice(0, 220)}`
+          : "Tento úkol jsem zařadil na základě aktuálního stavu systému a poslední synchronizace s vámi.";
+        const firstStep = detailLine
+          ? `Jako první krok navrhuji projít konkrétní instrukci výše a říct mi, co je realisticky proveditelné dnes vs. zítra.`
+          : `Jako první krok navrhuji, abychom úkol rozdělili na nejmenší proveditelný díl pro dnešek a domluvili kdo ho vezme.`;
+        const askHanka = assigned === "both" || assigned === "hanka"
+          ? `**Od Haničky potřebuji:** tvé pozorování posledních 24h k tématu úkolu — co vidíš ty, co by mi pomohlo úkol zpřesnit.`
+          : "";
+        const askKata = assigned === "both" || assigned === "kata"
+          ? `**Od Káti potřebuji:** tvůj pohled jako druhé terapeutky — zda souhlasíš s mým návrhem prvního kroku, případně co bys udělala jinak.`
+          : "";
+        const introBlocks = [
+          `📋 ${recipientLine}`,
+          `**Úkol:** ${taskLabel}`,
+          detailLine ? `\n${detailLine}` : "",
+          `\n*Proč teď:* ${reasonLine}`,
+          `\n*První krok:* ${firstStep}`,
+          askHanka ? `\n${askHanka}` : "",
+          askKata ? `\n${askKata}` : "",
+        ].filter(Boolean);
+        const intro = introBlocks.join("\n");
 
         const thread = await didThreads.createThread("Karel", subMode, "cs", [
           { role: "assistant", content: intro },
