@@ -134,6 +134,7 @@ const Login = () => {
           <p className="text-xs text-muted-foreground mt-2">Bez přihlášení · nic se neukládá</p>
         </div>
       </div>
+      </div>
     </>
   );
 };
