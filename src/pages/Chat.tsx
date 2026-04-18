@@ -1112,7 +1112,7 @@ const Chat = () => {
 
         const { data: qData } = await (supabase as any)
           .from("did_pending_questions")
-          .select("question, directed_to")
+          .select("question, directed_to, part_name, source")
           .eq("id", questionId)
           .maybeSingle();
         const qText = qData?.question || "Otázka od Karla";
@@ -1121,8 +1121,24 @@ const Chat = () => {
           directed === "both" ? "**Pro Haničku i Káťu**" :
           directed === "kata" ? "**Pro Káťu**" :
           directed === "hanka" ? "**Pro Haničku**" :
-          "**Otázka**";
-        const intro = `❓ ${recipientLine}\n\n${qText}\n\nProsím, odpovězte co nejpřesněji. Karel vaši odpověď zpracuje v příštím cyklu.`;
+          "**Otázka pro tým**";
+        const partLine = qData?.part_name && qData.part_name !== "system"
+          ? `*Týká se:* ${qData.part_name}`
+          : "";
+        const askHankaQ = directed === "both" || directed === "hanka"
+          ? "**Hanička:** odpověz prosím prvně ze své pozice — co k tomu víš teď."
+          : "";
+        const askKataQ = directed === "both" || directed === "kata"
+          ? "**Káťa:** přidej prosím svůj pohled, případně doplň, co ti z odpovědi Haničky chybí."
+          : "";
+        const intro = [
+          `❓ ${recipientLine}`,
+          `\n${qText}`,
+          partLine ? `\n${partLine}` : "",
+          `\n*Proč se ptám:* potřebuji to pro správné rozhodnutí v dalším cyklu — bez vaší odpovědi pracuji se slepým místem.`,
+          askHankaQ ? `\n${askHankaQ}` : "",
+          askKataQ ? `\n${askKataQ}` : "",
+        ].filter(Boolean).join("\n");
 
         const thread = await didThreads.createThread("Karel", subMode, "cs", [
           { role: "assistant", content: intro },
