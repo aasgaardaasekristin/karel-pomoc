@@ -266,6 +266,8 @@ export const useDidThreads = () => {
         processed_at: null,
         thread_label: options?.threadLabel || "",
         entered_name: options?.enteredName || "",
+        workspace_type: options?.workspaceType ?? null,
+        workspace_id: options?.workspaceId ?? null,
       } as any)
       .select()
       .single();
