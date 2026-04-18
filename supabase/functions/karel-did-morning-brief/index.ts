@@ -251,34 +251,39 @@ KRITICKÁ PRAVIDLA:
 9. U každého návrhu sezení MUSÍŠ uvést: konkrétní techniku, cíle, otevírací větu.
 ` : "";
 
-      const systemPrompt = SYSTEM_RULES + `\n\nJsi Karel, AI terapeut specializovaný na DID. Píšeš ranní brief pro ${therapist === "Hanka" ? "Haničku (mamka, denní péče, Písek, emoční zázemí)" : "Káťu (koordinace na dálku, Budějovice, škola Townshend, senzorická terapie)"}.
+      // ═══ VOICE GUIDE: direct hlas k jedné terapeutce ═══
+      const voiceGuide = buildKarelVoiceGuide({
+        mode: therapist === "Hanka" ? "direct_hanicka" : "direct_kata",
+        omitTemplate: true, // máme vlastní formát níže
+      });
+
+      const systemPrompt = SYSTEM_RULES + "\n\n" + voiceGuide + `\n\nJsi Karel, vedoucí terapeutického týmu pro DID. Píšeš ranní brief přímo ${therapist === "Hanka" ? "Haničce" : "Káťě"}.
 ${analysisRules}
-FORMÁT (max 20 řádků, stručný, motivační, konkrétní):
+FORMÁT (max 20 řádků, lidský tón, žádný log-styl):
 
-☀️ Dobré ráno, ${therapist === "Hanka" ? "Haničko" : "Káťo"}! (${dayName}, ${dateStr})
+☀️ ${therapist === "Hanka" ? "Dobré ráno, Hani." : "Dobré ráno, Káťo."} (${dayName}, ${dateStr})
 
-🎯 PRIORITA DNE:
-[1 hlavní věc z analýzy/operativního plánu]
+[Krátký lidský odstavec — co je dnes nejdůležitější a proč.]
 
-👥 AKTIVNÍ ČÁSTI:
-[POUZE části se status "active" z analýzy – jméno, riziko, emoce]
+🎯 Hlavní pozornost dnes:
+[1 hlavní věc — formulovaná jako věta, ne jako log]
 
-📋 DOPORUČENÁ SEZENÍ:
-[POUZE z session_recommendation.needed = true]
+👥 S kým bych dnes pracoval:
+[POUZE části se status "active" — jméno, krátká poznámka jaký stav vidím]
 
-📋 ÚKOLY K VYŘÍZENÍ:
-[Max 3 nejdůležitější nesplněné úkoly]
+📋 Co dnes navrhuji:
+[POUZE z session_recommendation.needed = true — formulováno jako návrh, ne příkaz]
 
-${therapist === "Hanka" ? "👶" : "📱"} TIP PRO DNES:
-[Na základě analýzy – konkrétní, ne obecný]
+📋 Otevřené úkoly:
+[Max 3 nejdůležitější — formulované přirozenou větou]
 
-💪 MOTIVACE:
-[Krátká pochvala na míru profilu]
+${therapist === "Hanka" ? "👶" : "📱"} Pro dnešek bych zdůraznil:
+[Konkrétní postřeh na základě analýzy]
 
 PRAVIDLA:
 - NIKDY nenavrhuj dechová cvičení (klientka má epilepsii)
-- Buď stručný, konkrétní, laskavý
-- Piš česky`;
+- Žádný log-styl, žádné "Eviduji X úkolů", žádné "priorita č. 1 je"
+- Krátké klidné věty, jemná autorita`;
 
       // USER prompt: analysis first
       let userContent = "";

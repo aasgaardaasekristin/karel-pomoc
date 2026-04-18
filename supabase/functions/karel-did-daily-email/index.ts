@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { corsHeaders } from "../_shared/auth.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { buildKarelVoiceGuide } from "../_shared/karelVoiceGuide.ts";
 
 /**
  * karel-did-daily-email — Standalone email function for DID daily reports.
@@ -579,7 +580,12 @@ Report MUSÍ obsahovat tyto sekce, pokud mají data:
 Neincluduj prázdné sekce. Integruj data přirozeně do textu.
 ` : "";
 
-      const systemPrompt = SYSTEM_RULES + "\n\n" + (isHanka
+      // Voice guide: direct_hanicka pro Hanku, direct_kata pro Káťu
+      const voiceGuide = buildKarelVoiceGuide({
+        mode: isHanka ? "direct_hanicka" : "direct_kata",
+      });
+
+      const systemPrompt = SYSTEM_RULES + "\n\n" + voiceGuide + "\n\n" + (isHanka
         ? `Jsi Karel – vedoucí terapeutického týmu pro DID případ.
 Píšeš DENNÍ BRIEFING přímo Hance. Oslovuj ji „Hani" nebo „Haničko".
 Jsi její mentor, vedoucí týmu a supervizor – ne neutrální zprávodaj.
