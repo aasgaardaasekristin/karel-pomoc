@@ -1032,14 +1032,20 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       if (hankaTasksHumanized.length > 0) {
         const lead = hankaTasksHumanized[0];
         const rest = hankaTasksHumanized.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í drobnost" : rest <= 4 ? "í drobnosti" : "ích drobností"}.` : "";
+        const restTail = rest > 0
+          ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
+          : "";
         hankaSentences.push(`Haničko, hlavní věc na dnes: ${lead}.${restTail}`);
       }
-      if (hankaQuestions.length > 0) {
-        hankaSentences.push(`Mám pro tebe ${hankaQuestions.length} otáz${hankaQuestions.length === 1 ? "ku" : "ky"} k zodpovězení — najdeš je níže.`);
-      }
+      const hQ = phraseQuestions(hankaQuestions.length, "Haničko");
+      if (hQ) hankaSentences.push(hQ);
       if (hankaSentences.length === 0) {
-        hankaSentences.push("Haničko, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+        // V krizi MUSÍ být konkrétní check-in — nikdy "nepotřebuji nic".
+        if (effectiveCrisisPart) {
+          hankaSentences.push(crisisCheckInForHanka(effectiveCrisisPart));
+        } else {
+          hankaSentences.push("Haničko, dnes od tebe nemám žádný konkrétní úkol. Pokud něco z denního kontaktu s kluky stojí za zmínku, dej mi vědět.");
+        }
       }
       paragraphs.push(hankaSentences.join(" "));
 
@@ -1053,14 +1059,19 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
       if (kataTasksHumanized.length > 0) {
         const lead = kataTasksHumanized[0];
         const rest = kataTasksHumanized.length - 1;
-        const restTail = rest > 0 ? ` K tomu mám pro tebe ještě ${rest} dalš${rest === 1 ? "í drobnost" : rest <= 4 ? "í drobnosti" : "ích drobností"}.` : "";
+        const restTail = rest > 0
+          ? ` Kromě toho je tu ještě ${rest} dalš${rest === 1 ? "í věc" : rest <= 4 ? "í věci" : "ích věcí"}, ke kterým se ještě dostaneme.`
+          : "";
         kataSentences.push(`Káťo, hlavní věc na dnes: ${lead}.${restTail}`);
       }
-      if (kataQuestions.length > 0) {
-        kataSentences.push(`Mám pro tebe ${kataQuestions.length} otáz${kataQuestions.length === 1 ? "ku" : "ky"} k zodpovězení — najdeš je níže.`);
-      }
+      const kQ = phraseQuestions(kataQuestions.length, "Káťo");
+      if (kQ) kataSentences.push(kQ);
       if (kataSentences.length === 0) {
-        kataSentences.push("Káťo, aktuálně od tebe nepotřebuji nic konkrétního — pokud máš vlastní postřehy nebo pozorování, budu rád, když se podělíš.");
+        if (effectiveCrisisPart) {
+          kataSentences.push(crisisCheckInForKata(effectiveCrisisPart));
+        } else {
+          kataSentences.push("Káťo, dnes od tebe nemám žádný konkrétní úkol. Pokud něco z tvojí strany stojí za zmínku, dej mi vědět.");
+        }
       }
       paragraphs.push(kataSentences.join(" "));
     }
