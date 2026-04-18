@@ -268,11 +268,11 @@ const TaskCard = ({
   const [feedback, setFeedback] = useState<TaskFeedbackEntry[]>([]);
   const [sendingFeedback, setSendingFeedback] = useState(false);
   const [autoFeedback, setAutoFeedback] = useState<AutoFeedbackEntry | null>(null);
-  // BUGFIX (P1): tasks assigned to BOTH must NOT default the author to "hanka".
-  // Therapist explicitly picks who is replying. For single-assignee tasks the
-  // selector is locked to that therapist (still shown so identity is unambiguous).
-  const [responder, setResponder] = useState<TherapistAssignee>(
-    assigned === "kata" ? "kata" : assigned === "both" ? "hanka" : "hanka"
+  // BUGFIX (P1): tasks assigned to BOTH must NOT default the author. Therapist
+  // MUST explicitly choose Hanička or Káťa before sending — no implicit fallback.
+  // For single-assignee tasks we lock the responder to that therapist.
+  const [responder, setResponder] = useState<TherapistAssignee | null>(
+    assigned === "hanka" ? "hanka" : assigned === "kata" ? "kata" : null
   );
   const feedEndRef = useRef<HTMLDivElement>(null);
 
@@ -305,14 +305,19 @@ const TaskCard = ({
   const handleSendUpdate = async () => {
     const text = noteInputs[task.id]?.trim();
     if (!text) return;
+
+    // BUGFIX (P1): for both-assigned tasks REQUIRE explicit responder pick.
+    // No silent fallback to Hanka — refuse the send and prompt the user.
+    if (assigned === "both" && !responder) {
+      toast.error("Vyber prosím nejprve, kdo odpovídá: Hanička nebo Káťa.");
+      return;
+    }
     setSendingFeedback(true);
 
-    // BUGFIX (P1): for both-assigned tasks use the explicit responder pick.
-    // For single-assignee tasks force the canonical author (no implicit hanka).
     const author: TherapistAssignee =
       assigned === "hanka" ? "hanka" :
       assigned === "kata" ? "kata" :
-      responder;
+      (responder as TherapistAssignee);
 
     // Save therapist's message
     const { error: insertErr } = await supabase.from("did_task_feedback").insert({
