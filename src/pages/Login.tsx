@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Lock, Heart, Leaf, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import KarelWelcomeIntro from "@/components/KarelWelcomeIntro";
 
 const THEME_STORAGE_KEY = "theme_login";
 
