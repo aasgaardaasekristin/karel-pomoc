@@ -168,6 +168,10 @@ function normalizeDirectedTo(assignedTo: string | null): string {
   const lower = assignedTo.toLowerCase().trim();
   if (lower === "kata" || lower === "káťa" || lower === "katka") return "kata";
   if (lower === "hanka" || lower === "hanička" || lower === "hanicka") return "hanka";
+  // "obe" / "obě" / "joint" / "all" / "both" → notifikace jde oběma terapeutkám.
+  // Pro session-plan deliberation se "led_by=společně" ukládá jako session_lead="obe",
+  // proto musí guardian rozeznat tuto hodnotu jako spoluvedení, ne fallback.
+  if (lower === "obe" || lower === "obě" || lower === "joint" || lower === "all" || lower === "both") return "both";
   return "both";
 }
 
@@ -378,7 +382,7 @@ serve(async (req) => {
 
     const { data: missedPlans, error: sessionErr } = await sb
       .from("did_daily_session_plans")
-      .select("id, selected_part, therapist, plan_date")
+      .select("id, selected_part, therapist, session_lead, plan_date")
       .in("status", ["planned", "pending"])
       .lt("plan_date", sessionCutoff)
       .limit(MAX_ITEMS_PER_CHECK);
@@ -390,10 +394,14 @@ serve(async (req) => {
     for (const plan of missedPlans || []) {
       stats.sessions_missed++;
 
+      // session_lead je autoritativní (může být "obe" pro spoluvedení).
+      // therapist je jen zkratka pro listing — pro routing reminders preferuj session_lead.
+      const routingTarget = plan.session_lead || plan.therapist;
+
       const sent = await sendReminderIfNotRecent(sb, {
         question:
           `Plánované sezení s ${plan.selected_part || "neznámou částí"} (${plan.plan_date || "bez data"}) neproběhlo. Chcete přeplánovat?`,
-        directed_to: normalizeDirectedTo(plan.therapist),
+        directed_to: normalizeDirectedTo(routingTarget),
         subject_type: "session_missed",
         subject_id: plan.id,
         now,
