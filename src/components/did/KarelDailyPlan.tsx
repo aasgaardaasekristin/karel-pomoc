@@ -1251,8 +1251,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
         </div>
       )}
 
-      {/* ── D. Návrh sezení na dnes s potvrzovacím workflow ── */}
-      {uniqueSessions.length > 0 && (
+      {/* ── D. Návrh sezení na dnes — SKRYTO když existuje briefing.proposed_session ── */}
+      {!hideDuplicateBlocks && uniqueSessions.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
@@ -1324,8 +1324,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
         </>
       )}
 
-      {/* ── E. Úkoly — pro Haničku ── */}
-      {hankaTasks.length > 0 && (
+      {/* ── E. Úkoly — pro Haničku — SKRYTO když existuje briefing.ask_hanka ── */}
+      {!hideDuplicateBlocks && hankaTasks.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
@@ -1350,8 +1350,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
         </>
       )}
 
-      {/* ── E. Úkoly — pro Káťu ── */}
-      {kataTasks.length > 0 && (
+      {/* ── E. Úkoly — pro Káťu — SKRYTO když existuje briefing.ask_kata ── */}
+      {!hideDuplicateBlocks && kataTasks.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
@@ -1383,8 +1383,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
           Single source of truth pro týmové porady = `did_daily_briefings`
           (renderuje `DidDailyBriefingPanel`) + `TeamDeliberationsPanel`. */}
 
-      {/* ── F. Nezodpovězené otázky ── */}
-      {questions.length > 0 && (
+      {/* ── F. Nezodpovězené otázky — SKRYTO když existuje briefing.waiting_for ── */}
+      {!hideDuplicateBlocks && questions.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
