@@ -3154,6 +3154,9 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
                 () => auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs),
               );
               auditResults.push(result);
+              if (result.oversized) {
+                await setPhase("audit_0b_struct_skip", `part="${lookupName}" reason=oversized bytes=${result.byteLength ?? "?"}`);
+              }
               if (result.changes.length > 0) {
                 cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
               }
