@@ -1164,36 +1164,41 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hi
 
   return (
     <article className="karel-briefing jung-card relative px-6 py-8 sm:px-10 sm:py-10 max-w-3xl mx-auto">
-      {/* ── Editorial frontispiece ── */}
-      <header className="mb-7">
-        <div className="flex items-center justify-between mb-3">
-          <span className="karel-briefing-eyebrow">Karlův přehled</span>
-          <span className="karel-briefing-eyebrow" aria-label="Datum">
-            {dayNum}. {monthName} {yearNum}
-          </span>
-        </div>
-        <h1 className="karel-briefing-headline">
-          {greeting}, Haničko a Káťo.
-        </h1>
-        {effectiveCrisisPart ? (
-          <p className="mt-3 karel-briefing-callout karel-briefing-callout-crisis">
-            Dnes je v aktivní krizi <strong className="font-medium">{effectiveCrisisPart}</strong>. To má přednost před vším ostatním.
-          </p>
-        ) : (
-          <p className="mt-3 karel-briefing-deck">
-            {isInfoDeficit
-              ? `Uplynulo ${daysWithoutData} dní bez aktualizace — potřebuji od vás krátkou zprávu.`
-              : "Tady je dnešní situace, jak ji čtu."}
-          </p>
-        )}
-      </header>
+      {/* ── Editorial frontispiece — SKRYTO když existuje DidDailyBriefingPanel,
+              aby v dashboardu nebyly DVA „Karlovy přehledy". ── */}
+      {!hideDuplicateBlocks && (
+        <header className="mb-7">
+          <div className="flex items-center justify-between mb-3">
+            <span className="karel-briefing-eyebrow">Karlův přehled</span>
+            <span className="karel-briefing-eyebrow" aria-label="Datum">
+              {dayNum}. {monthName} {yearNum}
+            </span>
+          </div>
+          <h1 className="karel-briefing-headline">
+            {greeting}, Haničko a Káťo.
+          </h1>
+          {effectiveCrisisPart ? (
+            <p className="mt-3 karel-briefing-callout karel-briefing-callout-crisis">
+              Dnes je v aktivní krizi <strong className="font-medium">{effectiveCrisisPart}</strong>. To má přednost před vším ostatním.
+            </p>
+          ) : (
+            <p className="mt-3 karel-briefing-deck">
+              {isInfoDeficit
+                ? `Uplynulo ${daysWithoutData} dní bez aktualizace — potřebuji od vás krátkou zprávu.`
+                : "Tady je dnešní situace, jak ji čtu."}
+            </p>
+          )}
+        </header>
+      )}
 
-      {/* ── B. Unified narrative — editorial prose ── */}
-      <section className="karel-briefing-prose">
-        {narrativeParagraphs.map((para, i) => (
-          <p key={i}>{para}</p>
-        ))}
-      </section>
+      {/* ── B. Unified narrative — SKRYTO když existuje briefing (duplicita prose). ── */}
+      {!hideDuplicateBlocks && (
+        <section className="karel-briefing-prose">
+          {narrativeParagraphs.map((para, i) => (
+            <p key={i}>{para}</p>
+          ))}
+        </section>
+      )}
 
       {/* ── B2. 4 sekce dneška — velitelský pohled ze snapshotu ── */}
       <CommandFourSections snapshot={snapshot} navigate={navigate} />
