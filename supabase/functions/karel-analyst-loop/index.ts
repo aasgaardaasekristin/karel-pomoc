@@ -480,11 +480,14 @@ function resolveTaskAssignment(task: any, activeCrises: any[]): string {
 }
 
 // ── Helper: Resolve therapist lead — never use blind "both" ───
+// Pravidlo: session_lead je autoritativní (může být "obe" pro spoluvedení).
+// therapist je legacy/zkratka — použít až jako fallback, když session_lead chybí.
 function resolveSessionLead(s: any): string {
-  const raw = (s.therapist || s.session_lead || "").toLowerCase().trim();
+  const raw = (s.session_lead || s.therapist || "").toLowerCase().trim();
   if (["hanka", "hanička", "hana"].includes(raw)) return "Hanička";
   if (["kata", "káťa", "katka"].includes(raw)) return "Káťa";
-  if (raw === "both" || raw === "obě" || !raw) return "⚠️ nutno rozhodnout";
+  if (["obe", "obě", "joint", "all"].includes(raw)) return "Hanička + Káťa";
+  if (raw === "both" || !raw) return "⚠️ nutno rozhodnout";
   return raw;
 }
 
