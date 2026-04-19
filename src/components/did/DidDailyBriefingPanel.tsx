@@ -462,9 +462,18 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         const created = (data as any)?.deliberation;
         if (!created?.id) throw new Error("Plán sezení nebyl vytvořen.");
 
-        markBriefingOrigin();
-        if (onOpenDeliberation) onOpenDeliberation(created.id);
-        else navigate(`/chat?deliberation_id=${created.id}`);
+        // Stejný guard jako u openDecisionDeliberation: markBriefingOrigin
+        // patří jen do navigate-fallback větve. Modal flow zavírá Dialog
+        // nativně přes setOpenDeliberationId(null) — žádný flag netřeba.
+        // Bez tohoto guardu zůstane "karel_briefing_return"='1' viset
+        // a první další chat-view (typicky další ask_hanka klik) ho omylem
+        // zkonzumuje a hodí uživatele zpět na dashboard místo do vlákna.
+        if (onOpenDeliberation) {
+          onOpenDeliberation(created.id);
+        } else {
+          markBriefingOrigin();
+          navigate(`/chat?deliberation_id=${created.id}`);
+        }
         if (!(data as any)?.reused) toast.success("Plán sezení otevřen jako porada týmu.");
       } catch (e: any) {
         console.error("[DidDailyBriefingPanel] openProposedSessionDeliberation failed:", e);
