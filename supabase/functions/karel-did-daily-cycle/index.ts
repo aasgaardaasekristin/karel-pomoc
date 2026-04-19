@@ -1871,6 +1871,8 @@ interface AuditResult {
   promoted: boolean; // STUB → FULL
   created: boolean;  // brand new card
   alertForHanka: string | null; // ⚠️ alert for daily report
+  oversized?: boolean; // skipped due to MAX_AUDIT_CARD_BYTES guard
+  byteLength?: number; // observed size when oversized or pre-checked
 }
 
 // ═══ CASE 2 HELPERS: Validate subsection structure against reference ═══
