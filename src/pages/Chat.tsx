@@ -603,8 +603,25 @@ const Chat = () => {
 
     switch (didFlowState) {
       case "chat": {
+        // 2026-04-19 — Briefing-return branch:
+        // Pokud uživatel přišel kliknutím na ask_hanka/ask_kata v Karlově
+        // přehledu (DidDailyBriefingPanel), Back MUSÍ vést přímo zpět do
+        // terapeut dashboardu (kde briefing žije), ne do therapist-threads.
+        // Bez tohoto branch by uživatel skončil v seznamu Haniččiných vláken,
+        // což rozbíjí očekávaný návrat „přesně tam, odkud jsem přišel“.
+        let cameFromBriefing = false;
+        try {
+          cameFromBriefing = sessionStorage.getItem("karel_briefing_return") === "1";
+          if (cameFromBriefing) sessionStorage.removeItem("karel_briefing_return");
+        } catch { /* ignore */ }
+
         setActiveThread(null);
         setMessages([]);
+        if (cameFromBriefing) {
+          setDidSubMode(null);
+          setDidFlowState("terapeut");
+          break;
+        }
         if (didSubMode === "cast") {
           setDidFlowState("thread-list");
           didThreads.fetchActiveThreads("cast");

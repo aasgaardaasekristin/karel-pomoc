@@ -732,6 +732,20 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     <>
       <ScrollArea className="flex-1 px-2 sm:px-4" ref={scrollRef}>
         <div className="max-w-4xl mx-auto py-3 sm:py-6 space-y-3 sm:space-y-4">
+          {/* 2026-04-19 — Visible Back in chat view. Bez tohoto tlačítka
+              uživatel po otevření briefing-spawned vlákna nemá UI návrat
+              do Karlova přehledu. Back logika je v handleDidBackHierarchical,
+              která má briefing-return branch (vrací rovnou do terapeut). */}
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDidBackHierarchical}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              ← Zpět
+            </Button>
+          </div>
           {activeThread && (
             <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg py-2 px-3">
               <span>
