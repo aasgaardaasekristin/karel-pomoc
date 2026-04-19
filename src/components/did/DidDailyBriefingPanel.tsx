@@ -548,7 +548,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </SectionHead>
           <button
             type="button"
-            onClick={() => openProposedSession(p.proposed_session!)}
+            onClick={() => openProposedSessionDeliberation(p.proposed_session!)}
             className="mt-2 w-full text-left p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors space-y-2 cursor-pointer"
           >
             <div className="flex items-center gap-2 flex-wrap">
@@ -584,24 +584,29 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 5. Co potřebuji od Haničky — KLIKATELNÉ */}
-      {p.ask_hanka?.length > 0 && (
+      {/* 5. Co potřebuji od Haničky — KLIKATELNÉ → kanonický did_threads workspace */}
+      {hankaItems.length > 0 && (
         <>
           <NarrativeDivider />
           <SectionHead>Haničko, potřebuji od tebe</SectionHead>
           <ul className="mt-2 space-y-1.5">
-            {p.ask_hanka.map((item, i) => (
-              <li key={i}>
+            {hankaItems.map((item) => (
+              <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => openHankaWorkspace(item)}
-                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-primary/5 transition-colors cursor-pointer group"
+                  disabled={openingItemId === item.id}
+                  onClick={() => openAskWorkspace("ask_hanka", item)}
+                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-primary/5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary/70 transition-colors" />
                   <span className="text-[13px] text-foreground/80 leading-relaxed flex-1">
-                    {item}
+                    {item.text}
                   </span>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/70 mt-1 shrink-0 transition-colors" />
+                  {openingItemId === item.id ? (
+                    <Loader2 className="w-3 h-3 text-primary animate-spin mt-1 shrink-0" />
+                  ) : (
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/70 mt-1 shrink-0 transition-colors" />
+                  )}
                 </button>
               </li>
             ))}
@@ -609,24 +614,29 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 6. Co potřebuji od Káti — KLIKATELNÉ */}
-      {p.ask_kata?.length > 0 && (
+      {/* 6. Co potřebuji od Káti — KLIKATELNÉ → kanonický did_threads workspace */}
+      {kataItems.length > 0 && (
         <>
           <NarrativeDivider />
           <SectionHead>Káťo, potřebuji od tebe</SectionHead>
           <ul className="mt-2 space-y-1.5">
-            {p.ask_kata.map((item, i) => (
-              <li key={i}>
+            {kataItems.map((item) => (
+              <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => openKataWorkspace(item)}
-                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/5 transition-colors cursor-pointer group"
+                  disabled={openingItemId === item.id}
+                  onClick={() => openAskWorkspace("ask_kata", item)}
+                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/40 group-hover:bg-accent/70 transition-colors" />
                   <span className="text-[13px] text-foreground/80 leading-relaxed flex-1">
-                    {item}
+                    {item.text}
                   </span>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-accent/70 mt-1 shrink-0 transition-colors" />
+                  {openingItemId === item.id ? (
+                    <Loader2 className="w-3 h-3 text-accent animate-spin mt-1 shrink-0" />
+                  ) : (
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-accent/70 mt-1 shrink-0 transition-colors" />
+                  )}
                 </button>
               </li>
             ))}
@@ -646,8 +656,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <li key={i}>
                 <button
                   type="button"
-                  onClick={() => openDecisionMeeting(d)}
-                  className="w-full text-left rounded-lg border border-border/60 bg-card/40 hover:bg-card/70 hover:border-primary/30 p-3 space-y-1.5 transition-colors cursor-pointer group"
+                  disabled={openingItemId === `decision::${d.title}`}
+                  onClick={() => openDecisionDeliberation(d)}
+                  className="w-full text-left rounded-lg border border-border/60 bg-card/40 hover:bg-card/70 hover:border-primary/30 p-3 space-y-1.5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <div className="flex items-start gap-2">
                     <span className="text-[11px] text-muted-foreground font-mono mt-0.5">
@@ -691,10 +702,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           (case-insensitive substring), se zde nezobrazí. */}
       {(() => {
         const askedTexts = [
-          ...(p.ask_hanka ?? []),
-          ...(p.ask_kata ?? []),
+          ...hankaItems.map(it => it.text),
+          ...kataItems.map(it => it.text),
           ...decisions.map(d => d.title),
-        ].map(s => s.toLowerCase().slice(0, 40));
+        ].map(s => (s ?? "").toLowerCase().slice(0, 40));
 
         const filteredWaiting = (p.waiting_for ?? []).filter(item => {
           const key = item.toLowerCase().slice(0, 40);
