@@ -2797,18 +2797,27 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     }
 
     // ═══ CONCURRENCY: Prevent parallel runs ═══
-    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    // E3: stuck/concurrency window prodloužen z 10 → 30 minut.
+    // Důvod: realný daily-cycle běží i přes 10 min (AI fáze 3b/4/6).
+    // Kratší okno generovalo false-positive "stale_running".
+    // Live cycle nyní povinně volá setPhase(...) → heartbeat_at,
+    // takže opravdu zaseknutý cycle poznáme podle starého heartbeatu,
+    // ne podle started_at.
+    const STUCK_WINDOW_MIN = 30;
+    const stuckCutoff = new Date(Date.now() - STUCK_WINDOW_MIN * 60 * 1000).toISOString();
+
+    // Concurrency: někdo běží a má čerstvý heartbeat (nebo nestihl zatím setPhase) → skip
     const { data: runningDailyCycle } = await sb.from("did_update_cycles")
-      .select("id, started_at")
+      .select("id, started_at, heartbeat_at")
       .eq("cycle_type", "daily")
       .eq("status", "running")
-      .gte("started_at", tenMinAgo)
+      .gte("started_at", stuckCutoff)
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (runningDailyCycle) {
-      console.log(`[daily-cycle] Already running: cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, skipping.`);
+      console.log(`[daily-cycle] Already running: cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, hb=${runningDailyCycle.heartbeat_at}, skipping.`);
       return new Response(JSON.stringify({
         success: true,
         skipped: true,
@@ -2817,17 +2826,23 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ═══ AUTO-CLEANUP: Mark stuck "running" daily cycles as "failed" ═══
+    // ═══ AUTO-CLEANUP: Mark truly stuck "running" daily cycles as "failed" ═══
+    // Kritérium: žádný heartbeat za STUCK_WINDOW_MIN (NEBO zcela bez heartbeatu a started_at je starší).
+    // Toto je JEDINÝ cleanup path pro daily cycles — analyst-loop je má vyřazené (E2).
     const { data: stuckDailyCycles } = await sb.from("did_update_cycles")
-      .select("id")
+      .select("id, started_at, heartbeat_at, phase")
       .eq("cycle_type", "daily")
       .eq("status", "running")
-      .lt("started_at", tenMinAgo);
+      .or(`heartbeat_at.lt.${stuckCutoff},and(heartbeat_at.is.null,started_at.lt.${stuckCutoff})`);
     if (stuckDailyCycles && stuckDailyCycles.length > 0) {
       for (const stuck of stuckDailyCycles) {
-        await sb.from("did_update_cycles").update({ status: "failed", completed_at: new Date().toISOString() }).eq("id", stuck.id);
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          last_error: `stuck_no_heartbeat_${STUCK_WINDOW_MIN}min(phase=${(stuck as any).phase || "unknown"})`,
+        }).eq("id", stuck.id);
       }
-      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed`);
+      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed (window=${STUCK_WINDOW_MIN}min)`);
     }
 
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
