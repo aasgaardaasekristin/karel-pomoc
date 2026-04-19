@@ -6,7 +6,16 @@ import {
   sanitizePartName,
 } from "@/lib/didPartNaming";
 
-export type WorkspaceType = "task" | "question" | "session" | null;
+export type WorkspaceType =
+  | "task"
+  | "question"
+  | "session"
+  // Briefing ask vlákna — kanonické persistentní workspace pro klik
+  // v Karlově denním přehledu (DidDailyBriefingPanel). workspace_id je
+  // stabilní serverové UUID briefing itemu (ask_hanka[].id / ask_kata[].id).
+  | "ask_hanka"
+  | "ask_kata"
+  | null;
 
 export interface DidThread {
   id: string;
