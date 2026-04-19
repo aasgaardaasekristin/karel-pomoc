@@ -168,6 +168,10 @@ function normalizeDirectedTo(assignedTo: string | null): string {
   const lower = assignedTo.toLowerCase().trim();
   if (lower === "kata" || lower === "káťa" || lower === "katka") return "kata";
   if (lower === "hanka" || lower === "hanička" || lower === "hanicka") return "hanka";
+  // "obe" / "obě" / "joint" / "all" / "both" → notifikace jde oběma terapeutkám.
+  // Pro session-plan deliberation se "led_by=společně" ukládá jako session_lead="obe",
+  // proto musí guardian rozeznat tuto hodnotu jako spoluvedení, ne fallback.
+  if (lower === "obe" || lower === "obě" || lower === "joint" || lower === "all" || lower === "both") return "both";
   return "both";
 }
 
