@@ -2806,29 +2806,19 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const STUCK_WINDOW_MIN = 30;
     const stuckCutoff = new Date(Date.now() - STUCK_WINDOW_MIN * 60 * 1000).toISOString();
 
-    // Concurrency: někdo běží a má čerstvý heartbeat (nebo nestihl zatím setPhase) → skip
-    const { data: runningDailyCycle } = await sb.from("did_update_cycles")
-      .select("id, started_at, heartbeat_at")
-      .eq("cycle_type", "daily")
-      .eq("status", "running")
-      .gte("started_at", stuckCutoff)
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    // ═══ Sjednocená definice "live" vs "stuck" run ═══
+    // LIVE  = status='running' AND coalesce(heartbeat_at, started_at) >= stuckCutoff
+    //         (čerstvý heartbeat NEBO ještě nestihl první setPhase)
+    // STUCK = status='running' AND coalesce(heartbeat_at, started_at) <  stuckCutoff
+    //         (nikdo neheartbeatl už 30+ min — opravdu zaseklý běh)
+    // Tyto dvě množiny jsou disjunktní a pokrývají všechny running runy.
+    //
+    // Důsledek: healthy daily-cycle, který běží 2h ale heartbeat-uje,
+    // je pořád LIVE → další spuštění uvidí concurrency a skipne.
 
-    if (runningDailyCycle) {
-      console.log(`[daily-cycle] Already running: cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, hb=${runningDailyCycle.heartbeat_at}, skipping.`);
-      return new Response(JSON.stringify({
-        success: true,
-        skipped: true,
-        reason: "already_running",
-        cycleId: runningDailyCycle.id,
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    // ═══ AUTO-CLEANUP: Mark truly stuck "running" daily cycles as "failed" ═══
-    // Kritérium: žádný heartbeat za STUCK_WINDOW_MIN (NEBO zcela bez heartbeatu a started_at je starší).
-    // Toto je JEDINÝ cleanup path pro daily cycles — analyst-loop je má vyřazené (E2).
+    // 1) AUTO-CLEANUP nejdřív — ať uvolníme zombie running rows,
+    //    aby nás neblokoval guard kvůli starému started_at bez heartbeatu.
+    //    Toto je JEDINÝ cleanup path pro daily cycles — analyst-loop je má vyřazené (E2).
     const { data: stuckDailyCycles } = await sb.from("did_update_cycles")
       .select("id, started_at, heartbeat_at, phase")
       .eq("cycle_type", "daily")
@@ -2843,6 +2833,29 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
         }).eq("id", stuck.id);
       }
       console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed (window=${STUCK_WINDOW_MIN}min)`);
+    }
+
+    // 2) CONCURRENCY GUARD podle freshness, ne podle started_at.
+    //    LIVE = heartbeat_at >= cutoff  OR  (heartbeat_at IS NULL AND started_at >= cutoff)
+    //    Healthy long-running cycle (běží 2h, ale heartbeat-uje) je stále LIVE → blokuje nový run.
+    const { data: runningDailyCycle } = await sb.from("did_update_cycles")
+      .select("id, started_at, heartbeat_at, phase")
+      .eq("cycle_type", "daily")
+      .eq("status", "running")
+      .or(`heartbeat_at.gte.${stuckCutoff},and(heartbeat_at.is.null,started_at.gte.${stuckCutoff})`)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (runningDailyCycle) {
+      console.log(`[daily-cycle] Already running (live): cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, hb=${runningDailyCycle.heartbeat_at}, phase=${(runningDailyCycle as any).phase}, skipping.`);
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        reason: "already_running",
+        cycleId: runningDailyCycle.id,
+        liveDefinition: "coalesce(heartbeat_at, started_at) >= now() - 30min",
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
