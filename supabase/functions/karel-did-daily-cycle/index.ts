@@ -2797,18 +2797,27 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     }
 
     // ═══ CONCURRENCY: Prevent parallel runs ═══
-    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    // E3: stuck/concurrency window prodloužen z 10 → 30 minut.
+    // Důvod: realný daily-cycle běží i přes 10 min (AI fáze 3b/4/6).
+    // Kratší okno generovalo false-positive "stale_running".
+    // Live cycle nyní povinně volá setPhase(...) → heartbeat_at,
+    // takže opravdu zaseknutý cycle poznáme podle starého heartbeatu,
+    // ne podle started_at.
+    const STUCK_WINDOW_MIN = 30;
+    const stuckCutoff = new Date(Date.now() - STUCK_WINDOW_MIN * 60 * 1000).toISOString();
+
+    // Concurrency: někdo běží a má čerstvý heartbeat (nebo nestihl zatím setPhase) → skip
     const { data: runningDailyCycle } = await sb.from("did_update_cycles")
-      .select("id, started_at")
+      .select("id, started_at, heartbeat_at")
       .eq("cycle_type", "daily")
       .eq("status", "running")
-      .gte("started_at", tenMinAgo)
+      .gte("started_at", stuckCutoff)
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (runningDailyCycle) {
-      console.log(`[daily-cycle] Already running: cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, skipping.`);
+      console.log(`[daily-cycle] Already running: cycle ${runningDailyCycle.id} since ${runningDailyCycle.started_at}, hb=${runningDailyCycle.heartbeat_at}, skipping.`);
       return new Response(JSON.stringify({
         success: true,
         skipped: true,
@@ -2817,17 +2826,23 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // ═══ AUTO-CLEANUP: Mark stuck "running" daily cycles as "failed" ═══
+    // ═══ AUTO-CLEANUP: Mark truly stuck "running" daily cycles as "failed" ═══
+    // Kritérium: žádný heartbeat za STUCK_WINDOW_MIN (NEBO zcela bez heartbeatu a started_at je starší).
+    // Toto je JEDINÝ cleanup path pro daily cycles — analyst-loop je má vyřazené (E2).
     const { data: stuckDailyCycles } = await sb.from("did_update_cycles")
-      .select("id")
+      .select("id, started_at, heartbeat_at, phase")
       .eq("cycle_type", "daily")
       .eq("status", "running")
-      .lt("started_at", tenMinAgo);
+      .or(`heartbeat_at.lt.${stuckCutoff},and(heartbeat_at.is.null,started_at.lt.${stuckCutoff})`);
     if (stuckDailyCycles && stuckDailyCycles.length > 0) {
       for (const stuck of stuckDailyCycles) {
-        await sb.from("did_update_cycles").update({ status: "failed", completed_at: new Date().toISOString() }).eq("id", stuck.id);
+        await sb.from("did_update_cycles").update({
+          status: "failed",
+          completed_at: new Date().toISOString(),
+          last_error: `stuck_no_heartbeat_${STUCK_WINDOW_MIN}min(phase=${(stuck as any).phase || "unknown"})`,
+        }).eq("id", stuck.id);
       }
-      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed`);
+      console.log(`[daily-cycle] Auto-cleanup: ${stuckDailyCycles.length} stuck daily cycles marked failed (window=${STUCK_WINDOW_MIN}min)`);
     }
 
     const cycleInsertPayload: any = { cycle_type: "daily", status: "running" };
@@ -2835,6 +2850,24 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     const { data: cycle, error: cycleErr } = await sb.from("did_update_cycles").insert(cycleInsertPayload).select().single();
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
     cycleId = cycle?.id || null;
+
+    // ─── HEARTBEAT HELPER (E1) ────────────────────────────────────────────
+    // Zapisuje phase + heartbeat_at na začátku každé hlavní fáze daily-cycle.
+    // Slouží jako důkaz živosti pro stuck cleanup (E3) i pro diagnostiku
+    // toho, ve které fázi cycle případně visí.
+    const setPhase = async (phase: string, detail = "") => {
+      if (!cycleId) return;
+      try {
+        await sb.from("did_update_cycles").update({
+          phase,
+          phase_detail: detail.slice(0, 500),
+          heartbeat_at: new Date().toISOString(),
+        }).eq("id", cycleId);
+      } catch (e) {
+        console.warn(`[daily-cycle] setPhase("${phase}") failed:`, (e as Error)?.message || e);
+      }
+    };
+    await setPhase("normalize_cards", "Fáze 2: Normalizace struktury karet A–M");
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
@@ -2873,6 +2906,7 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     let hankaHtml = "";
     let kataHtml = "";
 
+    await setPhase("audit_0b_start", "Fáze 0B: Audit struktury karet");
     // ═══ KROK 0B – AUDIT STRUKTURY KARTY PŘED ZPRACOVÁNÍM ═══
     // Povinný krok: pro každé nezpracované vlákno audituje strukturu odpovídající karty
     // Handles: Case 1 (missing sections), Case 2 (malformed structure), Case 3 (STUB promotion), Case 4 (no card exists)
@@ -3096,6 +3130,7 @@ Datum: ${dateStr}` },
     
     console.log(`[daily-cycle] Processing: ${reportThreads.length} threads (${threads.length} unprocessed), ${reportConversations.length} conversations (${conversations.length} unprocessed), hasRecentActivity=${hasRecentActivity}`);
 
+    await setPhase("compile_data", "Fáze 3: Sběr a komprimace vláken/konverzací");
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
 
@@ -3379,6 +3414,7 @@ Datum: ${dateStr}` },
       } catch (e) { console.warn("Failed to load CENTRUM docs for dedup:", e); }
     }
 
+    await setPhase("ai_analysis", "Fáze 3b: AI analýza A–M");
     // 3. AI ANALÝZA – full A-M decomposition
     const existingCardsContext = Object.entries(existingCards).map(([name, content]) =>
       `=== EXISTUJÍCÍ KARTA: ${name} ===\n${content.length > 3000 ? `${content.slice(0, 3000)}…` : content}`
@@ -3985,6 +4021,7 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       console.error(`[AI analysis] API error ${analysisResponse.status}: ${errText.slice(0, 500)}`);
     }
 
+    await setPhase("update_cards", "Fáze 4: Aktualizace karet");
     // 4. PARSE AND UPDATE CARDS IN-PLACE
 
     // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
@@ -5254,6 +5291,7 @@ ESKALACE: level ${task.escalation_level || 0}`,
 
     // shadowSync moved to standalone CRON — see karel-did-context-prime (runs daily at 5:30 UTC)
 
+    await setPhase("revize_05ab", "Fáze 5: Denní revize 05A/05B");
     // ═══════════════════════════════════════════════════════════
     // DENNÍ REVIZE 05A/05B – expirace, downgrade, promotion
     // ═══════════════════════════════════════════════════════════
@@ -5693,6 +5731,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Health check error:", healthErr);
     }
 
+    await setPhase("crisis_bridge", "Fáze 5.5: Bridge a vyhodnocení krizí");
     // ═══ FÁZE 5.5: BRIDGE crisis_alerts → crisis_events + VYHODNOCENÍ AKTIVNÍCH KRIZÍ ═══
     try {
       // ── BRIDGE: Sync crisis_alerts (System A) → crisis_events (System B) ──
@@ -5937,6 +5976,7 @@ Pokud nejsou žádné nové claims, vrať: []`;
       console.warn("[daily-cycle] Crisis eval phase error (non-fatal):", crisisErr);
     }
 
+    await setPhase("phase_6_card_autoupdate", "Fáze 6: Autonomní aktualizace karet");
     // ═══ FÁZE 6: AUTONOMNÍ AKTUALIZACE KARET ═══
     try {
       console.log("[daily-cycle] Triggering autonomous card updates...");
@@ -6426,6 +6466,7 @@ Navrhni cíl typu "${targetGoalType}" pro stav "${pp.stateCategory}". Nikdy nena
       console.warn("[daily-cycle] Goal proposal error:", propErr);
     }
 
+    await setPhase("phase_7_operative_plan", "Fáze 7: Aktualizace operativního plánu");
     // ═══ FÁZE 7: Aktualizace operativního plánu ═══
     try {
       const planUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/update-operative-plan`;
@@ -6672,6 +6713,7 @@ Vra\u0165 JSON:
       console.warn("[EMAIL RETRY] Error:", retryErr);
     }
 
+    await setPhase("phase_8_therapist_intel", "Fáze 8: Therapist intelligence");
     // ═══ PHASE_3_THERAPIST_INTELLIGENCE — delegated to standalone function ═══
     // Replaced inline profiling (was ~150 lines of raw AI + ungoverned writes)
     // with delegation to karel-daily-therapist-intelligence which uses
@@ -6826,6 +6868,7 @@ Vra\u0165 JSON:
       console.warn("[PART-STATUS] Auto-detection failed (non-fatal):", partStatusErr);
     }
 
+    await setPhase("phase_9_queue_flush", "Fáze 9: Drive queue flush");
     // ═══ PHASE_9_QUEUE_FLUSH_AND_POST_ACTIONS ═══
     // Moved here so ALL write-producing phases (therapist intelligence, PAMET_KAREL, crisis escalation)
     // have already inserted their did_pending_drive_writes before we flush.
@@ -6859,6 +6902,7 @@ Vra\u0165 JSON:
       console.error("[PHASE_9] Queue flush FAILED:", flushErr);
     }
 
+    await setPhase("phase_10_cleanup", "Fáze 10: Závěrečný cleanup");
     // ═══ PHASE_10_CLEANUP_AND_LOGGING ═══
 
     try {
