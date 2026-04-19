@@ -1,0 +1,462 @@
+/**
+ * karel-did-daily-briefing
+ * 
+ * Generuje kanonický denní briefing Karla.
+ * Briefing je redakční artefakt — vzniká jednou (cron / manual / auto),
+ * ukládá se do `did_daily_briefings`, dashboard ho jen čte.
+ * 
+ * Workflow:
+ * 1. Načti kontext: aktivní krize, signály z posledních 3 dnů, otevřené tasky, parts
+ * 2. Spočítej skóre kandidátů na dnešní sezení (heuristika)
+ * 3. Pošli AI strukturovaný kontext + tool-call schema
+ * 4. Ulož výsledek do did_daily_briefings
+ * 
+ * Tone: kultivovaná čeština, jungovská noblesa v úvodu/přechodech,
+ * konkrétní pracovní formulace v rozhodovacích bodech.
+ */
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const AI_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const MODEL = "google/gemini-2.5-pro";
+
+const pragueDayISO = (d: Date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Prague" }).format(d);
+
+const daysAgoISO = (n: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return pragueDayISO(d);
+};
+
+// ───────────────────────────────────────────────────────────
+// HEURISTIKA: skórování kandidátů na dnešní sezení
+// ───────────────────────────────────────────────────────────
+interface SessionCandidate {
+  part_id: string;
+  part_name: string;
+  score: number;
+  reasons: string[];
+}
+
+async function scoreSessionCandidates(supabase: any): Promise<SessionCandidate[]> {
+  const threeDaysAgo = daysAgoISO(3);
+  const candidates = new Map<string, SessionCandidate>();
+
+  const ensure = (part_id: string, part_name: string): SessionCandidate => {
+    if (!candidates.has(part_id)) {
+      candidates.set(part_id, { part_id, part_name, score: 0, reasons: [] });
+    }
+    return candidates.get(part_id)!;
+  };
+
+  // 1) Aktivní krize (×3)
+  const { data: crises } = await supabase
+    .from("crisis_events")
+    .select("id, part_name, severity, phase, indicator_safety, indicator_emotional_regulation")
+    .not("phase", "in", '("closed","CLOSED")');
+
+  for (const c of crises || []) {
+    const { data: part } = await supabase
+      .from("did_parts")
+      .select("id, name")
+      .eq("name", c.part_name)
+      .maybeSingle();
+    if (!part) continue;
+    const cand = ensure(part.id, part.name);
+    cand.score += 3;
+    cand.reasons.push(`aktivní krize (${c.severity || "?"}, fáze ${c.phase || "?"})`);
+    if ((c.indicator_safety ?? 5) <= 2) {
+      cand.score += 2;
+      cand.reasons.push("nízký bezpečnostní indikátor");
+    }
+  }
+
+  // 2) Opakované signály z posledních 3 dnů (×2)
+  const { data: recentObs } = await supabase
+    .from("did_observations")
+    .select("part_id, severity, signal_type")
+    .gte("created_at", `${threeDaysAgo}T00:00:00Z`)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  const obsCounts = new Map<string, number>();
+  for (const o of recentObs || []) {
+    if (!o.part_id) continue;
+    obsCounts.set(o.part_id, (obsCounts.get(o.part_id) || 0) + 1);
+  }
+  for (const [part_id, count] of obsCounts) {
+    if (count >= 2) {
+      const { data: part } = await supabase.from("did_parts").select("id, name").eq("id", part_id).maybeSingle();
+      if (!part) continue;
+      const cand = ensure(part.id, part.name);
+      cand.score += Math.min(count, 4);
+      cand.reasons.push(`${count} signálů za 3 dny`);
+    }
+  }
+
+  // 3) Pending questions bez odpovědi (×1)
+  const { data: pending } = await supabase
+    .from("did_pending_questions")
+    .select("part_id")
+    .in("status", ["pending", "sent"]);
+
+  for (const p of pending || []) {
+    if (!p.part_id) continue;
+    const { data: part } = await supabase.from("did_parts").select("id, name").eq("id", p.part_id).maybeSingle();
+    if (!part) continue;
+    const cand = ensure(part.id, part.name);
+    cand.score += 1;
+    cand.reasons.push("nedořešená otázka");
+  }
+
+  return Array.from(candidates.values()).sort((a, b) => b.score - a.score);
+}
+
+// ───────────────────────────────────────────────────────────
+// KONTEXT: posledních 3 dní + lingering
+// ───────────────────────────────────────────────────────────
+async function gatherContext(supabase: any) {
+  const threeDaysAgo = daysAgoISO(3);
+  const sevenDaysAgo = daysAgoISO(7);
+
+  const [crisesRes, recentObsRes, olderObsRes, pendingRes, threadsRes, plansRes] = await Promise.all([
+    supabase.from("crisis_events")
+      .select("id, part_name, severity, phase, trigger_description, days_active, opened_at, clinical_summary")
+      .not("phase", "in", '("closed","CLOSED")')
+      .order("severity", { ascending: false }),
+    supabase.from("did_observations")
+      .select("part_id, signal_type, severity, content, created_at")
+      .gte("created_at", `${threeDaysAgo}T00:00:00Z`)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase.from("did_observations")
+      .select("part_id, signal_type, severity, content, created_at")
+      .gte("created_at", `${sevenDaysAgo}T00:00:00Z`)
+      .lt("created_at", `${threeDaysAgo}T00:00:00Z`)
+      .eq("severity", "high")
+      .limit(20),
+    supabase.from("did_pending_questions")
+      .select("id, part_id, question, asked_to, status")
+      .in("status", ["pending", "sent"])
+      .limit(20),
+    supabase.from("did_threads")
+      .select("id, title, part_name, last_message_at")
+      .gte("last_message_at", `${threeDaysAgo}T00:00:00Z`)
+      .order("last_message_at", { ascending: false })
+      .limit(15),
+    supabase.from("did_daily_session_plans")
+      .select("id, part_id, status, plan_summary, session_date")
+      .gte("session_date", threeDaysAgo)
+      .order("session_date", { ascending: false }),
+  ]);
+
+  const { data: parts } = await supabase
+    .from("did_parts")
+    .select("id, name");
+  const partsById = new Map((parts || []).map((p: any) => [p.id, p.name]));
+
+  return {
+    today: pragueDayISO(),
+    crises: crisesRes.data || [],
+    recent_observations: (recentObsRes.data || []).map((o: any) => ({
+      ...o, part_name: o.part_id ? partsById.get(o.part_id) : null,
+    })),
+    older_significant: (olderObsRes.data || []).map((o: any) => ({
+      ...o, part_name: o.part_id ? partsById.get(o.part_id) : null,
+    })),
+    pending_questions: (pendingRes.data || []).map((q: any) => ({
+      ...q, part_name: q.part_id ? partsById.get(q.part_id) : null,
+    })),
+    recent_threads: threadsRes.data || [],
+    recent_session_plans: (plansRes.data || []).map((p: any) => ({
+      ...p, part_name: p.part_id ? partsById.get(p.part_id) : null,
+    })),
+  };
+}
+
+// ───────────────────────────────────────────────────────────
+// AI: strukturovaný briefing přes tool calling
+// ───────────────────────────────────────────────────────────
+const BRIEFING_TOOL = {
+  type: "function",
+  function: {
+    name: "emit_daily_briefing",
+    description: "Vrátí strukturovaný denní briefing Karla pro dashboardovou poradu týmu.",
+    parameters: {
+      type: "object",
+      properties: {
+        greeting: {
+          type: "string",
+          description: "Karlovo úvodní slovo (2-4 věty). Kultivovaná čeština, jungovská noblesa. Pozdrav Haničce a Káte, dnešní hlavní priorita, proč je důležitá. Bez patosu.",
+        },
+        last_3_days: {
+          type: "string",
+          description: "Syntéza posledních 3 dnů (2-4 věty, ne raw log). Co se změnilo, jaké linie se ukazují. Konkrétní jména částí, ne 'systém'.",
+        },
+        lingering: {
+          type: "string",
+          description: "Co zůstává významné z dřívějška (1-3 věty). Jen skutečně relevantní věci, ne všechno staré.",
+        },
+        decisions: {
+          type: "array",
+          description: "Společná rozhodnutí pro dnešek. MAX 2 položky, +1 navíc jen pokud je crisis (= max 3 celkem). Konkrétní rozhodovací názvy, NE generické 'koordinovat strategii'.",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Krátký konkrétní rozhodovací název, např. 'Dnešní krizový plán pro Arthura'." },
+              reason: { type: "string", description: "1-2 věty proč to potřebuje společnou shodu." },
+              type: { type: "string", enum: ["crisis", "session_plan", "clinical_decision", "follow_up_review", "supervision"] },
+              part_name: { type: "string", description: "Jméno části, které se to týká (pokud relevantní)." },
+            },
+            required: ["title", "reason", "type"],
+            additionalProperties: false,
+          },
+          maxItems: 3,
+        },
+        proposed_session: {
+          type: "object",
+          description: "Dnešní navržené sezení. POVINNÉ pokud existují dostatečné signály. Pokud žádný kandidát nepřekročil práh skóre 3, nech null.",
+          properties: {
+            part_name: { type: "string" },
+            why_today: { type: "string", description: "Proč právě tato část a právě dnes (2-3 věty)." },
+            led_by: { type: "string", enum: ["Hanička", "Káťa", "společně"] },
+            duration_min: { type: "number", description: "Doporučená délka v minutách (10-45)." },
+            first_draft: { type: "string", description: "První pracovní verze plánu sezení (3-5 vět). Co začít, kdy zůstat u stabilizace, kdy zvážit hlubší práci." },
+            kata_involvement: { type: "string", description: "Jednou větou, zda dnes přizvat Káťu a za jakých okolností." },
+          },
+          required: ["part_name", "why_today", "led_by", "first_draft"],
+          additionalProperties: false,
+        },
+        ask_hanka: {
+          type: "array",
+          description: "Co Karel dnes potřebuje od Haničky. 1-3 konkrétní položky. Musí být JINÉ než ask_kata.",
+          items: { type: "string" },
+          maxItems: 3,
+        },
+        ask_kata: {
+          type: "array",
+          description: "Co Karel dnes potřebuje od Káti. 1-3 konkrétní položky. Musí být JINÉ než ask_hanka.",
+          items: { type: "string" },
+          maxItems: 3,
+        },
+        waiting_for: {
+          type: "array",
+          description: "Na co Karel čeká, než upraví finální postup (0-3 položky).",
+          items: { type: "string" },
+          maxItems: 3,
+        },
+        closing: {
+          type: "string",
+          description: "Krátký uzávěr (1-2 věty). Co se stane, jakmile Hanička a Káťa doplní své pohledy.",
+        },
+      },
+      required: ["greeting", "last_3_days", "decisions", "ask_hanka", "ask_kata", "closing"],
+      additionalProperties: false,
+    },
+  },
+};
+
+const SYSTEM_PROMPT = `Jsi Karel — vedoucí terapeutického týmu (Hanička, Káťa).
+Generuješ denní briefing pro poradu týmu o systému kluků (DID).
+
+ABSOLUTNÍ PRAVIDLA JAZYKA:
+- NIKDY neříkej "systém" nebo "DID systém". Vždy "kluci" nebo jménem konkrétní části.
+- NIKDY neříkej "klient". Kluci jsou kluci.
+- Konkrétní jména: Arthur, Tundrupek, Gerhard, Gustík atd. — používej je.
+
+TÓN:
+- Kultivovaná čeština, jungovská noblesa v úvodu, smyslu a přechodech.
+- KRÁTKÉ a KONKRÉTNÍ názvy v rozhodovacích bodech a tasks.
+- Žádný pseudo-log styl ("Dnes je nejdůležitější toto: …").
+- Žádná pseudo-poezie, žádný patos.
+- Žádné "Koordinovat strategii", "Synchronizovat úkoly", "Rozdělit si tasks" — to jsou ZAKÁZANÉ formulace.
+
+REDUKCE TÝMOVÝCH BODŮ:
+- Maximálně 2 společná rozhodnutí (+1 navíc jen pokud aktivní krize = max 3).
+- Týmový bod smí vzniknout JEN pro: crisis | session_plan | clinical_decision | follow_up_review | supervision.
+- NE pro běžnou operativu, individuální task pro Haničku, individuální task pro Káťu.
+
+DNEŠNÍ NAVRŽENÉ SEZENÍ:
+- Pokud kontext obsahuje kandidáta se skóre ≥ 3, MUSÍŠ navrhnout konkrétní sezení.
+- Vyber nejvhodnějšího kandidáta z poskytnutého seznamu, NEvymýšlej jméno mimo seznam.
+- Uveď: koho, proč právě dnes, kdo povede, první pracovní verze, kdy přizvat Káťu.
+
+ROZDĚLENÍ ASKS:
+- Hanička dostává JINÉ otázky než Káťa. Ne stejné body s prohozeným jménem.
+- Hanička je v běžném kontaktu s kluky (každodenní, blízká).
+- Káťa je z odstupu, ze vzdálenosti (~100 km), může ověřit dostupnost externích osob.
+
+Vrať VÝHRADNĚ tool call emit_daily_briefing.`;
+
+async function generateBriefing(
+  context: any,
+  candidates: SessionCandidate[],
+  apiKey: string,
+): Promise<{ payload: any; durationMs: number }> {
+  const start = Date.now();
+
+  const userPrompt = `KONTEXT PRO BRIEFING (${context.today}):
+
+AKTIVNÍ KRIZE (${context.crises.length}):
+${context.crises.map((c: any) => `- ${c.part_name} | severity: ${c.severity} | fáze: ${c.phase} | dní aktivní: ${c.days_active || "?"} | trigger: ${c.trigger_description?.slice(0, 120) || "—"}`).join("\n") || "(žádné)"}
+
+POZOROVÁNÍ ZA POSLEDNÍ 3 DNY (${context.recent_observations.length}):
+${context.recent_observations.slice(0, 20).map((o: any) => `- [${o.severity || "?"}] ${o.part_name || "?"}: ${(o.content || "").slice(0, 100)}`).join("\n") || "(žádná)"}
+
+STARŠÍ VÝZNAMNÉ SIGNÁLY (high severity, 4-7 dní zpět):
+${context.older_significant.map((o: any) => `- ${o.part_name || "?"}: ${(o.content || "").slice(0, 100)}`).join("\n") || "(žádné)"}
+
+PENDING OTÁZKY (${context.pending_questions.length}):
+${context.pending_questions.slice(0, 10).map((q: any) => `- pro ${q.asked_to || "?"} ohledně ${q.part_name || "?"}: ${(q.question || "").slice(0, 80)}`).join("\n") || "(žádné)"}
+
+NEDÁVNÉ SESSION PLÁNY (3 dny):
+${context.recent_session_plans.map((p: any) => `- ${p.session_date} | ${p.part_name || "?"} | status: ${p.status}`).join("\n") || "(žádné)"}
+
+KANDIDÁTI NA DNEŠNÍ SEZENÍ (skórovací heuristika):
+${candidates.length > 0 ? candidates.slice(0, 5).map((c) => `- ${c.part_name} (skóre ${c.score}): ${c.reasons.join(", ")}`).join("\n") : "(žádní silní kandidáti — proposed_session může být null)"}
+
+ÚKOL:
+Vygeneruj strukturovaný briefing pro dnešní poradu týmu. Drž se pravidel z system promptu.
+${candidates[0]?.score >= 3 ? `MUSÍŠ navrhnout sezení — nejvhodnější kandidát je ${candidates[0].part_name}.` : "Pokud žádný kandidát nemá dost silné signály, nech proposed_session null."}`;
+
+  const res = await fetch(AI_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      tools: [BRIEFING_TOOL],
+      tool_choice: { type: "function", function: { name: "emit_daily_briefing" } },
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 429) throw new Error("Rate limit překročen, zkuste to za chvíli.");
+    if (res.status === 402) throw new Error("Vyčerpaný kredit Lovable AI workspace.");
+    throw new Error(`AI gateway error ${res.status}: ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+  if (!toolCall?.function?.arguments) {
+    throw new Error("AI nevrátila tool call.");
+  }
+
+  const payload = JSON.parse(toolCall.function.arguments);
+  return { payload, durationMs: Date.now() - start };
+}
+
+// ───────────────────────────────────────────────────────────
+// MAIN HANDLER
+// ───────────────────────────────────────────────────────────
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const apiKey = Deno.env.get("LOVABLE_API_KEY")!;
+    if (!apiKey) throw new Error("LOVABLE_API_KEY není nastavený.");
+
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    let body: any = {};
+    try { body = await req.json(); } catch { /* GET / no body */ }
+    const generationMethod = body?.method || "manual";
+    const forceRegenerate = body?.force === true;
+
+    const today = pragueDayISO();
+
+    // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
+    if (!forceRegenerate) {
+      const { data: existing } = await supabase
+        .from("did_daily_briefings")
+        .select("*")
+        .eq("briefing_date", today)
+        .eq("is_stale", false)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        return new Response(
+          JSON.stringify({ briefing: existing, cached: true }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    // 1) Skórování kandidátů
+    const candidates = await scoreSessionCandidates(supabase);
+
+    // 2) Sběr kontextu
+    const context = await gatherContext(supabase);
+
+    // 3) AI generování
+    const { payload, durationMs } = await generateBriefing(context, candidates, apiKey);
+
+    // 4) Resolve part_id pro proposed_session
+    let proposedPartId: string | null = null;
+    if (payload.proposed_session?.part_name) {
+      const { data: part } = await supabase
+        .from("did_parts")
+        .select("id")
+        .ilike("name", payload.proposed_session.part_name)
+        .maybeSingle();
+      proposedPartId = part?.id || null;
+    }
+
+    // 5) Označit staré briefingy pro dnešek jako stale
+    if (forceRegenerate) {
+      await supabase
+        .from("did_daily_briefings")
+        .update({ is_stale: true })
+        .eq("briefing_date", today);
+    }
+
+    // 6) Insert nový briefing
+    const { data: inserted, error: insertErr } = await supabase
+      .from("did_daily_briefings")
+      .insert({
+        briefing_date: today,
+        payload,
+        proposed_session_part_id: proposedPartId,
+        proposed_session_score: candidates[0]?.score || null,
+        decisions_count: payload.decisions?.length || 0,
+        generation_method: generationMethod,
+        generation_duration_ms: durationMs,
+        model_used: MODEL,
+        is_stale: false,
+      })
+      .select()
+      .single();
+
+    if (insertErr) throw insertErr;
+
+    return new Response(
+      JSON.stringify({ briefing: inserted, cached: false, candidates: candidates.slice(0, 5) }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (err: any) {
+    console.error("[karel-did-daily-briefing] Error:", err);
+    return new Response(
+      JSON.stringify({ error: err?.message || "Unknown error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+});
