@@ -2880,6 +2880,32 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
         console.warn(`[daily-cycle] setPhase("${phase}") failed:`, (e as Error)?.message || e);
       }
     };
+
+    // ─── PER-CALL TIMEOUT GUARD (audit_0b hardening) ──────────────────────
+    // Obal libovolné async operace timeoutem. Při překročení vyhodí
+    // `TimeoutError`, který volající chytá a pokračuje (safe continue).
+    // Default 60 s odpovídá nejdelší pozorované zdravé Drive operaci
+    // s rezervou; vše nad 60 s je v praxi zaseknutý call, ne pomalý call.
+    const withTimeout = async <T,>(label: string, ms: number, op: () => Promise<T>): Promise<T> => {
+      let timer: number | undefined;
+      try {
+        return await Promise.race([
+          op(),
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              const err = new Error(`TimeoutError: ${label} exceeded ${ms}ms`);
+              (err as any).name = "TimeoutError";
+              (err as any).isTimeout = true;
+              (err as any).label = label;
+              reject(err);
+            }, ms) as unknown as number;
+          }),
+        ]);
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+      }
+    };
+    const AUDIT_DRIVE_TIMEOUT_MS = 60_000;
     await setPhase("normalize_cards", "Fáze 2: Normalizace struktury karet A–M");
 
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
