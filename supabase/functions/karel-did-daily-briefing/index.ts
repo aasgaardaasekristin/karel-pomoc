@@ -419,6 +419,67 @@ Deno.serve(async (req) => {
 
     const today = pragueDayISO();
 
+    // ───────────────────────────────────────────────────────────
+    // CYCLE GUARD (auto only)
+    // ───────────────────────────────────────────────────────────
+    // Pravidlo: `auto` briefing nesmí stát kanonickým briefingem dne,
+    // pokud dnešní `did-daily-cycle-morning` ještě nedoběhl (`completed`).
+    //
+    // State machine pro method="auto":
+    //   - running   → SKIP: nevkládáme nový řádek, neoznačujeme staré jako stale,
+    //                 neměníme manuální briefing. Vracíme 200 + skipped=true.
+    //   - failed    → SKIP: stejné jako running, ale s reason="cycle_failed".
+    //   - completed → POKRAČUJ normálně (může vzniknout kanonický briefing,
+    //                 starý dnešní briefing se může označit stale).
+    //   - missing   → SKIP: žádný dnešní cycle ještě neběžel → degraded mode,
+    //                 auto briefing se nesmí stát kanonickým.
+    //
+    // method="manual" (UI tlačítko `Přegenerovat`) tento guard NEPOUŽÍVÁ —
+    // ruční regenerace musí jít vždy, i bez completed cycle.
+    if (generationMethod === "auto") {
+      const todayStartUtc = `${today}T00:00:00Z`;
+      const { data: cycleRow, error: cycleErr } = await supabase
+        .from("did_update_cycles")
+        .select("id, status, started_at, completed_at, last_error")
+        .eq("cycle_type", "daily")
+        .gte("started_at", todayStartUtc)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cycleErr) {
+        console.error("[briefing-guard] cycle lookup error:", cycleErr);
+      }
+
+      const cycleStatus: "running" | "failed" | "completed" | "missing" =
+        !cycleRow ? "missing" : (cycleRow.status as any);
+
+      if (cycleStatus !== "completed") {
+        const reason =
+          cycleStatus === "running" ? "cycle_running" :
+          cycleStatus === "failed"  ? "cycle_failed"  :
+          "cycle_missing";
+        console.warn(
+          `[briefing-guard] auto SKIPPED — daily-cycle-morning status='${cycleStatus}' for ${today}. ` +
+          `cycle_id=${cycleRow?.id || "(none)"} started_at=${cycleRow?.started_at || "(none)"}`,
+        );
+        return new Response(
+          JSON.stringify({
+            skipped: true,
+            reason,
+            cycle_status: cycleStatus,
+            cycle_id: cycleRow?.id || null,
+            cycle_started_at: cycleRow?.started_at || null,
+            cycle_last_error: cycleRow?.last_error || null,
+            briefing_date: today,
+            note: "Auto briefing nebyl vygenerován — dnešní ranní cycle ještě nedoběhl. " +
+                  "Existující briefing dne (manual nebo dřívější auto) zůstává kanonický.",
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
     // Pokud existuje fresh briefing pro dnešek a nechceme force, vrať ho
     if (!forceRegenerate) {
       const { data: existing } = await supabase
