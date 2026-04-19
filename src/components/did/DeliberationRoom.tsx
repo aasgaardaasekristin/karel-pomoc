@@ -241,13 +241,38 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 )}
               </section>
 
-              {/* Karlův návrh */}
+              {/* Karlův návrh — pro session_plan je to first_draft z briefingu */}
               <section className="rounded-lg border border-primary/20 bg-primary/5 p-3">
                 <h4 className="text-[11px] font-semibold text-primary mb-1.5">
-                  Karlův pracovní návrh
+                  {d.deliberation_type === "session_plan" ? "První pracovní návrh" : "Karlův pracovní návrh"}
                 </h4>
                 <RichMarkdown compact>{d.karel_proposed_plan ?? "(zatím bez návrhu)"}</RichMarkdown>
               </section>
+
+              {/* SLICE 3 — Agenda / minutáž (zejména pro session_plan) */}
+              {Array.isArray((d as any).agenda_outline) && (d as any).agenda_outline.length > 0 && (
+                <section className="rounded-lg border border-border/60 bg-card/40 p-3">
+                  <h4 className="text-[11px] font-semibold text-foreground mb-2">
+                    Osnova / minutáž
+                  </h4>
+                  <ol className="space-y-1.5">
+                    {((d as any).agenda_outline as Array<{block:string;minutes?:number|null;detail?:string|null}>).map((b, i) => (
+                      <li key={i} className="text-[11px] flex gap-2">
+                        <span className="font-semibold text-primary shrink-0">
+                          {i + 1}.
+                          {typeof b.minutes === "number" && b.minutes > 0 ? ` ${b.minutes}′` : ""}
+                        </span>
+                        <span className="flex-1">
+                          <span className="font-medium text-foreground">{b.block}</span>
+                          {b.detail && (
+                            <span className="block text-foreground/75 mt-0.5">{b.detail}</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              )}
 
               {/* Otázky pro Haničku */}
               <section className="rounded-lg border border-border/60 p-3">
