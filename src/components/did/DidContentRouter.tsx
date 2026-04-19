@@ -655,7 +655,17 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
               setDidFlowState("chat");
             }
           }}
-          onBack={() => { setDidSubMode(null); setDidFlowState("terapeut"); }}
+          onBack={() => {
+            // 2026-04-19 — Briefing-aware Back: vrací do terapeut dashboardu,
+            // pokud uživatel přišel kliknutím na ask_hanka / ask_kata.
+            try {
+              if (sessionStorage.getItem("karel_briefing_return") === "1") {
+                sessionStorage.removeItem("karel_briefing_return");
+              }
+            } catch { /* ignore */ }
+            setDidSubMode(null);
+            setDidFlowState("terapeut");
+          }}
         />
       </ScrollArea>
     );
