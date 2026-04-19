@@ -52,6 +52,19 @@ export interface DiscussionMessage {
   is_plan_revision?: boolean;
 }
 
+/**
+ * SLICE 3 — Strukturovaná osnova porady (zejména pro session_plan).
+ * Renderuje se v DeliberationRoom jako minutáž / kroky:
+ *   - block: krátký název kroku ("Úvod a ground-check")
+ *   - minutes: doporučená doba v minutách (volitelné)
+ *   - detail: 1-2 věty co se v bloku děje
+ */
+export interface AgendaBlock {
+  block: string;
+  minutes?: number | null;
+  detail?: string | null;
+}
+
 export interface TeamDeliberation {
   id: string;
   user_id: string;
