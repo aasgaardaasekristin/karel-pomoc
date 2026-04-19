@@ -528,7 +528,7 @@ function LivePlanPicker({ plans, loading, onLoad, onSelect }: {
   plans: Array<{ id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string; status: string; plan_date: string }>;
   loading: boolean;
   onLoad: () => void;
-  onSelect: (plan: { id: string; selected_part: string; session_lead: string; plan_markdown: string }) => void;
+  onSelect: (plan: { id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string }) => void;
 }) {
   useEffect(() => { onLoad(); }, []);
 
