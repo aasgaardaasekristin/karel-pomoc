@@ -523,6 +523,87 @@ Deno.serve(async (req) => {
       ),
     );
 
+    // 3c) ── DECISIONS / PROPOSED_SESSION ITEM IDENTITY (Slice 3) ──
+    // Stejný pattern jako u asks: server přidá stabilní `id` na každou položku
+    // (decisions[*].id, proposed_session.id), s carry-over přes ilike-match
+    // v rámci téhož `briefing_date`. Tento `id` je pak `linked_briefing_item_id`
+    // při vzniku `did_team_deliberations` — druhý klik na stejnou položku
+    // briefingu otevře tutéž poradu místo zakládání nové.
+    type DecisionItem = {
+      id: string;
+      title: string;
+      reason: string;
+      type: string;
+      part_name?: string;
+    };
+    type ProposedSessionItem = {
+      id: string;
+      part_name: string;
+      [key: string]: any;
+    };
+
+    // Pre-load same-day briefings (incl. stale) once for both decisions and proposed_session.
+    const { data: sameDayPrev } = await supabase
+      .from("did_daily_briefings")
+      .select("payload")
+      .eq("briefing_date", today)
+      .order("generated_at", { ascending: false });
+
+    // ── Decisions carry-over (match by normalized title) ──
+    const decisionsRaw = Array.isArray(payload?.decisions) ? payload.decisions : [];
+    const decisionPool: { id: string; title: string }[] = [];
+    for (const row of sameDayPrev || []) {
+      const old = (row?.payload as any)?.decisions;
+      if (!Array.isArray(old)) continue;
+      for (const item of old) {
+        if (item && typeof item === "object" && item.id && typeof item.title === "string") {
+          decisionPool.push({ id: String(item.id), title: String(item.title) });
+        }
+      }
+    }
+    const usedDecisionIds = new Set<string>();
+    payload.decisions = decisionsRaw.map((d: any): DecisionItem => {
+      const title = String(d?.title ?? "").trim();
+      const nt = normalizeForMatch(title);
+      const match = decisionPool.find((c) => {
+        if (usedDecisionIds.has(c.id)) return false;
+        const nc = normalizeForMatch(c.title);
+        if (!nc) return false;
+        return nc === nt || nc.includes(nt) || nt.includes(nc);
+      });
+      const id = match ? match.id : crypto.randomUUID();
+      if (match) usedDecisionIds.add(match.id);
+      return {
+        id,
+        title,
+        reason: String(d?.reason ?? ""),
+        type: String(d?.type ?? "team_task"),
+        ...(d?.part_name ? { part_name: String(d.part_name) } : {}),
+      };
+    });
+
+    // ── proposed_session carry-over (single object; match by part_name) ──
+    if (payload?.proposed_session && typeof payload.proposed_session === "object") {
+      const ps = payload.proposed_session;
+      const partName = String(ps?.part_name ?? "").trim();
+      const np = normalizeForMatch(partName);
+      let resolvedId: string | null = null;
+      for (const row of sameDayPrev || []) {
+        const oldPs = (row?.payload as any)?.proposed_session;
+        if (oldPs && typeof oldPs === "object" && oldPs.id && oldPs.part_name) {
+          const op = normalizeForMatch(String(oldPs.part_name));
+          if (op === np) {
+            resolvedId = String(oldPs.id);
+            break;
+          }
+        }
+      }
+      payload.proposed_session = {
+        ...ps,
+        id: resolvedId || crypto.randomUUID(),
+      } as ProposedSessionItem;
+    }
+
     // 4) Resolve part_id pro proposed_session
     let proposedPartId: string | null = null;
     if (payload.proposed_session?.part_name) {
