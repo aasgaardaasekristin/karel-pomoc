@@ -3032,8 +3032,12 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
       }
     }
 
+    await setPhase("post_audit", `Po auditu: threads=${threads.length}, conv=${conversations.length}, allRecentThreads=${allRecentThreads.length}, allRecentConv=${allRecentConversations.length}`);
+
     // Use allRecentThreads for report generation, but threads (unprocessed) for card updates
     const hasRecentActivity = allRecentThreads.length > 0 || allRecentConversations.length > 0 || recentHanaConversations.length > 0 || recentClientSessions.length > 0 || recentCrisisBriefs.length > 0 || researchThreads.length > 0 || recentClientTasks.length > 0 || recentMeetings.length > 0 || recentEpisodes.length > 0;
+
+    await setPhase("activity_check", `hasRecentActivity=${hasRecentActivity}, decision=${(threads.length === 0 && conversations.length === 0 && !hasRecentActivity) ? "quiet_day_branch" : "full_analysis_branch"}`);
 
     // ═══ CRITICAL FIX: Manual triggers ALWAYS run full analysis using allRecentThreads ═══
     // Previously, manual triggers with no unprocessed threads returned early, skipping CENTRUM updates entirely.
