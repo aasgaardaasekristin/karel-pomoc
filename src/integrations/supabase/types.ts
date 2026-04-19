@@ -3099,6 +3099,7 @@ export type Database = {
       }
       did_team_deliberations: {
         Row: {
+          agenda_outline: Json
           closed_at: string | null
           created_at: string
           created_by: string
@@ -3112,6 +3113,8 @@ export type Database = {
           karel_proposed_plan: string | null
           karel_signed_at: string | null
           kata_signed_at: string | null
+          linked_briefing_id: string | null
+          linked_briefing_item_id: string | null
           linked_crisis_event_id: string | null
           linked_drive_write_id: string | null
           linked_live_session_id: string | null
@@ -3128,6 +3131,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agenda_outline?: Json
           closed_at?: string | null
           created_at?: string
           created_by?: string
@@ -3141,6 +3145,8 @@ export type Database = {
           karel_proposed_plan?: string | null
           karel_signed_at?: string | null
           kata_signed_at?: string | null
+          linked_briefing_id?: string | null
+          linked_briefing_item_id?: string | null
           linked_crisis_event_id?: string | null
           linked_drive_write_id?: string | null
           linked_live_session_id?: string | null
@@ -3157,6 +3163,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agenda_outline?: Json
           closed_at?: string | null
           created_at?: string
           created_by?: string
@@ -3170,6 +3177,8 @@ export type Database = {
           karel_proposed_plan?: string | null
           karel_signed_at?: string | null
           kata_signed_at?: string | null
+          linked_briefing_id?: string | null
+          linked_briefing_item_id?: string | null
           linked_crisis_event_id?: string | null
           linked_drive_write_id?: string | null
           linked_live_session_id?: string | null
