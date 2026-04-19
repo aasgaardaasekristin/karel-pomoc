@@ -329,35 +329,21 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
 
   /**
    * Klik na decision → najde/vytvoří persistentní did_team_deliberation.
-   * Pre-flight: pokud existuje active/awaiting_signoff porada se shodným
-   * title za posledních 24h, otevře tu (idempotence). Jinak ji založí.
+   *
+   * SLICE 3 — idempotence je AUTORITATIVNĚ řešená serverem přes
+   * `linked_briefing_item_id` (kanonický stabilní id briefing itemu).
+   * Druhý klik na stejný `decisions[i]` vrátí EXISTUJÍCÍ poradu
+   * (server odpoví `reused: true`). Žádný klientský fuzzy ilike-match.
+   *
+   * Legacy fallback: pokud briefing je stará verze bez `id` na decisions,
+   * generujeme stabilní pseudo-id přes legacyAskIdFor (cache podle title).
    */
   const openDecisionDeliberation = useCallback(
     async (d: BriefingDecision) => {
-      if (openingItemId) return;
-      const localKey = `decision::${d.title}`;
-      setOpeningItemId(localKey);
+      if (openingItemId || !briefing) return;
+      const itemId = d.id || legacyAskIdFor(briefing.id, "ask_hanka", `decision::${d.title}`);
+      setOpeningItemId(itemId);
       try {
-        // Pre-flight idempotence: shoda title + open status v posledních 24h
-        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: existing } = await (supabase as any)
-          .from("did_team_deliberations")
-          .select("id")
-          .ilike("title", d.title.slice(0, 80))
-          .in("status", ["active", "awaiting_signoff"])
-          .gte("created_at", dayAgo)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const existingId = existing?.[0]?.id as string | undefined;
-
-        if (existingId) {
-          markBriefingOrigin();
-          if (onOpenDeliberation) onOpenDeliberation(existingId);
-          else navigate(`/chat?deliberation_id=${existingId}`);
-          return;
-        }
-
-        // Create new
         const { data, error } = await (supabase as any).functions.invoke(
           "karel-team-deliberation-create",
           {
@@ -367,6 +353,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               reason: d.reason,
               hint: d.title,
               priority: d.type === "crisis" ? "crisis" : "normal",
+              linked_briefing_id: briefing.id,
+              linked_briefing_item_id: itemId,
             },
           },
         );
@@ -377,7 +365,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         markBriefingOrigin();
         if (onOpenDeliberation) onOpenDeliberation(created.id);
         else navigate(`/chat?deliberation_id=${created.id}`);
-        toast.success("Porada vytvořena.");
+        if (!(data as any)?.reused) toast.success("Porada vytvořena.");
       } catch (e: any) {
         console.error("[DidDailyBriefingPanel] openDecisionDeliberation failed:", e);
         toast.error(e?.message || "Nepodařilo se otevřít poradu.");
@@ -385,46 +373,54 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         setOpeningItemId(null);
       }
     },
-    [navigate, onOpenDeliberation, openingItemId],
+    [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
   /**
-   * Klik na proposed_session → session-plan deliberation.
-   * Při schválení se přes karel-team-deliberation-signoff bridguje do
-   * did_daily_session_plans (kanonický plán dnešního live sezení).
+   * Klik na proposed_session → session-plan deliberation s plným prefillem.
+   *
+   * SLICE 3 — payload pro create obsahuje:
+   *   - linked_briefing_id / linked_briefing_item_id (idempotence serverside)
+   *   - prefill { initial_karel_brief, karel_proposed_plan, agenda_outline,
+   *     questions_for_hanka, questions_for_kata } — server prefill preferuje
+   *     před AI generací, takže obsah porady je deterministický a vychází
+   *     z briefingu, ne z druhotné AI iterace.
+   *
+   * Při schválení (3 podpisy) bridguje karel-team-deliberation-signoff
+   * do did_daily_session_plans.
    */
   const openProposedSessionDeliberation = useCallback(
     async (s: ProposedSession) => {
-      if (openingItemId) return;
-      const localKey = `session::${s.part_name}`;
-      setOpeningItemId(localKey);
+      if (openingItemId || !briefing) return;
+      const itemId = s.id || legacyAskIdFor(briefing.id, "ask_hanka", `session::${s.part_name}`);
+      setOpeningItemId(itemId);
       try {
         const titleHint = `Plán sezení s ${s.part_name}`;
 
-        // Pre-flight idempotence
-        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: existing } = await (supabase as any)
-          .from("did_team_deliberations")
-          .select("id")
-          .eq("deliberation_type", "session_plan")
-          .contains("subject_parts", [s.part_name])
-          .in("status", ["active", "awaiting_signoff"])
-          .gte("created_at", dayAgo)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const existingId = existing?.[0]?.id as string | undefined;
-
-        if (existingId) {
-          markBriefingOrigin();
-          if (onOpenDeliberation) onOpenDeliberation(existingId);
-          else navigate(`/chat?deliberation_id=${existingId}`);
-          return;
-        }
-
-        const reason = [
+        const reasonText = [
           s.why_today,
           s.kata_involvement ? `(Káťa: ${s.kata_involvement})` : "",
         ].filter(Boolean).join(" — ");
+
+        // Prefill obsahu z briefingu — server ho použije přímo, místo AI re-generace.
+        const introBrief = [
+          `📅 **${titleHint}** (vede ${s.led_by}${s.duration_min ? `, ~${s.duration_min} min` : ""})`,
+          "",
+          `*Proč právě dnes:* ${s.why_today}`,
+          s.kata_involvement ? `\n*Káťa:* ${s.kata_involvement}` : "",
+          "",
+          "Otevírám tuhle poradu, abychom prošli osnovu a doladili otázky před sezením.",
+        ].filter(Boolean).join("\n");
+
+        const prefill = {
+          title: titleHint,
+          reason: reasonText,
+          initial_karel_brief: introBrief,
+          karel_proposed_plan: s.first_draft,
+          agenda_outline: Array.isArray(s.agenda_outline) ? s.agenda_outline : [],
+          questions_for_hanka: Array.isArray(s.questions_for_hanka) ? s.questions_for_hanka : [],
+          questions_for_kata: Array.isArray(s.questions_for_kata) ? s.questions_for_kata : [],
+        };
 
         const { data, error } = await (supabase as any).functions.invoke(
           "karel-team-deliberation-create",
@@ -432,9 +428,12 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
             body: {
               deliberation_type: "session_plan",
               subject_parts: [s.part_name],
-              reason,
-              hint: `${titleHint} (vede ${s.led_by}). První pracovní verze: ${s.first_draft}`,
+              reason: reasonText,
+              hint: titleHint,
               priority: "high",
+              linked_briefing_id: briefing.id,
+              linked_briefing_item_id: itemId,
+              prefill,
             },
           },
         );
@@ -445,7 +444,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         markBriefingOrigin();
         if (onOpenDeliberation) onOpenDeliberation(created.id);
         else navigate(`/chat?deliberation_id=${created.id}`);
-        toast.success("Plán sezení otevřen jako porada týmu.");
+        if (!(data as any)?.reused) toast.success("Plán sezení otevřen jako porada týmu.");
       } catch (e: any) {
         console.error("[DidDailyBriefingPanel] openProposedSessionDeliberation failed:", e);
         toast.error(e?.message || "Nepodařilo se otevřít plán sezení.");
@@ -453,7 +452,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         setOpeningItemId(null);
       }
     },
-    [navigate, onOpenDeliberation, openingItemId],
+    [briefing, navigate, onOpenDeliberation, openingItemId],
   );
 
   if (loading) {
