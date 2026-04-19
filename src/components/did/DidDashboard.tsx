@@ -550,12 +550,20 @@ const DidDashboard = ({
           </ErrorBoundary>
         </div>
 
-        {/* ── BLOCK 2 — OPERATIONAL QUEUE (přechodová vrstva: tasks/questions/sessions) ── */}
+        {/* ── BLOCK 2 — OPERATIONAL QUEUE (přechodová vrstva: tasks/questions/sessions backlog).
+                hideDuplicateBlocks=true zajišťuje, že tu NEBUDE druhý „Karlův přehled":
+                  - skrytá narativní hlavička (greeting + 5 odstavců)
+                  - skryté „Návrh sezení na dnes" (vyřešeno v briefing.proposed_session)
+                  - skryté „Haničko, potřebuji od tebe" + „Káťo, potřebuji od tebe"
+                    (vyřešeno v briefing.ask_hanka / briefing.ask_kata)
+                  - skryté „Čekám na vaše odpovědi" (vyřešeno v briefing.waiting_for)
+                Ponecháno: CommandFourSections, vstupní pole pro vzkazy. ── */}
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
             <KarelDailyPlan
               refreshTrigger={refreshTrigger}
               snapshot={snapshot}
+              hideDuplicateBlocks
             />
           </ErrorBoundary>
         </div>
