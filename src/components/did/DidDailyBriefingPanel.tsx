@@ -6,20 +6,36 @@
  * `karel-did-daily-briefing`). UI nikdy briefing nesestavuje samo —
  * jen ho renderuje.
  *
- * 2026-04-19 — VERTICAL SLICE 1:
- *  - Položky `ask_hanka`, `ask_kata`, `decisions` a `proposed_session`
- *    jsou plně klikatelné a otevírají správný workspace:
- *      ask_hanka     → /chat?did_submode=mamka  (Kdo mluví s Karlem / Hanička)
- *      ask_kata      → /chat?did_submode=kata   (Káťa)
- *      decisions     → /chat?didFlowState=meeting&meeting_topic=...
- *      proposed_session → /chat?did_submode=mamka&session_part=...
- *  - Před každou navigací nastavíme `karel_briefing_return = "1"`
- *    v sessionStorage. Router (`DidContentRouter`) tento flag respektuje
- *    při Back a vrátí uživatele přímo do `terapeut` dashboardu (kde
- *    žije tento briefing), ne o úroveň výš mimo režim.
+ * 2026-04-19 — VERTICAL SLICE 2:
+ *  Klikatelné položky NEJSOU query-param shimy. Každý klik vede do
+ *  KANONICKÉHO PERSISTENTNÍHO targetu:
+ *
+ *  - ask_hanka / ask_kata
+ *      → did_threads s `workspace_type = 'ask_hanka' | 'ask_kata'`,
+ *        `workspace_id = item.id` (stabilní serverové UUID v payloadu).
+ *      Druhý klik na stejný ask otevře tentýž thread (přes
+ *      `useDidThreads.getThreadByWorkspace`). První klik vlákno lazy-založí
+ *      a vepíše Karlův úvod jako první assistant message.
+ *
+ *  - decisions  → karel-team-deliberation-create (typ podle d.type)
+ *      → otevře persistentní `did_team_deliberations` přes
+ *        `?deliberation_id=<id>`. Druhý klik nezakládá nový — pre-flight
+ *        ilike-match (24h, status active/awaiting_signoff) reuse-uje
+ *        existující poradu.
+ *
+ *  - proposed_session  → karel-team-deliberation-create
+ *        s `deliberation_type='session_plan'` a subject_parts=[part_name].
+ *      Schválená session-plan deliberation je pak bridgnutá do
+ *      `did_daily_session_plans` (signoff funkce). Žádný `?did_submode`
+ *      shim, žádný "mamka" workspace.
+ *
+ *  Backward compat: starší briefingy mají `ask_hanka: string[]`.
+ *  Komponenta umí obojí — pro legacy položku se na stage klikání generuje
+ *  ad-hoc UUID (deterministicky cachovaný v sessionStorage podle textu),
+ *  takže idempotence funguje i bez nové edge generace.
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -28,6 +44,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useDidThreads } from "@/hooks/useDidThreads";
+import type { DeliberationType } from "@/types/teamDeliberation";
 
 interface BriefingDecision {
   title: string;
@@ -45,14 +63,18 @@ interface ProposedSession {
   kata_involvement?: string;
 }
 
+/** Nový tvar ask položky (id+text). Edge funkce vrací tohle od 2026-04-19. */
+interface AskItemObj { id: string; text: string }
+type AskItemRaw = string | AskItemObj;
+
 interface BriefingPayload {
   greeting: string;
   last_3_days: string;
   lingering?: string;
   decisions: BriefingDecision[];
   proposed_session?: ProposedSession | null;
-  ask_hanka: string[];
-  ask_kata: string[];
+  ask_hanka: AskItemRaw[];
+  ask_kata: AskItemRaw[];
   waiting_for?: string[];
   closing: string;
 }
@@ -90,6 +112,15 @@ const TYPE_TONE: Record<BriefingDecision["type"], string> = {
   supervision: "bg-amber-500/15 text-amber-700 border-amber-500/30",
 };
 
+/** Mapování briefing decision typu → kanonický deliberation_type. */
+const DECISION_TO_DELIB_TYPE: Record<BriefingDecision["type"], DeliberationType> = {
+  crisis: "crisis",
+  session_plan: "session_plan",
+  clinical_decision: "team_task",
+  follow_up_review: "followup_review",
+  supervision: "supervision",
+};
+
 const formatDate = (iso: string): string => {
   try {
     const d = new Date(`${iso}T12:00:00`);
@@ -116,11 +147,7 @@ const NarrativeDivider = () => (
 
 /**
  * Mark this navigation as originating from the briefing panel so that
- * `DidContentRouter` can route Back back to the `terapeut` dashboard
- * instead of dropping the user one level too high (e.g. /hub).
- *
- * The flag is consumed once and then cleared — re-entering the workspace
- * directly (without coming from the briefing) must NOT short-circuit Back.
+ * `DidContentRouter` can route Back back to the `terapeut` dashboard.
  */
 const markBriefingOrigin = () => {
   try {
@@ -129,11 +156,49 @@ const markBriefingOrigin = () => {
   } catch { /* ignore quota */ }
 };
 
+/**
+ * Backward compat: pro legacy briefing s `ask_hanka: string[]` potřebujeme
+ * stabilní pseudo-id, jinak by druhý klik na tentýž text otevřel jiný thread.
+ * Klíč je odvozený z (briefing_id, role, text) a uložený v sessionStorage,
+ * takže refresh stránky idempotenci nerozbije.
+ */
+const legacyAskIdFor = (
+  briefingId: string,
+  role: "ask_hanka" | "ask_kata",
+  text: string,
+): string => {
+  const cacheKey = `legacy_ask_id::${briefingId}::${role}::${text.slice(0, 200)}`;
+  try {
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) return cached;
+  } catch { /* ignore */ }
+  const id = (typeof crypto !== "undefined" && "randomUUID" in crypto)
+    ? crypto.randomUUID()
+    : `legacy-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try { sessionStorage.setItem(cacheKey, id); } catch { /* ignore */ }
+  return id;
+};
+
+/** Normalizuje libovolnou ask položku na {id,text}. */
+const toAskItem = (
+  raw: AskItemRaw,
+  briefingId: string,
+  role: "ask_hanka" | "ask_kata",
+): AskItemObj => {
+  if (raw && typeof raw === "object" && "id" in raw && "text" in raw) {
+    return { id: String(raw.id), text: String(raw.text) };
+  }
+  const text = String(raw ?? "");
+  return { id: legacyAskIdFor(briefingId, role, text), text };
+};
+
 const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) => {
   const navigate = useNavigate();
+  const didThreads = useDidThreads();
   const [briefing, setBriefing] = useState<BriefingRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState(false);
+  const [openingItemId, setOpeningItemId] = useState<string | null>(null);
 
   const loadLatest = useCallback(async () => {
     setLoading(true);
@@ -182,62 +247,197 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
     }
   };
 
-  // ─── Navigation helpers ───
-  // Each helper sets the briefing-return flag BEFORE navigating, so the
-  // router can resolve Back to the terapeut dashboard.
-  const openHankaWorkspace = (askText: string) => {
-    markBriefingOrigin();
-    const params = new URLSearchParams({
-      did_submode: "mamka",
-      briefing_ask: askText.slice(0, 200),
-    });
-    navigate(`/chat?${params.toString()}`);
-  };
+  // ─── Navigation helpers (Slice 2 — kanonické persistentní targety) ───
 
-  const openKataWorkspace = (askText: string) => {
-    markBriefingOrigin();
-    const params = new URLSearchParams({
-      did_submode: "kata",
-      briefing_ask: askText.slice(0, 200),
-    });
-    navigate(`/chat?${params.toString()}`);
-  };
+  /**
+   * Lazy-otevře nebo založí kanonický did_threads workspace pro briefing ask.
+   * Druhý klik na stejný ask resolvne tentýž thread (workspace lookup).
+   */
+  const openAskWorkspace = useCallback(
+    async (
+      role: "ask_hanka" | "ask_kata",
+      item: AskItemObj,
+    ) => {
+      if (openingItemId) return; // de-dup paralelní double-click
+      setOpeningItemId(item.id);
+      try {
+        const subMode = role === "ask_hanka" ? "mamka" : "kata";
+        const recipientName = role === "ask_hanka" ? "Hanička" : "Káťa";
 
-  const openDecisionMeeting = (d: BriefingDecision) => {
-    markBriefingOrigin();
-    // Persist a structured seed so DidMeetingPanel can render Karel's intro
-    // properly instead of an empty meeting.
-    try {
-      sessionStorage.setItem(
-        "karel_meeting_seed",
-        JSON.stringify({
-          topic: d.title,
-          reason: d.reason,
-          karelProposal: `Toto rozhodnutí jsem pojmenoval v dnešním přehledu jako: ${d.title}. Důvod: ${d.reason}`,
-          questionsHanka: `Haničko, jaký je tvůj pohled na: ${d.title}?`,
-          questionsKata: `Káťo, jaký je tvůj pohled na: ${d.title}?`,
-          source: "briefing",
-          decisionType: d.type,
-          partName: d.part_name ?? null,
-        }),
-      );
-    } catch { /* ignore */ }
-    const params = new URLSearchParams({
-      didFlowState: "meeting",
-      meeting_topic: d.title.slice(0, 80),
-    });
-    navigate(`/chat?${params.toString()}`);
-  };
+        // 1) Try canonical workspace lookup
+        const existing = await didThreads.getThreadByWorkspace(role, item.id);
+        if (existing) {
+          markBriefingOrigin();
+          navigate(`/chat?workspace_thread=${existing.id}`);
+          return;
+        }
 
-  const openProposedSession = (s: ProposedSession) => {
-    markBriefingOrigin();
-    const params = new URLSearchParams({
-      did_submode: "mamka",
-      session_part: s.part_name,
-      briefing_session: "1",
-    });
-    navigate(`/chat?${params.toString()}`);
-  };
+        // 2) Lazy-create with Karel's intro
+        const intro = [
+          `📝 **Pro ${recipientName}** — z dnešního přehledu`,
+          "",
+          item.text,
+          "",
+          `*Proč to potřebuji:* tento bod jsem dnes ráno pojmenoval jako podstatný pro další postup. Bez tvojí odpovědi pracuji se slepým místem.`,
+          "",
+          `*Jak na to:* odpověz prosím vlastními slovy. Pokud potřebuješ, klidně mi nejdřív polož zpřesňující otázku.`,
+        ].join("\n");
+
+        const thread = await didThreads.createThread(
+          "Karel",
+          subMode,
+          "cs",
+          [{ role: "assistant", content: intro }],
+          {
+            threadLabel: `Pro ${recipientName}: ${item.text.slice(0, 60)}`,
+            workspaceType: role,
+            workspaceId: item.id,
+          },
+        );
+        if (!thread) {
+          toast.error("Nepodařilo se otevřít vlákno.");
+          return;
+        }
+        markBriefingOrigin();
+        navigate(`/chat?workspace_thread=${thread.id}`);
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openAskWorkspace failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít vlákno.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [didThreads, navigate, openingItemId],
+  );
+
+  /**
+   * Klik na decision → najde/vytvoří persistentní did_team_deliberation.
+   * Pre-flight: pokud existuje active/awaiting_signoff porada se shodným
+   * title za posledních 24h, otevře tu (idempotence). Jinak ji založí.
+   */
+  const openDecisionDeliberation = useCallback(
+    async (d: BriefingDecision) => {
+      if (openingItemId) return;
+      const localKey = `decision::${d.title}`;
+      setOpeningItemId(localKey);
+      try {
+        // Pre-flight idempotence: shoda title + open status v posledních 24h
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: existing } = await (supabase as any)
+          .from("did_team_deliberations")
+          .select("id")
+          .ilike("title", d.title.slice(0, 80))
+          .in("status", ["active", "awaiting_signoff"])
+          .gte("created_at", dayAgo)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const existingId = existing?.[0]?.id as string | undefined;
+
+        if (existingId) {
+          markBriefingOrigin();
+          if (onOpenDeliberation) onOpenDeliberation(existingId);
+          else navigate(`/chat?deliberation_id=${existingId}`);
+          return;
+        }
+
+        // Create new
+        const { data, error } = await (supabase as any).functions.invoke(
+          "karel-team-deliberation-create",
+          {
+            body: {
+              deliberation_type: DECISION_TO_DELIB_TYPE[d.type] ?? "team_task",
+              subject_parts: d.part_name ? [d.part_name] : [],
+              reason: d.reason,
+              hint: d.title,
+              priority: d.type === "crisis" ? "crisis" : "normal",
+            },
+          },
+        );
+        if (error) throw error;
+        const created = (data as any)?.deliberation;
+        if (!created?.id) throw new Error("Porada nebyla vytvořena.");
+
+        markBriefingOrigin();
+        if (onOpenDeliberation) onOpenDeliberation(created.id);
+        else navigate(`/chat?deliberation_id=${created.id}`);
+        toast.success("Porada vytvořena.");
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openDecisionDeliberation failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít poradu.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [navigate, onOpenDeliberation, openingItemId],
+  );
+
+  /**
+   * Klik na proposed_session → session-plan deliberation.
+   * Při schválení se přes karel-team-deliberation-signoff bridguje do
+   * did_daily_session_plans (kanonický plán dnešního live sezení).
+   */
+  const openProposedSessionDeliberation = useCallback(
+    async (s: ProposedSession) => {
+      if (openingItemId) return;
+      const localKey = `session::${s.part_name}`;
+      setOpeningItemId(localKey);
+      try {
+        const titleHint = `Plán sezení s ${s.part_name}`;
+
+        // Pre-flight idempotence
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: existing } = await (supabase as any)
+          .from("did_team_deliberations")
+          .select("id")
+          .eq("deliberation_type", "session_plan")
+          .contains("subject_parts", [s.part_name])
+          .in("status", ["active", "awaiting_signoff"])
+          .gte("created_at", dayAgo)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const existingId = existing?.[0]?.id as string | undefined;
+
+        if (existingId) {
+          markBriefingOrigin();
+          if (onOpenDeliberation) onOpenDeliberation(existingId);
+          else navigate(`/chat?deliberation_id=${existingId}`);
+          return;
+        }
+
+        const reason = [
+          s.why_today,
+          s.kata_involvement ? `(Káťa: ${s.kata_involvement})` : "",
+        ].filter(Boolean).join(" — ");
+
+        const { data, error } = await (supabase as any).functions.invoke(
+          "karel-team-deliberation-create",
+          {
+            body: {
+              deliberation_type: "session_plan",
+              subject_parts: [s.part_name],
+              reason,
+              hint: `${titleHint} (vede ${s.led_by}). První pracovní verze: ${s.first_draft}`,
+              priority: "high",
+            },
+          },
+        );
+        if (error) throw error;
+        const created = (data as any)?.deliberation;
+        if (!created?.id) throw new Error("Plán sezení nebyl vytvořen.");
+
+        markBriefingOrigin();
+        if (onOpenDeliberation) onOpenDeliberation(created.id);
+        else navigate(`/chat?deliberation_id=${created.id}`);
+        toast.success("Plán sezení otevřen jako porada týmu.");
+      } catch (e: any) {
+        console.error("[DidDailyBriefingPanel] openProposedSessionDeliberation failed:", e);
+        toast.error(e?.message || "Nepodařilo se otevřít plán sezení.");
+      } finally {
+        setOpeningItemId(null);
+      }
+    },
+    [navigate, onOpenDeliberation, openingItemId],
+  );
 
   if (loading) {
     return (
@@ -282,6 +482,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const p = briefing.payload;
   const hasProposed = !!p.proposed_session?.part_name;
   const decisions = (p.decisions ?? []).slice(0, 3);
+  const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
+  const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
 
   return (
     <div className="space-y-1">
@@ -348,7 +550,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           </SectionHead>
           <button
             type="button"
-            onClick={() => openProposedSession(p.proposed_session!)}
+            onClick={() => openProposedSessionDeliberation(p.proposed_session!)}
             className="mt-2 w-full text-left p-3 rounded-lg border border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors space-y-2 cursor-pointer"
           >
             <div className="flex items-center gap-2 flex-wrap">
@@ -384,24 +586,29 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 5. Co potřebuji od Haničky — KLIKATELNÉ */}
-      {p.ask_hanka?.length > 0 && (
+      {/* 5. Co potřebuji od Haničky — KLIKATELNÉ → kanonický did_threads workspace */}
+      {hankaItems.length > 0 && (
         <>
           <NarrativeDivider />
           <SectionHead>Haničko, potřebuji od tebe</SectionHead>
           <ul className="mt-2 space-y-1.5">
-            {p.ask_hanka.map((item, i) => (
-              <li key={i}>
+            {hankaItems.map((item) => (
+              <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => openHankaWorkspace(item)}
-                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-primary/5 transition-colors cursor-pointer group"
+                  disabled={openingItemId === item.id}
+                  onClick={() => openAskWorkspace("ask_hanka", item)}
+                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-primary/5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary/70 transition-colors" />
                   <span className="text-[13px] text-foreground/80 leading-relaxed flex-1">
-                    {item}
+                    {item.text}
                   </span>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/70 mt-1 shrink-0 transition-colors" />
+                  {openingItemId === item.id ? (
+                    <Loader2 className="w-3 h-3 text-primary animate-spin mt-1 shrink-0" />
+                  ) : (
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-primary/70 mt-1 shrink-0 transition-colors" />
+                  )}
                 </button>
               </li>
             ))}
@@ -409,24 +616,29 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         </>
       )}
 
-      {/* 6. Co potřebuji od Káti — KLIKATELNÉ */}
-      {p.ask_kata?.length > 0 && (
+      {/* 6. Co potřebuji od Káti — KLIKATELNÉ → kanonický did_threads workspace */}
+      {kataItems.length > 0 && (
         <>
           <NarrativeDivider />
           <SectionHead>Káťo, potřebuji od tebe</SectionHead>
           <ul className="mt-2 space-y-1.5">
-            {p.ask_kata.map((item, i) => (
-              <li key={i}>
+            {kataItems.map((item) => (
+              <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => openKataWorkspace(item)}
-                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/5 transition-colors cursor-pointer group"
+                  disabled={openingItemId === item.id}
+                  onClick={() => openAskWorkspace("ask_kata", item)}
+                  className="w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 hover:bg-accent/5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/40 group-hover:bg-accent/70 transition-colors" />
                   <span className="text-[13px] text-foreground/80 leading-relaxed flex-1">
-                    {item}
+                    {item.text}
                   </span>
-                  <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-accent/70 mt-1 shrink-0 transition-colors" />
+                  {openingItemId === item.id ? (
+                    <Loader2 className="w-3 h-3 text-accent animate-spin mt-1 shrink-0" />
+                  ) : (
+                    <ArrowRight className="w-3 h-3 text-muted-foreground/40 group-hover:text-accent/70 mt-1 shrink-0 transition-colors" />
+                  )}
                 </button>
               </li>
             ))}
@@ -446,8 +658,9 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
               <li key={i}>
                 <button
                   type="button"
-                  onClick={() => openDecisionMeeting(d)}
-                  className="w-full text-left rounded-lg border border-border/60 bg-card/40 hover:bg-card/70 hover:border-primary/30 p-3 space-y-1.5 transition-colors cursor-pointer group"
+                  disabled={openingItemId === `decision::${d.title}`}
+                  onClick={() => openDecisionDeliberation(d)}
+                  className="w-full text-left rounded-lg border border-border/60 bg-card/40 hover:bg-card/70 hover:border-primary/30 p-3 space-y-1.5 transition-colors cursor-pointer group disabled:opacity-60"
                 >
                   <div className="flex items-start gap-2">
                     <span className="text-[11px] text-muted-foreground font-mono mt-0.5">
@@ -491,10 +704,10 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           (case-insensitive substring), se zde nezobrazí. */}
       {(() => {
         const askedTexts = [
-          ...(p.ask_hanka ?? []),
-          ...(p.ask_kata ?? []),
+          ...hankaItems.map(it => it.text),
+          ...kataItems.map(it => it.text),
           ...decisions.map(d => d.title),
-        ].map(s => s.toLowerCase().slice(0, 40));
+        ].map(s => (s ?? "").toLowerCase().slice(0, 40));
 
         const filteredWaiting = (p.waiting_for ?? []).filter(item => {
           const key = item.toLowerCase().slice(0, 40);

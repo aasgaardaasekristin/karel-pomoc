@@ -235,13 +235,13 @@ const BRIEFING_TOOL = {
         },
         ask_hanka: {
           type: "array",
-          description: "Co Karel dnes potřebuje od Haničky. 1-3 konkrétní položky. Musí být JINÉ než ask_kata.",
+          description: "Co Karel dnes potřebuje od Haničky. 1-3 konkrétní položky. Musí být JINÉ než ask_kata. Vrať pole STRINGŮ — id se doplní serverově.",
           items: { type: "string" },
           maxItems: 3,
         },
         ask_kata: {
           type: "array",
-          description: "Co Karel dnes potřebuje od Káti. 1-3 konkrétní položky. Musí být JINÉ než ask_hanka.",
+          description: "Co Karel dnes potřebuje od Káti. 1-3 konkrétní položky. Musí být JINÉ než ask_hanka. Vrať pole STRINGŮ — id se doplní serverově.",
           items: { type: "string" },
           maxItems: 3,
         },
@@ -409,6 +409,91 @@ Deno.serve(async (req) => {
 
     // 3) AI generování
     const { payload, durationMs } = await generateBriefing(context, candidates, apiKey);
+
+    // 3b) ── ASK ITEM IDENTITY ──
+    // AI vrací ask_hanka/ask_kata jako string[]. Server přidá stabilní `id` na
+    // každou položku tak, aby kliknutí v DidDailyBriefingPanel mohlo lazy-otevřít
+    // kanonický `did_threads` workspace přes (workspace_type, workspace_id=item.id).
+    //
+    // PRAVIDLO IDENTITY (rozhodnuto 2026-04-19):
+    //  - Carry-over přes ilike text-match v rámci téhož `briefing_date`:
+    //    při force-regenerate stejného dne se znovupoužije `id` ze starého
+    //    briefingu (i `is_stale=true` verze) pokud nový text odpovídá starému.
+    //  - Mezi různými dny: vždy nové `id` (briefing ask je denní zadání).
+    //  - Žádný cross-day match — pokud bychom chtěli vícedenní kontinuitu,
+    //    má se řešit explicitním follow-up linkem, ne reuse stejného ask ID.
+    const normalizeForMatch = (s: string): string =>
+      s.toLowerCase().trim().replace(/\s+/g, " ").slice(0, 200);
+
+    type AskItem = { id: string; text: string };
+    type AskRole = "ask_hanka" | "ask_kata";
+
+    const carryOverAsks = async (
+      role: AskRole,
+      newTexts: string[],
+    ): Promise<AskItem[]> => {
+      if (!Array.isArray(newTexts) || newTexts.length === 0) return [];
+
+      // Načti VŠECHNY briefingy téhož dne (i stale), seřaď nejnovější → nejstarší.
+      const { data: sameDayBriefings } = await supabase
+        .from("did_daily_briefings")
+        .select("payload")
+        .eq("briefing_date", today)
+        .order("generated_at", { ascending: false });
+
+      // Sesbírej všechny kandidáty na carry-over (id+text) ze stejné role.
+      const carryPool: AskItem[] = [];
+      for (const row of sameDayBriefings || []) {
+        const old = (row?.payload as any)?.[role];
+        if (!Array.isArray(old)) continue;
+        for (const item of old) {
+          // Akceptuj jen už-migrované {id,text} položky (legacy string[] přeskoč)
+          if (item && typeof item === "object" && item.id && typeof item.text === "string") {
+            carryPool.push({ id: String(item.id), text: String(item.text) });
+          }
+        }
+      }
+
+      const usedIds = new Set<string>();
+      const result: AskItem[] = [];
+      for (const text of newTexts) {
+        const t = String(text ?? "").trim();
+        if (!t) continue;
+        const nt = normalizeForMatch(t);
+
+        // Najdi první nepoužitý carry kandidát, který se kryje (substring v jednom směru).
+        const match = carryPool.find((c) => {
+          if (usedIds.has(c.id)) return false;
+          const nc = normalizeForMatch(c.text);
+          if (!nc) return false;
+          return nc === nt || nc.includes(nt) || nt.includes(nc);
+        });
+
+        if (match) {
+          usedIds.add(match.id);
+          result.push({ id: match.id, text: t });
+        } else {
+          result.push({ id: crypto.randomUUID(), text: t });
+        }
+      }
+      return result;
+    };
+
+    // Přepiš plain string[] → {id,text}[] s carry-over identitou.
+    const askHankaRaw = Array.isArray(payload?.ask_hanka) ? payload.ask_hanka : [];
+    const askKataRaw = Array.isArray(payload?.ask_kata) ? payload.ask_kata : [];
+    payload.ask_hanka = await carryOverAsks(
+      "ask_hanka",
+      askHankaRaw.map((x: any) =>
+        typeof x === "string" ? x : (x?.text ?? "")
+      ),
+    );
+    payload.ask_kata = await carryOverAsks(
+      "ask_kata",
+      askKataRaw.map((x: any) =>
+        typeof x === "string" ? x : (x?.text ?? "")
+      ),
+    );
 
     // 4) Resolve part_id pro proposed_session
     let proposedPartId: string | null = null;
