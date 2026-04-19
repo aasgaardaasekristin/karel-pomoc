@@ -48,19 +48,36 @@ import { useDidThreads } from "@/hooks/useDidThreads";
 import type { DeliberationType } from "@/types/teamDeliberation";
 
 interface BriefingDecision {
+  /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
+  id?: string;
   title: string;
   reason: string;
   type: "crisis" | "session_plan" | "clinical_decision" | "follow_up_review" | "supervision";
   part_name?: string;
 }
 
+/** SLICE 3 — strukturovaná osnova session-plan deliberation. */
+interface AgendaBlock {
+  block: string;
+  minutes?: number | null;
+  detail?: string | null;
+}
+
 interface ProposedSession {
+  /** SLICE 3 — stabilní serverové UUID briefing itemu (linked_briefing_item_id). */
+  id?: string;
   part_name: string;
   why_today: string;
   led_by: "Hanička" | "Káťa" | "společně";
   duration_min?: number;
   first_draft: string;
   kata_involvement?: string;
+  /** SLICE 3 — minutáž sezení (3-6 bloků). */
+  agenda_outline?: AgendaBlock[];
+  /** SLICE 3 — předem připravené otázky pro Haničku k tomuto sezení. */
+  questions_for_hanka?: string[];
+  /** SLICE 3 — předem připravené otázky pro Káťu k tomuto sezení. */
+  questions_for_kata?: string[];
 }
 
 /** Nový tvar ask položky (id+text). Edge funkce vrací tohle od 2026-04-19. */
