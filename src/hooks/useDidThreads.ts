@@ -465,6 +465,7 @@ export const useDidThreads = () => {
     updateThreadMessages,
     getThreadByPart,
     getThreadByWorkspace,
+    getThreadById,
     deleteThread,
     updateThreadTheme,
     updateThreadThemeConfig,
