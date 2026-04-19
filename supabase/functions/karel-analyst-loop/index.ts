@@ -486,7 +486,8 @@ function resolveSessionLead(s: any): string {
   const raw = (s.session_lead || s.therapist || "").toLowerCase().trim();
   if (["hanka", "hanička", "hana"].includes(raw)) return "Hanička";
   if (["kata", "káťa", "katka"].includes(raw)) return "Káťa";
-  if (["obe", "obě", "joint", "all"].includes(raw)) return "Hanička + Káťa";
+  // Sjednocený label spoluvedení napříč systémem (UI používá "Hanka + Káťa").
+  if (["obe", "obě", "joint", "all"].includes(raw)) return "Hanka + Káťa";
   if (raw === "both" || !raw) return "⚠️ nutno rozhodnout";
   return raw;
 }

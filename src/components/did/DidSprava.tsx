@@ -258,7 +258,7 @@ const DidSprava = ({
                   setLivePlansLoading(true);
                   supabase
                     .from("did_daily_session_plans")
-                    .select("id, selected_part, session_lead, plan_markdown, status, plan_date")
+                    .select("id, selected_part, session_lead, therapist, plan_markdown, status, plan_date")
                     .in("status", ["generated", "in_progress"])
                     .order("plan_date", { ascending: false })
                     .limit(10)
@@ -268,13 +268,13 @@ const DidSprava = ({
                     });
                 }}
                 onSelect={(plan) => {
-                  // session_lead je autoritativní pro display lead.
+                  // Pravidlo: session_lead je primární, therapist je legacy fallback.
                   // "obe" = spoluvedení Hanka + Káťa, "kata" = Káťa, jinak Hanka.
-                  const lead = (plan.session_lead || "").toLowerCase();
+                  const lead = (plan.session_lead || plan.therapist || "").toLowerCase();
                   const therapistName =
                     lead === "obe" || lead === "obě" || lead === "joint" || lead === "all"
                       ? "Hanka + Káťa"
-                      : lead === "kata" ? "Káťa" : "Hanka";
+                      : lead === "kata" || lead === "káťa" || lead === "katka" ? "Káťa" : "Hanka";
                   setLivePlan({
                     id: plan.id,
                     partName: plan.selected_part,
@@ -525,7 +525,7 @@ function ToolButton({ icon, title, desc, loading, onClick, badge }: {
 
 /* ── Live Plan Picker ── */
 function LivePlanPicker({ plans, loading, onLoad, onSelect }: {
-  plans: Array<{ id: string; selected_part: string; session_lead: string; plan_markdown: string; status: string; plan_date: string }>;
+  plans: Array<{ id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string; status: string; plan_date: string }>;
   loading: boolean;
   onLoad: () => void;
   onSelect: (plan: { id: string; selected_part: string; session_lead: string; plan_markdown: string }) => void;
@@ -562,9 +562,10 @@ function LivePlanPicker({ plans, loading, onLoad, onSelect }: {
             <span className="text-xs font-medium text-foreground">{plan.selected_part}</span>
             <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
               {(() => {
-                const lead = (plan.session_lead || "").toLowerCase();
+                // session_lead primárně, therapist legacy fallback
+                const lead = (plan.session_lead || plan.therapist || "").toLowerCase();
                 if (lead === "obe" || lead === "obě" || lead === "joint" || lead === "all") return "Hanka + Káťa";
-                if (lead === "kata") return "Káťa";
+                if (lead === "kata" || lead === "káťa" || lead === "katka") return "Káťa";
                 return "Hanka";
               })()}
             </Badge>
