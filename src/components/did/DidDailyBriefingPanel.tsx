@@ -128,7 +128,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
         .maybeSingle();
 
       if (error) throw error;
-      setBriefing((data as BriefingRow) ?? null);
+      setBriefing((data as unknown as BriefingRow) ?? null);
     } catch (e) {
       console.error("[DidDailyBriefingPanel] load failed:", e);
       setBriefing(null);

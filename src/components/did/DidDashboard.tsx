@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
+import DidDailyBriefingPanel from "./DidDailyBriefingPanel";
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
 import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
@@ -539,7 +540,17 @@ const DidDashboard = ({
           </ErrorBoundary>
         )}
 
-        {/* ── BLOCK 2 — OPERATIONAL QUEUE (briefing + today's actionable plan) ── */}
+        {/* ── BLOCK 2a — KARLŮV PŘEHLED (single source of truth z did_daily_briefings) ── */}
+        <div className="jung-hero-section rounded-2xl p-4">
+          <ErrorBoundary fallbackTitle="Karlův přehled selhal">
+            <DidDailyBriefingPanel
+              refreshTrigger={refreshTrigger}
+              onOpenDeliberation={(id) => setOpenDeliberationId(id)}
+            />
+          </ErrorBoundary>
+        </div>
+
+        {/* ── BLOCK 2 — OPERATIONAL QUEUE (přechodová vrstva: tasks/questions/sessions) ── */}
         <div className="jung-hero-section rounded-2xl p-1">
           <ErrorBoundary fallbackTitle="Denní plán selhal">
             <KarelDailyPlan
