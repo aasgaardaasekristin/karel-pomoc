@@ -1,16 +1,25 @@
 /**
  * karel-did-daily-briefing
- * 
+ *
  * Generuje kanonický denní briefing Karla.
- * Briefing je redakční artefakt — vzniká jednou (cron / manual / auto),
- * ukládá se do `did_daily_briefings`, dashboard ho jen čte.
- * 
+ * Briefing je redakční artefakt — vzniká jednou denně, ukládá se do
+ * `did_daily_briefings`, dashboard ho jen čte.
+ *
+ * Generation methods (uloženo do `did_daily_briefings.generation_method`):
+ *   - "auto"   → ranní cron (job `did-daily-briefing-morning`, viz pg_cron)
+ *   - "manual" → tlačítko `Přegenerovat` v UI (DidDailyBriefingPanel)
+ *
+ * Anti-dup: pokud existuje fresh (is_stale=false) briefing pro dnešek
+ * a request nemá `force: true`, vrátí se cached. Cron volá BEZ `force`,
+ * takže neudusí ruční briefing, pokud už existuje. Manuální regenerace
+ * posílá `force: true`.
+ *
  * Workflow:
  * 1. Načti kontext: aktivní krize, signály z posledních 3 dnů, otevřené tasky, parts
  * 2. Spočítej skóre kandidátů na dnešní sezení (heuristika)
  * 3. Pošli AI strukturovaný kontext + tool-call schema
  * 4. Ulož výsledek do did_daily_briefings
- * 
+ *
  * Tone: kultivovaná čeština, jungovská noblesa v úvodu/přechodech,
  * konkrétní pracovní formulace v rozhodovacích bodech.
  */
