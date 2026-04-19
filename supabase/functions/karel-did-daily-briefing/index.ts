@@ -235,13 +235,13 @@ const BRIEFING_TOOL = {
         },
         ask_hanka: {
           type: "array",
-          description: "Co Karel dnes potřebuje od Haničky. 1-3 konkrétní položky. Musí být JINÉ než ask_kata.",
+          description: "Co Karel dnes potřebuje od Haničky. 1-3 konkrétní položky. Musí být JINÉ než ask_kata. Vrať pole STRINGŮ — id se doplní serverově.",
           items: { type: "string" },
           maxItems: 3,
         },
         ask_kata: {
           type: "array",
-          description: "Co Karel dnes potřebuje od Káti. 1-3 konkrétní položky. Musí být JINÉ než ask_hanka.",
+          description: "Co Karel dnes potřebuje od Káti. 1-3 konkrétní položky. Musí být JINÉ než ask_hanka. Vrať pole STRINGŮ — id se doplní serverově.",
           items: { type: "string" },
           maxItems: 3,
         },
