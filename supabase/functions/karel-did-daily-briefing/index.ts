@@ -205,7 +205,7 @@ const BRIEFING_TOOL = {
         },
         decisions: {
           type: "array",
-          description: "Společná rozhodnutí pro dnešek. MAX 2 položky, +1 navíc jen pokud je crisis (= max 3 celkem). Konkrétní rozhodovací názvy, NE generické 'koordinovat strategii'.",
+          description: "Společná rozhodnutí pro dnešek. MAX 2 položky, +1 navíc jen pokud je crisis (= max 3 celkem). Konkrétní rozhodovací názvy, NE generické 'koordinovat strategii'. ID NEDOPLŇUJ — server přidá.",
           items: {
             type: "object",
             properties: {
@@ -221,7 +221,7 @@ const BRIEFING_TOOL = {
         },
         proposed_session: {
           type: "object",
-          description: "Dnešní navržené sezení. POVINNÉ pokud existují dostatečné signály. Pokud žádný kandidát nepřekročil práh skóre 3, nech null.",
+          description: "Dnešní navržené sezení. POVINNÉ pokud existují dostatečné signály. Pokud žádný kandidát nepřekročil práh skóre 3, nech null. ID NEDOPLŇUJ — server přidá.",
           properties: {
             part_name: { type: "string" },
             why_today: { type: "string", description: "Proč právě tato část a právě dnes (2-3 věty)." },
@@ -229,8 +229,36 @@ const BRIEFING_TOOL = {
             duration_min: { type: "number", description: "Doporučená délka v minutách (10-45)." },
             first_draft: { type: "string", description: "První pracovní verze plánu sezení (3-5 vět). Co začít, kdy zůstat u stabilizace, kdy zvážit hlubší práci." },
             kata_involvement: { type: "string", description: "Jednou větou, zda dnes přizvat Káťu a za jakých okolností." },
+            agenda_outline: {
+              type: "array",
+              description: "Strukturovaná minutáž sezení — 4 až 6 kroků. Každý krok má krátký název, doporučenou dobu a 1-2 věty co se v něm děje.",
+              items: {
+                type: "object",
+                properties: {
+                  block: { type: "string", description: "Krátký název kroku, např. 'Úvod a ground-check'." },
+                  minutes: { type: "number", description: "Doporučená doba v minutách." },
+                  detail: { type: "string", description: "1-2 věty co se v bloku konkrétně dělá." },
+                },
+                required: ["block"],
+                additionalProperties: false,
+              },
+              minItems: 3,
+              maxItems: 6,
+            },
+            questions_for_hanka: {
+              type: "array",
+              description: "1-3 konkrétní otázky pro Haničku ohledně tohoto sezení (její perspektiva: matka, primární terapeutka).",
+              items: { type: "string" },
+              maxItems: 3,
+            },
+            questions_for_kata: {
+              type: "array",
+              description: "1-3 konkrétní otázky pro Káťu ohledně tohoto sezení (její perspektiva: druhá terapeutka, supervize, externí pohled). MUSÍ být JINÉ než questions_for_hanka.",
+              items: { type: "string" },
+              maxItems: 3,
+            },
           },
-          required: ["part_name", "why_today", "led_by", "first_draft"],
+          required: ["part_name", "why_today", "led_by", "first_draft", "agenda_outline", "questions_for_hanka", "questions_for_kata"],
           additionalProperties: false,
         },
         ask_hanka: {
@@ -494,6 +522,87 @@ Deno.serve(async (req) => {
         typeof x === "string" ? x : (x?.text ?? "")
       ),
     );
+
+    // 3c) ── DECISIONS / PROPOSED_SESSION ITEM IDENTITY (Slice 3) ──
+    // Stejný pattern jako u asks: server přidá stabilní `id` na každou položku
+    // (decisions[*].id, proposed_session.id), s carry-over přes ilike-match
+    // v rámci téhož `briefing_date`. Tento `id` je pak `linked_briefing_item_id`
+    // při vzniku `did_team_deliberations` — druhý klik na stejnou položku
+    // briefingu otevře tutéž poradu místo zakládání nové.
+    type DecisionItem = {
+      id: string;
+      title: string;
+      reason: string;
+      type: string;
+      part_name?: string;
+    };
+    type ProposedSessionItem = {
+      id: string;
+      part_name: string;
+      [key: string]: any;
+    };
+
+    // Pre-load same-day briefings (incl. stale) once for both decisions and proposed_session.
+    const { data: sameDayPrev } = await supabase
+      .from("did_daily_briefings")
+      .select("payload")
+      .eq("briefing_date", today)
+      .order("generated_at", { ascending: false });
+
+    // ── Decisions carry-over (match by normalized title) ──
+    const decisionsRaw = Array.isArray(payload?.decisions) ? payload.decisions : [];
+    const decisionPool: { id: string; title: string }[] = [];
+    for (const row of sameDayPrev || []) {
+      const old = (row?.payload as any)?.decisions;
+      if (!Array.isArray(old)) continue;
+      for (const item of old) {
+        if (item && typeof item === "object" && item.id && typeof item.title === "string") {
+          decisionPool.push({ id: String(item.id), title: String(item.title) });
+        }
+      }
+    }
+    const usedDecisionIds = new Set<string>();
+    payload.decisions = decisionsRaw.map((d: any): DecisionItem => {
+      const title = String(d?.title ?? "").trim();
+      const nt = normalizeForMatch(title);
+      const match = decisionPool.find((c) => {
+        if (usedDecisionIds.has(c.id)) return false;
+        const nc = normalizeForMatch(c.title);
+        if (!nc) return false;
+        return nc === nt || nc.includes(nt) || nt.includes(nc);
+      });
+      const id = match ? match.id : crypto.randomUUID();
+      if (match) usedDecisionIds.add(match.id);
+      return {
+        id,
+        title,
+        reason: String(d?.reason ?? ""),
+        type: String(d?.type ?? "team_task"),
+        ...(d?.part_name ? { part_name: String(d.part_name) } : {}),
+      };
+    });
+
+    // ── proposed_session carry-over (single object; match by part_name) ──
+    if (payload?.proposed_session && typeof payload.proposed_session === "object") {
+      const ps = payload.proposed_session;
+      const partName = String(ps?.part_name ?? "").trim();
+      const np = normalizeForMatch(partName);
+      let resolvedId: string | null = null;
+      for (const row of sameDayPrev || []) {
+        const oldPs = (row?.payload as any)?.proposed_session;
+        if (oldPs && typeof oldPs === "object" && oldPs.id && oldPs.part_name) {
+          const op = normalizeForMatch(String(oldPs.part_name));
+          if (op === np) {
+            resolvedId = String(oldPs.id);
+            break;
+          }
+        }
+      }
+      payload.proposed_session = {
+        ...ps,
+        id: resolvedId || crypto.randomUUID(),
+      } as ProposedSessionItem;
+    }
 
     // 4) Resolve part_id pro proposed_session
     let proposedPartId: string | null = null;

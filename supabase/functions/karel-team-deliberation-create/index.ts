@@ -14,8 +14,29 @@
  *     linked_crisis_event_id?: string,
  *     linked_task_id?: string,
  *     hint?: string,              // volný hint pro AI ("dnešní sezení s Tundrupkem")
+ *
+ *     // SLICE 3 — kanonické navázání na briefing item (idempotence):
+ *     linked_briefing_id?: string,        // did_daily_briefings.id
+ *     linked_briefing_item_id?: string,   // stabilní id decisions[i] / proposed_session
+ *
+ *     // SLICE 3 — prefill obsahu z briefingu (preferován před AI generací):
+ *     prefill?: {
+ *       title?: string,
+ *       reason?: string,
+ *       initial_karel_brief?: string,
+ *       karel_proposed_plan?: string,        // typicky first_draft
+ *       agenda_outline?: Array<{block:string, minutes?:number, detail?:string}>,
+ *       questions_for_hanka?: string[],
+ *       questions_for_kata?: string[],
+ *     }
  *   }
+ *
+ * Idempotence: pokud už existuje porada se shodným `linked_briefing_item_id`
+ * a status active|awaiting_signoff, vrátí ji (ne-vytváří novou). Tato kontrola
+ * je AUTORITATIVNÍ — fuzzy text match na klientu je už jen fallback pro
+ * legacy briefingy bez `linked_briefing_item_id`.
  */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -235,30 +256,90 @@ Deno.serve(async (req: Request) => {
     const hint: string = String(body?.hint ?? "");
     const priority: string = String(body?.priority ?? (type === "crisis" ? "crisis" : "normal"));
 
+    // SLICE 3 — briefing item linkage + prefill
+    const linkedBriefingId: string | null = body?.linked_briefing_id
+      ? String(body.linked_briefing_id) : null;
+    const linkedBriefingItemId: string | null = body?.linked_briefing_item_id
+      ? String(body.linked_briefing_item_id) : null;
+    const prefill = (body?.prefill && typeof body.prefill === "object") ? body.prefill : null;
+
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
-    const ctx = await gatherContext(admin, userId, subjectParts);
-    const prompt = buildPrompt({ type, subjectParts, reason, hint, ctx });
-    const ai = await callAI(prompt);
+
+    // ── IDEMPOTENCE ── kanonický lookup přes (user_id, linked_briefing_item_id)
+    // Druhý klik na tutéž decisions[i] / proposed_session musí vrátit EXISTUJÍCÍ
+    // poradu, ne založit novou. Toto nahrazuje fuzzy ilike-match z klienta.
+    if (linkedBriefingItemId) {
+      const { data: existing } = await admin
+        .from("did_team_deliberations")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("linked_briefing_item_id", linkedBriefingItemId)
+        .in("status", ["draft", "active", "awaiting_signoff"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        return new Response(JSON.stringify({ deliberation: existing, reused: true }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // ── OBSAH ── pokud je prefill, použij ho (briefing už dodal AI obsah).
+    // Jinak fallback: dogenerovat ad-hoc přes AI gateway (legacy path).
+    let aiContent: any;
+    if (prefill) {
+      aiContent = {
+        title: prefill.title,
+        reason: prefill.reason,
+        initial_karel_brief: prefill.initial_karel_brief,
+        karel_proposed_plan: prefill.karel_proposed_plan,
+        agenda_outline: Array.isArray(prefill.agenda_outline) ? prefill.agenda_outline : [],
+        questions_for_hanka: Array.isArray(prefill.questions_for_hanka) ? prefill.questions_for_hanka : [],
+        questions_for_kata: Array.isArray(prefill.questions_for_kata) ? prefill.questions_for_kata : [],
+      };
+    } else {
+      const ctx = await gatherContext(admin, userId, subjectParts);
+      const prompt = buildPrompt({ type, subjectParts, reason, hint, ctx });
+      const ai = await callAI(prompt);
+      aiContent = { ...ai, agenda_outline: [] };
+    }
 
     const insertRow = {
       user_id: userId,
-      title: String(ai?.title ?? hint ?? "Nová porada").slice(0, 200),
-      reason: String(ai?.reason ?? reason ?? "").slice(0, 800),
+      title: String(aiContent?.title ?? hint ?? "Nová porada").slice(0, 200),
+      reason: String(aiContent?.reason ?? reason ?? "").slice(0, 800),
       status: "active",
       priority,
       deliberation_type: type,
       subject_parts: subjectParts,
       participants: ["hanka", "kata", "karel"],
       created_by: "karel",
-      initial_karel_brief: String(ai?.initial_karel_brief ?? ""),
-      karel_proposed_plan: String(ai?.karel_proposed_plan ?? ""),
-      questions_for_hanka: (Array.isArray(ai?.questions_for_hanka) ? ai.questions_for_hanka : [])
-        .slice(0, 3).map((q: any) => ({ question: String(q), answer: null })),
-      questions_for_kata: (Array.isArray(ai?.questions_for_kata) ? ai.questions_for_kata : [])
-        .slice(0, 3).map((q: any) => ({ question: String(q), answer: null })),
+      initial_karel_brief: String(aiContent?.initial_karel_brief ?? ""),
+      karel_proposed_plan: String(aiContent?.karel_proposed_plan ?? ""),
+      agenda_outline: (Array.isArray(aiContent?.agenda_outline) ? aiContent.agenda_outline : [])
+        .slice(0, 8)
+        .map((b: any) => ({
+          block: String(b?.block ?? "").slice(0, 120),
+          minutes: typeof b?.minutes === "number" ? b.minutes : null,
+          detail: b?.detail ? String(b.detail).slice(0, 400) : null,
+        }))
+        .filter((b: any) => b.block.length > 0),
+      questions_for_hanka: (Array.isArray(aiContent?.questions_for_hanka) ? aiContent.questions_for_hanka : [])
+        .slice(0, 3)
+        .map((q: any) => typeof q === "string"
+          ? { question: q, answer: null }
+          : { question: String(q?.question ?? q), answer: q?.answer ?? null }),
+      questions_for_kata: (Array.isArray(aiContent?.questions_for_kata) ? aiContent.questions_for_kata : [])
+        .slice(0, 3)
+        .map((q: any) => typeof q === "string"
+          ? { question: q, answer: null }
+          : { question: String(q?.question ?? q), answer: q?.answer ?? null }),
       discussion_log: [],
       linked_crisis_event_id: body?.linked_crisis_event_id ?? null,
       linked_task_id: body?.linked_task_id ?? null,
+      linked_briefing_id: linkedBriefingId,
+      linked_briefing_item_id: linkedBriefingItemId,
     };
 
     const { data: created, error: insErr } = await admin
@@ -273,7 +354,7 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    return new Response(JSON.stringify({ deliberation: created }), {
+    return new Response(JSON.stringify({ deliberation: created, reused: false }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
