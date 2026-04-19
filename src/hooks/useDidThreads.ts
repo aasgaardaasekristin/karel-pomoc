@@ -392,6 +392,24 @@ export const useDidThreads = () => {
     return rowToThread(data);
   }, []);
 
+  /**
+   * SLICE 2: kanonický lookup vlákna podle did_threads.id pro deep-link
+   * `?workspace_thread=<id>`. Druhý klik na briefing-ask MUSÍ otevřít TENTÝŽ
+   * thread, který byl lazy-vytvořen při prvním kliknutí. Briefing-side
+   * idempotence je řešena přes (workspace_type, workspace_id) lookup;
+   * tato funkce slouží Chat.tsx deep-linku, který už ID dostal v URL.
+   */
+  const getThreadById = useCallback(async (threadId: string): Promise<DidThread | null> => {
+    if (!threadId) return null;
+    const { data, error } = await supabase
+      .from("did_threads")
+      .select("*")
+      .eq("id", threadId)
+      .maybeSingle();
+    if (error || !data) return null;
+    return rowToThread(data);
+  }, []);
+
   const deleteThread = useCallback(async (threadId: string) => {
     await supabase.from("did_threads").delete().eq("id", threadId);
     setThreads((prev) => prev.filter((thread) => thread.id !== threadId));
