@@ -205,7 +205,7 @@ const BRIEFING_TOOL = {
         },
         decisions: {
           type: "array",
-          description: "Společná rozhodnutí pro dnešek. MAX 2 položky, +1 navíc jen pokud je crisis (= max 3 celkem). Konkrétní rozhodovací názvy, NE generické 'koordinovat strategii'.",
+          description: "Společná rozhodnutí pro dnešek. MAX 2 položky, +1 navíc jen pokud je crisis (= max 3 celkem). Konkrétní rozhodovací názvy, NE generické 'koordinovat strategii'. ID NEDOPLŇUJ — server přidá.",
           items: {
             type: "object",
             properties: {
@@ -221,7 +221,7 @@ const BRIEFING_TOOL = {
         },
         proposed_session: {
           type: "object",
-          description: "Dnešní navržené sezení. POVINNÉ pokud existují dostatečné signály. Pokud žádný kandidát nepřekročil práh skóre 3, nech null.",
+          description: "Dnešní navržené sezení. POVINNÉ pokud existují dostatečné signály. Pokud žádný kandidát nepřekročil práh skóre 3, nech null. ID NEDOPLŇUJ — server přidá.",
           properties: {
             part_name: { type: "string" },
             why_today: { type: "string", description: "Proč právě tato část a právě dnes (2-3 věty)." },
@@ -229,8 +229,36 @@ const BRIEFING_TOOL = {
             duration_min: { type: "number", description: "Doporučená délka v minutách (10-45)." },
             first_draft: { type: "string", description: "První pracovní verze plánu sezení (3-5 vět). Co začít, kdy zůstat u stabilizace, kdy zvážit hlubší práci." },
             kata_involvement: { type: "string", description: "Jednou větou, zda dnes přizvat Káťu a za jakých okolností." },
+            agenda_outline: {
+              type: "array",
+              description: "Strukturovaná minutáž sezení — 4 až 6 kroků. Každý krok má krátký název, doporučenou dobu a 1-2 věty co se v něm děje.",
+              items: {
+                type: "object",
+                properties: {
+                  block: { type: "string", description: "Krátký název kroku, např. 'Úvod a ground-check'." },
+                  minutes: { type: "number", description: "Doporučená doba v minutách." },
+                  detail: { type: "string", description: "1-2 věty co se v bloku konkrétně dělá." },
+                },
+                required: ["block"],
+                additionalProperties: false,
+              },
+              minItems: 3,
+              maxItems: 6,
+            },
+            questions_for_hanka: {
+              type: "array",
+              description: "1-3 konkrétní otázky pro Haničku ohledně tohoto sezení (její perspektiva: matka, primární terapeutka).",
+              items: { type: "string" },
+              maxItems: 3,
+            },
+            questions_for_kata: {
+              type: "array",
+              description: "1-3 konkrétní otázky pro Káťu ohledně tohoto sezení (její perspektiva: druhá terapeutka, supervize, externí pohled). MUSÍ být JINÉ než questions_for_hanka.",
+              items: { type: "string" },
+              maxItems: 3,
+            },
           },
-          required: ["part_name", "why_today", "led_by", "first_draft"],
+          required: ["part_name", "why_today", "led_by", "first_draft", "agenda_outline", "questions_for_hanka", "questions_for_kata"],
           additionalProperties: false,
         },
         ask_hanka: {
