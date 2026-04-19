@@ -48,6 +48,19 @@ interface DashboardSnapshot {
 interface Props {
   refreshTrigger: number;
   snapshot?: DashboardSnapshot | null;
+  /**
+   * 2026-04-19 — VERTICAL SLICE 1:
+   * Když je `true`, panel skryje vlastní narativní hlavičku (greeting +
+   * 5 odstavců „co vím / co z toho plyne / co navrhuji / Haničko / Káťo")
+   * a sekce, které jsou nyní v `DidDailyBriefingPanel`:
+   *   - Návrh sezení na dnes (duplicita s proposed_session)
+   *   - Haničko / Káťo, potřebuji od tebe (duplicita s ask_hanka / ask_kata)
+   *   - Čekám na vaše odpovědi (duplicita s waiting_for + decisions)
+   *
+   * Zachová ale operativní backlog (CommandFourSections, decisions,
+   * unclear, vstupní pole pro vzkazy) — to briefing zatím neumí.
+   */
+  hideDuplicateBlocks?: boolean;
 }
 
 /* ── Greeting by time of day ── (delegated to central voice guide) */
@@ -301,7 +314,7 @@ const InlineQuestionField = ({
   );
 };
 
-const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: Props) => {
+const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hideDuplicateBlocks = false }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
@@ -1151,36 +1164,41 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
 
   return (
     <article className="karel-briefing jung-card relative px-6 py-8 sm:px-10 sm:py-10 max-w-3xl mx-auto">
-      {/* ── Editorial frontispiece ── */}
-      <header className="mb-7">
-        <div className="flex items-center justify-between mb-3">
-          <span className="karel-briefing-eyebrow">Karlův přehled</span>
-          <span className="karel-briefing-eyebrow" aria-label="Datum">
-            {dayNum}. {monthName} {yearNum}
-          </span>
-        </div>
-        <h1 className="karel-briefing-headline">
-          {greeting}, Haničko a Káťo.
-        </h1>
-        {effectiveCrisisPart ? (
-          <p className="mt-3 karel-briefing-callout karel-briefing-callout-crisis">
-            Dnes je v aktivní krizi <strong className="font-medium">{effectiveCrisisPart}</strong>. To má přednost před vším ostatním.
-          </p>
-        ) : (
-          <p className="mt-3 karel-briefing-deck">
-            {isInfoDeficit
-              ? `Uplynulo ${daysWithoutData} dní bez aktualizace — potřebuji od vás krátkou zprávu.`
-              : "Tady je dnešní situace, jak ji čtu."}
-          </p>
-        )}
-      </header>
+      {/* ── Editorial frontispiece — SKRYTO když existuje DidDailyBriefingPanel,
+              aby v dashboardu nebyly DVA „Karlovy přehledy". ── */}
+      {!hideDuplicateBlocks && (
+        <header className="mb-7">
+          <div className="flex items-center justify-between mb-3">
+            <span className="karel-briefing-eyebrow">Karlův přehled</span>
+            <span className="karel-briefing-eyebrow" aria-label="Datum">
+              {dayNum}. {monthName} {yearNum}
+            </span>
+          </div>
+          <h1 className="karel-briefing-headline">
+            {greeting}, Haničko a Káťo.
+          </h1>
+          {effectiveCrisisPart ? (
+            <p className="mt-3 karel-briefing-callout karel-briefing-callout-crisis">
+              Dnes je v aktivní krizi <strong className="font-medium">{effectiveCrisisPart}</strong>. To má přednost před vším ostatním.
+            </p>
+          ) : (
+            <p className="mt-3 karel-briefing-deck">
+              {isInfoDeficit
+                ? `Uplynulo ${daysWithoutData} dní bez aktualizace — potřebuji od vás krátkou zprávu.`
+                : "Tady je dnešní situace, jak ji čtu."}
+            </p>
+          )}
+        </header>
+      )}
 
-      {/* ── B. Unified narrative — editorial prose ── */}
-      <section className="karel-briefing-prose">
-        {narrativeParagraphs.map((para, i) => (
-          <p key={i}>{para}</p>
-        ))}
-      </section>
+      {/* ── B. Unified narrative — SKRYTO když existuje briefing (duplicita prose). ── */}
+      {!hideDuplicateBlocks && (
+        <section className="karel-briefing-prose">
+          {narrativeParagraphs.map((para, i) => (
+            <p key={i}>{para}</p>
+          ))}
+        </section>
+      )}
 
       {/* ── B2. 4 sekce dneška — velitelský pohled ze snapshotu ── */}
       <CommandFourSections snapshot={snapshot} navigate={navigate} />
@@ -1233,8 +1251,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         </div>
       )}
 
-      {/* ── D. Návrh sezení na dnes s potvrzovacím workflow ── */}
-      {uniqueSessions.length > 0 && (
+      {/* ── D. Návrh sezení na dnes — SKRYTO když existuje briefing.proposed_session ── */}
+      {!hideDuplicateBlocks && uniqueSessions.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
@@ -1306,8 +1324,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         </>
       )}
 
-      {/* ── E. Úkoly — pro Haničku ── */}
-      {hankaTasks.length > 0 && (
+      {/* ── E. Úkoly — pro Haničku — SKRYTO když existuje briefing.ask_hanka ── */}
+      {!hideDuplicateBlocks && hankaTasks.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
@@ -1332,8 +1350,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
         </>
       )}
 
-      {/* ── E. Úkoly — pro Káťu ── */}
-      {kataTasks.length > 0 && (
+      {/* ── E. Úkoly — pro Káťu — SKRYTO když existuje briefing.ask_kata ── */}
+      {!hideDuplicateBlocks && kataTasks.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
@@ -1365,8 +1383,8 @@ const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: 
           Single source of truth pro týmové porady = `did_daily_briefings`
           (renderuje `DidDailyBriefingPanel`) + `TeamDeliberationsPanel`. */}
 
-      {/* ── F. Nezodpovězené otázky ── */}
-      {questions.length > 0 && (
+      {/* ── F. Nezodpovězené otázky — SKRYTO když existuje briefing.waiting_for ── */}
+      {!hideDuplicateBlocks && questions.length > 0 && (
         <>
           <NarrativeDivider />
           <div className="py-2">
