@@ -48,6 +48,19 @@ interface DashboardSnapshot {
 interface Props {
   refreshTrigger: number;
   snapshot?: DashboardSnapshot | null;
+  /**
+   * 2026-04-19 — VERTICAL SLICE 1:
+   * Když je `true`, panel skryje vlastní narativní hlavičku (greeting +
+   * 5 odstavců „co vím / co z toho plyne / co navrhuji / Haničko / Káťo")
+   * a sekce, které jsou nyní v `DidDailyBriefingPanel`:
+   *   - Návrh sezení na dnes (duplicita s proposed_session)
+   *   - Haničko / Káťo, potřebuji od tebe (duplicita s ask_hanka / ask_kata)
+   *   - Čekám na vaše odpovědi (duplicita s waiting_for + decisions)
+   *
+   * Zachová ale operativní backlog (CommandFourSections, decisions,
+   * unclear, vstupní pole pro vzkazy) — to briefing zatím neumí.
+   */
+  hideDuplicateBlocks?: boolean;
 }
 
 /* ── Greeting by time of day ── (delegated to central voice guide) */
@@ -301,7 +314,7 @@ const InlineQuestionField = ({
   );
 };
 
-const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null }: Props) => {
+const KarelDailyPlan = ({ refreshTrigger, snapshot: snapshotFromProps = null, hideDuplicateBlocks = false }: Props) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const hasLoadedOnce = useRef(false);
