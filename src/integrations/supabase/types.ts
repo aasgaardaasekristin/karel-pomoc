@@ -3124,6 +3124,7 @@ export type Database = {
           questions_for_hanka: Json
           questions_for_kata: Json
           reason: string | null
+          session_params: Json
           status: string
           subject_parts: string[] | null
           title: string
@@ -3156,6 +3157,7 @@ export type Database = {
           questions_for_hanka?: Json
           questions_for_kata?: Json
           reason?: string | null
+          session_params?: Json
           status?: string
           subject_parts?: string[] | null
           title: string
@@ -3188,6 +3190,7 @@ export type Database = {
           questions_for_hanka?: Json
           questions_for_kata?: Json
           reason?: string | null
+          session_params?: Json
           status?: string
           subject_parts?: string[] | null
           title?: string
