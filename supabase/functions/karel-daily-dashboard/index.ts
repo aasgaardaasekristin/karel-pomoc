@@ -201,15 +201,26 @@ async function fetchOperativePlan(supabase: ReturnType<typeof createClient>): Pr
   try {
     const { data, error } = await supabase
       .from("did_daily_session_plans")
-      .select("selected_part, therapist, session_format, urgency_score, status, plan_markdown")
+      .select("selected_part, therapist, session_lead, session_format, urgency_score, status, plan_markdown")
       .gte("plan_date", today)
       .order("urgency_score", { ascending: false })
       .limit(20);
 
     if (error || !data?.length) return "(žádné plánované sezení)";
 
+    // session_lead je autoritativní (může být "obe" pro spoluvedení).
+    // therapist necháváme jen jako fallback pro legacy řádky bez session_lead.
+    const labelLead = (p: any): string => {
+      const lead = (p.session_lead || p.therapist || "").toLowerCase();
+      if (lead === "obe" || lead === "obě" || lead === "joint" || lead === "all") return "Hanka + Káťa";
+      if (lead === "kata" || lead === "káťa") return "Káťa";
+      if (lead === "hanka" || lead === "hanička") return "Hanka";
+      if (lead === "both" || !lead) return "⚠️ nutno rozhodnout";
+      return p.session_lead || p.therapist || "?";
+    };
+
     return data.map((p: any) =>
-      `- **${p.selected_part}** [${p.therapist}, urgence: ${p.urgency_score}]: ${p.session_format}, status: ${p.status}`
+      `- **${p.selected_part}** [${labelLead(p)}, urgence: ${p.urgency_score}]: ${p.session_format}, status: ${p.status}`
     ).join("\n");
   } catch (e) {
     console.error("[Dashboard] fetchOperativePlan error:", e);

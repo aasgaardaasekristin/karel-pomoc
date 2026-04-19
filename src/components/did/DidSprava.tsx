@@ -268,10 +268,17 @@ const DidSprava = ({
                     });
                 }}
                 onSelect={(plan) => {
+                  // session_lead je autoritativní pro display lead.
+                  // "obe" = spoluvedení Hanka + Káťa, "kata" = Káťa, jinak Hanka.
+                  const lead = (plan.session_lead || "").toLowerCase();
+                  const therapistName =
+                    lead === "obe" || lead === "obě" || lead === "joint" || lead === "all"
+                      ? "Hanka + Káťa"
+                      : lead === "kata" ? "Káťa" : "Hanka";
                   setLivePlan({
                     id: plan.id,
                     partName: plan.selected_part,
-                    therapistName: plan.session_lead === "kata" ? "Káťa" : "Hanka",
+                    therapistName,
                     contextBrief: plan.plan_markdown || "Bez dostupného session briefu.",
                   });
                 }}
@@ -554,7 +561,12 @@ function LivePlanPicker({ plans, loading, onLoad, onSelect }: {
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-foreground">{plan.selected_part}</span>
             <Badge variant="secondary" className="text-[9px] h-4 px-1.5">
-              {plan.session_lead === "kata" ? "Káťa" : "Hanka"}
+              {(() => {
+                const lead = (plan.session_lead || "").toLowerCase();
+                if (lead === "obe" || lead === "obě" || lead === "joint" || lead === "all") return "Hanka + Káťa";
+                if (lead === "kata") return "Káťa";
+                return "Hanka";
+              })()}
             </Badge>
           </div>
           <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
