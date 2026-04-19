@@ -90,6 +90,87 @@ async function readFileContent(token: string, fileId: string): Promise<string> {
   return await res.text();
 }
 
+// ── Memory-safe variants for AUDIT-0B (auditCardStructure) ──
+// Hard ceiling – any card whose serialized text exceeds this is skipped to avoid OOM.
+const MAX_AUDIT_CARD_BYTES = 250_000; // ~250 KB
+class CardOversizedError extends Error {
+  byteLength: number;
+  constructor(byteLength: number) {
+    super(`card exceeds MAX_AUDIT_CARD_BYTES (${byteLength} > ${MAX_AUDIT_CARD_BYTES})`);
+    this.name = "CardOversizedError";
+    this.byteLength = byteLength;
+  }
+}
+
+// Cheap pre-flight: ask Drive for the file size before downloading anything.
+// For native Google Docs `size` is null/undefined – returns null and caller falls through to streamed cap.
+async function getDriveFileSize(token: string, fileId: string): Promise<number | null> {
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?fields=size,mimeType&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (!r.ok) return null;
+    const j = await r.json().catch(() => null) as { size?: string } | null;
+    if (!j || j.size == null) return null;
+    const n = Number(j.size);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+// Streamed read with hard byte cap. Aborts the fetch as soon as cap is exceeded
+// so we never materialize the whole oversized payload in memory.
+async function readFileContentCapped(token: string, fileId: string, maxBytes: number): Promise<string> {
+  const tryRead = async (url: string): Promise<{ ok: boolean; status: number; text?: string; oversized?: number }> => {
+    const ctrl = new AbortController();
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: ctrl.signal });
+    if (!res.ok) {
+      try { ctrl.abort(); } catch { /* ignore */ }
+      return { ok: false, status: res.status };
+    }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      // Fallback – no streaming reader. Use Content-Length if present, else bail out via .text() guarded by length check.
+      const len = Number(res.headers.get("content-length") || "0");
+      if (len > maxBytes) {
+        try { ctrl.abort(); } catch { /* ignore */ }
+        return { ok: true, status: res.status, oversized: len };
+      }
+      const text = await res.text();
+      if (text.length > maxBytes) return { ok: true, status: res.status, oversized: text.length };
+      return { ok: true, status: res.status, text };
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch { /* ignore */ }
+        try { ctrl.abort(); } catch { /* ignore */ }
+        return { ok: true, status: res.status, oversized: total };
+      }
+      chunks.push(value);
+    }
+    const merged = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { merged.set(c, off); off += c.byteLength; }
+    return { ok: true, status: res.status, text: new TextDecoder().decode(merged) };
+  };
+
+  let r = await tryRead(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`);
+  if (!r.ok) {
+    r = await tryRead(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain&supportsAllDrives=true`);
+    if (!r.ok) throw new Error(`Cannot read file ${fileId}: ${r.status}`);
+  }
+  if (r.oversized != null) throw new CardOversizedError(r.oversized);
+  return r.text || "";
+}
+
 const DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder";
 const DRIVE_DOC_MIME = "application/vnd.google-apps.document";
 const DRIVE_SHEET_MIME = "application/vnd.google-apps.spreadsheet";
