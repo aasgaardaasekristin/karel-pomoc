@@ -305,6 +305,20 @@ Deno.serve(async (req: Request) => {
       aiContent = { ...ai, agenda_outline: [] };
     }
 
+    // Schválené parametry sezení (Slice 3 hardening) — uloženy autoritativně,
+    // bridge do did_daily_session_plans je čte odsud místo hardcoded "hanka".
+    const rawSp = (prefill as any)?.session_params;
+    const sessionParams = (rawSp && typeof rawSp === "object")
+      ? {
+          part_name: rawSp.part_name ? String(rawSp.part_name) : (subjectParts[0] ?? null),
+          led_by: rawSp.led_by ? String(rawSp.led_by) : null,            // "Hanička"|"Káťa"|"společně"
+          session_format: rawSp.session_format ? String(rawSp.session_format) : null, // "individual"|"joint"
+          duration_min: typeof rawSp.duration_min === "number" ? rawSp.duration_min : null,
+          why_today: rawSp.why_today ? String(rawSp.why_today) : null,
+          kata_involvement: rawSp.kata_involvement ? String(rawSp.kata_involvement) : null,
+        }
+      : {};
+
     const insertRow = {
       user_id: userId,
       title: String(aiContent?.title ?? hint ?? "Nová porada").slice(0, 200),
@@ -340,6 +354,7 @@ Deno.serve(async (req: Request) => {
       linked_task_id: body?.linked_task_id ?? null,
       linked_briefing_id: linkedBriefingId,
       linked_briefing_item_id: linkedBriefingItemId,
+      session_params: sessionParams,
     };
 
     const { data: created, error: insErr } = await admin
@@ -349,6 +364,25 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insErr) {
+      // Race condition na UNIQUE (uniq_did_team_delib_active_briefing_item):
+      // souběžný klik už založil aktivní poradu pro stejný briefing item.
+      // Vrátíme existující kanonický record, ne 500.
+      if ((insErr as any)?.code === "23505" && linkedBriefingItemId) {
+        const { data: raced } = await admin
+          .from("did_team_deliberations")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("linked_briefing_item_id", linkedBriefingItemId)
+          .in("status", ["draft", "active", "awaiting_signoff"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (raced) {
+          return new Response(JSON.stringify({ deliberation: raced, reused: true, race_recovered: true }), {
+            status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
       return new Response(JSON.stringify({ error: insErr.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

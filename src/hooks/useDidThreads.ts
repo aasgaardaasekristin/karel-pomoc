@@ -305,6 +305,26 @@ export const useDidThreads = () => {
       .single();
 
     if (error) {
+      // Race condition: paralelní klik vyhodil UNIQUE
+      // (uniq_did_threads_workspace). Vrátíme existující kanonický thread,
+      // nikdy 500/null naprázdno.
+      if ((error as any)?.code === "23505" && options?.workspaceType && options?.workspaceId) {
+        const { data: existingAfterRace } = await supabase
+          .from("did_threads")
+          .select("*")
+          .eq("workspace_type", options.workspaceType)
+          .eq("workspace_id", options.workspaceId)
+          .order("last_activity_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (existingAfterRace) {
+          const thread = rowToThread(existingAfterRace);
+          if (thread) {
+            setThreads((prev) => prev.some((t) => t.id === thread.id) ? prev : [thread, ...prev]);
+            return thread;
+          }
+        }
+      }
       console.error("Create thread error:", error);
       return null;
     }

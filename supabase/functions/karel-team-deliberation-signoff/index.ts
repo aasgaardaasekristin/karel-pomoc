@@ -90,6 +90,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // BRIDGE: if approved + session_plan → push do did_daily_session_plans
+    //
+    // HARDENING (Slice 3 stabilizace): bridge MUSÍ vycházet ze schváleného
+    // obsahu deliberation, ne z hardcoded "hanka/individual". Autoritativní
+    // zdroj parametrů je `session_params` jsonb sloupec naplněný při create
+    // přímo z briefing prefillu (led_by, session_format, duration_min, …).
+    // Fallback řetězec použijeme jen když deliberation z nějakého důvodu
+    // session_params nemá (legacy záznamy před touto migrací).
     let bridgedPlanId: string | null = updated.linked_live_session_id ?? null;
     if (
       updated.status === "approved" &&
@@ -97,29 +104,92 @@ Deno.serve(async (req: Request) => {
       !updated.linked_live_session_id
     ) {
       const today = new Date().toISOString().slice(0, 10);
-      const part = (updated.subject_parts?.[0] ?? "Tundrupek").toString();
+
+      const sp = (updated.session_params && typeof updated.session_params === "object")
+        ? updated.session_params as Record<string, any>
+        : {};
+
+      // Mapování led_by ("Hanička"|"Káťa"|"společně") → therapist (hanka|kata|joint).
+      const ledByRaw = String(sp.led_by ?? "").trim();
+      const ledByLower = ledByRaw.toLowerCase();
+      let therapist: string;
+      let sessionLead: string;
+      if (ledByLower.startsWith("ha")) { therapist = "hanka"; sessionLead = "hanka"; }
+      else if (ledByLower.startsWith("ká") || ledByLower.startsWith("ka")) { therapist = "kata"; sessionLead = "kata"; }
+      else if (ledByLower.startsWith("sp")) { therapist = "joint"; sessionLead = "joint"; }
+      else {
+        // Žádný explicitní vůdce — neházíme hardcoded hanka, ale označíme unassigned,
+        // aby UI vidělo, že to ještě nebylo schváleno.
+        therapist = "unassigned";
+        sessionLead = "unassigned";
+      }
+
+      const sessionFormat = (sp.session_format === "individual" || sp.session_format === "joint")
+        ? sp.session_format
+        : (therapist === "joint" ? "joint" : "individual");
+
+      const part = String(sp.part_name ?? updated.subject_parts?.[0] ?? "").trim();
+
+      // Agenda + otázky vypíšeme do plan_markdown, ať je z denního plánu vidět
+      // celý schválený obsah, ne jen stručný brief.
+      const agendaLines: string[] = [];
+      const agenda = Array.isArray(updated.agenda_outline) ? updated.agenda_outline : [];
+      if (agenda.length > 0) {
+        agendaLines.push("## Osnova");
+        agenda.forEach((b: any, i: number) => {
+          const min = typeof b?.minutes === "number" ? ` (${b.minutes} min)` : "";
+          const detail = b?.detail ? ` — ${b.detail}` : "";
+          agendaLines.push(`${i + 1}. **${b?.block ?? ""}**${min}${detail}`);
+        });
+        agendaLines.push("");
+      }
+
+      const qBlock = (label: string, list: any): string[] => {
+        const arr = Array.isArray(list) ? list : [];
+        if (arr.length === 0) return [];
+        const out = [`## Otázky pro ${label}`];
+        arr.forEach((q: any) => {
+          const txt = typeof q === "string" ? q : (q?.question ?? "");
+          if (txt) out.push(`- ${txt}`);
+        });
+        out.push("");
+        return out;
+      };
 
       const planRow: Record<string, any> = {
         user_id: userId,
         plan_date: today,
-        selected_part: part,
-        therapist: "hanka",
-        session_format: "individual",
+        selected_part: part || "(neurčeno)",
+        therapist,
+        session_format: sessionFormat,
         status: "planned",
         urgency_score: updated.priority === "crisis" ? 100 : 70,
-        urgency_breakdown: { source: "team_deliberation" },
+        urgency_breakdown: {
+          source: "team_deliberation",
+          deliberation_id: deliberationId,
+          led_by: ledByRaw || null,
+          duration_min: typeof sp.duration_min === "number" ? sp.duration_min : null,
+          kata_involvement: sp.kata_involvement ?? null,
+        },
         plan_markdown: [
-          `# Schválený plán z týmové porady\n`,
+          `# Schválený plán z týmové porady`,
           `**Porada:** ${updated.title}`,
+          ledByRaw ? `**Vede:** ${ledByRaw}` : "",
+          typeof sp.duration_min === "number" ? `**Délka:** ~${sp.duration_min} min` : "",
+          sp.why_today ? `**Proč dnes:** ${sp.why_today}` : "",
+          sp.kata_involvement ? `**Káťa:** ${sp.kata_involvement}` : "",
           updated.reason ? `**Důvod:** ${updated.reason}` : "",
           ``,
           `## Karlův schválený návrh`,
           updated.karel_proposed_plan ?? "",
           ``,
+          ...agendaLines,
+          ...qBlock("Haničku", updated.questions_for_hanka),
+          ...qBlock("Káťu", updated.questions_for_kata),
           updated.final_summary ? `## Závěr porady\n${updated.final_summary}` : "",
         ].filter(Boolean).join("\n"),
         generated_by: "team_deliberation",
-        session_lead: "hanka",
+        session_lead: sessionLead,
       };
 
       const { data: planRes, error: planErr } = await admin
@@ -134,6 +204,8 @@ Deno.serve(async (req: Request) => {
           .from("did_team_deliberations")
           .update({ linked_live_session_id: bridgedPlanId })
           .eq("id", deliberationId);
+      } else if (planErr) {
+        console.error("[delib-signoff] bridge insert failed:", planErr);
       }
     }
 

@@ -412,6 +412,17 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           "Otevírám tuhle poradu, abychom prošli osnovu a doladili otázky před sezením.",
         ].filter(Boolean).join("\n");
 
+        // Schválené session parametry — bridge do did_daily_session_plans je čte
+        // autoritativně. Žádný hardcoded „hanka/individual“ na straně signoff.
+        const sessionParams = {
+          part_name: s.part_name,
+          led_by: s.led_by,                                      // "Hanička"|"Káťa"|"společně"
+          session_format: s.led_by === "společně" ? "joint" : "individual",
+          duration_min: typeof s.duration_min === "number" ? s.duration_min : null,
+          why_today: s.why_today ?? null,
+          kata_involvement: s.kata_involvement ?? null,
+        };
+
         const prefill = {
           title: titleHint,
           reason: reasonText,
@@ -420,6 +431,7 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
           agenda_outline: Array.isArray(s.agenda_outline) ? s.agenda_outline : [],
           questions_for_hanka: Array.isArray(s.questions_for_hanka) ? s.questions_for_hanka : [],
           questions_for_kata: Array.isArray(s.questions_for_kata) ? s.questions_for_kata : [],
+          session_params: sessionParams,
         };
 
         const { data, error } = await (supabase as any).functions.invoke(
