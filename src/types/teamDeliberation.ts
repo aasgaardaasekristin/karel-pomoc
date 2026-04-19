@@ -84,6 +84,13 @@ export interface TeamDeliberation {
   questions_for_hanka: DeliberationQuestion[];
   questions_for_kata: DeliberationQuestion[];
 
+  /**
+   * SLICE 3 — strukturovaná osnova / minutáž porady.
+   * Pro session_plan obsahuje typicky 4-6 bloků (ground-check, hlavní práce,
+   * uzávěr, …). Pro ostatní typy může být prázdné pole.
+   */
+  agenda_outline: AgendaBlock[];
+
   discussion_log: DiscussionMessage[];
 
   hanka_signed_at: string | null;
@@ -94,6 +101,15 @@ export interface TeamDeliberation {
   linked_task_id: string | null;
   linked_drive_write_id: string | null;
   linked_crisis_event_id: string | null;
+
+  /**
+   * SLICE 3 — kanonické navázání na konkrétní položku denního briefingu.
+   * Druhý klik na stejný `decisions[i]` / `proposed_session` v
+   * DidDailyBriefingPanel resolvuje EXISTUJÍCÍ poradu přes
+   * (linked_briefing_id, linked_briefing_item_id) místo fuzzy text matchu.
+   */
+  linked_briefing_id: string | null;
+  linked_briefing_item_id: string | null;
 
   final_summary: string | null;
   followup_needed: boolean;
