@@ -458,8 +458,19 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
         dailyPlanId={resolvedDailyPlanId}
         therapist={meetingTherapist}
         onBack={() => {
+          // 2026-04-19 — Briefing-aware Back: pokud uživatel přišel
+          // z `DidDailyBriefingPanel`, vrátíme ho do terapeut dashboardu
+          // (kde žije briefing). Bez flagu zachováno původní chování.
+          let cameFromBriefing = false;
+          try {
+            cameFromBriefing = sessionStorage.getItem("karel_briefing_return") === "1";
+            if (cameFromBriefing) sessionStorage.removeItem("karel_briefing_return");
+          } catch { /* ignore */ }
           setDidFlowState("terapeut");
           setMeetingIdFromUrl(null);
+          if (cameFromBriefing) {
+            setDidSubMode(null);
+          }
         }}
       />
     );
