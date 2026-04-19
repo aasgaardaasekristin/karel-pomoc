@@ -123,6 +123,20 @@ const DidDashboard = ({
   const [snapshot, setSnapshot] = useState<any>(null);
   const [openDeliberationId, setOpenDeliberationId] = useState<string | null>(null);
 
+  // SLICE 2: deep-link bridge z Chat.tsx (?deliberation_id=<id>) — Chat handler
+  // přepne na DID dashboard a uloží ID do sessionStorage. Tento effect ho
+  // přečte a otevře DeliberationRoom. Po přečtení klíč mažeme, aby remount
+  // dashboardu nezakopl o starý ID.
+  useEffect(() => {
+    try {
+      const pendingId = sessionStorage.getItem("karel_open_deliberation_id");
+      if (pendingId) {
+        sessionStorage.removeItem("karel_open_deliberation_id");
+        setOpenDeliberationId(pendingId);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
   // ── Daily snapshot loader (Prague-day cache, fallback on error) ──
   const loadSnapshot = useCallback(async (force = false) => {
     try {
