@@ -1659,6 +1659,54 @@ export type Database = {
         }
         Relationships: []
       }
+      did_daily_briefings: {
+        Row: {
+          briefing_date: string
+          created_at: string
+          decisions_count: number
+          generated_at: string
+          generation_duration_ms: number | null
+          generation_method: string
+          id: string
+          is_stale: boolean
+          model_used: string | null
+          payload: Json
+          proposed_session_part_id: string | null
+          proposed_session_score: number | null
+          updated_at: string
+        }
+        Insert: {
+          briefing_date: string
+          created_at?: string
+          decisions_count?: number
+          generated_at?: string
+          generation_duration_ms?: number | null
+          generation_method?: string
+          id?: string
+          is_stale?: boolean
+          model_used?: string | null
+          payload?: Json
+          proposed_session_part_id?: string | null
+          proposed_session_score?: number | null
+          updated_at?: string
+        }
+        Update: {
+          briefing_date?: string
+          created_at?: string
+          decisions_count?: number
+          generated_at?: string
+          generation_duration_ms?: number | null
+          generation_method?: string
+          id?: string
+          is_stale?: boolean
+          model_used?: string | null
+          payload?: Json
+          proposed_session_part_id?: string | null
+          proposed_session_score?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       did_daily_context: {
         Row: {
           analysis_json: Json | null
