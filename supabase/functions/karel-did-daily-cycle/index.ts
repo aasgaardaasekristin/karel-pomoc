@@ -2970,19 +2970,39 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
         auditCount++;
 
         try {
-          const target = await resolveCardTarget(token, folderId, partName, registryContext);
+          // ─── substep: resolveCardTarget ───
+          await setPhase("audit_0b_resolve", `part="${partName}"`);
+          let target;
+          try {
+            target = await withTimeout(
+              `resolveCardTarget(${partName})`,
+              AUDIT_DRIVE_TIMEOUT_MS,
+              () => resolveCardTarget(token, folderId, partName, registryContext!),
+            );
+          } catch (e) {
+            const isTo = (e as any)?.isTimeout === true;
+            console.warn(`[KROK-0B] ${isTo ? "TIMEOUT" : "ERROR"} resolveCardTarget for "${partName}":`, (e as Error)?.message || e);
+            await setPhase("audit_0b_resolve_skip", `part="${partName}" reason=${isTo ? "timeout" : "error"}`);
+            auditAlerts.push(`⚠️ Audit přeskočen pro "${partName}" – ${isTo ? "timeout" : "chyba"} při resolveCardTarget.`);
+            continue;
+          }
           const lookupName = target.registryEntry?.name || partName;
 
           if (!target.registryEntry) {
             // ═══ Case 4: Part has NO registry entry AND no card → create new card ═══
             console.log(`[KROK-0B] "${partName}": mimo registr – vytvářím novou kartu (Case 4)`);
             if (registryContext.activeFolderId) {
+              await setPhase("audit_0b_create", `part="${partName}" case=4`);
               try {
-                const result = await createNewCardForPart(
-                  token, partName,
-                  Array.isArray(thread.messages) ? thread.messages as any[] : [],
-                  registryContext.activeFolderId,
-                  registryContext,
+                const result = await withTimeout(
+                  `createNewCardForPart(${partName})`,
+                  AUDIT_DRIVE_TIMEOUT_MS,
+                  () => createNewCardForPart(
+                    token, partName,
+                    Array.isArray(thread.messages) ? thread.messages as any[] : [],
+                    registryContext!.activeFolderId!,
+                    registryContext!,
+                  ),
                 );
                 auditResults.push(result);
                 cardsUpdated.push(`${partName} (AUDIT-0B: NOVÁ KARTA – ${result.created ? "vytvořena" : "chyba"})`);
@@ -2990,34 +3010,71 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
                   auditAlerts.push(result.alertForHanka);
                 }
               } catch (e) {
-                console.error(`[KROK-0B] Case 4 failed for "${partName}":`, e);
+                const isTo = (e as any)?.isTimeout === true;
+                console.error(`[KROK-0B] ${isTo ? "TIMEOUT" : "ERROR"} Case 4 createNewCardForPart for "${partName}":`, (e as Error)?.message || e);
+                await setPhase("audit_0b_create_skip", `part="${partName}" case=4 reason=${isTo ? "timeout" : "error"}`);
+                auditAlerts.push(`⚠️ Karta nevytvořena pro "${partName}" – ${isTo ? "timeout" : "chyba"} při createNewCardForPart.`);
               }
             }
             continue;
           }
 
-          const card = await findCardFile(token, lookupName, target.searchRootId);
+          // ─── substep: findCardFile ───
+          await setPhase("audit_0b_find", `part="${lookupName}"`);
+          let card;
+          try {
+            card = await withTimeout(
+              `findCardFile(${lookupName})`,
+              AUDIT_DRIVE_TIMEOUT_MS,
+              () => findCardFile(token, lookupName, target.searchRootId),
+            );
+          } catch (e) {
+            const isTo = (e as any)?.isTimeout === true;
+            console.warn(`[KROK-0B] ${isTo ? "TIMEOUT" : "ERROR"} findCardFile for "${lookupName}":`, (e as Error)?.message || e);
+            await setPhase("audit_0b_find_skip", `part="${lookupName}" reason=${isTo ? "timeout" : "error"}`);
+            auditAlerts.push(`⚠️ Audit přeskočen pro "${lookupName}" – ${isTo ? "timeout" : "chyba"} při findCardFile.`);
+            continue;
+          }
+
           if (card) {
             // Cases 1, 2, 3: Audit existing card structure
             const hasThreadMsgs = Array.isArray(thread.messages) && (thread.messages as any[]).filter((m: any) => m?.role === "user").length >= 2;
-            const result = await auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs);
-            auditResults.push(result);
-            if (result.changes.length > 0) {
-              cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
-            }
-            if (result.alertForHanka) {
-              auditAlerts.push(result.alertForHanka);
+            await setPhase("audit_0b_struct", `part="${lookupName}"`);
+            try {
+              const result = await withTimeout(
+                `auditCardStructure(${lookupName})`,
+                AUDIT_DRIVE_TIMEOUT_MS,
+                () => auditCardStructure(token, card.fileId, card.fileName, card.mimeType, lookupName, hasThreadMsgs),
+              );
+              auditResults.push(result);
+              if (result.changes.length > 0) {
+                cardsUpdated.push(`${lookupName} (AUDIT-0B: ${result.changes.length} oprav${result.promoted ? ", STUB→PLNÁ" : ""})`);
+              }
+              if (result.alertForHanka) {
+                auditAlerts.push(result.alertForHanka);
+              }
+            } catch (e) {
+              const isTo = (e as any)?.isTimeout === true;
+              console.warn(`[KROK-0B] ${isTo ? "TIMEOUT" : "ERROR"} auditCardStructure for "${lookupName}":`, (e as Error)?.message || e);
+              await setPhase("audit_0b_struct_skip", `part="${lookupName}" reason=${isTo ? "timeout" : "error"}`);
+              auditAlerts.push(`⚠️ Strukturální audit přeskočen pro "${lookupName}" – ${isTo ? "timeout" : "chyba"} při auditCardStructure.`);
+              continue;
             }
           } else {
             // ═══ Case 4b: Registry entry exists but no card file found → create card ═══
             console.log(`[KROK-0B] "${lookupName}": v registru ale karta nenalezena – vytvářím (Case 4b)`);
             if (registryContext.activeFolderId) {
+              await setPhase("audit_0b_create", `part="${lookupName}" case=4b`);
               try {
-                const result = await createNewCardForPart(
-                  token, lookupName,
-                  Array.isArray(thread.messages) ? thread.messages as any[] : [],
-                  registryContext.activeFolderId,
-                  registryContext,
+                const result = await withTimeout(
+                  `createNewCardForPart(${lookupName})`,
+                  AUDIT_DRIVE_TIMEOUT_MS,
+                  () => createNewCardForPart(
+                    token, lookupName,
+                    Array.isArray(thread.messages) ? thread.messages as any[] : [],
+                    registryContext!.activeFolderId!,
+                    registryContext!,
+                  ),
                 );
                 auditResults.push(result);
                 cardsUpdated.push(`${lookupName} (AUDIT-0B: KARTA VYTVOŘENA – chyběla na Drive)`);
@@ -3025,12 +3082,16 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
                   auditAlerts.push(result.alertForHanka);
                 }
               } catch (e) {
-                console.error(`[KROK-0B] Case 4b failed for "${lookupName}":`, e);
+                const isTo = (e as any)?.isTimeout === true;
+                console.error(`[KROK-0B] ${isTo ? "TIMEOUT" : "ERROR"} Case 4b createNewCardForPart for "${lookupName}":`, (e as Error)?.message || e);
+                await setPhase("audit_0b_create_skip", `part="${lookupName}" case=4b reason=${isTo ? "timeout" : "error"}`);
+                auditAlerts.push(`⚠️ Karta nevytvořena pro "${lookupName}" – ${isTo ? "timeout" : "chyba"} při createNewCardForPart.`);
               }
             }
           }
         } catch (e) {
           console.warn(`[KROK-0B] Audit error for "${partName}":`, e);
+          await setPhase("audit_0b_error", `part="${partName}" reason=${(e as Error)?.message?.slice(0,120) || "unknown"}`);
         }
       }
 
