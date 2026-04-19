@@ -1934,10 +1934,34 @@ async function auditCardStructure(
   let promoted = false;
   const dateStr = new Date().toISOString().slice(0, 10);
 
+  // ─── Memory guard: pre-check size when Drive reports it (binary files) ───
+  const reportedSize = await getDriveFileSize(token, fileId);
+  if (reportedSize != null && reportedSize > MAX_AUDIT_CARD_BYTES) {
+    console.warn(`[AUDIT-0B] OVERSIZED "${fileName}" (${reportedSize} B > ${MAX_AUDIT_CARD_BYTES} B) – skipping audit, no read`);
+    return {
+      partName, fileName,
+      changes: [`SKIP: karta je příliš velká (${reportedSize} B) – audit přeskočen`],
+      promoted: false, created: false,
+      alertForHanka: `⚠️ Strukturální audit přeskočen pro "${partName}" – karta je příliš velká (${reportedSize} B). Doporučuji ruční rozdělení/archivaci.`,
+      oversized: true, byteLength: reportedSize,
+    };
+  }
+
   let content: string;
   try {
-    content = await readFileContent(token, fileId);
+    // Streamed read with hard byte cap – aborts download if card grows past the ceiling.
+    content = await readFileContentCapped(token, fileId, MAX_AUDIT_CARD_BYTES);
   } catch (e) {
+    if (e instanceof CardOversizedError) {
+      console.warn(`[AUDIT-0B] OVERSIZED "${fileName}" (stream cap hit at ${e.byteLength} B) – skipping audit`);
+      return {
+        partName, fileName,
+        changes: [`SKIP: karta je příliš velká (~${e.byteLength} B) – audit přeskočen`],
+        promoted: false, created: false,
+        alertForHanka: `⚠️ Strukturální audit přeskočen pro "${partName}" – karta překročila limit ${MAX_AUDIT_CARD_BYTES} B. Doporučuji ruční rozdělení/archivaci.`,
+        oversized: true, byteLength: e.byteLength,
+      };
+    }
     console.error(`[AUDIT-0B] Cannot read card "${fileName}":`, e);
     return { partName, fileName, changes: [`ERR: nelze číst kartu`], promoted: false, created: false, alertForHanka: null };
   }
