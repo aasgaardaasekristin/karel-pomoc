@@ -1259,6 +1259,60 @@ const Chat = () => {
     }
   }, [authChecked, session, searchParams]);
 
+  // ═══ SLICE 2: deep-link handler — kanonické persistentní targety ═══
+  //
+  //  ?workspace_thread=<did_threads.id>
+  //     → Otevře KONKRÉTNÍ persistentní `did_threads` záznam (typicky ask_hanka /
+  //       ask_kata briefing thread, který byl lazy-vytvořen v
+  //       DidDailyBriefingPanel). První klik v briefingu = lazy-create přes
+  //       (workspace_type, workspace_id) lookup; druhý klik = stejný thread.id
+  //       v URL → tento handler ho najde a otevře. ŽÁDNÝ shim přes
+  //       did_submode + briefing_ask se už nepoužívá.
+  //
+  //  ?deliberation_id=<did_team_deliberations.id>
+  //     → Otevře KONKRÉTNÍ persistentní `did_team_deliberations` záznam
+  //       (decisions / proposed_session). DeliberationRoom je renderována
+  //       uvnitř DidDashboard; deep-link tedy přepne na DID dashboard a předá
+  //       ID přes sessionStorage bridge `karel_open_deliberation_id`, kterou
+  //       DidDashboard přečte v useEffect a otevře poradu. ŽÁDNÉ směrování
+  //       do did_meetings ani did_submode=mamka.
+  useEffect(() => {
+    if (!authChecked || !session) return;
+    const workspaceThreadId = searchParams.get("workspace_thread");
+    const deliberationId = searchParams.get("deliberation_id");
+    if (!workspaceThreadId && !deliberationId) return;
+
+    setSearchParams({}, { replace: true });
+    setMode("childcare");
+    try { sessionStorage.setItem("karel_hub_section", "did"); } catch {}
+
+    if (deliberationId) {
+      // Bridge: dashboard si ho přečte a setne openDeliberationId
+      try { sessionStorage.setItem("karel_open_deliberation_id", deliberationId); } catch {}
+      setDidFlowState("dashboard");
+      return;
+    }
+
+    if (workspaceThreadId) {
+      setDidFlowState("loading");
+      (async () => {
+        const thread = await didThreads.getThreadById(workspaceThreadId);
+        if (!thread) {
+          toast.error("Vlákno nenalezeno — možná bylo smazané.");
+          setDidFlowState("therapist-threads");
+          return;
+        }
+        const subMode = thread.subMode === "kata" ? "kata" : "mamka";
+        setDidSubMode(subMode as DidSubMode);
+        didContextPrime.runPrime(undefined, subMode as "mamka" | "kata");
+        await didThreads.fetchAllThreads(subMode);
+        setActiveThread(thread);
+        setMessages(thread.messages as any);
+        setDidFlowState("chat");
+      })();
+    }
+  }, [authChecked, session, searchParams]);
+
   // authChecked guard moved after all hooks (see below line ~1317)
 
   // ── DID-specific handlers ──
