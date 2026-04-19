@@ -1287,23 +1287,30 @@ serve(async (req) => {
   // ── KROK 0b: Concurrency guard ────────────────────────────
   const concurrencySince = new Date(now.getTime() - CONCURRENCY_WINDOW_MIN * MS_PER_MIN).toISOString();
 
+  // E2: analyst-loop nesmí "vidět" daily-cycle běhy jako konkurenci ani je zabíjet.
+  // Daily-cycle má vlastní cleanup (heartbeat-based, 30 min) v karel-did-daily-cycle.
+  // Důvod: real daily-cycle běží 5–30 min a krátký analyst-loop window
+  //        ho falešně zabíjel jako "stale_running".
   const { data: runningCycle } = await sb
     .from("did_update_cycles")
-    .select("id, created_at")
+    .select("id, created_at, cycle_type")
     .eq("status", "running")
+    .neq("cycle_type", "daily")
     .gte("created_at", concurrencySince)
     .limit(1);
 
   if (runningCycle && runningCycle.length > 0 && !forceRun) {
-    console.log("[ANALYST] Skipped — another cycle is running");
+    console.log("[ANALYST] Skipped — another non-daily cycle is running");
     return jsonResponse({ status: "skipped", reason: "already_running" });
   }
 
-  // Cleanup stale running cycles
+  // Cleanup stale running cycles — ALE NIKDY ne daily-cycle (E2).
+  // Daily-cycle si svůj stuck cleanup řeší sám přes heartbeat_at.
   const { error: cleanupErr } = await sb
     .from("did_update_cycles")
     .update({ status: "failed", last_error: "stale_running" })
     .eq("status", "running")
+    .neq("cycle_type", "daily")
     .lt("created_at", concurrencySince);
 
   if (cleanupErr) {
