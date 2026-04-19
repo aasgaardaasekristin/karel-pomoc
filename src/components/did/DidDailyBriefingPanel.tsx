@@ -482,6 +482,8 @@ const DidDailyBriefingPanel = ({ refreshTrigger, onOpenDeliberation }: Props) =>
   const p = briefing.payload;
   const hasProposed = !!p.proposed_session?.part_name;
   const decisions = (p.decisions ?? []).slice(0, 3);
+  const hankaItems = (p.ask_hanka ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_hanka"));
+  const kataItems = (p.ask_kata ?? []).map((raw) => toAskItem(raw, briefing.id, "ask_kata"));
 
   return (
     <div className="space-y-1">
