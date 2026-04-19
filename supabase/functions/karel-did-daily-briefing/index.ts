@@ -437,12 +437,24 @@ Deno.serve(async (req) => {
     // method="manual" (UI tlačítko `Přegenerovat`) tento guard NEPOUŽÍVÁ —
     // ruční regenerace musí jít vždy, i bez completed cycle.
     if (generationMethod === "auto") {
-      const todayStartUtc = `${today}T00:00:00Z`;
+      // MORNING WINDOW: 04:00–10:00 UTC
+      // Důvod: ranní cron `did-daily-cycle-morning` startuje v 07:00 Praha
+      //   = 05:00 UTC (léto) / 06:00 UTC (zima).
+      // Okno 04:00–10:00 UTC pokrývá:
+      //   - DST varianty (CET/CEST)
+      //   - manuální backfill / retry téhož ranního runu
+      //   - early start ±1h
+      // Odpolední cron `did-daily-cycle-14cet` (15:00 Praha = 13:00/14:00 UTC)
+      // do tohoto okna nespadá → guard ho ignoruje a nemůže způsobit falešný
+      // skip auto briefingu.
+      const morningStartUtc = `${today}T04:00:00Z`;
+      const morningEndUtc   = `${today}T10:00:00Z`;
       const { data: cycleRow, error: cycleErr } = await supabase
         .from("did_update_cycles")
         .select("id, status, started_at, completed_at, last_error")
         .eq("cycle_type", "daily")
-        .gte("started_at", todayStartUtc)
+        .gte("started_at", morningStartUtc)
+        .lt("started_at", morningEndUtc)
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle();
