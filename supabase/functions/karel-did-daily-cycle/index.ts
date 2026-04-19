@@ -2836,6 +2836,24 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
     if (cycleErr) console.error("[daily-cycle] Failed to create cycle record:", cycleErr.message);
     cycleId = cycle?.id || null;
 
+    // ─── HEARTBEAT HELPER (E1) ────────────────────────────────────────────
+    // Zapisuje phase + heartbeat_at na začátku každé hlavní fáze daily-cycle.
+    // Slouží jako důkaz živosti pro stuck cleanup (E3) i pro diagnostiku
+    // toho, ve které fázi cycle případně visí.
+    const setPhase = async (phase: string, detail = "") => {
+      if (!cycleId) return;
+      try {
+        await sb.from("did_update_cycles").update({
+          phase,
+          phase_detail: detail.slice(0, 500),
+          heartbeat_at: new Date().toISOString(),
+        }).eq("id", cycleId);
+      } catch (e) {
+        console.warn(`[daily-cycle] setPhase("${phase}") failed:`, (e as Error)?.message || e);
+      }
+    };
+    await setPhase("normalize_cards", "Fáze 2: Normalizace struktury karet A–M");
+
     // 2. NORMALIZACE STRUKTURY KARET A-M (probíhá vždy)
     const token = await getAccessToken();
     const folderId = await findFolder(token, "kartoteka_DID") || await findFolder(token, "Kartoteka_DID") || await findFolder(token, "Kartotéka_DID");
