@@ -109,24 +109,36 @@ Deno.serve(async (req: Request) => {
         ? updated.session_params as Record<string, any>
         : {};
 
-      // Mapování led_by ("Hanička"|"Káťa"|"společně") → therapist (hanka|kata|joint).
+      // Mapování led_by → DB hodnoty, KTERÉ UI rozumí.
+      // DidDailySessionPlan.tsx PlanCardProps.leadLabel mapuje:
+      //   session_lead = "obe" → "Hanka + Káťa"
+      //   session_lead = "kata" → "Káťa"
+      //   session_lead = "all" + session_format = "crisis_intervention" → krizový label
+      //   jinak fallback "Hanka" (toto je přesně hardcoded bug, kterému se vyhýbáme).
+      // Proto pro „společně“ používáme `obe`, ne neznámé „joint“.
       const ledByRaw = String(sp.led_by ?? "").trim();
       const ledByLower = ledByRaw.toLowerCase();
       let therapist: string;
       let sessionLead: string;
-      if (ledByLower.startsWith("ha")) { therapist = "hanka"; sessionLead = "hanka"; }
-      else if (ledByLower.startsWith("ká") || ledByLower.startsWith("ka")) { therapist = "kata"; sessionLead = "kata"; }
-      else if (ledByLower.startsWith("sp")) { therapist = "joint"; sessionLead = "joint"; }
-      else {
-        // Žádný explicitní vůdce — neházíme hardcoded hanka, ale označíme unassigned,
-        // aby UI vidělo, že to ještě nebylo schváleno.
-        therapist = "unassigned";
-        sessionLead = "unassigned";
+      let sessionFormatDefault: string;
+      if (ledByLower.startsWith("ha")) {
+        therapist = "hanka"; sessionLead = "hanka"; sessionFormatDefault = "osobně";
+      } else if (ledByLower.startsWith("ká") || ledByLower.startsWith("ka")) {
+        therapist = "kata"; sessionLead = "kata"; sessionFormatDefault = "chat";
+      } else if (ledByLower.startsWith("sp")) {
+        therapist = "hanka"; sessionLead = "obe"; sessionFormatDefault = "kombinované";
+      } else {
+        // Bez explicitního vůdce: nezakrýváme to, ale UI musí umět zobrazit.
+        // Použijeme defaulty, které UI nerozbijí, a označíme to v urgency_breakdown.
+        therapist = "hanka"; sessionLead = "hanka"; sessionFormatDefault = "osobně";
       }
 
-      const sessionFormat = (sp.session_format === "individual" || sp.session_format === "joint")
-        ? sp.session_format
-        : (therapist === "joint" ? "joint" : "individual");
+      // Pokud prefill přidal session_format explicitně, respektujeme jej; jinak
+      // bereme default odvozený z led_by. Hodnoty držíme v cs slovníku UI.
+      const spFmt = String(sp.session_format ?? "").trim();
+      const sessionFormat = spFmt === "individual" ? "osobně"
+        : spFmt === "joint" ? "kombinované"
+        : (spFmt || sessionFormatDefault);
 
       const part = String(sp.part_name ?? updated.subject_parts?.[0] ?? "").trim();
 
