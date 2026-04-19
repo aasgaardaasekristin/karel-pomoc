@@ -14,8 +14,29 @@
  *     linked_crisis_event_id?: string,
  *     linked_task_id?: string,
  *     hint?: string,              // volný hint pro AI ("dnešní sezení s Tundrupkem")
+ *
+ *     // SLICE 3 — kanonické navázání na briefing item (idempotence):
+ *     linked_briefing_id?: string,        // did_daily_briefings.id
+ *     linked_briefing_item_id?: string,   // stabilní id decisions[i] / proposed_session
+ *
+ *     // SLICE 3 — prefill obsahu z briefingu (preferován před AI generací):
+ *     prefill?: {
+ *       title?: string,
+ *       reason?: string,
+ *       initial_karel_brief?: string,
+ *       karel_proposed_plan?: string,        // typicky first_draft
+ *       agenda_outline?: Array<{block:string, minutes?:number, detail?:string}>,
+ *       questions_for_hanka?: string[],
+ *       questions_for_kata?: string[],
+ *     }
  *   }
+ *
+ * Idempotence: pokud už existuje porada se shodným `linked_briefing_item_id`
+ * a status active|awaiting_signoff, vrátí ji (ne-vytváří novou). Tato kontrola
+ * je AUTORITATIVNÍ — fuzzy text match na klientu je už jen fallback pro
+ * legacy briefingy bez `linked_briefing_item_id`.
  */
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
