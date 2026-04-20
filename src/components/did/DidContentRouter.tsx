@@ -355,73 +355,23 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
     );
   }
 
-  // Terapeut view: Dashboard + Hanička/Káťa buttons
+  // Terapeut view: Surface tab bar (Dashboard / Karlův přehled / Komunikace / Admin)
   if (didFlowState === "terapeut" && !didSubMode) {
     return (
-      <div className="jung-study flex-1 flex flex-col min-h-0">
-        <ScrollArea className="flex-1">
-          <div className="relative z-10 min-h-full">
-            <ErrorBoundary fallbackTitle="Dashboard selhal">
-              <DidDashboard onManualUpdate={onManualUpdate} isUpdating={isManualUpdateLoading} syncProgress={syncProgress} onQuickSubMode={handleDidSubModeSelect} onQuickThread={handleQuickThread} contextDocs={didInitialContext || basicDocsRef.current} onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")} isRefreshingMemory={!!(didContextPrime as any).isPriming} />
-            </ErrorBoundary>
-            <div className="max-w-2xl mx-auto px-3 sm:px-4 pb-6">
-              <h3 className="text-sm font-serif font-normal mb-3 text-center tracking-wide text-muted-foreground">
-                Kdo mluví s Karlem?
-              </h3>
-              <div className="space-y-2">
-                {/* Hanička */}
-                <button
-                  onClick={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
-                  className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
-                  style={{ borderLeft: "3px solid hsl(28 42% 38%)" }}
-                >
-                  <span className="text-lg">✨</span>
-                  <div>
-                    <div className="font-serif font-normal tracking-wide text-foreground">Hanička</div>
-                    <div className="text-xs font-light tracking-wide text-muted-foreground">Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
-                  </div>
-                </button>
-                {/* Káťa */}
-                <button
-                  onClick={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
-                  className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
-                  style={{ borderLeft: "3px solid hsl(var(--muted-foreground))" }}
-                >
-                  <span className="text-lg">🤍</span>
-                  <div>
-                    <div className="font-serif font-normal tracking-wide text-foreground">Káťa</div>
-                    <div className="text-xs font-light tracking-wide text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
-                  </div>
-                </button>
-                {/* Porady */}
-                <button
-                  onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
-                  className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
-                  style={{ borderLeft: "3px solid hsl(28 42% 38%)" }}
-                >
-                  <span className="text-lg">📋</span>
-                  <div>
-                    <div className="font-serif font-normal tracking-wide text-foreground">Porady týmu</div>
-                    <div className="text-xs font-light tracking-wide text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
-                  </div>
-                </button>
-                {/* Live DID sezení */}
-                <button
-                  onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
-                  className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
-                  style={{ borderLeft: "3px solid hsl(40 60% 50%)" }}
-                >
-                  <span className="text-lg" style={{ color: "hsl(40 60% 50%)" }}>✦</span>
-                  <div>
-                    <div className="font-serif font-normal tracking-wide text-foreground">Live DID sezení</div>
-                    <div className="text-xs font-light tracking-wide text-muted-foreground">Karel radí v reálném čase při práci s částí – audio + chat</div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          </div>
-        </ScrollArea>
-      </div>
+      <TerapeutSurfaces
+        navigate={navigate}
+        setDidFlowState={setDidFlowState}
+        setDidSubMode={setDidSubMode}
+        setMeetingTherapist={setMeetingTherapist}
+        onManualUpdate={onManualUpdate}
+        isManualUpdateLoading={isManualUpdateLoading}
+        syncProgress={syncProgress}
+        handleDidSubModeSelect={handleDidSubModeSelect}
+        handleQuickThread={handleQuickThread}
+        didInitialContext={didInitialContext}
+        basicDocsRef={basicDocsRef}
+        didContextPrime={didContextPrime}
+      />
     );
   }
 
