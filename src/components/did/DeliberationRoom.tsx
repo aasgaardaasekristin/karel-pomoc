@@ -192,15 +192,17 @@ function KarelSynthesisBlock({
           <Brain className="w-3.5 h-3.5" />
           Karlova syntéza — {v.label}
         </h4>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-[10px]"
-          disabled={synthesizing}
-          onClick={onSynthesize}
-        >
-          {synthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Přesyntetizovat"}
-        </Button>
+        {!readOnly && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px]"
+            disabled={synthesizing}
+            onClick={onSynthesize}
+          >
+            {synthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Přesyntetizovat"}
+          </Button>
+        )}
       </div>
       <p className="text-[11px] text-foreground/90"><strong>Další krok:</strong> {synth.next_step}</p>
       {synth.needs_karel_interview && (
