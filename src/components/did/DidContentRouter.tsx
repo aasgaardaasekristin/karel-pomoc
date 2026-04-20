@@ -11,6 +11,7 @@ import { getAuthHeaders } from "@/lib/auth";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DidEntryScreen from "@/components/did/DidEntryScreen";
 import DidDashboard from "@/components/did/DidDashboard";
+import KarelOverviewPanel from "@/components/did/KarelOverviewPanel";
 import DidMeetingPanel from "@/components/did/DidMeetingPanel";
 import DidRegistryOverview from "@/components/did/DidRegistryOverview";
 import DidPartSelector from "@/components/did/DidPartSelector";
