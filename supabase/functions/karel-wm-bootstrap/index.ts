@@ -271,10 +271,10 @@ Deno.serve(async (req) => {
   const roleScopeRes = await timed("role_scope_breakdown", async () => {
     const { data, error } = await db
       .from("karel_hana_conversations")
-      .select("messages")
+      .select("messages,last_activity_at")
       .eq("user_id", userId)
-      .gte("updated_at", since24h)
-      .order("updated_at", { ascending: false })
+      .gte("last_activity_at", since24h)
+      .order("last_activity_at", { ascending: false })
       .limit(20);
     if (error) throw error;
 
