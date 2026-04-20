@@ -561,7 +561,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   who === "karel" &&
                   d.deliberation_type === "crisis" &&
                   (!crisisAnswersReady || !d.karel_synthesis);
-                const disabled = !!signed || signing === who || karelGateBlocked;
+                const disabled = !!signed || signing === who || karelGateBlocked || isReadOnly;
                 return (
                   <Button
                     key={who}
