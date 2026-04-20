@@ -2695,11 +2695,17 @@ serve(async (req) => {
     const recentPulseChecks = recentPulseRows ?? [];
     console.log(`[daily-cycle] Pulse checks (7d): ${recentPulseChecks.length}`);
 
-    // Load pending therapist tasks for accountability analysis
+    // Load pending therapist tasks for accountability analysis.
+    // ⚠️ MEMORY GUARD: hard cap at 200 oldest pending tasks. Loading the full
+    // open-task set (currently >7k) caused OOM crashes mid-cycle, killing the
+    // run BEFORE Phase 4 extraction could create did_observations /
+    // did_implications. Older tasks are still escalated by their own existing
+    // escalation_level metadata; this slice only bounds in-memory size.
     const { data: pendingTasks } = await sb.from("did_therapist_tasks")
       .select("id, task, detail_instruction, assigned_to, status, status_hanka, status_kata, priority, due_date, created_at, note, escalation_level, escalated_at, last_escalation_email_at")
       .in("status", ["pending", "active", "in_progress", "not_started"])
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      .limit(200);
 
     // ═══ HEURISTICKÁ KONTROLA SPLNĚNÍ ÚKOLŮ ═══
     try {
