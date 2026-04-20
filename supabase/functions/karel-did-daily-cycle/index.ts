@@ -4587,9 +4587,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       let therapeuticPlanContent = ""; // Capture for email inclusion
       let centrumDashboardUpdated = false;
       let centrumOperativniUpdated = false;
-      if (centrumFolderId) {
+      // ═══════════════════════════════════════════════════════════════════════
+      // CENTRUM ENQUEUE — async write přes did_pending_drive_writes
+      // Trade-off: vypouštíme synchronní KHASH/substring dedup čtení existujícího
+      // dokumentu. U replace cest (05A/05B/dashboard) overwrite vyřeší duplicate
+      // problém. U strategick_vyhled append je KHASH marker stále v payloadu.
+      // ═══════════════════════════════════════════════════════════════════════
+      {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
-        const centerFiles = await listFilesInFolder(token, centrumFolderId);
         const dateStr = new Date().toISOString().slice(0, 10);
 
         for (const match of validatedAnalysisText.matchAll(centrumBlockRegex)) {
@@ -4597,147 +4602,90 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           let newContent = match[2].trim();
           if (!newContent || newContent.length < 10) continue;
 
-          // ═══ EVIDENCE VALIDATION: Filter claims without valid [SRC:] tags ═══
           const docCanonical = canonicalText(docName);
           const isDashboardOrPlan = docCanonical.includes("dashboard") || docCanonical.includes("operativn") || docCanonical.includes("terapeutick");
           if (isDashboardOrPlan) {
             const { validated, rejectedCount, keptCount } = validateCentrumEvidence(newContent, validSources, docName);
             if (rejectedCount > 0) {
-              console.log(`[EVIDENCE] ${docName}: ${rejectedCount} claims rejected, ${keptCount} claims validated`);
+              console.log(`[EVIDENCE] ${docName}: ${rejectedCount} claims rejected, ${keptCount} validated`);
             }
             newContent = validated;
             if (newContent.trim().length < 10) {
-              console.warn(`[EVIDENCE] ${docName}: All content rejected by evidence validator, skipping write`);
+              console.warn(`[EVIDENCE] ${docName}: All content rejected, skipping enqueue`);
               continue;
             }
           }
 
           try {
-
-            // ═══ SPECIAL: 05_Operativni_Plan or 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
+            // ── 05_Operativni_Plan / 05_Terapeuticky_Plan → REPLACE 05A ──
             if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
-              const planFile = centerFiles.find(f => {
-                const fc = canonicalText(f.name);
-                return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
-              });
-              if (!planFile) {
-                console.warn(`[CENTRUM] Operative plan doc not found, skipping`);
-                continue;
-              }
-
-              // Full rewrite – the AI already generated the complete document content
               const planDocument = `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
-              therapeuticPlanContent = newContent; // Store for email inclusion
-              await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
-              centrumOperativniUpdated = true;
-              console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
-
-              // Post-write verification – all 6 sections + deductive markers
-              const planVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", [
-                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6",
-                "Aktualizace", "PROČ", "AKCE", "DOKDY",
-              ]);
-              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated && planVerify.verified;
-              if (!planVerify.verified) {
-                console.warn(`[VERIFY] ⚠️ 05_Operativni_Plan verification FAILED: missing=[${planVerify.missingKeywords.join(",")}], length=${planVerify.length}`);
+              therapeuticPlanContent = newContent;
+              const ok = await enqueueDriveWrite({
+                target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+                payload: planDocument,
+                write_type: "replace",
+                priority: "high",
+                content_type: "daily_plan",
+                subject_type: "system",
+                subject_id: "operative_plan",
+              });
+              if (ok) {
+                cardsUpdated.push(`CENTRUM: 05A_Operativni_Plan (ENQUEUED replace)`);
+                centrumEnqueued.push("05A_OPERATIVNI_PLAN");
+                centrumOperativniUpdated = true;
               }
-              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (AI write)`);
+              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated;
+              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (enqueued)`);
               continue;
             }
 
-            // ═══ SPECIAL: 00_Aktualni_Dashboard – FULL DOCUMENT REWRITE ═══
-            if (docCanonical.includes("dashboard") || (docCanonical.includes("aktualn") && docCanonical.includes("dashboard"))) {
-              const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
-              if (!dashFile) {
-                console.warn(`[CENTRUM] Dashboard doc not found, skipping`);
-                continue;
-              }
-
+            // ── 00_Aktualni_Dashboard → REPLACE DASHBOARD ──
+            if (docCanonical.includes("dashboard")) {
               const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${newContent}`;
-              await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
-              centrumDashboardUpdated = true;
-              console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
-
-              // Post-write verification – all 7 sections + deductive markers
-              const dashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", [
-                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7",
-                "DASHBOARD", "Aktualizace", "DEDUKCE",
-              ]);
-              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated && dashVerify.verified;
-              if (!dashVerify.verified) {
-                console.warn(`[VERIFY] ⚠️ 00_Dashboard verification FAILED: missing=[${dashVerify.missingKeywords.join(",")}], length=${dashVerify.length}`);
+              const ok = await enqueueDriveWrite({
+                target_document: "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+                payload: dashDocument,
+                write_type: "replace",
+                priority: "high",
+                content_type: "dashboard_status",
+                subject_type: "system",
+                subject_id: "dashboard",
+              });
+              if (ok) {
+                cardsUpdated.push(`CENTRUM: 00_Dashboard (ENQUEUED replace)`);
+                centrumEnqueued.push("DASHBOARD");
+                centrumDashboardUpdated = true;
               }
-              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (AI write)`);
+              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated;
+              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (enqueued)`);
               continue;
             }
 
-            // Find the target document
-            let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
-
-            // ═══ SPECIAL: 06_Strategicky_Vyhled – APPEND (not rewrite, weekly does rewrite) ═══
+            // ── 06_Strategicky_Vyhled → REPLACE 05B (governance allows replace) ──
             if (docCanonical.includes("strategick") && docCanonical.includes("vyhled")) {
-              const stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
-              if (stratFile) {
-                const existingContent = await readFileContent(token, stratFile.id);
-                const hash = contentHash(newContent.trim());
-                if (hasKhash(existingContent, hash)) {
-                  console.log(`[CENTRUM] [KHASH-dedup] Skipping 06_Strategicky_Vyhled – hash ${hash} already present`);
-                } else if (!existingContent.includes(newContent.slice(0, 80))) {
-                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace: [KHASH:${hash}]\n${newContent}`;
-                  await updateFileById(token, stratFile.id, updatedContent, stratFile.mimeType);
-                  cardsUpdated.push(`CENTRUM: 06_Strategicky_Vyhled (append)`);
-                  console.log(`[CENTRUM] ✅ Appended to 06_Strategicky_Vyhled`);
-                }
+              const hash = contentHash(newContent.trim());
+              const stratDocument = `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr} [KHASH:${hash}]\nSprávce: Karel\n\n${newContent}`;
+              const ok = await enqueueDriveWrite({
+                target_document: "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+                payload: stratDocument,
+                write_type: "replace",
+                priority: "normal",
+                content_type: "strategic_outlook",
+                subject_type: "system",
+                subject_id: "strategic_outlook",
+              });
+              if (ok) {
+                cardsUpdated.push(`CENTRUM: 05B_Strategicky_Vyhled (ENQUEUED replace)`);
+                centrumEnqueued.push("05B_STRATEGICKY_VYHLED");
               }
               continue;
             }
 
-            // Handle old 06_Terapeuticke_Dohody → redirect to 05_Operativni_Plan (NEVER create standalone docs)
-            if (!targetFile && docCanonical.includes("dohod")) {
-              const opPlanFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
-              if (opPlanFile) {
-                const existingOp = await readFileContent(token, opPlanFile.id);
-                const hash = contentHash(newContent.trim());
-                if (hasKhash(existingOp, hash)) {
-                  console.log(`[CENTRUM] [KHASH-dedup] Skipping dohody→OpPlan – hash ${hash} already present`);
-                } else if (!existingOp.includes(newContent.slice(0, 80))) {
-                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus): [KHASH:${hash}]\n${newContent}`;
-                  await updateFileById(token, opPlanFile.id, updatedOp, opPlanFile.mimeType);
-                  cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (z dohod)`);
-                  console.log(`[CENTRUM] ✅ Appended dohody content to 05_Operativni_Plan`);
-                }
-                continue;
-              }
-            }
-
-            if (!targetFile) {
-              console.warn(`[CENTRUM] Document "${docName}" not found in 00_CENTRUM, skipping`);
-              continue;
-            }
-
-            // Read existing content for dedup (KHASH + substring check)
-            const existingContent = await readFileContent(token, targetFile.id);
-            const hash = contentHash(newContent.trim());
-
-            if (hasKhash(existingContent, hash)) {
-              console.log(`[CENTRUM] [KHASH-dedup] Skipping "${docName}" – hash ${hash} already present`);
-              continue;
-            }
-
-            if (existingContent.includes(newContent.slice(0, 80))) {
-              console.log(`[CENTRUM] Skipping "${docName}" – content already present (substring dedup)`);
-              continue;
-            }
-
-            // Append new content with date header and KHASH marker
-            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu: [KHASH:${hash}]\n${newContent}`;
-            await updateFileById(token, targetFile.id, updatedContent, targetFile.mimeType);
-            cardsUpdated.push(`CENTRUM: ${docName} (aktualizace)`);
-            console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
+            // Other CENTRUM docs (dohody / unknown) → silently skip (out of governance)
+            console.log(`[CENTRUM] Skipping non-governed document: "${docName}"`);
           } catch (e) {
-            console.error(`[CENTRUM] Failed to update "${docName}":`, e);
+            console.error(`[CENTRUM-ENQUEUE] Failed for "${docName}":`, e);
           }
         }
       }
