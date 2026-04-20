@@ -25,6 +25,10 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import {
+  computeTherapistIntelligenceFoundation,
+  type TherapistFoundationInput,
+} from "../_shared/therapistIntelligenceFoundation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -268,15 +272,22 @@ Deno.serve(async (req) => {
   audits.push(crisisRes.audit);
 
   // ── 7. Role scope breakdown (Hanička role separation) ──
+  // Fetch wider window (7d) for therapist intelligence, but breakdown stays 24h.
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const hanaConvRes = await db
+    .from("karel_hana_conversations")
+    .select("messages,last_activity_at")
+    .eq("user_id", userId)
+    .gte("last_activity_at", since7d)
+    .order("last_activity_at", { ascending: false })
+    .limit(40);
+  const hanaConvData = hanaConvRes.data || [];
+
   const roleScopeRes = await timed("role_scope_breakdown", async () => {
-    const { data, error } = await db
-      .from("karel_hana_conversations")
-      .select("messages,last_activity_at")
-      .eq("user_id", userId)
-      .gte("last_activity_at", since24h)
-      .order("last_activity_at", { ascending: false })
-      .limit(20);
-    if (error) throw error;
+    if (hanaConvRes.error) throw hanaConvRes.error;
+    const data = hanaConvData.filter((c: any) =>
+      c.last_activity_at && new Date(c.last_activity_at).toISOString() >= since24h
+    );
 
     const breakdown: Record<string, number> = {
       partner_personal: 0,
