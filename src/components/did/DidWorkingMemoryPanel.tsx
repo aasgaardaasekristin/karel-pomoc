@@ -40,15 +40,18 @@ interface TherapistStateBlock {
   };
   continuity: {
     score: number | null;
-    open_tasks: number;
-    completed_tasks_7d: number;
+    open_tasks_direct: number;
+    open_tasks_shared: number;
+    completed_tasks_7d_direct: number;
+    completed_tasks_7d_shared: number;
     rationale: string;
   };
   confidence: { overall: number; reasons: string[]; insufficient_data: boolean };
   source_counts: {
     observations: number;
     implications: number;
-    tasks: number;
+    tasks_direct: number;
+    tasks_shared: number;
     therapeutic_messages: number;
     crises_owned: number;
   };
