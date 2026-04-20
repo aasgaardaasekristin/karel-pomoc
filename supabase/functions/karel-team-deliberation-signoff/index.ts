@@ -340,17 +340,22 @@ Deno.serve(async (req: Request) => {
         if (openAlert?.id) crisisAlertId = openAlert.id;
       }
 
+      // POST-WRITE INVARIANT (assert, ne user-facing 409):
+      // Linkage musela projít preflightem PŘED zápisem podpisu. Pokud se sem
+      // dostaneme bez event_id / alert_id, je to interní bug — logneme a
+      // necháme bridge spadnout do drive-only / no-task větve. Záměrně zde
+      // NEVRACÍME 409, aby na klienta nikdy nešel partial-success error po
+      // úspěšně zapsaném podpisu.
       if (!crisisEventId || !crisisAlertId) {
-        return new Response(JSON.stringify({
-          error: "crisis_linkage_required",
-          message: `Pro část \"${subjectPart ?? "(neurčeno)"}\" chybí navázání na crisis_event a/nebo crisis_alert; podpis byl zapsán, ale krizové efekty nelze bezpečně dokončit.`,
-          missing: {
-            crisis_event_id: !crisisEventId,
-            crisis_alert_id: !crisisAlertId,
+        console.error(
+          "[delib-signoff/crisis] INVARIANT VIOLATED: post-write linkage missing",
+          {
+            deliberationId,
+            subjectPart,
+            crisisEventId,
+            crisisAlertId,
           },
-        }), {
-          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        );
       }
 
       // --- 1) Drive writeback do 05A operativního plánu ----------------
