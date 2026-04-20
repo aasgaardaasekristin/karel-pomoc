@@ -355,9 +355,11 @@ Deno.serve(async (req) => {
         .select("id, owner, destinations, impact_type, status, created_at")
         .gte("created_at", since7d)
         .limit(200),
-      // Tasks: include all created in last 7d OR still open (older but live).
+      // Tasks: only therapist-relevant + (created in 7d OR still open).
+      // Filter by assigned_to inclusively to avoid limit-bias against hanka/kata rows.
       db.from("did_therapist_tasks")
         .select("id, assigned_to, status, title, created_at, completed_at")
+        .in("assigned_to", ["hanka", "kata", "both", "team", "Hanka", "Kata", "Both"])
         .or(`created_at.gte.${since7d},status.in.(pending,in_progress)`)
         .limit(500),
       db.from("did_threads")
