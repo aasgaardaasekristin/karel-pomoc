@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
   const crisisRes = await timed("crisis_events", async () => {
     const { data, error } = await db
       .from("crisis_events")
-      .select("id, part_name, severity, phase, opened_at, days_active")
+      .select("id, part_name, severity, phase, opened_at, days_active, primary_therapist, secondary_therapist")
       .not("phase", "in", '("closed","CLOSED")')
       .order("opened_at", { ascending: false })
       .limit(20);
@@ -355,10 +355,11 @@ Deno.serve(async (req) => {
         .select("id, owner, destinations, impact_type, status, created_at")
         .gte("created_at", since7d)
         .limit(200),
+      // Tasks: include all created in last 7d OR still open (older but live).
       db.from("did_therapist_tasks")
         .select("id, assigned_to, status, title, created_at, completed_at")
-        .gte("created_at", since7d)
-        .limit(200),
+        .or(`created_at.gte.${since7d},status.in.(pending,in_progress)`)
+        .limit(500),
       db.from("did_threads")
         .select("id, sub_mode, last_activity_at, messages")
         .eq("sub_mode", "kata")

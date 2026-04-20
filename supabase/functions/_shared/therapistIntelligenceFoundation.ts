@@ -151,7 +151,9 @@ function classifyRecentness(lastIso: string | null, now: Date): Recentness {
 
 function ownsTherapist(value: string | null | undefined, key: TherapistKey): boolean {
   if (!value) return false;
-  const v = value.toLowerCase();
+  const v = value.toLowerCase().trim();
+  // Shared ownership tokens count for both therapists.
+  if (v === "both" || v === "team" || v === "all") return true;
   return v.includes(key);
 }
 
