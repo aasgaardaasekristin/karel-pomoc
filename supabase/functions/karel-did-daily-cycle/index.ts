@@ -4421,6 +4421,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of validatedAnalysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
+
+        // ═══ HARD BUDGET GATE: defer remaining cards if budget exceeded ═══
+        if (Date.now() - phase4CardsStart > PHASE4_CARDS_BUDGET_MS) {
+          cardsBudgetExceeded = true;
+          cardsDeferred.push(rawPartName);
+          continue;
+        }
+
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
 
