@@ -539,9 +539,10 @@ function TherapistStateMini({
           </span>
         </div>
         <div>
-          <span className="text-muted-foreground">Tasks open/done7d:</span>{" "}
+          <span className="text-muted-foreground">Tasks (D+S):</span>{" "}
           <span className="font-mono">
-            {state.continuity.open_tasks}/{state.continuity.completed_tasks_7d}
+            {state.continuity.open_tasks_direct}+{state.continuity.open_tasks_shared}/
+            {state.continuity.completed_tasks_7d_direct}+{state.continuity.completed_tasks_7d_shared}
           </span>
         </div>
         <div>
