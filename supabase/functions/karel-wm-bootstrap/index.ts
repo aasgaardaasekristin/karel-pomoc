@@ -184,9 +184,10 @@ Deno.serve(async (req) => {
   const obsRes = await timed("did_observations", async () => {
     const { data, error, count } = await db
       .from("did_observations")
-      .select("id, subject_name, summary, created_at, source_type, evidence_level", {
-        count: "exact",
-      })
+      .select(
+        "id, subject_type, subject_id, fact, created_at, source_type, evidence_level, evidence_kind",
+        { count: "exact" },
+      )
       .gte("created_at", since24h)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -199,7 +200,10 @@ Deno.serve(async (req) => {
   const implRes = await timed("did_implications", async () => {
     const { data, error, count } = await db
       .from("did_implications")
-      .select("id, summary, created_at, intent_target, status", { count: "exact" })
+      .select(
+        "id, implication_text, created_at, destinations, status, impact_type, owner",
+        { count: "exact" },
+      )
       .gte("created_at", since24h)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -212,7 +216,10 @@ Deno.serve(async (req) => {
   const claimRes = await timed("did_profile_claims", async () => {
     const { data, error, count } = await db
       .from("did_profile_claims")
-      .select("id, part_name, claim, created_at", { count: "exact" })
+      .select(
+        "id, part_name, claim_text, claim_type, card_section, created_at, status",
+        { count: "exact" },
+      )
       .gte("created_at", since24h)
       .order("created_at", { ascending: false })
       .limit(20);
@@ -225,7 +232,9 @@ Deno.serve(async (req) => {
   const queueRes = await timed("did_pending_drive_writes", async () => {
     const { data, error } = await db
       .from("did_pending_drive_writes")
-      .select("id, status, target, action, created_at, processed_at, error_message")
+      .select(
+        "id, status, target_document, write_type, priority, created_at, processed_at, last_attempt_at, last_error_message, retry_count",
+      )
       .gte("created_at", since24h)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -286,9 +295,11 @@ Deno.serve(async (req) => {
       kind: "observation",
       id: o.id,
       at: o.created_at,
-      subject: o.subject_name,
-      summary: o.summary,
+      subject_type: o.subject_type,
+      subject_id: o.subject_id,
+      summary: o.fact,
       source_type: o.source_type,
+      evidence_level: o.evidence_level,
     });
   }
   for (const i of safeArray((implRes.data as any)?.recent)) {
@@ -296,9 +307,10 @@ Deno.serve(async (req) => {
       kind: "implication",
       id: i.id,
       at: i.created_at,
-      target: i.intent_target,
+      destinations: i.destinations,
       status: i.status,
-      summary: i.summary,
+      impact_type: i.impact_type,
+      summary: i.implication_text,
     });
   }
   for (const c of safeArray((claimRes.data as any)?.recent)) {
@@ -307,7 +319,8 @@ Deno.serve(async (req) => {
       id: c.id,
       at: c.created_at,
       part: c.part_name,
-      summary: c.claim,
+      card_section: c.card_section,
+      summary: c.claim_text,
     });
   }
   events.sort((a, b) => (a.at < b.at ? 1 : -1));
