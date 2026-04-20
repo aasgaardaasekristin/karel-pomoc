@@ -382,12 +382,22 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 const signed =
                   who === "hanka" ? d.hanka_signed_at :
                   who === "kata" ? d.kata_signed_at : d.karel_signed_at;
+                // GATE: Karlův podpis je u krizové porady aktivní jen poté,
+                // co proběhla syntéza odpovědí terapeutek.
+                const karelGateBlocked =
+                  who === "karel" &&
+                  d.deliberation_type === "crisis" &&
+                  !d.karel_synthesis;
+                const disabled = !!signed || signing === who || karelGateBlocked;
                 return (
                   <Button
                     key={who}
                     size="sm"
                     variant={signed ? "secondary" : "default"}
-                    disabled={!!signed || signing === who}
+                    disabled={disabled}
+                    title={karelGateBlocked
+                      ? "Karel nejdřív musí syntetizovat odpovědi (tlačítko „Spustit Karlovu syntézu“)"
+                      : undefined}
                     className="h-8 text-[11px] flex-1"
                     onClick={() => handleSign(who)}
                   >
