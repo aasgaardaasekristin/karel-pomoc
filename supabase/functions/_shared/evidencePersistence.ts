@@ -137,6 +137,8 @@ export interface EvidencePersistenceContext {
     | "therapist_message"
     | "part_direct";
   userId?: string | null;
+  /** Role scope from Hanička role separation classifier */
+  roleScope?: "partner_personal" | "therapeutic_team" | "mixed" | "uncertain" | null;
 }
 
 export interface EvidencePersistenceResult {
@@ -159,6 +161,11 @@ export async function persistEvidenceForIntent(
   intent: GovernedWriteIntent,
   ctx: EvidencePersistenceContext,
 ): Promise<EvidencePersistenceResult> {
+  // ── Role scope firewall: partner_personal / uncertain NEVER into DID evidence ──
+  if (ctx.roleScope === "partner_personal" || ctx.roleScope === "uncertain") {
+    return { observation_id: null, skipped_reason: `role_scope_${ctx.roleScope}_blocked` };
+  }
+
   // ── Hard firewall: secret_karel_only stays only in Drive's KAREL doc ──
   if (output.sensitivity === "secret_karel_only") {
     return { observation_id: null, skipped_reason: "secret_karel_only_db_blocked" };

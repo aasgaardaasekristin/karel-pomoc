@@ -267,6 +267,70 @@ Deno.serve(async (req) => {
   });
   audits.push(crisisRes.audit);
 
+  // ── 7. Role scope breakdown (Hanička role separation) ──
+  const roleScopeRes = await timed("role_scope_breakdown", async () => {
+    const { data, error } = await db
+      .from("karel_hana_conversations")
+      .select("messages")
+      .eq("user_id", userId)
+      .gte("updated_at", since24h)
+      .order("updated_at", { ascending: false })
+      .limit(20);
+    if (error) throw error;
+
+    const breakdown: Record<string, number> = {
+      partner_personal: 0,
+      therapeutic_team: 0,
+      mixed: 0,
+      uncertain: 0,
+      unclassified: 0,
+    };
+    let totalClassified = 0;
+    let totalConfidence = 0;
+    let needsReviewCount = 0;
+    const originCounts: Record<string, number> = {};
+    let lastPartnerPersonalAt: string | null = null;
+
+    for (const conv of (data || [])) {
+      const msgs = Array.isArray(conv.messages) ? conv.messages : [];
+      for (const msg of msgs as any[]) {
+        if (msg?.role !== "user") continue;
+        const scope = msg.role_scope;
+        if (scope && breakdown[scope] !== undefined) {
+          breakdown[scope]++;
+          totalClassified++;
+          const conf = msg.role_scope_meta?.confidence;
+          if (typeof conf === "number") totalConfidence += conf;
+          if (msg.role_scope_meta?.needs_role_review) needsReviewCount++;
+          const origin = msg.role_scope_meta?.origin || "unknown";
+          originCounts[origin] = (originCounts[origin] || 0) + 1;
+          if (scope === "partner_personal" && !lastPartnerPersonalAt) {
+            lastPartnerPersonalAt = msg.role_scope_meta?.classified_at || null;
+          }
+        } else {
+          breakdown.unclassified++;
+        }
+      }
+    }
+
+    const total = Object.values(breakdown).reduce((a, b) => a + b, 0);
+    return {
+      data: {
+        breakdown,
+        total_messages_24h: total,
+        avg_confidence: totalClassified > 0 ? +(totalConfidence / totalClassified).toFixed(3) : null,
+        needs_review_count: needsReviewCount,
+        origin_counts: originCounts,
+        last_partner_personal_at: lastPartnerPersonalAt,
+        ratio_therapeutic: total > 0
+          ? +((breakdown.therapeutic_team / total) * 100).toFixed(1)
+          : null,
+      },
+      meta: { count: total },
+    };
+  });
+  audits.push(roleScopeRes.audit);
+
   // ── Compose snapshot ──
   const snapshotJson = {
     snapshot_key: snapshotKey,
@@ -286,6 +350,7 @@ Deno.serve(async (req) => {
       profile_claims_24h: (claimRes.data as any)?.count_24h ?? 0,
     },
     crises_open: crisisRes.data ?? [],
+    role_scope_breakdown_24h: (roleScopeRes.data as any) ?? null,
   };
 
   // events_json — lightweight unified stream of recent changes
