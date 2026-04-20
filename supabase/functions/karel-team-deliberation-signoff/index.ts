@@ -256,18 +256,20 @@ Deno.serve(async (req: Request) => {
       const synth = updated.karel_synthesis as any;
       const subjectPart = (updated.subject_parts ?? [])[0] ?? null;
 
-      // 1) Drive writeback
+      // 1) Drive writeback do 05A operativního plánu
       if (synth.drive_writeback_md && typeof synth.drive_writeback_md === "string") {
+        const dateLabel = new Date().toISOString().slice(0, 10);
+        const header = subjectPart
+          ? `\n\n## Krizová koordinace — ${subjectPart} (${dateLabel})\n_Zdroj: týmová porada — synthesis ${deliberationId.slice(0, 8)}_\n\n`
+          : `\n\n## Krizová koordinace (${dateLabel})\n_Zdroj: týmová porada — synthesis ${deliberationId.slice(0, 8)}_\n\n`;
         const { data: dw, error: dwErr } = await admin
           .from("did_pending_drive_writes")
           .insert({
             user_id: userId,
-            target_file: "05A_OPERATIVNI_PLAN",
-            section_name: subjectPart
-              ? `Krizová koordinace — ${subjectPart} (${new Date().toISOString().slice(0, 10)})`
-              : `Krizová koordinace (${new Date().toISOString().slice(0, 10)})`,
-            content: synth.drive_writeback_md,
-            source: "team_deliberation_synthesis",
+            target_document: "05A_OPERATIVNI_PLAN",
+            write_type: "append",
+            content: header + synth.drive_writeback_md,
+            priority: "high",
             status: "pending",
           })
           .select("id")
