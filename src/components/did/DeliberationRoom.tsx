@@ -13,13 +13,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import RichMarkdown from "@/components/ui/RichMarkdown";
-import { Loader2, CheckCircle2, Send, ArrowRight, Users } from "lucide-react";
+import { Loader2, CheckCircle2, Send, ArrowRight, Users, Brain, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useTeamDeliberations } from "@/hooks/useTeamDeliberations";
 import {
   signoffProgress,
   type TeamDeliberation,
   type DeliberationQuestion,
+  type KarelSynthesis,
 } from "@/types/teamDeliberation";
 
 interface Props {
