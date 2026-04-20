@@ -103,10 +103,11 @@ function QuestionList({
 
 const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const navigate = useNavigate();
-  const { sign, answerQuestion, postMessage, reload, items } = useTeamDeliberations(0);
+  const { sign, synthesize, answerQuestion, postMessage, reload, items } = useTeamDeliberations(0);
   const [d, setD] = useState<TeamDeliberation | null>(null);
   const [loading, setLoading] = useState(true);
   const [signing, setSigning] = useState<string | null>(null);
+  const [synthesizing, setSynthesizing] = useState(false);
   const [chatDraft, setChatDraft] = useState("");
   const [chatAuthor, setChatAuthor] = useState<"hanka" | "kata" | "karel">("hanka");
   const [bridgedPlanId, setBridgedPlanId] = useState<string | null>(null);
