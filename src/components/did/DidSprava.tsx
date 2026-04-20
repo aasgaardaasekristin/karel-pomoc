@@ -401,11 +401,20 @@ const DidSprava = ({
 
         {activeTab === "tools" && (
           <div className="space-y-2">
+            {/* Top-level: explicit full-cycle trigger (proof harness) */}
+            <ToolButton
+              icon={<Play className={`w-4 h-4 text-primary ${isTriggeringFullCycle ? "animate-pulse" : ""}`} />}
+              title="Spustit denní cyklus (full)"
+              desc="Plný karel-did-daily-cycle (Fáze 0–10): audit, AI analýza, extrakce, plán, drive flush. Manual run obchází 3h dedup."
+              loading={isTriggeringFullCycle}
+              onClick={() => { triggerFullCycle(); }}
+            />
+
             {onRefreshMemory && (
               <ToolButton
                 icon={<Brain className={`w-4 h-4 text-violet-600 ${isRefreshingMemory ? "animate-pulse" : ""}`} />}
                 title="Osvěž paměť"
-                desc="Vynutit novou situační cache z Drive, DB a analýzy"
+                desc="POUZE cache: invaliduje did-context-prime cache + nahraje novou situační kartu. NEspouští extrakci."
                 loading={isRefreshingMemory}
                 onClick={() => { onRefreshMemory(); setOpen(false); }}
               />
@@ -414,8 +423,8 @@ const DidSprava = ({
             {onManualUpdate && (
               <ToolButton
                 icon={<RefreshCw className={`w-4 h-4 text-primary ${isUpdating ? "animate-spin" : ""}`} />}
-                title="Aktualizovat kartotéku"
-                desc="Synchronizace dat z rozhovorů do karet na Drive"
+                title="Aktualizovat kartotéku (sync)"
+                desc="POUZE Drive↔registr sync (kartoteka_DID): nasaje nové karty. NEspouští AI analýzu ani Fázi 4 extrakci."
                 loading={isUpdating}
                 onClick={() => { onManualUpdate(); setOpen(false); }}
                 badge={stats.unprocessedThreads > 0 ? `${stats.unprocessedThreads} vláken` : undefined}
@@ -425,8 +434,8 @@ const DidSprava = ({
             {onCentrumSync && (
               <ToolButton
                 icon={<ClipboardList className={`w-4 h-4 text-emerald-600 ${isCentrumSyncing ? "animate-pulse" : ""}`} />}
-                title="Aktualizovat Centrum"
-                desc="Dashboard + operativní plán + CENTRUM dokumenty"
+                title="Aktualizovat Centrum (DB→Drive)"
+                desc="POUZE flush did_pending_drive_writes do 00_CENTRUM. NEspouští AI analýzu ani extrakci."
                 loading={isCentrumSyncing}
                 onClick={() => { onCentrumSync(); setOpen(false); }}
               />
@@ -435,8 +444,8 @@ const DidSprava = ({
             {onCleanupTasks && (
               <ToolButton
                 icon={<Trash2 className={`w-4 h-4 text-amber-600 ${isCleaningTasks ? "animate-pulse" : ""}`} />}
-                title="Vyčistit úkoly"
-                desc="Archivovat not_started úkoly starší 7 dní"
+                title="Vyčistit úkoly (DB only)"
+                desc="Archivuje not_started úkoly starší 7 dní v did_therapist_tasks. Klientský SQL update."
                 loading={isCleaningTasks}
                 onClick={() => { onCleanupTasks(); setOpen(false); }}
               />
