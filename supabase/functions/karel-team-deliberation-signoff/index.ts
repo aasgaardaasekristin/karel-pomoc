@@ -81,6 +81,48 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (signer === "karel" && row.deliberation_type === "crisis") {
+      const subjectPart = (row.subject_parts ?? [])[0] ?? null;
+      let crisisEventId: string | null = row.linked_crisis_event_id ?? null;
+      if (!crisisEventId && subjectPart) {
+        const { data: openEv } = await admin
+          .from("crisis_events")
+          .select("id")
+          .eq("part_name", subjectPart)
+          .is("closed_at", null)
+          .order("opened_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (openEv?.id) crisisEventId = openEv.id;
+      }
+
+      let crisisAlertId: string | null = null;
+      if (subjectPart) {
+        const { data: openAlert } = await admin
+          .from("crisis_alerts")
+          .select("id")
+          .eq("part_name", subjectPart)
+          .in("status", ["ACTIVE", "ACKNOWLEDGED", "active", "acknowledged"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (openAlert?.id) crisisAlertId = openAlert.id;
+      }
+
+      if (!crisisEventId || !crisisAlertId) {
+        return new Response(JSON.stringify({
+          error: "crisis_linkage_required",
+          message: `Karel nemůže uzavřít krizovou poradu bez navázaného crisis_event a crisis_alert pro část \"${subjectPart ?? "(neurčeno)"}\".`,
+          missing: {
+            crisis_event_id: !crisisEventId,
+            crisis_alert_id: !crisisAlertId,
+          },
+        }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     const nowIso = new Date().toISOString();
     const patch: Record<string, any> = {};
     if (signer === "hanka" && !row.hanka_signed_at) patch.hanka_signed_at = nowIso;
@@ -298,8 +340,17 @@ Deno.serve(async (req: Request) => {
         if (openAlert?.id) crisisAlertId = openAlert.id;
       }
 
-      if (!crisisEventId && !crisisAlertId) {
-        crisisEffects.warning = `Pro část "${subjectPart}" nebyl nalezen žádný otevřený crisis_event ani crisis_alert. crisis_events / crisis_tasks zůstávají nedotčené.`;
+      if (!crisisEventId || !crisisAlertId) {
+        return new Response(JSON.stringify({
+          error: "crisis_linkage_required",
+          message: `Pro část \"${subjectPart ?? "(neurčeno)"}\" chybí navázání na crisis_event a/nebo crisis_alert; podpis byl zapsán, ale krizové efekty nelze bezpečně dokončit.`,
+          missing: {
+            crisis_event_id: !crisisEventId,
+            crisis_alert_id: !crisisAlertId,
+          },
+        }), {
+          status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       // --- 1) Drive writeback do 05A operativního plánu ----------------
