@@ -7286,6 +7286,9 @@ Vra\u0165 JSON:
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
+    // ─── Safety: clear any interval timers still alive on fatal error ────
+    try { if (typeof compileDataKeepAlive !== "undefined" && compileDataKeepAlive !== undefined) clearInterval(compileDataKeepAlive); } catch {}
+    try { if (typeof aiAnalysisKeepAlive !== "undefined" && aiAnalysisKeepAlive !== undefined) clearInterval(aiAnalysisKeepAlive); } catch {}
     console.error('[DAILY-CYCLE FATAL ERROR]', error?.message || error, error?.stack || '');
 
     if (sb && cycleId) {
