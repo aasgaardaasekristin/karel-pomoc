@@ -55,6 +55,52 @@ interface ProcessingStats {
   unprocessedThreads: number;
 }
 
+interface RunningCycle {
+  id: string;
+  started_at: string;
+  status: string;
+  phase: string | null;
+  phase_detail: string | null;
+  heartbeat_at: string | null;
+  last_error: string | null;
+  heartbeatAgeSec: number | null;
+  stuck: boolean;
+}
+
+interface CycleHealth {
+  lastCompleted: { id: string; completed_at: string | null; status: string; phase: string | null; last_error: string | null; report_summary: string | null } | null;
+  running: RunningCycle | null;
+  loading: boolean;
+}
+
+function useCycleHealth(refreshTrigger: number): { health: CycleHealth; reload: () => void } {
+  const [health, setHealth] = useState<CycleHealth>({ lastCompleted: null, running: null, loading: true });
+
+  const reload = useCallback(async () => {
+    setHealth(h => ({ ...h, loading: true }));
+    try {
+      const { data, error } = await supabase.functions.invoke("karel-did-daily-cycle", { body: { action: "status" } });
+      if (error) throw error;
+      setHealth({
+        lastCompleted: data?.lastCompleted ?? null,
+        running: data?.running ?? null,
+        loading: false,
+      });
+    } catch (e) {
+      console.warn("[DidSprava] status fetch failed", e);
+      setHealth({ lastCompleted: null, running: null, loading: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    reload();
+    const t = setInterval(reload, 30_000);
+    return () => clearInterval(t);
+  }, [reload, refreshTrigger]);
+
+  return { health, reload };
+}
+
 function useProcessingStatus(refreshTrigger: number) {
   const [cycleStatus, setCycleStatus] = useState<CycleStatus>({ lastRunAt: null, lastStatus: null, lastSummary: null });
   const [stats, setStats] = useState<ProcessingStats>({ unprocessedThreads: 0 });
@@ -102,6 +148,15 @@ function formatRelativeTime(iso: string | null): string {
   if (hours < 24) return `před ${hours}h`;
   const days = Math.floor(hours / 24);
   return `před ${days}d`;
+}
+
+function formatHeartbeatAge(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 const DidSprava = ({
