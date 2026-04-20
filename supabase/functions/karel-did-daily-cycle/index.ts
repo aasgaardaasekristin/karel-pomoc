@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { encodeGovernedWrite } from "../_shared/documentWriteEnvelope.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
@@ -4345,40 +4346,77 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       console.error(`[AI analysis] API error ${analysisResponse.status}: ${errText.slice(0, 500)}`);
     }
 
-    await setPhase("update_cards", "Fáze 4: Aktualizace karet");
-    // 4. PARSE AND UPDATE CARDS IN-PLACE
-    // ═══ KEEP-ALIVE: Phase 4 obsahuje sekvenční Drive reads/writes per-part (až 5+ minut).
-    // Bez heartbeat by watchdog (>30 min hb gap) označil run jako stuck.
-    // Stejný pattern jako compileDataKeepAlive / aiAnalysisKeepAlive.
-    let updateCardsKeepAlive: number | undefined = setInterval(() => {
-      void setPhase("update_cards_keepalive", "Fáze 4: zpracovávám karty (Drive write loop)");
-    }, 45_000) as unknown as number;
+    await setPhase("update_cards", "Fáze 4: Aktualizace karet (async enqueue)");
+    // ═══════════════════════════════════════════════════════════════════════
+    // PHASE 4 — ASYNC ENQUEUE ARCHITECTURE (replaces monolithic Drive writes)
+    // ═══════════════════════════════════════════════════════════════════════
+    // Historie:
+    //   v1: synchronní updateCardSections per-part (selhával na ~150–250s wall-clock)
+    //   v2: time-budget cut + skip (failed: jediná pomalá iterace zabila isolate)
+    //   v3 (TADY): enqueue do existující did_pending_drive_writes + reuse
+    //              karel-drive-queue-processor pro skutečné Drive writes
+    //
+    // Cíl: daily-cycle už NEČEKÁ na Drive I/O. Jen vyrobí update intents,
+    //      zapíše je do queue a okamžitě pokračuje do fází 5–10.
+    //
+    // Trade-off: per-section MERGE/DEEPEN (čtení existujícího obsahu před
+    //   zápisem) se v této async verzi NEDĚLÁ. Processor je strict append.
+    //   Karta tedy dostane `[SEKCE:X]\nobsah\n[SEKCE:Y]\nobsah` jako jeden
+    //   append blok s timestamp headerem. Restrukturalizační/dedup pass je
+    //   future work (out of scope tohoto orchestration fixu).
+    // ═══════════════════════════════════════════════════════════════════════
 
-    // ═══ PHASE 4 HARD WALL-CLOCK BUDGET (REPOSITIONED + INNER GATES) ═══
-    // Edge Runtime kills the isolate after ~150–250s of total wall-clock time.
-    // Phase 4's [KARTA:] loop is sequential per-part Drive I/O (5–60s each).
-    // Previously the budget was checked ONLY at the top of each iteration, so a
-    // single slow card (Drive read+write+email) could overshoot wall-clock and
-    // get killed by the isolate before reaching phases 5–10.
-    // Fix: check budget BEFORE each Drive call (resolveCardTarget, findCardFile,
-    // updateCardSections) inside the iteration too. Smaller budget (60s) leaves
-    // enough headroom for phases 5–10 within the ~150s isolate window.
-    // This is a TEMPORARY orchestration stabilizer, NOT the final card update
-    // architecture (queue/worker remains future work).
-    const PHASE4_CARDS_BUDGET_MS = 60_000; // 60s hard cap (down from 90s)
-    const phase4CardsStart = Date.now();
-    const cardsDeferred: string[] = [];
-    let cardsBudgetExceeded = false;
-    const isPhase4BudgetExhausted = () => Date.now() - phase4CardsStart > PHASE4_CARDS_BUDGET_MS;
+    const cardsEnqueued: string[] = [];      // Successfully enqueued card targets
+    const cardsDeferred: string[] = [];       // Skipped (blacklist / no registry / hallucinated)
+    const centrumEnqueued: string[] = [];     // Centrum doc enqueues
+    let cardEnqueueErrors = 0;
+
+    const enqueueDriveWrite = async (params: {
+      target_document: string;
+      payload: string;
+      write_type: "append" | "replace";
+      priority?: "critical" | "urgent" | "high" | "normal" | "low";
+      content_type: string;
+      subject_type: string;
+      subject_id: string;
+      source_id?: string;
+    }): Promise<boolean> => {
+      try {
+        const envelope = encodeGovernedWrite(params.payload, {
+          source_type: "karel-did-daily-cycle",
+          source_id: params.source_id || (cycle?.id ?? `daily-cycle-${Date.now()}`),
+          content_type: params.content_type,
+          subject_type: params.subject_type,
+          subject_id: params.subject_id,
+        });
+        const insertPayload: Record<string, unknown> = {
+          target_document: params.target_document,
+          content: envelope,
+          write_type: params.write_type,
+          priority: params.priority || "normal",
+          status: "pending",
+        };
+        if (resolvedUserId) insertPayload.user_id = resolvedUserId;
+        const { error } = await sb.from("did_pending_drive_writes").insert(insertPayload);
+        if (error) {
+          console.error(`[PHASE_4_ENQUEUE] insert error for ${params.target_document}:`, error.message);
+          cardEnqueueErrors++;
+          return false;
+        }
+        return true;
+      } catch (e) {
+        console.error(`[PHASE_4_ENQUEUE] enqueue failed for ${params.target_document}:`, e);
+        cardEnqueueErrors++;
+        return false;
+      }
+    };
 
     // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
     const NON_DID_BLACKLIST = new Set([
       "amalka", "tonička", "tonicka", "jiří", "jiri", "jirka",
       "kata", "katka", "kája", "kaja", "káťa", "katya",
       "hanka", "hana", "hanička", "hanicka", "mamka",
-      // Aliases for Amálka + Tonička
       "holky", "holčičky", "holcicky", "děti", "deti", "malé", "male",
-      // Common variations without diacritics
       "amalka", "tonicka", "jiri", "kata", "hana",
     ].map(n => canonicalText(n)));
 
@@ -4395,60 +4433,62 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
     // ═══ HARD VALIDATION: Filter out hallucinated part names from AI output ═══
     const validatedAnalysisText = (() => {
       if (!analysisText || !registryContext || registryContext.entries.length === 0) return analysisText;
-      
       let filtered = analysisText;
       const kartaBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       const blocksToRemove: string[] = [];
-      
       for (const m of analysisText.matchAll(kartaBlockRegex)) {
         const rawName = m[1].trim();
         const normalizedName = normalizePartHint(rawName);
-        
-        // Check against registry
         const entry = findBestRegistryEntry(normalizedName, registryContext.entries);
         if (!entry && !isBlacklisted(normalizedName)) {
-          // Check if it's a known thread part (cast mode only, with 3+ user messages)
           const isKnownThreadPart = knownThreadParts.has(canonicalText(normalizedName));
           if (!isKnownThreadPart) {
-            console.warn(`[ANTI-HALLUCINATION] ⛔ Rejected [KARTA:${rawName}] – not in registry (${registryContext.entries.length} entries). AI hallucinated this part name.`);
+            console.warn(`[ANTI-HALLUCINATION] ⛔ Rejected [KARTA:${rawName}] – not in registry`);
             blocksToRemove.push(m[0]);
           }
         }
       }
-      
       for (const block of blocksToRemove) {
         filtered = filtered.replace(block, `<!-- REJECTED: hallucinated part -->`);
       }
-      
       if (blocksToRemove.length > 0) {
-        console.log(`[ANTI-HALLUCINATION] Removed ${blocksToRemove.length} hallucinated [KARTA:] blocks from AI output`);
+        console.log(`[ANTI-HALLUCINATION] Removed ${blocksToRemove.length} hallucinated [KARTA:] blocks`);
       }
-      
       return filtered;
     })();
 
-    if (folderId && validatedAnalysisText) {
+    const phase4Start = Date.now();
+    if (validatedAnalysisText) {
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of validatedAnalysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
-
-        // ═══ HARD BUDGET GATE (top of iteration): defer remaining cards if budget exceeded ═══
-        if (isPhase4BudgetExhausted()) {
-          cardsBudgetExceeded = true;
-          cardsDeferred.push(rawPartName);
-          continue;
-        }
-
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
 
-        // ═══ BLACKLIST CHECK: Skip biological persons and therapists ═══
+        // Blacklist filter
         if (isBlacklisted(normalizedPartName) || isBlacklisted(rawPartName)) {
-          console.warn(`[BLACKLIST] ⛔ Blocked card creation for non-DID person: "${rawPartName}" – this is a biological person or therapist, NOT a DID part.`);
+          console.warn(`[BLACKLIST] ⛔ Skipped non-DID person: "${rawPartName}"`);
+          cardsDeferred.push(`${rawPartName}:blacklisted`);
           continue;
         }
 
-        // Parse sections with optional mode tags: [SEKCE:X], [SEKCE:X:REPLACE], [SEKCE:X:ROTATE]
+        // Registry guard – must exist in did_part_registry
+        const registryEntry = registryContext
+          ? findBestRegistryEntry(normalizedPartName, registryContext.entries)
+          : null;
+        if (!registryEntry) {
+          console.warn(`[REGISTRY-GUARD] No registry entry for "${rawPartName}", skipping enqueue`);
+          cardsDeferred.push(`${rawPartName}:no_registry_entry`);
+          continue;
+        }
+
+        const resolvedPartName = registryEntry.name || normalizedPartName;
+        if (isBlacklisted(resolvedPartName)) {
+          cardsDeferred.push(`${resolvedPartName}:blacklisted_resolved`);
+          continue;
+        }
+
+        // Parse sections to validate non-empty content
         const sectionRegex = /\[SEKCE:([A-N])(?::(\w+))?\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
         const newSections: Record<string, string> = {};
         const sectionModes: Record<string, string> = {};
@@ -4458,7 +4498,6 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           const content = sm[3].trim();
           if (content) {
             if (newSections[letter] && mode === "APPEND") {
-              // Multiple APPEND blocks for same section (e.g. A:REPLACE + A)
               newSections[letter] += "\n\n" + content;
             } else {
               newSections[letter] = content;
@@ -4466,144 +4505,66 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             }
           }
         }
+        if (Object.keys(newSections).length === 0) {
+          cardsDeferred.push(`${resolvedPartName}:no_sections`);
+          continue;
+        }
 
-        if (Object.keys(newSections).length > 0) {
+        // Compose append payload — processor will prepend timestamp header
+        const sectionLetters = Object.keys(newSections).sort();
+        const payloadLines: string[] = [];
+        for (const letter of sectionLetters) {
+          const mode = sectionModes[letter] || "APPEND";
+          const tag = mode === "APPEND" ? `[SEKCE:${letter}]` : `[SEKCE:${letter}:${mode}]`;
+          payloadLines.push(tag);
+          payloadLines.push(newSections[letter]);
+          payloadLines.push("");
+        }
+        const payload = payloadLines.join("\n").trimEnd();
+
+        // ═══ Section N (next session plan) → DB write (rýchlé, žádný Drive call) ═══
+        if (newSections["N"] && resolvedUserId) {
           try {
-            // ═══ INNER BUDGET GATE #1: before resolveCardTarget (Drive lookup) ═══
-            if (isPhase4BudgetExhausted()) {
-              cardsBudgetExceeded = true;
-              cardsDeferred.push(rawPartName);
-              continue;
-            }
-            const target = await resolveCardTarget(token, folderId, normalizedPartName, registryContext);
-            const resolvedPartName = target.registryEntry?.name || normalizedPartName;
-            const resolvedCanonical = canonicalText(resolvedPartName);
-
-            // Double-check blacklist with resolved name too
-            if (isBlacklisted(resolvedPartName)) {
-              console.warn(`[BLACKLIST] ⛔ Blocked card creation for resolved non-DID person: "${resolvedPartName}"`);
-              continue;
-            }
-
-            // Hard guard: bez registrace se karta nikdy nevytváří/neupravuje
-            if (!target.registryEntry) {
-              console.warn(`[registry-guard] Blokuji zápis mimo oficiální registr: ${rawPartName} (canonical: ${resolvedCanonical})`);
-              continue;
-            }
-
-            // ═══ INNER BUDGET GATE #2: before findCardFile (Drive list) ═══
-            if (isPhase4BudgetExhausted()) {
-              cardsBudgetExceeded = true;
-              cardsDeferred.push(rawPartName);
-              continue;
-            }
-            // ═══ FAIL-SAFE: registry match but card not found → alert, NO fallback write ═══
-            const lookupName = target.registryEntry?.name || resolvedPartName;
-            const probeCard = await findCardFile(token, lookupName, target.searchRootId);
-            if (!probeCard && target.registryEntry) {
-              const alertMsg = `⚠️ FAIL-SAFE ALERT: Část "${resolvedPartName}" (ID: ${target.registryEntry.id}) existuje v registru, ale karta NEBYLA nalezena v ${target.pathLabel}. Zápis ZABLOKOVÁN – žádný fallback. Zkontroluj Drive ručně.`;
-              console.error(alertMsg);
-              hadCardUpdateErrors = true;
-              blockedCardUpdates.push({
-                partName: resolvedPartName,
-                registryId: target.registryEntry.id,
-                pathLabel: target.pathLabel,
-                status: target.registryEntry.status,
-                cluster: target.registryEntry.cluster,
-                pendingSections: Object.keys(newSections),
-              });
-
-              // Send alert email – only from cron
-              if (shouldSendEmails) {
-                const alertHtml = `<div style="font-family:sans-serif;padding:20px;">
-                      <h2 style="color:#dc2626;">⚠️ Karta nenalezena</h2>
-                      <p><strong>Část:</strong> ${resolvedPartName}</p>
-                      <p><strong>ID z registru:</strong> ${target.registryEntry.id}</p>
-                      <p><strong>Hledáno v:</strong> ${target.pathLabel}</p>
-                      <p><strong>Stav v registru:</strong> ${target.registryEntry.status}</p>
-                      <p><strong>Klastr:</strong> ${target.registryEntry.cluster}</p>
-                      <hr/>
-                      <p>Karel zápis <strong>neprovedl</strong>, aby nevznikl duplicitní soubor. Zkontroluj prosím, zda karta existuje ve správné složce na Google Drive.</p>
-                      <p><strong>Sekce k zápisu (odložené):</strong> ${Object.keys(newSections).join(", ")}</p>
-                    </div>`;
-                await sendOrQueueEmail(sb!, {
-                  toEmail: MAMKA_EMAIL,
-                  toName: "Hanka",
-                  subject: `⚠️ Karel ALERT: Karta "${resolvedPartName}" nenalezena`,
-                  bodyHtml: alertHtml,
-                  emailType: "card_alert",
-                });
-              }
-              continue; // Skip this card entirely
-            }
-
-            // Awakening updates already done programmatically in resolveCardTarget
-            // AI-generated sections will be APPENDED on top of forced sections
-
-            // ═══ INNER BUDGET GATE #3: before updateCardSections (Drive write) ═══
-            if (isPhase4BudgetExhausted()) {
-              cardsBudgetExceeded = true;
-              cardsDeferred.push(rawPartName);
-              continue;
-            }
-            const result = await updateCardSections(
-              token,
-              resolvedPartName,
-              newSections,
-              target.searchRootId,
-              {
-                allowCreate: target.allowCreate,
-                searchName: resolvedPartName,
-                canonicalPartName: resolvedPartName,
-                registryContext,
-                sectionModes,
-              }
-            );
-            const effectiveAction: CardActionType = result.isNew ? "nova_karta" : target.actionType;
-            const actionLabel = effectiveAction === "nova_karta" ? "NOVÁ KARTA" 
-              : effectiveAction === "probuzeni_z_archivu" ? "PROBUZENÍ Z ARCHIVU" 
-              : "AKTUALIZACE";
-            cardsUpdated.push(`${resolvedPartName} (${actionLabel}: ${result.sectionsUpdated.join(",")}) [${target.pathLabel}]`);
-            successfulCardUpdates.push({
-              partName: resolvedPartName,
-              fileName: result.fileName,
-              sectionsUpdated: result.sectionsUpdated,
-              pathLabel: target.pathLabel,
-              actionType: effectiveAction,
-            });
-            console.log(`[card] ${actionLabel}: ${result.fileName}, sections: ${result.sectionsUpdated.join(",")}, path: ${target.pathLabel}`);
-
-            // ═══ SAVE SECTION N (session plan) TO DB for dashboard access ═══
-            if (newSections["N"] && resolvedUserId) {
-              try {
-                await sb.from("did_part_registry")
-                  .update({ next_session_plan: newSections["N"], updated_at: new Date().toISOString() })
-                  .eq("part_name", resolvedPartName)
-                  .eq("user_id", resolvedUserId);
-                console.log(`[section-N] Saved session plan for "${resolvedPartName}" to did_part_registry`);
-              } catch (nErr) {
-                console.warn(`[section-N] Failed to save for "${resolvedPartName}":`, nErr);
-              }
-            }
-          } catch (e) {
-            hadCardUpdateErrors = true;
-            cardFatalErrors++;
-            console.error(`Failed to update card for ${rawPartName}:`, e);
+            await sb.from("did_part_registry")
+              .update({ next_session_plan: newSections["N"], updated_at: new Date().toISOString() })
+              .eq("part_name", resolvedPartName)
+              .eq("user_id", resolvedUserId);
+          } catch (nErr) {
+            console.warn(`[section-N] Failed to save for "${resolvedPartName}":`, nErr);
           }
+        }
+
+        const driveTarget = `KARTA_${resolvedPartName.toUpperCase()}`;
+        const enqueued = await enqueueDriveWrite({
+          target_document: driveTarget,
+          payload,
+          write_type: "append",
+          priority: "normal",
+          content_type: "card_section_update",
+          subject_type: "part",
+          subject_id: resolvedPartName,
+        });
+        if (enqueued) {
+          cardsEnqueued.push(`${resolvedPartName} [sections=${sectionLetters.join(",")}]`);
+          cardsUpdated.push(`${resolvedPartName} (ENQUEUED: ${sectionLetters.join(",")})`);
+          successfulCardUpdates.push({
+            partName: resolvedPartName,
+            fileName: driveTarget,
+            sectionsUpdated: sectionLetters,
+            pathLabel: "queue",
+            actionType: "aktualizace" as CardActionType,
+          });
+        } else {
+          cardsDeferred.push(`${resolvedPartName}:enqueue_error`);
+          hadCardUpdateErrors = true;
         }
       }
 
-      // ═══ PHASE 4 BUDGET REPORT ═══
-      const phase4ElapsedMs = Date.now() - phase4CardsStart;
-      if (cardsBudgetExceeded) {
-        console.warn(`[PHASE_4_BUDGET] ⏱️ Wall-clock budget exceeded after ${phase4ElapsedMs}ms. Processed ${cardsUpdated.length} cards, deferred ${cardsDeferred.length}: ${cardsDeferred.join(", ")}`);
-      } else {
-        console.log(`[PHASE_4_BUDGET] ✅ All [KARTA:] blocks processed within budget (${phase4ElapsedMs}ms / ${PHASE4_CARDS_BUDGET_MS}ms)`);
-      }
+      const phase4ElapsedMs = Date.now() - phase4Start;
+      console.log(`[PHASE_4_ENQUEUE] ✅ Done in ${phase4ElapsedMs}ms — enqueued=${cardsEnqueued.length}, deferred=${cardsDeferred.length}, errors=${cardEnqueueErrors}`);
 
-      // ═══ PHASE_8_CARDS_AND_PART_STATUS: card pipeline result ═══
-      criticalPhaseStatus.cardPipelineOk = cardFatalErrors === 0;
-      console.log(`[PHASE_8] Card pipeline: fatalErrors=${cardFatalErrors}, blocked=${blockedCardUpdates.length}, successful=${successfulCardUpdates.length}, pipelineOk=${criticalPhaseStatus.cardPipelineOk}`);
+      criticalPhaseStatus.cardPipelineOk = cardEnqueueErrors === 0;
+      console.log(`[PHASE_8] Card pipeline (async): enqueueErrors=${cardEnqueueErrors}, enqueued=${cardsEnqueued.length}, pipelineOk=${criticalPhaseStatus.cardPipelineOk}`);
 
       // ═══ PROCESS [CENTRUM:...] BLOCKS – Update 00_CENTRUM documents ═══
       // Build valid sources set for evidence validation
@@ -4626,9 +4587,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       let therapeuticPlanContent = ""; // Capture for email inclusion
       let centrumDashboardUpdated = false;
       let centrumOperativniUpdated = false;
-      if (centrumFolderId) {
+      // ═══════════════════════════════════════════════════════════════════════
+      // CENTRUM ENQUEUE — async write přes did_pending_drive_writes
+      // Trade-off: vypouštíme synchronní KHASH/substring dedup čtení existujícího
+      // dokumentu. U replace cest (05A/05B/dashboard) overwrite vyřeší duplicate
+      // problém. U strategick_vyhled append je KHASH marker stále v payloadu.
+      // ═══════════════════════════════════════════════════════════════════════
+      {
         const centrumBlockRegex = /\[CENTRUM:(.+?)\]([\s\S]*?)\[\/CENTRUM\]/g;
-        const centerFiles = await listFilesInFolder(token, centrumFolderId);
         const dateStr = new Date().toISOString().slice(0, 10);
 
         for (const match of validatedAnalysisText.matchAll(centrumBlockRegex)) {
@@ -4636,147 +4602,90 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
           let newContent = match[2].trim();
           if (!newContent || newContent.length < 10) continue;
 
-          // ═══ EVIDENCE VALIDATION: Filter claims without valid [SRC:] tags ═══
           const docCanonical = canonicalText(docName);
           const isDashboardOrPlan = docCanonical.includes("dashboard") || docCanonical.includes("operativn") || docCanonical.includes("terapeutick");
           if (isDashboardOrPlan) {
             const { validated, rejectedCount, keptCount } = validateCentrumEvidence(newContent, validSources, docName);
             if (rejectedCount > 0) {
-              console.log(`[EVIDENCE] ${docName}: ${rejectedCount} claims rejected, ${keptCount} claims validated`);
+              console.log(`[EVIDENCE] ${docName}: ${rejectedCount} claims rejected, ${keptCount} validated`);
             }
             newContent = validated;
             if (newContent.trim().length < 10) {
-              console.warn(`[EVIDENCE] ${docName}: All content rejected by evidence validator, skipping write`);
+              console.warn(`[EVIDENCE] ${docName}: All content rejected, skipping enqueue`);
               continue;
             }
           }
 
           try {
-
-            // ═══ SPECIAL: 05_Operativni_Plan or 05_Terapeuticky_Plan – FULL DOCUMENT REWRITE ═══
+            // ── 05_Operativni_Plan / 05_Terapeuticky_Plan → REPLACE 05A ──
             if ((docCanonical.includes("operativn") && docCanonical.includes("plan")) || (docCanonical.includes("terapeutick") && docCanonical.includes("plan"))) {
-              const planFile = centerFiles.find(f => {
-                const fc = canonicalText(f.name);
-                return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
-              });
-              if (!planFile) {
-                console.warn(`[CENTRUM] Operative plan doc not found, skipping`);
-                continue;
-              }
-
-              // Full rewrite – the AI already generated the complete document content
               const planDocument = `OPERATIVNÍ PLÁN – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel (vedoucí terapeutického týmu)\n\n${newContent}`;
-              therapeuticPlanContent = newContent; // Store for email inclusion
-              await updateFileById(token, planFile.id, planDocument, planFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (kompletní aktualizace)`);
-              centrumOperativniUpdated = true;
-              console.log(`[CENTRUM] ✅ Full rewrite: ${planFile.name}`);
-
-              // Post-write verification – all 6 sections + deductive markers
-              const planVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan", [
-                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6",
-                "Aktualizace", "PROČ", "AKCE", "DOKDY",
-              ]);
-              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated && planVerify.verified;
-              if (!planVerify.verified) {
-                console.warn(`[VERIFY] ⚠️ 05_Operativni_Plan verification FAILED: missing=[${planVerify.missingKeywords.join(",")}], length=${planVerify.length}`);
+              therapeuticPlanContent = newContent;
+              const ok = await enqueueDriveWrite({
+                target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+                payload: planDocument,
+                write_type: "replace",
+                priority: "high",
+                content_type: "daily_plan",
+                subject_type: "system",
+                subject_id: "operative_plan",
+              });
+              if (ok) {
+                cardsUpdated.push(`CENTRUM: 05A_Operativni_Plan (ENQUEUED replace)`);
+                centrumEnqueued.push("05A_OPERATIVNI_PLAN");
+                centrumOperativniUpdated = true;
               }
-              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (AI write)`);
+              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated;
+              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (enqueued)`);
               continue;
             }
 
-            // ═══ SPECIAL: 00_Aktualni_Dashboard – FULL DOCUMENT REWRITE ═══
-            if (docCanonical.includes("dashboard") || (docCanonical.includes("aktualn") && docCanonical.includes("dashboard"))) {
-              const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
-              if (!dashFile) {
-                console.warn(`[CENTRUM] Dashboard doc not found, skipping`);
-                continue;
-              }
-
+            // ── 00_Aktualni_Dashboard → REPLACE DASHBOARD ──
+            if (docCanonical.includes("dashboard")) {
               const dashDocument = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM\nAktualizace: ${dateStr}\nSprávce: Karel\n\n${newContent}`;
-              await updateFileById(token, dashFile.id, dashDocument, dashFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 00_Dashboard (kompletní přepis)`);
-              centrumDashboardUpdated = true;
-              console.log(`[CENTRUM] ✅ Full rewrite: ${dashFile.name}`);
-
-              // Post-write verification – all 7 sections + deductive markers
-              const dashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard", [
-                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7",
-                "DASHBOARD", "Aktualizace", "DEDUKCE",
-              ]);
-              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated && dashVerify.verified;
-              if (!dashVerify.verified) {
-                console.warn(`[VERIFY] ⚠️ 00_Dashboard verification FAILED: missing=[${dashVerify.missingKeywords.join(",")}], length=${dashVerify.length}`);
+              const ok = await enqueueDriveWrite({
+                target_document: "KARTOTEKA_DID/00_CENTRUM/DASHBOARD",
+                payload: dashDocument,
+                write_type: "replace",
+                priority: "high",
+                content_type: "dashboard_status",
+                subject_type: "system",
+                subject_id: "dashboard",
+              });
+              if (ok) {
+                cardsUpdated.push(`CENTRUM: 00_Dashboard (ENQUEUED replace)`);
+                centrumEnqueued.push("DASHBOARD");
+                centrumDashboardUpdated = true;
               }
-              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (AI write)`);
+              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated;
+              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (enqueued)`);
               continue;
             }
 
-            // Find the target document
-            let targetFile = centerFiles.find(f => canonicalText(f.name).includes(docCanonical));
-
-            // ═══ SPECIAL: 06_Strategicky_Vyhled – APPEND (not rewrite, weekly does rewrite) ═══
+            // ── 06_Strategicky_Vyhled → REPLACE 05B (governance allows replace) ──
             if (docCanonical.includes("strategick") && docCanonical.includes("vyhled")) {
-              const stratFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("strategick"));
-              if (stratFile) {
-                const existingContent = await readFileContent(token, stratFile.id);
-                const hash = contentHash(newContent.trim());
-                if (hasKhash(existingContent, hash)) {
-                  console.log(`[CENTRUM] [KHASH-dedup] Skipping 06_Strategicky_Vyhled – hash ${hash} already present`);
-                } else if (!existingContent.includes(newContent.slice(0, 80))) {
-                  const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Denní aktualizace: [KHASH:${hash}]\n${newContent}`;
-                  await updateFileById(token, stratFile.id, updatedContent, stratFile.mimeType);
-                  cardsUpdated.push(`CENTRUM: 06_Strategicky_Vyhled (append)`);
-                  console.log(`[CENTRUM] ✅ Appended to 06_Strategicky_Vyhled`);
-                }
+              const hash = contentHash(newContent.trim());
+              const stratDocument = `STRATEGICKÝ VÝHLED – DID SYSTÉM\nAktualizace: ${dateStr} [KHASH:${hash}]\nSprávce: Karel\n\n${newContent}`;
+              const ok = await enqueueDriveWrite({
+                target_document: "KARTOTEKA_DID/00_CENTRUM/05B_STRATEGICKY_VYHLED",
+                payload: stratDocument,
+                write_type: "replace",
+                priority: "normal",
+                content_type: "strategic_outlook",
+                subject_type: "system",
+                subject_id: "strategic_outlook",
+              });
+              if (ok) {
+                cardsUpdated.push(`CENTRUM: 05B_Strategicky_Vyhled (ENQUEUED replace)`);
+                centrumEnqueued.push("05B_STRATEGICKY_VYHLED");
               }
               continue;
             }
 
-            // Handle old 06_Terapeuticke_Dohody → redirect to 05_Operativni_Plan (NEVER create standalone docs)
-            if (!targetFile && docCanonical.includes("dohod")) {
-              const opPlanFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
-              if (opPlanFile) {
-                const existingOp = await readFileContent(token, opPlanFile.id);
-                const hash = contentHash(newContent.trim());
-                if (hasKhash(existingOp, hash)) {
-                  console.log(`[CENTRUM] [KHASH-dedup] Skipping dohody→OpPlan – hash ${hash} already present`);
-                } else if (!existingOp.includes(newContent.slice(0, 80))) {
-                  const updatedOp = existingOp.trimEnd() + `\n\n[${dateStr}] Z dohod (denní cyklus): [KHASH:${hash}]\n${newContent}`;
-                  await updateFileById(token, opPlanFile.id, updatedOp, opPlanFile.mimeType);
-                  cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (z dohod)`);
-                  console.log(`[CENTRUM] ✅ Appended dohody content to 05_Operativni_Plan`);
-                }
-                continue;
-              }
-            }
-
-            if (!targetFile) {
-              console.warn(`[CENTRUM] Document "${docName}" not found in 00_CENTRUM, skipping`);
-              continue;
-            }
-
-            // Read existing content for dedup (KHASH + substring check)
-            const existingContent = await readFileContent(token, targetFile.id);
-            const hash = contentHash(newContent.trim());
-
-            if (hasKhash(existingContent, hash)) {
-              console.log(`[CENTRUM] [KHASH-dedup] Skipping "${docName}" – hash ${hash} already present`);
-              continue;
-            }
-
-            if (existingContent.includes(newContent.slice(0, 80))) {
-              console.log(`[CENTRUM] Skipping "${docName}" – content already present (substring dedup)`);
-              continue;
-            }
-
-            // Append new content with date header and KHASH marker
-            const updatedContent = existingContent.trimEnd() + `\n\n[${dateStr}] Aktualizace z denního cyklu: [KHASH:${hash}]\n${newContent}`;
-            await updateFileById(token, targetFile.id, updatedContent, targetFile.mimeType);
-            cardsUpdated.push(`CENTRUM: ${docName} (aktualizace)`);
-            console.log(`[CENTRUM] ✅ Updated: ${targetFile.name}`);
+            // Other CENTRUM docs (dohody / unknown) → silently skip (out of governance)
+            console.log(`[CENTRUM] Skipping non-governed document: "${docName}"`);
           } catch (e) {
-            console.error(`[CENTRUM] Failed to update "${docName}":`, e);
+            console.error(`[CENTRUM-ENQUEUE] Failed for "${docName}":`, e);
           }
         }
       }
@@ -5669,23 +5578,21 @@ ESKALACE: level ${task.escalation_level || 0}`,
         context_data: {
           auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined,
           phase4: {
-            budgetMs: PHASE4_CARDS_BUDGET_MS,
-            elapsedMs: Date.now() - phase4CardsStart,
-            budgetExceeded: cardsBudgetExceeded,
-            cardsProcessed: cardsUpdated.length,
+            mode: "async_enqueue_v3",
+            elapsedMs: Date.now() - phase4Start,
+            cardsEnqueuedCount: cardsEnqueued.length,
+            cardsEnqueued: cardsEnqueued.length > 0 ? cardsEnqueued : undefined,
             cardsDeferredCount: cardsDeferred.length,
             cardsDeferred: cardsDeferred.length > 0 ? cardsDeferred : undefined,
+            centrumEnqueuedCount: centrumEnqueued.length,
+            centrumEnqueued: centrumEnqueued.length > 0 ? centrumEnqueued : undefined,
+            enqueueErrors: cardEnqueueErrors,
           },
         },
       }).eq("id", cycle.id);
     }
 
     // shadowSync moved to standalone CRON — see karel-did-context-prime (runs daily at 5:30 UTC)
-
-    if (updateCardsKeepAlive !== undefined) {
-      clearInterval(updateCardsKeepAlive);
-      updateCardsKeepAlive = undefined;
-    }
 
     await setPhase("revize_05ab", "Fáze 5: Denní revize 05A/05B");
     // ═══════════════════════════════════════════════════════════
