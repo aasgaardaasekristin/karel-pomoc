@@ -352,7 +352,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
         )}
 
         {d && (
-          <div className="border-t border-border/60 pt-3 mt-2 space-y-2">
+          <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
             <div className="flex items-center gap-2">
               {(["hanka", "kata", "karel"] as const).map((who) => {
                 const signed =
@@ -370,7 +370,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                     {signing === who ? (
                       <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                     ) : signed ? (
-                      <CheckCircle2 className="w-3 h-3 mr-1 text-green-600" />
+                      <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
                     ) : null}
                     {signed ? `${who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"} ✓` : `Podepsat za ${who === "hanka" ? "Haničku" : who === "kata" ? "Káťu" : "Karla"}`}
                   </Button>
