@@ -554,15 +554,11 @@ const DidDashboard = ({
           </ErrorBoundary>
         )}
 
-        {/* ── BLOCK 2a — KARLŮV PŘEHLED (single source of truth z did_daily_briefings) ── */}
-        <div className="jung-hero-section rounded-2xl p-4">
-          <ErrorBoundary fallbackTitle="Karlův přehled selhal">
-            <DidDailyBriefingPanel
-              refreshTrigger={refreshTrigger}
-              onOpenDeliberation={(id) => setOpenDeliberationId(id)}
-            />
-          </ErrorBoundary>
-        </div>
+        {/* ── 2026-04-20 SURFACE SPLIT ──
+              `DidDailyBriefingPanel` (Karlův hlas) je přesunutý do
+              samostatné plochy `KarelOverviewPanel` (`🧠 Karlův přehled`).
+              Dashboard zůstává frontstage operativy, bez Karlova narativu.
+            ── */}
 
         {/* ── BLOCK 2 — OPERATIONAL QUEUE (přechodová vrstva: tasks/questions/sessions backlog).
                 hideDuplicateBlocks=true zajišťuje, že tu NEBUDE druhý „Karlův přehled":
