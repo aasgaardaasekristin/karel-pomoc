@@ -221,6 +221,37 @@ export default function DidWorkingMemoryPanel() {
             </div>
           </div>
 
+          {/* Role scope breakdown (Hanička role separation) */}
+          {summary.role_scope_breakdown_24h && summary.role_scope_breakdown_24h.total_messages_24h > 0 && (
+            <div className="rounded-md border border-border/50 p-2 bg-muted/30">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                Role Scope (24 h)
+              </div>
+              <div className="grid grid-cols-5 gap-1 text-xs">
+                <MiniStat label="Personal" value={summary.role_scope_breakdown_24h.breakdown.partner_personal ?? 0} />
+                <MiniStat label="Team" value={summary.role_scope_breakdown_24h.breakdown.therapeutic_team ?? 0} />
+                <MiniStat label="Mixed" value={summary.role_scope_breakdown_24h.breakdown.mixed ?? 0} />
+                <MiniStat
+                  label="Uncertain"
+                  value={summary.role_scope_breakdown_24h.breakdown.uncertain ?? 0}
+                  tone={summary.role_scope_breakdown_24h.breakdown.uncertain > 0 ? "danger" : "neutral"}
+                />
+                <MiniStat label="Celkem" value={summary.role_scope_breakdown_24h.total_messages_24h} />
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-[10px] text-muted-foreground">
+                {summary.role_scope_breakdown_24h.ratio_therapeutic != null && (
+                  <span>Therapeutic: {summary.role_scope_breakdown_24h.ratio_therapeutic}%</span>
+                )}
+                {summary.role_scope_breakdown_24h.avg_confidence != null && (
+                  <span>Avg confidence: {summary.role_scope_breakdown_24h.avg_confidence}</span>
+                )}
+                {summary.role_scope_breakdown_24h.needs_review_count > 0 && (
+                  <span className="text-amber-600">⚠ {summary.role_scope_breakdown_24h.needs_review_count} needs review</span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Drive queue */}
           {summary.drive_queue && (
             <div className="rounded-md border border-border/50 p-2 bg-muted/30">
