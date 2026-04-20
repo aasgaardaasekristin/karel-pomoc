@@ -24,6 +24,45 @@ interface RoleScopeBreakdown {
   ratio_therapeutic: number | null;
 }
 
+interface TherapistStateBlock {
+  therapist: "hanka" | "kata";
+  activity: {
+    therapeutic_messages_24h: number;
+    therapeutic_messages_7d: number;
+    last_therapeutic_at: string | null;
+    recentness: "active_today" | "active_week" | "stale" | "silent";
+  };
+  signal_quality: { score: number | null; rationale: string; sample_size: number };
+  support_need: {
+    level: "low" | "moderate" | "elevated" | "unknown";
+    rationale: string;
+    indicators: string[];
+  };
+  continuity: {
+    score: number | null;
+    open_tasks: number;
+    completed_tasks_7d: number;
+    rationale: string;
+  };
+  confidence: { overall: number; reasons: string[]; insufficient_data: boolean };
+  source_counts: {
+    observations: number;
+    implications: number;
+    tasks: number;
+    therapeutic_messages: number;
+    crises_owned: number;
+  };
+}
+
+interface TherapistFoundation {
+  version: string;
+  generated_at: string;
+  notice: string;
+  hanka: TherapistStateBlock;
+  kata: TherapistStateBlock;
+  routing_guarantee: { excluded_scopes: string[]; excluded_sources: string[]; derived_only: true };
+}
+
 interface SnapshotSummary {
   snapshot_key: string;
   generated_at: string;
@@ -42,6 +81,7 @@ interface SnapshotSummary {
   degraded_sources: string[];
   stale_sources: string[];
   role_scope_breakdown_24h?: RoleScopeBreakdown | null;
+  therapist_state?: TherapistFoundation | null;
 }
 
 interface SnapshotRow {
