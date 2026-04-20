@@ -2890,7 +2890,10 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
 
       // ═══ CATCH-UP FAST PATH: If this is an afternoon catch-up cron (15:30 / 17:00)
       // and BOTH dispatches are already "sent" for today → skip entirely (no work needed)
-      if (currentSlot === "afternoon") {
+      // bypassDispatchCheck flag (admin/proof-run only) skips this gate so we can verify
+      // full pipeline regardless of whether emails already went out.
+      const bypassDispatchCheck = requestBody?.bypassDispatchCheck === true;
+      if (currentSlot === "afternoon" && !bypassDispatchCheck) {
         const { data: todayDispatches } = await sb.from("did_daily_report_dispatches")
           .select("recipient, status")
           .eq("report_date", reportDatePrague);
@@ -2912,6 +2915,8 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
         } else {
           console.log(`[daily-cycle] CATCH-UP: No dispatches found for ${reportDatePrague}. Running full cycle.`);
         }
+      } else if (bypassDispatchCheck) {
+        console.log(`[daily-cycle] bypassDispatchCheck=true → skipping dispatch gate (admin/proof run)`);
       }
 
       // Check if THIS SLOT already has a completed cycle (6h cooldown per slot)
