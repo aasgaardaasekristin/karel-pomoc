@@ -636,6 +636,7 @@ async function runHanaPostChatWriteback(args: {
       sourceThreadId: conversationId,
       sourceType: "thread",
       userId: args.userId,
+      roleScope: roleScope.role_scope,
     };
 
     let inserted = 0;
