@@ -5638,7 +5638,17 @@ ESKALACE: level ${task.escalation_level || 0}`,
         completed_at: new Date().toISOString(),
         report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
-        context_data: { auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined },
+        context_data: {
+          auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined,
+          phase4: {
+            budgetMs: PHASE4_CARDS_BUDGET_MS,
+            elapsedMs: Date.now() - phase4CardsStart,
+            budgetExceeded: cardsBudgetExceeded,
+            cardsProcessed: cardsUpdated.length,
+            cardsDeferredCount: cardsDeferred.length,
+            cardsDeferred: cardsDeferred.length > 0 ? cardsDeferred : undefined,
+          },
+        },
       }).eq("id", cycle.id);
     }
 
