@@ -25,6 +25,10 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import {
+  computeTherapistIntelligenceFoundation,
+  type TherapistFoundationInput,
+} from "../_shared/therapistIntelligenceFoundation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -268,15 +272,22 @@ Deno.serve(async (req) => {
   audits.push(crisisRes.audit);
 
   // ── 7. Role scope breakdown (Hanička role separation) ──
+  // Fetch wider window (7d) for therapist intelligence, but breakdown stays 24h.
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const hanaConvRes = await db
+    .from("karel_hana_conversations")
+    .select("messages,last_activity_at")
+    .eq("user_id", userId)
+    .gte("last_activity_at", since7d)
+    .order("last_activity_at", { ascending: false })
+    .limit(40);
+  const hanaConvData = hanaConvRes.data || [];
+
   const roleScopeRes = await timed("role_scope_breakdown", async () => {
-    const { data, error } = await db
-      .from("karel_hana_conversations")
-      .select("messages,last_activity_at")
-      .eq("user_id", userId)
-      .gte("last_activity_at", since24h)
-      .order("last_activity_at", { ascending: false })
-      .limit(20);
-    if (error) throw error;
+    if (hanaConvRes.error) throw hanaConvRes.error;
+    const data = hanaConvData.filter((c: any) =>
+      c.last_activity_at && new Date(c.last_activity_at).toISOString() >= since24h
+    );
 
     const breakdown: Record<string, number> = {
       partner_personal: 0,
@@ -331,6 +342,61 @@ Deno.serve(async (req) => {
   });
   audits.push(roleScopeRes.audit);
 
+  // ── 8. Therapist Intelligence Foundation (derived block) ──
+  // Reads 7d window of: therapist tasks, evidence, hana 7d (reuse), kata threads.
+  const tiRes = await timed("therapist_intelligence_foundation", async () => {
+    const [obs7d, impl7d, tasks7d, kataThreads7d] = await Promise.all([
+      db.from("did_observations")
+        .select("id, subject_type, subject_id, fact, created_at, evidence_level")
+        .eq("subject_type", "therapist")
+        .gte("created_at", since7d)
+        .limit(200),
+      db.from("did_implications")
+        .select("id, owner, destinations, impact_type, status, created_at")
+        .gte("created_at", since7d)
+        .limit(200),
+      db.from("did_therapist_tasks")
+        .select("id, assigned_to, status, title, created_at, completed_at")
+        .gte("created_at", since7d)
+        .limit(200),
+      db.from("did_threads")
+        .select("id, sub_mode, last_activity_at, messages")
+        .eq("sub_mode", "kata")
+        .gte("last_activity_at", since7d)
+        .order("last_activity_at", { ascending: false })
+        .limit(20),
+    ]);
+
+    const hanaMessages: any[] = [];
+    for (const conv of hanaConvData) {
+      const msgs = Array.isArray((conv as any).messages) ? (conv as any).messages : [];
+      for (const m of msgs) hanaMessages.push(m);
+    }
+
+    const foundationInput: TherapistFoundationInput = {
+      now: new Date(),
+      hana_messages: hanaMessages,
+      kata_threads: (kataThreads7d.data || []) as any,
+      observations: (obs7d.data || []) as any,
+      implications: (impl7d.data || []) as any,
+      tasks: (tasks7d.data || []) as any,
+      crises: (crisisRes.data as any[]) || [],
+    };
+
+    const foundation = computeTherapistIntelligenceFoundation(foundationInput);
+    return {
+      data: foundation,
+      meta: {
+        count:
+          (obs7d.data?.length ?? 0) +
+          (impl7d.data?.length ?? 0) +
+          (tasks7d.data?.length ?? 0) +
+          (kataThreads7d.data?.length ?? 0),
+      },
+    };
+  });
+  audits.push(tiRes.audit);
+
   // ── Compose snapshot ──
   const snapshotJson = {
     snapshot_key: snapshotKey,
@@ -351,6 +417,7 @@ Deno.serve(async (req) => {
     },
     crises_open: crisisRes.data ?? [],
     role_scope_breakdown_24h: (roleScopeRes.data as any) ?? null,
+    therapist_state: (tiRes.data as any) ?? null,
   };
 
   // events_json — lightweight unified stream of recent changes

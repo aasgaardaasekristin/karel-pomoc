@@ -106,6 +106,7 @@ Deno.serve(async (req) => {
         degraded_sources: data.source_meta_json?.degraded_sources ?? [],
         stale_sources: data.source_meta_json?.stale_sources ?? [],
         role_scope_breakdown_24h: data.snapshot_json?.role_scope_breakdown_24h ?? null,
+        therapist_state: data.snapshot_json?.therapist_state ?? null,
       },
     }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

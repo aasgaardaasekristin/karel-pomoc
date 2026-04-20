@@ -24,6 +24,45 @@ interface RoleScopeBreakdown {
   ratio_therapeutic: number | null;
 }
 
+interface TherapistStateBlock {
+  therapist: "hanka" | "kata";
+  activity: {
+    therapeutic_messages_24h: number;
+    therapeutic_messages_7d: number;
+    last_therapeutic_at: string | null;
+    recentness: "active_today" | "active_week" | "stale" | "silent";
+  };
+  signal_quality: { score: number | null; rationale: string; sample_size: number };
+  support_need: {
+    level: "low" | "moderate" | "elevated" | "unknown";
+    rationale: string;
+    indicators: string[];
+  };
+  continuity: {
+    score: number | null;
+    open_tasks: number;
+    completed_tasks_7d: number;
+    rationale: string;
+  };
+  confidence: { overall: number; reasons: string[]; insufficient_data: boolean };
+  source_counts: {
+    observations: number;
+    implications: number;
+    tasks: number;
+    therapeutic_messages: number;
+    crises_owned: number;
+  };
+}
+
+interface TherapistFoundation {
+  version: string;
+  generated_at: string;
+  notice: string;
+  hanka: TherapistStateBlock;
+  kata: TherapistStateBlock;
+  routing_guarantee: { excluded_scopes: string[]; excluded_sources: string[]; derived_only: true };
+}
+
 interface SnapshotSummary {
   snapshot_key: string;
   generated_at: string;
@@ -42,6 +81,7 @@ interface SnapshotSummary {
   degraded_sources: string[];
   stale_sources: string[];
   role_scope_breakdown_24h?: RoleScopeBreakdown | null;
+  therapist_state?: TherapistFoundation | null;
 }
 
 interface SnapshotRow {
@@ -252,6 +292,23 @@ export default function DidWorkingMemoryPanel() {
             </div>
           )}
 
+          {/* Therapist Intelligence Foundation */}
+          {summary.therapist_state && (
+            <div className="rounded-md border border-border/50 p-2 bg-muted/30">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">
+                <span>Therapist State (Foundation {summary.therapist_state.version})</span>
+                <span className="text-[9px] opacity-70">derived · 7d window</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <TherapistStateMini name="Hanička" state={summary.therapist_state.hanka} />
+                <TherapistStateMini name="Káťa" state={summary.therapist_state.kata} />
+              </div>
+              <div className="text-[9px] text-muted-foreground mt-1 italic">
+                Firewalled out: {summary.therapist_state.routing_guarantee.excluded_scopes.join(", ")}.
+              </div>
+            </div>
+          )}
+
           {/* Drive queue */}
           {summary.drive_queue && (
             <div className="rounded-md border border-border/50 p-2 bg-muted/30">
@@ -432,6 +489,95 @@ function MiniStat({
     <div className="text-center">
       <div className={`font-mono text-sm ${toneClass}`}>{value}</div>
       <div className="text-[9px] text-muted-foreground uppercase tracking-wide">{label}</div>
+    </div>
+  );
+}
+
+function TherapistStateMini({
+  name,
+  state,
+}: {
+  name: string;
+  state: TherapistStateBlock;
+}) {
+  const recentnessLabel: Record<string, string> = {
+    active_today: "dnes",
+    active_week: "tento týden",
+    stale: "stagnuje",
+    silent: "ticho",
+  };
+  const recentnessTone: Record<string, string> = {
+    active_today: "text-emerald-700",
+    active_week: "text-foreground",
+    stale: "text-amber-700",
+    silent: "text-muted-foreground",
+  };
+  const supportTone: Record<string, string> = {
+    low: "text-emerald-700",
+    moderate: "text-amber-700",
+    elevated: "text-destructive",
+    unknown: "text-muted-foreground",
+  };
+  const fmt = (n: number | null) => (n == null ? "—" : n.toFixed(2));
+
+  return (
+    <div className="rounded border border-border/50 p-2 bg-background space-y-1">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium">{name}</div>
+        <span className={`text-[10px] ${recentnessTone[state.activity.recentness]}`}>
+          {recentnessLabel[state.activity.recentness] ?? state.activity.recentness}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-[10px]">
+        <div>
+          <span className="text-muted-foreground">Activity 24h/7d:</span>{" "}
+          <span className="font-mono">
+            {state.activity.therapeutic_messages_24h}/{state.activity.therapeutic_messages_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Tasks open/done7d:</span>{" "}
+          <span className="font-mono">
+            {state.continuity.open_tasks}/{state.continuity.completed_tasks_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Signal q.:</span>{" "}
+          <span className="font-mono">{fmt(state.signal_quality.score)}</span>{" "}
+          <span className="opacity-60">(n={state.signal_quality.sample_size})</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Continuity:</span>{" "}
+          <span className="font-mono">{fmt(state.continuity.score)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Support:</span>{" "}
+          <span className={`font-mono ${supportTone[state.support_need.level]}`}>
+            {state.support_need.level}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Confidence:</span>{" "}
+          <span className="font-mono">{state.confidence.overall.toFixed(2)}</span>
+          {state.confidence.insufficient_data && (
+            <span className="ml-1 text-[9px] text-amber-700">⚠ málo dat</span>
+          )}
+        </div>
+      </div>
+      {state.support_need.indicators.length > 0 && (
+        <div className="text-[9px] text-muted-foreground">
+          Indicators: {state.support_need.indicators.join(" · ")}
+        </div>
+      )}
+      <details className="text-[9px] text-muted-foreground">
+        <summary className="cursor-pointer hover:text-foreground">rationale</summary>
+        <div className="mt-1 pl-2 space-y-0.5 border-l border-border/40">
+          <div><span className="opacity-70">signal:</span> {state.signal_quality.rationale}</div>
+          <div><span className="opacity-70">support:</span> {state.support_need.rationale}</div>
+          <div><span className="opacity-70">continuity:</span> {state.continuity.rationale}</div>
+          <div><span className="opacity-70">confidence:</span> {state.confidence.reasons.join(" · ")}</div>
+        </div>
+      </details>
     </div>
   );
 }
