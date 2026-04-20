@@ -2386,8 +2386,9 @@ serve(async (req) => {
     10
   );
   const isAfternoonCronWindow = isCronCall && pragueHourForEmailGuard >= 13;
-  const shouldSendEmails = isAfternoonCronWindow || isTestEmail || isCatchup || isWatchdog;
-  console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, shouldSendEmails=${shouldSendEmails}`);
+  const suppressEmails = requestBody?.suppressEmails === true;
+  const shouldSendEmails = !suppressEmails && (isAfternoonCronWindow || isTestEmail || isCatchup || isWatchdog);
+  console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, suppressEmails=${suppressEmails}, shouldSendEmails=${shouldSendEmails}`);
 
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
