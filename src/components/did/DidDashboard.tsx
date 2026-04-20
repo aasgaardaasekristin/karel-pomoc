@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { isNonDidEntity } from "@/lib/didPartNaming";
 import type { DidSubMode } from "./DidSubModeSelector";
 import KarelDailyPlan from "./KarelDailyPlan";
-import DidDailyBriefingPanel from "./DidDailyBriefingPanel";
+// DidDailyBriefingPanel přesunut do `KarelOverviewPanel` (Surface Split 2026-04-20).
 import DidDailySessionPlan from "./DidDailySessionPlan";
 import DidSprava from "./DidSprava";
 import CommandCrisisCard, { type CommandCrisis } from "./CommandCrisisCard";
