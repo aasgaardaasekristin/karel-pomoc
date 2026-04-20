@@ -4690,54 +4690,51 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
       }
 
-      // ═══ FORCED CENTRUM FALLBACK: Full deterministic content from DB ═══
-      if (centrumFolderId && hasRecentActivity) {
-        const centerFiles = centrumFolderId ? await listFilesInFolder(token, centrumFolderId) : [];
-
-        // Load registry data for deterministic dashboard
+      // ═══ FORCED CENTRUM FALLBACK (ASYNC ENQUEUE) ═══
+      // Pre-fix history: synchronous listFilesInFolder + updateFileById +
+      // verifyCentrumWrite blocked Phase 4 wall-clock (~150–250s). Now we
+      // build deterministic content from DB and enqueue replace operations
+      // into did_pending_drive_writes. The queue processor handles real
+      // Drive writes; verification moves to queue/status-level proof.
+      if (hasRecentActivity) {
+        // Load registry data for deterministic content (DB-only, no Drive I/O)
         const registryParts = registryContext?.entries || [];
         const activeParts = registryParts.filter(e => !isArchivedFromRegistry(e));
         const sleepingParts = registryParts.filter(e => isArchivedFromRegistry(e));
-        
+
         if (!centrumDashboardUpdated) {
-          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] block – generating FULL deterministic dashboard`);
-          const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
-          if (dashFile) {
-            try {
-              const dateStr = new Date().toISOString().slice(0, 10);
-              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
-              const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] – enqueuing FULL deterministic dashboard`);
+          try {
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
+            const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
 
-              // Build registry-based part status
-              const partStatusLines = activeParts.map(p => {
-                const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
-                const status = hadActivity ? "🟢 komunikoval/a s Karlem" : "🟡 bez aktivity dnes";
-                return `▸ ${p.name} (ID ${p.id}) [${status}] – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}`;
-              });
+            const partStatusLines = activeParts.map(p => {
+              const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
+              const status = hadActivity ? "🟢 komunikoval/a s Karlem" : "🟡 bez aktivity dnes";
+              return `▸ ${p.name} (ID ${p.id}) [${status}] – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}`;
+            });
 
-              // Critical alerts from tasks
-              const criticalTasks = (pendingTasks || []).filter((t: any) => {
-                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                return age >= 3;
-              });
-              const criticalAlertsText = criticalTasks.length > 0
-                ? criticalTasks.map((t: any) => {
-                    const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                    return `⚠️ ${t.task} – ${age} dní nesplněno (${t.assigned_to})`;
-                  }).join("\n")
-                : "✅ Žádná kritická upozornění";
+            const criticalTasks = (pendingTasks || []).filter((t: any) => {
+              const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+              return age >= 3;
+            });
+            const criticalAlertsText = criticalTasks.length > 0
+              ? criticalTasks.map((t: any) => {
+                  const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+                  return `⚠️ ${t.task} – ${age} dní nesplněno (${t.assigned_to})`;
+                }).join("\n")
+              : "✅ Žádná kritická upozornění";
 
-              // Sleeping parts watchlist
-              const sleepingWatchlist = sleepingParts.length > 0
-                ? sleepingParts.map(p => `▸ ${p.name} (ID ${p.id}) – status: ${p.status}, klastr: ${p.cluster || "?"}`).join("\n")
-                : "Žádné spící části v registru.";
+            const sleepingWatchlist = sleepingParts.length > 0
+              ? sleepingParts.map(p => `▸ ${p.name} (ID ${p.id}) – status: ${p.status}, klastr: ${p.cluster || "?"}`).join("\n")
+              : "Žádné spící části v registru.";
 
-              // Priority from pending tasks
-              const priorityLines = (pendingTasks || []).slice(0, 5).map((t: any) => 
-                `▸ ${t.task} (${t.assigned_to}, priorita: ${t.priority || "normal"})`
-              ).join("\n") || "Žádné aktivní úkoly.";
+            const priorityLines = (pendingTasks || []).slice(0, 5).map((t: any) =>
+              `▸ ${t.task} (${t.assigned_to}, priorita: ${t.priority || "normal"})`
+            ).join("\n") || "Žádné aktivní úkoly.";
 
-              const fullDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM
+            const fullDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM
 Aktualizace: ${dateStr}
 Správce: Karel (deterministický fallback z DB)
 
@@ -4772,60 +4769,51 @@ SEKCE 7 – KARLOVY POSTŘEHY 🔍
 ⚠️ Tento dashboard byl vygenerován deterministickým fallbackem z DB dat – AI analýza nevygenerovala CENTRUM blok.
 Všechna data pocházejí z databáze (did_part_registry, did_threads, did_therapist_tasks).`;
 
-              await updateFileById(token, dashFile.id, fullDashboard, dashFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 00_Dashboard (FULL DETERMINISTIC FALLBACK)`);
+            const ok = await enqueueDriveWrite({
+              target_document: "KARTOTEKA_DID/00_CENTRUM/00_Aktualni_Dashboard",
+              payload: fullDashboard,
+              write_type: "replace",
+              priority: "high",
+              content_type: "centrum_fallback_dashboard",
+              subject_type: "centrum",
+              subject_id: "00_Aktualni_Dashboard",
+            });
+            if (ok) {
+              centrumEnqueued.push("00_Aktualni_Dashboard (fallback)");
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (FALLBACK enqueued)`);
               centrumDashboardUpdated = true;
-              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard: full deterministic content written`);
-
-              // Post-write verification – fallback
-              const fallbackDashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", [
-                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7", "DASHBOARD",
-              ]);
-              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated && fallbackDashVerify.verified;
-              if (!fallbackDashVerify.verified) {
-                console.warn(`[VERIFY] ⚠️ Dashboard fallback verification FAILED: missing=[${fallbackDashVerify.missingKeywords.join(",")}]`);
-              }
-              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (fallback)`);
-            } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
-          }
+              criticalPhaseStatus.dashboardOk = true; // queue-level proof; processor verifies content
+              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard fallback enqueued (verification deferred to queue processor)`);
+            }
+          } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard enqueue failed:`, e); }
         }
 
         if (!centrumOperativniUpdated) {
-          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] block – generating FULL deterministic plan`);
-          const planFile = centerFiles.find(f => {
-            const fc = canonicalText(f.name);
-            return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
-          });
-          if (planFile) {
-            try {
-              const dateStr = new Date().toISOString().slice(0, 10);
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] – enqueuing FULL deterministic plan`);
+          try {
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
 
-              // Build full plan from DB data
-              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
-              
-              // Section 1: Active parts status
-              const partStatusTable = activeParts.map(p => {
-                const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
-                return `| ${p.name} / ${p.id} | ${hadActivity ? "Aktivní" : "Ticho"} | ${p.cluster || "?"} | ${p.age || "?"} |`;
-              }).join("\n");
+            const partStatusTable = activeParts.map(p => {
+              const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
+              return `| ${p.name} / ${p.id} | ${hadActivity ? "Aktivní" : "Ticho"} | ${p.cluster || "?"} | ${p.age || "?"} |`;
+            }).join("\n");
 
-              // Section 3: Pending tasks
-              const taskLines = (pendingTasks || []).map((t: any) => {
-                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                const icon = age >= 3 ? "⚠️" : "☐";
-                return `${icon} ${t.assigned_to}: ${t.task} (${age}d, ${t.priority || "normal"})`;
-              }).join("\n") || "Žádné nesplněné úkoly.";
+            const taskLines = (pendingTasks || []).map((t: any) => {
+              const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+              const icon = age >= 3 ? "⚠️" : "☐";
+              return `${icon} ${t.assigned_to}: ${t.task} (${age}d, ${t.priority || "normal"})`;
+            }).join("\n") || "Žádné nesplněné úkoly.";
 
-              // Section 5: Risks
-              const riskTasks = (pendingTasks || []).filter((t: any) => {
-                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                return age >= 3;
-              });
-              const riskLines = riskTasks.length > 0
-                ? riskTasks.map((t: any) => `⚠️ ESKALACE: "${t.task}" – nesplněno ${Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24))} dní`).join("\n")
-                : "Žádná akutní rizika.";
+            const riskTasks = (pendingTasks || []).filter((t: any) => {
+              const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+              return age >= 3;
+            });
+            const riskLines = riskTasks.length > 0
+              ? riskTasks.map((t: any) => `⚠️ ESKALACE: "${t.task}" – nesplněno ${Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24))} dní`).join("\n")
+              : "Žádná akutní rizika.";
 
-              const fullPlan = `OPERATIVNÍ PLÁN – DID SYSTÉM
+            const fullPlan = `OPERATIVNÍ PLÁN – DID SYSTÉM
 Aktualizace: ${dateStr}
 Správce: Karel (deterministický fallback z DB)
 
@@ -4852,18 +4840,24 @@ SEKCE 6 – KARLOVY POZNÁMKY
 ⚠️ Tento plán byl vygenerován deterministickým fallbackem – AI analýza nevytvořila CENTRUM blok.
 Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks (${(pendingTasks || []).length} nesplněných).`;
 
-              therapeuticPlanContent = fullPlan;
-              await updateFileById(token, planFile.id, fullPlan, planFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FULL DETERMINISTIC FALLBACK)`);
+            therapeuticPlanContent = fullPlan;
+            const ok = await enqueueDriveWrite({
+              target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+              payload: fullPlan,
+              write_type: "replace",
+              priority: "high",
+              content_type: "centrum_fallback_operativni_plan",
+              subject_type: "centrum",
+              subject_id: "05A_OPERATIVNI_PLAN",
+            });
+            if (ok) {
+              centrumEnqueued.push("05A_OPERATIVNI_PLAN (fallback)");
+              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FALLBACK enqueued)`);
               centrumOperativniUpdated = true;
-              console.log(`[CENTRUM-FALLBACK] ✅ Operative plan: full deterministic content written`);
-
-              // Post-write verification
-              const fallbackPlanVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan (fallback)", ["SEKCE 1", "SEKCE 3", "OPERATIVNÍ"]);
-              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated && fallbackPlanVerify.verified;
-              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (fallback)`);
-            } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan update failed:`, e); }
-          }
+              criticalPhaseStatus.operativePlanOk = true; // queue-level proof
+              console.log(`[CENTRUM-FALLBACK] ✅ Operative plan fallback enqueued (verification deferred to queue processor)`);
+            }
+          } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan enqueue failed:`, e); }
         }
       }
 
@@ -4901,10 +4895,25 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
         }
       }
 
-      // ═══ 07_KNIHOVNA ANALYSIS: Scan for DID-relevant content and distribute to kartotéka ═══
-      try {
-        if (centrumFolderId) {
-          const centerFiles = await listFilesInFolder(token, centrumFolderId);
+      // ═══ 07_KNIHOVNA ANALYSIS (BUDGETED + ASYNC ENQUEUE) ═══
+      // Pre-fix history: blok dělal 2× listFilesInFolder + N× readFileContent
+      // + AI call + N× sync updateFileById/appendToDoc → blokoval Phase 4.
+      // Teď: hard time-budget guard (skip pokud Phase 4 elapsed > 60s),
+      // a VŠECHNY zápisy jdou přes enqueueDriveWrite. Read-only Drive calls
+      // zůstávají (jsou nutné pro AI analýzu příruček), ale jen pokud zbývá
+      // čas; jinak se celý blok deferuje do dalšího runu.
+      const KNIHOVNA_BUDGET_MS = 60_000;
+      const knihovnaSkipReason = (Date.now() - phase4Start) > KNIHOVNA_BUDGET_MS
+        ? `phase4_elapsed=${Date.now() - phase4Start}ms > ${KNIHOVNA_BUDGET_MS}ms`
+        : !centrumFolderId
+          ? "no_centrum_folder_id"
+          : null;
+      if (knihovnaSkipReason) {
+        console.warn(`[knihovna] ⏭️  SKIPPED (${knihovnaSkipReason}) – deferred to next daily-cycle run`);
+        cardsDeferred.push(`07_Knihovna:deferred:${knihovnaSkipReason}`);
+      } else {
+        try {
+          const centerFiles = await listFilesInFolder(token, centrumFolderId!);
           const knihovnaFolder = centerFiles.find(f => f.mimeType === DRIVE_FOLDER_MIME && f.name.includes("07_Knihovna"));
 
           if (knihovnaFolder) {
@@ -4914,20 +4923,21 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
             if (prehledFile) {
               const prehledContent = await readFileContent(token, prehledFile.id);
 
-              // Read all handbook docs (non-folder, non-prehled files)
               const handbookFiles = knihovnaFiles.filter(f =>
                 f.mimeType !== DRIVE_FOLDER_MIME && !f.name.startsWith("00_Prehled")
               );
 
-              // Build handbook summaries for AI analysis – skip already distributed ones
               let handbookContext = "";
-              const distributedHandbooks: string[] = [];
               const undistributedHandbooks: Array<{ id: string; name: string }> = [];
               const MAX_HANDBOOK_CHARS = 2000;
               for (const hf of handbookFiles.slice(0, 10)) {
+                // Re-check budget before EACH read; abort if exhausted
+                if ((Date.now() - phase4Start) > KNIHOVNA_BUDGET_MS) {
+                  console.warn(`[knihovna] Budget exhausted mid-read; stopping handbook scan`);
+                  break;
+                }
                 try {
                   const hContent = await readFileContent(token, hf.id);
-                  // Skip handbooks already distributed to kartotéka
                   if (hContent.includes("[DISTRIBUOVÁNO DO KARTOTÉKY")) {
                     console.log(`[knihovna] Skipping already distributed: "${hf.name}"`);
                     continue;
@@ -4937,8 +4947,7 @@ Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks 
                 } catch {}
               }
 
-              if (handbookContext.length > 100) {
-                // AI analysis: determine where handbook content should be distributed
+              if (handbookContext.length > 100 && (Date.now() - phase4Start) <= KNIHOVNA_BUDGET_MS) {
                 const knihovnaAnalysisRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
                   method: "POST",
                   headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
@@ -5004,13 +5013,12 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
                   if (knihovnaText.length > 50) {
                     console.log(`[knihovna] AI analysis: ${knihovnaText.length} chars`);
 
-                    // Process [KNIHOVNA_KARTA:...] blocks → write to cards
+                    // Process [KNIHOVNA_KARTA:...] → ENQUEUE per part (no sync Drive writes)
                     const kartaRegex = /\[KNIHOVNA_KARTA:(.+?)\]([\s\S]*?)\[\/KNIHOVNA_KARTA\]/g;
                     for (const km of knihovnaText.matchAll(kartaRegex)) {
                       const partName = km[1].trim();
                       const block = km[2].trim();
 
-                      // Skip blacklisted names
                       if (isBlacklisted(partName)) continue;
 
                       const sectionRegex = /\[SEKCE:([A-N])\]\s*([\s\S]*?)(?=\[SEKCE:|$)/g;
@@ -5021,88 +5029,99 @@ ${existingCardsContext ? `\nEXISTUJÍCÍ KARTY (pro ověření existence část�
                       }
 
                       if (Object.keys(newSections).length > 0) {
-                        try {
-                          const target = await resolveCardTarget(token, folderId!, partName, registryContext);
-                          if (target.registryEntry) {
-                            const probeCard = await findCardFile(token, target.registryEntry.name || partName, target.searchRootId);
-                            if (probeCard) {
-                              const result = await updateCardSections(
-                                token, target.registryEntry.name || partName, newSections, target.searchRootId,
-                                { searchName: target.registryEntry.name || partName, canonicalPartName: target.registryEntry.name || partName, registryContext }
-                              );
-                              cardsUpdated.push(`${partName} (z 07_Knihovna: ${result.sectionsUpdated.join(",")})`);
-                              console.log(`[knihovna] ✅ Card ${partName}: sections ${result.sectionsUpdated.join(",")}`);
-                            }
-                          }
-                        } catch (e) {
-                          console.warn(`[knihovna] Card update failed for ${partName}:`, e);
+                        // Validate registry entry exists (no Drive I/O – uses cached registryContext)
+                        const knihovnaEntry = registryContext
+                          ? findBestRegistryEntry(normalizePartHint(partName), registryContext.entries)
+                          : null;
+                        if (!knihovnaEntry) {
+                          console.warn(`[knihovna] No registry entry for "${partName}" – skipping enqueue`);
+                          continue;
+                        }
+                        const dateHeader = `\n\n[${new Date().toISOString().slice(0, 10)}] Z 07_Knihovna (daily-cycle):\n`;
+                        const sectionLetters = Object.keys(newSections).sort();
+                        const payload = dateHeader + sectionLetters
+                          .map(letter => `[SEKCE:${letter}]\n${newSections[letter]}`)
+                          .join("\n\n");
+                        const ok = await enqueueDriveWrite({
+                          target_document: `KARTA_${(knihovnaEntry.name || partName).toUpperCase()}`,
+                          payload,
+                          write_type: "append",
+                          priority: "normal",
+                          content_type: "knihovna_card_section_update",
+                          subject_type: "part",
+                          subject_id: knihovnaEntry.name || partName,
+                        });
+                        if (ok) {
+                          cardsEnqueued.push(`${partName} (z 07_Knihovna [sections=${sectionLetters.join(",")}])`);
+                          cardsUpdated.push(`${partName} (z 07_Knihovna enqueued: ${sectionLetters.join(",")})`);
+                          console.log(`[knihovna] ✅ Enqueued ${partName}: sections ${sectionLetters.join(",")}`);
                         }
                       }
                     }
 
-                    // Process [KNIHOVNA_CENTRUM:...] blocks → append to CENTRUM docs
+                    // Process [KNIHOVNA_CENTRUM:...] → ENQUEUE append (no sync read-modify-write)
                     const centrumRegex = /\[KNIHOVNA_CENTRUM:(.+?)\]([\s\S]*?)\[\/KNIHOVNA_CENTRUM\]/g;
                     for (const cm of knihovnaText.matchAll(centrumRegex)) {
                       const docName = cm[1].trim();
                       const newContent = cm[2].trim();
                       if (!newContent || newContent.length < 10) continue;
 
-                      try {
-                        const docCanonical = canonicalText(docName);
-                        const targetFile = centerFiles.find(f => {
-                          const fc = canonicalText(f.name);
-                          if (docCanonical.includes("plan") && docCanonical.includes("terapeutick")) return fc.includes("terapeutick") && fc.includes("plan");
-                          if (docCanonical.includes("dashboard")) return fc.includes("dashboard");
-                          if (docCanonical.includes("dohod")) return fc.includes("dohod");
-                          return fc.includes(docCanonical);
-                        });
-
-                        if (targetFile) {
-                          if (targetFile.mimeType === DRIVE_FOLDER_MIME) {
-                            // Folder (e.g. old 06_Dohody) → redirect to 05_Operativni_Plan, NEVER create standalone doc
-                            const opFile = centerFiles.find(f => f.mimeType !== DRIVE_FOLDER_MIME && canonicalText(f.name).includes("operativn"));
-                            if (opFile) {
-                              const existingOp = await readFileContent(token, opFile.id);
-                              if (!existingOp.includes(newContent.slice(0, 60))) {
-                                const updatedOp = existingOp.trimEnd() + `\n\n[${new Date().toISOString().slice(0, 10)}] Z 07_Knihovna:\n${newContent}`;
-                                await updateFileById(token, opFile.id, updatedOp, opFile.mimeType);
-                              }
-                            }
-                          } else {
-                            const existing = await readFileContent(token, targetFile.id);
-                            if (!existing.includes(newContent.slice(0, 60))) {
-                              const updated = existing.trimEnd() + `\n\n[${new Date().toISOString().slice(0, 10)}] Z 07_Knihovna:\n${newContent}`;
-                              await updateFileById(token, targetFile.id, updated, targetFile.mimeType);
-                            }
-                          }
-                          cardsUpdated.push(`CENTRUM: ${docName} (z 07_Knihovna)`);
-                          console.log(`[knihovna] ✅ CENTRUM ${docName} updated from 07_Knihovna`);
-                        }
-                      } catch (e) {
-                        console.warn(`[knihovna] CENTRUM update failed for ${docName}:`, e);
+                      // Map alias docName → canonical centrum doc target
+                      const docCanonical = canonicalText(docName);
+                      let canonicalTarget: string | null = null;
+                      if (docCanonical.includes("dashboard")) canonicalTarget = "00_Aktualni_Dashboard";
+                      else if (docCanonical.includes("dohod")) canonicalTarget = "05A_OPERATIVNI_PLAN"; // dohody folder → operativni plan
+                      else if (docCanonical.includes("operativ")) canonicalTarget = "05A_OPERATIVNI_PLAN";
+                      else if (docCanonical.includes("strateg") || docCanonical.includes("vyhled")) canonicalTarget = "05B_STRATEGICKY_VYHLED";
+                      else if (docCanonical.includes("terapeutick") && docCanonical.includes("plan")) canonicalTarget = "05A_OPERATIVNI_PLAN";
+                      if (!canonicalTarget) {
+                        console.warn(`[knihovna] CENTRUM doc "${docName}" – no canonical mapping, skipping`);
+                        continue;
+                      }
+                      const payload = `\n\n[${new Date().toISOString().slice(0, 10)}] Z 07_Knihovna:\n${newContent}`;
+                      const ok = await enqueueDriveWrite({
+                        target_document: `KARTOTEKA_DID/00_CENTRUM/${canonicalTarget}`,
+                        payload,
+                        write_type: "append",
+                        priority: "normal",
+                        content_type: "knihovna_centrum_append",
+                        subject_type: "centrum",
+                        subject_id: canonicalTarget,
+                      });
+                      if (ok) {
+                        centrumEnqueued.push(`${canonicalTarget} (z 07_Knihovna)`);
+                        cardsUpdated.push(`CENTRUM: ${docName} (z 07_Knihovna enqueued → ${canonicalTarget})`);
+                        console.log(`[knihovna] ✅ CENTRUM ${canonicalTarget} enqueued from 07_Knihovna`);
                       }
                     }
                   }
 
-                  // Mark all undistributed handbooks as processed by appending marker
+                  // Mark distributed handbooks → ENQUEUE append marker (no sync appendToDoc)
                   const distribDateStr = new Date().toISOString().slice(0, 10);
                   for (const uh of undistributedHandbooks) {
-                    try {
-                      await appendToDoc(token, uh.id, `\n\n[DISTRIBUOVÁNO DO KARTOTÉKY: ${distribDateStr}]`);
-                      console.log(`[knihovna] Marked as distributed: "${uh.name}"`);
-                    } catch (markErr) {
-                      console.warn(`[knihovna] Failed to mark "${uh.name}" as distributed:`, markErr);
-                    }
+                    const ok = await enqueueDriveWrite({
+                      target_document: `KARTOTEKA_DID/00_CENTRUM/07_Knihovna/${uh.name}`,
+                      payload: `\n\n[DISTRIBUOVÁNO DO KARTOTÉKY: ${distribDateStr}]`,
+                      write_type: "append",
+                      priority: "low",
+                      content_type: "knihovna_distributed_marker",
+                      subject_type: "knihovna_handbook",
+                      subject_id: uh.id,
+                    });
+                    if (ok) console.log(`[knihovna] Distributed marker enqueued for "${uh.name}"`);
                   }
                 } else {
                   console.warn(`[knihovna] AI analysis failed: ${knihovnaAnalysisRes.status}`);
                 }
+              } else if ((Date.now() - phase4Start) > KNIHOVNA_BUDGET_MS) {
+                console.warn(`[knihovna] Budget exhausted before AI call – deferring`);
+                cardsDeferred.push("07_Knihovna:budget_exhausted_pre_ai");
               }
             }
           }
+        } catch (knihovnaErr) {
+          console.warn("[knihovna] 07_Knihovna analysis error (non-fatal):", knihovnaErr);
         }
-      } catch (knihovnaErr) {
-        console.warn("[knihovna] 07_Knihovna analysis error (non-fatal):", knihovnaErr);
       }
 
       // Daily report (deterministický, pouze skutečně provedené změny)
