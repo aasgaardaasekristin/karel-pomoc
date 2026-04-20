@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAccessToken, resolveKartotekaRoot, findFolder, findFileByName, readFileContent, overwriteDoc, GDOC_MIME } from "../_shared/driveHelpers.ts";
 import { SYSTEM_RULES } from "../_shared/system-rules.ts";
+import { composeEmptyCanonicalContext } from "../_shared/canonicalSnapshot.ts";
 
 // ═══════════════════════════════════════════════════════════════
 // KAREL ANALYST LOOP — v1
