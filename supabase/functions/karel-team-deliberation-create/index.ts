@@ -265,11 +265,14 @@ Deno.serve(async (req: Request) => {
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
-    // ── IDEMPOTENCE ── kanonický lookup přes (user_id, linked_briefing_item_id)
-    // Druhý klik na tutéž decisions[i] / proposed_session musí vrátit EXISTUJÍCÍ
-    // poradu, ne založit novou. Toto nahrazuje fuzzy ilike-match z klienta.
+    // ── IDEMPOTENCE ── kanonický lookup přes (user_id, linked_briefing_item_id).
+    // Dvoukroková kaskáda BEZ filtru na den:
+    //   1) živá porada (draft|active|awaiting_signoff)  → otevři ji
+    //   2) jinak schválená (approved)                   → otevři ji read-only
+    //   3) jinak INSERT
+    // closed/archived jsou mimo reuse — terapeutka je explicitně uzavřela.
     if (linkedBriefingItemId) {
-      const { data: existing } = await admin
+      const { data: live } = await admin
         .from("did_team_deliberations")
         .select("*")
         .eq("user_id", userId)
@@ -278,8 +281,22 @@ Deno.serve(async (req: Request) => {
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (existing) {
-        return new Response(JSON.stringify({ deliberation: existing, reused: true }), {
+      if (live) {
+        return new Response(JSON.stringify({ deliberation: live, reused: true }), {
+          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const { data: approvedRow } = await admin
+        .from("did_team_deliberations")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("linked_briefing_item_id", linkedBriefingItemId)
+        .eq("status", "approved")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (approvedRow) {
+        return new Response(JSON.stringify({ deliberation: approvedRow, reused: true, read_only: true }), {
           status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -364,8 +381,9 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insErr) {
-      // Race condition na UNIQUE (uniq_did_team_delib_active_briefing_item):
-      // souběžný klik už založil aktivní poradu pro stejný briefing item.
+      // Race condition na UNIQUE (uniq_did_team_delib_briefing_item):
+      // souběžný klik už založil poradu pro stejný briefing item, NEBO
+      // existuje approved porada (nový whitelist obsahuje i approved).
       // Vrátíme existující kanonický record, ne 500.
       if ((insErr as any)?.code === "23505" && linkedBriefingItemId) {
         const { data: raced } = await admin
@@ -373,12 +391,18 @@ Deno.serve(async (req: Request) => {
           .select("*")
           .eq("user_id", userId)
           .eq("linked_briefing_item_id", linkedBriefingItemId)
-          .in("status", ["draft", "active", "awaiting_signoff"])
+          .in("status", ["draft", "active", "awaiting_signoff", "approved"])
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
         if (raced) {
-          return new Response(JSON.stringify({ deliberation: raced, reused: true, race_recovered: true }), {
+          const isApproved = raced.status === "approved";
+          return new Response(JSON.stringify({
+            deliberation: raced,
+            reused: true,
+            race_recovered: true,
+            read_only: isApproved,
+          }), {
             status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
