@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
 import { loadDriveRegistryEntries } from "../_shared/driveRegistry.ts";
+import { composeEmptyCanonicalContext } from "../_shared/canonicalSnapshot.ts";
 
 // ── OAuth2 token ──
 async function getAccessToken(): Promise<string> {
@@ -507,10 +508,16 @@ Proveď analýzu a vrať JSON.`;
     if (updateError) {
       // If no row exists for today yet, insert one
       if (updateError.code === "PGRST116" || updateError.message?.includes("0 rows")) {
+        // Lock guard: never write `{}` into context_json. Reuse existing
+        // canonical context if present, otherwise compose an empty-but-valid one.
+        const existingCtx = (dailyCtx?.context_json as any) || null;
+        const safeCtx = (existingCtx && typeof existingCtx === "object" && Object.keys(existingCtx).length > 0)
+          ? existingCtx
+          : composeEmptyCanonicalContext({ date: today, source: "karel-did-daily-analyzer" });
         const { error: insertError } = await sb.from("did_daily_context").insert({
           user_id: userId,
           context_date: today,
-          context_json: dailyCtx?.context_json || {},
+          context_json: safeCtx,
           analysis_json: analysisJson,
           source: "karel-did-daily-analyzer",
           updated_at: new Date().toISOString(),

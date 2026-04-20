@@ -59,10 +59,9 @@ const loadLatestContext = async () => {
 };
 
 /** Extract display text from a context record.
- *  FÁZE 3B: čistý SYNC selektor nad kanonickým snapshotem.
- *  - žádné živé DB dotazy (žádný druhý frontend resolver mozek)
- *  - žádný `crisis_alerts` jako pravda
- *  - jen kanonická pole z `analysis_json` / `context_json` ze serveru */
+ *  FÁZE 3D: čte LOCKED canonical snapshot (schema_version=2).
+ *  Legacy klíče (parts, pipeline, command) se čtou pouze přes `legacy` bag
+ *  pro back-compat se starými řádky před lockem. */
 const extractOverviewText = (ctx: { analysis_json: any; context_json: any }): string | null => {
   const analysis = ctx.analysis_json as any;
   if (analysis?.overview) return analysis.overview;
@@ -70,37 +69,41 @@ const extractOverviewText = (ctx: { analysis_json: any; context_json: any }): st
 
   const cj = ctx.context_json as any;
   if (!cj) return null;
+  const legacy = (cj.legacy ?? cj) as any; // back-compat: pre-lock rows had legacy at root
 
   const parts: string[] = [];
 
   const crisisCount =
     typeof cj.canonical_crisis_count === "number"
       ? cj.canonical_crisis_count
-      : Array.isArray(cj?.command?.crises)
-        ? cj.command.crises.length
-        : Array.isArray(cj?.crises)
-          ? cj.crises.length
-          : null;
+      : Array.isArray(cj?.canonical_crises)
+        ? cj.canonical_crises.length
+        : Array.isArray(legacy?.command?.crises)
+          ? legacy.command.crises.length
+          : Array.isArray(legacy?.crises)
+            ? legacy.crises.length
+            : null;
   if (typeof crisisCount === "number" && crisisCount > 0) {
     parts.push(`🔴 Krize: ${crisisCount}`);
   }
 
-  const activePartsCount =
-    Array.isArray(cj?.parts?.active)
-      ? cj.parts.active.length
-      : Array.isArray(cj?.active_parts)
-        ? cj.active_parts.length
-        : null;
+  const activePartsCount = Array.isArray(legacy?.parts?.active)
+    ? legacy.parts.active.length
+    : Array.isArray(legacy?.active_parts)
+      ? legacy.active_parts.length
+      : null;
   if (typeof activePartsCount === "number" && activePartsCount > 0) {
     parts.push(`👥 Aktivní části: ${activePartsCount}`);
   }
 
   const queueCount =
-    Array.isArray(cj?.command?.queue?.primary) || Array.isArray(cj?.command?.queue?.adjunct)
-      ? (cj.command.queue.primary?.length || 0) + (cj.command.queue.adjunct?.length || 0)
-      : Array.isArray(cj?.pending_tasks)
-        ? cj.pending_tasks.length
-        : null;
+    typeof cj?.canonical_queue?.primary_count === "number" || typeof cj?.canonical_queue?.adjunct_count === "number"
+      ? (cj.canonical_queue.primary_count || 0) + (cj.canonical_queue.adjunct_count || 0)
+      : Array.isArray(legacy?.command?.queue?.primary) || Array.isArray(legacy?.command?.queue?.adjunct)
+        ? (legacy.command.queue.primary?.length || 0) + (legacy.command.queue.adjunct?.length || 0)
+        : Array.isArray(legacy?.pending_tasks)
+          ? legacy.pending_tasks.length
+          : null;
   if (typeof queueCount === "number" && queueCount > 0) {
     parts.push(`📝 Úkoly: ${queueCount}`);
   }
