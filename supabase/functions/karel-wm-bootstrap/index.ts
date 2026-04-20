@@ -29,6 +29,10 @@ import {
   computeTherapistIntelligenceFoundation,
   type TherapistFoundationInput,
 } from "../_shared/therapistIntelligenceFoundation.ts";
+import {
+  computePartIntelligenceFoundation,
+  type PartFoundationInput,
+} from "../_shared/partIntelligenceFoundation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
