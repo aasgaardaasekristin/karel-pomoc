@@ -282,13 +282,16 @@ Deno.serve(async (req: Request) => {
       }
 
       // --- (b) Resolve crisis_alert_id (NEZÁVISLE na event_id) ---------
+      // crisis_alerts.status je UPPERCASE enum (ACTIVE / ACKNOWLEDGED / RESOLVED / CLOSED).
+      // Bereme jen otevřené alerty (ACTIVE / ACKNOWLEDGED) — používáme whitelist,
+      // protože PostgREST `not.in` s lowercase řetězcem hodnoty enum neporovná.
       let crisisAlertId: string | null = null;
       if (subjectPart) {
         const { data: openAlert } = await admin
           .from("crisis_alerts")
           .select("id")
           .eq("part_name", subjectPart)
-          .not("status", "in", "(resolved,closed)")
+          .in("status", ["ACTIVE", "ACKNOWLEDGED", "active", "acknowledged"])
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
