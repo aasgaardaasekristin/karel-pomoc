@@ -3716,6 +3716,12 @@ Datum: ${dateStr}` },
       } catch (e) { console.warn("Failed to load CENTRUM docs for dedup:", e); }
     }
 
+    // ─── CLEAR Phase 3 keep-alive before Phase 3b ─────────────────────────
+    if (compileDataKeepAlive !== undefined) {
+      clearInterval(compileDataKeepAlive);
+      compileDataKeepAlive = undefined;
+    }
+
     await setPhase("ai_analysis", "Fáze 3b: AI analýza A–M");
     // 3. AI ANALÝZA – full A-M decomposition
     const existingCardsContext = Object.entries(existingCards).map(([name, content]) =>
