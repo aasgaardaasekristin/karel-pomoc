@@ -198,8 +198,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+      <DialogContent
+        className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col"
+      >
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Users className="w-4 h-4 text-primary" />
             {loading ? "Načítám…" : d?.title ?? "Porada"}
@@ -221,12 +223,13 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
           )}
         </DialogHeader>
 
+
         {loading || !d ? (
-          <div className="flex justify-center py-8">
+          <div className="flex justify-center py-8 px-6">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <ScrollArea className="flex-1 pr-3">
+          <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-4">
               {/* Karlův úvod */}
               <section className="rounded-lg border border-border/60 bg-card/40 p-3">
@@ -345,11 +348,11 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 </Button>
               </section>
             </div>
-          </ScrollArea>
+          </div>
         )}
 
         {d && (
-          <div className="border-t border-border/60 pt-3 mt-2 space-y-2">
+          <div className="shrink-0 border-t border-border/60 px-6 py-3 bg-background space-y-2">
             <div className="flex items-center gap-2">
               {(["hanka", "kata", "karel"] as const).map((who) => {
                 const signed =
@@ -367,7 +370,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                     {signing === who ? (
                       <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                     ) : signed ? (
-                      <CheckCircle2 className="w-3 h-3 mr-1 text-green-600" />
+                      <CheckCircle2 className="w-3 h-3 mr-1 text-primary" />
                     ) : null}
                     {signed ? `${who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"} ✓` : `Podepsat za ${who === "hanka" ? "Haničku" : who === "kata" ? "Káťu" : "Karla"}`}
                   </Button>
