@@ -1,6 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/auth.ts";
+import {
+  composeCanonicalContext,
+  validateCanonicalContext,
+  type CanonicalCrisisItem,
+  type CanonicalTodaySessionItem,
+  type CanonicalQueue,
+} from "../_shared/canonicalSnapshot.ts";
 import { loadDriveRegistryEntries, type DriveRegistryEntry } from "../_shared/driveRegistry.ts";
 import { computeDailyDiff } from "../_shared/dailyDiff.ts";
 
