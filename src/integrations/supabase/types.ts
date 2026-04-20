@@ -4093,6 +4093,45 @@ export type Database = {
         }
         Relationships: []
       }
+      karel_working_memory_snapshots: {
+        Row: {
+          created_at: string
+          events_json: Json
+          generated_at: string
+          id: string
+          snapshot_json: Json
+          snapshot_key: string
+          source_meta_json: Json
+          sync_state_json: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          events_json?: Json
+          generated_at?: string
+          id?: string
+          snapshot_json?: Json
+          snapshot_key: string
+          source_meta_json?: Json
+          sync_state_json?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          events_json?: Json
+          generated_at?: string
+          id?: string
+          snapshot_json?: Json
+          snapshot_key?: string
+          source_meta_json?: Json
+          sync_state_json?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       part_goals: {
         Row: {
           approved_at: string | null
