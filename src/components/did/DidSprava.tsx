@@ -562,33 +562,74 @@ const DidSprava = ({
   );
 };
 
-/* ── Status bar showing last run info ── */
-function StatusBar({ cycleStatus, unprocessedThreads }: { cycleStatus: CycleStatus; unprocessedThreads: number }) {
-  const statusColor = cycleStatus.lastStatus === "completed"
-    ? "text-emerald-600"
-    : cycleStatus.lastStatus === "failed"
-      ? "text-destructive"
-      : "text-muted-foreground";
-
-  const statusLabel = cycleStatus.lastStatus === "completed"
-    ? "✅ Úspěch"
-    : cycleStatus.lastStatus === "failed"
-      ? "❌ Chyba"
-      : cycleStatus.lastStatus === "running"
-        ? "⏳ Běží"
-        : "—";
-
+/* ── Cycle health bar (truthful: completed vs running, heartbeat age, stuck flag) ── */
+function CycleHealthBar({
+  health, unprocessedThreads, onReload, onTriggerFullCycle, onResetStuck, isTriggering, isResetting,
+}: {
+  health: CycleHealth;
+  unprocessedThreads: number;
+  onReload: () => void;
+  onTriggerFullCycle: () => void;
+  onResetStuck: () => void;
+  isTriggering: boolean;
+  isResetting: boolean;
+}) {
+  const lc = health.lastCompleted;
+  const r = health.running;
+  const stuck = !!r?.stuck;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-md bg-muted/50 text-[0.625rem] text-muted-foreground mb-2">
-      <span>
-        Poslední cyklus: <strong className="text-foreground">{formatRelativeTime(cycleStatus.lastRunAt)}</strong>
-      </span>
-      <span>
-        Status: <strong className={statusColor}>{statusLabel}</strong>
-      </span>
-      <span>
-        Nezpracovaná vlákna: <strong className={unprocessedThreads > 0 ? "text-amber-600" : "text-foreground"}>{unprocessedThreads}</strong>
-      </span>
+    <div className="rounded-md border border-border bg-muted/40 p-2.5 mb-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold flex items-center gap-1.5">
+          <Activity className="w-3 h-3" /> Provoz cyklu
+        </span>
+        <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5" onClick={onReload} disabled={health.loading}>
+          {health.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+        <span className="text-muted-foreground">Naposled dokončeno:</span>
+        <span className="font-medium text-foreground">
+          {lc?.completed_at ? formatRelativeTime(lc.completed_at) : "nikdy"}
+          {lc?.status === "completed" ? " ✅" : lc?.status === "failed" ? " ❌" : ""}
+        </span>
+        <span className="text-muted-foreground">Aktuální běh:</span>
+        <span className={`font-medium ${stuck ? "text-destructive" : r ? "text-amber-600" : "text-muted-foreground"}`}>
+          {r ? `${r.id.slice(0, 8)} (${formatRelativeTime(r.started_at)})` : "žádný"}
+        </span>
+        {r && (
+          <>
+            <span className="text-muted-foreground">Fáze:</span>
+            <span className="font-medium text-foreground truncate">{r.phase || "—"}</span>
+            <span className="text-muted-foreground">Heartbeat age:</span>
+            <span className={`font-medium ${stuck ? "text-destructive" : "text-foreground"}`}>
+              {formatHeartbeatAge(r.heartbeatAgeSec)}{stuck ? " ⚠️ stuck (>30m)" : ""}
+            </span>
+          </>
+        )}
+        {(lc?.last_error || r?.last_error) && (
+          <>
+            <span className="text-muted-foreground">Last error:</span>
+            <span className="font-medium text-destructive truncate" title={r?.last_error || lc?.last_error || ""}>
+              {(r?.last_error || lc?.last_error || "").slice(0, 60)}
+            </span>
+          </>
+        )}
+        <span className="text-muted-foreground">Nezpracovaná vlákna:</span>
+        <span className={`font-medium ${unprocessedThreads > 0 ? "text-amber-600" : "text-foreground"}`}>{unprocessedThreads}</span>
+      </div>
+      <div className="flex gap-1.5 pt-1">
+        <Button size="sm" variant="default" className="h-6 text-[10px] gap-1 flex-1" onClick={onTriggerFullCycle} disabled={isTriggering || (!!r && !stuck)}>
+          {isTriggering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          Spustit denní cyklus
+        </Button>
+        {r && (
+          <Button size="sm" variant={stuck ? "destructive" : "outline"} className="h-6 text-[10px] gap-1" onClick={onResetStuck} disabled={isResetting}>
+            {isResetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+            Force-fail
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
