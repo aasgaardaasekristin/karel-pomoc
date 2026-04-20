@@ -368,7 +368,9 @@ Deno.serve(async (req: Request) => {
           .from("did_pending_drive_writes")
           .insert({
             user_id: userId,
-            target_document: "05A_OPERATIVNI_PLAN",
+            // Plná governance cesta — bez prefixu by drive-queue-processor
+            // skipnul write s "target not in governance whitelist".
+            target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
             write_type: "append",
             content: header + synth.drive_writeback_md,
             priority: "high",
