@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain, AlertTriangle, Play, Square, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
