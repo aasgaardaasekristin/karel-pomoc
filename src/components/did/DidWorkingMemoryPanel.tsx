@@ -366,6 +366,44 @@ export default function DidWorkingMemoryPanel() {
             </div>
           )}
 
+          {/* Part Intelligence Foundation */}
+          {summary.part_state && (
+            <div className="rounded-md border border-border/50 p-2 bg-muted/30">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">
+                <span>Part State (Foundation {summary.part_state.version})</span>
+                <span className="text-[9px] opacity-70">derived · 7d window</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-xs mb-2">
+                <MiniStat label="Parts" value={summary.part_state.summary.total_parts} />
+                <MiniStat
+                  label="V krizi"
+                  value={summary.part_state.summary.parts_with_open_crisis}
+                  tone={summary.part_state.summary.parts_with_open_crisis > 0 ? "danger" : "neutral"}
+                />
+                <MiniStat
+                  label="Aktivní 24h"
+                  value={summary.part_state.summary.parts_active_today}
+                  tone="success"
+                />
+                <MiniStat label="Ticho" value={summary.part_state.summary.parts_silent} />
+              </div>
+              {summary.part_state.parts.length === 0 ? (
+                <div className="text-[10px] text-muted-foreground italic px-1">
+                  Žádné části s daty za 7 dní.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {summary.part_state.parts.map((p) => (
+                    <PartStateMini key={p.part_name_normalized} part={p} />
+                  ))}
+                </div>
+              )}
+              <div className="text-[9px] text-muted-foreground mt-1 italic">
+                Firewalled out: {summary.part_state.generated_from.excluded_scopes.join(", ")} · {summary.part_state.generated_from.excluded_sources.length} source(s).
+              </div>
+            </div>
+          )}
+
           {/* Drive queue */}
           {summary.drive_queue && (
             <div className="rounded-md border border-border/50 p-2 bg-muted/30">
