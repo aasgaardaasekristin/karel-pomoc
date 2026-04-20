@@ -333,15 +333,23 @@ function composeState(a: ComposeArgs): TherapistState {
   let supportLevel: SupportLevel = "unknown";
   let supportRationale = "Nedostatek dat pro odhad zátěže.";
 
-  const openTasks = a.tasks.filter((t) => t.status === "pending" || t.status === "in_progress").length;
-  const completedTasks7d = a.tasks.filter((t) => t.status === "completed" && t.completed_at).length;
+  // Split tasks: direct ownership vs shared ('both/team/all')
+  const directTasks = a.tasks.filter((t) => isDirectOwner(t.assigned_to, a.therapist));
+  const sharedTasks = a.tasks.filter((t) => isSharedOwner(t.assigned_to));
+
+  const openDirect = directTasks.filter((t) => t.status === "pending" || t.status === "in_progress").length;
+  const openShared = sharedTasks.filter((t) => t.status === "pending" || t.status === "in_progress").length;
+  const completedDirect7d = directTasks.filter((t) => t.status === "completed" && t.completed_at).length;
+  const completedShared7d = sharedTasks.filter((t) => t.status === "completed" && t.completed_at).length;
+  const openTasksWeighted = openDirect + Math.min(50, Math.round(openShared * 0.1)); // shared bucket capped
+  const completedTasksWeighted = completedDirect7d + Math.round(completedShared7d * 0.1);
   const ownedCrises = a.crises.length;
   const highSeverityCrises = a.crises.filter((c) => c.severity === "high" || c.severity === "critical").length;
 
-  if (openTasks > 0 || a.therapeutic_messages_7d > 0 || ownedCrises > 0) {
+  if (openDirect > 0 || a.therapeutic_messages_7d > 0 || ownedCrises > 0) {
     let load = 0;
-    if (openTasks >= 5) {
-      indicators.push(`${openTasks} otevřených úkolů`);
+    if (openDirect >= 5) {
+      indicators.push(`${openDirect} přímých otevřených úkolů`);
       load += 1;
     }
     if (highSeverityCrises >= 1) {
@@ -355,7 +363,7 @@ function composeState(a: ComposeArgs): TherapistState {
       indicators.push(`vysoká aktivita 24h (${a.therapeutic_messages_24h} zpráv)`);
       load += 1;
     }
-    if (recentness === "silent" && openTasks > 0) {
+    if (recentness === "silent" && openDirect > 0) {
       indicators.push("ticho při otevřených úkolech");
       load += 1;
     }
@@ -375,20 +383,18 @@ function composeState(a: ComposeArgs): TherapistState {
   // ── continuity ──
   let continuityScore: number | null = null;
   let continuityRationale = "Nedostatek tasků/vláken pro odhad kontinuity.";
-  const totalTaskActivity = openTasks + completedTasks7d;
+  const totalTaskActivity = openTasksWeighted + completedTasksWeighted;
 
   if (totalTaskActivity >= 2) {
-    // Continuity proxy: completion ratio + activity recency
-    const completionRatio = completedTasks7d / Math.max(1, totalTaskActivity);
+    const completionRatio = completedTasksWeighted / Math.max(1, totalTaskActivity);
     const recencyFactor = recentness === "active_today" ? 1
       : recentness === "active_week" ? 0.7
       : recentness === "stale" ? 0.3
       : 0;
     continuityScore = +(0.6 * completionRatio + 0.4 * recencyFactor).toFixed(3);
     continuityRationale =
-      `Completion ratio ${completionRatio.toFixed(2)} (${completedTasks7d}/${totalTaskActivity}) × recency ${recencyFactor}.`;
+      `Completion ratio ${completionRatio.toFixed(2)} (direct ${completedDirect7d}/${openDirect + completedDirect7d}, shared ${completedShared7d}/${openShared + completedShared7d}) × recency ${recencyFactor}.`;
   } else if (a.therapeutic_messages_7d >= 5) {
-    // Bare minimum: derive only from message activity recency
     const recencyFactor = recentness === "active_today" ? 0.7
       : recentness === "active_week" ? 0.4
       : 0.1;
@@ -401,21 +407,21 @@ function composeState(a: ComposeArgs): TherapistState {
   let confidenceOverall = 0;
   let insufficient = false;
 
-  if (a.therapeutic_messages_7d === 0 && a.tasks.length === 0 && a.obs.length === 0) {
+  if (a.therapeutic_messages_7d === 0 && directTasks.length === 0 && a.obs.length === 0) {
     confidenceOverall = 0.05;
     insufficient = true;
-    reasons.push("Žádná terapeutická aktivita ani evidence za 7 dní.");
+    reasons.push("Žádná přímá terapeutická aktivita ani evidence za 7 dní.");
   } else {
     if (a.therapeutic_messages_7d >= 5) reasons.push("Dostatečná message sample.");
     else reasons.push(`Malá message sample (${a.therapeutic_messages_7d}).`);
 
-    if (a.tasks.length >= 2) reasons.push("Task signál přítomný.");
-    else reasons.push("Slabý task signál.");
+    if (directTasks.length >= 2) reasons.push(`Přímý task signál (${directTasks.length}).`);
+    else reasons.push(`Slabý přímý task signál (${directTasks.length}).`);
 
     if (a.obs.length >= 1) reasons.push(`${a.obs.length} therapist observací.`);
 
     const msgWeight = Math.min(0.4, a.therapeutic_messages_7d * 0.04);
-    const taskWeight = Math.min(0.3, a.tasks.length * 0.05);
+    const taskWeight = Math.min(0.3, directTasks.length * 0.05);
     const evidenceWeight = Math.min(0.2, (a.obs.length + a.impl.length) * 0.03);
     const recencyWeight = recentness === "active_today" ? 0.1
       : recentness === "active_week" ? 0.07
@@ -443,8 +449,10 @@ function composeState(a: ComposeArgs): TherapistState {
     },
     continuity: {
       score: continuityScore,
-      open_tasks: openTasks,
-      completed_tasks_7d: completedTasks7d,
+      open_tasks_direct: openDirect,
+      open_tasks_shared: openShared,
+      completed_tasks_7d_direct: completedDirect7d,
+      completed_tasks_7d_shared: completedShared7d,
       rationale: continuityRationale,
     },
     confidence: {
@@ -456,7 +464,8 @@ function composeState(a: ComposeArgs): TherapistState {
     source_counts: {
       observations: a.obs.length,
       implications: a.impl.length,
-      tasks: a.tasks.length,
+      tasks_direct: directTasks.length,
+      tasks_shared: sharedTasks.length,
       therapeutic_messages: a.therapeutic_messages_7d,
       crises_owned: a.crises.length,
     },
