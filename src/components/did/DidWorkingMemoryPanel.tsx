@@ -66,6 +66,59 @@ interface TherapistFoundation {
   routing_guarantee: { excluded_scopes: string[]; excluded_sources: string[]; derived_only: true };
 }
 
+interface PartStateBlock {
+  part_name: string;
+  part_name_normalized: string;
+  activity: {
+    observations_24h: number;
+    observations_7d: number;
+    claims_7d: number;
+    thread_messages_24h: number;
+    thread_messages_7d: number;
+    last_seen_at: string | null;
+    recentness: "active_today" | "active_week" | "stale" | "silent";
+  };
+  stability_signal: {
+    level: "stable" | "fluctuating" | "destabilizing" | "unknown";
+    rationale: string;
+    indicators: string[];
+  };
+  risk_signal: {
+    level: "low" | "moderate" | "elevated" | "critical" | "unknown";
+    rationale: string;
+    indicators: string[];
+    has_open_crisis: boolean;
+    crisis_severity: string | null;
+    crisis_phase: string | null;
+  };
+  continuity: {
+    trajectory: "stable" | "changed" | "newly_active" | "recently_quiet" | "unknown";
+    rationale: string;
+    appeared_in_previous_snapshot: boolean | null;
+  };
+  care_priority: {
+    level: "watch" | "support" | "active_care" | "crisis_focus" | "background";
+    rationale: string;
+  };
+  confidence: { overall: number; reasons: string[]; insufficient_data: boolean };
+  source_counts: { observations: number; claims: number; crisis_refs: number; thread_refs: number };
+}
+
+interface PartFoundation {
+  version: string;
+  generated_at: string;
+  generated_from: { sources: string[]; excluded_sources: string[]; excluded_scopes: string[] };
+  notice: string;
+  parts: PartStateBlock[];
+  summary: {
+    total_parts: number;
+    parts_with_open_crisis: number;
+    parts_active_today: number;
+    parts_silent: number;
+    avg_confidence: number | null;
+  };
+}
+
 interface SnapshotSummary {
   snapshot_key: string;
   generated_at: string;
@@ -85,6 +138,7 @@ interface SnapshotSummary {
   stale_sources: string[];
   role_scope_breakdown_24h?: RoleScopeBreakdown | null;
   therapist_state?: TherapistFoundation | null;
+  part_state?: PartFoundation | null;
 }
 
 interface SnapshotRow {
@@ -308,6 +362,44 @@ export default function DidWorkingMemoryPanel() {
               </div>
               <div className="text-[9px] text-muted-foreground mt-1 italic">
                 Firewalled out: {summary.therapist_state.routing_guarantee.excluded_scopes.join(", ")}.
+              </div>
+            </div>
+          )}
+
+          {/* Part Intelligence Foundation */}
+          {summary.part_state && (
+            <div className="rounded-md border border-border/50 p-2 bg-muted/30">
+              <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1 flex items-center justify-between">
+                <span>Part State (Foundation {summary.part_state.version})</span>
+                <span className="text-[9px] opacity-70">derived · 7d window</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1 text-xs mb-2">
+                <MiniStat label="Parts" value={summary.part_state.summary.total_parts} />
+                <MiniStat
+                  label="V krizi"
+                  value={summary.part_state.summary.parts_with_open_crisis}
+                  tone={summary.part_state.summary.parts_with_open_crisis > 0 ? "danger" : "neutral"}
+                />
+                <MiniStat
+                  label="Aktivní 24h"
+                  value={summary.part_state.summary.parts_active_today}
+                  tone="success"
+                />
+                <MiniStat label="Ticho" value={summary.part_state.summary.parts_silent} />
+              </div>
+              {summary.part_state.parts.length === 0 ? (
+                <div className="text-[10px] text-muted-foreground italic px-1">
+                  Žádné části s daty za 7 dní.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {summary.part_state.parts.map((p) => (
+                    <PartStateMini key={p.part_name_normalized} part={p} />
+                  ))}
+                </div>
+              )}
+              <div className="text-[9px] text-muted-foreground mt-1 italic">
+                Firewalled out: {summary.part_state.generated_from.excluded_scopes.join(", ")} · {summary.part_state.generated_from.excluded_sources.length} source(s).
               </div>
             </div>
           )}
@@ -580,6 +672,127 @@ function TherapistStateMini({
           <div><span className="opacity-70">support:</span> {state.support_need.rationale}</div>
           <div><span className="opacity-70">continuity:</span> {state.continuity.rationale}</div>
           <div><span className="opacity-70">confidence:</span> {state.confidence.reasons.join(" · ")}</div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function PartStateMini({ part }: { part: PartStateBlock }) {
+  const recentnessLabel: Record<string, string> = {
+    active_today: "dnes",
+    active_week: "tento týden",
+    stale: "stagnuje",
+    silent: "ticho",
+  };
+  const recentnessTone: Record<string, string> = {
+    active_today: "text-emerald-700",
+    active_week: "text-foreground",
+    stale: "text-amber-700",
+    silent: "text-muted-foreground",
+  };
+  const riskTone: Record<string, string> = {
+    low: "text-emerald-700",
+    moderate: "text-amber-700",
+    elevated: "text-destructive",
+    critical: "text-destructive font-semibold",
+    unknown: "text-muted-foreground",
+  };
+  const stabilityTone: Record<string, string> = {
+    stable: "text-emerald-700",
+    fluctuating: "text-amber-700",
+    destabilizing: "text-destructive",
+    unknown: "text-muted-foreground",
+  };
+  const careTone: Record<string, string> = {
+    crisis_focus: "text-destructive font-semibold",
+    active_care: "text-destructive",
+    support: "text-amber-700",
+    watch: "text-foreground",
+    background: "text-muted-foreground",
+  };
+  const trajectoryLabel: Record<string, string> = {
+    stable: "stabilní",
+    changed: "posun",
+    newly_active: "nově aktivní",
+    recently_quiet: "nedávno ztichl",
+    unknown: "—",
+  };
+
+  return (
+    <div className="rounded border border-border/50 p-2 bg-background space-y-1">
+      <div className="flex items-center justify-between flex-wrap gap-1">
+        <div className="text-xs font-medium">{part.part_name}</div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className={recentnessTone[part.activity.recentness]}>
+            {recentnessLabel[part.activity.recentness] ?? part.activity.recentness}
+          </span>
+          <span className={careTone[part.care_priority.level]}>
+            {part.care_priority.level}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-[10px]">
+        <div>
+          <span className="text-muted-foreground">Obs 24h/7d:</span>{" "}
+          <span className="font-mono">
+            {part.activity.observations_24h}/{part.activity.observations_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Msgs 24h/7d:</span>{" "}
+          <span className="font-mono">
+            {part.activity.thread_messages_24h}/{part.activity.thread_messages_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Risk:</span>{" "}
+          <span className={`font-mono ${riskTone[part.risk_signal.level]}`}>
+            {part.risk_signal.level}
+          </span>
+          {part.risk_signal.has_open_crisis && (
+            <span className="ml-1 text-[9px] text-destructive">⚠ krize</span>
+          )}
+        </div>
+        <div>
+          <span className="text-muted-foreground">Stability:</span>{" "}
+          <span className={`font-mono ${stabilityTone[part.stability_signal.level]}`}>
+            {part.stability_signal.level}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Continuity:</span>{" "}
+          <span className="font-mono">{trajectoryLabel[part.continuity.trajectory]}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Confidence:</span>{" "}
+          <span className="font-mono">{part.confidence.overall.toFixed(2)}</span>
+          {part.confidence.insufficient_data && (
+            <span className="ml-1 text-[9px] text-amber-700">⚠ málo dat</span>
+          )}
+        </div>
+      </div>
+      {(part.risk_signal.indicators.length > 0 || part.stability_signal.indicators.length > 0) && (
+        <div className="text-[9px] text-muted-foreground">
+          {part.risk_signal.indicators.length > 0 && (
+            <span>Risk: {part.risk_signal.indicators.join(" · ")}</span>
+          )}
+          {part.stability_signal.indicators.length > 0 && (
+            <span className="ml-2">Stab: {part.stability_signal.indicators.join(" · ")}</span>
+          )}
+        </div>
+      )}
+      <details className="text-[9px] text-muted-foreground">
+        <summary className="cursor-pointer hover:text-foreground">rationale</summary>
+        <div className="mt-1 pl-2 space-y-0.5 border-l border-border/40">
+          <div><span className="opacity-70">risk:</span> {part.risk_signal.rationale}</div>
+          <div><span className="opacity-70">stability:</span> {part.stability_signal.rationale}</div>
+          <div><span className="opacity-70">continuity:</span> {part.continuity.rationale}</div>
+          <div><span className="opacity-70">care:</span> {part.care_priority.rationale}</div>
+          <div><span className="opacity-70">confidence:</span> {part.confidence.reasons.join(" · ")}</div>
+          <div className="opacity-70">
+            sources: obs={part.source_counts.observations} · claims={part.source_counts.claims} · crisis={part.source_counts.crisis_refs} · threads={part.source_counts.thread_refs}
+          </div>
         </div>
       </details>
     </div>

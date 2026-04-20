@@ -29,6 +29,10 @@ import {
   computeTherapistIntelligenceFoundation,
   type TherapistFoundationInput,
 } from "../_shared/therapistIntelligenceFoundation.ts";
+import {
+  computePartIntelligenceFoundation,
+  type PartFoundationInput,
+} from "../_shared/partIntelligenceFoundation.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -427,6 +431,70 @@ Deno.serve(async (req) => {
   });
   audits.push(tiRes.audit);
 
+  // ── 9. Part Intelligence Foundation (derived block) ──
+  // Reads: did_observations(subject_type=part), did_profile_claims, crisis_events (incl. recent closed),
+  // did_threads with DID sub_modes only (excludes Hana scopes).
+  const piRes = await timed("part_intelligence_foundation", async () => {
+    const cutoff14d = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [partObs7d, claims7d, crisesAll, didThreads7d, prevSnapRes] = await Promise.all([
+      db.from("did_observations")
+        .select("id, subject_id, fact, created_at, evidence_level")
+        .eq("subject_type", "part")
+        .gte("created_at", since7d)
+        .limit(500),
+      db.from("did_profile_claims")
+        .select("id, part_name, claim_text, card_section, claim_type, status, created_at")
+        .gte("created_at", since7d)
+        .limit(500),
+      db.from("crisis_events")
+        .select("id, part_name, severity, phase, opened_at, closed_at")
+        .or(`phase.not.in.(closed,CLOSED),closed_at.gte.${cutoff14d}`)
+        .limit(100),
+      db.from("did_threads")
+        .select("id, part_name, current_detected_part, sub_mode, last_activity_at, messages")
+        .in("sub_mode", ["cast", "crisis"])
+        .gte("last_activity_at", since7d)
+        .order("last_activity_at", { ascending: false })
+        .limit(40),
+      // Previous snapshot for continuity (yesterday)
+      db.from("karel_working_memory_snapshots")
+        .select("snapshot_json")
+        .eq("user_id", userId)
+        .neq("snapshot_key", snapshotKey)
+        .order("generated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
+
+    const previousPartState = prevSnapRes.data?.snapshot_json?.part_state ?? null;
+    const previousForFoundation = previousPartState
+      ? { parts: previousPartState.parts ?? [] }
+      : null;
+
+    const foundationInput: PartFoundationInput = {
+      now: new Date(),
+      part_observations: (partObs7d.data || []) as any,
+      profile_claims: (claims7d.data || []) as any,
+      crises: (crisesAll.data || []) as any,
+      did_threads: (didThreads7d.data || []) as any,
+      previous_part_state: previousForFoundation,
+    };
+
+    const foundation = computePartIntelligenceFoundation(foundationInput);
+    return {
+      data: foundation,
+      meta: {
+        count:
+          (partObs7d.data?.length ?? 0) +
+          (claims7d.data?.length ?? 0) +
+          (crisesAll.data?.length ?? 0) +
+          (didThreads7d.data?.length ?? 0),
+      },
+    };
+  });
+  audits.push(piRes.audit);
+
   // ── Compose snapshot ──
   const snapshotJson = {
     snapshot_key: snapshotKey,
@@ -448,6 +516,7 @@ Deno.serve(async (req) => {
     crises_open: crisisRes.data ?? [],
     role_scope_breakdown_24h: (roleScopeRes.data as any) ?? null,
     therapist_state: (tiRes.data as any) ?? null,
+    part_state: (piRes.data as any) ?? null,
   };
 
   // events_json — lightweight unified stream of recent changes
