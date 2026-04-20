@@ -4540,6 +4540,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             // Awakening updates already done programmatically in resolveCardTarget
             // AI-generated sections will be APPENDED on top of forced sections
 
+            // ═══ INNER BUDGET GATE #3: before updateCardSections (Drive write) ═══
+            if (isPhase4BudgetExhausted()) {
+              cardsBudgetExceeded = true;
+              cardsDeferred.push(rawPartName);
+              continue;
+            }
             const result = await updateCardSections(
               token,
               resolvedPartName,
