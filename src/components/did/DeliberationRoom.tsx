@@ -526,7 +526,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                     variant={signed ? "secondary" : "default"}
                     disabled={disabled}
                     title={karelGateBlocked
-                      ? "Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu"."
+                      ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
                       : undefined}
                     className="h-8 text-[11px] flex-1"
                     onClick={() => handleSign(who)}
