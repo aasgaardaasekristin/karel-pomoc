@@ -170,6 +170,21 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
     }
   };
 
+  const handleSynthesize = async () => {
+    if (!d) return;
+    setSynthesizing(true);
+    try {
+      const res = await synthesize(d.id);
+      if (res?.synthesis) {
+        toast.success("Karlova syntéza hotová. Můžeš podepsat.");
+      }
+    } catch (e: any) {
+      toast.error(e?.message ?? "Syntéza selhala. Mají Hanička a Káťa už odpověděno?");
+    } finally {
+      setSynthesizing(false);
+    }
+  };
+
   const handleAnswer = async (who: "hanka" | "kata", idx: number, answer: string) => {
     if (!d) return;
     try {
