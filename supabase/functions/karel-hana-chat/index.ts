@@ -820,11 +820,10 @@ serve(async (req) => {
             .catch(e => console.error("Episode save failed:", e));
         }
 
-        // ═══ STEP 5 (Phase 2): Post-chat structured writeback ═══
-        // karel-hana-chat = Hana/osobní režim → isHanaPersonal=true → HARD firewall
-        // applies (intimate content forced to KAREL + secret_karel_only).
-        // DID-relevantní fakta projdou jako SITUACNI/POZNATKY a sensitivity guard
-        // je odpojí od PART_CARD pokud jsou therapist_private.
+        // ═══ STEP 5 (Phase 2): Role classification + Post-chat structured writeback ═══
+        // 1. Classify role_scope of user message
+        // 2. Store role_scope_meta into conversation (non-blocking)
+        // 3. Route writeback with role_scope guard
         if (fullResponse.length > 30) {
           const lastUserMsg = (messages as any[]).filter((m: any) => m.role === "user").pop();
           const userTextHana = typeof lastUserMsg?.content === "string"
@@ -833,12 +832,48 @@ serve(async (req) => {
               ? (lastUserMsg.content.find((c: any) => c?.type === "text")?.text || "")
               : "";
           if (userTextHana.length > 15) {
+            // Classify role scope
+            const roleScope = await classifyRoleScope(userTextHana, LOVABLE_API_KEY);
+            console.log(`[hana-role-scope] scope=${roleScope.role_scope}, origin=${roleScope.role_scope_meta.origin}, confidence=${roleScope.role_scope_meta.confidence}`);
+
+            // Persist role_scope_meta into conversation messages (non-blocking, best-effort)
+            if (conversationId) {
+              sb.from("karel_hana_conversations")
+                .select("messages")
+                .eq("id", conversationId)
+                .maybeSingle()
+                .then(({ data: convData }) => {
+                  if (convData?.messages && Array.isArray(convData.messages)) {
+                    const msgs = convData.messages as any[];
+                    // Tag the last user message
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                      if (msgs[i]?.role === "user") {
+                        msgs[i].role_scope = roleScope.role_scope;
+                        msgs[i].role_scope_meta = roleScope.role_scope_meta;
+                        if (roleScope.role_scope_segments) {
+                          msgs[i].role_scope_segments = roleScope.role_scope_segments;
+                        }
+                        break;
+                      }
+                    }
+                    sb.from("karel_hana_conversations")
+                      .update({ messages: msgs })
+                      .eq("id", conversationId)
+                      .then(() => {})
+                      .catch((e: any) => console.warn("[hana-role-scope] persist failed:", e));
+                  }
+                })
+                .catch((e: any) => console.warn("[hana-role-scope] read failed:", e));
+            }
+
+            // Run writeback with role scope context
             runHanaPostChatWriteback({
               userId: user.id,
               userText: userTextHana,
               karelResponse: fullResponse,
               conversationId: conversationId || null,
               apiKey: LOVABLE_API_KEY,
+              roleScope,
             }).catch((e) => console.error("[hana-writeback] failed:", e));
           }
         }
