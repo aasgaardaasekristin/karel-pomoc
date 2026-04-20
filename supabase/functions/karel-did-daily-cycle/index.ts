@@ -4491,6 +4491,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
+            // ═══ INNER BUDGET GATE #2: before findCardFile (Drive list) ═══
+            if (isPhase4BudgetExhausted()) {
+              cardsBudgetExceeded = true;
+              cardsDeferred.push(rawPartName);
+              continue;
+            }
             // ═══ FAIL-SAFE: registry match but card not found → alert, NO fallback write ═══
             const lookupName = target.registryEntry?.name || resolvedPartName;
             const probeCard = await findCardFile(token, lookupName, target.searchRootId);
