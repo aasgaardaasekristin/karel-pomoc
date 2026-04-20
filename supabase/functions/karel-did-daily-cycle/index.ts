@@ -4297,10 +4297,13 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       }),
     });
     clearTimeout(analysisTimeout);
+    if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
     } catch (abortErr: any) {
       clearTimeout(analysisTimeout);
+      if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
       if (abortErr?.name === "AbortError") {
         console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
+        await setPhase("ai_analysis_timeout", "Phase 3b AI gateway timeout 120s");
         analysisResponse = new Response("", { status: 408 });
       } else {
         throw abortErr;
