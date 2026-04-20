@@ -789,6 +789,233 @@ const DidContentRouterInner: React.FC<DidContentRouterProps> = (props) => {
   );
 };
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Surface Reorganization Pass (2026-04-20)
+   TerapeutSurfaces — locked target IA pro DID/Terapeut hlavní plochu.
+
+   4 ploch:
+     🩺 Dashboard       → frontstage operativy (DidDashboard)
+     🧠 Karlův přehled  → decision deck (KarelOverviewPanel)
+     💬 Komunikace      → Hanička / Káťa / Porady / Live (původní výběr)
+     🔧 Admin           → DidSprava (admin/diagnostika v dialogu)
+
+   Kartotéka částí žije pod Komunikace → Live → Kartotéka (původní cesta,
+   nerozbíjíme runtime contracty). Centrum (Drive snapshot view) zůstává
+   v Adminu — provozní servis, ne hlavní plocha.
+   ───────────────────────────────────────────────────────────────────── */
+
+type TerapeutSurface = "dashboard" | "overview" | "communication" | "admin";
+
+interface TerapeutSurfacesProps {
+  navigate: (path: string) => void;
+  setDidFlowState: React.Dispatch<React.SetStateAction<DidFlowState>>;
+  setDidSubMode: React.Dispatch<React.SetStateAction<any>>;
+  setMeetingTherapist: React.Dispatch<React.SetStateAction<"hanka" | "kata">>;
+  onManualUpdate: () => Promise<void>;
+  isManualUpdateLoading: boolean;
+  syncProgress: SyncProgress | null;
+  handleDidSubModeSelect: (subMode: any) => void;
+  handleQuickThread: (threadId: string, partName: string) => Promise<void>;
+  didInitialContext: string;
+  basicDocsRef: React.MutableRefObject<string>;
+  didContextPrime: { runPrime: (partName?: string, subMode?: string) => void; primeCache: string | null; isPriming: boolean };
+}
+
+const TerapeutSurfaces: React.FC<TerapeutSurfacesProps> = ({
+  navigate,
+  setDidFlowState,
+  setDidSubMode,
+  setMeetingTherapist,
+  onManualUpdate,
+  isManualUpdateLoading,
+  syncProgress,
+  handleDidSubModeSelect,
+  handleQuickThread,
+  didInitialContext,
+  basicDocsRef,
+  didContextPrime,
+}) => {
+  // Persistovaná volba plochy přes navigace (sessionStorage), default = dashboard.
+  const [surface, setSurface] = useState<TerapeutSurface>(() => {
+    try {
+      const saved = sessionStorage.getItem("karel_terapeut_surface");
+      if (saved === "overview" || saved === "communication" || saved === "admin" || saved === "dashboard") {
+        return saved;
+      }
+    } catch { /* ignore */ }
+    return "dashboard";
+  });
+
+  const switchSurface = (next: TerapeutSurface) => {
+    setSurface(next);
+    try { sessionStorage.setItem("karel_terapeut_surface", next); } catch { /* ignore */ }
+  };
+
+  return (
+    <div className="jung-study flex-1 flex flex-col min-h-0">
+      {/* Tab bar — minimal, sticky, semantic tokens only */}
+      <div className="shrink-0 border-b border-border/60 bg-background/80 backdrop-blur-sm">
+        <div className="mx-auto max-w-[900px] px-3 sm:px-4">
+          <nav role="tablist" aria-label="DID/Terapeut plochy" className="flex items-center gap-1 overflow-x-auto py-2">
+            <SurfaceTab active={surface === "dashboard"} onClick={() => switchSurface("dashboard")}>
+              🩺 Dashboard
+            </SurfaceTab>
+            <SurfaceTab active={surface === "overview"} onClick={() => switchSurface("overview")}>
+              🧠 Karlův přehled
+            </SurfaceTab>
+            <SurfaceTab active={surface === "communication"} onClick={() => switchSurface("communication")}>
+              💬 Komunikace
+            </SurfaceTab>
+            <SurfaceTab active={surface === "admin"} onClick={() => switchSurface("admin")}>
+              🔧 Admin
+            </SurfaceTab>
+          </nav>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="relative z-10 min-h-full">
+          {surface === "dashboard" && (
+            <ErrorBoundary fallbackTitle="Dashboard selhal">
+              <DidDashboard
+                onManualUpdate={onManualUpdate}
+                isUpdating={isManualUpdateLoading}
+                syncProgress={syncProgress}
+                onQuickSubMode={handleDidSubModeSelect}
+                onQuickThread={handleQuickThread}
+                contextDocs={didInitialContext || basicDocsRef.current}
+                onRefreshMemory={() => didContextPrime.runPrime(undefined, "mamka")}
+                isRefreshingMemory={!!(didContextPrime as any).isPriming}
+              />
+            </ErrorBoundary>
+          )}
+
+          {surface === "overview" && (
+            <ErrorBoundary fallbackTitle="Karlův přehled selhal">
+              <KarelOverviewPanel />
+            </ErrorBoundary>
+          )}
+
+          {surface === "communication" && (
+            <CommunicationSurface
+              setDidFlowState={setDidFlowState}
+              setDidSubMode={setDidSubMode}
+              setMeetingTherapist={setMeetingTherapist}
+              onBackToHub={() => navigate("/hub")}
+            />
+          )}
+
+          {surface === "admin" && (
+            <AdminSurface
+              navigate={navigate}
+            />
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+};
+
+const SurfaceTab: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({
+  active, onClick, children,
+}) => (
+  <button
+    role="tab"
+    aria-selected={active}
+    onClick={onClick}
+    className={`px-3 py-1.5 rounded-lg text-xs font-serif tracking-wide whitespace-nowrap transition-colors ${
+      active
+        ? "bg-primary/10 text-foreground"
+        : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+    }`}
+  >
+    {children}
+  </button>
+);
+
+/* ── Komunikace plocha — původní 4 buttony (Hanička / Káťa / Porady / Live) ── */
+const CommunicationSurface: React.FC<{
+  setDidFlowState: React.Dispatch<React.SetStateAction<DidFlowState>>;
+  setDidSubMode: React.Dispatch<React.SetStateAction<any>>;
+  setMeetingTherapist: React.Dispatch<React.SetStateAction<"hanka" | "kata">>;
+  onBackToHub: () => void;
+}> = ({ setDidFlowState, setDidSubMode, setMeetingTherapist }) => (
+  <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6">
+    <h3 className="text-sm font-serif font-normal mb-4 text-center tracking-wide text-muted-foreground">
+      Kdo mluví s Karlem?
+    </h3>
+    <div className="space-y-2">
+      <button
+        onClick={() => { setDidSubMode("mamka"); setDidFlowState("pin-entry"); }}
+        className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+        style={{ borderLeft: "3px solid hsl(28 42% 38%)" }}
+      >
+        <span className="text-lg">✨</span>
+        <div>
+          <div className="font-serif font-normal tracking-wide text-foreground">Hanička</div>
+          <div className="text-xs font-light tracking-wide text-muted-foreground">Supervize, analýza, plánování – Karel pracuje jako tandem-terapeut</div>
+        </div>
+      </button>
+      <button
+        onClick={() => { setDidSubMode("kata"); setDidFlowState("pin-entry"); }}
+        className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+        style={{ borderLeft: "3px solid hsl(var(--muted-foreground))" }}
+      >
+        <span className="text-lg">🤍</span>
+        <div>
+          <div className="font-serif font-normal tracking-wide text-foreground">Káťa</div>
+          <div className="text-xs font-light tracking-wide text-muted-foreground">Konzultace – jak reagovat, jak oslovit části, jak podporovat systém</div>
+        </div>
+      </button>
+      <button
+        onClick={() => { setDidFlowState("meeting"); setMeetingTherapist("hanka"); }}
+        className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+        style={{ borderLeft: "3px solid hsl(28 42% 38%)" }}
+      >
+        <span className="text-lg">📋</span>
+        <div>
+          <div className="font-serif font-normal tracking-wide text-foreground">Porady týmu</div>
+          <div className="text-xs font-light tracking-wide text-muted-foreground">Asynchronní porady – Karel moderuje, oba terapeuti přispívají</div>
+        </div>
+      </button>
+      <button
+        onClick={() => { setDidSubMode("mamka"); setDidFlowState("live-session"); }}
+        className="w-full flex items-center gap-3 p-4 rounded-2xl transition-all text-left jung-card hover:shadow-md"
+        style={{ borderLeft: "3px solid hsl(40 60% 50%)" }}
+      >
+        <span className="text-lg" style={{ color: "hsl(40 60% 50%)" }}>✦</span>
+        <div>
+          <div className="font-serif font-normal tracking-wide text-foreground">Live DID sezení</div>
+          <div className="text-xs font-light tracking-wide text-muted-foreground">Karel radí v reálném čase při práci s částí – audio + chat</div>
+        </div>
+      </button>
+    </div>
+    <p className="text-[11px] text-muted-foreground text-center mt-6">
+      Kartotéka částí: otevři Live DID sezení → tlačítko „Kartotéka" v horní liště výběru části.
+    </p>
+  </div>
+);
+
+/* ── Admin plocha — instrukce + přímé otevření DidSprava dialogu ──
+     Admin (DidSprava) zůstává inline jako Dialog v Dashboardu. Tady jen
+     navedeme uživatele a poskytneme rychlý odkaz. To nerozbíjí stávající
+     wiring — všechny admin tooly žijí dál uvnitř DidSprava. */
+const AdminSurface: React.FC<{ navigate: (path: string) => void }> = () => (
+  <div className="max-w-2xl mx-auto px-3 sm:px-4 py-6 space-y-4">
+    <div className="jung-card p-4 space-y-2">
+      <h3 className="text-sm font-serif tracking-wide text-foreground">🔧 Admin / Diagnostika</h3>
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Servisní plocha — Working Memory inspect, registry, drive queue, health audit, recovery.
+        Otevři přes tlačítko <strong>Správa</strong> v horním pravém rohu Dashboardu.
+      </p>
+      <p className="text-[11px] text-muted-foreground">
+        Tato plocha záměrně nedrží trvalá data — admin tooly žijí v dialogu, aby běžná pracovní plocha
+        zůstala čistá.
+      </p>
+    </div>
+  </div>
+);
+
 const DidContentRouter: React.FC<DidContentRouterProps> = (props) => {
   const { applyTemporaryTheme, restoreGlobalTheme } = useTheme();
   const didSubMode = props.didSubMode;
