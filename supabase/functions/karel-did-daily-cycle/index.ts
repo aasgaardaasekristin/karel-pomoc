@@ -3424,6 +3424,15 @@ Datum: ${dateStr}` },
     console.log(`[daily-cycle] Processing: ${reportThreads.length} threads (${threads.length} unprocessed), ${reportConversations.length} conversations (${conversations.length} unprocessed), hasRecentActivity=${hasRecentActivity}`);
 
     await setPhase("compile_data", "Fáze 3: Sběr a komprimace vláken/konverzací");
+    // ─── KEEP-ALIVE: Phase 3 (compile_data) iterates over many Drive folders
+    // (00_CENTRUM flat docs, 05_PLAN, 06_INTERVENCE, 07_DOHODY, individual
+    // part cards) with sequential readFileContent / listFilesInFolder calls.
+    // Without a periodic heartbeat the cleanup-watcher (E3) can mark the run
+    // stuck mid-flight (observed: 74a1ed4d died after 10s). Tick every 45s;
+    // cleared in the matching finally below before Phase 3b begins.
+    let compileDataKeepAlive: number | undefined = setInterval(() => {
+      void setPhase("compile_data_keepalive", "Fáze 3: čtu Drive (CENTRUM/karty/dohody)");
+    }, 45_000) as unknown as number;
     // 3. COMPILE THREAD + CONVERSATION DATA (token-safe, truncated)
     const clip = (v: string, max = 600) => (v.length > max ? `${v.slice(0, max)}…` : v);
 
