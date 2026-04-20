@@ -1730,6 +1730,12 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
         harvestMs: harvestTime,
         totalMs: totalTime,
         newsAvailable: newsDigest.length > 0,
+        therapistProfileLoadStatus: {
+          profilHanka:    { loaded: therapistProfiles.profilHanka.loaded,    chars: therapistProfiles.profilHanka.chars,    reason: therapistProfiles.profilHanka.reason },
+          strategieHanka: { loaded: therapistProfiles.strategieHanka.loaded, chars: therapistProfiles.strategieHanka.chars, reason: therapistProfiles.strategieHanka.reason },
+          profilKata:     { loaded: therapistProfiles.profilKata.loaded,     chars: therapistProfiles.profilKata.chars,     reason: therapistProfiles.profilKata.reason },
+          strategieKata:  { loaded: therapistProfiles.strategieKata.loaded,  chars: therapistProfiles.strategieKata.chars,  reason: therapistProfiles.strategieKata.reason },
+        },
       },
     };
 
