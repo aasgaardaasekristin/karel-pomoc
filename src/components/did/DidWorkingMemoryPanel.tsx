@@ -677,3 +677,124 @@ function TherapistStateMini({
     </div>
   );
 }
+
+function PartStateMini({ part }: { part: PartStateBlock }) {
+  const recentnessLabel: Record<string, string> = {
+    active_today: "dnes",
+    active_week: "tento týden",
+    stale: "stagnuje",
+    silent: "ticho",
+  };
+  const recentnessTone: Record<string, string> = {
+    active_today: "text-emerald-700",
+    active_week: "text-foreground",
+    stale: "text-amber-700",
+    silent: "text-muted-foreground",
+  };
+  const riskTone: Record<string, string> = {
+    low: "text-emerald-700",
+    moderate: "text-amber-700",
+    elevated: "text-destructive",
+    critical: "text-destructive font-semibold",
+    unknown: "text-muted-foreground",
+  };
+  const stabilityTone: Record<string, string> = {
+    stable: "text-emerald-700",
+    fluctuating: "text-amber-700",
+    destabilizing: "text-destructive",
+    unknown: "text-muted-foreground",
+  };
+  const careTone: Record<string, string> = {
+    crisis_focus: "text-destructive font-semibold",
+    active_care: "text-destructive",
+    support: "text-amber-700",
+    watch: "text-foreground",
+    background: "text-muted-foreground",
+  };
+  const trajectoryLabel: Record<string, string> = {
+    stable: "stabilní",
+    changed: "posun",
+    newly_active: "nově aktivní",
+    recently_quiet: "nedávno ztichl",
+    unknown: "—",
+  };
+
+  return (
+    <div className="rounded border border-border/50 p-2 bg-background space-y-1">
+      <div className="flex items-center justify-between flex-wrap gap-1">
+        <div className="text-xs font-medium">{part.part_name}</div>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className={recentnessTone[part.activity.recentness]}>
+            {recentnessLabel[part.activity.recentness] ?? part.activity.recentness}
+          </span>
+          <span className={careTone[part.care_priority.level]}>
+            {part.care_priority.level}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-[10px]">
+        <div>
+          <span className="text-muted-foreground">Obs 24h/7d:</span>{" "}
+          <span className="font-mono">
+            {part.activity.observations_24h}/{part.activity.observations_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Msgs 24h/7d:</span>{" "}
+          <span className="font-mono">
+            {part.activity.thread_messages_24h}/{part.activity.thread_messages_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Risk:</span>{" "}
+          <span className={`font-mono ${riskTone[part.risk_signal.level]}`}>
+            {part.risk_signal.level}
+          </span>
+          {part.risk_signal.has_open_crisis && (
+            <span className="ml-1 text-[9px] text-destructive">⚠ krize</span>
+          )}
+        </div>
+        <div>
+          <span className="text-muted-foreground">Stability:</span>{" "}
+          <span className={`font-mono ${stabilityTone[part.stability_signal.level]}`}>
+            {part.stability_signal.level}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Continuity:</span>{" "}
+          <span className="font-mono">{trajectoryLabel[part.continuity.trajectory]}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Confidence:</span>{" "}
+          <span className="font-mono">{part.confidence.overall.toFixed(2)}</span>
+          {part.confidence.insufficient_data && (
+            <span className="ml-1 text-[9px] text-amber-700">⚠ málo dat</span>
+          )}
+        </div>
+      </div>
+      {(part.risk_signal.indicators.length > 0 || part.stability_signal.indicators.length > 0) && (
+        <div className="text-[9px] text-muted-foreground">
+          {part.risk_signal.indicators.length > 0 && (
+            <span>Risk: {part.risk_signal.indicators.join(" · ")}</span>
+          )}
+          {part.stability_signal.indicators.length > 0 && (
+            <span className="ml-2">Stab: {part.stability_signal.indicators.join(" · ")}</span>
+          )}
+        </div>
+      )}
+      <details className="text-[9px] text-muted-foreground">
+        <summary className="cursor-pointer hover:text-foreground">rationale</summary>
+        <div className="mt-1 pl-2 space-y-0.5 border-l border-border/40">
+          <div><span className="opacity-70">risk:</span> {part.risk_signal.rationale}</div>
+          <div><span className="opacity-70">stability:</span> {part.stability_signal.rationale}</div>
+          <div><span className="opacity-70">continuity:</span> {part.continuity.rationale}</div>
+          <div><span className="opacity-70">care:</span> {part.care_priority.rationale}</div>
+          <div><span className="opacity-70">confidence:</span> {part.confidence.reasons.join(" · ")}</div>
+          <div className="opacity-70">
+            sources: obs={part.source_counts.observations} · claims={part.source_counts.claims} · crisis={part.source_counts.crisis_refs} · threads={part.source_counts.thread_refs}
+          </div>
+        </div>
+      </details>
+    </div>
+  );
+}
