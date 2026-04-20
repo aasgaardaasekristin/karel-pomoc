@@ -223,6 +223,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
           )}
         </DialogHeader>
 
+
         {loading || !d ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
