@@ -5578,23 +5578,21 @@ ESKALACE: level ${task.escalation_level || 0}`,
         context_data: {
           auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined,
           phase4: {
-            budgetMs: PHASE4_CARDS_BUDGET_MS,
-            elapsedMs: Date.now() - phase4CardsStart,
-            budgetExceeded: cardsBudgetExceeded,
-            cardsProcessed: cardsUpdated.length,
+            mode: "async_enqueue_v3",
+            elapsedMs: Date.now() - phase4Start,
+            cardsEnqueuedCount: cardsEnqueued.length,
+            cardsEnqueued: cardsEnqueued.length > 0 ? cardsEnqueued : undefined,
             cardsDeferredCount: cardsDeferred.length,
             cardsDeferred: cardsDeferred.length > 0 ? cardsDeferred : undefined,
+            centrumEnqueuedCount: centrumEnqueued.length,
+            centrumEnqueued: centrumEnqueued.length > 0 ? centrumEnqueued : undefined,
+            enqueueErrors: cardEnqueueErrors,
           },
         },
       }).eq("id", cycle.id);
     }
 
     // shadowSync moved to standalone CRON — see karel-did-context-prime (runs daily at 5:30 UTC)
-
-    if (updateCardsKeepAlive !== undefined) {
-      clearInterval(updateCardsKeepAlive);
-      updateCardsKeepAlive = undefined;
-    }
 
     await setPhase("revize_05ab", "Fáze 5: Denní revize 05A/05B");
     // ═══════════════════════════════════════════════════════════
