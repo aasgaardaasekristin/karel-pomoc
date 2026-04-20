@@ -560,6 +560,21 @@ ${tasksDigest || "(žádné)"}
 ═══ DRIVE DOKUMENTY ═══
 ${driveDigest || "(nedostupné)"}
 
+═══ THERAPIST PROFILES (TARGETED — explicit decision input) ═══
+Toto je AUTORITATIVNÍ profil terapeutek načtený přímo z PAMET_KAREL/DID/HANKA/ a /KATA/.
+
+--- [THERAPIST_PROFILE_HANKA] (PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt) ---
+${therapistProfiles.profilHanka.loaded ? therapistProfiles.profilHanka.content : `(missing — ${therapistProfiles.profilHanka.reason})`}
+
+--- [THERAPIST_STRATEGY_HANKA] (PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE.txt) ---
+${therapistProfiles.strategieHanka.loaded ? therapistProfiles.strategieHanka.content : `(missing — ${therapistProfiles.strategieHanka.reason})`}
+
+--- [THERAPIST_PROFILE_KATA] (PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt) ---
+${therapistProfiles.profilKata.loaded ? therapistProfiles.profilKata.content : `(missing — ${therapistProfiles.profilKata.reason})`}
+
+--- [THERAPIST_STRATEGY_KATA] (PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE.txt) ---
+${therapistProfiles.strategieKata.loaded ? therapistProfiles.strategieKata.content : `(missing — ${therapistProfiles.strategieKata.reason})`}
+
 ═══ NOVINKY ═══
 ${newsDigest || "(nedostupné)"}`;
 
