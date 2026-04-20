@@ -62,10 +62,11 @@ export function selectCanonicalCrisesFromSnapshot(
   contextJson: any,
 ): CanonicalCrisisSnapshotItem[] {
   if (!contextJson) return [];
+  const legacy = (contextJson.legacy ?? contextJson) as any;
   const list = Array.isArray(contextJson.canonical_crises)
     ? contextJson.canonical_crises
-    : Array.isArray(contextJson?.command?.crises)
-      ? contextJson.command.crises
+    : Array.isArray(legacy?.command?.crises)
+      ? legacy.command.crises
       : [];
   return list as CanonicalCrisisSnapshotItem[];
 }
