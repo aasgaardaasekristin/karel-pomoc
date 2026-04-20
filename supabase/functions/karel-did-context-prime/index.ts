@@ -796,6 +796,23 @@ serve(async (req) => {
       vlakna3Dny: string;
       kdoJeKdo: string;
     } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", vlakna3Dny: "", kdoJeKdo: "" };
+
+    // ── TARGETED therapist profile reads (PROFIL_OSOBNOSTI + STRATEGIE_KOMUNIKACE) ──
+    // Always read BOTH Hanka and Káťa explicitly (independent of active subMode) so that
+    // cross-references (e.g. Hanka mode mentioning Káťa's style) have authoritative data.
+    // Backward-compat: we keep the folder snapshot in driveData["PROFIL_HANKA"]/["PROFIL_KATA"].
+    type TherapistProfileBlock = { content: string; loaded: boolean; chars: number; reason?: string };
+    const therapistProfiles: {
+      profilHanka: TherapistProfileBlock;
+      strategieHanka: TherapistProfileBlock;
+      profilKata: TherapistProfileBlock;
+      strategieKata: TherapistProfileBlock;
+    } = {
+      profilHanka:    { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      strategieHanka: { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      profilKata:     { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      strategieKata:  { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+    };
     // "general" = Hana/osobní (frontend sends didSubMode="general" for personal mode)
     const needsOperationalMemory = ["mamka", "kata", "general", "hana_personal", "personal"].includes(subMode || "");
 
@@ -879,10 +896,64 @@ serve(async (req) => {
             const kataFolderId = await findFolder(token, "KATA", didPametId);
             if (hankaFolderId) {
               reads.push(readFolderDocs(token, hankaFolderId, 5, 6000).then(d => { driveData["PROFIL_HANKA"] = d; }));
+            } else {
+              therapistProfiles.profilHanka.reason = "folder_missing:PAMET_KAREL/DID/HANKA";
+              therapistProfiles.strategieHanka.reason = "folder_missing:PAMET_KAREL/DID/HANKA";
             }
             if (kataFolderId) {
               reads.push(readFolderDocs(token, kataFolderId, 5, 6000).then(d => { driveData["PROFIL_KATA"] = d; }));
+            } else {
+              therapistProfiles.profilKata.reason = "folder_missing:PAMET_KAREL/DID/KATA";
+              therapistProfiles.strategieKata.reason = "folder_missing:PAMET_KAREL/DID/KATA";
             }
+
+            // ── TARGETED therapist profile reads (always for both therapists) ──
+            // Loads PROFIL_OSOBNOSTI.txt + STRATEGIE_KOMUNIKACE.txt explicitly so they
+            // appear in the prompt as their own, clearly-labelled blocks. The folder
+            // snapshot above stays as a backward-compatible fallback.
+            const TARGETED_PROFILE_MAX = 4000;
+            const targetedReads: Array<{
+              therapist: "hanka" | "kata";
+              folderId: string | null;
+              fileName: string;
+              key: "profilHanka" | "strategieHanka" | "profilKata" | "strategieKata";
+            }> = [
+              { therapist: "hanka", folderId: hankaFolderId, fileName: "PROFIL_OSOBNOSTI.txt",     key: "profilHanka" },
+              { therapist: "hanka", folderId: hankaFolderId, fileName: "STRATEGIE_KOMUNIKACE.txt", key: "strategieHanka" },
+              { therapist: "kata",  folderId: kataFolderId,  fileName: "PROFIL_OSOBNOSTI.txt",     key: "profilKata" },
+              { therapist: "kata",  folderId: kataFolderId,  fileName: "STRATEGIE_KOMUNIKACE.txt", key: "strategieKata" },
+            ];
+            for (const tr of targetedReads) {
+              if (!tr.folderId) continue; // reason already set above
+              reads.push((async () => {
+                try {
+                  // Try exact .txt name, then bare name (Google Doc without extension)
+                  let doc = await findDocByExactName(token, tr.folderId!, tr.fileName);
+                  if (!doc) doc = await findDocByExactName(token, tr.folderId!, tr.fileName.replace(/\.txt$/, ""));
+                  if (!doc) {
+                    therapistProfiles[tr.key].reason = `file_missing:${tr.fileName}`;
+                    console.warn(`[therapist-profile] ${tr.key}: ${tr.fileName} not found in PAMET_KAREL/DID/${tr.therapist.toUpperCase()}`);
+                    return;
+                  }
+                  const content = await readDoc(token, doc.id, TARGETED_PROFILE_MAX);
+                  if (!content || content === "[nečitelné]") {
+                    therapistProfiles[tr.key].reason = "unreadable";
+                    return;
+                  }
+                  therapistProfiles[tr.key] = {
+                    content,
+                    loaded: true,
+                    chars: content.length,
+                    reason: "ok",
+                  };
+                  console.log(`[therapist-profile] Loaded ${tr.key} (${content.length} chars)`);
+                } catch (e) {
+                  therapistProfiles[tr.key].reason = `error:${e instanceof Error ? e.message : "unknown"}`;
+                  console.warn(`[therapist-profile] ${tr.key} read error:`, e);
+                }
+              })());
+            }
+
 
             // ── 72h Operational Memory: targeted reads for mamka/kata/general(hana_personal) ──
             if (needsOperationalMemory) {
@@ -1438,6 +1509,7 @@ ${operationalMemory.karelFile || "(prázdný)"}
 
 --- [P6] KDO JE KDO (referenční kontext osob a míst) ---
 ${operationalMemory.kdoJeKdo || "(prázdný)"}
+
 ${(() => {
   // Extract today's action intelligence from SITUACNI_ANALYZA and KARLOVY_POZNATKY
   const todayTag = new Date().toISOString().slice(0, 10);
@@ -1477,6 +1549,32 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
 `;
 })()}
 ` : ""}
+
+═══ THERAPIST PROFILES (TARGETED — explicit decision input) ═══
+Toto je AUTORITATIVNÍ profil terapeutek načtený přímo z PAMET_KAREL/DID/HANKA/ a /KATA/ (cílené čtení, nezávislé na aktuálním režimu).
+Karel jej používá při rozhodování o tónu, strategii komunikace, míře autonomie, formě otázek
+a způsobu zadávání úkolů. NIKDY necituj nahlas — je to vnitřní kompas.
+
+--- [THERAPIST_PROFILE_HANKA] (PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt) ---
+${therapistProfiles.profilHanka.loaded
+  ? therapistProfiles.profilHanka.content
+  : `(missing — ${therapistProfiles.profilHanka.reason})`}
+
+--- [THERAPIST_STRATEGY_HANKA] (PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE.txt) ---
+${therapistProfiles.strategieHanka.loaded
+  ? therapistProfiles.strategieHanka.content
+  : `(missing — ${therapistProfiles.strategieHanka.reason})`}
+
+--- [THERAPIST_PROFILE_KATA] (PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt) ---
+${therapistProfiles.profilKata.loaded
+  ? therapistProfiles.profilKata.content
+  : `(missing — ${therapistProfiles.profilKata.reason})`}
+
+--- [THERAPIST_STRATEGY_KATA] (PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE.txt) ---
+${therapistProfiles.strategieKata.loaded
+  ? therapistProfiles.strategieKata.content
+  : `(missing — ${therapistProfiles.strategieKata.reason})`}
+
 ═══ MASTER PLAN (SYSTÉM JAKO CELEK) ═══
 ${(() => {
   const sp = dbResults.systemProfile;
@@ -1632,6 +1730,12 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
         harvestMs: harvestTime,
         totalMs: totalTime,
         newsAvailable: newsDigest.length > 0,
+        therapistProfileLoadStatus: {
+          profilHanka:    { loaded: therapistProfiles.profilHanka.loaded,    chars: therapistProfiles.profilHanka.chars,    reason: therapistProfiles.profilHanka.reason },
+          strategieHanka: { loaded: therapistProfiles.strategieHanka.loaded, chars: therapistProfiles.strategieHanka.chars, reason: therapistProfiles.strategieHanka.reason },
+          profilKata:     { loaded: therapistProfiles.profilKata.loaded,     chars: therapistProfiles.profilKata.chars,     reason: therapistProfiles.profilKata.reason },
+          strategieKata:  { loaded: therapistProfiles.strategieKata.loaded,  chars: therapistProfiles.strategieKata.chars,  reason: therapistProfiles.strategieKata.reason },
+        },
       },
     };
 
