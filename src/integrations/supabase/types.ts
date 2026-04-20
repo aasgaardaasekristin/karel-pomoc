@@ -2525,8 +2525,12 @@ export type Database = {
           content: string
           created_at: string | null
           id: string
+          last_attempt_at: string | null
+          last_error_message: string | null
+          next_retry_at: string | null
           priority: string | null
           processed_at: string | null
+          retry_count: number
           status: string | null
           target_document: string
           user_id: string | null
@@ -2536,8 +2540,12 @@ export type Database = {
           content: string
           created_at?: string | null
           id?: string
+          last_attempt_at?: string | null
+          last_error_message?: string | null
+          next_retry_at?: string | null
           priority?: string | null
           processed_at?: string | null
+          retry_count?: number
           status?: string | null
           target_document: string
           user_id?: string | null
@@ -2547,8 +2555,12 @@ export type Database = {
           content?: string
           created_at?: string | null
           id?: string
+          last_attempt_at?: string | null
+          last_error_message?: string | null
+          next_retry_at?: string | null
           priority?: string | null
           processed_at?: string | null
+          retry_count?: number
           status?: string | null
           target_document?: string
           user_id?: string | null
