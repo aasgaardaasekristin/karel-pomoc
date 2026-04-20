@@ -101,6 +101,133 @@ function QuestionList({
   );
 }
 
+function KarelSynthesisBlock({
+  d,
+  synthesizing,
+  onSynthesize,
+}: {
+  d: TeamDeliberation;
+  synthesizing: boolean;
+  onSynthesize: () => void;
+}) {
+  const isCrisis = d.deliberation_type === "crisis";
+  const synth = d.karel_synthesis as KarelSynthesis | null;
+
+  // Můžeme syntetizovat, pokud je alespoň jedna odpověď nebo diskuse
+  const hasInput =
+    (d.questions_for_hanka ?? []).some((q) => q.answer?.trim()) ||
+    (d.questions_for_kata ?? []).some((q) => q.answer?.trim()) ||
+    (d.discussion_log ?? []).length > 0;
+
+  if (!synth) {
+    if (!isCrisis && !hasInput) return null;
+    return (
+      <section className={`rounded-lg border p-3 space-y-2 ${
+        isCrisis ? "border-amber-500/40 bg-amber-500/5" : "border-border/60 bg-card/40"
+      }`}>
+        <div className="flex items-start gap-2">
+          {isCrisis ? (
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          ) : (
+            <Brain className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+          )}
+          <div className="flex-1">
+            <h4 className="text-[11px] font-semibold text-foreground">
+              {isCrisis ? "Karlova syntéza je povinná před podpisem" : "Karlova syntéza"}
+            </h4>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {isCrisis
+                ? "Karel musí nejdřív vyhodnotit odpovědi terapeutek (krize trvá / polevuje / lze uzavřít) a teprve potom může podepsat."
+                : "Karel může vyhodnotit odpovědi terapeutek a navrhnout další krok."}
+            </p>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          className="h-7 text-[11px] w-full"
+          disabled={!hasInput || synthesizing}
+          onClick={onSynthesize}
+        >
+          {synthesizing ? (
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+          ) : (
+            <Brain className="w-3 h-3 mr-1" />
+          )}
+          {hasInput ? "Spustit Karlovu syntézu" : "Čeká na odpovědi terapeutek"}
+        </Button>
+      </section>
+    );
+  }
+
+  const verdictLabel: Record<string, { label: string; tone: string }> = {
+    crisis_persists: { label: "🔴 Krize trvá", tone: "border-destructive/40 bg-destructive/5 text-destructive" },
+    crisis_easing: { label: "🟡 Krize polevuje", tone: "border-amber-500/40 bg-amber-500/5 text-amber-700" },
+    crisis_resolvable: { label: "🟢 Krizi lze uzavřít", tone: "border-emerald-500/40 bg-emerald-500/5 text-emerald-700" },
+    non_crisis: { label: "Bez krizového stavu", tone: "border-border/60 bg-card/40 text-foreground" },
+  };
+  const v = verdictLabel[synth.verdict] ?? verdictLabel.crisis_persists;
+
+  return (
+    <section className={`rounded-lg border p-3 space-y-2 ${v.tone}`}>
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-[11px] font-semibold flex items-center gap-1.5">
+          <Brain className="w-3.5 h-3.5" />
+          Karlova syntéza — {v.label}
+        </h4>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-[10px]"
+          disabled={synthesizing}
+          onClick={onSynthesize}
+        >
+          {synthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Přesyntetizovat"}
+        </Button>
+      </div>
+      <p className="text-[11px] text-foreground/90"><strong>Další krok:</strong> {synth.next_step}</p>
+      {synth.needs_karel_interview && (
+        <p className="text-[11px] text-foreground/90">
+          <strong>Karel si přizve {(d.subject_parts ?? [])[0] || "část"} k vlastnímu rozhovoru.</strong>
+        </p>
+      )}
+      {synth.recommended_session_focus && (
+        <p className="text-[11px] text-foreground/90">
+          <strong>Zaměření sezení:</strong> {synth.recommended_session_focus}
+        </p>
+      )}
+      {synth.key_insights.length > 0 && (
+        <div className="text-[11px]">
+          <strong className="block mb-0.5">Klíčové vhledy:</strong>
+          <ul className="list-disc pl-4 space-y-0.5 text-foreground/85">
+            {synth.key_insights.map((k, i) => <li key={i}>{k}</li>)}
+          </ul>
+        </div>
+      )}
+      {synth.risk_signals.length > 0 && (
+        <div className="text-[11px]">
+          <strong className="block mb-0.5">Rizikové signály:</strong>
+          <ul className="list-disc pl-4 space-y-0.5 text-foreground/85">
+            {synth.risk_signals.map((k, i) => <li key={i}>{k}</li>)}
+          </ul>
+        </div>
+      )}
+      {synth.protective_signals.length > 0 && (
+        <div className="text-[11px]">
+          <strong className="block mb-0.5">Ochranné signály:</strong>
+          <ul className="list-disc pl-4 space-y-0.5 text-foreground/85">
+            {synth.protective_signals.map((k, i) => <li key={i}>{k}</li>)}
+          </ul>
+        </div>
+      )}
+      {d.karel_synthesized_at && (
+        <p className="text-[9px] text-muted-foreground italic">
+          Syntéza: {new Date(d.karel_synthesized_at).toLocaleString("cs-CZ")}
+        </p>
+      )}
+    </section>
+  );
+}
+
 const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   const navigate = useNavigate();
   const { sign, synthesize, answerQuestion, postMessage, reload, items } = useTeamDeliberations(0);
