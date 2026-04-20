@@ -492,3 +492,92 @@ function MiniStat({
     </div>
   );
 }
+
+function TherapistStateMini({
+  name,
+  state,
+}: {
+  name: string;
+  state: TherapistStateBlock;
+}) {
+  const recentnessLabel: Record<string, string> = {
+    active_today: "dnes",
+    active_week: "tento týden",
+    stale: "stagnuje",
+    silent: "ticho",
+  };
+  const recentnessTone: Record<string, string> = {
+    active_today: "text-emerald-700",
+    active_week: "text-foreground",
+    stale: "text-amber-700",
+    silent: "text-muted-foreground",
+  };
+  const supportTone: Record<string, string> = {
+    low: "text-emerald-700",
+    moderate: "text-amber-700",
+    elevated: "text-destructive",
+    unknown: "text-muted-foreground",
+  };
+  const fmt = (n: number | null) => (n == null ? "—" : n.toFixed(2));
+
+  return (
+    <div className="rounded border border-border/50 p-2 bg-background space-y-1">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-medium">{name}</div>
+        <span className={`text-[10px] ${recentnessTone[state.activity.recentness]}`}>
+          {recentnessLabel[state.activity.recentness] ?? state.activity.recentness}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-[10px]">
+        <div>
+          <span className="text-muted-foreground">Activity 24h/7d:</span>{" "}
+          <span className="font-mono">
+            {state.activity.therapeutic_messages_24h}/{state.activity.therapeutic_messages_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Tasks open/done7d:</span>{" "}
+          <span className="font-mono">
+            {state.continuity.open_tasks}/{state.continuity.completed_tasks_7d}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Signal q.:</span>{" "}
+          <span className="font-mono">{fmt(state.signal_quality.score)}</span>{" "}
+          <span className="opacity-60">(n={state.signal_quality.sample_size})</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Continuity:</span>{" "}
+          <span className="font-mono">{fmt(state.continuity.score)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Support:</span>{" "}
+          <span className={`font-mono ${supportTone[state.support_need.level]}`}>
+            {state.support_need.level}
+          </span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Confidence:</span>{" "}
+          <span className="font-mono">{state.confidence.overall.toFixed(2)}</span>
+          {state.confidence.insufficient_data && (
+            <span className="ml-1 text-[9px] text-amber-700">⚠ málo dat</span>
+          )}
+        </div>
+      </div>
+      {state.support_need.indicators.length > 0 && (
+        <div className="text-[9px] text-muted-foreground">
+          Indicators: {state.support_need.indicators.join(" · ")}
+        </div>
+      )}
+      <details className="text-[9px] text-muted-foreground">
+        <summary className="cursor-pointer hover:text-foreground">rationale</summary>
+        <div className="mt-1 pl-2 space-y-0.5 border-l border-border/40">
+          <div><span className="opacity-70">signal:</span> {state.signal_quality.rationale}</div>
+          <div><span className="opacity-70">support:</span> {state.support_need.rationale}</div>
+          <div><span className="opacity-70">continuity:</span> {state.continuity.rationale}</div>
+          <div><span className="opacity-70">confidence:</span> {state.confidence.reasons.join(" · ")}</div>
+        </div>
+      </details>
+    </div>
+  );
+}
