@@ -4469,6 +4469,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
         if (Object.keys(newSections).length > 0) {
           try {
+            // ═══ INNER BUDGET GATE #1: before resolveCardTarget (Drive lookup) ═══
+            if (isPhase4BudgetExhausted()) {
+              cardsBudgetExceeded = true;
+              cardsDeferred.push(rawPartName);
+              continue;
+            }
             const target = await resolveCardTarget(token, folderId, normalizedPartName, registryContext);
             const resolvedPartName = target.registryEntry?.name || normalizedPartName;
             const resolvedCanonical = canonicalText(resolvedPartName);
