@@ -225,11 +225,11 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
 
         {loading || !d ? (
-          <div className="flex justify-center py-8">
+          <div className="flex justify-center py-8 px-6">
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <ScrollArea className="flex-1 pr-3">
+          <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-4">
               {/* Karlův úvod */}
               <section className="rounded-lg border border-border/60 bg-card/40 p-3">
@@ -348,7 +348,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 </Button>
               </section>
             </div>
-          </ScrollArea>
+          </div>
         )}
 
         {d && (
