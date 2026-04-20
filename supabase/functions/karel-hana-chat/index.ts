@@ -17,6 +17,11 @@ import {
   type PartRegistryLookup,
 } from "../_shared/postChatWriteback.ts";
 import type { ExtractedWriteOutput } from "../_shared/phase5Types.ts";
+import {
+  classifyRoleScope,
+  shouldBlockDIDEvidence,
+  type RoleScopeResult,
+} from "../_shared/roleScopeClassifier.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

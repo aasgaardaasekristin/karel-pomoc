@@ -137,6 +137,8 @@ export interface EvidencePersistenceContext {
     | "therapist_message"
     | "part_direct";
   userId?: string | null;
+  /** Role scope from Hanička role separation classifier */
+  roleScope?: "partner_personal" | "therapeutic_team" | "mixed" | "uncertain" | null;
 }
 
 export interface EvidencePersistenceResult {
