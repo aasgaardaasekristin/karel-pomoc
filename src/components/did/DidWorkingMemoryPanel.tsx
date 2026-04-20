@@ -14,6 +14,16 @@ import { getAuthHeaders } from "@/lib/auth";
  * tento panel jen vizualizuje derived snapshot v karel_working_memory_snapshots.
  */
 
+interface RoleScopeBreakdown {
+  breakdown: Record<string, number>;
+  total_messages_24h: number;
+  avg_confidence: number | null;
+  needs_review_count: number;
+  origin_counts: Record<string, number>;
+  last_partner_personal_at: string | null;
+  ratio_therapeutic: number | null;
+}
+
 interface SnapshotSummary {
   snapshot_key: string;
   generated_at: string;
@@ -31,6 +41,7 @@ interface SnapshotSummary {
   } | null;
   degraded_sources: string[];
   stale_sources: string[];
+  role_scope_breakdown_24h?: RoleScopeBreakdown | null;
 }
 
 interface SnapshotRow {
