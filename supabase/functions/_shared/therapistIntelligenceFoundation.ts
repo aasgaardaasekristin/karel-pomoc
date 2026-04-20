@@ -39,8 +39,10 @@ export interface TherapistState {
   };
   continuity: {
     score: number | null; // 0..1
-    open_tasks: number;
-    completed_tasks_7d: number;
+    open_tasks_direct: number;
+    open_tasks_shared: number;
+    completed_tasks_7d_direct: number;
+    completed_tasks_7d_shared: number;
     rationale: string;
   };
   confidence: {
@@ -52,7 +54,8 @@ export interface TherapistState {
   source_counts: {
     observations: number;
     implications: number;
-    tasks: number;
+    tasks_direct: number;
+    tasks_shared: number;
     therapeutic_messages: number;
     crises_owned: number;
   };
@@ -149,12 +152,20 @@ function classifyRecentness(lastIso: string | null, now: Date): Recentness {
   return "silent";
 }
 
-function ownsTherapist(value: string | null | undefined, key: TherapistKey): boolean {
+function isDirectOwner(value: string | null | undefined, key: TherapistKey): boolean {
   if (!value) return false;
   const v = value.toLowerCase().trim();
-  // Shared ownership tokens count for both therapists.
-  if (v === "both" || v === "team" || v === "all") return true;
-  return v.includes(key);
+  return v === key || (v.includes(key) && v !== "both" && v !== "team" && v !== "all");
+}
+
+function isSharedOwner(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const v = value.toLowerCase().trim();
+  return v === "both" || v === "team" || v === "all";
+}
+
+function ownsTherapist(value: string | null | undefined, key: TherapistKey): boolean {
+  return isDirectOwner(value, key) || isSharedOwner(value);
 }
 
 // ── Per-therapist computation ──
