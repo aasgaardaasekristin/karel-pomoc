@@ -796,6 +796,23 @@ serve(async (req) => {
       vlakna3Dny: string;
       kdoJeKdo: string;
     } = { situacniAnalyza: "", karlovyPoznatky: "", karelFile: "", vlaknaPosledni: "", vlakna3Dny: "", kdoJeKdo: "" };
+
+    // ── TARGETED therapist profile reads (PROFIL_OSOBNOSTI + STRATEGIE_KOMUNIKACE) ──
+    // Always read BOTH Hanka and Káťa explicitly (independent of active subMode) so that
+    // cross-references (e.g. Hanka mode mentioning Káťa's style) have authoritative data.
+    // Backward-compat: we keep the folder snapshot in driveData["PROFIL_HANKA"]/["PROFIL_KATA"].
+    type TherapistProfileBlock = { content: string; loaded: boolean; chars: number; reason?: string };
+    const therapistProfiles: {
+      profilHanka: TherapistProfileBlock;
+      strategieHanka: TherapistProfileBlock;
+      profilKata: TherapistProfileBlock;
+      strategieKata: TherapistProfileBlock;
+    } = {
+      profilHanka:    { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      strategieHanka: { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      profilKata:     { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      strategieKata:  { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+    };
     // "general" = Hana/osobní (frontend sends didSubMode="general" for personal mode)
     const needsOperationalMemory = ["mamka", "kata", "general", "hana_personal", "personal"].includes(subMode || "");
 
