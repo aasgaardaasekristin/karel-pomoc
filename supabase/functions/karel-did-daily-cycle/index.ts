@@ -4565,6 +4565,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
       }
 
+      // ═══ PHASE 4 BUDGET REPORT ═══
+      const phase4ElapsedMs = Date.now() - phase4CardsStart;
+      if (cardsBudgetExceeded) {
+        console.warn(`[PHASE_4_BUDGET] ⏱️ Wall-clock budget exceeded after ${phase4ElapsedMs}ms. Processed ${cardsUpdated.length} cards, deferred ${cardsDeferred.length}: ${cardsDeferred.join(", ")}`);
+      } else {
+        console.log(`[PHASE_4_BUDGET] ✅ All [KARTA:] blocks processed within budget (${phase4ElapsedMs}ms / ${PHASE4_CARDS_BUDGET_MS}ms)`);
+      }
+
       // ═══ PHASE_8_CARDS_AND_PART_STATUS: card pipeline result ═══
       criticalPhaseStatus.cardPipelineOk = cardFatalErrors === 0;
       console.log(`[PHASE_8] Card pipeline: fatalErrors=${cardFatalErrors}, blocked=${blockedCardUpdates.length}, successful=${successfulCardUpdates.length}, pipelineOk=${criticalPhaseStatus.cardPipelineOk}`);
