@@ -4690,54 +4690,51 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
         }
       }
 
-      // ═══ FORCED CENTRUM FALLBACK: Full deterministic content from DB ═══
-      if (centrumFolderId && hasRecentActivity) {
-        const centerFiles = centrumFolderId ? await listFilesInFolder(token, centrumFolderId) : [];
-
-        // Load registry data for deterministic dashboard
+      // ═══ FORCED CENTRUM FALLBACK (ASYNC ENQUEUE) ═══
+      // Pre-fix history: synchronous listFilesInFolder + updateFileById +
+      // verifyCentrumWrite blocked Phase 4 wall-clock (~150–250s). Now we
+      // build deterministic content from DB and enqueue replace operations
+      // into did_pending_drive_writes. The queue processor handles real
+      // Drive writes; verification moves to queue/status-level proof.
+      if (hasRecentActivity) {
+        // Load registry data for deterministic content (DB-only, no Drive I/O)
         const registryParts = registryContext?.entries || [];
         const activeParts = registryParts.filter(e => !isArchivedFromRegistry(e));
         const sleepingParts = registryParts.filter(e => isArchivedFromRegistry(e));
-        
+
         if (!centrumDashboardUpdated) {
-          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] block – generating FULL deterministic dashboard`);
-          const dashFile = centerFiles.find(f => canonicalText(f.name).includes("dashboard"));
-          if (dashFile) {
-            try {
-              const dateStr = new Date().toISOString().slice(0, 10);
-              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
-              const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:00_Aktualni_Dashboard] – enqueuing FULL deterministic dashboard`);
+          try {
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
+            const therapistThreads = reportThreads.filter(t => t.sub_mode !== "cast");
 
-              // Build registry-based part status
-              const partStatusLines = activeParts.map(p => {
-                const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
-                const status = hadActivity ? "🟢 komunikoval/a s Karlem" : "🟡 bez aktivity dnes";
-                return `▸ ${p.name} (ID ${p.id}) [${status}] – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}`;
-              });
+            const partStatusLines = activeParts.map(p => {
+              const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
+              const status = hadActivity ? "🟢 komunikoval/a s Karlem" : "🟡 bez aktivity dnes";
+              return `▸ ${p.name} (ID ${p.id}) [${status}] – klastr: ${p.cluster || "?"}, věk: ${p.age || "?"}`;
+            });
 
-              // Critical alerts from tasks
-              const criticalTasks = (pendingTasks || []).filter((t: any) => {
-                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                return age >= 3;
-              });
-              const criticalAlertsText = criticalTasks.length > 0
-                ? criticalTasks.map((t: any) => {
-                    const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                    return `⚠️ ${t.task} – ${age} dní nesplněno (${t.assigned_to})`;
-                  }).join("\n")
-                : "✅ Žádná kritická upozornění";
+            const criticalTasks = (pendingTasks || []).filter((t: any) => {
+              const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+              return age >= 3;
+            });
+            const criticalAlertsText = criticalTasks.length > 0
+              ? criticalTasks.map((t: any) => {
+                  const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+                  return `⚠️ ${t.task} – ${age} dní nesplněno (${t.assigned_to})`;
+                }).join("\n")
+              : "✅ Žádná kritická upozornění";
 
-              // Sleeping parts watchlist
-              const sleepingWatchlist = sleepingParts.length > 0
-                ? sleepingParts.map(p => `▸ ${p.name} (ID ${p.id}) – status: ${p.status}, klastr: ${p.cluster || "?"}`).join("\n")
-                : "Žádné spící části v registru.";
+            const sleepingWatchlist = sleepingParts.length > 0
+              ? sleepingParts.map(p => `▸ ${p.name} (ID ${p.id}) – status: ${p.status}, klastr: ${p.cluster || "?"}`).join("\n")
+              : "Žádné spící části v registru.";
 
-              // Priority from pending tasks
-              const priorityLines = (pendingTasks || []).slice(0, 5).map((t: any) => 
-                `▸ ${t.task} (${t.assigned_to}, priorita: ${t.priority || "normal"})`
-              ).join("\n") || "Žádné aktivní úkoly.";
+            const priorityLines = (pendingTasks || []).slice(0, 5).map((t: any) =>
+              `▸ ${t.task} (${t.assigned_to}, priorita: ${t.priority || "normal"})`
+            ).join("\n") || "Žádné aktivní úkoly.";
 
-              const fullDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM
+            const fullDashboard = `AKTUÁLNÍ DASHBOARD – DID SYSTÉM
 Aktualizace: ${dateStr}
 Správce: Karel (deterministický fallback z DB)
 
@@ -4772,60 +4769,51 @@ SEKCE 7 – KARLOVY POSTŘEHY 🔍
 ⚠️ Tento dashboard byl vygenerován deterministickým fallbackem z DB dat – AI analýza nevygenerovala CENTRUM blok.
 Všechna data pocházejí z databáze (did_part_registry, did_threads, did_therapist_tasks).`;
 
-              await updateFileById(token, dashFile.id, fullDashboard, dashFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 00_Dashboard (FULL DETERMINISTIC FALLBACK)`);
+            const ok = await enqueueDriveWrite({
+              target_document: "KARTOTEKA_DID/00_CENTRUM/00_Aktualni_Dashboard",
+              payload: fullDashboard,
+              write_type: "replace",
+              priority: "high",
+              content_type: "centrum_fallback_dashboard",
+              subject_type: "centrum",
+              subject_id: "00_Aktualni_Dashboard",
+            });
+            if (ok) {
+              centrumEnqueued.push("00_Aktualni_Dashboard (fallback)");
+              cardsUpdated.push(`CENTRUM: 00_Dashboard (FALLBACK enqueued)`);
               centrumDashboardUpdated = true;
-              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard: full deterministic content written`);
-
-              // Post-write verification – fallback
-              const fallbackDashVerify = await verifyCentrumWrite(token, dashFile.id, "00_Dashboard (fallback)", [
-                "SEKCE 1", "SEKCE 2", "SEKCE 3", "SEKCE 4", "SEKCE 5", "SEKCE 6", "SEKCE 7", "DASHBOARD",
-              ]);
-              criticalPhaseStatus.dashboardOk = centrumDashboardUpdated && fallbackDashVerify.verified;
-              if (!fallbackDashVerify.verified) {
-                console.warn(`[VERIFY] ⚠️ Dashboard fallback verification FAILED: missing=[${fallbackDashVerify.missingKeywords.join(",")}]`);
-              }
-              console.log(`[PHASE_6] dashboardOk=${criticalPhaseStatus.dashboardOk} (fallback)`);
-            } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard update failed:`, e); }
-          }
+              criticalPhaseStatus.dashboardOk = true; // queue-level proof; processor verifies content
+              console.log(`[CENTRUM-FALLBACK] ✅ Dashboard fallback enqueued (verification deferred to queue processor)`);
+            }
+          } catch (e) { console.error(`[CENTRUM-FALLBACK] Dashboard enqueue failed:`, e); }
         }
 
         if (!centrumOperativniUpdated) {
-          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] block – generating FULL deterministic plan`);
-          const planFile = centerFiles.find(f => {
-            const fc = canonicalText(f.name);
-            return (fc.includes("operativn") && fc.includes("plan")) || (fc.includes("terapeutick") && fc.includes("plan"));
-          });
-          if (planFile) {
-            try {
-              const dateStr = new Date().toISOString().slice(0, 10);
+          console.warn(`[CENTRUM-FALLBACK] AI did NOT generate [CENTRUM:05_Operativni_Plan] – enqueuing FULL deterministic plan`);
+          try {
+            const dateStr = new Date().toISOString().slice(0, 10);
+            const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
 
-              // Build full plan from DB data
-              const activePartsFromThreads = [...new Set(reportThreads.filter(t => t.sub_mode === "cast").map(t => t.part_name))];
-              
-              // Section 1: Active parts status
-              const partStatusTable = activeParts.map(p => {
-                const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
-                return `| ${p.name} / ${p.id} | ${hadActivity ? "Aktivní" : "Ticho"} | ${p.cluster || "?"} | ${p.age || "?"} |`;
-              }).join("\n");
+            const partStatusTable = activeParts.map(p => {
+              const hadActivity = activePartsFromThreads.some(tp => canonicalText(tp) === p.normalizedName);
+              return `| ${p.name} / ${p.id} | ${hadActivity ? "Aktivní" : "Ticho"} | ${p.cluster || "?"} | ${p.age || "?"} |`;
+            }).join("\n");
 
-              // Section 3: Pending tasks
-              const taskLines = (pendingTasks || []).map((t: any) => {
-                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                const icon = age >= 3 ? "⚠️" : "☐";
-                return `${icon} ${t.assigned_to}: ${t.task} (${age}d, ${t.priority || "normal"})`;
-              }).join("\n") || "Žádné nesplněné úkoly.";
+            const taskLines = (pendingTasks || []).map((t: any) => {
+              const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+              const icon = age >= 3 ? "⚠️" : "☐";
+              return `${icon} ${t.assigned_to}: ${t.task} (${age}d, ${t.priority || "normal"})`;
+            }).join("\n") || "Žádné nesplněné úkoly.";
 
-              // Section 5: Risks
-              const riskTasks = (pendingTasks || []).filter((t: any) => {
-                const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
-                return age >= 3;
-              });
-              const riskLines = riskTasks.length > 0
-                ? riskTasks.map((t: any) => `⚠️ ESKALACE: "${t.task}" – nesplněno ${Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24))} dní`).join("\n")
-                : "Žádná akutní rizika.";
+            const riskTasks = (pendingTasks || []).filter((t: any) => {
+              const age = Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24));
+              return age >= 3;
+            });
+            const riskLines = riskTasks.length > 0
+              ? riskTasks.map((t: any) => `⚠️ ESKALACE: "${t.task}" – nesplněno ${Math.floor((Date.now() - new Date(t.created_at).getTime()) / (1000*60*60*24))} dní`).join("\n")
+              : "Žádná akutní rizika.";
 
-              const fullPlan = `OPERATIVNÍ PLÁN – DID SYSTÉM
+            const fullPlan = `OPERATIVNÍ PLÁN – DID SYSTÉM
 Aktualizace: ${dateStr}
 Správce: Karel (deterministický fallback z DB)
 
@@ -4852,18 +4840,24 @@ SEKCE 6 – KARLOVY POZNÁMKY
 ⚠️ Tento plán byl vygenerován deterministickým fallbackem – AI analýza nevytvořila CENTRUM blok.
 Data: did_part_registry (${registryParts.length} částí), did_therapist_tasks (${(pendingTasks || []).length} nesplněných).`;
 
-              therapeuticPlanContent = fullPlan;
-              await updateFileById(token, planFile.id, fullPlan, planFile.mimeType);
-              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FULL DETERMINISTIC FALLBACK)`);
+            therapeuticPlanContent = fullPlan;
+            const ok = await enqueueDriveWrite({
+              target_document: "KARTOTEKA_DID/00_CENTRUM/05A_OPERATIVNI_PLAN",
+              payload: fullPlan,
+              write_type: "replace",
+              priority: "high",
+              content_type: "centrum_fallback_operativni_plan",
+              subject_type: "centrum",
+              subject_id: "05A_OPERATIVNI_PLAN",
+            });
+            if (ok) {
+              centrumEnqueued.push("05A_OPERATIVNI_PLAN (fallback)");
+              cardsUpdated.push(`CENTRUM: 05_Operativni_Plan (FALLBACK enqueued)`);
               centrumOperativniUpdated = true;
-              console.log(`[CENTRUM-FALLBACK] ✅ Operative plan: full deterministic content written`);
-
-              // Post-write verification
-              const fallbackPlanVerify = await verifyCentrumWrite(token, planFile.id, "05_Operativni_Plan (fallback)", ["SEKCE 1", "SEKCE 3", "OPERATIVNÍ"]);
-              criticalPhaseStatus.operativePlanOk = centrumOperativniUpdated && fallbackPlanVerify.verified;
-              console.log(`[PHASE_6] operativePlanOk=${criticalPhaseStatus.operativePlanOk} (fallback)`);
-            } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan update failed:`, e); }
-          }
+              criticalPhaseStatus.operativePlanOk = true; // queue-level proof
+              console.log(`[CENTRUM-FALLBACK] ✅ Operative plan fallback enqueued (verification deferred to queue processor)`);
+            }
+          } catch (e) { console.error(`[CENTRUM-FALLBACK] Operative plan enqueue failed:`, e); }
         }
       }
 
