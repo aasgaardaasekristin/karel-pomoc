@@ -261,6 +261,21 @@ serve(async (req) => {
     // Drive reads (parallel with DB)
     let driveData: Record<string, Record<string, string>> = {};
     let driveError: string | null = null;
+
+    // ── TARGETED therapist profile reads (always for both therapists) ──
+    type TherapistProfileBlock = { content: string; loaded: boolean; chars: number; reason: string };
+    const therapistProfiles: {
+      profilHanka: TherapistProfileBlock;
+      strategieHanka: TherapistProfileBlock;
+      profilKata: TherapistProfileBlock;
+      strategieKata: TherapistProfileBlock;
+    } = {
+      profilHanka:    { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      strategieHanka: { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      profilKata:     { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+      strategieKata:  { content: "", loaded: false, chars: 0, reason: "not_attempted" },
+    };
+
     const drivePromise = (async () => {
       try {
         const token = await getAccessToken();
@@ -274,7 +289,7 @@ serve(async (req) => {
 
         const reads: Promise<void>[] = [];
 
-        // PAMET_KAREL: read semantic files
+        // PAMET_KAREL: read semantic files + targeted therapist profiles
         if (pametId) {
           const semanticId = await findFolder(token, "PAMET_KAREL_SEMANTIC", pametId);
           if (semanticId) {
@@ -283,6 +298,59 @@ serve(async (req) => {
           const proceduralId = await findFolder(token, "PAMET_KAREL_PROCEDURAL", pametId);
           if (proceduralId) {
             reads.push(readFolderDocs(token, proceduralId, 3, 3000).then(d => { driveData["PAMET_PROCEDURAL"] = d; }));
+          }
+
+          // ── TARGETED reads: PROFIL_OSOBNOSTI + STRATEGIE_KOMUNIKACE for Hanka & Káťa ──
+          const didPametId = await findFolder(token, "DID", pametId);
+          if (didPametId) {
+            const hankaFolderId = await findFolder(token, "HANKA", didPametId);
+            const kataFolderId = await findFolder(token, "KATA", didPametId);
+
+            if (!hankaFolderId) {
+              therapistProfiles.profilHanka.reason = "folder_missing:PAMET_KAREL/DID/HANKA";
+              therapistProfiles.strategieHanka.reason = "folder_missing:PAMET_KAREL/DID/HANKA";
+            }
+            if (!kataFolderId) {
+              therapistProfiles.profilKata.reason = "folder_missing:PAMET_KAREL/DID/KATA";
+              therapistProfiles.strategieKata.reason = "folder_missing:PAMET_KAREL/DID/KATA";
+            }
+
+            const TARGETED_PROFILE_MAX = 4000;
+            const targetedReads: Array<{
+              therapist: "hanka" | "kata";
+              folderId: string | null;
+              fileName: string;
+              key: "profilHanka" | "strategieHanka" | "profilKata" | "strategieKata";
+            }> = [
+              { therapist: "hanka", folderId: hankaFolderId, fileName: "PROFIL_OSOBNOSTI.txt",     key: "profilHanka" },
+              { therapist: "hanka", folderId: hankaFolderId, fileName: "STRATEGIE_KOMUNIKACE.txt", key: "strategieHanka" },
+              { therapist: "kata",  folderId: kataFolderId,  fileName: "PROFIL_OSOBNOSTI.txt",     key: "profilKata" },
+              { therapist: "kata",  folderId: kataFolderId,  fileName: "STRATEGIE_KOMUNIKACE.txt", key: "strategieKata" },
+            ];
+            for (const tr of targetedReads) {
+              if (!tr.folderId) continue;
+              reads.push((async () => {
+                try {
+                  let doc = await findDocByExactName(token, tr.folderId!, tr.fileName);
+                  if (!doc) doc = await findDocByExactName(token, tr.folderId!, tr.fileName.replace(/\.txt$/, ""));
+                  if (!doc) {
+                    therapistProfiles[tr.key].reason = `file_missing:${tr.fileName}`;
+                    console.warn(`[therapist-profile] ${tr.key}: ${tr.fileName} not found in PAMET_KAREL/DID/${tr.therapist.toUpperCase()}`);
+                    return;
+                  }
+                  const content = await readDoc(token, doc.id, TARGETED_PROFILE_MAX);
+                  if (!content || content === "[nečitelné]") {
+                    therapistProfiles[tr.key].reason = "unreadable";
+                    return;
+                  }
+                  therapistProfiles[tr.key] = { content, loaded: true, chars: content.length, reason: "ok" };
+                  console.log(`[therapist-profile] Loaded ${tr.key} (${content.length} chars)`);
+                } catch (e) {
+                  therapistProfiles[tr.key].reason = `error:${e instanceof Error ? e.message : "unknown"}`;
+                  console.warn(`[therapist-profile] ${tr.key} read error:`, e);
+                }
+              })());
+            }
           }
         }
 
