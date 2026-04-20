@@ -170,8 +170,13 @@ function bucketize(input: PartFoundationInput): Map<string, PartBucket> {
     if (!raw) return null;
     const norm = normalizePartName(raw);
     if (!norm) return null;
-    // Skip aggregate / non-part labels
-    if (["both", "team", "all", "system", "context"].includes(norm)) return null;
+    // Skip aggregate / non-part labels and the human/system actors
+    const skip = new Set([
+      "both", "team", "all", "system", "context",
+      "karel", "kata", "hanka", "hanicka", "hanička",
+      "mamka", "taticka", "tatínek", "tata", "táta",
+    ]);
+    if (skip.has(norm)) return null;
     let b = buckets.get(norm);
     if (!b) {
       b = {
