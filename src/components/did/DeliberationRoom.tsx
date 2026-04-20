@@ -44,10 +44,12 @@ function QuestionList({
   questions,
   who,
   onAnswer,
+  readOnly = false,
 }: {
   questions: DeliberationQuestion[];
   who: "hanka" | "kata";
   onAnswer: (idx: number, answer: string) => Promise<void>;
+  readOnly?: boolean;
 }) {
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
@@ -72,6 +74,8 @@ function QuestionList({
               </span>
               {q.answer}
             </div>
+          ) : readOnly ? (
+            <p className="text-[10px] text-muted-foreground italic">Bez odpovědi.</p>
           ) : (
             <div className="space-y-1.5">
               <Textarea
@@ -109,10 +113,12 @@ function KarelSynthesisBlock({
   d,
   synthesizing,
   onSynthesize,
+  readOnly = false,
 }: {
   d: TeamDeliberation;
   synthesizing: boolean;
   onSynthesize: () => void;
+  readOnly?: boolean;
 }) {
   const isCrisis = d.deliberation_type === "crisis";
   const synth = d.karel_synthesis as KarelSynthesis | null;
@@ -128,6 +134,7 @@ function KarelSynthesisBlock({
 
   if (!synth) {
     if (!isCrisis && !hasInput) return null;
+    if (readOnly) return null;
     return (
       <section className={`rounded-lg border p-3 space-y-2 ${
         isCrisis ? "border-amber-500/40 bg-amber-500/5" : "border-border/60 bg-card/40"
