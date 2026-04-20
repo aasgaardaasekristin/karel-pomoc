@@ -359,6 +359,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   };
 
   const sp = d ? signoffProgress(d) : { signed: 0, total: 3, missing: [] };
+  const isReadOnly = d?.status === "approved";
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
