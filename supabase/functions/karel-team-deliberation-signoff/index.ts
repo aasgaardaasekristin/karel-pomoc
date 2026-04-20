@@ -244,6 +244,14 @@ Deno.serve(async (req: Request) => {
     //   - did_pending_drive_writes (drive_writeback_md → 05A operativní plán)
     //   - crisis_tasks (Karlův následný rozhovor s částí, pokud needs_karel_interview)
     //   - update na crisis_events (clinical_summary z final_summary, phase pokud resolvable)
+    //
+    // CRISIS LINKAGE FIX:
+    //   `crisis_events.id` ≠ `crisis_alerts.id`. Dříve jsme do crisis_tasks
+    //   cpali stejné UUID do obou sloupců — bug. Teď oba ID dohledáváme
+    //   nezávisle podle subject_part. Pokud deliberation nemá explicitní
+    //   linked_crisis_event_id, pokusíme se ho dohledat (open event s tou
+    //   samou částí) a backfillnout. Pokud nedohledáme nic, crisis effects
+    //   pro DB nezapisujeme — vracíme to v `crisisEffects.warning`, ne tiše.
     if (
       updated.status === "approved" &&
       updated.deliberation_type === "crisis" &&
@@ -252,7 +260,49 @@ Deno.serve(async (req: Request) => {
       const synth = updated.karel_synthesis as any;
       const subjectPart = (updated.subject_parts ?? [])[0] ?? null;
 
-      // 1) Drive writeback do 05A operativního plánu
+      // --- (a) Resolve crisis_event_id ---------------------------------
+      let crisisEventId: string | null = updated.linked_crisis_event_id ?? null;
+      if (!crisisEventId && subjectPart) {
+        const { data: openEv } = await admin
+          .from("crisis_events")
+          .select("id")
+          .eq("part_name", subjectPart)
+          .is("closed_at", null)
+          .order("opened_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (openEv?.id) {
+          crisisEventId = openEv.id;
+          await admin
+            .from("did_team_deliberations")
+            .update({ linked_crisis_event_id: crisisEventId })
+            .eq("id", deliberationId);
+          crisisEffects.linked_crisis_event_backfilled = crisisEventId;
+        }
+      }
+
+      // --- (b) Resolve crisis_alert_id (NEZÁVISLE na event_id) ---------
+      // crisis_alerts.status je UPPERCASE enum (ACTIVE / ACKNOWLEDGED / RESOLVED / CLOSED).
+      // Bereme jen otevřené alerty (ACTIVE / ACKNOWLEDGED) — používáme whitelist,
+      // protože PostgREST `not.in` s lowercase řetězcem hodnoty enum neporovná.
+      let crisisAlertId: string | null = null;
+      if (subjectPart) {
+        const { data: openAlert } = await admin
+          .from("crisis_alerts")
+          .select("id")
+          .eq("part_name", subjectPart)
+          .in("status", ["ACTIVE", "ACKNOWLEDGED", "active", "acknowledged"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (openAlert?.id) crisisAlertId = openAlert.id;
+      }
+
+      if (!crisisEventId && !crisisAlertId) {
+        crisisEffects.warning = `Pro část "${subjectPart}" nebyl nalezen žádný otevřený crisis_event ani crisis_alert. crisis_events / crisis_tasks zůstávají nedotčené.`;
+      }
+
+      // --- 1) Drive writeback do 05A operativního plánu ----------------
       if (synth.drive_writeback_md && typeof synth.drive_writeback_md === "string") {
         const dateLabel = new Date().toISOString().slice(0, 10);
         const header = subjectPart
@@ -281,34 +331,41 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // 2) Karlův vlastní rozhovor s částí
-      if (synth.needs_karel_interview === true && updated.linked_crisis_event_id) {
+      // --- 2) Karlův vlastní rozhovor s částí --------------------------
+      // crisis_tasks vyžaduje crisis_alert_id (NOT NULL). Bez něj task
+      // nezakládáme — Karlův rozhovor pak musí vzniknout jinou cestou
+      // (warning výše to signalizuje).
+      if (synth.needs_karel_interview === true && crisisAlertId) {
+        const taskRow: Record<string, any> = {
+          crisis_alert_id: crisisAlertId,
+          crisis_event_id: crisisEventId, // může být null, sloupec je nullable
+          assigned_to: "karel",
+          title: subjectPart
+            ? `Karlův diagnostický rozhovor s ${subjectPart}`
+            : "Karlův diagnostický rozhovor",
+          description: synth.recommended_session_focus
+            ?? synth.next_step
+            ?? "Karel si přizve část po týmové poradě.",
+          priority: "high",
+          status: "pending",
+        };
         const { data: tk, error: tkErr } = await admin
           .from("crisis_tasks")
-          .insert({
-            crisis_event_id: updated.linked_crisis_event_id,
-            crisis_alert_id: updated.linked_crisis_event_id,
-            assigned_to: "karel",
-            title: subjectPart
-              ? `Karlův diagnostický rozhovor s ${subjectPart}`
-              : "Karlův diagnostický rozhovor",
-            description: synth.recommended_session_focus
-              ?? synth.next_step
-              ?? "Karel si přizve část po týmové poradě.",
-            priority: "high",
-            status: "pending",
-          })
+          .insert(taskRow)
           .select("id")
           .maybeSingle();
         if (!tkErr && tk?.id) {
           crisisEffects.crisis_task_id = tk.id;
         } else if (tkErr) {
           console.warn("[delib-signoff/crisis] crisis task insert failed:", tkErr.message);
+          crisisEffects.crisis_task_error = tkErr.message;
         }
+      } else if (synth.needs_karel_interview === true && !crisisAlertId) {
+        crisisEffects.crisis_task_skipped = "no_open_crisis_alert_for_part";
       }
 
-      // 3) Update krizového eventu — clinical_summary + případná fáze
-      if (updated.linked_crisis_event_id) {
+      // --- 3) Update krizového eventu — clinical_summary + případná fáze
+      if (crisisEventId) {
         const eventPatch: Record<string, any> = {
           clinical_summary: updated.final_summary?.slice(0, 4000) ?? null,
           updated_at: new Date().toISOString(),
@@ -322,11 +379,11 @@ Deno.serve(async (req: Request) => {
         const { error: evErr } = await admin
           .from("crisis_events")
           .update(eventPatch)
-          .eq("id", updated.linked_crisis_event_id);
+          .eq("id", crisisEventId);
         if (evErr) {
           console.warn("[delib-signoff/crisis] crisis_events update failed:", evErr.message);
         } else {
-          crisisEffects.crisis_event_updated = true;
+          crisisEffects.crisis_event_updated = crisisEventId;
         }
       }
     }

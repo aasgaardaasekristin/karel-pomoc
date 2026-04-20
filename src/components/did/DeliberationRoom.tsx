@@ -510,7 +510,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   who === "hanka" ? d.hanka_signed_at :
                   who === "kata" ? d.kata_signed_at : d.karel_signed_at;
                 // GATE: Karlův podpis je u krizové porady aktivní jen poté,
-                // co proběhla syntéza odpovědí terapeutek.
+                // co proběhla FRESH syntéza nad aktuálními odpověďmi.
+                // Po každé nové odpovědi / diskusní zprávě se karel_synthesis
+                // automaticky vynuluje (viz useTeamDeliberations.invalidateSynthesis),
+                // takže Karel musí syntetizovat znova.
                 const karelGateBlocked =
                   who === "karel" &&
                   d.deliberation_type === "crisis" &&
@@ -523,7 +526,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                     variant={signed ? "secondary" : "default"}
                     disabled={disabled}
                     title={karelGateBlocked
-                      ? "Karel nejdřív musí syntetizovat odpovědi (tlačítko „Spustit Karlovu syntézu“)"
+                      ? 'Karel musí (znovu) syntetizovat odpovědi terapeutek — viz tlačítko „Spustit Karlovu syntézu".'
                       : undefined}
                     className="h-8 text-[11px] flex-1"
                     onClick={() => handleSign(who)}

@@ -107,6 +107,29 @@ export function useTeamDeliberations(refreshTrigger = 0) {
     [reload],
   );
 
+  /**
+   * INVALIDATION RULE:
+   * Jakákoliv nová odpověď nebo nová diskusní zpráva musí zneplatnit
+   * Karlovu předchozí syntézu — jinak by Karel mohl podepsat na základě
+   * zastaralé syntézy. Vždycky vynulujeme:
+   *   - karel_synthesis
+   *   - karel_synthesized_at
+   *   - final_summary
+   * Tím se v UI gate Karlova podpisu znovu vrátí do stavu „čeká na syntézu".
+   */
+  const invalidateSynthesis = (
+    target: TeamDeliberation,
+  ): Record<string, any> => {
+    if (!target.karel_synthesis && !target.karel_synthesized_at && !target.final_summary) {
+      return {};
+    }
+    return {
+      karel_synthesis: null,
+      karel_synthesized_at: null,
+      final_summary: null,
+    };
+  };
+
   const answerQuestion = useCallback(
     async (
       deliberationId: string,
@@ -124,7 +147,10 @@ export function useTeamDeliberations(refreshTrigger = 0) {
         answer,
         answered_at: new Date().toISOString(),
       };
-      const patch: Record<string, any> = { [fieldName]: list };
+      const patch: Record<string, any> = {
+        [fieldName]: list,
+        ...invalidateSynthesis(target),
+      };
       const { error } = await (supabase as any)
         .from("did_team_deliberations")
         .update(patch)
@@ -147,9 +173,13 @@ export function useTeamDeliberations(refreshTrigger = 0) {
         ...(target.discussion_log ?? []),
         { author, content, created_at: new Date().toISOString() },
       ];
+      const patch: Record<string, any> = {
+        discussion_log: log,
+        ...invalidateSynthesis(target),
+      };
       const { error } = await (supabase as any)
         .from("did_team_deliberations")
-        .update({ discussion_log: log })
+        .update(patch)
         .eq("id", deliberationId);
       if (error) throw error;
       await reload();
