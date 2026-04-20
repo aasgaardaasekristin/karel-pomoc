@@ -1602,13 +1602,17 @@ serve(async (req) => {
             console.log("[ANALYST] did_daily_context updated for", todayDate);
           }
         } else {
-          // 3. INSERT new row
+          // 3. INSERT new row — never write `{}` into context_json (lock guard).
+          const emptyCanonicalCtx = composeEmptyCanonicalContext({
+            date: todayDate,
+            source: "analyst_loop",
+          });
           const { error: insertErr } = await sb
             .from("did_daily_context")
             .insert({
               user_id: userId,
               context_date: todayDate,
-              context_json: {},
+              context_json: emptyCanonicalCtx,
               analysis_json: analysisJson,
               source: "analyst_loop",
               updated_at: new Date().toISOString(),
