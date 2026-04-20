@@ -508,6 +508,12 @@ const DidSprava = ({
           </div>
         )}
 
+        {activeTab === "wm" && (
+          <div className="space-y-2">
+            <DidWorkingMemoryPanel />
+          </div>
+        )}
+
         {activeTab === "kartoteka" && (
           <div className="space-y-2">
             <DidKartotekaTab />
