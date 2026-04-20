@@ -66,6 +66,59 @@ interface TherapistFoundation {
   routing_guarantee: { excluded_scopes: string[]; excluded_sources: string[]; derived_only: true };
 }
 
+interface PartStateBlock {
+  part_name: string;
+  part_name_normalized: string;
+  activity: {
+    observations_24h: number;
+    observations_7d: number;
+    claims_7d: number;
+    thread_messages_24h: number;
+    thread_messages_7d: number;
+    last_seen_at: string | null;
+    recentness: "active_today" | "active_week" | "stale" | "silent";
+  };
+  stability_signal: {
+    level: "stable" | "fluctuating" | "destabilizing" | "unknown";
+    rationale: string;
+    indicators: string[];
+  };
+  risk_signal: {
+    level: "low" | "moderate" | "elevated" | "critical" | "unknown";
+    rationale: string;
+    indicators: string[];
+    has_open_crisis: boolean;
+    crisis_severity: string | null;
+    crisis_phase: string | null;
+  };
+  continuity: {
+    trajectory: "stable" | "changed" | "newly_active" | "recently_quiet" | "unknown";
+    rationale: string;
+    appeared_in_previous_snapshot: boolean | null;
+  };
+  care_priority: {
+    level: "watch" | "support" | "active_care" | "crisis_focus" | "background";
+    rationale: string;
+  };
+  confidence: { overall: number; reasons: string[]; insufficient_data: boolean };
+  source_counts: { observations: number; claims: number; crisis_refs: number; thread_refs: number };
+}
+
+interface PartFoundation {
+  version: string;
+  generated_at: string;
+  generated_from: { sources: string[]; excluded_sources: string[]; excluded_scopes: string[] };
+  notice: string;
+  parts: PartStateBlock[];
+  summary: {
+    total_parts: number;
+    parts_with_open_crisis: number;
+    parts_active_today: number;
+    parts_silent: number;
+    avg_confidence: number | null;
+  };
+}
+
 interface SnapshotSummary {
   snapshot_key: string;
   generated_at: string;
@@ -85,6 +138,7 @@ interface SnapshotSummary {
   stale_sources: string[];
   role_scope_breakdown_24h?: RoleScopeBreakdown | null;
   therapist_state?: TherapistFoundation | null;
+  part_state?: PartFoundation | null;
 }
 
 interface SnapshotRow {
