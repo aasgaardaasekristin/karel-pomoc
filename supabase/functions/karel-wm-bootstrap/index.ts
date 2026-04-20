@@ -453,8 +453,7 @@ Deno.serve(async (req) => {
         .limit(100),
       db.from("did_threads")
         .select("id, part_name, current_detected_part, sub_mode, last_activity_at, messages")
-        .neq("sub_mode", "hana")
-        .neq("sub_mode", "kata")
+        .in("sub_mode", ["cast", "crisis"])
         .gte("last_activity_at", since7d)
         .order("last_activity_at", { ascending: false })
         .limit(40),
