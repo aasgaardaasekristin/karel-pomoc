@@ -779,6 +779,29 @@ serve(async (req) => {
       partRegistry: sb.from("did_part_registry").select("part_name, status, cluster, age_estimate, last_seen_at, last_emotional_state").eq("user_id", userId),
       partProfiles: sb.from("did_part_profiles").select("part_name, personality_traits, cognitive_profile, emotional_profile, needs, motivations, strengths, challenges, interests, communication_style, therapeutic_approach, theme_preferences, confidence_score").eq("user_id", userId),
       dailyContext: sb.from("did_daily_context").select("context_date, context_json, analysis_json").eq("user_id", userId).order("context_date", { ascending: false }).limit(1),
+      // ─── STRUCTURED DB INPUTS (pipeline tables) ────────────────────────
+      // These tables are global (no user_id column). They are the structured
+      // counterpart to the Drive/PAMET prompt-influence layer: they expose
+      // recent implications, open therapist questions, and the latest daily
+      // briefing as explicit decision inputs in the Karel prompt.
+      // Errors are swallowed at the harvest level via Promise.allSettled so a
+      // single broken reader can never crash context-prime.
+      recentImplications: sb.from("did_implications")
+        .select("impact_type, destinations, implication_text, owner, status, review_at, created_at")
+        .gte("created_at", new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString())
+        .in("status", ["open", "in_progress", "needs_review"])
+        .order("created_at", { ascending: false })
+        .limit(15),
+      openPendingQuestions: sb.from("did_pending_questions")
+        .select("question, context, subject_type, subject_id, directed_to, blocking, created_at")
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(10),
+      latestDailyBriefing: sb.from("did_daily_briefings")
+        .select("briefing_date, payload, decisions_count, generated_at, is_stale")
+        .eq("is_stale", false)
+        .order("briefing_date", { ascending: false })
+        .limit(1),
     };
 
     // Drive reads (parallel with DB)

@@ -3147,7 +3147,20 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
             // Cases 1, 2, 3: Audit existing card structure
             const hasThreadMsgs = Array.isArray(thread.messages) && (thread.messages as any[]).filter((m: any) => m?.role === "user").length >= 2;
             await setPhase("audit_0b_struct", `part="${lookupName}"`);
+            // ─── HEARTBEAT KEEP-ALIVE during long Drive call ────────────────
+            // Daily-cycle watchdog kills runs whose heartbeat_at is older than
+            // STUCK_WINDOW_MIN. A single auditCardStructure() call can take up
+            // to AUDIT_DRIVE_TIMEOUT_MS (60s) PLUS Drive read jitter; running
+            // 20+ cards in a row without intermediate heartbeats can push the
+            // gap past 30 min if any single card is slow. Tick every 60s so
+            // the cycle stays visibly alive even when this single sub-step
+            // takes longer than expected. Cleared in finally to avoid leaks.
+            let keepAliveTimer: number | undefined;
             try {
+              keepAliveTimer = setInterval(() => {
+                // fire-and-forget: best-effort heartbeat, errors swallowed inside setPhase
+                void setPhase("audit_0b_struct_keepalive", `part="${lookupName}"`);
+              }, 60_000) as unknown as number;
               const result = await withTimeout(
                 `auditCardStructure(${lookupName})`,
                 AUDIT_DRIVE_TIMEOUT_MS,
@@ -3169,6 +3182,8 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
               await setPhase("audit_0b_struct_skip", `part="${lookupName}" reason=${isTo ? "timeout" : "error"}`);
               auditAlerts.push(`⚠️ Strukturální audit přeskočen pro "${lookupName}" – ${isTo ? "timeout" : "chyba"} při auditCardStructure.`);
               continue;
+            } finally {
+              if (keepAliveTimer !== undefined) clearInterval(keepAliveTimer);
             }
           } else {
             // ═══ Case 4b: Registry entry exists but no card file found → create card ═══
