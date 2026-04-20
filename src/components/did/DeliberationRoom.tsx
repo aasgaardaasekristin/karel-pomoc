@@ -335,6 +335,13 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 </section>
               )}
 
+              {/* KARLOVA SYNTÉZA — povinná pro `crisis` před Karlovým podpisem */}
+              <KarelSynthesisBlock
+                d={d}
+                synthesizing={synthesizing}
+                onSynthesize={handleSynthesize}
+              />
+
               <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
                 <div className="flex items-center gap-1.5">
                   {(["hanka", "kata", "karel"] as const).map((who) => (
