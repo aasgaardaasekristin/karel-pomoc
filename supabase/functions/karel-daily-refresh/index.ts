@@ -523,7 +523,7 @@ serve(async (req) => {
         active_parts: activeParts.length,
         sleeping_parts: sleepingParts.length,
         pending_tasks: (tasks || []).length,
-        drive_docs_loaded: Object.values(contextJson.drive_documents).filter(Boolean).length,
+        drive_docs_loaded: Object.values(enrichedContextJson.drive_documents).filter(Boolean).length,
         context_size_bytes: JSON.stringify(enrichedContextJson).length,
         diff: dailyDiff
           ? {
