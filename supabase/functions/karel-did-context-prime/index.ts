@@ -1549,6 +1549,32 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
 `;
 })()}
 ` : ""}
+
+═══ THERAPIST PROFILES (TARGETED — explicit decision input) ═══
+Toto je AUTORITATIVNÍ profil terapeutek načtený přímo z PAMET_KAREL/DID/HANKA/ a /KATA/ (cílené čtení, nezávislé na aktuálním režimu).
+Karel jej používá při rozhodování o tónu, strategii komunikace, míře autonomie, formě otázek
+a způsobu zadávání úkolů. NIKDY necituj nahlas — je to vnitřní kompas.
+
+--- [THERAPIST_PROFILE_HANKA] (PAMET_KAREL/DID/HANKA/PROFIL_OSOBNOSTI.txt) ---
+${therapistProfiles.profilHanka.loaded
+  ? therapistProfiles.profilHanka.content
+  : `(missing — ${therapistProfiles.profilHanka.reason})`}
+
+--- [THERAPIST_STRATEGY_HANKA] (PAMET_KAREL/DID/HANKA/STRATEGIE_KOMUNIKACE.txt) ---
+${therapistProfiles.strategieHanka.loaded
+  ? therapistProfiles.strategieHanka.content
+  : `(missing — ${therapistProfiles.strategieHanka.reason})`}
+
+--- [THERAPIST_PROFILE_KATA] (PAMET_KAREL/DID/KATA/PROFIL_OSOBNOSTI.txt) ---
+${therapistProfiles.profilKata.loaded
+  ? therapistProfiles.profilKata.content
+  : `(missing — ${therapistProfiles.profilKata.reason})`}
+
+--- [THERAPIST_STRATEGY_KATA] (PAMET_KAREL/DID/KATA/STRATEGIE_KOMUNIKACE.txt) ---
+${therapistProfiles.strategieKata.loaded
+  ? therapistProfiles.strategieKata.content
+  : `(missing — ${therapistProfiles.strategieKata.reason})`}
+
 ═══ MASTER PLAN (SYSTÉM JAKO CELEK) ═══
 ${(() => {
   const sp = dbResults.systemProfile;
