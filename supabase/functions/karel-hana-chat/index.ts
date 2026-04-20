@@ -544,20 +544,28 @@ async function saveEpisodeInBackground(
 // Reuses the SAME pipeline as karel-chat (DID/Terapeut + Hana/osobní).
 // HARD firewall in buildExtractionPrompt ensures intimate Hana↔Karel content
 // stays in PAMET_KAREL/DID/HANKA/KAREL only — never leaks to PART_CARD/PLAN/contexts.
+// Role scope classification gates DID evidence pipeline writes.
 async function runHanaPostChatWriteback(args: {
   userId: string;
   userText: string;
   karelResponse: string;
   conversationId: string | null;
   apiKey: string;
+  roleScope: RoleScopeResult;
 }): Promise<void> {
-  const { userText, karelResponse, conversationId, apiKey } = args;
+  const { userText, karelResponse, conversationId, apiKey, roleScope } = args;
   const sb = getServiceClient();
 
   const therapistKey: "HANKA" | "KATA" = "HANKA";
   const modeLabel = "Hana/osobní";
   const isHanaPersonal = true;
   const sourceId = `hana_chat_${conversationId || "no-conv"}_${Date.now()}`;
+
+  // ── Role scope gate: partner_personal / uncertain → skip DID evidence entirely ──
+  const blockDIDEvidence = shouldBlockDIDEvidence(roleScope.role_scope);
+  if (blockDIDEvidence) {
+    console.log(`[hana-writeback] role_scope=${roleScope.role_scope} (confidence=${roleScope.role_scope_meta.confidence}) → DID evidence pipeline BLOCKED`);
+  }
 
   const extractionPrompt = buildExtractionPrompt(userText, karelResponse, modeLabel, isHanaPersonal);
 
