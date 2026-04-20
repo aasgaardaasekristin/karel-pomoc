@@ -4348,6 +4348,19 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       void setPhase("update_cards_keepalive", "Fáze 4: zpracovávám karty (Drive write loop)");
     }, 45_000) as unknown as number;
 
+    // ═══ PHASE 4 HARD WALL-CLOCK BUDGET ═══
+    // Edge Runtime kills the isolate after ~150–250s of total wall-clock time.
+    // Phase 4's [KARTA:] loop is sequential per-part Drive I/O (1–10s each).
+    // To guarantee phases 5–10 actually run, we cut the [KARTA:] loop after
+    // PHASE4_CARDS_BUDGET_MS and defer the rest. Deferred parts are recorded
+    // into did_update_cycles.context_data for audit and future reprocessing.
+    // This is a TEMPORARY orchestration stabilizer, NOT the final card update
+    // architecture (queue/worker remains future work).
+    const PHASE4_CARDS_BUDGET_MS = 90_000; // 90s hard cap
+    const phase4CardsStart = Date.now();
+    const cardsDeferred: string[] = [];
+    let cardsBudgetExceeded = false;
+
     // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
     const NON_DID_BLACKLIST = new Set([
       "amalka", "tonička", "tonicka", "jiří", "jiri", "jirka",
