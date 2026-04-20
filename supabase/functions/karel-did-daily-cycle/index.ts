@@ -5615,6 +5615,11 @@ ESKALACE: level ${task.escalation_level || 0}`,
 
     // shadowSync moved to standalone CRON — see karel-did-context-prime (runs daily at 5:30 UTC)
 
+    if (updateCardsKeepAlive !== undefined) {
+      clearInterval(updateCardsKeepAlive);
+      updateCardsKeepAlive = undefined;
+    }
+
     await setPhase("revize_05ab", "Fáze 5: Denní revize 05A/05B");
     // ═══════════════════════════════════════════════════════════
     // DENNÍ REVIZE 05A/05B – expirace, downgrade, promotion
