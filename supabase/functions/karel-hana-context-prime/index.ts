@@ -80,6 +80,27 @@ async function readFolderDocs(token: string, folderId: string, maxDocs = 10, max
   return result;
 }
 
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+async function findDocByExactName(token: string, parentId: string, fileName: string): Promise<{ id: string; name: string } | null> {
+  const escapedName = escapeDriveQueryValue(fileName);
+  const q = `name='${escapedName}' and '${parentId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`;
+  const params = new URLSearchParams({
+    q,
+    fields: "files(id,name)",
+    pageSize: "5",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  return data.files?.[0] || null;
+}
+
 // ── Auth ──
 function isCronOrService(req: Request): boolean {
   const authHeader = req.headers.get("Authorization") || "";
