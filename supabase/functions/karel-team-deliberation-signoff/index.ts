@@ -64,6 +64,23 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // GATE: pro typ `crisis` smí Karel podepsat JEN pokud existuje
+    // explicitní karel_synthesis (viz karel-team-deliberation-synthesize).
+    // Kontrola PŘED updatem, aby se trigger autoderive_status nespouštěl
+    // s falešným karel_signed_at, který bychom museli rollbackovat.
+    if (
+      signer === "karel" &&
+      row.deliberation_type === "crisis" &&
+      !row.karel_synthesis
+    ) {
+      return new Response(JSON.stringify({
+        error: "synthesis_required",
+        message: "Karel nemůže podepsat krizovou poradu, dokud neproběhne syntéza odpovědí terapeutek. Spusť nejdřív „Spustit Karlovu syntézu“.",
+      }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const nowIso = new Date().toISOString();
     const patch: Record<string, any> = {};
     if (signer === "hanka" && !row.hanka_signed_at) patch.hanka_signed_at = nowIso;
@@ -98,6 +115,7 @@ Deno.serve(async (req: Request) => {
     // Fallback řetězec použijeme jen když deliberation z nějakého důvodu
     // session_params nemá (legacy záznamy před touto migrací).
     let bridgedPlanId: string | null = updated.linked_live_session_id ?? null;
+    let crisisEffects: Record<string, any> = {};
     if (
       updated.status === "approved" &&
       updated.deliberation_type === "session_plan" &&
@@ -221,9 +239,102 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    // CRISIS BRIDGE: po Karlově podpisu u typu `crisis` musí dojít k REÁLNÝM
+    // důsledkům, ne jen ke status flipu. Z karel_synthesis odvodíme:
+    //   - did_pending_drive_writes (drive_writeback_md → 05A operativní plán)
+    //   - crisis_tasks (Karlův následný rozhovor s částí, pokud needs_karel_interview)
+    //   - update na crisis_events (clinical_summary z final_summary, phase pokud resolvable)
+    if (
+      updated.status === "approved" &&
+      updated.deliberation_type === "crisis" &&
+      updated.karel_synthesis
+    ) {
+      const synth = updated.karel_synthesis as any;
+      const subjectPart = (updated.subject_parts ?? [])[0] ?? null;
+
+      // 1) Drive writeback do 05A operativního plánu
+      if (synth.drive_writeback_md && typeof synth.drive_writeback_md === "string") {
+        const dateLabel = new Date().toISOString().slice(0, 10);
+        const header = subjectPart
+          ? `\n\n## Krizová koordinace — ${subjectPart} (${dateLabel})\n_Zdroj: týmová porada — synthesis ${deliberationId.slice(0, 8)}_\n\n`
+          : `\n\n## Krizová koordinace (${dateLabel})\n_Zdroj: týmová porada — synthesis ${deliberationId.slice(0, 8)}_\n\n`;
+        const { data: dw, error: dwErr } = await admin
+          .from("did_pending_drive_writes")
+          .insert({
+            user_id: userId,
+            target_document: "05A_OPERATIVNI_PLAN",
+            write_type: "append",
+            content: header + synth.drive_writeback_md,
+            priority: "high",
+            status: "pending",
+          })
+          .select("id")
+          .maybeSingle();
+        if (!dwErr && dw?.id) {
+          crisisEffects.drive_write_id = dw.id;
+          await admin
+            .from("did_team_deliberations")
+            .update({ linked_drive_write_id: dw.id })
+            .eq("id", deliberationId);
+        } else if (dwErr) {
+          console.warn("[delib-signoff/crisis] drive write insert failed:", dwErr.message);
+        }
+      }
+
+      // 2) Karlův vlastní rozhovor s částí
+      if (synth.needs_karel_interview === true && updated.linked_crisis_event_id) {
+        const { data: tk, error: tkErr } = await admin
+          .from("crisis_tasks")
+          .insert({
+            crisis_event_id: updated.linked_crisis_event_id,
+            crisis_alert_id: updated.linked_crisis_event_id,
+            assigned_to: "karel",
+            title: subjectPart
+              ? `Karlův diagnostický rozhovor s ${subjectPart}`
+              : "Karlův diagnostický rozhovor",
+            description: synth.recommended_session_focus
+              ?? synth.next_step
+              ?? "Karel si přizve část po týmové poradě.",
+            priority: "high",
+            status: "pending",
+          })
+          .select("id")
+          .maybeSingle();
+        if (!tkErr && tk?.id) {
+          crisisEffects.crisis_task_id = tk.id;
+        } else if (tkErr) {
+          console.warn("[delib-signoff/crisis] crisis task insert failed:", tkErr.message);
+        }
+      }
+
+      // 3) Update krizového eventu — clinical_summary + případná fáze
+      if (updated.linked_crisis_event_id) {
+        const eventPatch: Record<string, any> = {
+          clinical_summary: updated.final_summary?.slice(0, 4000) ?? null,
+          updated_at: new Date().toISOString(),
+        };
+        if (synth.verdict === "crisis_resolvable") {
+          eventPatch.stable_since = new Date().toISOString();
+          eventPatch.closure_proposed_by = "karel";
+          eventPatch.closure_proposed_at = new Date().toISOString();
+          eventPatch.closure_reason = synth.next_step ?? null;
+        }
+        const { error: evErr } = await admin
+          .from("crisis_events")
+          .update(eventPatch)
+          .eq("id", updated.linked_crisis_event_id);
+        if (evErr) {
+          console.warn("[delib-signoff/crisis] crisis_events update failed:", evErr.message);
+        } else {
+          crisisEffects.crisis_event_updated = true;
+        }
+      }
+    }
+
     return new Response(JSON.stringify({
       deliberation: { ...updated, linked_live_session_id: bridgedPlanId },
       bridged_plan_id: bridgedPlanId,
+      crisis_effects: crisisEffects,
     }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

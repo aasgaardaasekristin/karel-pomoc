@@ -114,9 +114,28 @@ export interface TeamDeliberation {
   final_summary: string | null;
   followup_needed: boolean;
 
+  /**
+   * Karlova explicitní syntéza odpovědí Haničky a Káti + discussion_logu.
+   * Povinná pro aktivaci Karlova podpisu u typu `crisis`.
+   * Naplněná edge funkcí `karel-team-deliberation-synthesize`.
+   */
+  karel_synthesis: KarelSynthesis | null;
+  karel_synthesized_at: string | null;
+
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+}
+
+export interface KarelSynthesis {
+  verdict: "crisis_persists" | "crisis_easing" | "crisis_resolvable" | "non_crisis";
+  next_step: string;
+  needs_karel_interview: boolean;
+  key_insights: string[];
+  drive_writeback_md: string;
+  recommended_session_focus: string | null;
+  risk_signals: string[];
+  protective_signals: string[];
 }
 
 /* ================================================================

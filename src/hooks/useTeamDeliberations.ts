@@ -85,7 +85,24 @@ export function useTeamDeliberations(refreshTrigger = 0) {
       );
       if (error) throw error;
       await reload();
-      return data as { deliberation: TeamDeliberation; bridged_plan_id: string | null };
+      return data as {
+        deliberation: TeamDeliberation;
+        bridged_plan_id: string | null;
+        crisis_effects?: Record<string, any>;
+      };
+    },
+    [reload],
+  );
+
+  const synthesize = useCallback(
+    async (deliberationId: string) => {
+      const { data, error } = await (supabase as any).functions.invoke(
+        "karel-team-deliberation-synthesize",
+        { body: { deliberation_id: deliberationId } },
+      );
+      if (error) throw error;
+      await reload();
+      return data as { deliberation: TeamDeliberation; synthesis: any };
     },
     [reload],
   );
@@ -140,5 +157,5 @@ export function useTeamDeliberations(refreshTrigger = 0) {
     [items, reload],
   );
 
-  return { items, loading, creating, create, sign, answerQuestion, postMessage, reload };
+  return { items, loading, creating, create, sign, synthesize, answerQuestion, postMessage, reload };
 }
