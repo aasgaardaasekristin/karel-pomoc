@@ -3112,6 +3112,8 @@ export type Database = {
           initial_karel_brief: string | null
           karel_proposed_plan: string | null
           karel_signed_at: string | null
+          karel_synthesis: Json | null
+          karel_synthesized_at: string | null
           kata_signed_at: string | null
           linked_briefing_id: string | null
           linked_briefing_item_id: string | null
@@ -3145,6 +3147,8 @@ export type Database = {
           initial_karel_brief?: string | null
           karel_proposed_plan?: string | null
           karel_signed_at?: string | null
+          karel_synthesis?: Json | null
+          karel_synthesized_at?: string | null
           kata_signed_at?: string | null
           linked_briefing_id?: string | null
           linked_briefing_item_id?: string | null
@@ -3178,6 +3182,8 @@ export type Database = {
           initial_karel_brief?: string | null
           karel_proposed_plan?: string | null
           karel_signed_at?: string | null
+          karel_synthesis?: Json | null
+          karel_synthesized_at?: string | null
           kata_signed_at?: string | null
           linked_briefing_id?: string | null
           linked_briefing_item_id?: string | null
