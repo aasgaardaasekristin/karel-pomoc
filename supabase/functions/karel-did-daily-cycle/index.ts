@@ -3841,6 +3841,13 @@ Datum: ${dateStr}` },
       }
     }
 
+    // ─── KEEP-ALIVE: Phase 3b AI gateway call can take 60–120s. Without
+    // a periodic heartbeat the cleanup-watcher (E3) sees stale heartbeat_at
+    // and marks the cycle stuck mid-flight. Tick every 45s; cleared in finally.
+    let aiAnalysisKeepAlive: number | undefined;
+    aiAnalysisKeepAlive = setInterval(() => {
+      void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
+    }, 45_000) as unknown as number;
     const analysisController = new AbortController();
     const analysisTimeout = setTimeout(() => analysisController.abort(), 120000);
     let analysisResponse: Response;
