@@ -4341,6 +4341,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
     await setPhase("update_cards", "Fáze 4: Aktualizace karet");
     // 4. PARSE AND UPDATE CARDS IN-PLACE
+    // ═══ KEEP-ALIVE: Phase 4 obsahuje sekvenční Drive reads/writes per-part (až 5+ minut).
+    // Bez heartbeat by watchdog (>30 min hb gap) označil run jako stuck.
+    // Stejný pattern jako compileDataKeepAlive / aiAnalysisKeepAlive.
+    let updateCardsKeepAlive: number | undefined = setInterval(() => {
+      void setPhase("update_cards_keepalive", "Fáze 4: zpracovávám karty (Drive write loop)");
+    }, 45_000) as unknown as number;
 
     // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
     const NON_DID_BLACKLIST = new Set([
