@@ -396,6 +396,20 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
         ) : (
           <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-4">
+              {isReadOnly && (
+                <section className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="text-[11px] font-semibold text-emerald-800">
+                      Porada je schválená — náhled jen pro čtení
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet.
+                      Pro nové rozhodnutí počkej na další briefing.
+                    </p>
+                  </div>
+                </section>
+              )}
               {/* Karlův úvod */}
               <section className="rounded-lg border border-border/60 bg-card/40 p-3">
                 <h4 className="text-[11px] font-semibold text-muted-foreground mb-1.5">
