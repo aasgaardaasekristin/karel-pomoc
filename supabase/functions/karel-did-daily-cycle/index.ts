@@ -2253,8 +2253,66 @@ async function sendOrQueueEmail(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // ═══ ADMIN ACTIONS (no dedup, no auth-fence beyond JWT) ═══
+  // Parse body once for early routing.
+  let earlyBody: any = {};
+  try { earlyBody = await req.clone().json(); } catch {}
+  const adminAction = earlyBody?.action as string | undefined;
+  const isManualTriggerEarly = earlyBody?.source === "manual";
+
+  // ── status: read-only snapshot of last completed + currently running cycle ──
+  if (adminAction === "status") {
+    const adminSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const [completedRes, runningRes] = await Promise.all([
+      adminSb.from("did_update_cycles")
+        .select("id, started_at, completed_at, status, phase, last_error, report_summary")
+        .eq("cycle_type", "daily").eq("status", "completed")
+        .order("completed_at", { ascending: false }).limit(1).maybeSingle(),
+      adminSb.from("did_update_cycles")
+        .select("id, started_at, status, phase, phase_detail, heartbeat_at, last_error")
+        .eq("cycle_type", "daily").eq("status", "running")
+        .order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    const running = runningRes.data as any;
+    let heartbeatAgeSec: number | null = null;
+    let stuck = false;
+    if (running) {
+      const hb = running.heartbeat_at ? new Date(running.heartbeat_at).getTime() : new Date(running.started_at).getTime();
+      heartbeatAgeSec = Math.floor((Date.now() - hb) / 1000);
+      stuck = heartbeatAgeSec > 30 * 60;
+    }
+    return new Response(JSON.stringify({
+      ok: true,
+      lastCompleted: completedRes.data || null,
+      running: running ? { ...running, heartbeatAgeSec, stuck } : null,
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  // ── force_fail: mark current running cycle as failed (admin recovery) ──
+  if (adminAction === "force_fail") {
+    const adminSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const targetId = (earlyBody?.cycleId as string | undefined) || null;
+    let q = adminSb.from("did_update_cycles").update({
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      last_error: `manual_force_fail_via_admin_ui${earlyBody?.reason ? `:${String(earlyBody.reason).slice(0, 120)}` : ""}`,
+    }).eq("status", "running").eq("cycle_type", "daily");
+    if (targetId) q = q.eq("id", targetId);
+    const { data, error } = await q.select("id");
+    if (error) {
+      return new Response(JSON.stringify({ ok: false, error: error.message }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ ok: true, failedCount: data?.length ?? 0, ids: (data || []).map((r: any) => r.id) }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   // === DEDUP: Skip if a successful daily cycle completed in last 3 hours ===
-  {
+  // Manual admin trigger (source="manual") bypasses dedup so the harness
+  // can prove an end-to-end run on demand.
+  if (!isManualTriggerEarly) {
     const dedupSb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const recentCycle = await dedupSb
       .from('did_update_cycles')
@@ -3783,6 +3841,13 @@ Datum: ${dateStr}` },
       }
     }
 
+    // ─── KEEP-ALIVE: Phase 3b AI gateway call can take 60–120s. Without
+    // a periodic heartbeat the cleanup-watcher (E3) sees stale heartbeat_at
+    // and marks the cycle stuck mid-flight. Tick every 45s; cleared in finally.
+    let aiAnalysisKeepAlive: number | undefined;
+    aiAnalysisKeepAlive = setInterval(() => {
+      void setPhase("ai_analysis_keepalive", "Fáze 3b: čekám na AI gateway");
+    }, 45_000) as unknown as number;
     const analysisController = new AbortController();
     const analysisTimeout = setTimeout(() => analysisController.abort(), 120000);
     let analysisResponse: Response;
@@ -4232,10 +4297,13 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       }),
     });
     clearTimeout(analysisTimeout);
+    if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
     } catch (abortErr: any) {
       clearTimeout(analysisTimeout);
+      if (aiAnalysisKeepAlive !== undefined) { clearInterval(aiAnalysisKeepAlive); aiAnalysisKeepAlive = undefined; }
       if (abortErr?.name === "AbortError") {
         console.error("[AI analysis] TIMEOUT after 120s — continuing with empty analysis");
+        await setPhase("ai_analysis_timeout", "Phase 3b AI gateway timeout 120s");
         analysisResponse = new Response("", { status: 408 });
       } else {
         throw abortErr;

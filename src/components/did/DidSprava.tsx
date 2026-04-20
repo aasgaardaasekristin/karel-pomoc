@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Settings, Database, HeartPulse, RefreshCw, Loader2, ClipboardList, Trash2, Brain, AlertTriangle, Play, Square, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -55,6 +55,52 @@ interface ProcessingStats {
   unprocessedThreads: number;
 }
 
+interface RunningCycle {
+  id: string;
+  started_at: string;
+  status: string;
+  phase: string | null;
+  phase_detail: string | null;
+  heartbeat_at: string | null;
+  last_error: string | null;
+  heartbeatAgeSec: number | null;
+  stuck: boolean;
+}
+
+interface CycleHealth {
+  lastCompleted: { id: string; completed_at: string | null; status: string; phase: string | null; last_error: string | null; report_summary: string | null } | null;
+  running: RunningCycle | null;
+  loading: boolean;
+}
+
+function useCycleHealth(refreshTrigger: number): { health: CycleHealth; reload: () => void } {
+  const [health, setHealth] = useState<CycleHealth>({ lastCompleted: null, running: null, loading: true });
+
+  const reload = useCallback(async () => {
+    setHealth(h => ({ ...h, loading: true }));
+    try {
+      const { data, error } = await supabase.functions.invoke("karel-did-daily-cycle", { body: { action: "status" } });
+      if (error) throw error;
+      setHealth({
+        lastCompleted: data?.lastCompleted ?? null,
+        running: data?.running ?? null,
+        loading: false,
+      });
+    } catch (e) {
+      console.warn("[DidSprava] status fetch failed", e);
+      setHealth({ lastCompleted: null, running: null, loading: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    reload();
+    const t = setInterval(reload, 30_000);
+    return () => clearInterval(t);
+  }, [reload, refreshTrigger]);
+
+  return { health, reload };
+}
+
 function useProcessingStatus(refreshTrigger: number) {
   const [cycleStatus, setCycleStatus] = useState<CycleStatus>({ lastRunAt: null, lastStatus: null, lastSummary: null });
   const [stats, setStats] = useState<ProcessingStats>({ unprocessedThreads: 0 });
@@ -104,6 +150,15 @@ function formatRelativeTime(iso: string | null): string {
   return `před ${days}d`;
 }
 
+function formatHeartbeatAge(sec: number | null): string {
+  if (sec == null) return "—";
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
 const DidSprava = ({
   onBootstrap,
   isBootstrapping,
@@ -132,6 +187,49 @@ const DidSprava = ({
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
+  const { health, reload: reloadHealth } = useCycleHealth(refreshTrigger);
+  const [isTriggeringFullCycle, setIsTriggeringFullCycle] = useState(false);
+  const [isResettingStuck, setIsResettingStuck] = useState(false);
+
+  const triggerFullCycle = useCallback(async () => {
+    setIsTriggeringFullCycle(true);
+    toast.info("Spouštím plný denní cyklus (manual)…");
+    try {
+      const { data, error } = await supabase.functions.invoke("karel-did-daily-cycle", {
+        body: { source: "manual" },
+      });
+      if (error) throw error;
+      if (data?.reason === "already_running") {
+        toast.warning(`Cyklus už běží: ${data.cycleId?.slice(0, 8) ?? "?"}`);
+      } else if (data?.status === "skipped") {
+        toast.info(`Přeskočeno: ${data.reason}`);
+      } else {
+        toast.success("Plný cyklus spuštěn — sleduj StatusBar (heartbeat se obnovuje co ~45s).");
+      }
+    } catch (e: any) {
+      toast.error(`Chyba spuštění: ${e?.message ?? String(e)}`);
+    } finally {
+      setIsTriggeringFullCycle(false);
+      reloadHealth();
+    }
+  }, [reloadHealth]);
+
+  const resetStuckRun = useCallback(async () => {
+    if (!health.running) return;
+    setIsResettingStuck(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("karel-did-daily-cycle", {
+        body: { action: "force_fail", cycleId: health.running.id, reason: "admin_ui_reset" },
+      });
+      if (error) throw error;
+      toast.success(`Označeno jako failed: ${data?.failedCount ?? 0} běh(ů)`);
+    } catch (e: any) {
+      toast.error(`Reset selhal: ${e?.message ?? String(e)}`);
+    } finally {
+      setIsResettingStuck(false);
+      reloadHealth();
+    }
+  }, [health.running, reloadHealth]);
 
   useEffect(() => {
     supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
@@ -169,8 +267,16 @@ const DidSprava = ({
           <DialogDescription className="text-xs">Nástroje a osobní nastavení vzhledu pro každou personu zvlášť.</DialogDescription>
         </DialogHeader>
 
-        {/* Status bar */}
-        <StatusBar cycleStatus={cycleStatus} unprocessedThreads={stats.unprocessedThreads} />
+        {/* Truthful run health bar */}
+        <CycleHealthBar
+          health={health}
+          unprocessedThreads={stats.unprocessedThreads}
+          onReload={reloadHealth}
+          onTriggerFullCycle={triggerFullCycle}
+          onResetStuck={resetStuckRun}
+          isTriggering={isTriggeringFullCycle}
+          isResetting={isResettingStuck}
+        />
 
         <div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
          {([
@@ -295,11 +401,20 @@ const DidSprava = ({
 
         {activeTab === "tools" && (
           <div className="space-y-2">
+            {/* Top-level: explicit full-cycle trigger (proof harness) */}
+            <ToolButton
+              icon={<Play className={`w-4 h-4 text-primary ${isTriggeringFullCycle ? "animate-pulse" : ""}`} />}
+              title="Spustit denní cyklus (full)"
+              desc="Plný karel-did-daily-cycle (Fáze 0–10): audit, AI analýza, extrakce, plán, drive flush. Manual run obchází 3h dedup."
+              loading={isTriggeringFullCycle}
+              onClick={() => { triggerFullCycle(); }}
+            />
+
             {onRefreshMemory && (
               <ToolButton
                 icon={<Brain className={`w-4 h-4 text-violet-600 ${isRefreshingMemory ? "animate-pulse" : ""}`} />}
                 title="Osvěž paměť"
-                desc="Vynutit novou situační cache z Drive, DB a analýzy"
+                desc="POUZE cache: invaliduje did-context-prime cache + nahraje novou situační kartu. NEspouští extrakci."
                 loading={isRefreshingMemory}
                 onClick={() => { onRefreshMemory(); setOpen(false); }}
               />
@@ -308,8 +423,8 @@ const DidSprava = ({
             {onManualUpdate && (
               <ToolButton
                 icon={<RefreshCw className={`w-4 h-4 text-primary ${isUpdating ? "animate-spin" : ""}`} />}
-                title="Aktualizovat kartotéku"
-                desc="Synchronizace dat z rozhovorů do karet na Drive"
+                title="Aktualizovat kartotéku (sync)"
+                desc="POUZE Drive↔registr sync (kartoteka_DID): nasaje nové karty. NEspouští AI analýzu ani Fázi 4 extrakci."
                 loading={isUpdating}
                 onClick={() => { onManualUpdate(); setOpen(false); }}
                 badge={stats.unprocessedThreads > 0 ? `${stats.unprocessedThreads} vláken` : undefined}
@@ -319,8 +434,8 @@ const DidSprava = ({
             {onCentrumSync && (
               <ToolButton
                 icon={<ClipboardList className={`w-4 h-4 text-emerald-600 ${isCentrumSyncing ? "animate-pulse" : ""}`} />}
-                title="Aktualizovat Centrum"
-                desc="Dashboard + operativní plán + CENTRUM dokumenty"
+                title="Aktualizovat Centrum (DB→Drive)"
+                desc="POUZE flush did_pending_drive_writes do 00_CENTRUM. NEspouští AI analýzu ani extrakci."
                 loading={isCentrumSyncing}
                 onClick={() => { onCentrumSync(); setOpen(false); }}
               />
@@ -329,8 +444,8 @@ const DidSprava = ({
             {onCleanupTasks && (
               <ToolButton
                 icon={<Trash2 className={`w-4 h-4 text-amber-600 ${isCleaningTasks ? "animate-pulse" : ""}`} />}
-                title="Vyčistit úkoly"
-                desc="Archivovat not_started úkoly starší 7 dní"
+                title="Vyčistit úkoly (DB only)"
+                desc="Archivuje not_started úkoly starší 7 dní v did_therapist_tasks. Klientský SQL update."
                 loading={isCleaningTasks}
                 onClick={() => { onCleanupTasks(); setOpen(false); }}
               />
@@ -447,33 +562,74 @@ const DidSprava = ({
   );
 };
 
-/* ── Status bar showing last run info ── */
-function StatusBar({ cycleStatus, unprocessedThreads }: { cycleStatus: CycleStatus; unprocessedThreads: number }) {
-  const statusColor = cycleStatus.lastStatus === "completed"
-    ? "text-emerald-600"
-    : cycleStatus.lastStatus === "failed"
-      ? "text-destructive"
-      : "text-muted-foreground";
-
-  const statusLabel = cycleStatus.lastStatus === "completed"
-    ? "✅ Úspěch"
-    : cycleStatus.lastStatus === "failed"
-      ? "❌ Chyba"
-      : cycleStatus.lastStatus === "running"
-        ? "⏳ Běží"
-        : "—";
-
+/* ── Cycle health bar (truthful: completed vs running, heartbeat age, stuck flag) ── */
+function CycleHealthBar({
+  health, unprocessedThreads, onReload, onTriggerFullCycle, onResetStuck, isTriggering, isResetting,
+}: {
+  health: CycleHealth;
+  unprocessedThreads: number;
+  onReload: () => void;
+  onTriggerFullCycle: () => void;
+  onResetStuck: () => void;
+  isTriggering: boolean;
+  isResetting: boolean;
+}) {
+  const lc = health.lastCompleted;
+  const r = health.running;
+  const stuck = !!r?.stuck;
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 rounded-md bg-muted/50 text-[0.625rem] text-muted-foreground mb-2">
-      <span>
-        Poslední cyklus: <strong className="text-foreground">{formatRelativeTime(cycleStatus.lastRunAt)}</strong>
-      </span>
-      <span>
-        Status: <strong className={statusColor}>{statusLabel}</strong>
-      </span>
-      <span>
-        Nezpracovaná vlákna: <strong className={unprocessedThreads > 0 ? "text-amber-600" : "text-foreground"}>{unprocessedThreads}</strong>
-      </span>
+    <div className="rounded-md border border-border bg-muted/40 p-2.5 mb-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold flex items-center gap-1.5">
+          <Activity className="w-3 h-3" /> Provoz cyklu
+        </span>
+        <Button variant="ghost" size="sm" className="h-5 text-[10px] px-1.5" onClick={onReload} disabled={health.loading}>
+          {health.loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+        <span className="text-muted-foreground">Naposled dokončeno:</span>
+        <span className="font-medium text-foreground">
+          {lc?.completed_at ? formatRelativeTime(lc.completed_at) : "nikdy"}
+          {lc?.status === "completed" ? " ✅" : lc?.status === "failed" ? " ❌" : ""}
+        </span>
+        <span className="text-muted-foreground">Aktuální běh:</span>
+        <span className={`font-medium ${stuck ? "text-destructive" : r ? "text-amber-600" : "text-muted-foreground"}`}>
+          {r ? `${r.id.slice(0, 8)} (${formatRelativeTime(r.started_at)})` : "žádný"}
+        </span>
+        {r && (
+          <>
+            <span className="text-muted-foreground">Fáze:</span>
+            <span className="font-medium text-foreground truncate">{r.phase || "—"}</span>
+            <span className="text-muted-foreground">Heartbeat age:</span>
+            <span className={`font-medium ${stuck ? "text-destructive" : "text-foreground"}`}>
+              {formatHeartbeatAge(r.heartbeatAgeSec)}{stuck ? " ⚠️ stuck (>30m)" : ""}
+            </span>
+          </>
+        )}
+        {(lc?.last_error || r?.last_error) && (
+          <>
+            <span className="text-muted-foreground">Last error:</span>
+            <span className="font-medium text-destructive truncate" title={r?.last_error || lc?.last_error || ""}>
+              {(r?.last_error || lc?.last_error || "").slice(0, 60)}
+            </span>
+          </>
+        )}
+        <span className="text-muted-foreground">Nezpracovaná vlákna:</span>
+        <span className={`font-medium ${unprocessedThreads > 0 ? "text-amber-600" : "text-foreground"}`}>{unprocessedThreads}</span>
+      </div>
+      <div className="flex gap-1.5 pt-1">
+        <Button size="sm" variant="default" className="h-6 text-[10px] gap-1 flex-1" onClick={onTriggerFullCycle} disabled={isTriggering || (!!r && !stuck)}>
+          {isTriggering ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          Spustit denní cyklus
+        </Button>
+        {r && (
+          <Button size="sm" variant={stuck ? "destructive" : "outline"} className="h-6 text-[10px] gap-1" onClick={onResetStuck} disabled={isResetting}>
+            {isResetting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Square className="w-3 h-3" />}
+            Force-fail
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
