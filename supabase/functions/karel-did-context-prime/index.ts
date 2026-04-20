@@ -896,10 +896,64 @@ serve(async (req) => {
             const kataFolderId = await findFolder(token, "KATA", didPametId);
             if (hankaFolderId) {
               reads.push(readFolderDocs(token, hankaFolderId, 5, 6000).then(d => { driveData["PROFIL_HANKA"] = d; }));
+            } else {
+              therapistProfiles.profilHanka.reason = "folder_missing:PAMET_KAREL/DID/HANKA";
+              therapistProfiles.strategieHanka.reason = "folder_missing:PAMET_KAREL/DID/HANKA";
             }
             if (kataFolderId) {
               reads.push(readFolderDocs(token, kataFolderId, 5, 6000).then(d => { driveData["PROFIL_KATA"] = d; }));
+            } else {
+              therapistProfiles.profilKata.reason = "folder_missing:PAMET_KAREL/DID/KATA";
+              therapistProfiles.strategieKata.reason = "folder_missing:PAMET_KAREL/DID/KATA";
             }
+
+            // ── TARGETED therapist profile reads (always for both therapists) ──
+            // Loads PROFIL_OSOBNOSTI.txt + STRATEGIE_KOMUNIKACE.txt explicitly so they
+            // appear in the prompt as their own, clearly-labelled blocks. The folder
+            // snapshot above stays as a backward-compatible fallback.
+            const TARGETED_PROFILE_MAX = 4000;
+            const targetedReads: Array<{
+              therapist: "hanka" | "kata";
+              folderId: string | null;
+              fileName: string;
+              key: "profilHanka" | "strategieHanka" | "profilKata" | "strategieKata";
+            }> = [
+              { therapist: "hanka", folderId: hankaFolderId, fileName: "PROFIL_OSOBNOSTI.txt",     key: "profilHanka" },
+              { therapist: "hanka", folderId: hankaFolderId, fileName: "STRATEGIE_KOMUNIKACE.txt", key: "strategieHanka" },
+              { therapist: "kata",  folderId: kataFolderId,  fileName: "PROFIL_OSOBNOSTI.txt",     key: "profilKata" },
+              { therapist: "kata",  folderId: kataFolderId,  fileName: "STRATEGIE_KOMUNIKACE.txt", key: "strategieKata" },
+            ];
+            for (const tr of targetedReads) {
+              if (!tr.folderId) continue; // reason already set above
+              reads.push((async () => {
+                try {
+                  // Try exact .txt name, then bare name (Google Doc without extension)
+                  let doc = await findDocByExactName(token, tr.folderId!, tr.fileName);
+                  if (!doc) doc = await findDocByExactName(token, tr.folderId!, tr.fileName.replace(/\.txt$/, ""));
+                  if (!doc) {
+                    therapistProfiles[tr.key].reason = `file_missing:${tr.fileName}`;
+                    console.warn(`[therapist-profile] ${tr.key}: ${tr.fileName} not found in PAMET_KAREL/DID/${tr.therapist.toUpperCase()}`);
+                    return;
+                  }
+                  const content = await readDoc(token, doc.id, TARGETED_PROFILE_MAX);
+                  if (!content || content === "[nečitelné]") {
+                    therapistProfiles[tr.key].reason = "unreadable";
+                    return;
+                  }
+                  therapistProfiles[tr.key] = {
+                    content,
+                    loaded: true,
+                    chars: content.length,
+                    reason: "ok",
+                  };
+                  console.log(`[therapist-profile] Loaded ${tr.key} (${content.length} chars)`);
+                } catch (e) {
+                  therapistProfiles[tr.key].reason = `error:${e instanceof Error ? e.message : "unknown"}`;
+                  console.warn(`[therapist-profile] ${tr.key} read error:`, e);
+                }
+              })());
+            }
+
 
             // ── 72h Operational Memory: targeted reads for mamka/kata/general(hana_personal) ──
             if (needsOperationalMemory) {
