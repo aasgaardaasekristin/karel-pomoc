@@ -36,6 +36,10 @@ const TYPE_LABEL: Record<string, string> = {
   supervision: "Supervize",
 };
 
+function areAllQuestionsAnswered(questions: DeliberationQuestion[] = []) {
+  return questions.length > 0 && questions.every((q) => !!q.answer?.trim());
+}
+
 function QuestionList({
   questions,
   who,
@@ -112,12 +116,15 @@ function KarelSynthesisBlock({
 }) {
   const isCrisis = d.deliberation_type === "crisis";
   const synth = d.karel_synthesis as KarelSynthesis | null;
+  const crisisAnswersReady =
+    areAllQuestionsAnswered(d.questions_for_hanka ?? []) &&
+    areAllQuestionsAnswered(d.questions_for_kata ?? []);
 
-  // Můžeme syntetizovat, pokud je alespoň jedna odpověď nebo diskuse
   const hasInput =
     (d.questions_for_hanka ?? []).some((q) => q.answer?.trim()) ||
     (d.questions_for_kata ?? []).some((q) => q.answer?.trim()) ||
     (d.discussion_log ?? []).length > 0;
+  const canSynthesize = isCrisis ? crisisAnswersReady : hasInput;
 
   if (!synth) {
     if (!isCrisis && !hasInput) return null;
@@ -137,7 +144,7 @@ function KarelSynthesisBlock({
             </h4>
             <p className="text-[10px] text-muted-foreground mt-0.5">
               {isCrisis
-                ? "Karel musí nejdřív vyhodnotit odpovědi terapeutek (krize trvá / polevuje / lze uzavřít) a teprve potom může podepsat."
+                ? "Karel musí nejdřív vyhodnotit kompletní odpovědi Haničky a Káti (krize trvá / polevuje / lze uzavřít) a teprve potom může podepsat."
                 : "Karel může vyhodnotit odpovědi terapeutek a navrhnout další krok."}
             </p>
           </div>
@@ -145,7 +152,7 @@ function KarelSynthesisBlock({
         <Button
           size="sm"
           className="h-7 text-[11px] w-full"
-          disabled={!hasInput || synthesizing}
+          disabled={!canSynthesize || synthesizing}
           onClick={onSynthesize}
         >
           {synthesizing ? (
@@ -153,7 +160,11 @@ function KarelSynthesisBlock({
           ) : (
             <Brain className="w-3 h-3 mr-1" />
           )}
-          {hasInput ? "Spustit Karlovu syntézu" : "Čeká na odpovědi terapeutek"}
+          {canSynthesize
+            ? "Spustit Karlovu syntézu"
+            : isCrisis
+              ? "Čeká na kompletní odpovědi terapeutek"
+              : "Čeká na odpovědi terapeutek"}
         </Button>
       </section>
     );
@@ -509,6 +520,9 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 const signed =
                   who === "hanka" ? d.hanka_signed_at :
                   who === "kata" ? d.kata_signed_at : d.karel_signed_at;
+                const crisisAnswersReady =
+                  areAllQuestionsAnswered(d.questions_for_hanka ?? []) &&
+                  areAllQuestionsAnswered(d.questions_for_kata ?? []);
                 // GATE: Karlův podpis je u krizové porady aktivní jen poté,
                 // co proběhla FRESH syntéza nad aktuálními odpověďmi.
                 // Po každé nové odpovědi / diskusní zprávě se karel_synthesis
@@ -517,7 +531,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 const karelGateBlocked =
                   who === "karel" &&
                   d.deliberation_type === "crisis" &&
-                  !d.karel_synthesis;
+                  (!crisisAnswersReady || !d.karel_synthesis);
                 const disabled = !!signed || signing === who || karelGateBlocked;
                 return (
                   <Button
