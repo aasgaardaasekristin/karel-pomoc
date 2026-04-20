@@ -44,10 +44,12 @@ function QuestionList({
   questions,
   who,
   onAnswer,
+  readOnly = false,
 }: {
   questions: DeliberationQuestion[];
   who: "hanka" | "kata";
   onAnswer: (idx: number, answer: string) => Promise<void>;
+  readOnly?: boolean;
 }) {
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<number | null>(null);
@@ -72,6 +74,8 @@ function QuestionList({
               </span>
               {q.answer}
             </div>
+          ) : readOnly ? (
+            <p className="text-[10px] text-muted-foreground italic">Bez odpovědi.</p>
           ) : (
             <div className="space-y-1.5">
               <Textarea
@@ -109,10 +113,12 @@ function KarelSynthesisBlock({
   d,
   synthesizing,
   onSynthesize,
+  readOnly = false,
 }: {
   d: TeamDeliberation;
   synthesizing: boolean;
   onSynthesize: () => void;
+  readOnly?: boolean;
 }) {
   const isCrisis = d.deliberation_type === "crisis";
   const synth = d.karel_synthesis as KarelSynthesis | null;
@@ -128,6 +134,7 @@ function KarelSynthesisBlock({
 
   if (!synth) {
     if (!isCrisis && !hasInput) return null;
+    if (readOnly) return null;
     return (
       <section className={`rounded-lg border p-3 space-y-2 ${
         isCrisis ? "border-amber-500/40 bg-amber-500/5" : "border-border/60 bg-card/40"
@@ -185,15 +192,17 @@ function KarelSynthesisBlock({
           <Brain className="w-3.5 h-3.5" />
           Karlova syntéza — {v.label}
         </h4>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-6 px-2 text-[10px]"
-          disabled={synthesizing}
-          onClick={onSynthesize}
-        >
-          {synthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Přesyntetizovat"}
-        </Button>
+        {!readOnly && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px]"
+            disabled={synthesizing}
+            onClick={onSynthesize}
+          >
+            {synthesizing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Přesyntetizovat"}
+          </Button>
+        )}
       </div>
       <p className="text-[11px] text-foreground/90"><strong>Další krok:</strong> {synth.next_step}</p>
       {synth.needs_karel_interview && (
@@ -350,6 +359,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
   };
 
   const sp = d ? signoffProgress(d) : { signed: 0, total: 3, missing: [] };
+  const isReadOnly = d?.status === "approved";
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
@@ -386,6 +396,20 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
         ) : (
           <div className="min-h-0 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-4">
+              {isReadOnly && (
+                <section className="rounded-lg border border-primary/30 bg-primary/5 p-3 flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="text-[11px] font-semibold text-foreground">
+                      Porada je schválená — náhled jen pro čtení
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Odpovědi, podpisy i Karlova syntéza jsou uzavřené. Nelze měnit, jen prohlížet.
+                      Pro nové rozhodnutí počkej na další briefing.
+                    </p>
+                  </div>
+                </section>
+              )}
               {/* Karlův úvod */}
               <section className="rounded-lg border border-border/60 bg-card/40 p-3">
                 <h4 className="text-[11px] font-semibold text-muted-foreground mb-1.5">
@@ -441,6 +465,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   questions={d.questions_for_hanka ?? []}
                   who="hanka"
                   onAnswer={(idx, ans) => handleAnswer("hanka", idx, ans)}
+                  readOnly={isReadOnly}
                 />
               </section>
 
@@ -453,6 +478,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   questions={d.questions_for_kata ?? []}
                   who="kata"
                   onAnswer={(idx, ans) => handleAnswer("kata", idx, ans)}
+                  readOnly={isReadOnly}
                 />
               </section>
 
@@ -478,37 +504,40 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 d={d}
                 synthesizing={synthesizing}
                 onSynthesize={handleSynthesize}
+                readOnly={isReadOnly}
               />
 
-              <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
-                <div className="flex items-center gap-1.5">
-                  {(["hanka", "kata", "karel"] as const).map((who) => (
-                    <Button
-                      key={who}
-                      size="sm"
-                      variant={chatAuthor === who ? "default" : "outline"}
-                      className="h-6 px-2 text-[10px]"
-                      onClick={() => setChatAuthor(who)}
-                    >
-                      {who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"}
-                    </Button>
-                  ))}
-                </div>
-                <Textarea
-                  value={chatDraft}
-                  onChange={(e) => setChatDraft(e.target.value)}
-                  placeholder="Příspěvek do diskuse…"
-                  className="min-h-[50px] text-[11px]"
-                />
-                <Button
-                  size="sm"
-                  className="h-7 text-[11px]"
-                  disabled={!chatDraft.trim()}
-                  onClick={handlePostMessage}
-                >
-                  <Send className="w-3 h-3 mr-1" /> Odeslat
-                </Button>
-              </section>
+              {!isReadOnly && (
+                <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    {(["hanka", "kata", "karel"] as const).map((who) => (
+                      <Button
+                        key={who}
+                        size="sm"
+                        variant={chatAuthor === who ? "default" : "outline"}
+                        className="h-6 px-2 text-[10px]"
+                        onClick={() => setChatAuthor(who)}
+                      >
+                        {who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"}
+                      </Button>
+                    ))}
+                  </div>
+                  <Textarea
+                    value={chatDraft}
+                    onChange={(e) => setChatDraft(e.target.value)}
+                    placeholder="Příspěvek do diskuse…"
+                    className="min-h-[50px] text-[11px]"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={!chatDraft.trim()}
+                    onClick={handlePostMessage}
+                  >
+                    <Send className="w-3 h-3 mr-1" /> Odeslat
+                  </Button>
+                </section>
+              )}
             </div>
           </div>
         )}
@@ -532,7 +561,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   who === "karel" &&
                   d.deliberation_type === "crisis" &&
                   (!crisisAnswersReady || !d.karel_synthesis);
-                const disabled = !!signed || signing === who || karelGateBlocked;
+                const disabled = !!signed || signing === who || karelGateBlocked || isReadOnly;
                 return (
                   <Button
                     key={who}
