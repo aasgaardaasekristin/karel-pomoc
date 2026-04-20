@@ -2386,8 +2386,9 @@ serve(async (req) => {
     10
   );
   const isAfternoonCronWindow = isCronCall && pragueHourForEmailGuard >= 13;
-  const shouldSendEmails = isAfternoonCronWindow || isTestEmail || isCatchup || isWatchdog;
-  console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, shouldSendEmails=${shouldSendEmails}`);
+  const suppressEmails = requestBody?.suppressEmails === true;
+  const shouldSendEmails = !suppressEmails && (isAfternoonCronWindow || isTestEmail || isCatchup || isWatchdog);
+  console.log(`[daily-cycle] Email Guard: pragueHour=${pragueHourForEmailGuard}, isCronCall=${isCronCall}, isCatchup=${isCatchup}, isWatchdog=${isWatchdog}, suppressEmails=${suppressEmails}, shouldSendEmails=${shouldSendEmails}`);
 
   let cycleId: string | null = null;
   let sb: ReturnType<typeof createClient> | null = null;
@@ -2890,7 +2891,10 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
 
       // ═══ CATCH-UP FAST PATH: If this is an afternoon catch-up cron (15:30 / 17:00)
       // and BOTH dispatches are already "sent" for today → skip entirely (no work needed)
-      if (currentSlot === "afternoon") {
+      // bypassDispatchCheck flag (admin/proof-run only) skips this gate so we can verify
+      // full pipeline regardless of whether emails already went out.
+      const bypassDispatchCheck = requestBody?.bypassDispatchCheck === true;
+      if (currentSlot === "afternoon" && !bypassDispatchCheck) {
         const { data: todayDispatches } = await sb.from("did_daily_report_dispatches")
           .select("recipient, status")
           .eq("report_date", reportDatePrague);
@@ -2912,6 +2916,8 @@ Při doporučení v sekci D (DOPORUČENÝ TERAPEUT) a sekci N (PLÁN SEZENÍ):
         } else {
           console.log(`[daily-cycle] CATCH-UP: No dispatches found for ${reportDatePrague}. Running full cycle.`);
         }
+      } else if (bypassDispatchCheck) {
+        console.log(`[daily-cycle] bypassDispatchCheck=true → skipping dispatch gate (admin/proof run)`);
       }
 
       // Check if THIS SLOT already has a completed cycle (6h cooldown per slot)
@@ -4348,6 +4354,19 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       void setPhase("update_cards_keepalive", "Fáze 4: zpracovávám karty (Drive write loop)");
     }, 45_000) as unknown as number;
 
+    // ═══ PHASE 4 HARD WALL-CLOCK BUDGET ═══
+    // Edge Runtime kills the isolate after ~150–250s of total wall-clock time.
+    // Phase 4's [KARTA:] loop is sequential per-part Drive I/O (1–10s each).
+    // To guarantee phases 5–10 actually run, we cut the [KARTA:] loop after
+    // PHASE4_CARDS_BUDGET_MS and defer the rest. Deferred parts are recorded
+    // into did_update_cycles.context_data for audit and future reprocessing.
+    // This is a TEMPORARY orchestration stabilizer, NOT the final card update
+    // architecture (queue/worker remains future work).
+    const PHASE4_CARDS_BUDGET_MS = 90_000; // 90s hard cap
+    const phase4CardsStart = Date.now();
+    const cardsDeferred: string[] = [];
+    let cardsBudgetExceeded = false;
+
     // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
     const NON_DID_BLACKLIST = new Set([
       "amalka", "tonička", "tonicka", "jiří", "jiri", "jirka",
@@ -4408,6 +4427,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       const cardBlockRegex = /\[KARTA:(.+?)\]([\s\S]*?)\[\/KARTA\]/g;
       for (const match of validatedAnalysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
+
+        // ═══ HARD BUDGET GATE: defer remaining cards if budget exceeded ═══
+        if (Date.now() - phase4CardsStart > PHASE4_CARDS_BUDGET_MS) {
+          cardsBudgetExceeded = true;
+          cardsDeferred.push(rawPartName);
+          continue;
+        }
+
         const normalizedPartName = normalizePartHint(rawPartName);
         const cardBlock = match[2];
 
@@ -4542,6 +4569,14 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             console.error(`Failed to update card for ${rawPartName}:`, e);
           }
         }
+      }
+
+      // ═══ PHASE 4 BUDGET REPORT ═══
+      const phase4ElapsedMs = Date.now() - phase4CardsStart;
+      if (cardsBudgetExceeded) {
+        console.warn(`[PHASE_4_BUDGET] ⏱️ Wall-clock budget exceeded after ${phase4ElapsedMs}ms. Processed ${cardsUpdated.length} cards, deferred ${cardsDeferred.length}: ${cardsDeferred.join(", ")}`);
+      } else {
+        console.log(`[PHASE_4_BUDGET] ✅ All [KARTA:] blocks processed within budget (${phase4ElapsedMs}ms / ${PHASE4_CARDS_BUDGET_MS}ms)`);
       }
 
       // ═══ PHASE_8_CARDS_AND_PART_STATUS: card pipeline result ═══
@@ -5609,7 +5644,17 @@ ESKALACE: level ${task.escalation_level || 0}`,
         completed_at: new Date().toISOString(),
         report_summary: validatedReportSummary,
         cards_updated: cardsUpdated,
-        context_data: { auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined },
+        context_data: {
+          auditAlerts: auditAlerts.length > 0 ? auditAlerts : undefined,
+          phase4: {
+            budgetMs: PHASE4_CARDS_BUDGET_MS,
+            elapsedMs: Date.now() - phase4CardsStart,
+            budgetExceeded: cardsBudgetExceeded,
+            cardsProcessed: cardsUpdated.length,
+            cardsDeferredCount: cardsDeferred.length,
+            cardsDeferred: cardsDeferred.length > 0 ? cardsDeferred : undefined,
+          },
+        },
       }).eq("id", cycle.id);
     }
 
