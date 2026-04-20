@@ -465,6 +465,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   questions={d.questions_for_hanka ?? []}
                   who="hanka"
                   onAnswer={(idx, ans) => handleAnswer("hanka", idx, ans)}
+                  readOnly={isReadOnly}
                 />
               </section>
 
@@ -477,6 +478,7 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                   questions={d.questions_for_kata ?? []}
                   who="kata"
                   onAnswer={(idx, ans) => handleAnswer("kata", idx, ans)}
+                  readOnly={isReadOnly}
                 />
               </section>
 
@@ -502,37 +504,40 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
                 d={d}
                 synthesizing={synthesizing}
                 onSynthesize={handleSynthesize}
+                readOnly={isReadOnly}
               />
 
-              <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
-                <div className="flex items-center gap-1.5">
-                  {(["hanka", "kata", "karel"] as const).map((who) => (
-                    <Button
-                      key={who}
-                      size="sm"
-                      variant={chatAuthor === who ? "default" : "outline"}
-                      className="h-6 px-2 text-[10px]"
-                      onClick={() => setChatAuthor(who)}
-                    >
-                      {who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"}
-                    </Button>
-                  ))}
-                </div>
-                <Textarea
-                  value={chatDraft}
-                  onChange={(e) => setChatDraft(e.target.value)}
-                  placeholder="Příspěvek do diskuse…"
-                  className="min-h-[50px] text-[11px]"
-                />
-                <Button
-                  size="sm"
-                  className="h-7 text-[11px]"
-                  disabled={!chatDraft.trim()}
-                  onClick={handlePostMessage}
-                >
-                  <Send className="w-3 h-3 mr-1" /> Odeslat
-                </Button>
-              </section>
+              {!isReadOnly && (
+                <section className="rounded-lg border border-dashed border-border/60 p-3 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    {(["hanka", "kata", "karel"] as const).map((who) => (
+                      <Button
+                        key={who}
+                        size="sm"
+                        variant={chatAuthor === who ? "default" : "outline"}
+                        className="h-6 px-2 text-[10px]"
+                        onClick={() => setChatAuthor(who)}
+                      >
+                        {who === "hanka" ? "Hanička" : who === "kata" ? "Káťa" : "Karel"}
+                      </Button>
+                    ))}
+                  </div>
+                  <Textarea
+                    value={chatDraft}
+                    onChange={(e) => setChatDraft(e.target.value)}
+                    placeholder="Příspěvek do diskuse…"
+                    className="min-h-[50px] text-[11px]"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    disabled={!chatDraft.trim()}
+                    onClick={handlePostMessage}
+                  >
+                    <Send className="w-3 h-3 mr-1" /> Odeslat
+                  </Button>
+                </section>
+              )}
             </div>
           </div>
         )}
