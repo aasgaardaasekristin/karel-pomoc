@@ -268,13 +268,6 @@ serve(async (req) => {
         id: c.id, partName: c.part_name, severity: c.severity, phase: c.phase,
       }));
       canonicalCrisisCount = canonicalCrisisList.length;
-        .select("id, part_name, severity, phase")
-        .not("phase", "in", '("closed","CLOSED")')
-        .order("opened_at", { ascending: false });
-      canonicalCrisisList = (openCrises || []).map((c: any) => ({
-        id: c.id, partName: c.part_name, severity: c.severity, phase: c.phase,
-      }));
-      canonicalCrisisCount = canonicalCrisisList.length;
     } catch (e) {
       console.warn("[daily-refresh] canonical crisis snapshot failed:", e);
     }
