@@ -187,6 +187,49 @@ const DidSprava = ({
   const [hasCrisis, setHasCrisis] = useState(false);
   const [themeDialogOpen, setThemeDialogOpen] = useState(false);
   const { cycleStatus, stats } = useProcessingStatus(refreshTrigger);
+  const { health, reload: reloadHealth } = useCycleHealth(refreshTrigger);
+  const [isTriggeringFullCycle, setIsTriggeringFullCycle] = useState(false);
+  const [isResettingStuck, setIsResettingStuck] = useState(false);
+
+  const triggerFullCycle = useCallback(async () => {
+    setIsTriggeringFullCycle(true);
+    toast.info("Spouštím plný denní cyklus (manual)…");
+    try {
+      const { data, error } = await supabase.functions.invoke("karel-did-daily-cycle", {
+        body: { source: "manual" },
+      });
+      if (error) throw error;
+      if (data?.reason === "already_running") {
+        toast.warning(`Cyklus už běží: ${data.cycleId?.slice(0, 8) ?? "?"}`);
+      } else if (data?.status === "skipped") {
+        toast.info(`Přeskočeno: ${data.reason}`);
+      } else {
+        toast.success("Plný cyklus spuštěn — sleduj StatusBar (heartbeat se obnovuje co ~45s).");
+      }
+    } catch (e: any) {
+      toast.error(`Chyba spuštění: ${e?.message ?? String(e)}`);
+    } finally {
+      setIsTriggeringFullCycle(false);
+      reloadHealth();
+    }
+  }, [reloadHealth]);
+
+  const resetStuckRun = useCallback(async () => {
+    if (!health.running) return;
+    setIsResettingStuck(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("karel-did-daily-cycle", {
+        body: { action: "force_fail", cycleId: health.running.id, reason: "admin_ui_reset" },
+      });
+      if (error) throw error;
+      toast.success(`Označeno jako failed: ${data?.failedCount ?? 0} běh(ů)`);
+    } catch (e: any) {
+      toast.error(`Reset selhal: ${e?.message ?? String(e)}`);
+    } finally {
+      setIsResettingStuck(false);
+      reloadHealth();
+    }
+  }, [health.running, reloadHealth]);
 
   useEffect(() => {
     supabase.from("crisis_events").select("id", { count: "exact", head: true }).not("phase", "eq", "closed")
