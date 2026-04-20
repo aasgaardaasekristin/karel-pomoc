@@ -198,8 +198,10 @@ const DeliberationRoom = ({ deliberationId, onClose }: Props) => {
 
   return (
     <Dialog open={!!deliberationId} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+      <DialogContent
+        className="max-w-3xl w-[calc(100vw-2rem)] h-[90vh] sm:h-auto sm:max-h-[90vh] p-0 gap-0 overflow-hidden !grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] sm:!flex sm:!flex-col"
+      >
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0 border-b border-border/40">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Users className="w-4 h-4 text-primary" />
             {loading ? "Načítám…" : d?.title ?? "Porada"}
