@@ -256,11 +256,18 @@ serve(async (req) => {
     // Frontend (DidSystemOverview, KarelDailyPlan, atd.) NEMÁ resolvovat krizi/sezení
     // z legacy alert vrstev. Tyto pole jsou jediná pravda do `context_json`.
     let canonicalCrisisCount = 0;
-    let canonicalCrisisList: Array<{ id: string; partName: string; severity: string | null; phase: string }> = [];
-    let canonicalTodaySession: any = null;
+    let canonicalCrisisList: CanonicalCrisisItem[] = [];
+    let canonicalTodaySession: CanonicalTodaySessionItem | null = null;
     try {
       const { data: openCrises } = await sb
         .from("crisis_events")
+        .select("id, part_name, severity, phase")
+        .not("phase", "in", '("closed","CLOSED")')
+        .order("opened_at", { ascending: false });
+      canonicalCrisisList = (openCrises || []).map((c: any) => ({
+        id: c.id, partName: c.part_name, severity: c.severity, phase: c.phase,
+      }));
+      canonicalCrisisCount = canonicalCrisisList.length;
         .select("id, part_name, severity, phase")
         .not("phase", "in", '("closed","CLOSED")')
         .order("opened_at", { ascending: false });
