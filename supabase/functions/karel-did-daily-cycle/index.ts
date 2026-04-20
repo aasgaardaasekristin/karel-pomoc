@@ -4354,18 +4354,22 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       void setPhase("update_cards_keepalive", "Fáze 4: zpracovávám karty (Drive write loop)");
     }, 45_000) as unknown as number;
 
-    // ═══ PHASE 4 HARD WALL-CLOCK BUDGET ═══
+    // ═══ PHASE 4 HARD WALL-CLOCK BUDGET (REPOSITIONED + INNER GATES) ═══
     // Edge Runtime kills the isolate after ~150–250s of total wall-clock time.
-    // Phase 4's [KARTA:] loop is sequential per-part Drive I/O (1–10s each).
-    // To guarantee phases 5–10 actually run, we cut the [KARTA:] loop after
-    // PHASE4_CARDS_BUDGET_MS and defer the rest. Deferred parts are recorded
-    // into did_update_cycles.context_data for audit and future reprocessing.
+    // Phase 4's [KARTA:] loop is sequential per-part Drive I/O (5–60s each).
+    // Previously the budget was checked ONLY at the top of each iteration, so a
+    // single slow card (Drive read+write+email) could overshoot wall-clock and
+    // get killed by the isolate before reaching phases 5–10.
+    // Fix: check budget BEFORE each Drive call (resolveCardTarget, findCardFile,
+    // updateCardSections) inside the iteration too. Smaller budget (60s) leaves
+    // enough headroom for phases 5–10 within the ~150s isolate window.
     // This is a TEMPORARY orchestration stabilizer, NOT the final card update
     // architecture (queue/worker remains future work).
-    const PHASE4_CARDS_BUDGET_MS = 90_000; // 90s hard cap
+    const PHASE4_CARDS_BUDGET_MS = 60_000; // 60s hard cap (down from 90s)
     const phase4CardsStart = Date.now();
     const cardsDeferred: string[] = [];
     let cardsBudgetExceeded = false;
+    const isPhase4BudgetExhausted = () => Date.now() - phase4CardsStart > PHASE4_CARDS_BUDGET_MS;
 
     // ═══ BLACKLIST: Biologické osoby a terapeuti – NIKDY nevytvářet karty DID ═══
     const NON_DID_BLACKLIST = new Set([
@@ -4428,8 +4432,8 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
       for (const match of validatedAnalysisText.matchAll(cardBlockRegex)) {
         const rawPartName = match[1].trim();
 
-        // ═══ HARD BUDGET GATE: defer remaining cards if budget exceeded ═══
-        if (Date.now() - phase4CardsStart > PHASE4_CARDS_BUDGET_MS) {
+        // ═══ HARD BUDGET GATE (top of iteration): defer remaining cards if budget exceeded ═══
+        if (isPhase4BudgetExhausted()) {
           cardsBudgetExceeded = true;
           cardsDeferred.push(rawPartName);
           continue;
@@ -4465,6 +4469,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
 
         if (Object.keys(newSections).length > 0) {
           try {
+            // ═══ INNER BUDGET GATE #1: before resolveCardTarget (Drive lookup) ═══
+            if (isPhase4BudgetExhausted()) {
+              cardsBudgetExceeded = true;
+              cardsDeferred.push(rawPartName);
+              continue;
+            }
             const target = await resolveCardTarget(token, folderId, normalizedPartName, registryContext);
             const resolvedPartName = target.registryEntry?.name || normalizedPartName;
             const resolvedCanonical = canonicalText(resolvedPartName);
@@ -4481,6 +4491,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
               continue;
             }
 
+            // ═══ INNER BUDGET GATE #2: before findCardFile (Drive list) ═══
+            if (isPhase4BudgetExhausted()) {
+              cardsBudgetExceeded = true;
+              cardsDeferred.push(rawPartName);
+              continue;
+            }
             // ═══ FAIL-SAFE: registry match but card not found → alert, NO fallback write ═══
             const lookupName = target.registryEntry?.name || resolvedPartName;
             const probeCard = await findCardFile(token, lookupName, target.searchRootId);
@@ -4524,6 +4540,12 @@ Pokud úkol visí 3+ dny, Karel automaticky eskaluje a v emailu svolá "poradu".
             // Awakening updates already done programmatically in resolveCardTarget
             // AI-generated sections will be APPENDED on top of forced sections
 
+            // ═══ INNER BUDGET GATE #3: before updateCardSections (Drive write) ═══
+            if (isPhase4BudgetExhausted()) {
+              cardsBudgetExceeded = true;
+              cardsDeferred.push(rawPartName);
+              continue;
+            }
             const result = await updateCardSections(
               token,
               resolvedPartName,
