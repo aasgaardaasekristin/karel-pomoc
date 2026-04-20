@@ -173,7 +173,28 @@ serve(async (req) => {
             .single();
           
           if (dailyCtx?.context_json) {
-            const ctx = dailyCtx.context_json as any;
+            const ctxRaw = dailyCtx.context_json as any;
+            // Canonical snapshot lock (Phase 3D): legacy keys (parts/therapists/
+            // pipeline/recent_activity/pending_tasks/recent_sessions) live under
+            // ctxRaw.legacy.* in v2 rows. Pre-lock rows still have them at top
+            // level. Build a transparent merged view so karel-chat works on both
+            // shapes without any other change to the prompt-building logic below.
+            const legacyBag = (ctxRaw && typeof ctxRaw === "object" && ctxRaw.legacy && typeof ctxRaw.legacy === "object")
+              ? ctxRaw.legacy
+              : {};
+            const ctx: any = {
+              ...legacyBag,
+              ...ctxRaw,
+              // Make legacy fields explicitly addressable as top-level for
+              // back-compat readers below. Top-level wins if present (pre-lock).
+              parts: ctxRaw.parts ?? legacyBag.parts,
+              therapists: ctxRaw.therapists ?? legacyBag.therapists,
+              pipeline: ctxRaw.pipeline ?? legacyBag.pipeline,
+              recent_activity: ctxRaw.recent_activity ?? legacyBag.recent_activity,
+              pending_tasks: ctxRaw.pending_tasks ?? legacyBag.pending_tasks,
+              recent_sessions: ctxRaw.recent_sessions ?? legacyBag.recent_sessions,
+              drive_documents: ctxRaw.drive_documents ?? legacyBag.drive_documents,
+            };
             
             // Build structured text block from JSON
             const therapistBlock = ctx.therapists ? `
