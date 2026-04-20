@@ -333,26 +333,10 @@ serve(async (req) => {
       console.warn("[daily-refresh] canonical queue snapshot failed:", e);
     }
 
-    const contextJson = {
-      date: today,
-      generated_at: new Date().toISOString(),
-
-      // ═══ FÁZE 3B/3C CANONICAL FIELDS — primary truth for frontend readers ═══
-      // Frontend snapshot readers MUST use these instead of resolving from
-      // legacy alert / planned_sessions / next_session_plan layers.
-      canonical_crisis_count: canonicalCrisisCount,
-      canonical_crises: canonicalCrisisList,
-      canonical_today_session: canonicalTodaySession, // null = no canonical plan today
-      canonical_queue: {
-        primary: canonicalQueuePrimary,
-        adjunct: canonicalQueueAdjunct,
-        primary_count: canonicalQueuePrimary.length,
-        adjunct_count: canonicalQueueAdjunct.length,
-        // Legacy back-compat keys (kept for any reader that still consumes counts only).
-        plan_items_count: canonicalQueuePrimary.length,
-        manual_tasks_count: canonicalQueueAdjunct.length,
-      },
-
+    // ═══ Legacy bag — kept for back-compat readers (karel-chat, dailyDiff, etc.) ═══
+    // These keys are NOT canonical truth; they live under `legacy` so that any
+    // grep-based audit can find every remaining legacy reader.
+    const legacyBag: Record<string, unknown> = {
       // Therapist profiles
       therapists: {
         hanka: {
@@ -425,16 +409,7 @@ serve(async (req) => {
         methods: s.methods_used,
       })),
 
-      // Drive documents (summaries)
-      drive_documents: {
-        dashboard: dashboardText ? dashboardText.slice(0, 3000) : null,
-        operativni_plan: operativniPlanText ? operativniPlanText.slice(0, 3000) : null,
-        strategicky_vyhled: strategickyVyhledText ? strategickyVyhledText.slice(0, 2000) : null,
-        instrukce_karel: instrukceText ? `[loaded, ${instrukceText.length} chars]` : null,
-        pamet_karel: pametKarelText ? pametKarelText.slice(0, 2000) : null,
-      },
-
-      // ═══ PIPELINE DATA (Fáze 5) ═══
+      // Pipeline data (Fáze 5)
       pipeline: {
         plan_items_05A: (planItems05A || []).map((i: any) => ({
           subject: i.subject_id,
@@ -457,6 +432,19 @@ serve(async (req) => {
         })),
         active_claims_summary: buildClaimsSummary(activeClaims || []),
       },
+
+      // Legacy queue count back-compat
+      queue_legacy_counts: {
+        plan_items_count: canonicalQueuePrimary.length,
+        manual_tasks_count: canonicalQueueAdjunct.length,
+      },
+    };
+
+    const canonicalQueue: CanonicalQueue = {
+      primary: canonicalQueuePrimary,
+      adjunct: canonicalQueueAdjunct,
+      primary_count: canonicalQueuePrimary.length,
+      adjunct_count: canonicalQueueAdjunct.length,
     };
 
     // ═══ 4. FÁZE 2B: Compute daily diff vs. yesterday ═══
@@ -472,22 +460,50 @@ serve(async (req) => {
         .eq("context_date", yesterdayDate)
         .maybeSingle();
 
+      // Diff helper still consumes the legacy `parts/pending_tasks/pipeline` shape;
+      // pass the legacy bag at the top level for it.
       dailyDiff = computeDailyDiff(
-        contextJson as any,
-        (yesterdayCtx?.context_json as any) || null,
+        legacyBag as any,
+        ((yesterdayCtx?.context_json as any)?.legacy ?? (yesterdayCtx?.context_json as any)) || null,
       );
       console.log(`[daily-refresh] diff: ${dailyDiff.summary_line}`);
     } catch (diffErr) {
       console.warn("[daily-refresh] diff computation failed (non-fatal):", diffErr);
     }
 
-    // Inline diff into context_json so existing readers see it
-    const enrichedContextJson = {
-      ...contextJson,
+    // ═══ 5. Compose canonical context_json (locked v2 shape) ═══
+    const enrichedContextJson = composeCanonicalContext({
+      date: today,
+      source: "karel-daily-refresh",
+      canonical_crises: canonicalCrisisList,
+      canonical_today_session: canonicalTodaySession,
+      canonical_queue: canonicalQueue,
+      drive_documents: {
+        dashboard: dashboardText ? dashboardText.slice(0, 3000) : null,
+        operativni_plan: operativniPlanText ? operativniPlanText.slice(0, 3000) : null,
+        strategicky_vyhled: strategickyVyhledText ? strategickyVyhledText.slice(0, 2000) : null,
+        instrukce_karel: instrukceText ? `[loaded, ${instrukceText.length} chars]` : null,
+        pamet_karel: pametKarelText ? pametKarelText.slice(0, 2000) : null,
+      },
       diff: dailyDiff || null,
-    };
+      legacy: legacyBag,
+    });
 
-    // ═══ 5. Upsert into did_daily_context (with diff in analysis_json) ═══
+    // Validation guard — fail loud if shape is incomplete.
+    const validation = validateCanonicalContext(enrichedContextJson);
+    if (!validation.ok) {
+      console.error("[daily-refresh] ❌ canonical shape validation failed:", validation);
+      return new Response(JSON.stringify({
+        error: "canonical_shape_invalid",
+        missing: validation.missing,
+        warnings: validation.warnings,
+      }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+    if (validation.warnings.length) {
+      console.warn("[daily-refresh] canonical shape warnings:", validation.warnings);
+    }
+
+    // ═══ 6. Upsert into did_daily_context ═══
     const { error: upsertError } = await sb.from("did_daily_context").upsert(
       {
         user_id: userId,
