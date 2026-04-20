@@ -40,15 +40,18 @@ interface TherapistStateBlock {
   };
   continuity: {
     score: number | null;
-    open_tasks: number;
-    completed_tasks_7d: number;
+    open_tasks_direct: number;
+    open_tasks_shared: number;
+    completed_tasks_7d_direct: number;
+    completed_tasks_7d_shared: number;
     rationale: string;
   };
   confidence: { overall: number; reasons: string[]; insufficient_data: boolean };
   source_counts: {
     observations: number;
     implications: number;
-    tasks: number;
+    tasks_direct: number;
+    tasks_shared: number;
     therapeutic_messages: number;
     crises_owned: number;
   };
@@ -536,9 +539,10 @@ function TherapistStateMini({
           </span>
         </div>
         <div>
-          <span className="text-muted-foreground">Tasks open/done7d:</span>{" "}
+          <span className="text-muted-foreground">Tasks (D+S):</span>{" "}
           <span className="font-mono">
-            {state.continuity.open_tasks}/{state.continuity.completed_tasks_7d}
+            {state.continuity.open_tasks_direct}+{state.continuity.open_tasks_shared}/
+            {state.continuity.completed_tasks_7d_direct}+{state.continuity.completed_tasks_7d_shared}
           </span>
         </div>
         <div>

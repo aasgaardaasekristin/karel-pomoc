@@ -262,7 +262,7 @@ Deno.serve(async (req) => {
   const crisisRes = await timed("crisis_events", async () => {
     const { data, error } = await db
       .from("crisis_events")
-      .select("id, part_name, severity, phase, opened_at, days_active")
+      .select("id, part_name, severity, phase, opened_at, days_active, primary_therapist, secondary_therapist")
       .not("phase", "in", '("closed","CLOSED")')
       .order("opened_at", { ascending: false })
       .limit(20);
@@ -345,7 +345,9 @@ Deno.serve(async (req) => {
   // ── 8. Therapist Intelligence Foundation (derived block) ──
   // Reads 7d window of: therapist tasks, evidence, hana 7d (reuse), kata threads.
   const tiRes = await timed("therapist_intelligence_foundation", async () => {
-    const [obs7d, impl7d, tasks7d, kataThreads7d] = await Promise.all([
+    const [obs7d, impl7d, kataThreads7d,
+      hankaOpen, hankaCompleted7d, kataOpen, kataCompleted7d, bothOpen, bothCompleted7d,
+    ] = await Promise.all([
       db.from("did_observations")
         .select("id, subject_type, subject_id, fact, created_at, evidence_level")
         .eq("subject_type", "therapist")
@@ -355,16 +357,25 @@ Deno.serve(async (req) => {
         .select("id, owner, destinations, impact_type, status, created_at")
         .gte("created_at", since7d)
         .limit(200),
-      db.from("did_therapist_tasks")
-        .select("id, assigned_to, status, title, created_at, completed_at")
-        .gte("created_at", since7d)
-        .limit(200),
       db.from("did_threads")
         .select("id, sub_mode, last_activity_at, messages")
         .eq("sub_mode", "kata")
         .gte("last_activity_at", since7d)
         .order("last_activity_at", { ascending: false })
         .limit(20),
+      // Per-assignee counts (avoids limit bias from large 'both' bucket)
+      db.from("did_therapist_tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", "hanka").in("status", ["pending", "in_progress"]),
+      db.from("did_therapist_tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", "hanka").eq("status", "completed").gte("completed_at", since7d),
+      db.from("did_therapist_tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", "kata").in("status", ["pending", "in_progress"]),
+      db.from("did_therapist_tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", "kata").eq("status", "completed").gte("completed_at", since7d),
+      db.from("did_therapist_tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", "both").in("status", ["pending", "in_progress"]),
+      db.from("did_therapist_tasks").select("id", { count: "exact", head: true })
+        .eq("assigned_to", "both").eq("status", "completed").gte("completed_at", since7d),
     ]);
 
     const hanaMessages: any[] = [];
@@ -373,13 +384,32 @@ Deno.serve(async (req) => {
       for (const m of msgs) hanaMessages.push(m);
     }
 
+    // Synthesize lightweight task rows from counts (foundation only needs counts + assigned_to + status)
+    const synthTasks: any[] = [];
+    const pushSynth = (assigned: string, status: string, n: number) => {
+      for (let i = 0; i < n; i++) {
+        synthTasks.push({
+          id: `synth-${assigned}-${status}-${i}`,
+          assigned_to: assigned,
+          status,
+          completed_at: status === "completed" ? new Date().toISOString() : null,
+        });
+      }
+    };
+    pushSynth("hanka", "pending", hankaOpen.count ?? 0);
+    pushSynth("hanka", "completed", hankaCompleted7d.count ?? 0);
+    pushSynth("kata", "pending", kataOpen.count ?? 0);
+    pushSynth("kata", "completed", kataCompleted7d.count ?? 0);
+    pushSynth("both", "pending", bothOpen.count ?? 0);
+    pushSynth("both", "completed", bothCompleted7d.count ?? 0);
+
     const foundationInput: TherapistFoundationInput = {
       now: new Date(),
       hana_messages: hanaMessages,
       kata_threads: (kataThreads7d.data || []) as any,
       observations: (obs7d.data || []) as any,
       implications: (impl7d.data || []) as any,
-      tasks: (tasks7d.data || []) as any,
+      tasks: synthTasks,
       crises: (crisisRes.data as any[]) || [],
     };
 
@@ -390,7 +420,7 @@ Deno.serve(async (req) => {
         count:
           (obs7d.data?.length ?? 0) +
           (impl7d.data?.length ?? 0) +
-          (tasks7d.data?.length ?? 0) +
+          synthTasks.length +
           (kataThreads7d.data?.length ?? 0),
       },
     };
