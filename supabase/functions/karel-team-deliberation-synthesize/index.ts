@@ -229,19 +229,43 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Soft guard: vyžadujeme alespoň jednu odpověď nebo discussion message,
-    // jinak nemá smysl syntetizovat.
-    const qH = (row.questions_for_hanka ?? []) as Array<{ answer?: string | null }>;
-    const qK = (row.questions_for_kata ?? []) as Array<{ answer?: string | null }>;
-    const anyAnswer = qH.some((q) => q.answer?.trim()) || qK.some((q) => q.answer?.trim());
-    const anyDiscussion = (row.discussion_log ?? []).length > 0;
-    if (!anyAnswer && !anyDiscussion) {
-      return new Response(JSON.stringify({
-        error: "no_input",
-        message: "Karel nemá co syntetizovat — žádné odpovědi ani diskuse.",
-      }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // GATE PRAVIDLO PRO SYNTÉZU:
+    //   - typ `crisis`: VŠECHNY otázky Haničky i Káti musí mít odpověď.
+    //                   Diskusní log je bonus, ale nestačí sám o sobě.
+    //   - ostatní typy: stačí alespoň jedna odpověď nebo diskusní vstup.
+    // Důvod: u krize nesmí Karel vydat klinický verdikt na neúplných datech.
+    const qH = (row.questions_for_hanka ?? []) as Array<{ question: string; answer?: string | null }>;
+    const qK = (row.questions_for_kata ?? []) as Array<{ question: string; answer?: string | null }>;
+    const isCrisis = row.deliberation_type === "crisis" || row.priority === "crisis";
+
+    if (isCrisis) {
+      const missingH = qH
+        .map((q, i) => ({ q, i }))
+        .filter(({ q }) => !q.answer?.trim());
+      const missingK = qK
+        .map((q, i) => ({ q, i }))
+        .filter(({ q }) => !q.answer?.trim());
+      if (missingH.length > 0 || missingK.length > 0) {
+        return new Response(JSON.stringify({
+          error: "incomplete_answers",
+          message: "U krizové koordinace musí Hanička i Káťa odpovědět na všechny otázky, než Karel syntetizuje.",
+          missing_hanka: missingH.map(({ i, q }) => ({ index: i, question: q.question })),
+          missing_kata: missingK.map(({ i, q }) => ({ index: i, question: q.question })),
+        }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    } else {
+      const anyAnswer = qH.some((q) => q.answer?.trim()) || qK.some((q) => q.answer?.trim());
+      const anyDiscussion = (row.discussion_log ?? []).length > 0;
+      if (!anyAnswer && !anyDiscussion) {
+        return new Response(JSON.stringify({
+          error: "no_input",
+          message: "Karel nemá co syntetizovat — žádné odpovědi ani diskuse.",
+        }), {
+          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const synthesis = await callAI(buildPrompt(row));
