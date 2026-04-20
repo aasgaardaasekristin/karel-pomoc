@@ -157,5 +157,5 @@ export function useTeamDeliberations(refreshTrigger = 0) {
     [items, reload],
   );
 
-  return { items, loading, creating, create, sign, answerQuestion, postMessage, reload };
+  return { items, loading, creating, create, sign, synthesize, answerQuestion, postMessage, reload };
 }
