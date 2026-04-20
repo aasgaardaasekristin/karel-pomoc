@@ -754,7 +754,8 @@ async function processBlocksEntityGuardrails(
         collector.items.push({
           ...b,
           segmentId: segment?.id,
-          target: `KARTA_${targetName}`,
+          // Casing: KARTA_ targets must be uppercase to match governance whitelist + Drive lookup.
+          target: `KARTA_${targetName.toUpperCase()}`,
           reasoning: `${b.reasoning} [alias ${entityName} → ${targetName}]`,
         });
         addLog(`  Alias resolved: ${entityName} → ${targetName}`);

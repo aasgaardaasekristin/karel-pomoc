@@ -6090,11 +6090,14 @@ Pokud nejsou žádné nové claims, vrať: []`;
 
             const partName = crisis.part_name;
             if (partName) {
-              // Write escalation to pending Drive writes (section J – priorities)
+              // Write escalation to pending Drive writes (section J – priorities).
+              // CASING: governance whitelist + Drive lookup expects KARTA_<UPPERCASE>.
+              // WRITE_TYPE: processor only accepts 'append' | 'replace' — 'crisis_escalation'
+              // would be silently skipped (write_type unsupported).
               await sb.from("did_pending_drive_writes").insert({
-                target_document: `KARTA_${partName}`,
+                target_document: `KARTA_${partName.toUpperCase()}`,
                 content: `[SEKCE:J:REPLACE]\n${escalationNote}`,
-                write_type: "crisis_escalation",
+                write_type: "append",
                 priority: "urgent",
                 user_id: resolvedUserId,
               });

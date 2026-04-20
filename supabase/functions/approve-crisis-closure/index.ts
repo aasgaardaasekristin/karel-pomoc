@@ -194,7 +194,9 @@ serve(async (req) => {
         await sb.from("did_doc_sync_log").insert({
           source_type: "approve-crisis-closure",
           source_id: crisisId,
-          target_document: crisis.part_name,
+          // Audit-only sync_log entry — record the canonical KARTA_<PART> target name
+          // so reports can attribute the failure to the correct Drive document.
+          target_document: `KARTA_${String(crisis.part_name || "UNKNOWN").toUpperCase()}`,
           content_written: "",
           success: false,
           error_message: String(cardErr),
