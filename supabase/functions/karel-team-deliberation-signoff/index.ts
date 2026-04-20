@@ -64,6 +64,23 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // GATE: pro typ `crisis` smí Karel podepsat JEN pokud existuje
+    // explicitní karel_synthesis (viz karel-team-deliberation-synthesize).
+    // Kontrola PŘED updatem, aby se trigger autoderive_status nespouštěl
+    // s falešným karel_signed_at, který bychom museli rollbackovat.
+    if (
+      signer === "karel" &&
+      row.deliberation_type === "crisis" &&
+      !row.karel_synthesis
+    ) {
+      return new Response(JSON.stringify({
+        error: "synthesis_required",
+        message: "Karel nemůže podepsat krizovou poradu, dokud neproběhne syntéza odpovědí terapeutek. Spusť nejdřív „Spustit Karlovu syntézu“.",
+      }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const nowIso = new Date().toISOString();
     const patch: Record<string, any> = {};
     if (signer === "hanka" && !row.hanka_signed_at) patch.hanka_signed_at = nowIso;
@@ -86,27 +103,6 @@ Deno.serve(async (req: Request) => {
     if (updErr) {
       return new Response(JSON.stringify({ error: updErr.message }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // GATE: pro typ `crisis` smí Karel podepsat JEN pokud existuje
-    // explicitní karel_synthesis (viz karel-team-deliberation-synthesize).
-    // Hanička a Káťa podepsat můžou kdykoli; Karel ne.
-    if (
-      signer === "karel" &&
-      updated.deliberation_type === "crisis" &&
-      !updated.karel_synthesis
-    ) {
-      // Roll back the karel_signed_at timestamp we just wrote
-      await admin
-        .from("did_team_deliberations")
-        .update({ karel_signed_at: null })
-        .eq("id", deliberationId);
-      return new Response(JSON.stringify({
-        error: "synthesis_required",
-        message: "Karel nemůže podepsat krizovou poradu, dokud neproběhne syntéza odpovědí terapeutek (karel-team-deliberation-synthesize).",
-      }), {
-        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
