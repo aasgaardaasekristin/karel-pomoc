@@ -300,6 +300,7 @@ const DidSprava = ({
             { key: "registry" as const, label: "Registr" },
             { key: "reports" as const, label: "Reporty" },
             { key: "cleanup" as const, label: "Cleanup" },
+            { key: "wm" as const, label: "🧠 WM" },
             { key: "theme" as const, label: "Vzhled" },
           ]).map(tab => (
             <button
