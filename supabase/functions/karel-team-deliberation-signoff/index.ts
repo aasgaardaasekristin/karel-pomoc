@@ -89,6 +89,27 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // GATE: pro typ `crisis` smí Karel podepsat JEN pokud existuje
+    // explicitní karel_synthesis (viz karel-team-deliberation-synthesize).
+    // Hanička a Káťa podepsat můžou kdykoli; Karel ne.
+    if (
+      signer === "karel" &&
+      updated.deliberation_type === "crisis" &&
+      !updated.karel_synthesis
+    ) {
+      // Roll back the karel_signed_at timestamp we just wrote
+      await admin
+        .from("did_team_deliberations")
+        .update({ karel_signed_at: null })
+        .eq("id", deliberationId);
+      return new Response(JSON.stringify({
+        error: "synthesis_required",
+        message: "Karel nemůže podepsat krizovou poradu, dokud neproběhne syntéza odpovědí terapeutek (karel-team-deliberation-synthesize).",
+      }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // BRIDGE: if approved + session_plan → push do did_daily_session_plans
     //
     // HARDENING (Slice 3 stabilizace): bridge MUSÍ vycházet ze schváleného
@@ -98,6 +119,7 @@ Deno.serve(async (req: Request) => {
     // Fallback řetězec použijeme jen když deliberation z nějakého důvodu
     // session_params nemá (legacy záznamy před touto migrací).
     let bridgedPlanId: string | null = updated.linked_live_session_id ?? null;
+    let crisisEffects: Record<string, any> = {};
     if (
       updated.status === "approved" &&
       updated.deliberation_type === "session_plan" &&
