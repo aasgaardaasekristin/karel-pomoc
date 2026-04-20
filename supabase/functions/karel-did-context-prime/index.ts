@@ -779,6 +779,29 @@ serve(async (req) => {
       partRegistry: sb.from("did_part_registry").select("part_name, status, cluster, age_estimate, last_seen_at, last_emotional_state").eq("user_id", userId),
       partProfiles: sb.from("did_part_profiles").select("part_name, personality_traits, cognitive_profile, emotional_profile, needs, motivations, strengths, challenges, interests, communication_style, therapeutic_approach, theme_preferences, confidence_score").eq("user_id", userId),
       dailyContext: sb.from("did_daily_context").select("context_date, context_json, analysis_json").eq("user_id", userId).order("context_date", { ascending: false }).limit(1),
+      // ─── STRUCTURED DB INPUTS (pipeline tables) ────────────────────────
+      // These tables are global (no user_id column). They are the structured
+      // counterpart to the Drive/PAMET prompt-influence layer: they expose
+      // recent implications, open therapist questions, and the latest daily
+      // briefing as explicit decision inputs in the Karel prompt.
+      // Errors are swallowed at the harvest level via Promise.allSettled so a
+      // single broken reader can never crash context-prime.
+      recentImplications: sb.from("did_implications")
+        .select("impact_type, destinations, implication_text, owner, status, review_at, created_at")
+        .gte("created_at", new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString())
+        .in("status", ["open", "in_progress", "needs_review"])
+        .order("created_at", { ascending: false })
+        .limit(15),
+      openPendingQuestions: sb.from("did_pending_questions")
+        .select("question, context, subject_type, subject_id, directed_to, blocking, created_at")
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(10),
+      latestDailyBriefing: sb.from("did_daily_briefings")
+        .select("briefing_date, payload, decisions_count, generated_at, is_stale")
+        .eq("is_stale", false)
+        .order("briefing_date", { ascending: false })
+        .limit(1),
     };
 
     // Drive reads (parallel with DB)
@@ -1074,11 +1097,19 @@ Piš stručně, v češtině, max 300 slov. U každé události přidej jednu v�
       } catch (e) { console.warn("[did-context-prime] Perplexity error:", e); }
     })();
 
-    // Wait for all
+    // Wait for all (allSettled so one bad reader cannot crash context-prime)
     const dbResults: Record<string, any> = {};
     const dbEntries = Object.entries(dbPromises);
-    const dbResponses = await Promise.all(dbEntries.map(([, promise]) => promise));
-    dbEntries.forEach(([key], i) => { dbResults[key] = dbResponses[i].data || []; });
+    const dbResponses = await Promise.allSettled(dbEntries.map(([, promise]) => promise));
+    dbEntries.forEach(([key], i) => {
+      const r = dbResponses[i];
+      if (r.status === "fulfilled") {
+        dbResults[key] = (r.value as any)?.data || [];
+      } else {
+        console.warn(`[did-context-prime] dbReader ${key} rejected:`, (r.reason as any)?.message || r.reason);
+        dbResults[key] = [];
+      }
+    });
     await Promise.all([drivePromise, newsPromise]);
 
     const harvestTime = Date.now() - startTime;
@@ -1689,6 +1720,89 @@ PRAVIDLA DNEŠNÍHO VEDENÍ:
       }
     } catch (silentErr) {
       console.warn("[did-context-prime] Silent parts detection error (non-fatal):", silentErr);
+    }
+
+    // ═══ STRUCTURED DB INPUTS (pipeline-backed decision blocks) ═══
+    // These four blocks expose the DB pipeline (observations → implications,
+    // pending therapist questions, latest daily briefing, recent therapist
+    // tasks) directly to the Karel prompt. They are intentionally NOT folder
+    // snapshots — each block has a clearly bounded source, a fixed shape, and
+    // a safe fallback (`(prázdné)`) when there is no data so a missing reader
+    // can never produce a crash or hallucinated content.
+    try {
+      const recentImplications: any[] = dbResults.recentImplications || [];
+      const openPendingQuestions: any[] = dbResults.openPendingQuestions || [];
+      const latestDailyBriefing: any[] = dbResults.latestDailyBriefing || [];
+      const recentTherapistTasks: any[] = dbResults.therapistTasks || [];
+
+      const fmtImpl = (i: any) => {
+        const dest = Array.isArray(i.destinations) && i.destinations.length ? ` →[${i.destinations.join(",")}]` : "";
+        const owner = i.owner ? ` (vlastník: ${i.owner})` : "";
+        const txt = (i.implication_text || "").replace(/\s+/g, " ").slice(0, 240);
+        return `• [${i.impact_type || "?"}/${i.status || "?"}]${dest}${owner} ${txt}`;
+      };
+      const fmtQuestion = (q: any) => {
+        const target = q.directed_to ? `→${q.directed_to}` : "→?";
+        const block = q.blocking ? ` BLOCKING:${q.blocking}` : "";
+        const subj = q.subject_id ? ` [${q.subject_type || "subject"}=${q.subject_id}]` : "";
+        const txt = (q.question || "").replace(/\s+/g, " ").slice(0, 220);
+        return `• ${target}${block}${subj} ${txt}`;
+      };
+      const fmtTask = (t: any) => {
+        const owner = t.assigned_to ? `${t.assigned_to}` : "?";
+        const due = t.due_date ? ` due=${String(t.due_date).slice(0, 10)}` : "";
+        const cat = t.category ? ` [${t.category}]` : "";
+        const txt = (t.task || "").replace(/\s+/g, " ").slice(0, 200);
+        return `• ${owner}/${t.priority || "?"}/${t.status || "?"}${due}${cat} ${txt}`;
+      };
+
+      const implBlock = recentImplications.length
+        ? recentImplications.slice(0, 12).map(fmtImpl).join("\n")
+        : "(prázdné — pipeline did_implications za posledních 48h neprodukovala žádné záznamy)";
+
+      const questionsBlock = openPendingQuestions.length
+        ? openPendingQuestions.slice(0, 10).map(fmtQuestion).join("\n")
+        : "(prázdné — žádné otevřené otázky pro terapeutky)";
+
+      const briefingRow = latestDailyBriefing[0];
+      const briefingBlock = briefingRow
+        ? (() => {
+            const date = String(briefingRow.briefing_date).slice(0, 10);
+            const decisions = briefingRow.decisions_count ?? 0;
+            const payloadStr = (() => {
+              try {
+                const p = briefingRow.payload || {};
+                // Prefer narrative summary if present; otherwise compact JSON, capped.
+                if (typeof p === "string") return p.slice(0, 1200);
+                if (p.summary && typeof p.summary === "string") return p.summary.slice(0, 1200);
+                return JSON.stringify(p).slice(0, 1200);
+              } catch { return "(payload nečitelný)"; }
+            })();
+            return `briefing_date=${date} decisions=${decisions}\n${payloadStr}`;
+          })()
+        : "(prázdné — žádné svěží denní briefing v DB)";
+
+      const tasksBlock = recentTherapistTasks.length
+        ? recentTherapistTasks.slice(0, 10).map(fmtTask).join("\n")
+        : "(prázdné — žádné otevřené úkoly pro terapeutky)";
+
+      contextBrief += `
+
+═══ RECENT_IMPLICATIONS (DB / did_implications, posledních 48h, status≠done) ═══
+${implBlock}
+
+═══ OPEN_PENDING_QUESTIONS (DB / did_pending_questions, status=open) ═══
+${questionsBlock}
+
+═══ LATEST_DAILY_BRIEFING (DB / did_daily_briefings, is_stale=false) ═══
+${briefingBlock}
+
+═══ RECENT_THERAPIST_TASKS (DB / did_therapist_tasks, status≠done) ═══
+${tasksBlock}`;
+
+      console.log(`[did-context-prime] Structured DB blocks appended: impl=${recentImplications.length} q=${openPendingQuestions.length} brief=${briefingRow ? 1 : 0} tasks=${recentTherapistTasks.length}`);
+    } catch (structuredErr) {
+      console.warn("[did-context-prime] Structured DB blocks build error (non-fatal):", structuredErr);
     }
 
     const totalTime = Date.now() - startTime;
