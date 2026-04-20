@@ -267,8 +267,16 @@ const DidSprava = ({
           <DialogDescription className="text-xs">Nástroje a osobní nastavení vzhledu pro každou personu zvlášť.</DialogDescription>
         </DialogHeader>
 
-        {/* Status bar */}
-        <StatusBar cycleStatus={cycleStatus} unprocessedThreads={stats.unprocessedThreads} />
+        {/* Truthful run health bar */}
+        <CycleHealthBar
+          health={health}
+          unprocessedThreads={stats.unprocessedThreads}
+          onReload={reloadHealth}
+          onTriggerFullCycle={triggerFullCycle}
+          onResetStuck={resetStuckRun}
+          isTriggering={isTriggeringFullCycle}
+          isResetting={isResettingStuck}
+        />
 
         <div className="flex gap-1 mb-3 p-1 rounded-lg bg-muted flex-wrap">
          {([
