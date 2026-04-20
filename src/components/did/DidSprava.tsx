@@ -24,6 +24,7 @@ import HandoffPanel from "./HandoffPanel";
 import RecoveryPanel from "./RecoveryPanel";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
+import DidWorkingMemoryPanel from "./DidWorkingMemoryPanel";
 import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
 interface Props {
@@ -178,7 +179,7 @@ const DidSprava = ({
   onSelectPart,
 }: Props) => {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions">("tools");
+  const [activeTab, setActiveTab] = useState<"tools" | "theme" | "health" | "registry" | "reports" | "cleanup" | "kartoteka" | "plan" | "crisis" | "memory" | "notes" | "trends" | "goals" | "safety" | "writes" | "packet" | "handoff" | "recovery" | "live" | "questions" | "wm">("tools");
   const opsSnapshot = useOperationalInboxCounts(refreshTrigger);
   const [livePlan, setLivePlan] = useState<{ id: string; partName: string; therapistName: string; contextBrief: string } | null>(null);
   const [livePlans, setLivePlans] = useState<Array<{ id: string; selected_part: string; session_lead: string; therapist?: string | null; plan_markdown: string; status: string; plan_date: string }>>([]);
@@ -299,6 +300,7 @@ const DidSprava = ({
             { key: "registry" as const, label: "Registr" },
             { key: "reports" as const, label: "Reporty" },
             { key: "cleanup" as const, label: "Cleanup" },
+            { key: "wm" as const, label: "🧠 WM" },
             { key: "theme" as const, label: "Vzhled" },
           ]).map(tab => (
             <button
@@ -503,6 +505,12 @@ const DidSprava = ({
         {activeTab === "cleanup" && (
           <div className="space-y-2">
             <DidCardCleanup />
+          </div>
+        )}
+
+        {activeTab === "wm" && (
+          <div className="space-y-2">
+            <DidWorkingMemoryPanel />
           </div>
         )}
 
