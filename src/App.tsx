@@ -1,11 +1,13 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import CrisisAlert from "@/components/karel/CrisisAlert";
+import CrisisDetailWorkspace from "@/components/karel/CrisisDetailWorkspace";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ChatProvider } from "@/contexts/ChatContext";
 import { CrisisSupervisionProvider } from "@/contexts/CrisisSupervisionContext";
+import { CrisisDetailProvider } from "@/contexts/CrisisDetailContext";
 import { ActiveSessionsProvider } from "@/contexts/ActiveSessionsContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
@@ -28,6 +30,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <CrisisSupervisionProvider>
+      <CrisisDetailProvider>
       <ActiveSessionsProvider>
       <ThemeProvider>
       <ChatProvider>
@@ -35,6 +38,7 @@ const App = () => (
         <Sonner position="top-right" richColors closeButton />
         <BrowserRouter>
           <CrisisAlert />
+          <CrisisDetailWorkspace />
           <MobileSwipeBack />
           <Routes>
             {isPomocSubdomain ? (
@@ -60,6 +64,7 @@ const App = () => (
       </ChatProvider>
       </ThemeProvider>
       </ActiveSessionsProvider>
+      </CrisisDetailProvider>
       </CrisisSupervisionProvider>
     </TooltipProvider>
   </QueryClientProvider>
