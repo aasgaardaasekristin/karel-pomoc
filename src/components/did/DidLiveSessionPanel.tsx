@@ -771,6 +771,24 @@ Piš česky, stručně, klinicky přesně. Jen bullet pointy, žádný úvod ani
     setIsSavingReflection(false);
     toast.success("Sezení uloženo a analyzováno");
 
+    // ── PRAVDIVÝ STAV PLÁNU: finální analýza dokončena → done ──
+    // Po analyzed větvi (handleEndSession → finishAfterReflection) musí být plán
+    // v Pracovně viditelný jako uzavřený, ne dál jako `in_progress`.
+    if (planId) {
+      try {
+        await (supabase as any)
+          .from("did_daily_session_plans")
+          .update({
+            status: "done",
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", planId);
+      } catch (planErr) {
+        console.warn("Failed to update plan status to done:", planErr);
+      }
+    }
+
     // Set completed state + reset all session states
     setCompletedReport(report || "Zápis nebyl vygenerován.");
     setMessages([]);
