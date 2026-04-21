@@ -151,16 +151,27 @@ Deno.serve(async (req) => {
         lastFlushAttemptAt = fr.last_attempt_at;
       }
     }
+
+    // ── ROUTING TRUTHFULNESS ────────────────────────────────────────
+    // Routing breakdown za 24h se počítá z `flush_result.succeeded`
+    // u VŠECH entries (processed i partial), protože succeeded
+    // destinace už reálně existují v cílových tabulkách bez ohledu
+    // na to, zda celá entry je `processed_at`. Časový filtr používá
+    // `last_attempt_at` (kdy succeeded vznikly), ne `processed_at`.
+    const attemptTs = fr?.last_attempt_at
+      ? new Date(fr.last_attempt_at).getTime()
+      : null;
+    const inLast24h = attemptTs !== null && attemptTs >= past24h;
+    if (inLast24h && Array.isArray(fr?.succeeded)) {
+      if (fr!.succeeded!.includes("did_therapist_tasks")) routedToTasks24h++;
+      if (fr!.succeeded!.includes("did_pending_questions")) routedToQuestions24h++;
+      if (fr!.succeeded!.includes("did_implications")) routedToImplications24h++;
+    }
+
     if (row.processed_at) {
       processed++;
       if (!lastProcessedAt || row.processed_at > lastProcessedAt) {
         lastProcessedAt = row.processed_at;
-      }
-      // Routing breakdown za 24h — z flush_result úspěšných batchů.
-      if (new Date(row.processed_at).getTime() >= past24h && fr?.succeeded) {
-        if (fr.succeeded.includes("did_therapist_tasks")) routedToTasks24h++;
-        if (fr.succeeded.includes("did_pending_questions")) routedToQuestions24h++;
-        if (fr.succeeded.includes("did_implications")) routedToImplications24h++;
       }
     } else {
       unprocessed++;
@@ -188,7 +199,10 @@ Deno.serve(async (req) => {
             });
           }
         }
-        if (isBlocked || isFailed) retryable++;
+        // Retryable jen pokud má failed (transient error). Blocked-only
+        // entry (např. did_implications schema_blocked) NENÍ retryable —
+        // čeká na strukturální opravu, ne na další pokus.
+        if (isFailed) retryable++;
       }
     }
   }
