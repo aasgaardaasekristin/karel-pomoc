@@ -27,6 +27,7 @@ import RecoveryPanel from "./RecoveryPanel";
 import DidLiveSessionPanel from "./DidLiveSessionPanel";
 import PendingQuestionsPanel from "./PendingQuestionsPanel";
 import DidWorkingMemoryPanel from "./DidWorkingMemoryPanel";
+import HourglassInspectPanel from "./HourglassInspectPanel";
 import { useOperationalInboxCounts } from "@/hooks/useOperationalInboxCounts";
 
 interface Props {

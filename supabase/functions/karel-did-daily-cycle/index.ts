@@ -10,6 +10,12 @@ import {
   markPantryBProcessed,
   purgeExpiredPantryB,
 } from "../_shared/pantryB.ts";
+import {
+  buildTherapistTaskInsert,
+  buildPendingQuestionInsert,
+  IMPLICATIONS_BLOCKED_REASON,
+  type PantryEntryRef,
+} from "../_shared/pantryFlushShapes.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
