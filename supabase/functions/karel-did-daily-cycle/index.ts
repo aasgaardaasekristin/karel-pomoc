@@ -10,6 +10,12 @@ import {
   markPantryBProcessed,
   purgeExpiredPantryB,
 } from "../_shared/pantryB.ts";
+import {
+  buildTherapistTaskInsert,
+  buildPendingQuestionInsert,
+  IMPLICATIONS_BLOCKED_REASON,
+  type PantryEntryRef,
+} from "../_shared/pantryFlushShapes.ts";
 
 // OAuth2 token helper
 async function getAccessToken(): Promise<string> {
@@ -7258,35 +7264,41 @@ Vra\u0165 JSON:
           const failed: Array<{ destination: string; reason: string }> = [];
           const blocked: Array<{ destination: string; reason: string }> = [];
 
+          // Single source of truth pro insert payloads — viz pantryFlushShapes.ts.
+          // Runtime validace zde NEsmí být obejita ad-hoc insertem.
+          const entryRef: PantryEntryRef = {
+            id: entry.id,
+            entry_kind: entry.entry_kind,
+            source_kind: entry.source_kind,
+            source_ref: entry.source_ref ?? null,
+            related_part_name: entry.related_part_name ?? null,
+            related_therapist:
+              entry.related_therapist === "hanka" ||
+              entry.related_therapist === "kata"
+                ? entry.related_therapist
+                : null,
+            summary: entry.summary,
+          };
+
           // ── DESTINATION 1: did_therapist_tasks ──────────────────────
           if (dests.includes("did_therapist_tasks")) {
             requested.push("did_therapist_tasks");
-            const therapist = (entry.related_therapist || "").toLowerCase();
-            if (therapist !== "hanka" && therapist !== "kata") {
+            const shape = buildTherapistTaskInsert(flushUserId, entryRef);
+            if (!shape.ok) {
               blocked.push({
                 destination: "did_therapist_tasks",
-                reason: "missing_or_invalid_related_therapist",
+                reason: shape.reason,
               });
             } else {
               try {
-                const { error: taskErr } = await sb.from("did_therapist_tasks").insert({
-                  user_id: flushUserId,
-                  task: entry.summary.slice(0, 500),
-                  assigned_to: therapist,
-                  status: "pending",
-                  priority: entry.entry_kind === "risk" ? "high" : "normal",
-                  source: "pantry_b_flush",
-                  category: entry.entry_kind || "general",
-                  note: JSON.stringify({
-                    pantry_entry_id: entry.id,
-                    pantry_entry_kind: entry.entry_kind,
-                    pantry_source_kind: entry.source_kind,
-                    pantry_source_ref: entry.source_ref ?? null,
-                    related_part_name: entry.related_part_name ?? null,
-                  }),
-                });
+                const { error: taskErr } = await sb
+                  .from("did_therapist_tasks")
+                  .insert(shape.value);
                 if (taskErr) {
-                  failed.push({ destination: "did_therapist_tasks", reason: taskErr.message });
+                  failed.push({
+                    destination: "did_therapist_tasks",
+                    reason: taskErr.message,
+                  });
                 } else {
                   succeeded.push("did_therapist_tasks");
                   routedToTasks++;
@@ -7303,29 +7315,22 @@ Vra\u0165 JSON:
           // ── DESTINATION 2: did_pending_questions ────────────────────
           if (dests.includes("did_pending_questions")) {
             requested.push("did_pending_questions");
-            const therapist = (entry.related_therapist || "").toLowerCase();
-            if (therapist !== "hanka" && therapist !== "kata") {
+            const shape = buildPendingQuestionInsert(entryRef);
+            if (!shape.ok) {
               blocked.push({
                 destination: "did_pending_questions",
-                reason: "missing_or_invalid_related_therapist",
+                reason: shape.reason,
               });
             } else {
               try {
-                const { error: qErr } = await sb.from("did_pending_questions").insert({
-                  question: entry.summary.slice(0, 500),
-                  directed_to: therapist,
-                  subject_type: entry.related_part_name ? "part" : null,
-                  subject_id: entry.related_part_name ?? null,
-                  status: "open",
-                  context: JSON.stringify({
-                    pantry_entry_id: entry.id,
-                    pantry_entry_kind: entry.entry_kind,
-                    pantry_source_kind: entry.source_kind,
-                    pantry_source_ref: entry.source_ref ?? null,
-                  }),
-                });
+                const { error: qErr } = await sb
+                  .from("did_pending_questions")
+                  .insert(shape.value);
                 if (qErr) {
-                  failed.push({ destination: "did_pending_questions", reason: qErr.message });
+                  failed.push({
+                    destination: "did_pending_questions",
+                    reason: qErr.message,
+                  });
                 } else {
                   succeeded.push("did_pending_questions");
                   routedToQuestions++;
@@ -7345,12 +7350,14 @@ Vra\u0165 JSON:
           // Synthetizovat fake observation jen pro vyplnění FK by porušilo
           // datovou integritu. Entry zůstane v Pantry B unprocessed dokud
           // tuto destinaci explicitně nezapojíme přes observation pipeline.
+          // Konstanta IMPLICATIONS_BLOCKED_REASON je sdílena s
+          // karel-hourglass-inspect, aby UI mohlo blocked entries
+          // klasifikovat na "čeká na observation pipeline".
           if (dests.includes("did_implications")) {
             requested.push("did_implications");
             blocked.push({
               destination: "did_implications",
-              reason:
-                "schema_blocked_observation_id_required_no_safe_synthesis_path",
+              reason: IMPLICATIONS_BLOCKED_REASON,
             });
             blockedImplications++;
           }
